@@ -1,0 +1,22 @@
+# Build output
+bin/
+obj/
+publish/
+artifacts/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# macOS
+.DS_Store
+
+# Runtime data created beside the app (portable storage)
+Data/
+Covers/
+Cache/
+Logs/
+Settings/

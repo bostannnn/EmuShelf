@@ -1,0 +1,102 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        xmlns:sys="using:EmuShelf.Core.Systems"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
+        x:Class="EmuShelf.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="EmuShelf"
+        Width="1100" Height="720"
+        MinWidth="800" MinHeight="500"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <DockPanel>
+
+        <!-- Status bar -->
+        <Border DockPanel.Dock="Bottom"
+                Background="#14808080" BorderBrush="#22808080" BorderThickness="0,1,0,0"
+                Padding="12,4">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Text="0 games" FontSize="12" Opacity="0.6" />
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.6" />
+            </DockPanel>
+        </Border>
+
+        <!-- System sidebar -->
+        <Border DockPanel.Dock="Left" Width="210"
+                Background="#14808080" BorderBrush="#22808080" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="SYSTEMS"
+                           FontSize="11" FontWeight="SemiBold" Opacity="0.5"
+                           Margin="16,16,16,8" />
+                <ListBox ItemsSource="{Binding Systems}"
+                         SelectedItem="{Binding SelectedSystem}"
+                         Background="Transparent">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="sys:GameSystem">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                         Fill="{Binding AccentColor}" />
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <!-- Toolbar -->
+        <Border DockPanel.Dock="Top" BorderBrush="#22808080" BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <ToggleButton IsChecked="{Binding IsGridView, Mode=TwoWay}"
+                                  ToolTip.Tip="Grid view" Padding="8,6">
+                        <PathIcon Width="13" Height="13"
+                                  Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" />
+                    </ToggleButton>
+                    <ToggleButton IsChecked="{Binding !IsGridView, Mode=TwoWay}"
+                                  ToolTip.Tip="List view" Padding="8,6">
+                        <PathIcon Width="13" Height="13"
+                                  Data="M2,4 H18 V6.5 H2 Z M2,8.75 H18 V11.25 H2 Z M2,13.5 H18 V16 H2 Z" />
+                    </ToggleButton>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+                    <TextBox Width="240" PlaceholderText="Search"
+                             Text="{Binding SearchText, Mode=TwoWay}" />
+                    <Button Command="{Binding AddGamesCommand}"
+                            ToolTip.Tip="Add games or a folder" Padding="10,4">
+                        <TextBlock Text="+" FontSize="16" />
+                    </Button>
+                    <Button Command="{Binding OpenSettingsCommand}"
+                            ToolTip.Tip="Settings" Padding="10,6">
+                        <TextBlock Text="&#x2699;" FontSize="14" />
+                    </Button>
+                </StackPanel>
+                <Panel />
+            </DockPanel>
+        </Border>
+
+        <!-- Library content: empty state until importing lands -->
+        <Panel>
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Spacing="10" MaxWidth="420">
+                <TextBlock Text="{Binding SelectedSystem.Name}"
+                           FontSize="26" FontWeight="SemiBold"
+                           HorizontalAlignment="Center" Opacity="0.9" />
+                <TextBlock Text="No games yet. Add a game file or a folder to build your library."
+                           TextWrapping="Wrap" TextAlignment="Center" Opacity="0.55" />
+                <Button Content="Add Games…" Command="{Binding AddGamesCommand}"
+                        HorizontalAlignment="Center" Margin="0,8,0,0" />
+            </StackPanel>
+        </Panel>
+
+    </DockPanel>
+</Window>

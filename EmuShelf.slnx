@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EmuShelf.App/EmuShelf.App.csproj" />
+    <Project Path="src/EmuShelf.Core/EmuShelf.Core.csproj" />
+    <Project Path="src/EmuShelf.Infrastructure/EmuShelf.Infrastructure.csproj" />
+    <Project Path="src/EmuShelf.Integrations/EmuShelf.Integrations.csproj" />
+  </Folder>
+</Solution>
