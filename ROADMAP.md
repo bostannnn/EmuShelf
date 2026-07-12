@@ -6,12 +6,12 @@ Derived from the design doc's milestones (docs/design-document.pdf §13), split 
 
 Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle, search, add, settings), empty-state content area, status bar. Builds and runs on macOS, zero warnings.
 
-## M2 — Portable storage
+## M2 — Portable storage ✅ (2026-07-12)
 
-- [ ] Settings service: JSON in `Settings/` beside the executable, loaded at startup.
-- [ ] SQLite database in `Data/library.db` (Microsoft.Data.Sqlite): schema for games, library folders, per-system emulator config. Schema versioning table from day one.
-- [ ] Relative-path handling: store paths relative to the app directory when on the same volume, absolute otherwise.
-- [ ] App startup wiring: create data directories on first run.
+- [x] Settings service: JSON in `Settings/` beside the executable, loaded at startup.
+- [x] SQLite database in `Data/library.db` (Microsoft.Data.Sqlite): schema for games, library folders, per-system emulator config. Schema versioning table from day one.
+- [x] Relative-path handling: store paths relative to the app directory when on the same volume, absolute otherwise.
+- [x] App startup wiring: create data directories on first run.
 
 ## M3 — Library views and import plumbing
 

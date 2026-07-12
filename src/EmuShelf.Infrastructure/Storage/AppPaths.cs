@@ -1,0 +1,40 @@
+using EmuShelf.Core.Storage;
+
+namespace EmuShelf.Infrastructure.Storage;
+
+public sealed class AppPaths : IAppPaths
+{
+    public string BaseDirectory { get; }
+    public string DataDirectory { get; }
+    public string CoversDirectory { get; }
+    public string CacheDirectory { get; }
+    public string LogsDirectory { get; }
+    public string SettingsDirectory { get; }
+    public string DatabaseFilePath { get; }
+    public string SettingsFilePath { get; }
+
+    public AppPaths() : this(AppContext.BaseDirectory)
+    {
+    }
+
+    public AppPaths(string baseDirectory)
+    {
+        BaseDirectory = baseDirectory;
+        DataDirectory = Path.Combine(baseDirectory, "Data");
+        CoversDirectory = Path.Combine(baseDirectory, "Covers");
+        CacheDirectory = Path.Combine(baseDirectory, "Cache");
+        LogsDirectory = Path.Combine(baseDirectory, "Logs");
+        SettingsDirectory = Path.Combine(baseDirectory, "Settings");
+        DatabaseFilePath = Path.Combine(DataDirectory, "library.db");
+        SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
+    }
+
+    public void EnsureDirectoriesExist()
+    {
+        Directory.CreateDirectory(DataDirectory);
+        Directory.CreateDirectory(CoversDirectory);
+        Directory.CreateDirectory(CacheDirectory);
+        Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(SettingsDirectory);
+    }
+}

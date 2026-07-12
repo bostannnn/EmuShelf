@@ -5,4 +5,7 @@
     <Project Path="src/EmuShelf.Infrastructure/EmuShelf.Infrastructure.csproj" />
     <Project Path="src/EmuShelf.Integrations/EmuShelf.Integrations.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EmuShelf.Infrastructure.Tests/EmuShelf.Infrastructure.Tests.csproj" />
+  </Folder>
 </Solution>

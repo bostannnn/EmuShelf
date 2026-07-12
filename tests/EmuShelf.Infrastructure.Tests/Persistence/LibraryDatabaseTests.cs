@@ -1,0 +1,127 @@
+using EmuShelf.Infrastructure.Persistence;
+using EmuShelf.Infrastructure.Storage;
+using Microsoft.Data.Sqlite;
+
+namespace EmuShelf.Infrastructure.Tests.Persistence;
+
+public class LibraryDatabaseTests : TempAppDirectoryTestBase
+{
+    public LibraryDatabaseTests()
+    {
+        AppPaths.EnsureDirectoriesExist();
+    }
+
+    [Fact]
+    public void Initialize_CreatesExpectedTables()
+    {
+        var database = new LibraryDatabase(AppPaths);
+
+        database.Initialize();
+
+        Assert.Contains("Games", GetTableNames(database));
+        Assert.Contains("LibraryFolders", GetTableNames(database));
+        Assert.Contains("EmulatorConfigs", GetTableNames(database));
+        Assert.Contains("SchemaVersion", GetTableNames(database));
+    }
+
+    [Fact]
+    public void Initialize_CalledTwice_DoesNotFailOrDuplicateSchema()
+    {
+        var database = new LibraryDatabase(AppPaths);
+
+        database.Initialize();
+        database.Initialize();
+
+        using var connection = database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
+        Assert.Equal(1L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void Initialize_EmptySchemaVersionTable_HealsInsteadOfCrashing()
+    {
+        // A present-but-empty SchemaVersion table (external corruption / interrupted edit)
+        // reads as version 0; the migration must be idempotent, not throw 'already exists'.
+        var database = new LibraryDatabase(AppPaths);
+        using (var connection = database.CreateConnection())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "CREATE TABLE SchemaVersion (Version INTEGER NOT NULL);";
+            command.ExecuteNonQuery();
+        }
+
+        database.Initialize();
+
+        Assert.Contains("Games", GetTableNames(database));
+        using var check = database.CreateConnection();
+        using var versionCommand = check.CreateCommand();
+        versionCommand.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
+        Assert.Equal(1L, (long)versionCommand.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void Initialize_DataPathContainingSemicolon_OpensCorrectFile()
+    {
+        // ';' and '=' are legal filename chars; the connection string must not be corrupted
+        // by them when the portable app is dropped in such a folder.
+        var quirkyBase = Path.Combine(BaseDirectory, "Games; Emu=x");
+        var quirkyPaths = new AppPaths(quirkyBase);
+        quirkyPaths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(quirkyPaths);
+
+        database.Initialize();
+
+        Assert.True(File.Exists(quirkyPaths.DatabaseFilePath));
+        Assert.Contains("Games", GetTableNames(database));
+    }
+
+    [Fact]
+    public void Games_PathColumn_RejectsDuplicateInsert()
+    {
+        var database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+
+        using var connection = database.CreateConnection();
+        InsertGame(connection, "PS1/game.cue");
+
+        Assert.Throws<SqliteException>(() => InsertGame(connection, "PS1/game.cue"));
+    }
+
+    [Fact]
+    public void Games_PathColumn_RejectsDuplicateInsert_DifferingOnlyByCase()
+    {
+        // Games identity is the file path, and v1's target platforms (Windows, macOS) both
+        // have case-insensitive file systems, so "Game.cue" and "game.CUE" are the same file.
+        var database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+
+        using var connection = database.CreateConnection();
+        InsertGame(connection, "PS1/game.cue");
+
+        Assert.Throws<SqliteException>(() => InsertGame(connection, "PS1/GAME.CUE"));
+    }
+
+    private static List<string> GetTableNames(LibraryDatabase database)
+    {
+        using var connection = database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table';";
+        using var reader = command.ExecuteReader();
+
+        var tables = new List<string>();
+        while (reader.Read())
+            tables.Add(reader.GetString(0));
+        return tables;
+    }
+
+    private static void InsertGame(SqliteConnection connection, string path)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO Games (SystemId, Path, Title, IsAvailable, DateAdded) " +
+            "VALUES ('playstation', $path, 'Test', 1, '2026-07-12');";
+        command.Parameters.AddWithValue("$path", path);
+        command.ExecuteNonQuery();
+    }
+}
