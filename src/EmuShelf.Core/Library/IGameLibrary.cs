@@ -16,6 +16,16 @@ public interface IGameLibrary
     /// </summary>
     int AddGames(IEnumerable<Game> games);
 
+    /// <summary>
+    /// Atomically inserts new entries and removes descriptor/playlist component rows
+    /// from the specified system. Only library records are removed; game files are
+    /// never modified. Returns the number of entries actually added.
+    /// </summary>
+    int ReconcileImport(
+        string systemId,
+        IEnumerable<Game> entries,
+        IReadOnlyList<string> suppressedPaths);
+
     /// <summary>Updates the availability flag for a single game.</summary>
     void SetAvailability(long gameId, bool isAvailable);
 

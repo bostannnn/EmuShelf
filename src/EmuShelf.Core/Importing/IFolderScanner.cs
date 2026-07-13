@@ -10,10 +10,10 @@ namespace EmuShelf.Core.Importing;
 public interface IFolderScanner
 {
     /// <summary>
-    /// Walks <paramref name="folderPath"/> recursively and returns the absolute paths
-    /// that are candidate games for <paramref name="system"/>.
+    /// Walks <paramref name="folderPath"/> recursively and returns the entries to
+    /// persist plus referenced component paths to suppress for <paramref name="system"/>.
     /// </summary>
-    Task<IReadOnlyList<string>> ScanAsync(
+    Task<GameEntrySelection> ScanAsync(
         string folderPath,
         GameSystem system,
         IProgress<ScanProgress>? progress = null,

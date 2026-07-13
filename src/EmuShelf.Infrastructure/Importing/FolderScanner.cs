@@ -16,17 +16,17 @@ public sealed class FolderScanner : IFolderScanner
         _rules = rules;
     }
 
-    public Task<IReadOnlyList<string>> ScanAsync(
+    public Task<GameEntrySelection> ScanAsync(
         string folderPath,
         GameSystem system,
         IProgress<ScanProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        return Task.Run<IReadOnlyList<string>>(() =>
+        return Task.Run(() =>
         {
             var candidates = new List<string>();
             if (!Directory.Exists(folderPath))
-                return candidates;
+                return GameEntrySelection.Empty;
 
             var options = new EnumerationOptions
             {
@@ -39,7 +39,7 @@ public sealed class FolderScanner : IFolderScanner
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (!_rules.IsCandidate(file, system))
+                if (!_rules.IsFolderCandidate(file, system))
                     continue;
 
                 candidates.Add(file);
@@ -52,8 +52,9 @@ public sealed class FolderScanner : IFolderScanner
                 }
             }
 
-            progress?.Report(new ScanProgress(candidates.Count, null));
-            return candidates;
+            var selection = _rules.SelectGameEntries(candidates, system);
+            progress?.Report(new ScanProgress(selection.EntryPaths.Count, null));
+            return selection;
         }, cancellationToken);
     }
 }

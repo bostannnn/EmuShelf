@@ -21,17 +21,17 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 - [x] Startup availability check (background stat of known paths); unavailable games marked and not launchable.
 - [x] Manual rescan action (per system and global).
 
-## M4 — Format rules for file-based systems
+## M4 — Format rules for file-based systems ✅ (2026-07-13)
 
-- [ ] Extension maps: PS1 (.cue/.chd/.m3u/.pbp/.iso), PS2 (.iso/.chd/.cso/.m3u), GC/Wii (.iso/.rvz/.wbfs/.gcm/.ciso).
-- [ ] .cue parsing: referenced .bin files never appear as separate games.
-- [ ] .m3u playlists: playlist is the game entry; referenced discs hidden.
-- [ ] GC vs Wii disambiguation by disc-header magic words (plain and within .rvz/.wbfs containers).
+- [x] Extension maps: PS1 (.cue/.chd/.m3u/.pbp/.iso), PS2 (.iso/.chd/.cso/.m3u), GC/Wii (.iso/.rvz/.wbfs/.gcm/.ciso).
+- [x] .cue parsing: referenced .bin files never appear as separate games.
+- [x] .m3u playlists: playlist is the game entry; referenced discs hidden.
+- [x] GC vs Wii disambiguation by disc-header magic words (plain and within .rvz/.wbfs containers).
 
 ## M5 — PS3 importing → moved to Backlog (2026-07-12)
 
 Deferred; see **Backlog** at the end of this file. Milestone numbers M6–M8 are kept
-as-is so references don't shift. The next milestone to work is M4, then M6.
+as-is so references don't shift. The next milestone to work is M6.
 
 ## M6 — Emulator configuration and launching
 

@@ -41,10 +41,39 @@ public sealed class GameLibrary : IGameLibrary
         return games;
     }
 
-    public int AddGames(IEnumerable<Game> games)
+    public int AddGames(IEnumerable<Game> games) =>
+        WriteGames(games, systemId: null, suppressedPaths: []);
+
+    public int ReconcileImport(
+        string systemId,
+        IEnumerable<Game> entries,
+        IReadOnlyList<string> suppressedPaths) =>
+        WriteGames(entries, systemId, suppressedPaths);
+
+    private int WriteGames(
+        IEnumerable<Game> games,
+        string? systemId,
+        IReadOnlyList<string> suppressedPaths)
     {
         using var connection = _database.CreateConnection();
         using var transaction = connection.BeginTransaction();
+
+        if (systemId is not null && suppressedPaths.Count > 0)
+        {
+            using var deleteCommand = connection.CreateCommand();
+            deleteCommand.Transaction = transaction;
+            deleteCommand.CommandText =
+                "DELETE FROM Games WHERE SystemId = $systemId AND Path = $path;";
+            deleteCommand.Parameters.AddWithValue("$systemId", systemId);
+            var suppressedPath = deleteCommand.Parameters.Add("$path", SqliteType.Text);
+
+            foreach (var pathToSuppress in suppressedPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                suppressedPath.Value = _pathResolver.ToStorablePath(pathToSuppress);
+                deleteCommand.ExecuteNonQuery();
+            }
+        }
+
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
@@ -52,7 +81,7 @@ public sealed class GameLibrary : IGameLibrary
             INSERT OR IGNORE INTO Games (SystemId, Path, Title, CoverPath, IsAvailable, DateAdded)
             VALUES ($systemId, $path, $title, $coverPath, $isAvailable, $dateAdded);
             """;
-        var systemId = command.Parameters.Add("$systemId", SqliteType.Text);
+        var systemIdParameter = command.Parameters.Add("$systemId", SqliteType.Text);
         var path = command.Parameters.Add("$path", SqliteType.Text);
         var title = command.Parameters.Add("$title", SqliteType.Text);
         var coverPath = command.Parameters.Add("$coverPath", SqliteType.Text);
@@ -62,7 +91,7 @@ public sealed class GameLibrary : IGameLibrary
         var added = 0;
         foreach (var game in games)
         {
-            systemId.Value = game.SystemId;
+            systemIdParameter.Value = game.SystemId;
             path.Value = _pathResolver.ToStorablePath(game.Path);
             title.Value = game.Title;
             coverPath.Value = (object?)game.CoverPath ?? DBNull.Value;

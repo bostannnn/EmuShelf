@@ -50,7 +50,7 @@ public sealed class AppBootstrapper
 
         Systems = KnownSystems.All;
         Library = new GameLibrary(database, PathResolver);
-        ImportRules = new ExtensionImportRules(Systems);
+        ImportRules = new FileImportRules(Systems);
         FolderScanner = new FolderScanner(ImportRules);
         AvailabilityChecker = new FileAvailabilityChecker();
     }

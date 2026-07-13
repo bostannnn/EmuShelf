@@ -15,6 +15,8 @@ internal sealed class EmptyGameLibrary : IGameLibrary
 {
     public IReadOnlyList<Game> GetGames(string? systemId = null) => [];
     public int AddGames(IEnumerable<Game> games) => 0;
+    public int ReconcileImport(
+        string systemId, IEnumerable<Game> entries, IReadOnlyList<string> suppressedPaths) => 0;
     public void SetAvailability(long gameId, bool isAvailable) { }
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null) => [];
     public void AddLibraryFolder(string systemId, string folderPath) { }
@@ -22,16 +24,19 @@ internal sealed class EmptyGameLibrary : IGameLibrary
 
 internal sealed class NullFolderScanner : IFolderScanner
 {
-    public Task<IReadOnlyList<string>> ScanAsync(
+    public Task<GameEntrySelection> ScanAsync(
         string folderPath, GameSystem system,
         IProgress<ScanProgress>? progress = null, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<string>>([]);
+        Task.FromResult(GameEntrySelection.Empty);
 }
 
 internal sealed class NoImportRules : IGameImportRules
 {
-    public IReadOnlyList<GameSystem> SuggestSystems(string path) => [];
-    public bool IsCandidate(string path, GameSystem system) => false;
+    public GameFileAnalysis AnalyzeFile(string path) =>
+        new(path, [], new Dictionary<string, GameFileMatch>());
+    public bool IsFolderCandidate(string path, GameSystem system) => false;
+    public GameEntrySelection SelectGameEntries(
+        IReadOnlyList<string> candidates, GameSystem system) => new(candidates, []);
 }
 
 internal sealed class AlwaysAvailableChecker : IAvailabilityChecker

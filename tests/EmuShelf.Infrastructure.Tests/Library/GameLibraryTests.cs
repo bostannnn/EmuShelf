@@ -48,6 +48,26 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void ReconcileImport_AtomicallyAddsEntryAndSuppressesOnlyTargetSystemRows()
+    {
+        var disc = "/games/ps1/disc.chd";
+        var unrelatedWiiGame = "/games/wii/game.iso";
+        _library.AddGames([
+            NewGame("playstation", disc, "Disc"),
+            NewGame("wii", unrelatedWiiGame, "Wii Game"),
+        ]);
+
+        var added = _library.ReconcileImport(
+            "playstation",
+            [NewGame("playstation", "/games/ps1/collection.m3u", "Collection")],
+            [disc, unrelatedWiiGame]);
+
+        Assert.Equal(1, added);
+        Assert.Equal(["Collection"], _library.GetGames("playstation").Select(game => game.Title));
+        Assert.Equal(["Wii Game"], _library.GetGames("wii").Select(game => game.Title));
+    }
+
+    [Fact]
     public void GetGames_FiltersBySystem_AndOrdersByTitle()
     {
         _library.AddGames([

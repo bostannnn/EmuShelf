@@ -3,19 +3,32 @@ using EmuShelf.Core.Systems;
 namespace EmuShelf.Core.Importing;
 
 /// <summary>
-/// Per-system file recognition: which systems a file might belong to (for the
-/// "suggest a system, user confirms" flow) and whether a file counts as a game
-/// for a given system (for folder scanning).
+/// Per-system file recognition for the "suggest a system, user confirms" flow
+/// and folder scanning.
 ///
-/// M3 ships a minimal extension-based implementation. M4 replaces it with the
-/// authoritative format rules — .cue/.bin de-duplication, .m3u playlists, and
-/// GameCube/Wii disc-header disambiguation — behind this same interface.
+/// Implementations also collapse related files so descriptor/playlist entries win
+/// over the disc components they reference.
 /// </summary>
 public interface IGameImportRules
 {
-    /// <summary>Systems whose formats plausibly match this path, best guess first. Empty if none.</summary>
-    IReadOnlyList<GameSystem> SuggestSystems(string path);
+    /// <summary>
+    /// Inspects one file and returns all system matches and ordered suggestions.
+    /// This may perform file I/O and must be called off the UI thread.
+    /// </summary>
+    GameFileAnalysis AnalyzeFile(string path);
 
-    /// <summary>Whether this path should be imported as a game for <paramref name="system"/>.</summary>
-    bool IsCandidate(string path, GameSystem system);
+    /// <summary>
+    /// Whether a file should be discovered automatically during a
+    /// folder scan. This is intentionally stricter than an explicit user pick.
+    /// </summary>
+    bool IsFolderCandidate(string path, GameSystem system);
+
+    /// <summary>
+    /// Selects the launchable game entries from accepted paths and reports component
+    /// paths referenced by descriptors or playlists so previously imported components
+    /// can also be suppressed.
+    /// </summary>
+    GameEntrySelection SelectGameEntries(
+        IReadOnlyList<string> candidates,
+        GameSystem system);
 }

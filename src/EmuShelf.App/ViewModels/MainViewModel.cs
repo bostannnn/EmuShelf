@@ -31,6 +31,7 @@ public partial class MainViewModel : ViewModelBase
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
+    private Task _selectedSystemLoad = Task.CompletedTask;
 
     public ObservableCollection<GameSystem> Systems { get; }
     public ObservableCollection<GameViewModel> Games { get; } = [];
@@ -99,7 +100,8 @@ public partial class MainViewModel : ViewModelBase
         SelectedSystem = Systems.FirstOrDefault();
     }
 
-    partial void OnSelectedSystemChanged(GameSystem? value) => _ = ReloadGamesAsync();
+    partial void OnSelectedSystemChanged(GameSystem? value) =>
+        _selectedSystemLoad = ReloadGamesAsync();
 
     partial void OnSearchTextChanged(string value)
     {
@@ -161,28 +163,96 @@ public partial class MainViewModel : ViewModelBase
         if (paths.Count == 0)
             return;
 
-        var suggested = paths
-            .SelectMany(_importRules.SuggestSystems)
-            .GroupBy(s => s.Id)
-            .OrderByDescending(g => g.Count())
-            .Select(g => g.First())
-            .FirstOrDefault() ?? SelectedSystem;
-
-        var system = await _dialogs.PickSystemAsync(Systems, suggested);
-        if (system is null)
-            return;
-
+        var previousStatus = StatusText;
         IsBusy = true;
         try
         {
-            var added = await ImportPathsAsync(system, paths);
+            StatusText = paths.Count == 1 ? "Inspecting game…" : $"Inspecting {paths.Count} files…";
+            var analyses = await Task.Run(() => paths
+                .Select(_importRules.AnalyzeFile)
+                .ToList());
+
+            var suggested = analyses
+                .SelectMany(analysis => analysis.SuggestedSystems)
+                .GroupBy(system => system.Id)
+                .OrderByDescending(group => group.Count())
+                .Select(group => group.First())
+                .FirstOrDefault() ?? SelectedSystem;
+
+            var system = await _dialogs.PickSystemAsync(Systems, suggested);
+            if (system is null)
+            {
+                StatusText = previousStatus;
+                return;
+            }
+
+            var accepted = analyses
+                .Where(analysis => analysis.MatchFor(system.Id) is
+                    GameFileMatch.Compatible or GameFileMatch.Unrecognized)
+                .Select(analysis => analysis.Path)
+                .ToList();
+            var incompatible = analyses.Count(analysis =>
+                analysis.MatchFor(system.Id) == GameFileMatch.Incompatible);
+            var unsupported = analyses.Count(analysis =>
+                analysis.MatchFor(system.Id) == GameFileMatch.Unsupported);
+            var confirmedUnrecognized = analyses.Count(analysis =>
+                analysis.MatchFor(system.Id) == GameFileMatch.Unrecognized);
+
+            var selection = await Task.Run(() => _importRules.SelectGameEntries(accepted, system));
+            var added = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
-            StatusText = added == 1 ? "Added 1 game" : $"Added {added} games";
+            StatusText = BuildAddGamesStatus(
+                added,
+                incompatible,
+                unsupported,
+                confirmedUnrecognized,
+                system.Name);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Import failed: {ex.Message}";
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    private static string BuildAddGamesStatus(
+        int added,
+        int incompatible,
+        int unsupported,
+        int confirmedUnrecognized,
+        string systemName)
+    {
+        var status = added == 1 ? "Added 1 game" : $"Added {added} games";
+        var skipped = incompatible + unsupported;
+        if (incompatible > 0 && unsupported == 0)
+        {
+            status += incompatible == 1
+                ? $" — skipped 1 file not recognized as {systemName}"
+                : $" — skipped {incompatible} files not recognized as {systemName}";
+        }
+        else if (unsupported > 0 && incompatible == 0)
+        {
+            status += unsupported == 1
+                ? " — skipped 1 unsupported file"
+                : $" — skipped {unsupported} unsupported files";
+        }
+        else if (skipped > 0)
+        {
+            status += $" — skipped {skipped} files " +
+                $"({incompatible} not recognized as {systemName}, {unsupported} unsupported)";
+        }
+
+        if (confirmedUnrecognized > 0)
+        {
+            status += confirmedUnrecognized == 1
+                ? $"; used confirmed {systemName} system for 1 unrecognized file"
+                : $"; used confirmed {systemName} system for {confirmedUnrecognized} unrecognized files";
+        }
+
+        return status;
     }
 
     [RelayCommand]
@@ -205,10 +275,10 @@ public partial class MainViewModel : ViewModelBase
             var progress = new Progress<ScanProgress>(p =>
                 StatusText = $"Scanning {system.Name}… {p.CandidatesFound} found");
 
-            var candidates = await _scanner.ScanAsync(folder, system, progress);
+            var selection = await _scanner.ScanAsync(folder, system, progress);
             await Task.Run(() => _library.AddLibraryFolder(system.Id, folder));
 
-            var added = await ImportPathsAsync(system, candidates);
+            var added = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
             StatusText = added == 1 ? "Added 1 game from folder" : $"Added {added} games from folder";
         }
@@ -245,8 +315,8 @@ public partial class MainViewModel : ViewModelBase
                 {
                     var progress = new Progress<ScanProgress>(p =>
                         StatusText = $"Rescanning {system.Name}… {p.CandidatesFound} found");
-                    var candidates = await _scanner.ScanAsync(folder.Path, system, progress);
-                    total += await ImportPathsAsync(system, candidates);
+                    var selection = await _scanner.ScanAsync(folder.Path, system, progress);
+                    total += await ReconcileImportAsync(system, selection);
                 }
             }
 
@@ -265,13 +335,15 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task<int> ImportPathsAsync(GameSystem system, IReadOnlyList<string> paths)
+    private async Task<int> ReconcileImportAsync(
+        GameSystem system,
+        GameEntrySelection selection)
     {
-        if (paths.Count == 0)
+        if (selection.EntryPaths.Count == 0 && selection.SuppressedPaths.Count == 0)
             return 0;
 
         var now = DateTimeOffset.Now;
-        var games = paths.Select(path => new Game
+        var games = selection.EntryPaths.Select(path => new Game
         {
             SystemId = system.Id,
             Path = path,
@@ -280,7 +352,8 @@ public partial class MainViewModel : ViewModelBase
             DateAdded = now,
         });
 
-        return await Task.Run(() => _library.AddGames(games));
+        return await Task.Run(() =>
+            _library.ReconcileImport(system.Id, games, selection.SuppressedPaths));
     }
 
     private async Task ShowSystemAsync(GameSystem system)
@@ -288,7 +361,10 @@ public partial class MainViewModel : ViewModelBase
         if (SelectedSystem?.Id == system.Id)
             await ReloadGamesAsync();
         else
-            SelectedSystem = system; // triggers reload via OnSelectedSystemChanged
+        {
+            SelectedSystem = system;
+            await _selectedSystemLoad;
+        }
     }
 
     /// <summary>
