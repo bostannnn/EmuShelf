@@ -17,6 +17,13 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
+    <Window.Styles>
+        <!-- Unavailable games are dimmed everywhere they appear (grid tile and list row). -->
+        <Style Selector="StackPanel.unavailable, Grid.unavailable">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+    </Window.Styles>
+
     <DockPanel>
 
         <!-- Status bar -->
@@ -24,7 +31,8 @@
                 Background="#14808080" BorderBrush="#22808080" BorderThickness="0,1,0,0"
                 Padding="12,4">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Right" Text="0 games" FontSize="12" Opacity="0.6" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding LibraryCountText}"
+                           FontSize="12" Opacity="0.6" />
                 <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.6" />
             </DockPanel>
         </Border>
@@ -71,9 +79,27 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
                     <TextBox Width="240" PlaceholderText="Search"
                              Text="{Binding SearchText, Mode=TwoWay}" />
-                    <Button Command="{Binding AddGamesCommand}"
-                            ToolTip.Tip="Add games or a folder" Padding="10,4">
+                    <Button ToolTip.Tip="Add games or a folder" Padding="10,4"
+                            IsEnabled="{Binding !IsBusy}">
                         <TextBlock Text="+" FontSize="16" />
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="Add Files…" Command="{Binding AddGamesCommand}" />
+                                <MenuItem Header="Add Folder…" Command="{Binding AddFolderCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
+                    <Button ToolTip.Tip="Rescan" Padding="10,6"
+                            IsEnabled="{Binding !IsBusy}">
+                        <TextBlock Text="&#x21BB;" FontSize="14" />
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="Rescan current system"
+                                          Command="{Binding RescanSystemCommand}" />
+                                <MenuItem Header="Rescan all systems"
+                                          Command="{Binding RescanAllCommand}" />
+                            </MenuFlyout>
+                        </Button.Flyout>
                     </Button>
                     <Button Command="{Binding OpenSettingsCommand}"
                             ToolTip.Tip="Settings" Padding="10,6">
@@ -84,17 +110,80 @@
             </DockPanel>
         </Border>
 
-        <!-- Library content: empty state until importing lands -->
+        <!-- Library content -->
         <Panel>
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+            <!-- Grid view -->
+            <ScrollViewer IsVisible="{Binding IsGridView}" Padding="16">
+                <ItemsRepeater ItemsSource="{Binding Games}">
+                    <ItemsRepeater.Layout>
+                        <UniformGridLayout MinItemWidth="150" MinItemHeight="188"
+                                           MinColumnSpacing="14" MinRowSpacing="14" />
+                    </ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GameViewModel">
+                            <StackPanel Width="150" Spacing="6"
+                                        Classes.unavailable="{Binding !IsAvailable}">
+                                <Panel>
+                                    <Border Height="150" CornerRadius="8"
+                                            Background="{Binding AccentColor}">
+                                        <TextBlock Text="{Binding Initials}"
+                                                   FontSize="40" FontWeight="Bold" Foreground="White"
+                                                   Opacity="0.85"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Border IsVisible="{Binding !IsAvailable}"
+                                            Background="#CC202020" CornerRadius="4"
+                                            Padding="6,2" Margin="6"
+                                            HorizontalAlignment="Left" VerticalAlignment="Top">
+                                        <TextBlock Text="Unavailable" FontSize="10" Foreground="White" />
+                                    </Border>
+                                </Panel>
+                                <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           HorizontalAlignment="Center" MaxWidth="150"
+                                           ToolTip.Tip="{Binding Title}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
+            </ScrollViewer>
+
+            <!-- List view -->
+            <ListBox IsVisible="{Binding !IsGridView}"
+                     ItemsSource="{Binding Games}"
+                     Background="Transparent">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GameViewModel">
+                        <Grid ColumnDefinitions="*,140,110"
+                              Classes.unavailable="{Binding !IsAvailable}">
+                            <TextBlock Grid.Column="0" Text="{Binding Title}"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding SystemName}"
+                                       Opacity="0.7" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center"
+                                       Text="{Binding IsAvailable, Converter={x:Static vm:AvailabilityText.Instance}}"
+                                       Opacity="0.7" />
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <!-- Empty state: only when the system has no games at all (not when a search matches none) -->
+            <StackPanel IsVisible="{Binding IsLibraryEmpty}"
+                        VerticalAlignment="Center" HorizontalAlignment="Center"
                         Spacing="10" MaxWidth="420">
                 <TextBlock Text="{Binding SelectedSystem.Name}"
                            FontSize="26" FontWeight="SemiBold"
                            HorizontalAlignment="Center" Opacity="0.9" />
                 <TextBlock Text="No games yet. Add a game file or a folder to build your library."
                            TextWrapping="Wrap" TextAlignment="Center" Opacity="0.55" />
-                <Button Content="Add Games…" Command="{Binding AddGamesCommand}"
-                        HorizontalAlignment="Center" Margin="0,8,0,0" />
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
+                            Margin="0,8,0,0">
+                    <Button Content="Add Files…" Command="{Binding AddGamesCommand}"
+                            IsEnabled="{Binding !IsBusy}" />
+                    <Button Content="Add Folder…" Command="{Binding AddFolderCommand}"
+                            IsEnabled="{Binding !IsBusy}" />
+                </StackPanel>
             </StackPanel>
         </Panel>
 

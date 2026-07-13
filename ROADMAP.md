@@ -13,13 +13,13 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 - [x] Relative-path handling: store paths relative to the app directory when on the same volume, absolute otherwise.
 - [x] App startup wiring: create data directories on first run.
 
-## M3 — Library views and import plumbing
+## M3 — Library views and import plumbing ✅ (2026-07-12)
 
-- [ ] Game grid view (virtualized) and list view, switched by the existing toggle; search filtering with debounce.
-- [ ] "Add games" flow: pick files or a folder, assign to system (suggest by extension, user confirms), persist to DB.
-- [ ] Recursive folder scanning off the UI thread with progress in the status bar.
-- [ ] Startup availability check (background stat of known paths); unavailable games marked and not launchable.
-- [ ] Manual rescan action (per system and global).
+- [x] Game grid view (virtualized) and list view, switched by the existing toggle; search filtering with debounce.
+- [x] "Add games" flow: pick files or a folder, assign to system (suggest by extension, user confirms), persist to DB.
+- [x] Recursive folder scanning off the UI thread with progress in the status bar.
+- [x] Startup availability check (background stat of known paths); unavailable games marked and not launchable.
+- [x] Manual rescan action (per system and global).
 
 ## M4 — Format rules for file-based systems
 

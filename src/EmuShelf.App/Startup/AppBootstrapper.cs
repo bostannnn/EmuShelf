@@ -1,15 +1,22 @@
 using System.IO;
+using EmuShelf.Core.Importing;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
+using EmuShelf.Core.Systems;
+using EmuShelf.Infrastructure.Importing;
+using EmuShelf.Infrastructure.Library;
 using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Infrastructure.Storage;
+using EmuShelf.Integrations.Importing;
+using EmuShelf.Integrations.Systems;
 
 namespace EmuShelf.App.Startup;
 
 /// <summary>
-/// Composition root for portable storage: ensures the on-disk layout exists,
-/// opens the library database, and loads settings before the UI appears.
+/// Composition root: ensures the portable on-disk layout exists, opens the library
+/// database, loads settings, and builds the library/import services before the UI appears.
 /// </summary>
 public sealed class AppBootstrapper
 {
@@ -17,6 +24,11 @@ public sealed class AppBootstrapper
     public IRelativePathResolver PathResolver { get; }
     public ISettingsService SettingsService { get; }
     public AppSettings Settings { get; }
+    public IReadOnlyList<GameSystem> Systems { get; }
+    public IGameLibrary Library { get; }
+    public IFolderScanner FolderScanner { get; }
+    public IGameImportRules ImportRules { get; }
+    public IAvailabilityChecker AvailabilityChecker { get; }
 
     public AppBootstrapper()
     {
@@ -33,6 +45,13 @@ public sealed class AppBootstrapper
             SettingsService.Save(Settings);
         }
 
-        new LibraryDatabase(Paths).Initialize();
+        var database = new LibraryDatabase(Paths);
+        database.Initialize();
+
+        Systems = KnownSystems.All;
+        Library = new GameLibrary(database, PathResolver);
+        ImportRules = new ExtensionImportRules(Systems);
+        FolderScanner = new FolderScanner(ImportRules);
+        AvailabilityChecker = new FileAvailabilityChecker();
     }
 }

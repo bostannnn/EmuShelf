@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EmuShelf.Infrastructure.Tests/EmuShelf.Infrastructure.Tests.csproj" />
+    <Project Path="tests/EmuShelf.App.Tests/EmuShelf.App.Tests.csproj" />
   </Folder>
 </Solution>

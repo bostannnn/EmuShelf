@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="using:EmuShelf.Core.Systems"
+        x:Class="EmuShelf.App.Views.SystemPickerWindow"
+        x:DataType="sys:GameSystem"
+        Title="Assign system"
+        Width="360" SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <StackPanel Margin="20" Spacing="14">
+        <TextBlock Text="Which system are these games for?" TextWrapping="Wrap" />
+
+        <ComboBox x:Name="SystemCombo" HorizontalAlignment="Stretch">
+            <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="sys:GameSystem">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                 Fill="{Binding AccentColor}" />
+                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </DataTemplate>
+            </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="CancelButton" Content="Cancel" />
+            <Button x:Name="AddButton" Content="Add" IsDefault="True"
+                    Classes="accent" />
+        </StackPanel>
+    </StackPanel>
+</Window>
