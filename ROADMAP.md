@@ -28,11 +28,10 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 - [ ] .m3u playlists: playlist is the game entry; referenced discs hidden.
 - [ ] GC vs Wii disambiguation by disc-header magic words (plain and within .rvz/.wbfs containers).
 
-## M5 — PS3 importing
+## M5 — PS3 importing → moved to Backlog (2026-07-12)
 
-- [ ] Recognize PS3 game directories (PS3_GAME/USRDIR/EBOOT.BIN layout and RPCS3-installed games).
-- [ ] Parse PARAM.SFO for default titles.
-- [ ] Scan a folder of many game dirs, or add one game dir; each recognized dir = one entry.
+Deferred; see **Backlog** at the end of this file. Milestone numbers M6–M8 are kept
+as-is so references don't shift. The next milestone to work is M4, then M6.
 
 ## M6 — Emulator configuration and launching
 
@@ -55,3 +54,19 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 - [ ] Performance pass: cold start, large-library scroll, reduced UI work while minimized during play.
 - [ ] Error handling and logging to `Logs/`.
 - [ ] Portable win-x64 zip via CI; test the full §14 checklist on Windows.
+
+## Backlog (deferred, not in the current v1 sequence)
+
+### PS3 importing (was M5) — deferred 2026-07-12
+
+- [ ] Recognize PS3 game directories (PS3_GAME/USRDIR/EBOOT.BIN layout and RPCS3-installed games).
+- [ ] Parse PARAM.SFO for default titles.
+- [ ] Scan a folder of many game dirs, or add one game dir; each recognized dir = one entry.
+
+Directory-based importing is the one system that needs custom scanning code (design doc
+§6/§9). It slots in behind the existing `IGameImportRules` / directory-aware
+`IAvailabilityChecker` seams from M3 without reworking the shared scanner. Note the
+knock-on effects while this is parked: the PlayStation 3 sidebar system stays empty, and
+M6's RPCS3 launch verification has no PS3 entries to launch until this is picked up. The
+design doc's §14 "first usable version" includes PS3/RPCS3, so shipping v1 with this in the
+backlog is a deliberate scope reduction of that definition.
