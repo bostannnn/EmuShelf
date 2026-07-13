@@ -25,7 +25,12 @@ public sealed class AppThemeService : IAppThemeService
     {
         Current = preference;
         ApplyToApplication(preference);
-        _settings = _settings with { Theme = preference };
+        // Merge against the latest file so saving appearance cannot revert metadata
+        // consent changed by the independent preferences service.
+        _settings = (await Task.Run(_settingsService.Load, cancellationToken)) with
+        {
+            Theme = preference,
+        };
         var snapshot = _settings;
         await Task.Run(() => _settingsService.Save(snapshot), cancellationToken);
     }

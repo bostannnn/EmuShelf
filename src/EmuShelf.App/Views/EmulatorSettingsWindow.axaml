@@ -37,7 +37,7 @@
             <StackPanel Spacing="5">
                 <TextBlock Text="Settings" FontSize="23" FontWeight="SemiBold"
                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                <TextBlock Text="Configure emulator launching and maintain imported library folders."
+                <TextBlock Text="Configure emulator launching, metadata, and imported library folders."
                            TextWrapping="Wrap"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 <TextBlock Text="Placeholders: {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}"
@@ -69,6 +69,44 @@
                         <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
                                    Text="{Binding MaintenanceStatusText}"
                                    IsVisible="{Binding HasMaintenanceStatus}"
+                                   FontSize="11" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    </Grid>
+                </Border>
+                <Border Background="{DynamicResource EmuCardBrush}"
+                        BorderBrush="{DynamicResource EmuBorderBrush}"
+                        BorderThickness="1" CornerRadius="9"
+                        Padding="16" Margin="0,0,0,12">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto"
+                          ColumnSpacing="16" RowSpacing="8">
+                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                            <TextBlock Text="METADATA AND ARTWORK" FontSize="10"
+                                       FontWeight="Bold" LetterSpacing="1"
+                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                            <TextBlock Text="Titles and individual covers are downloaded only after you opt in. Game files and paths are never uploaded."
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Row="0" Grid.Column="1"
+                                      OnContent="Automatic" OffContent="Manual"
+                                      IsChecked="{Binding AutomaticallyFetchMetadataAfterImport, Mode=TwoWay}"
+                                      VerticalAlignment="Center" />
+                        <StackPanel Grid.Row="1" Grid.Column="0"
+                                    Orientation="Horizontal" Spacing="10">
+                            <HyperlinkButton Content="Libretro sources"
+                                             NavigateUri="https://github.com/libretro/libretro-database"
+                                             Padding="0" />
+                            <HyperlinkButton Content="xlenore PS1/PS2 covers"
+                                             NavigateUri="https://github.com/xlenore"
+                                             Padding="0" />
+                        </StackPanel>
+                        <Button Grid.Row="1" Grid.Column="1"
+                                Content="Fetch missing metadata"
+                                Command="{Binding FetchAllMetadataCommand}"
+                                IsEnabled="{Binding CanFetchAllMetadata}" />
+                        <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
+                                   Text="{Binding MetadataStatusText}"
+                                   IsVisible="{Binding HasMetadataStatus}"
                                    FontSize="11" TextWrapping="Wrap"
                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                     </Grid>
@@ -150,7 +188,7 @@
                                                  Background="{DynamicResource EmuInputBrush}"
                                                  BorderBrush="{DynamicResource EmuBorderBrush}"
                                                  FontFamily="Monospace" />
-                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,5,0,0">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,5,0,0">
                                             <TextBlock Grid.Column="0" Text="{Binding MaintenanceStatusText}"
                                                        IsVisible="{Binding HasMaintenanceStatus}"
                                                        FontSize="11" TextWrapping="Wrap"
@@ -160,6 +198,10 @@
                                                     Command="{Binding RescanLibraryCommand}"
                                                     IsEnabled="{Binding CanRescan}"
                                                     ToolTip.Tip="Recheck this console's remembered folders" />
+                                            <Button Grid.Column="2" Content="Fetch metadata"
+                                                    Command="{Binding FetchMetadataCommand}"
+                                                    IsEnabled="{Binding CanFetchMetadata}"
+                                                    ToolTip.Tip="Fetch missing titles and covers for this console" />
                                         </Grid>
                                     </StackPanel>
                                 </Grid>

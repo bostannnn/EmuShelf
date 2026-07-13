@@ -254,3 +254,54 @@ Windows machine remains a manual roadmap item tracked by `docs/windows-test-chec
 That checklist explicitly reflects the earlier PS3 scope reduction. DuckStation, PCSX2, and both
 Dolphin systems are current launch gates; RPCS3 import/launch cannot honestly satisfy the design
 document's original five-system section 14 until PS3 importing returns from the backlog.
+
+## 2026-07-13 — RetroAchievements is an EmuShelf-owned, read-only display integration
+
+External emulators remain the only components allowed to monitor memory, unlock achievements,
+or submit data to RetroAchievements. EmuShelf will use the read-only Web API to display whether
+the exact local game image has an achievement set and to cache the connected user's progress.
+It will not import emulator credentials or scrape emulator settings, logs, or private caches.
+
+DuckStation, PCSX2, and Dolphin already calculate RetroAchievements hashes and game ids inside
+their own processes, but they do not expose a stable cross-process CLI or IPC contract for a
+frontend. EmuShelf therefore owns local identification behind a Core interface: calculate the
+canonical RA hash, look it up in an aggressively cached achievement-bearing hash catalogue, and
+persist the resulting local-game-to-RA-game link. Title or filename matching is not accepted
+because regions, revisions, hacks, and incompatible hashes may map to different support.
+
+The initial system scope is PlayStation, PlayStation 2, GameCube, and Wii (RA console ids 12, 21,
+16, and 19). RetroAchievements does not define a PlayStation 3 console id. Format coverage is a
+feasibility gate rather than an assumption: the official [`rcheevos`](https://github.com/RetroAchievements/rcheevos)
+hash code provides the algorithms and reader callbacks, while compressed CHD/RVZ/WBFS/CSO/PBP
+media may require logical-disc adapters equivalent to those used inside the emulators. An
+unverified or failed format remains `Unknown`; it is never reported as having no achievements.
+
+Refresh is deliberately event- and cache-driven. Static game/hash catalogues have a seven-day
+TTL, account progress summaries have a 15-minute startup TTL, popup details have a five-minute
+TTL, and the launched game is refreshed once shortly after its tracked emulator exits. There is
+no gameplay polling. A single paced request coordinator honors `Retry-After` and retains stale
+cache data on network or server failures, following RetroAchievements' official guidance to
+cache static data and keep API use reasonable.
+
+## 2026-07-13 — Game metadata enrichment is exact, opt-in, and provider-composed
+
+Library scanning remains entirely local and commits new games before any network prompt or work.
+The first successful import offers `Not now`, `Fetch once`, and `Always after import`; automatic
+fetching is off by default and can later be changed in Settings. Explicit per-platform and
+all-library fetch actions are also available. EmuShelf bundles only provider endpoint knowledge,
+not game artwork or a metadata catalogue. Requested DAT files live under `Cache/Metadata/`, while
+accepted cover files enter the portable `Covers/` store and its existing thumbnail cache.
+
+Identification, catalogue matching, artwork URL construction, downloading, and persistence are
+separate interfaces. A platform profile composes one typed, read-only identifier extractor with a
+catalogue key and an ordered list of artwork providers. PS1/PS2 use normalized disc product codes;
+GameCube/Wii use six-character disc ids. Matching is exact: filename or fuzzy title similarity is
+not evidence. Compressed PlayStation containers without a logical-disc reader may use only a
+product code explicitly present in their filename and otherwise remain unmatched.
+
+The database records extracted evidence, canonical-match provenance, provider/source URI, attempt
+status, and whether each displayed title or cover came from a filename, download, embedded data,
+or the user. Catalogue titles may replace filename-derived or previous catalogue titles only;
+downloaded covers may fill an empty cover only. Existing pre-migration covers are classified as
+user-owned. Manual edits always win, library identity remains the local path, and no provider
+failure can change or remove a game entry.

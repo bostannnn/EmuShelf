@@ -62,7 +62,7 @@ public class GameLibraryTests : TempAppDirectoryTestBase
             [NewGame("playstation", "/games/ps1/collection.m3u", "Collection")],
             [disc, unrelatedWiiGame]);
 
-        Assert.Equal(1, added);
+        Assert.Equal(1, added.AddedCount);
         Assert.Equal(["Collection"], _library.GetGames("playstation").Select(game => game.Title));
         Assert.Equal(["Wii Game"], _library.GetGames("wii").Select(game => game.Title));
     }
@@ -141,6 +141,9 @@ public class GameLibraryTests : TempAppDirectoryTestBase
 
         Assert.Equal(["Aardvark", "Alpha"],
             _library.GetGames("playstation").Select(game => game.Title));
+        Assert.Equal(
+            GameTitleOrigin.User,
+            _library.GetGames("playstation").Single(game => game.Title == "Aardvark").TitleOrigin);
     }
 
     [Fact]
@@ -153,6 +156,7 @@ public class GameLibraryTests : TempAppDirectoryTestBase
         _library.UpdateCoverPath(game.Id, coverPath);
 
         Assert.Equal(coverPath, _library.GetGames("playstation").Single().CoverPath);
+        Assert.Equal(GameCoverOrigin.User, _library.GetGames("playstation").Single().CoverOrigin);
         using var connection = new LibraryDatabase(AppPaths).CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT CoverPath FROM Games WHERE Id = $id;";
@@ -194,6 +198,18 @@ public class GameLibraryTests : TempAppDirectoryTestBase
         var stored = (string)command.ExecuteScalar()!;
         Assert.False(Path.IsPathRooted(stored));
         Assert.Equal("Games/ps1/a.cue", stored);
+    }
+
+    [Fact]
+    public void AddGames_WithExistingCover_ClassifiesItAsUserOwned()
+    {
+        var coverPath = Path.Combine(AppPaths.CoversDirectory, "existing.png");
+
+        _library.AddGames([
+            NewGame("playstation", "/g/a.cue", "A") with { CoverPath = coverPath },
+        ]);
+
+        Assert.Equal(GameCoverOrigin.User, _library.GetGames().Single().CoverOrigin);
     }
 
     [Fact]

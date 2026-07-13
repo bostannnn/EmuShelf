@@ -6,4 +6,6 @@ namespace EmuShelf.App.Services;
 /// </summary>
 public sealed record LibraryMaintenanceActions(
     Func<string, Task<string>> RescanSystem,
-    Func<Task<string>> RescanAll);
+    Func<Task<string>> RescanAll,
+    Func<string, Task<string>>? FetchMetadataForSystem = null,
+    Func<Task<string>>? FetchAllMetadata = null);

@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        x:Class="EmuShelf.App.Views.MetadataConsentWindow"
+        x:DataType="vm:MetadataConsentViewModel"
+        Title="Download metadata"
+        Width="500" SizeToContent="Height"
+        CanResize="False"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+
+    <StackPanel Margin="24" Spacing="14">
+        <TextBlock Text="Download game metadata?"
+                   FontSize="20" FontWeight="SemiBold"
+                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+        <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+        <Border Background="{DynamicResource EmuCardBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}"
+                BorderThickness="1" CornerRadius="8" Padding="12">
+            <StackPanel Spacing="5">
+                <TextBlock Text="What leaves this computer" FontWeight="SemiBold"
+                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                <TextBlock Text="Only a game serial, disc ID, or canonical title is used in cover requests. Game files and local paths are never uploaded. Downloaded covers are stored in EmuShelf's portable Covers folder."
+                           TextWrapping="Wrap" FontSize="12"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Not now" Command="{Binding NotNowCommand}" />
+            <Button Content="Fetch once" Command="{Binding FetchOnceCommand}" />
+            <Button Content="Always after import" Command="{Binding AlwaysCommand}"
+                    IsDefault="True" Classes="accent" />
+        </StackPanel>
+    </StackPanel>
+</Window>

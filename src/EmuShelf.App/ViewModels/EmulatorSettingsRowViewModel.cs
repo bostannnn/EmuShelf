@@ -12,6 +12,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _logger;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _rescanLibrary;
+    private readonly Func<EmulatorSettingsRowViewModel, Task>? _fetchMetadata;
 
     public string SystemId { get; }
     public string SystemName { get; }
@@ -31,7 +32,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRescan))]
+    [NotifyPropertyChangedFor(nameof(CanFetchMetadata))]
     [NotifyCanExecuteChangedFor(nameof(RescanLibraryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FetchMetadataCommand))]
     public partial bool IsMaintenanceBlocked { get; set; }
 
     [ObservableProperty]
@@ -39,6 +42,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public partial string MaintenanceStatusText { get; set; } = string.Empty;
 
     public bool CanRescan => _rescanLibrary is not null && !IsMaintenanceBlocked;
+    public bool CanFetchMetadata => _fetchMetadata is not null && !IsMaintenanceBlocked;
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
 
     public EmulatorSettingsRowViewModel(
@@ -47,12 +51,14 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         EmulatorConfiguration? configuration,
         IDialogService dialogs,
         Func<EmulatorSettingsRowViewModel, Task>? rescanLibrary = null,
+        Func<EmulatorSettingsRowViewModel, Task>? fetchMetadata = null,
         bool isExpanded = false,
         IAppLogger? logger = null)
     {
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
         _rescanLibrary = rescanLibrary;
+        _fetchMetadata = fetchMetadata;
         SystemId = system.Id;
         SystemName = system.Name;
         SystemShortName = system.ShortName;
@@ -86,6 +92,10 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanRescan))]
     private Task RescanLibraryAsync() =>
         _rescanLibrary?.Invoke(this) ?? Task.CompletedTask;
+
+    [RelayCommand(CanExecute = nameof(CanFetchMetadata))]
+    private Task FetchMetadataAsync() =>
+        _fetchMetadata?.Invoke(this) ?? Task.CompletedTask;
 
     public EmulatorConfiguration ToConfiguration() => new(
         SystemId,

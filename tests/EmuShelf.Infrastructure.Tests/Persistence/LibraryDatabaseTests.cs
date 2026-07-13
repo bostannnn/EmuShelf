@@ -21,6 +21,8 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         Assert.Contains("Games", GetTableNames(database));
         Assert.Contains("LibraryFolders", GetTableNames(database));
         Assert.Contains("EmulatorConfigs", GetTableNames(database));
+        Assert.Contains("GameIdentifiers", GetTableNames(database));
+        Assert.Contains("GameMetadata", GetTableNames(database));
         Assert.Contains("SchemaVersion", GetTableNames(database));
     }
 
@@ -37,7 +39,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
         command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(2L, (long)command.ExecuteScalar()!);
+        Assert.Equal(3L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]
@@ -123,6 +125,52 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' " +
             "AND name = 'IX_Games_DateAddedUnixMilliseconds';";
         Assert.Equal(1L, (long)indexCommand.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void Initialize_FromVersion2_PreservesExistingCoverAsUserOwned()
+    {
+        var database = new LibraryDatabase(AppPaths);
+        using (var connection = database.CreateConnection())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE SchemaVersion (Version INTEGER NOT NULL);
+                INSERT INTO SchemaVersion (Version) VALUES (2);
+                CREATE TABLE Games (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    SystemId TEXT NOT NULL,
+                    Path TEXT NOT NULL COLLATE NOCASE,
+                    Title TEXT NOT NULL,
+                    CoverPath TEXT NULL,
+                    IsAvailable INTEGER NOT NULL DEFAULT 1,
+                    DateAdded TEXT NOT NULL,
+                    DateAddedUnixMilliseconds INTEGER NULL
+                );
+                INSERT INTO Games (
+                    SystemId, Path, Title, CoverPath, IsAvailable, DateAdded,
+                    DateAddedUnixMilliseconds)
+                VALUES (
+                    'playstation', 'PS1/game.cue', 'Custom title', 'Covers/1.jpg', 1,
+                    '2026-07-12T00:00:00.0000000+00:00', 1783814400000);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        database.Initialize();
+
+        using var check = database.CreateConnection();
+        using var version = check.CreateCommand();
+        version.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
+        Assert.Equal(3L, (long)version.ExecuteScalar()!);
+
+        using var origins = check.CreateCommand();
+        origins.CommandText = "SELECT TitleOrigin, CoverOrigin FROM Games LIMIT 1;";
+        using var reader = origins.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(0L, reader.GetInt64(0));
+        Assert.Equal(2L, reader.GetInt64(1));
     }
 
     private static List<string> GetTableNames(LibraryDatabase database)

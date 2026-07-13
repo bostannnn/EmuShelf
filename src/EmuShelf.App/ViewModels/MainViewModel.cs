@@ -34,6 +34,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IGameCoverService _covers;
     private readonly IAppThemeService _themeService;
+    private readonly IGameMetadataService _metadataService;
+    private readonly IMetadataPreferencesService _metadataPreferences;
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -151,6 +153,8 @@ public partial class MainViewModel : ViewModelBase
         IReadOnlyList<EmulatorDefinition>? emulators = null,
         IGameCoverService? covers = null,
         IAppThemeService? themeService = null,
+        IGameMetadataService? metadataService = null,
+        IMetadataPreferencesService? metadataPreferences = null,
         IAppLogger? logger = null)
     {
         _library = library;
@@ -163,6 +167,8 @@ public partial class MainViewModel : ViewModelBase
         _emulators = emulators ?? KnownEmulators.All;
         _covers = covers ?? new NullGameCoverService();
         _themeService = themeService ?? new NullAppThemeService();
+        _metadataService = metadataService ?? new NullGameMetadataService();
+        _metadataPreferences = metadataPreferences ?? new NullMetadataPreferencesService();
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -452,14 +458,15 @@ public partial class MainViewModel : ViewModelBase
                 analysis.MatchFor(system.Id) == GameFileMatch.Unrecognized);
 
             var selection = await Task.Run(() => _importRules.SelectGameEntries(accepted, system));
-            var added = await ReconcileImportAsync(system, selection);
+            var importResult = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
             StatusText = BuildAddGamesStatus(
-                added,
+                importResult.AddedCount,
                 incompatible,
                 unsupported,
                 confirmedUnrecognized,
                 system.Name);
+            await MaybeStartMetadataForImportAsync(importResult.AddedGameIds);
         }
         catch (Exception ex)
         {
@@ -532,9 +539,12 @@ public partial class MainViewModel : ViewModelBase
             var selection = await _scanner.ScanAsync(folder, system, progress);
             await Task.Run(() => _library.AddLibraryFolder(system.Id, folder));
 
-            var added = await ReconcileImportAsync(system, selection);
+            var importResult = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
-            StatusText = added == 1 ? "Added 1 game from folder" : $"Added {added} games from folder";
+            StatusText = importResult.AddedCount == 1
+                ? "Added 1 game from folder"
+                : $"Added {importResult.AddedCount} games from folder";
+            await MaybeStartMetadataForImportAsync(importResult.AddedGameIds);
         }
         catch (Exception ex)
         {
@@ -579,6 +589,7 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var total = 0;
+            var addedIds = new List<long>();
             foreach (var system in systems)
             {
                 var folders = await Task.Run(() => _library.GetLibraryFolders(system.Id));
@@ -587,7 +598,9 @@ public partial class MainViewModel : ViewModelBase
                     var progress = new Progress<ScanProgress>(p =>
                         StatusText = $"Rescanning {system.Name}… {p.CandidatesFound} found");
                     var selection = await _scanner.ScanAsync(folder.Path, system, progress);
-                    total += await ReconcileImportAsync(system, selection);
+                    var importResult = await ReconcileImportAsync(system, selection);
+                    total += importResult.AddedCount;
+                    addedIds.AddRange(importResult.AddedGameIds);
                 }
             }
 
@@ -597,6 +610,8 @@ public partial class MainViewModel : ViewModelBase
             else
                 await ReloadGamesAsync();
             StatusText = total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)";
+            if (addedIds.Count > 0 && _metadataPreferences.AutomaticallyFetchAfterImport)
+                _ = EnrichImportedGamesAsync(addedIds);
         }
         catch (Exception ex)
         {
@@ -609,12 +624,12 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task<int> ReconcileImportAsync(
+    private async Task<GameImportResult> ReconcileImportAsync(
         GameSystem system,
         GameEntrySelection selection)
     {
         if (selection.EntryPaths.Count == 0 && selection.SuppressedPaths.Count == 0)
-            return 0;
+            return GameImportResult.Empty;
 
         var now = DateTimeOffset.Now;
         var games = selection.EntryPaths.Select(path => new Game
@@ -622,6 +637,7 @@ public partial class MainViewModel : ViewModelBase
             SystemId = system.Id,
             Path = path,
             Title = System.IO.Path.GetFileNameWithoutExtension(path),
+            TitleOrigin = GameTitleOrigin.Filename,
             IsAvailable = true,
             DateAdded = now,
         });
@@ -918,13 +934,78 @@ public partial class MainViewModel : ViewModelBase
                 _emulatorConfigurations,
                 new LibraryMaintenanceActions(
                     RescanSystemFromSettingsAsync,
-                    RescanAllFromSettingsAsync));
+                    RescanAllFromSettingsAsync,
+                    FetchMetadataForSystemFromSettingsAsync,
+                    FetchAllMetadataFromSettingsAsync),
+                _metadataPreferences);
         }
         catch (Exception ex)
         {
             _logger.Error("Could not open emulator settings.", ex);
             StatusText = $"Could not open emulator settings: {ex.Message}";
         }
+    }
+
+    private async Task MaybeStartMetadataForImportAsync(IReadOnlyList<long> addedGameIds)
+    {
+        if (addedGameIds.Count == 0)
+            return;
+
+        var shouldFetch = _metadataPreferences.AutomaticallyFetchAfterImport;
+        if (!shouldFetch && !_metadataPreferences.ConsentPromptShown)
+        {
+            var choice = await _dialogs.PromptForMetadataConsentAsync(addedGameIds.Count);
+            shouldFetch = choice is MetadataConsentChoice.FetchOnce or MetadataConsentChoice.Always;
+            try
+            {
+                await _metadataPreferences.RecordConsentAsync(choice);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Could not persist the metadata consent preference.", ex);
+                StatusText += " — metadata preference could not be saved";
+            }
+        }
+
+        if (shouldFetch)
+            _ = EnrichImportedGamesAsync(addedGameIds);
+    }
+
+    private async Task EnrichImportedGamesAsync(IReadOnlyList<long> gameIds)
+    {
+        try
+        {
+            StatusText = gameIds.Count == 1
+                ? "Fetching metadata for 1 new game…"
+                : $"Fetching metadata for {gameIds.Count} new games…";
+            var summary = await _metadataService.EnrichAsync(gameIds);
+            await ReloadGamesAsync();
+            StatusText = summary.ToStatusText();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Automatic metadata enrichment failed.", ex);
+            StatusText = $"Metadata failed: {ex.Message}";
+        }
+    }
+
+    private Task<string> FetchMetadataForSystemFromSettingsAsync(string systemId) =>
+        FetchMissingMetadataFromSettingsAsync(systemId);
+
+    private Task<string> FetchAllMetadataFromSettingsAsync() =>
+        FetchMissingMetadataFromSettingsAsync(null);
+
+    private async Task<string> FetchMissingMetadataFromSettingsAsync(string? systemId)
+    {
+        // Clicking a manual fetch is itself an explicit one-time opt-in. Remember that
+        // decision so the first-import prompt is not shown later for the same user.
+        if (!_metadataPreferences.ConsentPromptShown)
+            await _metadataPreferences.RecordConsentAsync(MetadataConsentChoice.FetchOnce);
+
+        var summary = await _metadataService.EnrichMissingAsync(systemId);
+        await ReloadGamesAsync();
+        StatusText = summary.ToStatusText();
+        return StatusText;
     }
 
     [RelayCommand]

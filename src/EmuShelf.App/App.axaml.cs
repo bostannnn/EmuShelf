@@ -7,12 +7,14 @@ using EmuShelf.App.Startup;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Launching;
+using EmuShelf.Infrastructure.Metadata;
 
 namespace EmuShelf.App;
 
 public partial class App : Application
 {
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
+    private HttpClient? _metadataHttpClient;
 
     public override void Initialize()
     {
@@ -28,12 +30,31 @@ public partial class App : Application
             var themeService = new AppThemeService(
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings);
+            var metadataPreferences = new MetadataPreferencesService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings);
             var mainWindow = new MainWindow();
             var launchService = new EmulatorLaunchService(
                 Bootstrapper.EmulatorConfigurations,
                 Bootstrapper.ProcessRunner,
                 new WindowFrontendController(mainWindow),
                 Bootstrapper.Emulators,
+                Bootstrapper.Logger);
+            var coverService = new GameCoverService(Bootstrapper.Paths);
+            _metadataHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30),
+            };
+            _metadataHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            var metadataService = new GameMetadataService(
+                Bootstrapper.MetadataStore,
+                Bootstrapper.MetadataProfiles,
+                new LibretroDatCatalog(Bootstrapper.Paths, _metadataHttpClient),
+                new RemoteArtworkDownloader(
+                    Bootstrapper.Paths,
+                    _metadataHttpClient,
+                    Bootstrapper.Logger),
+                coverService,
                 Bootstrapper.Logger);
             var viewModel = new MainViewModel(
                 Bootstrapper.Library,
@@ -45,8 +66,10 @@ public partial class App : Application
                 launchService,
                 Bootstrapper.EmulatorConfigurations,
                 Bootstrapper.Emulators,
-                new GameCoverService(Bootstrapper.Paths),
+                coverService,
                 themeService,
+                metadataService,
+                metadataPreferences,
                 Bootstrapper.Logger);
 
             mainWindow.DataContext = viewModel;
@@ -57,7 +80,11 @@ public partial class App : Application
                 Dispatcher.UIThread.Post(
                     () => _ = viewModel.RefreshAvailabilityAsync(),
                     DispatcherPriority.Background);
-            desktop.Exit += (_, _) => Bootstrapper.Logger.Information("EmuShelf exited.");
+            desktop.Exit += (_, _) =>
+            {
+                _metadataHttpClient?.Dispose();
+                Bootstrapper.Logger.Information("EmuShelf exited.");
+            };
 
             Dispatcher.UIThread.UnhandledException += (_, args) =>
                 Bootstrapper.Logger.Error("Unhandled UI-thread exception.", args.Exception);

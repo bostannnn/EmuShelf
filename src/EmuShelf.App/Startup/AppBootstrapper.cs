@@ -3,6 +3,7 @@ using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Systems;
@@ -11,11 +12,13 @@ using EmuShelf.Infrastructure.Diagnostics;
 using EmuShelf.Infrastructure.Launching;
 using EmuShelf.Infrastructure.Library;
 using EmuShelf.Infrastructure.Persistence;
+using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
+using EmuShelf.Integrations.Metadata;
 
 namespace EmuShelf.App.Startup;
 
@@ -32,6 +35,8 @@ public sealed class AppBootstrapper
     public AppSettings Settings { get; }
     public IReadOnlyList<GameSystem> Systems { get; }
     public IGameLibrary Library { get; }
+    public IGameMetadataStore MetadataStore { get; }
+    public IReadOnlyList<MetadataSystemProfile> MetadataProfiles { get; }
     public IFolderScanner FolderScanner { get; }
     public IGameImportRules ImportRules { get; }
     public IAvailabilityChecker AvailabilityChecker { get; }
@@ -78,6 +83,8 @@ public sealed class AppBootstrapper
         Systems = KnownSystems.All;
         Emulators = KnownEmulators.All;
         Library = new GameLibrary(database, PathResolver);
+        MetadataStore = new SqliteGameMetadataStore(database, PathResolver);
+        MetadataProfiles = KnownMetadataProfiles.All;
         EmulatorConfigurations = new SqliteEmulatorConfigurationStore(database, PathResolver);
         ProcessRunner = new TrackedProcessRunner();
         ImportRules = new FileImportRules(Systems);

@@ -12,6 +12,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 {
     private readonly IEmulatorConfigurationStore _configurations;
     private readonly LibraryMaintenanceActions? _maintenance;
+    private readonly IMetadataPreferencesService? _metadataPreferences;
     private readonly IAppLogger _logger;
 
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
@@ -30,9 +31,19 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasMaintenanceStatus))]
     public partial string MaintenanceStatusText { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMetadataStatus))]
+    public partial string MetadataStatusText { get; set; } = string.Empty;
+
     public bool CanRescanAll => !IsWorking && _maintenance is not null;
+    public bool CanFetchAllMetadata =>
+        !IsWorking && _maintenance?.FetchAllMetadata is not null;
     public bool IsWorking => IsSaving || IsMaintainingLibrary;
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
+    public bool HasMetadataStatus => !string.IsNullOrWhiteSpace(MetadataStatusText);
+
+    [ObservableProperty]
+    public partial bool AutomaticallyFetchMetadataAfterImport { get; set; }
 
     public EmulatorSettingsViewModel(
         IReadOnlyList<GameSystem> systems,
@@ -41,10 +52,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IEmulatorConfigurationStore configurations,
         IDialogService dialogs,
         LibraryMaintenanceActions? maintenance = null,
+        IMetadataPreferencesService? metadataPreferences = null,
         IAppLogger? logger = null)
     {
         _configurations = configurations;
         _maintenance = maintenance;
+        _metadataPreferences = metadataPreferences;
         _logger = logger ?? NullAppLogger.Instance;
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(systems.Select((system, index) =>
         {
@@ -56,21 +69,26 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 configuration,
                 dialogs,
                 maintenance is null ? null : RescanSystemAsync,
+                maintenance?.FetchMetadataForSystem is null ? null : FetchSystemMetadataAsync,
                 isExpanded: index == 0,
                 logger: _logger);
         }));
+        AutomaticallyFetchMetadataAfterImport =
+            metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
     }
 
     partial void OnIsSavingChanged(bool value)
     {
         OnPropertyChanged(nameof(IsWorking));
         OnPropertyChanged(nameof(CanRescanAll));
+        OnPropertyChanged(nameof(CanFetchAllMetadata));
         UpdateRowMaintenanceState();
     }
 
     partial void OnIsMaintainingLibraryChanged(bool value)
     {
         OnPropertyChanged(nameof(CanRescanAll));
+        OnPropertyChanged(nameof(CanFetchAllMetadata));
         OnPropertyChanged(nameof(IsWorking));
         UpdateRowMaintenanceState();
     }
@@ -78,21 +96,37 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [RelayCommand]
     private Task RescanAllAsync() => RunMaintenanceAsync(
         _maintenance?.RescanAll,
+        "Rescanning remembered folders…",
         message => MaintenanceStatusText = message);
+
+    [RelayCommand]
+    private Task FetchAllMetadataAsync() => RunMaintenanceAsync(
+        _maintenance?.FetchAllMetadata,
+        "Fetching missing titles and covers…",
+        message => MetadataStatusText = message);
 
     private Task RescanSystemAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
         _maintenance is null ? null : () => _maintenance.RescanSystem(row.SystemId),
+        "Rescanning remembered folders…",
+        message => row.MaintenanceStatusText = message);
+
+    private Task FetchSystemMetadataAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
+        _maintenance?.FetchMetadataForSystem is null
+            ? null
+            : () => _maintenance.FetchMetadataForSystem(row.SystemId),
+        "Fetching missing titles and covers…",
         message => row.MaintenanceStatusText = message);
 
     private async Task RunMaintenanceAsync(
         Func<Task<string>>? action,
+        string startingMessage,
         Action<string> report)
     {
         if (action is null || IsWorking)
             return;
 
         IsMaintainingLibrary = true;
-        report("Rescanning remembered folders…");
+        report(startingMessage);
         try
         {
             report(await action());
@@ -100,7 +134,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Library maintenance failed from Settings.", ex);
-            report($"Rescan failed: {ex.Message}");
+            report($"Maintenance failed: {ex.Message}");
         }
         finally
         {
@@ -126,12 +160,17 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         {
             var configurations = Rows.Select(row => row.ToConfiguration()).ToArray();
             await Task.Run(() => _configurations.SaveAll(configurations));
+            if (_metadataPreferences is not null)
+            {
+                await _metadataPreferences.SaveAutomaticFetchAsync(
+                    AutomaticallyFetchMetadataAfterImport);
+            }
             CloseRequested?.Invoke(true);
         }
         catch (Exception ex)
         {
-            _logger.Error("Could not save emulator settings.", ex);
-            StatusText = $"Could not save emulator settings: {ex.Message}";
+            _logger.Error("Could not save settings.", ex);
+            StatusText = $"Could not save settings: {ex.Message}";
         }
         finally
         {

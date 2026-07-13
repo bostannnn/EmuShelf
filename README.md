@@ -2,11 +2,12 @@
 
 A lightweight, portable game-library frontend for external emulators, inspired by [OpenEmu](https://openemu.org/)'s library design.
 
-EmuShelf organizes PlayStation, PlayStation 2, GameCube, and Wii games in a cover-grid library and launches them in separately installed emulators (DuckStation, PCSX2, and Dolphin). RPCS3 configuration is present, but PS3 importing is currently deferred. EmuShelf performs no emulation itself, stores all user data beside the executable, and never modifies game files.
+EmuShelf organizes PlayStation, PlayStation 2, GameCube, and Wii games in a cover-grid library and launches them in separately installed emulators (DuckStation, PCSX2, and Dolphin). RPCS3 configuration is present, but PS3 importing is currently deferred. EmuShelf performs no emulation itself, stores all user data beside the executable, and never modifies game files. Optional metadata enrichment can fetch canonical titles and individual covers after the user opts in; no artwork library is bundled.
 
 **Status:** Windows validation candidate. Automated builds and tests pass; real-Windows acceptance is the remaining M8 gate.
 
 - Product scope: [docs/design-document.pdf](docs/design-document.pdf)
+- Metadata enrichment and new-platform guide: [docs/metadata-enrichment.md](docs/metadata-enrichment.md)
 - Architectural decisions: [DECISIONS.md](DECISIONS.md)
 - Windows acceptance: [docs/windows-test-checklist.md](docs/windows-test-checklist.md)
 

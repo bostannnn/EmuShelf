@@ -119,6 +119,18 @@ public sealed class DialogService : IDialogService
         return await dialog.ShowDialog<bool>(owner);
     }
 
+    public async Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return MetadataConsentChoice.NotNow;
+
+        var viewModel = new MetadataConsentViewModel(gameCount);
+        var dialog = new MetadataConsentWindow { DataContext = viewModel };
+        viewModel.CloseRequested += choice => dialog.Close(choice);
+        return await dialog.ShowDialog<MetadataConsentChoice>(owner);
+    }
+
     public async Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested)
     {
         var owner = Owner;
@@ -133,7 +145,8 @@ public sealed class DialogService : IDialogService
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
-        LibraryMaintenanceActions maintenance)
+        LibraryMaintenanceActions maintenance,
+        IMetadataPreferencesService metadataPreferences)
     {
         var owner = Owner;
         if (owner is null)
@@ -150,6 +163,7 @@ public sealed class DialogService : IDialogService
             configurations,
             this,
             maintenance,
+            metadataPreferences,
             _logger);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);

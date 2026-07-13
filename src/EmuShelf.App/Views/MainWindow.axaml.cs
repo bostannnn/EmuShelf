@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using EmuShelf.App.ViewModels;
 
 namespace EmuShelf.App.Views;
@@ -73,9 +74,18 @@ public partial class MainWindow : Window
     // View wiring only: virtualization decides when a cover control is realized; the
     // game command owns the asynchronous load, caching, and stale-result handling.
     private void OnGameCoverAttached(object? sender, VisualTreeAttachmentEventArgs e)
+        => RequestGameCover(sender);
+
+    // A virtualized element may remain attached while ItemsRepeater gives it a new
+    // data context after a collection reset. Request the replacement game's cover too.
+    private void OnGameCoverDataContextChanged(object? sender, EventArgs e)
+        => RequestGameCover(sender);
+
+    private static void RequestGameCover(object? sender)
     {
-        if (sender is Control { DataContext: GameViewModel game }
-            && game.LoadCoverCommand.CanExecute(game))
+        if (sender is Control { DataContext: GameViewModel game } control &&
+            control.IsAttachedToVisualTree() &&
+            game.LoadCoverCommand.CanExecute(game))
         {
             game.LoadCoverCommand.Execute(game);
         }

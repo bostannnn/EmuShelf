@@ -1,0 +1,122 @@
+using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
+using EmuShelf.Infrastructure.Library;
+using EmuShelf.Infrastructure.Metadata;
+using EmuShelf.Infrastructure.Persistence;
+using EmuShelf.Infrastructure.Storage;
+
+namespace EmuShelf.Infrastructure.Tests.Metadata;
+
+public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
+{
+    private readonly LibraryDatabase _database;
+    private readonly GameLibrary _library;
+    private readonly SqliteGameMetadataStore _metadata;
+
+    public SqliteGameMetadataStoreTests()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        _database = new LibraryDatabase(AppPaths);
+        _database.Initialize();
+        var resolver = new RelativePathResolver(AppPaths);
+        _library = new GameLibrary(_database, resolver);
+        _metadata = new SqliteGameMetadataStore(_database, resolver);
+    }
+
+    [Fact]
+    public void CatalogTitle_UpdatesFilenameTitle_ButNeverUserTitle()
+    {
+        var game = AddGame("Original.iso", GameTitleOrigin.Filename);
+
+        Assert.True(_metadata.TryApplyCatalogTitle(game.Id, "Catalog Title", "Original"));
+        Assert.Equal(GameTitleOrigin.Catalog, _metadata.GetGame(game.Id)!.TitleOrigin);
+
+        _library.UpdateTitle(game.Id, "My Custom Title");
+        Assert.False(_metadata.TryApplyCatalogTitle(game.Id, "New Catalog Title", "Original"));
+        Assert.Equal("My Custom Title", _metadata.GetGame(game.Id)!.Title);
+        Assert.Equal(GameTitleOrigin.User, _metadata.GetGame(game.Id)!.TitleOrigin);
+    }
+
+    [Fact]
+    public void DownloadedCover_IsPortable_AndCannotReplaceManualCover()
+    {
+        var game = AddGame("Cover.iso", GameTitleOrigin.Filename);
+        var downloaded = Path.Combine(AppPaths.CoversDirectory, "downloaded.jpg");
+        var manual = Path.Combine(AppPaths.CoversDirectory, "manual.png");
+
+        Assert.True(_metadata.TryApplyDownloadedCover(
+            game.Id,
+            downloaded,
+            "provider",
+            "https://example.test/cover.jpg"));
+        Assert.Equal(GameCoverOrigin.Downloaded, _metadata.GetGame(game.Id)!.CoverOrigin);
+
+        _library.UpdateCoverPath(game.Id, manual);
+        Assert.False(_metadata.TryApplyDownloadedCover(
+            game.Id,
+            downloaded,
+            "provider",
+            "https://example.test/new.jpg"));
+        Assert.Equal(manual, _metadata.GetGame(game.Id)!.CoverPath);
+        Assert.Equal(GameCoverOrigin.User, _metadata.GetGame(game.Id)!.CoverOrigin);
+    }
+
+    [Fact]
+    public void IdentifiersAndMetadata_CascadeWhenLibraryRowIsRemoved()
+    {
+        var game = AddGame("Cascade.iso", GameTitleOrigin.Filename);
+        _metadata.ReplaceIdentifiers(game.Id,
+        [
+            new GameIdentifier(GameIdentifierKind.Serial, "SLUS-20265", "DiscContent", true),
+        ]);
+        _metadata.RecordAttempt(new GameMetadataAttempt(
+            game.Id,
+            GameMetadataStatus.Matched,
+            new GameCatalogMatch("catalog", "SLUS-20265", "Title", "USA"),
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow));
+
+        _library.RemoveGame(game.Id);
+
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT (SELECT COUNT(*) FROM GameIdentifiers) + " +
+            "(SELECT COUNT(*) FROM GameMetadata);";
+        Assert.Equal(0L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void MissingMetadataQuery_ExcludesFullyEnrichedGame()
+    {
+        var game = AddGame("Done.iso", GameTitleOrigin.Filename);
+        Assert.Single(_metadata.GetGamesMissingMetadata());
+
+        _metadata.TryApplyCatalogTitle(game.Id, "Done (USA)", "Done");
+        _metadata.TryApplyDownloadedCover(
+            game.Id,
+            Path.Combine(AppPaths.CoversDirectory, "done.png"),
+            "provider",
+            "https://example.test/done.png");
+
+        Assert.Empty(_metadata.GetGamesMissingMetadata());
+    }
+
+    private Game AddGame(string filename, GameTitleOrigin origin)
+    {
+        var path = Path.Combine(BaseDirectory, "Games", filename);
+        _library.AddGames([
+            new Game
+            {
+                SystemId = "playstation2",
+                Path = path,
+                Title = Path.GetFileNameWithoutExtension(path),
+                TitleOrigin = origin,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+        return _library.GetGames().Single(game => game.Path == path);
+    }
+}

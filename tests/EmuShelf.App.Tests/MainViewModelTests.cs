@@ -44,7 +44,9 @@ public class MainViewModelTests : IDisposable
         IGameImportRules? importRules = null,
         IEmulatorLaunchService? launchService = null,
         IGameCoverService? covers = null,
-        IAppThemeService? themes = null)
+        IAppThemeService? themes = null,
+        IGameMetadataService? metadata = null,
+        IMetadataPreferencesService? metadataPreferences = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -56,7 +58,9 @@ public class MainViewModelTests : IDisposable
             KnownSystems.All,
             launchService,
             covers: covers,
-            themeService: themes);
+            themeService: themes,
+            metadataService: metadata,
+            metadataPreferences: metadataPreferences);
     }
 
     private string MakeRomsFolder()
@@ -128,6 +132,28 @@ public class MainViewModelTests : IDisposable
         await vm.AddGamesCommand.ExecuteAsync(null);
 
         Assert.Equal(["Alpha"], vm.Games.Select(g => g.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task FirstImport_OffersOptInAndAlwaysChoiceStartsMetadata()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        _dialogs.MetadataConsentToReturn = MetadataConsentChoice.Always;
+        var metadata = new RecordingMetadataService();
+        var preferences = new RecordingMetadataPreferences();
+        var vm = CreateViewModel(
+            metadata: metadata,
+            metadataPreferences: preferences);
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        await metadata.Called.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, _dialogs.MetadataConsentPrompts);
+        Assert.Equal(MetadataConsentChoice.Always, preferences.RecordedChoice);
+        Assert.True(preferences.AutomaticallyFetchAfterImport);
+        Assert.Single(metadata.GameIds);
     }
 
     [AvaloniaFact]
@@ -340,6 +366,23 @@ public class MainViewModelTests : IDisposable
 
         Assert.True(vm.IsAllGamesSelected);
         Assert.Equal(["Alpha", "Beta", "Gamma"], vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsManualMetadataFetch_RecordsOneTimeOptIn()
+    {
+        var metadata = new RecordingMetadataService();
+        var preferences = new RecordingMetadataPreferences();
+        var vm = CreateViewModel(
+            metadata: metadata,
+            metadataPreferences: preferences);
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+
+        await _dialogs.MaintenanceActions!.FetchAllMetadata!();
+
+        Assert.Equal(MetadataConsentChoice.FetchOnce, preferences.RecordedChoice);
+        Assert.True(preferences.ConsentPromptShown);
+        Assert.False(preferences.AutomaticallyFetchAfterImport);
     }
 
     [AvaloniaFact]
@@ -763,6 +806,60 @@ public class MainViewModelTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             Current = preference;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingMetadataService : IGameMetadataService
+    {
+        private readonly TaskCompletionSource _called =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Called => _called.Task;
+        public IReadOnlyList<long> GameIds { get; private set; } = [];
+
+        public Task<MetadataEnrichmentSummary> EnrichAsync(
+            IEnumerable<long> gameIds,
+            CancellationToken cancellationToken = default)
+        {
+            GameIds = gameIds.ToArray();
+            _called.TrySetResult();
+            return Task.FromResult(new MetadataEnrichmentSummary(
+                GameIds.Count,
+                0,
+                0,
+                GameIds.Count,
+                0));
+        }
+
+        public Task<MetadataEnrichmentSummary> EnrichMissingAsync(
+            string? systemId = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new MetadataEnrichmentSummary(0, 0, 0, 0, 0));
+    }
+
+    private sealed class RecordingMetadataPreferences : IMetadataPreferencesService
+    {
+        public bool AutomaticallyFetchAfterImport { get; private set; }
+        public bool ConsentPromptShown { get; private set; }
+        public MetadataConsentChoice? RecordedChoice { get; private set; }
+
+        public Task SaveAutomaticFetchAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+        {
+            AutomaticallyFetchAfterImport = enabled;
+            ConsentPromptShown = true;
+            return Task.CompletedTask;
+        }
+
+        public Task RecordConsentAsync(
+            MetadataConsentChoice choice,
+            CancellationToken cancellationToken = default)
+        {
+            RecordedChoice = choice;
+            AutomaticallyFetchAfterImport = choice == MetadataConsentChoice.Always;
+            ConsentPromptShown = true;
             return Task.CompletedTask;
         }
     }

@@ -18,8 +18,9 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public IReadOnlyList<Game> GetGames(string? systemId = null) => [];
     public IReadOnlyList<Game> GetRecentlyAddedGames(int limit) => [];
     public int AddGames(IEnumerable<Game> games) => 0;
-    public int ReconcileImport(
-        string systemId, IEnumerable<Game> entries, IReadOnlyList<string> suppressedPaths) => 0;
+    public GameImportResult ReconcileImport(
+        string systemId, IEnumerable<Game> entries, IReadOnlyList<string> suppressedPaths) =>
+        GameImportResult.Empty;
     public void SetAvailability(long gameId, bool isAvailable) { }
     public void SetAvailabilities(IReadOnlyList<GameAvailabilityUpdate> updates) { }
     public void UpdateTitle(long gameId, string title) { }
@@ -93,13 +94,16 @@ internal sealed class NullDialogService : IDialogService
         Task.FromResult<string?>(null);
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle) =>
         Task.FromResult(false);
+    public Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount) =>
+        Task.FromResult(MetadataConsentChoice.NotNow);
     public Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested) =>
         Task.FromResult<GameSystem?>(null);
     public Task ShowEmulatorSettingsAsync(
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
-        LibraryMaintenanceActions maintenance) => Task.CompletedTask;
+        LibraryMaintenanceActions maintenance,
+        IMetadataPreferencesService metadataPreferences) => Task.CompletedTask;
 }
 
 internal sealed class NullEmulatorConfigurationStore : IEmulatorConfigurationStore

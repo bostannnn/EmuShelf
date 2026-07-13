@@ -18,18 +18,27 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         var settings = service.Load();
 
         Assert.Equal(ThemePreference.System, settings.Theme);
+        Assert.False(settings.AutomaticallyFetchMetadataAfterImport);
+        Assert.False(settings.MetadataConsentPromptShown);
     }
 
     [Fact]
     public void SaveThenLoad_RoundTripsValues()
     {
         var service = new JsonSettingsService(AppPaths);
-        var settings = new AppSettings { Theme = ThemePreference.Dark };
+        var settings = new AppSettings
+        {
+            Theme = ThemePreference.Dark,
+            AutomaticallyFetchMetadataAfterImport = true,
+            MetadataConsentPromptShown = true,
+        };
 
         service.Save(settings);
         var loaded = service.Load();
 
         Assert.Equal(ThemePreference.Dark, loaded.Theme);
+        Assert.True(loaded.AutomaticallyFetchMetadataAfterImport);
+        Assert.True(loaded.MetadataConsentPromptShown);
     }
 
     [Fact]

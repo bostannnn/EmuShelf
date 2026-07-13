@@ -27,7 +27,8 @@ public sealed class GameLibrary : IGameLibrary
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT Id, SystemId, Path, Title, CoverPath, IsAvailable, DateAdded
+            SELECT Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
+                   IsAvailable, DateAdded
             FROM Games
             WHERE ($systemId IS NULL OR SystemId = $systemId)
             ORDER BY Title COLLATE NOCASE;
@@ -50,7 +51,8 @@ public sealed class GameLibrary : IGameLibrary
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT Id, SystemId, Path, Title, CoverPath, IsAvailable, DateAdded
+            SELECT Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
+                   IsAvailable, DateAdded
             FROM Games
             ORDER BY DateAddedUnixMilliseconds DESC, Id DESC
             LIMIT $limit;
@@ -65,15 +67,15 @@ public sealed class GameLibrary : IGameLibrary
     }
 
     public int AddGames(IEnumerable<Game> games) =>
-        WriteGames(games, systemId: null, suppressedPaths: []);
+        WriteGames(games, systemId: null, suppressedPaths: []).AddedCount;
 
-    public int ReconcileImport(
+    public GameImportResult ReconcileImport(
         string systemId,
         IEnumerable<Game> entries,
         IReadOnlyList<string> suppressedPaths) =>
         WriteGames(entries, systemId, suppressedPaths);
 
-    private int WriteGames(
+    private GameImportResult WriteGames(
         IEnumerable<Game> games,
         string? systemId,
         IReadOnlyList<string> suppressedPaths)
@@ -102,39 +104,51 @@ public sealed class GameLibrary : IGameLibrary
         command.CommandText =
             """
             INSERT OR IGNORE INTO Games (
-                SystemId, Path, Title, CoverPath, IsAvailable, DateAdded,
-                DateAddedUnixMilliseconds)
+                SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
+                IsAvailable, DateAdded, DateAddedUnixMilliseconds)
             VALUES (
-                $systemId, $path, $title, $coverPath, $isAvailable, $dateAdded,
-                $dateAddedUnixMilliseconds);
+                $systemId, $path, $title, $titleOrigin, $coverPath, $coverOrigin,
+                $isAvailable, $dateAdded, $dateAddedUnixMilliseconds);
             """;
         var systemIdParameter = command.Parameters.Add("$systemId", SqliteType.Text);
         var path = command.Parameters.Add("$path", SqliteType.Text);
         var title = command.Parameters.Add("$title", SqliteType.Text);
+        var titleOrigin = command.Parameters.Add("$titleOrigin", SqliteType.Integer);
         var coverPath = command.Parameters.Add("$coverPath", SqliteType.Text);
+        var coverOrigin = command.Parameters.Add("$coverOrigin", SqliteType.Integer);
         var isAvailable = command.Parameters.Add("$isAvailable", SqliteType.Integer);
         var dateAdded = command.Parameters.Add("$dateAdded", SqliteType.Text);
         var dateAddedUnixMilliseconds = command.Parameters.Add(
             "$dateAddedUnixMilliseconds",
             SqliteType.Integer);
 
-        var added = 0;
+        using var insertedIdCommand = connection.CreateCommand();
+        insertedIdCommand.Transaction = transaction;
+        insertedIdCommand.CommandText = "SELECT last_insert_rowid();";
+
+        var addedIds = new List<long>();
         foreach (var game in games)
         {
             systemIdParameter.Value = game.SystemId;
             path.Value = _pathResolver.ToStorablePath(game.Path);
             title.Value = game.Title;
+            titleOrigin.Value = (int)game.TitleOrigin;
             coverPath.Value = game.CoverPath is null
                 ? DBNull.Value
                 : _pathResolver.ToStorablePath(game.CoverPath);
+            coverOrigin.Value = (int)(game.CoverPath is not null &&
+                game.CoverOrigin == GameCoverOrigin.None
+                    ? GameCoverOrigin.User
+                    : game.CoverOrigin);
             isAvailable.Value = game.IsAvailable ? 1 : 0;
             dateAdded.Value = game.DateAdded.ToString("O", CultureInfo.InvariantCulture);
             dateAddedUnixMilliseconds.Value = game.DateAdded.ToUnixTimeMilliseconds();
-            added += command.ExecuteNonQuery();
+            if (command.ExecuteNonQuery() > 0)
+                addedIds.Add((long)insertedIdCommand.ExecuteScalar()!);
         }
 
         transaction.Commit();
-        return added;
+        return new GameImportResult(addedIds);
     }
 
     public void SetAvailability(long gameId, bool isAvailable) =>
@@ -165,8 +179,10 @@ public sealed class GameLibrary : IGameLibrary
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE Games SET Title = $title WHERE Id = $id;";
+        command.CommandText =
+            "UPDATE Games SET Title = $title, TitleOrigin = $origin WHERE Id = $id;";
         command.Parameters.AddWithValue("$title", title);
+        command.Parameters.AddWithValue("$origin", (int)GameTitleOrigin.User);
         command.Parameters.AddWithValue("$id", gameId);
         command.ExecuteNonQuery();
     }
@@ -175,10 +191,14 @@ public sealed class GameLibrary : IGameLibrary
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE Games SET CoverPath = $coverPath WHERE Id = $id;";
+        command.CommandText =
+            "UPDATE Games SET CoverPath = $coverPath, CoverOrigin = $origin WHERE Id = $id;";
         command.Parameters.AddWithValue(
             "$coverPath",
             coverPath is null ? DBNull.Value : _pathResolver.ToStorablePath(coverPath));
+        command.Parameters.AddWithValue(
+            "$origin",
+            coverPath is null ? (int)GameCoverOrigin.None : (int)GameCoverOrigin.User);
         command.Parameters.AddWithValue("$id", gameId);
         command.ExecuteNonQuery();
     }
@@ -245,10 +265,12 @@ public sealed class GameLibrary : IGameLibrary
         SystemId = reader.GetString(1),
         Path = _pathResolver.ToAbsolutePath(reader.GetString(2)),
         Title = reader.GetString(3),
-        CoverPath = reader.IsDBNull(4) ? null : _pathResolver.ToAbsolutePath(reader.GetString(4)),
-        IsAvailable = reader.GetInt64(5) != 0,
+        TitleOrigin = (GameTitleOrigin)reader.GetInt32(4),
+        CoverPath = reader.IsDBNull(5) ? null : _pathResolver.ToAbsolutePath(reader.GetString(5)),
+        CoverOrigin = (GameCoverOrigin)reader.GetInt32(6),
+        IsAvailable = reader.GetInt64(7) != 0,
         // Written with the invariant round-trip ("O") format; parse the same way so a
         // non-Gregorian current culture can't shift the year or throw.
-        DateAdded = DateTimeOffset.Parse(reader.GetString(6), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+        DateAdded = DateTimeOffset.Parse(reader.GetString(8), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
     };
 }

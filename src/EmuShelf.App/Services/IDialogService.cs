@@ -24,6 +24,9 @@ public interface IDialogService
     /// <summary>Confirms removing a game from the library without touching its files.</summary>
     Task<bool> ConfirmRemoveGameAsync(string gameTitle);
 
+    /// <summary>Asks once whether newly imported games may use network metadata providers.</summary>
+    Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount);
+
     /// <summary>
     /// Asks the user to confirm the system for an import, pre-selecting <paramref name="suggested"/>.
     /// Returns null if cancelled.
@@ -35,5 +38,6 @@ public interface IDialogService
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
-        LibraryMaintenanceActions maintenance);
+        LibraryMaintenanceActions maintenance,
+        IMetadataPreferencesService metadataPreferences);
 }

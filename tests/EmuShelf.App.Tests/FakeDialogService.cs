@@ -13,6 +13,9 @@ internal sealed class FakeDialogService : IDialogService
     public string? EmulatorExecutableToReturn { get; set; }
     public string? CoverImageToReturn { get; set; }
     public bool ConfirmRemoveToReturn { get; set; }
+    public MetadataConsentChoice MetadataConsentToReturn { get; set; } =
+        MetadataConsentChoice.NotNow;
+    public int MetadataConsentPrompts { get; private set; }
     public string? LastCoverGameTitle { get; private set; }
     public string? LastRemoveGameTitle { get; private set; }
     public Exception? SettingsException { get; set; }
@@ -35,11 +38,17 @@ internal sealed class FakeDialogService : IDialogService
     }
     public Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested) =>
         Task.FromResult(SystemToReturn);
+    public Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount)
+    {
+        MetadataConsentPrompts++;
+        return Task.FromResult(MetadataConsentToReturn);
+    }
     public Task ShowEmulatorSettingsAsync(
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
-        LibraryMaintenanceActions maintenance)
+        LibraryMaintenanceActions maintenance,
+        IMetadataPreferencesService metadataPreferences)
     {
         SettingsShown++;
         MaintenanceActions = maintenance;

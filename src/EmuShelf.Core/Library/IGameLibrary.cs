@@ -24,7 +24,7 @@ public interface IGameLibrary
     /// from the specified system. Only library records are removed; game files are
     /// never modified. Returns the number of entries actually added.
     /// </summary>
-    int ReconcileImport(
+    GameImportResult ReconcileImport(
         string systemId,
         IEnumerable<Game> entries,
         IReadOnlyList<string> suppressedPaths);

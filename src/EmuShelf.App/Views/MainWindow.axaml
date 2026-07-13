@@ -377,7 +377,8 @@
                                             Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                             CornerRadius="5" Background="{DynamicResource EmuCoverWellBrush}"
                                             ClipToBounds="True"
-                                            AttachedToVisualTree="OnGameCoverAttached">
+                                            AttachedToVisualTree="OnGameCoverAttached"
+                                            DataContextChanged="OnGameCoverDataContextChanged">
                                         <Panel>
                                             <Grid IsVisible="{Binding !HasCoverImage}" RowDefinitions="5,*,Auto">
                                                 <Border Grid.Row="0" Background="{Binding AccentColor}" />
@@ -503,7 +504,8 @@
                                         BorderBrush="{DynamicResource EmuCoverBorderBrush}"
                                         BorderThickness="1" ClipToBounds="True"
                                         HorizontalAlignment="Left"
-                                        AttachedToVisualTree="OnGameCoverAttached">
+                                        AttachedToVisualTree="OnGameCoverAttached"
+                                        DataContextChanged="OnGameCoverDataContextChanged">
                                     <Panel>
                                         <Image Source="{Binding PlatformArtwork}" Width="29" Height="29"
                                                IsVisible="{Binding !HasCoverImage}"

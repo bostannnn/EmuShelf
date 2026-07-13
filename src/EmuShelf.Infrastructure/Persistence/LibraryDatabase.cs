@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 2;
+    private const int CurrentSchemaVersion = 3;
 
     private readonly IAppPaths _appPaths;
 
@@ -29,6 +29,9 @@ public sealed class LibraryDatabase
         }.ToString();
         var connection = new SqliteConnection(connectionString);
         connection.Open();
+        using var foreignKeys = connection.CreateCommand();
+        foreignKeys.CommandText = "PRAGMA foreign_keys = ON;";
+        foreignKeys.ExecuteNonQuery();
         return connection;
     }
 
@@ -44,8 +47,14 @@ public sealed class LibraryDatabase
             version = 1;
         }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 2)
+        {
             ApplyMigrationV2(connection);
+            version = 2;
+        }
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV3(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -121,6 +130,50 @@ public sealed class LibraryDatabase
             CREATE INDEX IX_Games_DateAddedUnixMilliseconds
                 ON Games (DateAddedUnixMilliseconds DESC);
             UPDATE SchemaVersion SET Version = 2;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV3(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            ALTER TABLE Games ADD COLUMN TitleOrigin INTEGER NOT NULL DEFAULT 0;
+            ALTER TABLE Games ADD COLUMN CoverOrigin INTEGER NOT NULL DEFAULT 0;
+            UPDATE Games SET CoverOrigin = 2 WHERE CoverPath IS NOT NULL;
+
+            CREATE TABLE GameIdentifiers (
+                GameId INTEGER NOT NULL,
+                Kind INTEGER NOT NULL,
+                Value TEXT NOT NULL COLLATE NOCASE,
+                Source TEXT NOT NULL,
+                IsPrimary INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (GameId, Kind, Value),
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+            CREATE INDEX IX_GameIdentifiers_KindValue
+                ON GameIdentifiers (Kind, Value);
+
+            CREATE TABLE GameMetadata (
+                GameId INTEGER PRIMARY KEY,
+                Status INTEGER NOT NULL DEFAULT 0,
+                CatalogId TEXT NULL,
+                CatalogEntryId TEXT NULL,
+                CanonicalTitle TEXT NULL,
+                Region TEXT NULL,
+                CoverProviderId TEXT NULL,
+                CoverSourceUri TEXT NULL,
+                LastAttemptUnixMilliseconds INTEGER NULL,
+                LastError TEXT NULL,
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+            CREATE INDEX IX_GameMetadata_Status ON GameMetadata (Status);
+
+            UPDATE SchemaVersion SET Version = 3;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

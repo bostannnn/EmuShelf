@@ -6,6 +6,8 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
@@ -45,6 +47,75 @@ public class MainWindowVisualSnapshotTests
 
             Assert.False(viewModel.IsSearchOpen);
             Assert.Equal(string.Empty, viewModel.SearchText);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task RecycledCoverElement_RequestsReplacementDataContextCover()
+    {
+        var viewModel = new MainViewModel();
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        var first = new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = system.Id,
+                Path = "/games/first.rvz",
+                Title = "First",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor);
+        viewModel.Games.ReplaceAll([first]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var replacementLoads = 0;
+        var replacementCommand = new AsyncRelayCommand<GameViewModel?>(_ =>
+        {
+            replacementLoads++;
+            return Task.CompletedTask;
+        });
+        var replacement = new GameViewModel(
+            new Game
+            {
+                Id = 2,
+                SystemId = system.Id,
+                Path = "/games/replacement.rvz",
+                Title = "Replacement",
+                CoverPath = "/covers/replacement.png",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            loadCoverCommand: replacementCommand);
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 700,
+            Height = 600,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var coverCard = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("cover-card"));
+
+            // ItemsRepeater can perform this replacement without detaching the element.
+            coverCard.DataContext = replacement;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.Equal(1, replacementLoads);
         }
         finally
         {
@@ -181,6 +252,40 @@ public class MainWindowVisualSnapshotTests
                 using var output = File.Create(Path.Combine(
                     outputDirectory,
                     "emushelf-m8-settings-dark.png"));
+                frame.Save(output, PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task RenderMetadataConsentInDarkTheme()
+    {
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MetadataConsentWindow
+        {
+            DataContext = new MetadataConsentViewModel(3),
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Task.Delay(50);
+            using var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            Assert.Equal(500, frame.PixelSize.Width);
+            Assert.True(frame.PixelSize.Height > 200);
+            if (outputDirectory is not null)
+            {
+                Directory.CreateDirectory(outputDirectory);
+                using var output = File.Create(Path.Combine(
+                    outputDirectory,
+                    "emushelf-metadata-consent-dark.png"));
                 frame.Save(output, PngBitmapEncoderOptions.Default);
             }
         }

@@ -9,6 +9,8 @@ internal enum NintendoDiscSystem
     Wii,
 }
 
+internal sealed record NintendoDiscInfo(NintendoDiscSystem System, string DiscId);
+
 /// <summary>
 /// Reads only the small, uncompressed disc-header area exposed by each supported
 /// Dolphin container. It never decompresses or modifies an image.
@@ -24,6 +26,9 @@ internal static class NintendoDiscDetector
     private const int RvzMinimumHeader2Size = 0xD5;
 
     public static NintendoDiscSystem Detect(string path)
+        => ReadInfo(path)?.System ?? NintendoDiscSystem.Unknown;
+
+    public static NintendoDiscInfo? ReadInfo(string path)
     {
         try
         {
@@ -44,13 +49,13 @@ internal static class NintendoDiscDetector
             };
 
             return discHeaderOffset >= 0
-                ? DetectAt(stream, discHeaderOffset)
-                : NintendoDiscSystem.Unknown;
+                ? ReadInfoAt(stream, discHeaderOffset)
+                : null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                                    ArgumentException or NotSupportedException)
         {
-            return NintendoDiscSystem.Unknown;
+            return null;
         }
     }
 
@@ -89,21 +94,33 @@ internal static class NintendoDiscDetector
             : -1;
     }
 
-    private static NintendoDiscSystem DetectAt(Stream stream, long offset)
+    private static NintendoDiscInfo? ReadInfoAt(Stream stream, long offset)
     {
         Span<byte> header = stackalloc byte[DiscHeaderSize];
         if (!ReadAt(stream, offset, header))
-            return NintendoDiscSystem.Unknown;
+            return null;
 
         var hasWiiMagic = BinaryPrimitives.ReadUInt32BigEndian(header[0x18..0x1C]) == WiiMagic;
         var hasGameCubeMagic = BinaryPrimitives.ReadUInt32BigEndian(header[0x1C..0x20]) == GameCubeMagic;
 
-        return (hasGameCubeMagic, hasWiiMagic) switch
+        var system = (hasGameCubeMagic, hasWiiMagic) switch
         {
             (true, false) => NintendoDiscSystem.GameCube,
             (false, true) => NintendoDiscSystem.Wii,
             _ => NintendoDiscSystem.Unknown,
         };
+        if (system == NintendoDiscSystem.Unknown)
+            return null;
+
+        var hasValidDiscId = header[..6]
+            .ToArray()
+            .All(value => char.IsAsciiLetterOrDigit((char)value));
+
+        return new NintendoDiscInfo(
+            system,
+            hasValidDiscId
+                ? System.Text.Encoding.ASCII.GetString(header[..6]).ToUpperInvariant()
+                : string.Empty);
     }
 
     private static bool ReadAt(Stream stream, long offset, Span<byte> buffer)

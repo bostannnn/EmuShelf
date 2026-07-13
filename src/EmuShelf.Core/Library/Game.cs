@@ -11,7 +11,9 @@ public sealed record Game
     public required string SystemId { get; init; }
     public required string Path { get; init; }
     public required string Title { get; init; }
+    public GameTitleOrigin TitleOrigin { get; init; } = GameTitleOrigin.LegacyUnknown;
     public string? CoverPath { get; init; }
+    public GameCoverOrigin CoverOrigin { get; init; } = GameCoverOrigin.None;
     public bool IsAvailable { get; init; } = true;
     public DateTimeOffset DateAdded { get; init; }
 }
