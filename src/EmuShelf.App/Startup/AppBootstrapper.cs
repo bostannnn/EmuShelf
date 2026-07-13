@@ -1,15 +1,20 @@
 using System.IO;
+using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
+using EmuShelf.Infrastructure.Diagnostics;
+using EmuShelf.Infrastructure.Launching;
 using EmuShelf.Infrastructure.Library;
 using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
+using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 
 namespace EmuShelf.App.Startup;
@@ -21,6 +26,7 @@ namespace EmuShelf.App.Startup;
 public sealed class AppBootstrapper
 {
     public IAppPaths Paths { get; }
+    public IAppLogger Logger { get; }
     public IRelativePathResolver PathResolver { get; }
     public ISettingsService SettingsService { get; }
     public AppSettings Settings { get; }
@@ -29,29 +35,54 @@ public sealed class AppBootstrapper
     public IFolderScanner FolderScanner { get; }
     public IGameImportRules ImportRules { get; }
     public IAvailabilityChecker AvailabilityChecker { get; }
+    public IReadOnlyList<EmulatorDefinition> Emulators { get; }
+    public IEmulatorConfigurationStore EmulatorConfigurations { get; }
+    public ITrackedProcessRunner ProcessRunner { get; }
 
     public AppBootstrapper()
     {
         Paths = new AppPaths();
         Paths.EnsureDirectoriesExist();
+        Logger = new FileAppLogger(Paths);
+        Logger.Information("EmuShelf startup began.");
 
         PathResolver = new RelativePathResolver(Paths);
 
-        SettingsService = new JsonSettingsService(Paths);
+        SettingsService = new JsonSettingsService(Paths, Logger);
         var isFirstRun = !File.Exists(Paths.SettingsFilePath);
         Settings = SettingsService.Load();
         if (isFirstRun)
         {
-            SettingsService.Save(Settings);
+            try
+            {
+                SettingsService.Save(Settings);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Could not create the initial portable settings file.", ex);
+                throw;
+            }
         }
 
         var database = new LibraryDatabase(Paths);
-        database.Initialize();
+        try
+        {
+            database.Initialize();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Could not initialize Data/library.db.", ex);
+            throw;
+        }
 
         Systems = KnownSystems.All;
+        Emulators = KnownEmulators.All;
         Library = new GameLibrary(database, PathResolver);
+        EmulatorConfigurations = new SqliteEmulatorConfigurationStore(database, PathResolver);
+        ProcessRunner = new TrackedProcessRunner();
         ImportRules = new FileImportRules(Systems);
         FolderScanner = new FolderScanner(ImportRules);
         AvailabilityChecker = new FileAvailabilityChecker();
+        Logger.Information("EmuShelf startup services initialized.");
     }
 }

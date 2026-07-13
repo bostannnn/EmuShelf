@@ -2,15 +2,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:EmuShelf.App.ViewModels"
         xmlns:sys="using:EmuShelf.Core.Systems"
+        xmlns:settings="using:EmuShelf.Core.Settings"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
+        mc:Ignorable="d" d:DesignWidth="1240" d:DesignHeight="800"
         x:Class="EmuShelf.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
         Title="EmuShelf"
-        Width="1100" Height="720"
-        MinWidth="800" MinHeight="500"
+        Width="1240" Height="800"
+        MinWidth="900" MinHeight="560"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
@@ -18,174 +19,599 @@
     </Design.DataContext>
 
     <Window.Styles>
-        <!-- Unavailable games are dimmed everywhere they appear (grid tile and list row). -->
-        <Style Selector="StackPanel.unavailable, Grid.unavailable">
-            <Setter Property="Opacity" Value="0.4" />
+        <Style Selector="Button.toolbar-button">
+            <Setter Property="MinWidth" Value="36" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.toolbar-button:pointerover">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+        </Style>
+        <Style Selector="Button.add-library">
+            <Setter Property="Background" Value="{DynamicResource EmuAddButtonBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+        <Style Selector="Button.add-library:pointerover">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+        </Style>
+        <Style Selector="Button.add-library /template/ ContentPresenter">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+        <Style Selector="Button.collection-item">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="10,1" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.collection-item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+        </Style>
+        <Style Selector="Button.collection-item.selected">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.view-toggle">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Padding" Value="6" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.view-toggle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.view-toggle:checked">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.view-toggle:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Margin" Value="10,1" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem:selected">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+        </Style>
+        <Style Selector="StackPanel.game-tile.unavailable, Grid.game-row.unavailable">
+            <Setter Property="Opacity" Value="0.58" />
+        </Style>
+        <Style Selector="Border.cover-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuCoverBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BoxShadow" Value="0 8 18 0 #38000000" />
+        </Style>
+        <Style Selector="StackPanel.game-tile:pointerover Border.cover-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BoxShadow" Value="0 13 30 0 #54000000" />
+        </Style>
+        <Style Selector="StackPanel.game-tile.selected Border.cover-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="BorderThickness" Value="3" />
+            <Setter Property="BoxShadow" Value="0 12 30 0 #66000000" />
+        </Style>
+        <Style Selector="ListBox.game-list ListBoxItem">
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Grid.list-header TextBlock">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.9" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </Window.Styles>
 
-    <DockPanel>
+    <Grid RowDefinitions="68,*" ColumnDefinitions="246,*">
+        <!-- OpenEmu-inspired navigation rail, rebuilt for EmuShelf rather than copied. -->
+        <Border Grid.RowSpan="2" Grid.Column="0"
+                Background="{DynamicResource EmuSidebarBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}"
+                BorderThickness="0,0,1,0">
+            <Grid RowDefinitions="68,Auto,Auto,Auto,Auto,*,Auto">
+                <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
+                        BorderThickness="0,0,0,1" Padding="18,0">
+                    <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
+                        <Border Width="34" Height="34" CornerRadius="10"
+                                Background="{DynamicResource EmuAccentBrush}"
+                                BoxShadow="0 4 10 0 #36000000">
+                            <Grid>
+                                <PathIcon Width="19" Height="19" Foreground="White"
+                                          Data="M4,5 H16 A3,3 0 0 1 19,8 V15 A3,3 0 0 1 16,18 H4 A3,3 0 0 1 1,15 V8 A3,3 0 0 1 4,5 Z M5,10 H9 M7,8 V12 M14,9.5 A1,1 0 1 0 14,11.5 A1,1 0 1 0 14,9.5 M17,12 A1,1 0 1 0 17,14 A1,1 0 1 0 17,12" />
+                            </Grid>
+                        </Border>
+                        <StackPanel Spacing="0">
+                            <TextBlock Text="EmuShelf" FontSize="17" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                            <TextBlock Text="PORTABLE LIBRARY" FontSize="8.5" LetterSpacing="1.1"
+                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
 
-        <!-- Status bar -->
-        <Border DockPanel.Dock="Bottom"
-                Background="#14808080" BorderBrush="#22808080" BorderThickness="0,1,0,0"
-                Padding="12,4">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Right" Text="{Binding LibraryCountText}"
-                           FontSize="12" Opacity="0.6" />
-                <TextBlock Text="{Binding StatusText}" FontSize="12" Opacity="0.6" />
-            </DockPanel>
-        </Border>
+                <TextBlock Grid.Row="1" Text="CONSOLES" Margin="18,17,18,7"
+                           FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
+                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
 
-        <!-- System sidebar -->
-        <Border DockPanel.Dock="Left" Width="210"
-                Background="#14808080" BorderBrush="#22808080" BorderThickness="0,0,1,0">
-            <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="SYSTEMS"
-                           FontSize="11" FontWeight="SemiBold" Opacity="0.5"
-                           Margin="16,16,16,8" />
-                <ListBox ItemsSource="{Binding Systems}"
+                <ListBox Grid.Row="2" Classes="system-list"
+                         ItemsSource="{Binding Systems}"
                          SelectedItem="{Binding SelectedSystem}"
-                         Background="Transparent">
+                         Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="sys:GameSystem">
-                            <StackPanel Orientation="Horizontal" Spacing="10">
-                                <Ellipse Width="9" Height="9" VerticalAlignment="Center"
-                                         Fill="{Binding AccentColor}" />
-                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                            </StackPanel>
+                            <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                <Grid Grid.Column="0" Width="24" Height="24">
+                                    <Image Width="18" Height="18"
+                                           Source="{Binding Id, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                                           RenderOptions.BitmapInterpolationMode="None" />
+                                    <Border Width="12" Height="12" CornerRadius="6"
+                                            IsVisible="{Binding Id, Converter={x:Static vm:PlatformArtwork.HasGenerationBadgeConverter}}"
+                                            Background="{DynamicResource EmuAccentBrush}"
+                                            BorderBrush="{DynamicResource EmuSidebarBrush}"
+                                            BorderThickness="1"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                        <TextBlock Text="{Binding Id, Converter={x:Static vm:PlatformArtwork.GenerationBadgeConverter}}"
+                                                   FontSize="7" FontWeight="Bold" Foreground="White"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                </Grid>
+                                <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                           FontSize="13.5" FontWeight="Medium"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
-            </DockPanel>
+
+                <TextBlock Grid.Row="3" Text="COLLECTIONS" Margin="18,18,18,7"
+                           FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
+                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+
+                <StackPanel Grid.Row="4">
+                    <Button Classes="collection-item"
+                            Classes.selected="{Binding IsAllGamesSelected}"
+                            Command="{Binding ShowAllGamesCommand}">
+                        <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                            <Image Width="27" Height="27"
+                                   Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-simple@2x.png"
+                                   RenderOptions.BitmapInterpolationMode="None" />
+                            <TextBlock Grid.Column="1" Text="All Games" FontSize="13.5"
+                                       FontWeight="Medium" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                    <Button Classes="collection-item"
+                            Classes.selected="{Binding IsRecentlyAddedSelected}"
+                            Command="{Binding ShowRecentlyAddedCommand}">
+                        <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                            <Image Width="27" Height="27"
+                                   Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
+                                   RenderOptions.BitmapInterpolationMode="None" />
+                            <TextBlock Grid.Column="1" Text="Recently Added" FontSize="13.5"
+                                       FontWeight="Medium" VerticalAlignment="Center" />
+                        </Grid>
+                    </Button>
+                </StackPanel>
+
+                <Button Grid.Row="6" Classes="add-library" Margin="14,12,14,15"
+                        HorizontalAlignment="Stretch"
+                        IsEnabled="{Binding !IsBusy}" Padding="12,8">
+                    <Grid ColumnDefinitions="22,*" ColumnSpacing="8">
+                        <PathIcon Width="14" Height="14" VerticalAlignment="Center"
+                                  Data="M8,1 H11 V8 H18 V11 H11 V18 H8 V11 H1 V8 H8 Z" />
+                        <TextBlock Grid.Column="1" Text="Add to Library" FontWeight="SemiBold"
+                                   HorizontalAlignment="Left" VerticalAlignment="Center" />
+                    </Grid>
+                    <Button.Flyout>
+                        <MenuFlyout>
+                            <MenuItem Header="Add Files…" Command="{Binding AddGamesCommand}" />
+                            <MenuItem Header="Add Folder…" Command="{Binding AddFolderCommand}" />
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </Grid>
         </Border>
 
-        <!-- Toolbar -->
-        <Border DockPanel.Dock="Top" BorderBrush="#22808080" BorderThickness="0,0,0,1"
-                Padding="12,8">
-            <DockPanel>
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                    <ToggleButton IsChecked="{Binding IsGridView, Mode=TwoWay}"
-                                  ToolTip.Tip="Grid view" Padding="8,6">
-                        <PathIcon Width="13" Height="13"
-                                  Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" />
-                    </ToggleButton>
-                    <ToggleButton IsChecked="{Binding !IsGridView, Mode=TwoWay}"
-                                  ToolTip.Tip="List view" Padding="8,6">
-                        <PathIcon Width="13" Height="13"
-                                  Data="M2,4 H18 V6.5 H2 Z M2,8.75 H18 V11.25 H2 Z M2,13.5 H18 V16 H2 Z" />
-                    </ToggleButton>
+        <!-- Library toolbar. -->
+        <Border Grid.Row="0" Grid.Column="1"
+                Background="{DynamicResource EmuToolbarBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}"
+                BorderThickness="0,0,0,1" Padding="18,10">
+            <Grid ColumnDefinitions="Auto,18,*,Auto,Auto" ColumnSpacing="8">
+                <Border Grid.Column="0" CornerRadius="9"
+                        BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                        Background="{DynamicResource EmuSegmentBrush}" Padding="3">
+                    <StackPanel Orientation="Horizontal" Spacing="2">
+                        <ToggleButton Classes="view-toggle"
+                                      IsChecked="{Binding IsGridView, Mode=TwoWay}"
+                                      ToolTip.Tip="Cover grid">
+                            <PathIcon Width="14" Height="14"
+                                      Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" />
+                        </ToggleButton>
+                        <ToggleButton Classes="view-toggle"
+                                      IsChecked="{Binding !IsGridView, Mode=TwoWay}"
+                                      ToolTip.Tip="List view">
+                            <PathIcon Width="14" Height="14"
+                                      Data="M2,3 H18 V6 H2 Z M2,8.5 H18 V11.5 H2 Z M2,14 H18 V17 H2 Z" />
+                        </ToggleButton>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="2" Spacing="0" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding LibraryTitle}" FontSize="17"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                    <TextBlock Text="{Binding LibraryCountText}" FontSize="10.5"
+                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                 </StackPanel>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
-                    <TextBox Width="240" PlaceholderText="Search"
-                             Text="{Binding SearchText, Mode=TwoWay}" />
-                    <Button ToolTip.Tip="Add games or a folder" Padding="10,4"
-                            IsEnabled="{Binding !IsBusy}">
-                        <TextBlock Text="+" FontSize="16" />
+
+                <Panel Grid.Column="3">
+                    <Button x:Name="SearchTrigger" Classes="toolbar-button" ToolTip.Tip="Search library"
+                            IsVisible="{Binding !IsSearchOpen}"
+                            Click="OnOpenSearchClick">
+                        <PathIcon Width="16" Height="16"
+                                  Data="F0 M9,2 A7,7 0 1 0 9,16 A7,7 0 1 0 9,2 Z M9,5 A4,4 0 1 1 9,13 A4,4 0 1 1 9,5 Z M13.2,12.5 L20,19.3 L19.3,20 L12.5,13.2 Z" />
+                    </Button>
+                    <Border x:Name="ExpandedSearch" Width="218" Height="36" CornerRadius="18"
+                            IsVisible="{Binding IsSearchOpen}"
+                            Background="{DynamicResource EmuInputBrush}"
+                            BorderBrush="{DynamicResource EmuAccentBrush}" BorderThickness="1">
+                        <Grid ColumnDefinitions="30,*,30" Margin="5,0">
+                            <PathIcon Grid.Column="0" Width="14" Height="14"
+                                      Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                      Data="F0 M9,2 A7,7 0 1 0 9,16 A7,7 0 1 0 9,2 Z M9,5 A4,4 0 1 1 9,13 A4,4 0 1 1 9,5 Z M13.2,12.5 L20,19.3 L19.3,20 L12.5,13.2 Z" />
+                            <TextBox x:Name="SearchBox" Grid.Column="1"
+                                     Background="Transparent" BorderThickness="0"
+                                     Padding="0" VerticalContentAlignment="Center"
+                                     PlaceholderText="Search"
+                                     Text="{Binding SearchText, Mode=TwoWay}"
+                                     KeyDown="OnSearchKeyDown" />
+                            <Button x:Name="CloseSearchButton" Grid.Column="2" Width="26" Height="26" Padding="3"
+                                    CornerRadius="13" Background="Transparent" BorderThickness="0"
+                                    Click="OnCloseSearchClick" ToolTip.Tip="Close search">
+                                <PathIcon Width="10" Height="10"
+                                          Data="M2,1 L10,9 L9,10 L1,2 Z M9,1 L10,2 L2,10 L1,9 Z" />
+                            </Button>
+                        </Grid>
+                    </Border>
+                </Panel>
+
+                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+                    <Button Classes="toolbar-button" ToolTip.Tip="{Binding ThemeDescription}">
+                        <PathIcon Width="17" Height="17"
+                                  Data="M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 M10,3 V17 A7,7 0 0 0 10,3" />
                         <Button.Flyout>
                             <MenuFlyout>
-                                <MenuItem Header="Add Files…" Command="{Binding AddGamesCommand}" />
-                                <MenuItem Header="Add Folder…" Command="{Binding AddFolderCommand}" />
+                                <MenuItem Header="Follow system" ToggleType="Radio"
+                                          IsChecked="{Binding IsSystemTheme, Mode=OneWay}"
+                                          Command="{Binding SetThemeCommand}"
+                                          CommandParameter="{x:Static settings:ThemePreference.System}" />
+                                <MenuItem Header="Light" ToggleType="Radio"
+                                          IsChecked="{Binding IsLightTheme, Mode=OneWay}"
+                                          Command="{Binding SetThemeCommand}"
+                                          CommandParameter="{x:Static settings:ThemePreference.Light}" />
+                                <MenuItem Header="Dark" ToggleType="Radio"
+                                          IsChecked="{Binding IsDarkTheme, Mode=OneWay}"
+                                          Command="{Binding SetThemeCommand}"
+                                          CommandParameter="{x:Static settings:ThemePreference.Dark}" />
                             </MenuFlyout>
                         </Button.Flyout>
                     </Button>
-                    <Button ToolTip.Tip="Rescan" Padding="10,6"
-                            IsEnabled="{Binding !IsBusy}">
-                        <TextBlock Text="&#x21BB;" FontSize="14" />
-                        <Button.Flyout>
-                            <MenuFlyout>
-                                <MenuItem Header="Rescan current system"
-                                          Command="{Binding RescanSystemCommand}" />
-                                <MenuItem Header="Rescan all systems"
-                                          Command="{Binding RescanAllCommand}" />
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
-                    <Button Command="{Binding OpenSettingsCommand}"
-                            ToolTip.Tip="Settings" Padding="10,6">
-                        <TextBlock Text="&#x2699;" FontSize="14" />
+                    <Button Classes="toolbar-button" Command="{Binding OpenSettingsCommand}"
+                            IsEnabled="{Binding !IsBusy}" ToolTip.Tip="Settings">
+                        <PathIcon Width="17" Height="17"
+                                  Data="M8,2 H12 L13,5 L16,4 L18,8 L16,10 L18,13 L15,17 L12,15 L10,18 L6,17 L6,14 L2,13 L2,8 L5,7 L5,4 Z M10,7 A3,3 0 1 0 10,13 A3,3 0 1 0 10,7" />
                     </Button>
                 </StackPanel>
-                <Panel />
-            </DockPanel>
+
+                <ProgressBar Grid.ColumnSpan="5" Height="2" Margin="0,0,0,-10"
+                             IsIndeterminate="True" IsVisible="{Binding IsBusy}"
+                             VerticalAlignment="Bottom" />
+            </Grid>
         </Border>
 
-        <!-- Library content -->
-        <Panel>
-            <!-- Grid view -->
-            <ScrollViewer IsVisible="{Binding IsGridView}" Padding="16">
-                <ItemsRepeater ItemsSource="{Binding Games}">
+        <!-- Cover-first library content. -->
+        <Panel Grid.Row="1" Grid.Column="1"
+               Background="{DynamicResource EmuLibraryBrush}">
+            <ScrollViewer IsVisible="{Binding IsGridView}">
+                <ItemsRepeater ItemsSource="{Binding Games}" Margin="32,28,28,34">
                     <ItemsRepeater.Layout>
-                        <UniformGridLayout MinItemWidth="150" MinItemHeight="188"
-                                           MinColumnSpacing="14" MinRowSpacing="14" />
+                        <UniformGridLayout MinItemWidth="188" MinItemHeight="330"
+                                           MinColumnSpacing="28" MinRowSpacing="26" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
-                            <StackPanel Width="150" Spacing="6"
-                                        Classes.unavailable="{Binding !IsAvailable}">
-                                <Panel>
-                                    <Border Height="150" CornerRadius="8"
-                                            Background="{Binding AccentColor}">
-                                        <TextBlock Text="{Binding Initials}"
-                                                   FontSize="40" FontWeight="Bold" Foreground="White"
-                                                   Opacity="0.85"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <StackPanel Width="188" Spacing="8" Classes="game-tile"
+                                        Classes.selected="{Binding IsSelected}"
+                                        Classes.unavailable="{Binding !IsAvailable}"
+                                        Tapped="OnGameTapped"
+                                        DoubleTapped="OnGameDoubleTapped">
+                                <StackPanel.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Launch" Command="{Binding LaunchCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <Separator />
+                                        <MenuItem Header="Edit title…"
+                                                  Command="{Binding BeginEditTitleCommand}" />
+                                        <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <Separator />
+                                        <MenuItem Header="Remove from library…"
+                                                  Command="{Binding RemoveCommand}"
+                                                  CommandParameter="{Binding}" />
+                                    </ContextMenu>
+                                </StackPanel.ContextMenu>
+
+                                <Grid Width="188" Height="250">
+                                <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
+                                       VerticalAlignment="Bottom">
+                                    <Border Classes="cover-card"
+                                            Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
+                                            CornerRadius="5" Background="{DynamicResource EmuCoverWellBrush}"
+                                            ClipToBounds="True"
+                                            AttachedToVisualTree="OnGameCoverAttached">
+                                        <Panel>
+                                            <Grid IsVisible="{Binding !HasCoverImage}" RowDefinitions="5,*,Auto">
+                                                <Border Grid.Row="0" Background="{Binding AccentColor}" />
+                                                <StackPanel Grid.Row="1" HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center" Spacing="14">
+                                                    <Border Width="104" Height="104" CornerRadius="52"
+                                                            Background="{DynamicResource EmuPlaceholderMedallionBrush}"
+                                                            BorderBrush="{DynamicResource EmuCoverBorderBrush}"
+                                                            BorderThickness="1">
+                                                        <Image Width="76" Height="76"
+                                                               Source="{Binding PlatformArtwork}"
+                                                               RenderOptions.BitmapInterpolationMode="None" />
+                                                    </Border>
+                                                    <TextBlock Text="ARTWORK MISSING" FontSize="8.5"
+                                                               FontWeight="Bold" LetterSpacing="1.4"
+                                                               HorizontalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                </StackPanel>
+                                                <Border Grid.Row="2" Margin="10" Padding="8,6"
+                                                        CornerRadius="4"
+                                                        Background="{DynamicResource EmuPlaceholderLabelBrush}">
+                                                    <TextBlock Text="{Binding SystemName}" FontSize="9"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               HorizontalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                </Border>
+                                            </Grid>
+                                            <Image Source="{Binding CoverImage}"
+                                                   IsVisible="{Binding HasCoverImage}"
+                                                   Stretch="Uniform" />
+                                        </Panel>
                                     </Border>
                                     <Border IsVisible="{Binding !IsAvailable}"
-                                            Background="#CC202020" CornerRadius="4"
-                                            Padding="6,2" Margin="6"
-                                            HorizontalAlignment="Left" VerticalAlignment="Top">
-                                        <TextBlock Text="Unavailable" FontSize="10" Foreground="White" />
+                                            Background="#E1292D34" CornerRadius="4"
+                                            Padding="7,4" Margin="8"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top">
+                                        <TextBlock Text="FILE MISSING" FontSize="8" FontWeight="Bold"
+                                                   LetterSpacing="0.9" Foreground="White" />
+                                        <ToolTip.Tip>
+                                            <TextBlock Text="The saved game path could not be found. Reconnect its drive or re-add the file."
+                                                       MaxWidth="260" TextWrapping="Wrap" />
+                                        </ToolTip.Tip>
                                     </Border>
                                 </Panel>
+                                </Grid>
+
                                 <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
-                                           TextTrimming="CharacterEllipsis"
-                                           HorizontalAlignment="Center" MaxWidth="150"
+                                           TextTrimming="CharacterEllipsis" FontSize="14"
+                                           FontWeight="Medium" HorizontalAlignment="Center"
+                                           MaxWidth="188"
+                                           Foreground="{DynamicResource EmuTextPrimaryBrush}"
                                            ToolTip.Tip="{Binding Title}" />
+                                <Border Padding="7,2" CornerRadius="7"
+                                        Background="{DynamicResource EmuFormatPillBrush}"
+                                        HorizontalAlignment="Center">
+                                    <TextBlock Text="{Binding FormatLabel}" FontSize="8.5"
+                                               FontWeight="SemiBold" LetterSpacing="0.9"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                </Border>
+
+                                <Popup IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
+                                       Placement="Bottom" IsLightDismissEnabled="True">
+                                    <Border Background="{DynamicResource EmuPopoverBrush}"
+                                            BorderBrush="{DynamicResource EmuBorderBrush}"
+                                            BorderThickness="1" CornerRadius="10" Padding="14"
+                                            BoxShadow="0 10 30 0 #66000000">
+                                        <StackPanel Width="270" Spacing="10">
+                                            <TextBlock Text="Edit title" FontWeight="SemiBold" />
+                                            <TextBox Text="{Binding DraftTitle, Mode=TwoWay}"
+                                                     MaxLength="300" />
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                        Spacing="7">
+                                                <Button Content="Cancel"
+                                                        Command="{Binding CancelEditTitleCommand}" />
+                                                <Button Content="Save" Classes="accent" IsDefault="True"
+                                                        Command="{Binding SaveTitleCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>
             </ScrollViewer>
 
-            <!-- List view -->
-            <ListBox IsVisible="{Binding !IsGridView}"
-                     ItemsSource="{Binding Games}"
-                     Background="Transparent">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:GameViewModel">
-                        <Grid ColumnDefinitions="*,140,110"
-                              Classes.unavailable="{Binding !IsAvailable}">
-                            <TextBlock Grid.Column="0" Text="{Binding Title}"
-                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="{Binding SystemName}"
-                                       Opacity="0.7" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center"
-                                       Text="{Binding IsAvailable, Converter={x:Static vm:AvailabilityText.Instance}}"
-                                       Opacity="0.7" />
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20">
+                <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
+                        BorderThickness="0,0,0,1" Padding="12,0">
+                    <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,100">
+                        <TextBlock Grid.Column="1" Text="TITLE" />
+                        <TextBlock Grid.Column="2" Text="CONSOLE" />
+                        <TextBlock Grid.Column="3" Text="FORMAT" />
+                        <TextBlock Grid.Column="4" Text="STATUS" />
+                    </Grid>
+                </Border>
+                <ListBox Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
+                         SelectedItem="{Binding SelectedGame, Mode=TwoWay}"
+                         Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:GameViewModel">
+                            <Grid ColumnDefinitions="66,*,150,90,100" Classes="game-row"
+                                  Classes.unavailable="{Binding !IsAvailable}"
+                                  DoubleTapped="OnGameDoubleTapped">
+                                <Grid.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Launch" Command="{Binding LaunchCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <Separator />
+                                        <MenuItem Header="Edit title…"
+                                                  Command="{Binding BeginEditTitleCommand}" />
+                                        <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <Separator />
+                                        <MenuItem Header="Remove from library…"
+                                                  Command="{Binding RemoveCommand}"
+                                                  CommandParameter="{Binding}" />
+                                    </ContextMenu>
+                                </Grid.ContextMenu>
+                                <Border Grid.Column="0" Width="43" Height="52" CornerRadius="4"
+                                        Background="{DynamicResource EmuCoverWellBrush}"
+                                        BorderBrush="{DynamicResource EmuCoverBorderBrush}"
+                                        BorderThickness="1" ClipToBounds="True"
+                                        HorizontalAlignment="Left"
+                                        AttachedToVisualTree="OnGameCoverAttached">
+                                    <Panel>
+                                        <Image Source="{Binding PlatformArtwork}" Width="29" Height="29"
+                                               IsVisible="{Binding !HasCoverImage}"
+                                               RenderOptions.BitmapInterpolationMode="None" />
+                                        <Image Source="{Binding CoverImage}"
+                                               IsVisible="{Binding HasCoverImage}"
+                                               Stretch="Uniform" />
+                                    </Panel>
+                                </Border>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Path}" FontSize="10"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding SystemName}"
+                                           VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="3" Text="{Binding FormatLabel}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <TextBlock Grid.Column="4" VerticalAlignment="Center"
+                                           Text="{Binding IsAvailable, Converter={x:Static vm:AvailabilityText.Instance}}"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <Popup Grid.Column="1" IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
+                                       Placement="Bottom" IsLightDismissEnabled="True">
+                                    <Border Background="{DynamicResource EmuPopoverBrush}"
+                                            BorderBrush="{DynamicResource EmuBorderBrush}"
+                                            BorderThickness="1" CornerRadius="10" Padding="14"
+                                            BoxShadow="0 10 30 0 #66000000">
+                                        <StackPanel Width="270" Spacing="10">
+                                            <TextBlock Text="Edit title" FontWeight="SemiBold" />
+                                            <TextBox Text="{Binding DraftTitle, Mode=TwoWay}" MaxLength="300" />
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                        Spacing="7">
+                                                <Button Content="Cancel"
+                                                        Command="{Binding CancelEditTitleCommand}" />
+                                                <Button Content="Save" Classes="accent" IsDefault="True"
+                                                        Command="{Binding SaveTitleCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
 
-            <!-- Empty state: only when the system has no games at all (not when a search matches none) -->
             <StackPanel IsVisible="{Binding IsLibraryEmpty}"
                         VerticalAlignment="Center" HorizontalAlignment="Center"
-                        Spacing="10" MaxWidth="420">
-                <TextBlock Text="{Binding SelectedSystem.Name}"
-                           FontSize="26" FontWeight="SemiBold"
-                           HorizontalAlignment="Center" Opacity="0.9" />
-                <TextBlock Text="No games yet. Add a game file or a folder to build your library."
-                           TextWrapping="Wrap" TextAlignment="Center" Opacity="0.55" />
-                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center"
-                            Margin="0,8,0,0">
-                    <Button Content="Add Files…" Command="{Binding AddGamesCommand}"
-                            IsEnabled="{Binding !IsBusy}" />
+                        Spacing="13" MaxWidth="460">
+                <Border Width="106" Height="106" CornerRadius="53"
+                        Background="{DynamicResource EmuPlaceholderMedallionBrush}"
+                        BorderBrush="{DynamicResource EmuCoverBorderBrush}" BorderThickness="1"
+                        BoxShadow="0 8 22 0 #30000000">
+                    <Image Width="76" Height="76"
+                           Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/missing-metadata@2x.png"
+                           RenderOptions.BitmapInterpolationMode="None" />
+                </Border>
+                <TextBlock Text="{Binding EmptyLibraryTitle}"
+                           FontSize="24" FontWeight="SemiBold" TextAlignment="Center"
+                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                <TextBlock Text="{Binding EmptyLibraryDescription}"
+                           TextWrapping="Wrap" TextAlignment="Center" FontSize="13"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <StackPanel Orientation="Horizontal" Spacing="9" HorizontalAlignment="Center"
+                            Margin="0,7,0,0">
+                    <Button Content="Add Files…" Classes="accent"
+                            Command="{Binding AddGamesCommand}" IsEnabled="{Binding !IsBusy}" />
                     <Button Content="Add Folder…" Command="{Binding AddFolderCommand}"
                             IsEnabled="{Binding !IsBusy}" />
                 </StackPanel>
             </StackPanel>
-        </Panel>
 
-    </DockPanel>
+            <StackPanel IsVisible="{Binding IsSearchEmpty}"
+                        VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="9">
+                <PathIcon Width="28" Height="28" Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                          Data="F0 M9,2 A7,7 0 1 0 9,16 A7,7 0 1 0 9,2 Z M9,5 A4,4 0 1 1 9,13 A4,4 0 1 1 9,5 Z M13.2,12.5 L20,19.3 L19.3,20 L12.5,13.2 Z" />
+                <TextBlock Text="No matching games" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                <TextBlock Text="Try a different title or clear the search."
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <Button Content="Clear Search" Command="{Binding ClearSearchCommand}" />
+            </StackPanel>
+
+            <!-- Operational feedback appears only when there is something useful to say. -->
+            <Border IsVisible="{Binding HasStatusMessage}"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    MaxWidth="520" Margin="18" Padding="11,8"
+                    CornerRadius="9" Background="{DynamicResource EmuPopoverBrush}"
+                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
+                    BoxShadow="0 8 24 0 #50000000">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                    <Ellipse Width="7" Height="7" Fill="{Binding LibraryAccentColor}"
+                             VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11"
+                               VerticalAlignment="Center" TextWrapping="Wrap"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    <Button Grid.Column="2" Width="24" Height="24" Padding="5"
+                            CornerRadius="12" Background="Transparent" BorderThickness="0"
+                            Command="{Binding ClearStatusCommand}" ToolTip.Tip="Dismiss">
+                        <PathIcon Width="9" Height="9"
+                                  Data="M2,1 L10,9 L9,10 L1,2 Z M9,1 L10,2 L2,10 L1,9 Z" />
+                    </Button>
+                </Grid>
+            </Border>
+        </Panel>
+    </Grid>
 </Window>

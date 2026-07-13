@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 1;
+    private const int CurrentSchemaVersion = 2;
 
     private readonly IAppPaths _appPaths;
 
@@ -38,10 +38,14 @@ public sealed class LibraryDatabase
         using var connection = CreateConnection();
 
         var version = GetSchemaVersion(connection);
-        if (version < CurrentSchemaVersion)
+        if (version < 1)
         {
             ApplyMigrationV1(connection);
+            version = 1;
         }
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV2(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -97,6 +101,26 @@ public sealed class LibraryDatabase
                 ExecutablePath TEXT NULL,
                 LaunchArguments TEXT NULL
             );
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV2(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            ALTER TABLE Games ADD COLUMN DateAddedUnixMilliseconds INTEGER NULL;
+            UPDATE Games
+            SET DateAddedUnixMilliseconds = CAST(
+                (julianday(DateAdded) - 2440587.5) * 86400000 AS INTEGER)
+            WHERE DateAddedUnixMilliseconds IS NULL;
+            CREATE INDEX IX_Games_DateAddedUnixMilliseconds
+                ON Games (DateAddedUnixMilliseconds DESC);
+            UPDATE SchemaVersion SET Version = 2;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

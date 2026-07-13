@@ -123,3 +123,134 @@ For explicit files, the user's confirmed system is authoritative when the extens
 ## 2026-07-13 — M4 relationship suppression reconciles persisted library rows
 
 Descriptor filtering cannot stop at the current scan batch: discs may already be in the database when a user later creates an M3U or adds its CUE. `GameEntrySelection` therefore carries both retained entry paths and resolved component paths through explicit imports and folder scans. `GameLibrary.ReconcileImport` applies both sides in one SQLite transaction: it inserts retained entries and deletes matching component rows only from the confirmed system. Suppression changes EmuShelf's database only and never modifies the referenced game files. Eligible components can be discovered again by a later scan if the descriptor is removed.
+
+## 2026-07-13 — M6 launch templates produce argv directly and configuration stays per system
+
+The M2 schema decision remains authoritative: emulator executable and argument settings are keyed by system, not emulator id. Dolphin supplies the shared integration defaults for both GameCube and Wii, while the two systems retain independent configuration rows. That slightly broadens the design document's "one installation per emulator" simplification, but preserves the already-migrated schema and lets portable users intentionally use different Dolphin builds or arguments without adding per-game overrides.
+
+Argument templates are a deliberately small, shell-free language. Double quotes only group one argument; the documented `{GamePath}`, `{GameDirectory}`, `{GameFileName}`, and `{EmulatorDirectory}` placeholders are expanded after tokenization; malformed or unknown placeholders stop launch with status feedback. `TrackedProcessRunner` sets `UseShellExecute = false` and appends every result through `ProcessStartInfo.ArgumentList`, so spaces and shell metacharacters stay inside their argument instead of becoming executable syntax. The generic launch service performs all validation before minimizing, waits for the directly-started emulator process, and restores EmuShelf in `finally`, including start failures.
+
+Default templates follow the emulators' documented command-line modes: DuckStation and PCSX2 use `-batch -- "{GamePath}"`, Dolphin uses `-b -e "{GamePath}"`, and RPCS3 uses `--no-gui "{GamePath}"`. These are editable per-system defaults rather than hard-coded launch behavior; actual Windows verification remains the final unchecked M6 roadmap item.
+
+## 2026-07-13 — M6 review fixes: transactional settings and exact window restoration
+
+The settings dialog saves its complete per-system configuration set through one SQLite transaction. A failed row now rolls back every row instead of leaving a partially-applied Save operation. The single-row `Save` API delegates to that same batch path so there is only one persistence implementation.
+
+Frontend restoration records the window's state immediately before launch and restores that exact state after the emulator exits; maximized and fullscreen windows no longer return as normal windows. Configuration-load exceptions from opening Settings are caught at the main view-model command boundary and shown in the existing status area, matching the launch/import failure behavior instead of escaping through an async relay command.
+
+## 2026-07-13 — M6 launch preflight runs off the UI thread
+
+Launch preparation now performs the configuration-store read, game/executable existence probes, and argument-template expansion in one worker-thread operation before minimizing the frontend. Portable libraries and emulator paths commonly live on removable drives, so a slow drive wake-up or disconnect can no longer freeze the window while it is trying to show launch status. Frontend minimize/restore calls still resume on the captured UI context; a headless UI-thread test locks down both sides of that boundary.
+
+## 2026-07-13 — M7 copies covers, caches bounded thumbnails, and keeps removal DB-only
+
+Manual cover assignment never binds the library to the user's selected source image. `GameCoverService` copies supported PNG/JPEG/WebP/BMP files to `Covers/{GameId}.{ext}` and writes a high-quality, aspect-preserving thumbnail no larger than 300×400 to `Cache/Covers/{GameId}.png`; decode, scaling, and file I/O all run off the UI thread. `Games.CoverPath` goes through the existing relative-path resolver, so the copied cover survives moving the portable installation. Reassigning a cover removes only older EmuShelf-owned variants for that game, never the selected source. Thumbnail loading is driven by a tile/row entering the visual tree, not by a system reload, so virtualization also limits image I/O and decoding; generation/revision guards discard stale results after system switches or cover reassignment.
+
+Removing a game deletes its `Games` row only. The confirmation explicitly says both the game file and copied cover remain on disk. Retaining copied covers follows the project's stronger DB-only removal rule and also avoids destructive cleanup when a user removes an entry accidentally; reclaiming orphaned covers can be a separate, explicit maintenance feature later.
+
+Title edits use a compact per-game popover and persist through `IGameLibrary.UpdateTitle`; the in-memory record and placeholder initials update together, and the current system reloads so SQLite's title ordering remains reflected in the UI. Both grid tiles and list rows expose the same launch/edit/set-cover/remove context menu.
+
+## 2026-07-13 — M7 review fix: cover assignment uses a staged DB switch
+
+This supersedes the fixed `Covers/{GameId}.{ext}` filename described above. Each assignment now creates a versioned `Covers/{GameId}-{Version}.{ext}` file and a matching versioned cached thumbnail without replacing the current assets. Only after both staged files are valid does the app update `Games.CoverPath`; a failed database write discards the stage and leaves the previous cover intact. After a successful database switch, the old EmuShelf-owned cover and its thumbnail are deleted under the same per-game lock. Cleanup rejects paths outside `Covers/` and filenames that do not belong to that game, so the user's selected source image is never eligible for deletion.
+
+Cover-command completions resolve the current game view model by database id rather than retaining the tile instance across awaits. This keeps the visible library correct when an availability refresh or system reload replaces its view models during image work. Thumbnail existence is also checked only after acquiring the per-game lock, and stale load failures are revision-guarded so an old request cannot overwrite the status of a newer assignment.
+
+## 2026-07-13 — M6/M7 second-review fixes preserve UI responsiveness and committed cover state
+
+The tracked process runner schedules the operating-system process creation itself on a worker thread, not only the preceding launch validation. `Process.Start` can synchronously wake or inspect an executable on removable storage, so the frontend UI thread is reserved for the intentional minimize and restore operations while the runner owns both off-thread start and asynchronous exit tracking.
+
+Once a staged cover path has been written to SQLite, that database switch is the authoritative successful assignment. The current game view model adopts the new path and clears its old bitmap before preview loading; a missing or unreadable cache is regenerated through `GameCoverService` when possible and otherwise becomes a success warning rather than a false assignment failure. Previous owned-cover cleanup still runs after a preview failure, preventing the UI, database, and staged-file lifecycle from disagreeing about which cover is current.
+
+## 2026-07-13 — Real-library verification expands PS2 importing to BIN/CUE
+
+The supplied PCSX2 game is a CD image represented by a CUE descriptor and BIN payload, a format omitted by the original design document's short PS2 list. Real-library verification showed that this left a valid user game impossible to add, so the implemented format map deliberately expands beyond that list: PS2 CUE files are normal folder candidates and their referenced BIN tracks are suppressed exactly like PS1; standalone BIN files remain explicit-pick-only and require system confirmation because their contents do not distinguish PS1 from PS2. This preserves the no-junk folder rule while making the confirmed real game importable.
+
+## 2026-07-13 — M8 uses OpenEmu's visual hierarchy without copying its assets
+
+The official OpenEmu screenshots remain a visual reference, not an implementation source. EmuShelf now adopts the recognizable hierarchy that matters for a game library — a persistent system rail, compact integrated toolbar, quiet content surface, spacious cover-first grid, and strong selection feedback — while all XAML, badges, placeholder geometry, colors, and typography are original. The same theme resources style the emulator-settings and confirmation windows so the app reads as one product instead of a polished main window surrounding generic dialogs.
+
+Appearance is a three-way portable preference: follow the operating system by default, or explicitly choose light or dark. The preference is saved through the existing `Settings/settings.json` service, and theme-aware dynamic resources update the active Avalonia window tree without restart. Grid tiles gained pointer selection despite using `ItemsRepeater`; list selection remains native `ListBox` behavior. Keyboard navigation for the virtualized cover grid is still a future accessibility enhancement rather than being simulated with non-virtualized controls.
+
+## 2026-07-13 — Licensed OpenEmu artwork supersedes the asset-free M8 policy
+
+At the user's direction, the preceding M8 decision's no-asset restriction is superseded for
+artwork whose redistribution terms have been verified. EmuShelf now bundles OpenEmu's small
+platform-library and collection icons under the supplied BSD 2-Clause license. The complete
+license and `THIRD-PARTY-NOTICES.md` are copied beside every build, crediting the OpenEmu Team
+and contributors; the source assets also retain their license in the repository. No OpenEmu
+code, branding, emulator cores, controller illustrations, or game artwork is imported.
+
+The platform resolver uses stable EmuShelf system ids and caches the tiny shared bitmaps for
+the application lifetime. It includes the current PS1/PS2/PS3/GameCube/Wii navigation plus
+available future-facing artwork for DS, PSP, Nintendo, Sega, Atari, and other systems. The
+supplied catalog has no dedicated PS3 or PS4 library icon, so those ids deliberately use the
+nearest licensed PlayStation-family image until suitable specifically licensed art is added;
+EmuShelf does not fabricate an upstream asset. The library UI also gains functional All Games
+and Recently Added scopes so the new collection presentation is behavior, not decoration.
+
+## 2026-07-13 — Visual QA replaces persistent chrome with contextual controls
+
+Real-window screenshots exposed defects hidden by the initial homogeneous PS1 snapshot. Mixed
+collections no longer let each tile choose its layout-row height: every tile owns a fixed
+250-point artwork slot, with square PS1/GameCube and portrait PS2/Wii covers bottom-aligned
+inside it, so titles and format labels share one baseline. An unavailable game is labelled
+"File missing" with an explanation instead of the ambiguous "Offline".
+
+The OpenEmu navigation icons are `@2x` pixel assets intended for roughly half their bitmap
+dimensions in logical points; the sidebar now renders them at that scale instead of enlarging
+them into coarse pixel art. OpenEmu's supplied PS2 image is visually almost identical to its
+PS1 image, so EmuShelf composes a small generation badge for PS2/PS3/PS4 rather than pretending
+a different upstream asset exists.
+
+The toolbar now contains only view selection, a collapsed magnifier that expands into search,
+appearance, and Settings. Rescan-current and rescan-all are library-maintenance actions at the
+top of Settings. The permanent status bar and its meaningless idle "Ready" message are removed;
+operation progress/results appear as a dismissible contextual notification only when present.
+
+## 2026-07-13 — Settings scales by platform with local maintenance actions
+
+Emulator configuration is presented as one collapsible section per platform, with the first
+section expanded by default and the licensed platform artwork used in each header. This keeps
+Settings navigable as more systems and options arrive without splitting closely related launch
+and library controls across separate screens.
+
+Each platform section owns a contextual "Rescan library" action, while the top-level maintenance
+card retains only the global rescan. The Settings-to-library contract identifies a system by its
+stable id instead of capturing whichever sidebar selection opened the dialog. A rescan preserves
+the user's current main-library scope, and collection scopes are explicitly reloaded after scan
+reconciliation so newly inserted or suppressed entries appear immediately.
+
+## 2026-07-13 — M8 performance work is bounded by database and realization snapshots
+
+Large-library work is reduced at the two boundaries that previously amplified it. SQLite schema
+version 2 adds an indexed UTC-millisecond `DateAddedUnixMilliseconds` value so Recently Added asks
+the database for only its newest 30 rows instead of loading and sorting the entire library. The
+availability pass still stats known paths off the UI thread, but writes every changed flag in one
+transaction. Search and reload results replace the bound collection with one reset notification,
+and game presentation view models are assembled on a worker thread after shared platform artwork
+has been resolved.
+
+Cover work remains driven by realized controls. While an emulator owns the foreground, new cover
+requests and completed cover UI assignments are deferred by game id; only those realized requests
+are replayed after the frontend restores. The Windows CI publish is self-contained and ReadyToRun
+to improve cold startup without trimming Avalonia's reflection-dependent UI.
+
+## 2026-07-13 — Portable daily logs are diagnostic and never a new failure mode
+
+Operational warnings, caught failures, startup problems, and unhandled process/UI/task exceptions
+are written to `Logs/EmuShelf-YYYY-MM-DD.log` beside the executable. The logger serializes concurrent
+appends and includes full exception details, but deliberately swallows its own directory and file
+errors: a read-only or disconnected portable drive must not replace the original user-facing error
+with a logging crash. Contextual UI messages remain concise; logs carry the diagnostic detail.
+
+## 2026-07-13 — Windows artifacts and validation are separate completion gates
+
+Every CI run builds and tests on Windows and macOS, then the Windows job produces a self-contained
+`EmuShelf-win-x64.zip` plus SHA-256 checksum after verifying that the executable, third-party notice,
+and OpenEmu BSD license are present. Producing the package is automated; accepting it on a real
+Windows machine remains a manual roadmap item tracked by `docs/windows-test-checklist.md`.
+
+That checklist explicitly reflects the earlier PS3 scope reduction. DuckStation, PCSX2, and both
+Dolphin systems are current launch gates; RPCS3 import/launch cannot honestly satisfy the design
+document's original five-system section 14 until PS3 importing returns from the backlog.

@@ -4,7 +4,7 @@ Derived from the design doc's milestones (docs/design-document.pdf §13), split 
 
 ## M1 — App shell ✅ (2026-07-12)
 
-Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle, search, add, settings), empty-state content area, status bar. Builds and runs on macOS, zero warnings.
+Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle, search, add, settings), empty-state content area, and contextual operation feedback. Builds and runs on macOS, zero warnings.
 
 ## M2 — Portable storage ✅ (2026-07-12)
 
@@ -17,13 +17,13 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 
 - [x] Game grid view (virtualized) and list view, switched by the existing toggle; search filtering with debounce.
 - [x] "Add games" flow: pick files or a folder, assign to system (suggest by extension, user confirms), persist to DB.
-- [x] Recursive folder scanning off the UI thread with progress in the status bar.
+- [x] Recursive folder scanning off the UI thread with contextual progress feedback.
 - [x] Startup availability check (background stat of known paths); unavailable games marked and not launchable.
 - [x] Manual rescan action (per system and global).
 
 ## M4 — Format rules for file-based systems ✅ (2026-07-13)
 
-- [x] Extension maps: PS1 (.cue/.chd/.m3u/.pbp/.iso), PS2 (.iso/.chd/.cso/.m3u), GC/Wii (.iso/.rvz/.wbfs/.gcm/.ciso).
+- [x] Extension maps: PS1 (.cue/.chd/.m3u/.pbp/.iso), PS2 (.cue/.bin/.iso/.chd/.cso/.m3u), GC/Wii (.iso/.rvz/.wbfs/.gcm/.ciso).
 - [x] .cue parsing: referenced .bin files never appear as separate games.
 - [x] .m3u playlists: playlist is the game entry; referenced discs hidden.
 - [x] GC vs Wii disambiguation by disc-header magic words (plain and within .rvz/.wbfs containers).
@@ -31,29 +31,32 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 ## M5 — PS3 importing → moved to Backlog (2026-07-12)
 
 Deferred; see **Backlog** at the end of this file. Milestone numbers M6–M8 are kept
-as-is so references don't shift. The next milestone to work is M6.
+as-is so references don't shift. M6's Windows verification remains pending while the
+current implementation milestone is M8.
 
 ## M6 — Emulator configuration and launching
 
-- [ ] Settings UI: per-emulator executable picker and editable global launch arguments.
-- [ ] Argument templates with {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}; args passed as an array, never a shell string.
-- [ ] Launch flow: validate game + emulator, minimize frontend, start process, track exit, restore. Double-click and context menu.
-- [ ] Launch-failure feedback in the status area.
+- [x] Settings UI: per-emulator executable picker and editable global launch arguments.
+- [x] Argument templates with {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}; args passed as an array, never a shell string.
+- [x] Launch flow: validate game + emulator, minimize frontend, start process, track exit, restore. Double-click and context menu.
+- [x] Launch-failure feedback in a contextual notification.
 - [ ] Verify on Windows with real emulators (DuckStation, PCSX2, RPCS3, Dolphin).
 
-## M7 — Titles, covers, and editing
+## M7 — Titles, covers, and editing ✅ (2026-07-13)
 
-- [ ] Manual cover assignment: copy the chosen image into `Covers/`, generate cached thumbnails in `Cache/` off the UI thread.
-- [ ] System-branded placeholder covers (original art, generated — no OpenEmu assets) showing the game title.
-- [ ] Title editing via compact popover; right-click context menu (launch, edit, set cover, remove).
-- [ ] Remove flow: DB-only, confirmation states files are untouched.
+- [x] Manual cover assignment: copy the chosen image into `Covers/`, generate cached thumbnails in `Cache/` off the UI thread.
+- [x] System-branded placeholder covers using the licensed OpenEmu platform-icon set; upstream BSD license and author credit ship with the app.
+- [x] Title editing via compact popover; right-click context menu (launch, edit, set cover, remove).
+- [x] Remove flow: DB-only, confirmation states files are untouched.
 
 ## M8 — Polish and packaging
 
-- [ ] Light/dark theme toggle (and follow-system default).
-- [ ] Performance pass: cold start, large-library scroll, reduced UI work while minimized during play.
-- [ ] Error handling and logging to `Logs/`.
-- [ ] Portable win-x64 zip via CI; test the full §14 checklist on Windows.
+- [x] Light/dark theme toggle (and follow-system default).
+- [x] Cohesive OpenEmu-inspired library shell with console artwork, collection navigation, polished empty/missing-art states, and future-platform asset coverage.
+- [x] Performance pass: indexed/limited recent queries, batched availability writes, bulk UI collection refreshes, ReadyToRun Windows startup, and deferred cover UI work during play.
+- [x] Error handling and daily diagnostic logging to portable `Logs/` files.
+- [x] Self-contained portable win-x64 zip plus SHA-256 checksum via CI.
+- [ ] Test the scoped Windows acceptance checklist on a real Windows machine. The original §14 PS3/RPCS3 portion remains deferred with the PS3 backlog.
 
 ## Backlog (deferred, not in the current v1 sequence)
 

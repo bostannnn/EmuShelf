@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        x:Class="EmuShelf.App.Views.RemoveGameWindow"
+        x:DataType="vm:RemoveGameViewModel"
+        Title="Remove game"
+        Width="430" SizeToContent="Height"
+        CanResize="False"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+
+    <StackPanel Margin="22" Spacing="16">
+        <TextBlock Text="Remove from library?"
+                   FontSize="20" FontWeight="SemiBold"
+                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+        <TextBlock Text="{Binding Message}"
+                   TextWrapping="Wrap"
+                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Cancel" Command="{Binding CancelCommand}" />
+            <Button Content="Remove" Command="{Binding ConfirmCommand}"
+                    IsDefault="True" Classes="accent" />
+        </StackPanel>
+    </StackPanel>
+</Window>

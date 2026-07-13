@@ -1,0 +1,59 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="EmuWindowBackgroundBrush" Color="#EEEDEF" />
+            <SolidColorBrush x:Key="EmuSidebarBrush" Color="#E5E4E6" />
+            <SolidColorBrush x:Key="EmuToolbarBrush" Color="#F7F6F7" />
+            <SolidColorBrush x:Key="EmuLibraryBrush" Color="#EEEDEF" />
+            <SolidColorBrush x:Key="EmuStatusBrush" Color="#E7E6E8" />
+            <SolidColorBrush x:Key="EmuCardBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="EmuPopoverBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="EmuInputBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="EmuSegmentBrush" Color="#E9E8EA" />
+            <SolidColorBrush x:Key="EmuAddButtonBrush" Color="#F2F1F2" />
+            <SolidColorBrush x:Key="EmuCoverWellBrush" Color="#DDDCE0" />
+            <SolidColorBrush x:Key="EmuPlaceholderMedallionBrush" Color="#E9E8EA" />
+            <SolidColorBrush x:Key="EmuPlaceholderLabelBrush" Color="#9FFFFFFF" />
+            <SolidColorBrush x:Key="EmuFormatPillBrush" Color="#0E000000" />
+            <SolidColorBrush x:Key="EmuBorderBrush" Color="#D0CED2" />
+            <SolidColorBrush x:Key="EmuStrongBorderBrush" Color="#B8B5BA" />
+            <SolidColorBrush x:Key="EmuCoverBorderBrush" Color="#C7C4C9" />
+            <SolidColorBrush x:Key="EmuTextPrimaryBrush" Color="#252328" />
+            <SolidColorBrush x:Key="EmuTextSecondaryBrush" Color="#625F67" />
+            <SolidColorBrush x:Key="EmuTextTertiaryBrush" Color="#85818A" />
+            <SolidColorBrush x:Key="EmuHoverBrush" Color="#12000000" />
+            <SolidColorBrush x:Key="EmuNavSelectionBrush" Color="#21000000" />
+            <SolidColorBrush x:Key="EmuAccentBrush" Color="#D43F4A" />
+            <SolidColorBrush x:Key="EmuSelectionBrush" Color="#D43F4A" />
+            <SolidColorBrush x:Key="EmuDangerBrush" Color="#C64045" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="EmuWindowBackgroundBrush" Color="#19191B" />
+            <SolidColorBrush x:Key="EmuSidebarBrush" Color="#202022" />
+            <SolidColorBrush x:Key="EmuToolbarBrush" Color="#1D1D1F" />
+            <SolidColorBrush x:Key="EmuLibraryBrush" Color="#242426" />
+            <SolidColorBrush x:Key="EmuStatusBrush" Color="#1E1E20" />
+            <SolidColorBrush x:Key="EmuCardBrush" Color="#2C2C2F" />
+            <SolidColorBrush x:Key="EmuPopoverBrush" Color="#303033" />
+            <SolidColorBrush x:Key="EmuInputBrush" Color="#2B2B2E" />
+            <SolidColorBrush x:Key="EmuSegmentBrush" Color="#29292C" />
+            <SolidColorBrush x:Key="EmuAddButtonBrush" Color="#29292B" />
+            <SolidColorBrush x:Key="EmuCoverWellBrush" Color="#303034" />
+            <SolidColorBrush x:Key="EmuPlaceholderMedallionBrush" Color="#3A3A3E" />
+            <SolidColorBrush x:Key="EmuPlaceholderLabelBrush" Color="#6B1E1E20" />
+            <SolidColorBrush x:Key="EmuFormatPillBrush" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="EmuBorderBrush" Color="#363639" />
+            <SolidColorBrush x:Key="EmuStrongBorderBrush" Color="#4A4A4F" />
+            <SolidColorBrush x:Key="EmuCoverBorderBrush" Color="#444448" />
+            <SolidColorBrush x:Key="EmuTextPrimaryBrush" Color="#F2F0F3" />
+            <SolidColorBrush x:Key="EmuTextSecondaryBrush" Color="#B5B1B8" />
+            <SolidColorBrush x:Key="EmuTextTertiaryBrush" Color="#8E8A92" />
+            <SolidColorBrush x:Key="EmuHoverBrush" Color="#15FFFFFF" />
+            <SolidColorBrush x:Key="EmuNavSelectionBrush" Color="#23FFFFFF" />
+            <SolidColorBrush x:Key="EmuAccentBrush" Color="#EF4855" />
+            <SolidColorBrush x:Key="EmuSelectionBrush" Color="#EF4855" />
+            <SolidColorBrush x:Key="EmuDangerBrush" Color="#FF737E" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>

@@ -10,6 +10,9 @@ public interface IGameLibrary
     /// <summary>All games, optionally filtered to one system, ordered by title.</summary>
     IReadOnlyList<Game> GetGames(string? systemId = null);
 
+    /// <summary>The newest games across all systems, ordered newest first and limited in SQL.</summary>
+    IReadOnlyList<Game> GetRecentlyAddedGames(int limit);
+
     /// <summary>
     /// Inserts games that aren't already present (matched by path). Returns the
     /// number actually added. Existing entries are left untouched.
@@ -28,6 +31,18 @@ public interface IGameLibrary
 
     /// <summary>Updates the availability flag for a single game.</summary>
     void SetAvailability(long gameId, bool isAvailable);
+
+    /// <summary>Updates availability flags together in one transaction.</summary>
+    void SetAvailabilities(IReadOnlyList<GameAvailabilityUpdate> updates);
+
+    /// <summary>Updates the user-visible title for one library entry.</summary>
+    void UpdateTitle(long gameId, string title);
+
+    /// <summary>Updates the copied cover path for one library entry.</summary>
+    void UpdateCoverPath(long gameId, string? coverPath);
+
+    /// <summary>Removes only the library record. Game and cover files are never touched.</summary>
+    void RemoveGame(long gameId);
 
     /// <summary>Folders remembered for rescanning, optionally filtered to one system.</summary>
     IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null);

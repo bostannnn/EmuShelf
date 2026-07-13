@@ -6,5 +6,5 @@ namespace EmuShelf.App.ViewModels;
 public static class AvailabilityText
 {
     public static readonly IValueConverter Instance =
-        new FuncValueConverter<bool, string>(available => available ? "Available" : "Unavailable");
+        new FuncValueConverter<bool, string>(available => available ? "Available" : "File missing");
 }

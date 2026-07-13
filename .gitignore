@@ -20,3 +20,7 @@ artifacts/
 /Cache/
 /Logs/
 /Settings/
+
+# Local source material and game files (selected redistributable assets are copied into src/)
+/assets to use/
+/roms for testing/

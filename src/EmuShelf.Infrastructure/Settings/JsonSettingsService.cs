@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 
@@ -14,10 +15,12 @@ public sealed class JsonSettingsService : ISettingsService
     };
 
     private readonly IAppPaths _appPaths;
+    private readonly IAppLogger _logger;
 
-    public JsonSettingsService(IAppPaths appPaths)
+    public JsonSettingsService(IAppPaths appPaths, IAppLogger? logger = null)
     {
         _appPaths = appPaths;
+        _logger = logger ?? NullAppLogger.Instance;
     }
 
     public AppSettings Load()
@@ -34,6 +37,7 @@ public sealed class JsonSettingsService : ISettingsService
         {
             // settings.json is a portable, hand-editable file: a syntax mistake, a transient
             // lock (AV/backup/second instance), or a permissions hiccup shouldn't block startup.
+            _logger.Warning("Could not load Settings/settings.json; defaults were used.", ex);
             return new AppSettings();
         }
     }

@@ -16,13 +16,15 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void AnalyzeFile_CueFile_SuggestsPlayStationOnly()
+    public void AnalyzeFile_CueFile_SuggestsBothPlayStationSystems()
     {
         var analysis = _rules.AnalyzeFile("/games/Final Fantasy.cue");
 
-        Assert.Equal(["playstation"], analysis.SuggestedSystems.Select(system => system.Id));
+        Assert.Equal(
+            ["playstation", "playstation2"],
+            analysis.SuggestedSystems.Select(system => system.Id));
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("playstation"));
-        Assert.Equal(GameFileMatch.Unsupported, analysis.MatchFor("playstation2"));
+        Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("playstation2"));
     }
 
     [Fact]
@@ -119,7 +121,7 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     public void AnalyzeFile_IsCaseInsensitive()
     {
         Assert.Equal(
-            ["playstation"],
+            ["playstation", "playstation2"],
             _rules.AnalyzeFile("/games/GAME.CUE").SuggestedSystems.Select(system => system.Id));
     }
 
@@ -128,9 +130,13 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     {
         var analysis = _rules.AnalyzeFile("/games/track.bin");
 
-        Assert.Equal(["playstation"], analysis.SuggestedSystems.Select(system => system.Id));
+        Assert.Equal(
+            ["playstation", "playstation2"],
+            analysis.SuggestedSystems.Select(system => system.Id));
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("playstation"));
+        Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("playstation2"));
         Assert.False(_rules.IsFolderCandidate(analysis.Path, System("playstation")));
+        Assert.False(_rules.IsFolderCandidate(analysis.Path, System("playstation2")));
     }
 
     [Fact]
@@ -149,6 +155,7 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     [InlineData("playstation", ".pbp")]
     [InlineData("playstation", ".iso")]
     [InlineData("playstation2", ".iso")]
+    [InlineData("playstation2", ".cue")]
     [InlineData("playstation2", ".chd")]
     [InlineData("playstation2", ".cso")]
     [InlineData("playstation2", ".m3u")]
@@ -170,6 +177,24 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
         File.WriteAllText(orphan, "x");
 
         var selection = _rules.SelectGameEntries([cue, referenced, orphan], System("playstation"));
+
+        Assert.Equal(
+            ["Game.cue", "Orphan.bin"],
+            selection.EntryPaths.Select(Path.GetFileName).OrderBy(name => name));
+        Assert.Equal(["Game.bin"], selection.SuppressedPaths.Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void SelectGameEntries_PlayStation2CueHidesReferencedBinButKeepsExplicitOrphan()
+    {
+        var cue = Path.Combine(BaseDirectory, "Game.cue");
+        var referenced = Path.Combine(BaseDirectory, "Game.bin");
+        var orphan = Path.Combine(BaseDirectory, "Orphan.bin");
+        File.WriteAllText(cue, "FILE \"Game.bin\" BINARY\n");
+        File.WriteAllText(referenced, "x");
+        File.WriteAllText(orphan, "x");
+
+        var selection = _rules.SelectGameEntries([cue, referenced, orphan], System("playstation2"));
 
         Assert.Equal(
             ["Game.cue", "Orphan.bin"],

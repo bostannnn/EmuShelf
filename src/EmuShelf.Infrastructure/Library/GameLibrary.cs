@@ -41,6 +41,29 @@ public sealed class GameLibrary : IGameLibrary
         return games;
     }
 
+    public IReadOnlyList<Game> GetRecentlyAddedGames(int limit)
+    {
+        if (limit <= 0)
+            return [];
+
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT Id, SystemId, Path, Title, CoverPath, IsAvailable, DateAdded
+            FROM Games
+            ORDER BY DateAddedUnixMilliseconds DESC, Id DESC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$limit", limit);
+
+        var games = new List<Game>(limit);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            games.Add(ReadGame(reader));
+        return games;
+    }
+
     public int AddGames(IEnumerable<Game> games) =>
         WriteGames(games, systemId: null, suppressedPaths: []);
 
@@ -78,8 +101,12 @@ public sealed class GameLibrary : IGameLibrary
         command.Transaction = transaction;
         command.CommandText =
             """
-            INSERT OR IGNORE INTO Games (SystemId, Path, Title, CoverPath, IsAvailable, DateAdded)
-            VALUES ($systemId, $path, $title, $coverPath, $isAvailable, $dateAdded);
+            INSERT OR IGNORE INTO Games (
+                SystemId, Path, Title, CoverPath, IsAvailable, DateAdded,
+                DateAddedUnixMilliseconds)
+            VALUES (
+                $systemId, $path, $title, $coverPath, $isAvailable, $dateAdded,
+                $dateAddedUnixMilliseconds);
             """;
         var systemIdParameter = command.Parameters.Add("$systemId", SqliteType.Text);
         var path = command.Parameters.Add("$path", SqliteType.Text);
@@ -87,6 +114,9 @@ public sealed class GameLibrary : IGameLibrary
         var coverPath = command.Parameters.Add("$coverPath", SqliteType.Text);
         var isAvailable = command.Parameters.Add("$isAvailable", SqliteType.Integer);
         var dateAdded = command.Parameters.Add("$dateAdded", SqliteType.Text);
+        var dateAddedUnixMilliseconds = command.Parameters.Add(
+            "$dateAddedUnixMilliseconds",
+            SqliteType.Integer);
 
         var added = 0;
         foreach (var game in games)
@@ -94,9 +124,12 @@ public sealed class GameLibrary : IGameLibrary
             systemIdParameter.Value = game.SystemId;
             path.Value = _pathResolver.ToStorablePath(game.Path);
             title.Value = game.Title;
-            coverPath.Value = (object?)game.CoverPath ?? DBNull.Value;
+            coverPath.Value = game.CoverPath is null
+                ? DBNull.Value
+                : _pathResolver.ToStorablePath(game.CoverPath);
             isAvailable.Value = game.IsAvailable ? 1 : 0;
-            dateAdded.Value = game.DateAdded.ToString("O");
+            dateAdded.Value = game.DateAdded.ToString("O", CultureInfo.InvariantCulture);
+            dateAddedUnixMilliseconds.Value = game.DateAdded.ToUnixTimeMilliseconds();
             added += command.ExecuteNonQuery();
         }
 
@@ -104,12 +137,57 @@ public sealed class GameLibrary : IGameLibrary
         return added;
     }
 
-    public void SetAvailability(long gameId, bool isAvailable)
+    public void SetAvailability(long gameId, bool isAvailable) =>
+        SetAvailabilities([new GameAvailabilityUpdate(gameId, isAvailable)]);
+
+    public void SetAvailabilities(IReadOnlyList<GameAvailabilityUpdate> updates)
+    {
+        if (updates.Count == 0)
+            return;
+
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE Games SET IsAvailable = $isAvailable WHERE Id = $id;";
+        var availability = command.Parameters.Add("$isAvailable", SqliteType.Integer);
+        var id = command.Parameters.Add("$id", SqliteType.Integer);
+        foreach (var update in updates)
+        {
+            availability.Value = update.IsAvailable ? 1 : 0;
+            id.Value = update.GameId;
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
+    }
+
+    public void UpdateTitle(long gameId, string title)
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE Games SET IsAvailable = $isAvailable WHERE Id = $id;";
-        command.Parameters.AddWithValue("$isAvailable", isAvailable ? 1 : 0);
+        command.CommandText = "UPDATE Games SET Title = $title WHERE Id = $id;";
+        command.Parameters.AddWithValue("$title", title);
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
+    public void UpdateCoverPath(long gameId, string? coverPath)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Games SET CoverPath = $coverPath WHERE Id = $id;";
+        command.Parameters.AddWithValue(
+            "$coverPath",
+            coverPath is null ? DBNull.Value : _pathResolver.ToStorablePath(coverPath));
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
+    public void RemoveGame(long gameId)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM Games WHERE Id = $id;";
         command.Parameters.AddWithValue("$id", gameId);
         command.ExecuteNonQuery();
     }
@@ -167,7 +245,7 @@ public sealed class GameLibrary : IGameLibrary
         SystemId = reader.GetString(1),
         Path = _pathResolver.ToAbsolutePath(reader.GetString(2)),
         Title = reader.GetString(3),
-        CoverPath = reader.IsDBNull(4) ? null : reader.GetString(4),
+        CoverPath = reader.IsDBNull(4) ? null : _pathResolver.ToAbsolutePath(reader.GetString(4)),
         IsAvailable = reader.GetInt64(5) != 0,
         // Written with the invariant round-trip ("O") format; parse the same way so a
         // non-Gregorian current culture can't shift the year or throw.

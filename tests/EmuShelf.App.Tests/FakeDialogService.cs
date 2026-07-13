@@ -1,4 +1,5 @@
 using EmuShelf.App.Services;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.Tests;
@@ -9,9 +10,41 @@ internal sealed class FakeDialogService : IDialogService
     public IReadOnlyList<string> FilesToReturn { get; set; } = [];
     public string? FolderToReturn { get; set; }
     public GameSystem? SystemToReturn { get; set; }
+    public string? EmulatorExecutableToReturn { get; set; }
+    public string? CoverImageToReturn { get; set; }
+    public bool ConfirmRemoveToReturn { get; set; }
+    public string? LastCoverGameTitle { get; private set; }
+    public string? LastRemoveGameTitle { get; private set; }
+    public Exception? SettingsException { get; set; }
+    public int SettingsShown { get; private set; }
+    public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
 
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult(FilesToReturn);
     public Task<string?> PickFolderAsync() => Task.FromResult(FolderToReturn);
+    public Task<string?> PickEmulatorExecutableAsync(string emulatorName) =>
+        Task.FromResult(EmulatorExecutableToReturn);
+    public Task<string?> PickCoverImageAsync(string gameTitle)
+    {
+        LastCoverGameTitle = gameTitle;
+        return Task.FromResult(CoverImageToReturn);
+    }
+    public Task<bool> ConfirmRemoveGameAsync(string gameTitle)
+    {
+        LastRemoveGameTitle = gameTitle;
+        return Task.FromResult(ConfirmRemoveToReturn);
+    }
     public Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested) =>
         Task.FromResult(SystemToReturn);
+    public Task ShowEmulatorSettingsAsync(
+        IReadOnlyList<GameSystem> systems,
+        IReadOnlyList<EmulatorDefinition> emulators,
+        IEmulatorConfigurationStore configurations,
+        LibraryMaintenanceActions maintenance)
+    {
+        SettingsShown++;
+        MaintenanceActions = maintenance;
+        if (SettingsException is not null)
+            return Task.FromException(SettingsException);
+        return Task.CompletedTask;
+    }
 }

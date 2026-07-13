@@ -2,12 +2,13 @@
 
 A lightweight, portable game-library frontend for external emulators, inspired by [OpenEmu](https://openemu.org/)'s library design.
 
-EmuShelf organizes your PlayStation, PlayStation 2, PlayStation 3, GameCube, and Wii games in a cover-grid library and launches them in separately installed emulators (DuckStation, PCSX2, RPCS3, Dolphin). It performs no emulation itself, stores all of its data beside the executable, and never modifies your game files.
+EmuShelf organizes PlayStation, PlayStation 2, GameCube, and Wii games in a cover-grid library and launches them in separately installed emulators (DuckStation, PCSX2, and Dolphin). RPCS3 configuration is present, but PS3 importing is currently deferred. EmuShelf performs no emulation itself, stores all user data beside the executable, and never modifies game files.
 
-**Status:** early development — not yet usable.
+**Status:** Windows validation candidate. Automated builds and tests pass; real-Windows acceptance is the remaining M8 gate.
 
 - Product scope: [docs/design-document.pdf](docs/design-document.pdf)
 - Architectural decisions: [DECISIONS.md](DECISIONS.md)
+- Windows acceptance: [docs/windows-test-checklist.md](docs/windows-test-checklist.md)
 
 ## Building
 
@@ -20,8 +21,14 @@ dotnet run --project src/EmuShelf.App
 
 Version 1 targets Windows (portable zip). The codebase builds and runs on macOS throughout development; a packaged macOS release is planned for later.
 
+The Build workflow publishes a self-contained `EmuShelf-win-x64.zip` artifact. Extract
+the zip to a writable folder before launching `EmuShelf.exe`. Runtime data and daily
+diagnostic logs are created beside the executable.
+
 ## License
 
 [GPL-3.0](LICENSE).
 
-EmuShelf is an independent project and is not affiliated with OpenEmu. No OpenEmu code or artwork is used.
+EmuShelf is an independent project and is not affiliated with OpenEmu. No OpenEmu code
+is used. Redistributed OpenEmu platform artwork retains its BSD 2-Clause license and
+author credit in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

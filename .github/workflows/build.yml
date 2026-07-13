@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -21,7 +25,6 @@ jobs:
       - run: dotnet test -c Release --no-build
 
   package:
-    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: windows-latest
     steps:
@@ -29,8 +32,38 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - run: dotnet publish src/EmuShelf.App -c Release -r win-x64 --self-contained -o publish/EmuShelf
+      - name: Publish self-contained Windows build
+        run: >-
+          dotnet publish src/EmuShelf.App
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishReadyToRun=true
+          -p:PublishReadyToRunShowWarnings=true
+          -o publish/EmuShelf
+      - name: Verify portable payload
+        shell: pwsh
+        run: |
+          $required = @(
+            'publish/EmuShelf/EmuShelf.exe',
+            'publish/EmuShelf/THIRD-PARTY-NOTICES.md',
+            'publish/EmuShelf/ThirdParty/OpenEmu/LICENSE.txt'
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path $path)) {
+              throw "Portable payload is missing $path"
+            }
+          }
+      - name: Create portable zip and checksum
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Compress-Archive -Path publish/EmuShelf -DestinationPath artifacts/EmuShelf-win-x64.zip
+          $hash = (Get-FileHash artifacts/EmuShelf-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  EmuShelf-win-x64.zip" | Set-Content artifacts/EmuShelf-win-x64.sha256
       - uses: actions/upload-artifact@v4
         with:
           name: EmuShelf-win-x64
-          path: publish/
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14

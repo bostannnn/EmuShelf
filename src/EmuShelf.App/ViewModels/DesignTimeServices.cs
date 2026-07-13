@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Launching;
+using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.ViewModels;
@@ -14,10 +16,15 @@ namespace EmuShelf.App.ViewModels;
 internal sealed class EmptyGameLibrary : IGameLibrary
 {
     public IReadOnlyList<Game> GetGames(string? systemId = null) => [];
+    public IReadOnlyList<Game> GetRecentlyAddedGames(int limit) => [];
     public int AddGames(IEnumerable<Game> games) => 0;
     public int ReconcileImport(
         string systemId, IEnumerable<Game> entries, IReadOnlyList<string> suppressedPaths) => 0;
     public void SetAvailability(long gameId, bool isAvailable) { }
+    public void SetAvailabilities(IReadOnlyList<GameAvailabilityUpdate> updates) { }
+    public void UpdateTitle(long gameId, string title) { }
+    public void UpdateCoverPath(long gameId, string? coverPath) { }
+    public void RemoveGame(long gameId) { }
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null) => [];
     public void AddLibraryFolder(string systemId, string folderPath) { }
 }
@@ -44,10 +51,68 @@ internal sealed class AlwaysAvailableChecker : IAvailabilityChecker
     public bool IsAvailable(Game game) => true;
 }
 
+internal sealed class NullGameCoverService : IGameCoverService
+{
+    public Task<ImportedGameCover> ImportAsync(
+        long gameId,
+        string sourcePath,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException<ImportedGameCover>(new InvalidOperationException("Cover importing is unavailable."));
+
+    public Task<string?> GetThumbnailAsync(
+        long gameId,
+        string coverPath,
+        CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+
+    public Task DeleteOwnedCoverAsync(
+        long gameId,
+        string coverPath,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
+}
+
+internal sealed class NullAppThemeService : IAppThemeService
+{
+    public ThemePreference Current { get; private set; } = ThemePreference.System;
+
+    public Task SetThemeAsync(
+        ThemePreference preference,
+        CancellationToken cancellationToken = default)
+    {
+        Current = preference;
+        return Task.CompletedTask;
+    }
+}
+
 internal sealed class NullDialogService : IDialogService
 {
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult<IReadOnlyList<string>>([]);
     public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
+    public Task<string?> PickEmulatorExecutableAsync(string emulatorName) =>
+        Task.FromResult<string?>(null);
+    public Task<string?> PickCoverImageAsync(string gameTitle) =>
+        Task.FromResult<string?>(null);
+    public Task<bool> ConfirmRemoveGameAsync(string gameTitle) =>
+        Task.FromResult(false);
     public Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested) =>
         Task.FromResult<GameSystem?>(null);
+    public Task ShowEmulatorSettingsAsync(
+        IReadOnlyList<GameSystem> systems,
+        IReadOnlyList<EmulatorDefinition> emulators,
+        IEmulatorConfigurationStore configurations,
+        LibraryMaintenanceActions maintenance) => Task.CompletedTask;
+}
+
+internal sealed class NullEmulatorConfigurationStore : IEmulatorConfigurationStore
+{
+    public EmulatorConfiguration? Get(string systemId) => null;
+    public void Save(EmulatorConfiguration configuration) { }
+    public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations) { }
+}
+
+internal sealed class NullEmulatorLaunchService : IEmulatorLaunchService
+{
+    public Task<GameLaunchResult> LaunchAsync(
+        Game game,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(new GameLaunchResult(false, "Emulator launching is unavailable."));
 }

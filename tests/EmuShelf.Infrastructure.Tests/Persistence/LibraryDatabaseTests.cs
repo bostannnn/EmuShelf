@@ -36,6 +36,8 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
+        command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
+        Assert.Equal(2L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]
@@ -100,6 +102,27 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         InsertGame(connection, "PS1/game.cue");
 
         Assert.Throws<SqliteException>(() => InsertGame(connection, "PS1/GAME.CUE"));
+    }
+
+    [Fact]
+    public void Initialize_AddsIndexedRecentlyAddedTimestamp()
+    {
+        var database = new LibraryDatabase(AppPaths);
+
+        database.Initialize();
+
+        using var connection = database.CreateConnection();
+        using var columnCommand = connection.CreateCommand();
+        columnCommand.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('Games') " +
+            "WHERE name = 'DateAddedUnixMilliseconds';";
+        Assert.Equal(1L, (long)columnCommand.ExecuteScalar()!);
+
+        using var indexCommand = connection.CreateCommand();
+        indexCommand.CommandText =
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' " +
+            "AND name = 'IX_Games_DateAddedUnixMilliseconds';";
+        Assert.Equal(1L, (long)indexCommand.ExecuteScalar()!);
     }
 
     private static List<string> GetTableNames(LibraryDatabase database)

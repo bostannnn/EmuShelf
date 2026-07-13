@@ -21,7 +21,7 @@ public sealed class FileImportRules : IGameImportRules
             [PlayStationId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".cue", ".chd", ".m3u", ".pbp", ".iso" },
             [PlayStation2Id] = new(StringComparer.OrdinalIgnoreCase)
-                { ".iso", ".chd", ".cso", ".m3u" },
+                { ".cue", ".iso", ".chd", ".cso", ".m3u" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
@@ -88,11 +88,16 @@ public sealed class FileImportRules : IGameImportRules
 
         // Raw BIN is accepted only when the user picks it explicitly. Folder scans
         // reject it in IsFolderCandidate so missing CUEs do not create junk entries.
-        if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) &&
-            FindSystem(PlayStationId) is { } playStation)
+        if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase))
         {
-            matches[PlayStationId] = GameFileMatch.Compatible;
-            suggestions.Add(playStation);
+            foreach (var systemId in new[] { PlayStationId, PlayStation2Id })
+            {
+                if (FindSystem(systemId) is not { } system)
+                    continue;
+
+                matches[systemId] = GameFileMatch.Compatible;
+                suggestions.Add(system);
+            }
         }
 
         return new GameFileAnalysis(path, suggestions, matches);
@@ -132,7 +137,7 @@ public sealed class FileImportRules : IGameImportRules
             IReadOnlyList<string> references = extension.ToLowerInvariant() switch
             {
                 ".m3u" => ReferencedFileParser.ParseM3u(candidate),
-                ".cue" when system.Id == PlayStationId => ReferencedFileParser.ParseCue(candidate),
+                ".cue" => ReferencedFileParser.ParseCue(candidate),
                 _ => [],
             };
 
