@@ -65,8 +65,13 @@ flight also wins the final database compare-and-set.
 | --- | --- | --- | --- |
 | PlayStation | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PSX by serial, then Libretro by canonical title |
 | PlayStation 2 | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PS2 by serial, then Libretro by canonical title |
-| GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | Libretro by canonical title |
-| Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | Libretro by canonical title |
+| GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
+| Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
+
+GameCube and Wii covers are addressed by the disc id through GameTDB — the disc id's fourth
+character selects a region/language folder (`US`, `JA`, `EN`, `DE`, …), with `EN` and `US` tried
+as fallbacks — before the title-addressed Libretro provider. This id-addressed route does not
+depend on an exact catalog title match, so it succeeds even when the DAT lookup does not.
 
 The PlayStation extractor reads the boot product code from the disc's `SYSTEM.CNF` record via the
 shared ISO9660 reader. It reaches `SYSTEM.CNF` through raw images, CUE tracks, CSO/ZSO compressed

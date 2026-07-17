@@ -232,12 +232,14 @@ that gap. See `DECISIONS.md` for the diagnosis.
       CI, plus a real CD CHD (`cdlz`+`cdzl`, 20k frames) and an opt-in real-file smoke test
       (`EMUSHELF_TEST_CHD_DIR`). Reads are bounded and never modify the source.
 
-### Phase 5 — Nintendo disc-id cover route
+### Phase 5 — Nintendo disc-id cover route ✅ (2026-07-17)
 
-- [ ] Add an id-addressed GameCube/Wii cover provider keyed by the six-character disc id, ordered
-      before the fragile title-based Libretro fallback. Verify the exact cover URL, region
-      mapping, and redistribution terms before it ships; record them in `THIRD-PARTY-NOTICES.md`.
-- [ ] Fixtures: candidate URL per region; 404 falls back to the Libretro title provider.
+- [x] Add an id-addressed GameCube/Wii cover provider (`GameTdbArtworkProvider`) keyed by the
+      six-character disc id, ordered before the title-based Libretro fallback. URL, region mapping
+      (Dolphin-compatible, with EN/US fallbacks), and real 200/404 responses verified;
+      `THIRD-PARTY-NOTICES.md` updated.
+- [x] Tests: candidate URLs per region with fallback order; non-disc-id identifiers ignored;
+      unavailable covers 404 and fall through to the Libretro title provider.
 
 ## Backlog (deferred, not in the current v1 sequence)
 

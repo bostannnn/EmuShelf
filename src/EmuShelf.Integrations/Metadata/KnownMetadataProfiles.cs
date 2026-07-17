@@ -38,13 +38,13 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.DiscId,
             RawCatalog("dat/Nintendo%20-%20GameCube.dat"),
             NintendoExtractor,
-            [new LibretroArtworkProvider("Nintendo - GameCube")]),
+            [new GameTdbArtworkProvider(), new LibretroArtworkProvider("Nintendo - GameCube")]),
         new(
             "wii",
             GameIdentifierKind.DiscId,
             RawCatalog("dat/Nintendo%20-%20Wii.dat"),
             NintendoExtractor,
-            [new LibretroArtworkProvider("Nintendo - Wii")]),
+            [new GameTdbArtworkProvider(), new LibretroArtworkProvider("Nintendo - Wii")]),
     ];
 
     private static Uri RawCatalog(string path) =>

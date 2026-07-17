@@ -195,6 +195,43 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.EndsWith(".png", libretroUri.AbsolutePath);
     }
 
+    [Theory]
+    [InlineData("GALE01", "US", "US,EN")]      // USA GameCube
+    [InlineData("RMCJ01", "JA", "JA,EN,US")]   // Japanese Wii
+    [InlineData("RMCP01", "EN", "EN,US")]      // PAL Wii
+    [InlineData("GXXD01", "DE", "DE,EN,US")]   // German PAL
+    public void GameTdbProvider_BuildsDiscIdCoverUrlsWithRegionFallback(
+        string discId,
+        string primaryFolder,
+        string expectedFolders)
+    {
+        var identifiers = new[]
+        {
+            new GameIdentifier(GameIdentifierKind.DiscId, discId, "DiscHeader", true),
+        };
+
+        var candidates = new GameTdbArtworkProvider().GetCandidates(identifiers, match: null);
+
+        Assert.Equal(
+            expectedFolders.Split(','),
+            candidates.Select(candidate => candidate.SourceUri.Segments[^2].TrimEnd('/')));
+        Assert.Equal(
+            $"https://art.gametdb.com/wii/cover/{primaryFolder}/{discId}.png",
+            candidates[0].SourceUri.ToString());
+        Assert.All(candidates, candidate => Assert.Equal(".png", candidate.FileExtension));
+    }
+
+    [Fact]
+    public void GameTdbProvider_IgnoresNonDiscIdIdentifiers()
+    {
+        var identifiers = new[]
+        {
+            new GameIdentifier(GameIdentifierKind.Serial, "SLUS-20265", "DiscContent", true),
+        };
+
+        Assert.Empty(new GameTdbArtworkProvider().GetCandidates(identifiers, match: null));
+    }
+
     private static Game NewGame(string systemId, string path) => new()
     {
         SystemId = systemId,

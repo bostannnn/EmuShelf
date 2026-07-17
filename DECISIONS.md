@@ -400,3 +400,16 @@ image; it regenerates no sync/ECC (the 2048 user bytes it returns do not depend 
 `huff`, `flac`, and `cdfl` (audio) hunks are unsupported and fall back to the filename serial. The
 crc16 map self-check makes a mis-decode fail closed rather than return a wrong serial. Reads are
 bounded and never modify the source file.
+
+## 2026-07-17 — M11 Phase 5 adds an id-addressed GameCube/Wii cover route
+
+GameCube and Wii covers were previously title-addressed only (Libretro `Named_Boxarts`), which
+needs an exact catalog-title match against filenames derived from a different naming scheme and so
+404s often. Phase 5 adds `GameTdbArtworkProvider`, keyed by the six-character disc id the Nintendo
+extractor already produces, ordered before the Libretro title fallback. It uses GameTDB — the same
+community source Dolphin uses — at `https://art.gametdb.com/wii/cover/<region>/<id>.png`; the
+`/wii/` path serves GameCube covers too. The disc id's fourth character selects the region/language
+folder using Dolphin's mapping (E→US, J→JA, W→ZH, K→KO, PAL→DE/FR/ES/IT/NL/EN), and `EN` then `US`
+are tried as fallbacks because a given cover may exist under only one folder. Because it is
+id-addressed, it succeeds without a catalog title match. GameTDB is recorded in
+`THIRD-PARTY-NOTICES.md` as an opt-in, not-distributed source subject to publisher rights.

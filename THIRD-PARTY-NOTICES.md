@@ -68,3 +68,7 @@ the source project's terms and to the rights of their respective publishers.
 - [xlenore/psx-covers](https://github.com/xlenore/psx-covers) and
   [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) supply individual
   PlayStation and PlayStation 2 covers addressed by product code.
+- [GameTDB](https://www.gametdb.com/) supplies individual GameCube and Wii covers
+  addressed by disc id (`https://art.gametdb.com/wii/cover/<region>/<id>.png`), the same
+  community source Dolphin uses. Cover images remain subject to GameTDB's terms and to the
+  rights of their respective publishers.
