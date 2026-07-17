@@ -41,7 +41,15 @@ public partial class App : Application
                 Bootstrapper.Emulators,
                 Bootstrapper.Logger);
             var coverService = new GameCoverService(Bootstrapper.Paths);
-            _metadataHttpClient = new HttpClient
+            // A pooled handler with a raised per-server connection limit lets the download
+            // stage fetch many small covers from one host concurrently.
+            var metadataHandler = new SocketsHttpHandler
+            {
+                MaxConnectionsPerServer = 16,
+                PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                AutomaticDecompression = System.Net.DecompressionMethods.All,
+            };
+            _metadataHttpClient = new HttpClient(metadataHandler)
             {
                 Timeout = TimeSpan.FromSeconds(30),
             };

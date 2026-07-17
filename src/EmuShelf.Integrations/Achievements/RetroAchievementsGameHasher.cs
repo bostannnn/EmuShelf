@@ -1,0 +1,288 @@
+using System.Security.Cryptography;
+using System.Text;
+using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Library;
+
+namespace EmuShelf.Integrations.Achievements;
+
+/// <summary>
+/// Read-only canonical hashing compatible with the verified disc algorithms in
+/// rcheevos commit 2ac45d357bce2906bb0f1438f3eaf8ce6e78e3c4.
+/// Unsupported containers are intentionally not replaced with whole-file MD5.
+/// </summary>
+public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
+{
+    private const string PlayStationId = "playstation";
+    private const string PlayStation2Id = "playstation2";
+    private const string GameCubeId = "gamecube";
+    private const string WiiId = "wii";
+
+    public string AlgorithmVersion => "rcheevos-2ac45d3-disc-v1";
+
+    public RetroAchievementsSourceSnapshot Inspect(Game game) =>
+        InspectInternal(game).Snapshot;
+
+    public RetroAchievementsHashResult Identify(
+        Game game,
+        CancellationToken cancellationToken = default)
+    {
+        var inspected = InspectInternal(game);
+        var attemptedAt = DateTimeOffset.UtcNow;
+        if (!inspected.Snapshot.CanHash)
+        {
+            return new RetroAchievementsHashResult(
+                inspected.Snapshot.Status,
+                null,
+                AlgorithmVersion,
+                inspected.Snapshot.Fingerprint,
+                attemptedAt,
+                inspected.Snapshot.Error);
+        }
+
+        string? hash = null;
+        var status = RetroAchievementsIdentificationStatus.Hashed;
+        string? error = null;
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            hash = game.SystemId switch
+            {
+                PlayStationId => PlayStationDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    isPlayStation2: false,
+                    cancellationToken),
+                PlayStation2Id => PlayStationDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    isPlayStation2: true,
+                    cancellationToken),
+                GameCubeId => GameCubeDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                _ => throw new UnsupportedDiscLayoutException(
+                    "This system does not have a verified local hash reader."),
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (UnsupportedDiscLayoutException ex)
+        {
+            status = RetroAchievementsIdentificationStatus.UnsupportedFormat;
+            error = ex.Message;
+        }
+        catch (InvalidDataException ex)
+        {
+            status = RetroAchievementsIdentificationStatus.InvalidMedia;
+            error = ex.Message;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   ArgumentException or NotSupportedException)
+        {
+            status = RetroAchievementsIdentificationStatus.Unreadable;
+            error = "The game image or one of its descriptor dependencies could not be read.";
+        }
+
+        var after = InspectInternal(game).Snapshot;
+        if (!string.Equals(
+                inspected.Snapshot.Fingerprint,
+                after.Fingerprint,
+                StringComparison.Ordinal))
+        {
+            // Retain the pre-read fingerprint. The next incremental pass will see
+            // that it differs from the current source and retry the now-stable file.
+            status = RetroAchievementsIdentificationStatus.Unreadable;
+            hash = null;
+            error = "The game image changed while it was being identified.";
+        }
+
+        return new RetroAchievementsHashResult(
+            status,
+            status == RetroAchievementsIdentificationStatus.Hashed ? hash : null,
+            AlgorithmVersion,
+            inspected.Snapshot.Fingerprint,
+            attemptedAt,
+            error);
+    }
+
+    private static InspectedSource InspectInternal(Game game)
+    {
+        var dependencies = new List<string>();
+        string? sourcePath = null;
+        var status = RetroAchievementsIdentificationStatus.UnsupportedFormat;
+        string? error = null;
+        var canHash = false;
+
+        try
+        {
+            sourcePath = Path.GetFullPath(game.Path);
+            dependencies.Add(sourcePath);
+
+            if (game.SystemId is PlayStationId or PlayStation2Id)
+            {
+                sourcePath = ResolveM3u(sourcePath, dependencies);
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".iso" or ".bin" or ".cue";
+                if (extension == ".cue")
+                    dependencies.AddRange(CueSheetParser.GetReferencedFiles(sourcePath));
+
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified logical-disc reader.";
+            }
+            else if (game.SystemId == GameCubeId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".iso" or ".gcm";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified logical-disc reader.";
+            }
+            else if (game.SystemId == WiiId)
+            {
+                error = "Wii partition hashing is not in the verified format gate yet.";
+            }
+            else
+            {
+                error = "RetroAchievements does not support this EmuShelf system.";
+            }
+
+            if (canHash)
+            {
+                var missingDependency = dependencies.Any(path => !File.Exists(path));
+                status = missingDependency
+                    ? RetroAchievementsIdentificationStatus.Unreadable
+                    : RetroAchievementsIdentificationStatus.NotAttempted;
+                if (missingDependency)
+                {
+                    canHash = false;
+                    error = "The game image or one of its descriptor dependencies is missing.";
+                }
+            }
+        }
+        catch (InvalidDataException ex)
+        {
+            status = RetroAchievementsIdentificationStatus.InvalidMedia;
+            error = ex.Message;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   ArgumentException or NotSupportedException)
+        {
+            status = RetroAchievementsIdentificationStatus.Unreadable;
+            error = "The game image or one of its descriptor dependencies could not be inspected.";
+        }
+
+        var fingerprint = CreateFingerprint(dependencies.Count > 0 ? dependencies : [game.Path]);
+        return new InspectedSource(
+            new RetroAchievementsSourceSnapshot(fingerprint, canHash, status, error),
+            sourcePath);
+    }
+
+    private static string ResolveM3u(string path, ICollection<string> dependencies)
+    {
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var depth = 0; depth < 8; depth++)
+        {
+            if (!Path.GetExtension(path).Equals(".m3u", StringComparison.OrdinalIgnoreCase))
+                return path;
+
+            if (!visited.Add(path))
+                throw new InvalidDataException("The M3U playlist contains a reference cycle.");
+
+            if (!File.Exists(path))
+                return path;
+
+            string? reference = null;
+            foreach (var line in File.ReadLines(path))
+            {
+                var value = line.Trim().TrimStart('\uFEFF');
+                if (value.Length == 0 || value.StartsWith('#'))
+                    continue;
+
+                reference = RemoveMatchingQuotes(value);
+                break;
+            }
+
+            if (reference is null)
+                throw new InvalidDataException("The M3U playlist has no game entry.");
+
+            path = ResolveReference(path, reference);
+            dependencies.Add(path);
+        }
+
+        throw new InvalidDataException("The M3U playlist nesting is too deep.");
+    }
+
+    internal static string ResolveReference(string descriptorPath, string reference)
+    {
+        if (Path.IsPathRooted(reference))
+            return Path.GetFullPath(reference);
+
+        if (Uri.TryCreate(reference, UriKind.Absolute, out var uri))
+        {
+            if (!uri.IsFile)
+                throw new InvalidDataException("Only local descriptor references are supported.");
+            return Path.GetFullPath(uri.LocalPath);
+        }
+
+        var baseDirectory = Path.GetDirectoryName(Path.GetFullPath(descriptorPath))
+            ?? throw new InvalidDataException("The descriptor has no parent directory.");
+        var localReference = reference
+            .Replace('\\', Path.DirectorySeparatorChar)
+            .Replace('/', Path.DirectorySeparatorChar);
+        return Path.GetFullPath(Path.Combine(baseDirectory, localReference));
+    }
+
+    private static string RemoveMatchingQuotes(string value)
+    {
+        if (value.Length >= 2 && value[0] == value[^1] && value[0] is '"' or '\'')
+            return value[1..^1];
+        return value;
+    }
+
+    private static string CreateFingerprint(IEnumerable<string> dependencies)
+    {
+        var description = new StringBuilder();
+        foreach (var path in dependencies
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(path);
+                var info = new FileInfo(fullPath);
+                description.Append(fullPath).Append('\0');
+                if (info.Exists)
+                {
+                    description
+                        .Append(info.Length).Append(':')
+                        .Append(info.LastWriteTimeUtc.Ticks);
+                }
+                else
+                {
+                    description.Append("missing");
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                       ArgumentException or NotSupportedException)
+            {
+                description.Append(path).Append("\0unreadable");
+            }
+            description.Append('\n');
+        }
+
+        return Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(description.ToString())))
+            .ToLowerInvariant();
+    }
+
+    private sealed record InspectedSource(
+        RetroAchievementsSourceSnapshot Snapshot,
+        string? SourcePath);
+}
+
+internal sealed class UnsupportedDiscLayoutException : Exception
+{
+    public UnsupportedDiscLayoutException(string message) : base(message)
+    {
+    }
+}

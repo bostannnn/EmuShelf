@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
 
     private readonly IAppPaths _appPaths;
 
@@ -53,8 +53,14 @@ public sealed class LibraryDatabase
             version = 2;
         }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 3)
+        {
             ApplyMigrationV3(connection);
+            version = 3;
+        }
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV4(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -174,6 +180,36 @@ public sealed class LibraryDatabase
             CREATE INDEX IX_GameMetadata_Status ON GameMetadata (Status);
 
             UPDATE SchemaVersion SET Version = 3;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV4(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE RetroAchievementGameLinks (
+                GameId INTEGER PRIMARY KEY,
+                Status INTEGER NOT NULL DEFAULT 0,
+                CanonicalHash TEXT NULL COLLATE NOCASE,
+                HashAlgorithmVersion TEXT NOT NULL,
+                SourceFingerprint TEXT NOT NULL,
+                RetroAchievementsGameId INTEGER NULL,
+                HasAchievements INTEGER NULL,
+                LastAttemptUnixMilliseconds INTEGER NOT NULL,
+                LastError TEXT NULL,
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+            CREATE INDEX IX_RetroAchievementGameLinks_CanonicalHash
+                ON RetroAchievementGameLinks (CanonicalHash);
+            CREATE INDEX IX_RetroAchievementGameLinks_RetroAchievementsGameId
+                ON RetroAchievementGameLinks (RetroAchievementsGameId);
+
+            UPDATE SchemaVersion SET Version = 4;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

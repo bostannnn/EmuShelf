@@ -13,6 +13,9 @@
     <None Update="Assets\ThirdParty\OpenEmu\LICENSE.txt"
           CopyToOutputDirectory="PreserveNewest"
           TargetPath="ThirdParty\OpenEmu\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\RetroAchievements\LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\RetroAchievements\LICENSE.txt" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md"
           Link="THIRD-PARTY-NOTICES.md"
           CopyToOutputDirectory="PreserveNewest"

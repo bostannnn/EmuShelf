@@ -1,7 +1,7 @@
 # Third-party notices
 
-EmuShelf is GPL-3.0 software. The following independently licensed artwork is
-distributed with the application under its original terms.
+EmuShelf is GPL-3.0 software. The following independently licensed components
+are distributed with the application under their original terms.
 
 ## OpenEmu platform-library artwork
 
@@ -21,6 +21,37 @@ are not included.
 The OpenEmu Team and its contributors created and maintained the original library
 experience and artwork. EmuShelf is an independent project and is not affiliated
 with or endorsed by OpenEmu.
+
+## RetroAchievements rcheevos-compatible hashing
+
+EmuShelf's read-only local game identification is a C# implementation of the
+disc-hashing behavior and test vectors documented by the RetroAchievements
+[`rcheevos`](https://github.com/RetroAchievements/rcheevos) project. The initial
+compatibility baseline is commit `2ac45d357bce2906bb0f1438f3eaf8ce6e78e3c4`.
+No native rcheevos binary is bundled.
+
+- Copyright: Copyright (c) 2018 RetroAchievements.org.
+- License: MIT; the complete text ships at
+  `ThirdParty/RetroAchievements/LICENSE.txt` and is retained in
+  `src/EmuShelf.App/Assets/ThirdParty/RetroAchievements/LICENSE.txt`.
+
+## CHD (Compressed Hunks of Data) decoding
+
+EmuShelf's read-only `.chd` decoder is a C# port of the CHD v5 container format —
+the Huffman-coded hunk map, crc16 self-check, and the `zlib`/`lzma`/`cdzl`/`cdlz`
+hunk codecs with CD frame reassembly — used only to read a disc's boot serial. It is
+derived from the MAME CHD implementation and the
+[`libchdr`](https://github.com/rtissera/libchdr) reference port. No MAME or libchdr
+binary is bundled.
+
+- Copyright: Copyright (c) MAME contributors; libchdr Copyright (c) 2018
+  Christopher Hindefjord and contributors.
+- License: BSD-3-Clause.
+
+The LZMA hunk decoder is a minimal C# implementation based on Igor Pavlov's
+[LZMA SDK](https://www.7-zip.org/sdk.html) reference decoder.
+
+- License: public domain (the LZMA SDK is placed in the public domain by its author).
 
 ## Opt-in network metadata sources (not distributed)
 

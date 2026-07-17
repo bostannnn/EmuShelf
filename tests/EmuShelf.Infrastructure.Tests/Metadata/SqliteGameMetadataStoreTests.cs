@@ -62,6 +62,26 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void GetIdentifiers_RoundTripsStoredEvidence_PrimaryFirst()
+    {
+        var game = AddGame("Serialized.iso", GameTitleOrigin.Filename);
+        _metadata.ReplaceIdentifiers(game.Id,
+        [
+            new GameIdentifier(GameIdentifierKind.Serial, "SLUS-20265", "DiscContent", false),
+            new GameIdentifier(GameIdentifierKind.Serial, "SLUS-20264", "DiscContent", true),
+        ]);
+
+        var identifiers = _metadata.GetIdentifiers(game.Id);
+
+        Assert.Equal(2, identifiers.Count);
+        Assert.True(identifiers[0].IsPrimary);
+        Assert.Equal("SLUS-20264", identifiers[0].Value);
+        Assert.Equal("DiscContent", identifiers[0].Source);
+        Assert.Equal(GameIdentifierKind.Serial, identifiers[0].Kind);
+        Assert.Empty(_metadata.GetIdentifiers(game.Id + 1));
+    }
+
+    [Fact]
     public void IdentifiersAndMetadata_CascadeWhenLibraryRowIsRemoved()
     {
         var game = AddGame("Cascade.iso", GameTitleOrigin.Filename);

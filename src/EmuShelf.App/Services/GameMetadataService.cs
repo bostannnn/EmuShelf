@@ -42,6 +42,12 @@ public interface IGameMetadataService
 
 public sealed class GameMetadataService : IGameMetadataService
 {
+    // Disc identification is disk-bound and reads only a few sectors; cover downloads are
+    // network-bound and small. Gating them separately keeps the fast download stage from
+    // being throttled behind identification, without stampeding either resource.
+    private const int IdentifyParallelism = 4;
+    private const int DownloadParallelism = 12;
+
     private readonly IGameMetadataStore _store;
     private readonly IReadOnlyDictionary<string, MetadataSystemProfile> _profiles;
     private readonly IGameMetadataCatalog _catalog;
@@ -89,19 +95,10 @@ public sealed class GameMetadataService : IGameMetadataService
         await _runLock.WaitAsync(cancellationToken);
         try
         {
-            using var concurrency = new SemaphoreSlim(2, 2);
-            var tasks = ids.Select(async id =>
-            {
-                await concurrency.WaitAsync(cancellationToken);
-                try
-                {
-                    return await EnrichGameAsync(id, cancellationToken);
-                }
-                finally
-                {
-                    concurrency.Release();
-                }
-            });
+            using var identifyGate = new SemaphoreSlim(IdentifyParallelism, IdentifyParallelism);
+            using var downloadGate = new SemaphoreSlim(DownloadParallelism, DownloadParallelism);
+            var tasks = ids.Select(id =>
+                EnrichGameAsync(id, identifyGate, downloadGate, cancellationToken));
             var results = await Task.WhenAll(tasks);
             return new MetadataEnrichmentSummary(
                 results.Length,
@@ -118,6 +115,8 @@ public sealed class GameMetadataService : IGameMetadataService
 
     private async Task<GameEnrichmentResult> EnrichGameAsync(
         long gameId,
+        SemaphoreSlim identifyGate,
+        SemaphoreSlim downloadGate,
         CancellationToken cancellationToken)
     {
         GameCatalogMatch? match = null;
@@ -128,80 +127,119 @@ public sealed class GameMetadataService : IGameMetadataService
         var coverApplied = false;
         try
         {
-            var game = await Task.Run(() => _store.GetGame(gameId), cancellationToken);
-            if (game is null || !_profiles.TryGetValue(game.SystemId, out var profile))
-                return new GameEnrichmentResult(false, false, true, false);
+            MetadataSystemProfile? profile = null;
+            IReadOnlyList<GameIdentifier> identifiers = [];
+            Game? current = null;
 
-            var identifiers = await Task.Run(
-                () => profile.IdentifierExtractor.Extract(game),
-                cancellationToken);
-            await Task.Run(() => _store.ReplaceIdentifiers(gameId, identifiers), cancellationToken);
-
-            if (identifiers.Count > 0)
+            // Identification stage: disk-bound disc reads plus the (cached) title catalog.
+            await identifyGate.WaitAsync(cancellationToken);
+            try
             {
-                try
-                {
-                    match = await _catalog.FindMatchAsync(profile, identifiers, cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    // Serial-addressed providers such as xlenore do not need the title
-                    // catalog. Keep that useful fallback available when the DAT source is
-                    // temporarily offline, while retaining the catalog error as provenance.
-                    catalogError = ex.Message;
-                    _logger.Warning(
-                        $"The metadata catalog was unavailable for game id {gameId}.",
-                        ex);
-                }
-            }
+                var game = await Task.Run(() => _store.GetGame(gameId), cancellationToken);
+                if (game is null || !_profiles.TryGetValue(game.SystemId, out profile))
+                    return new GameEnrichmentResult(false, false, true, false);
 
-            if (match is not null)
-            {
-                var filenameTitle = Path.GetFileNameWithoutExtension(game.Path);
-                var titleChanged = !string.Equals(
-                    game.Title,
-                    match.CanonicalTitle,
-                    StringComparison.Ordinal);
-                var titleAccepted = await Task.Run(
-                    () => _store.TryApplyCatalogTitle(
-                        gameId,
+                // Reuse identifiers already extracted for this game; a disc's serial does
+                // not change, so a re-run never needs to read the disc again.
+                identifiers = await Task.Run(() => _store.GetIdentifiers(gameId), cancellationToken);
+                if (identifiers.Count == 0)
+                {
+                    identifiers = await Task.Run(
+                        () => profile.IdentifierExtractor.Extract(game),
+                        cancellationToken);
+                    await Task.Run(
+                        () => _store.ReplaceIdentifiers(gameId, identifiers),
+                        cancellationToken);
+                }
+
+                if (identifiers.Count > 0)
+                {
+                    try
+                    {
+                        match = await _catalog.FindMatchAsync(profile, identifiers, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Serial-addressed providers such as xlenore do not need the title
+                        // catalog. Keep that useful fallback available when the DAT source is
+                        // temporarily offline, while retaining the catalog error as provenance.
+                        catalogError = ex.Message;
+                        _logger.Warning(
+                            $"The metadata catalog was unavailable for game id {gameId}.",
+                            ex);
+                    }
+                }
+
+                if (match is not null)
+                {
+                    var filenameTitle = Path.GetFileNameWithoutExtension(game.Path);
+                    var titleChanged = !string.Equals(
+                        game.Title,
                         match.CanonicalTitle,
-                        filenameTitle),
-                    cancellationToken);
-                titleApplied = titleChanged && titleAccepted;
+                        StringComparison.Ordinal);
+                    var titleAccepted = await Task.Run(
+                        () => _store.TryApplyCatalogTitle(
+                            gameId,
+                            match.CanonicalTitle,
+                            filenameTitle),
+                        cancellationToken);
+                    titleApplied = titleChanged && titleAccepted;
+                }
+
+                current = await Task.Run(() => _store.GetGame(gameId), cancellationToken);
+            }
+            finally
+            {
+                identifyGate.Release();
             }
 
-            var current = await Task.Run(() => _store.GetGame(gameId), cancellationToken);
-            if (current is { CoverPath: null } && current.CoverOrigin != GameCoverOrigin.User)
+            if (profile is not null &&
+                current is { CoverPath: null } &&
+                current.CoverOrigin != GameCoverOrigin.User)
             {
                 var candidates = profile.ArtworkProviders
                     .SelectMany(provider => provider.GetCandidates(identifiers, match))
                     .ToArray();
-                downloaded = await _artworkDownloader.DownloadFirstAsync(candidates, cancellationToken);
-                if (downloaded is not null)
+
+                // Download stage: network-bound, gated separately from disc reads.
+                if (candidates.Length > 0)
                 {
-                    imported = await _covers.ImportAsync(
-                        gameId,
-                        downloaded.TemporaryPath,
-                        cancellationToken);
-                    coverApplied = await Task.Run(
-                        () => _store.TryApplyDownloadedCover(
-                            gameId,
-                            imported.CoverPath,
-                            downloaded.Candidate.ProviderId,
-                            downloaded.Candidate.SourceUri.ToString()),
-                        cancellationToken);
-                    if (!coverApplied)
+                    await downloadGate.WaitAsync(cancellationToken);
+                    try
                     {
-                        await _covers.DeleteOwnedCoverAsync(
-                            gameId,
-                            imported.CoverPath,
+                        downloaded = await _artworkDownloader.DownloadFirstAsync(
+                            candidates,
                             cancellationToken);
-                        imported = null;
+                        if (downloaded is not null)
+                        {
+                            imported = await _covers.ImportAsync(
+                                gameId,
+                                downloaded.TemporaryPath,
+                                cancellationToken);
+                            coverApplied = await Task.Run(
+                                () => _store.TryApplyDownloadedCover(
+                                    gameId,
+                                    imported.CoverPath,
+                                    downloaded.Candidate.ProviderId,
+                                    downloaded.Candidate.SourceUri.ToString()),
+                                cancellationToken);
+                            if (!coverApplied)
+                            {
+                                await _covers.DeleteOwnedCoverAsync(
+                                    gameId,
+                                    imported.CoverPath,
+                                    cancellationToken);
+                                imported = null;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        downloadGate.Release();
                     }
                 }
             }

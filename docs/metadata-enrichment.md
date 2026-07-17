@@ -32,7 +32,8 @@ thumbnail cache under `Cache/Covers/`. All locations remain portable beside the 
 For each requested game, `GameMetadataService` performs the following bounded background work:
 
 1. Select the `MetadataSystemProfile` registered for the game's stable system id.
-2. Run its `IGameIdentifierExtractor` against the local entry and persist every typed identifier.
+2. Reuse the game's already-extracted identifiers when present; otherwise run its
+   `IGameIdentifierExtractor` against the local entry and persist every typed identifier.
 3. Ask `IGameMetadataCatalog` for an exact match using the profile's declared key kind.
 4. Apply the canonical title only if the current title is filename- or catalog-derived.
 5. Ask the profile's `IGameArtworkProvider` instances for candidates in priority order, then
@@ -41,10 +42,17 @@ For each requested game, `GameMetadataService` performs the following bounded ba
    has no cover, and record the provider id and source URI.
 7. Record `Matched`, `Partial`, `Unmatched`, or `Failed` plus the last error and attempt time.
 
-At most two games are enriched concurrently, and only one enrichment run is active. HTTP requests
-stream responses with explicit size limits (12 MiB catalogs and 8 MiB covers). Missing, timed-out,
-unsuccessful, or invalid artwork candidates are logged and fall through to the next provider. A
-catalog outage does not prevent an identifier-only provider from finding a cover.
+Identifier extraction is targeted, not a scan. The PlayStation extractor reads the disc's
+`SYSTEM.CNF` boot record through the shared `CdSectorReader`/ISO9660 reader — a few kilobytes —
+and only falls back to a bounded, early-exit ASCII scan when an image has no readable layout.
+Because identifiers are cached, a re-run never re-reads a disc whose serial is already known.
+
+Steps 1–4 (disk-bound identification) and steps 5–6 (network-bound download) run under separate
+concurrency limits so cover downloads are not throttled behind disc reads, and only one enrichment
+run is active at a time. HTTP requests stream responses with explicit size limits (12 MiB catalogs
+and 8 MiB covers) over a pooled connection. Missing, timed-out, unsuccessful, or invalid artwork
+candidates are logged and fall through to the next provider. A catalog outage does not prevent an
+identifier-only provider from finding a cover.
 
 No metadata operation changes library identity, deletes an entry, or writes to a game file. A
 manual title has `GameTitleOrigin.User`, a manual or pre-migration cover has
@@ -60,8 +68,13 @@ flight also wins the final database compare-and-set.
 | GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | Libretro by canonical title |
 | Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | Libretro by canonical title |
 
-The PlayStation extractor inspects at most the first 32 MiB of each resolved disc file, where the
-boot product code normally appears. It does not decode CHD or CSO containers. For those formats it
+The PlayStation extractor reads the boot product code from the disc's `SYSTEM.CNF` record via the
+shared ISO9660 reader. It reaches `SYSTEM.CNF` through raw images, CUE tracks, CSO/ZSO compressed
+images, and CHD images alike — each adapter decompresses only the blocks or hunks that back the
+sectors it reads — and reads a PlayStation EBOOT (`.pbp`) serial from its embedded PARAM.SFO
+`DISC_ID`. The CHD reader supports `zlib`/`lzma` (DVD) and `cdzl`/`cdlz` (CD) hunks; `huff`, `flac`,
+and `cdfl` hunks are unsupported and fall back. When an image has no readable layout the extractor
+scans at most the first 16 MiB and stops at the first product code. For an unsupported container it
 uses a product code only when one is explicitly present in the filename, such as
 `Game Name [SLUS-12345].chd`; otherwise the game remains unmatched. This is a safe fallback, not
 fuzzy matching.

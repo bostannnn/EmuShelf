@@ -1,4 +1,6 @@
 using System.IO;
+using EmuShelf.App.Services;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
@@ -8,6 +10,7 @@ using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
+using EmuShelf.Infrastructure.Achievements;
 using EmuShelf.Infrastructure.Diagnostics;
 using EmuShelf.Infrastructure.Launching;
 using EmuShelf.Infrastructure.Library;
@@ -16,6 +19,7 @@ using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
+using EmuShelf.Integrations.Achievements;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Metadata;
@@ -36,6 +40,9 @@ public sealed class AppBootstrapper
     public IReadOnlyList<GameSystem> Systems { get; }
     public IGameLibrary Library { get; }
     public IGameMetadataStore MetadataStore { get; }
+    public IRetroAchievementsStore RetroAchievementsStore { get; }
+    public IRetroAchievementsGameHasher RetroAchievementsHasher { get; }
+    public IRetroAchievementsIdentificationService RetroAchievementsIdentification { get; }
     public IReadOnlyList<MetadataSystemProfile> MetadataProfiles { get; }
     public IFolderScanner FolderScanner { get; }
     public IGameImportRules ImportRules { get; }
@@ -84,6 +91,12 @@ public sealed class AppBootstrapper
         Emulators = KnownEmulators.All;
         Library = new GameLibrary(database, PathResolver);
         MetadataStore = new SqliteGameMetadataStore(database, PathResolver);
+        RetroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
+        RetroAchievementsHasher = new RetroAchievementsGameHasher();
+        RetroAchievementsIdentification = new RetroAchievementsIdentificationService(
+            RetroAchievementsStore,
+            RetroAchievementsHasher,
+            Logger);
         MetadataProfiles = KnownMetadataProfiles.All;
         EmulatorConfigurations = new SqliteEmulatorConfigurationStore(database, PathResolver);
         ProcessRunner = new TrackedProcessRunner();

@@ -305,3 +305,98 @@ or the user. Catalogue titles may replace filename-derived or previous catalogue
 downloaded covers may fill an empty cover only. Existing pre-migration covers are classified as
 user-owned. Manual edits always win, library identity remains the local path, and no provider
 failure can change or remove a game entry.
+
+## 2026-07-13 — M10 pins canonical hashing to a reviewed rcheevos baseline
+
+Local RetroAchievements identification is implemented behind Core interfaces as a read-only C#
+compatibility layer pinned to `rcheevos` commit
+`2ac45d357bce2906bb0f1438f3eaf8ce6e78e3c4`. A native rcheevos binary is not bundled: doing so
+would add a native build and deployment matrix to both Windows and macOS before its compressed
+disc callbacks solve the actual format problem. The upstream algorithms and fixture shapes are
+MIT-licensed; EmuShelf ships that license and credits RetroAchievements in
+`THIRD-PARTY-NOTICES.md`.
+
+The first implemented format scope is deliberately narrow: PlayStation and PlayStation 2
+cooked ISO/BIN, ordinary CUE/BIN with 2048- or 2352-byte sectors, M3U playlists whose first game
+entry resolves to one of those media, and GameCube ISO/GCM. CHD, CSO, PBP, RVZ, WBFS, CISO, all
+Wii images, and PlayStation 3 are explicit `UnsupportedFormat`/unknown results. They never fall
+back to whole-file MD5 or filename/title matching. Expanding that set requires a logical-disc
+reader and an exact parity fixture for the container.
+
+Schema version 4 stores the calculated hash separately from a future catalogue match, along with
+the pinned algorithm version, attempt status, and a SHA-256 fingerprint of path, size, modified
+time, and selected CUE/M3U dependencies. Re-identification clears any old catalogue resolution.
+A single serialized worker reuses unchanged hashed, unsupported, or invalid-media results;
+temporarily unreadable media is eligible for retry. The worker is composed at startup but is not
+run as a full-library startup pass.
+
+## 2026-07-16 — M11 Phase 1 makes PlayStation matching targeted, cached, and staged
+
+The first enrichment implementation (M9) re-derived each PlayStation serial by scanning up to
+32 MiB of every disc file — with no early exit — on every enrichment pass, at a two-wide gate that
+made cover downloads wait behind disc reads. That is why matching was slow and incomplete relative
+to DuckStation/PCSX2, which read the serial from a known location (or decode the container) and
+fan cover downloads out widely.
+
+Phase 1 replaces the scan with a targeted `SYSTEM.CNF` read that reuses the `CdSectorReader` and
+ISO9660 walk already written for RetroAchievements hashing. The shared directory lookup was
+extracted into `Iso9660Directory` so both the hasher and the new `PlayStationDiscSerialReader` use
+one implementation rather than a second, weaker scanner. A bounded, early-exit ASCII fallback and
+the existing filename fallback remain for images with no readable layout; compressed containers
+(CHD/CSO/ZSO/PBP) still return no serial here and are deferred to Phases 2–4. Extracted identifiers
+are now reused from the database (`IGameMetadataStore.GetIdentifiers`); a re-run never re-reads a
+disc whose serial is already known. Enrichment is split into a disk-bound identification stage and
+a network-bound download stage with independent concurrency, and the metadata `HttpClient` uses a
+pooled handler with a raised per-server connection limit so many small covers download at once.
+
+This changes performance and internal structure only. Identity is still the local path, matching is
+still exact, manual edits still win, and no provider failure changes a game entry.
+
+## 2026-07-16 — M11 Phase 2 reads the PBP serial from PARAM.SFO, not the disc image
+
+A PlayStation EBOOT (`.pbp`) carries its serial twice: in the uncompressed embedded PARAM.SFO
+(`DISC_ID`) and inside the compressed PS1 disc image in DATA.PSAR. EmuShelf reads `DISC_ID`. It is a
+small, targeted, uncompressed read that reuses the existing serial normalizer, and it avoids
+decompressing the PSAR disc image purely to recover a code the header already states. A PBP with a
+missing, malformed, or non-string `DISC_ID` falls back to the filename serial, consistent with the
+other containers. The disc image inside DATA.PSAR is never read or modified.
+
+## 2026-07-16 — M11 Phase 3 decompresses CSO/ZSO on demand behind one sector reader
+
+CSO (`.cso`, deflate) and ZSO (`.zso`, lz4) share the CSOv1 header and block index; only the block
+codec differs. Rather than add a second SYSTEM.CNF parser, both are exposed through a shared
+`ILogicalSectorReader` — the same interface the raw `CdSectorReader` implements — so the existing
+ISO9660 walk and boot-serial reader are container-agnostic. `CompressedIsoSectorSource`
+decompresses only the blocks that back the sectors the walk actually reads (PVD, root directory,
+SYSTEM.CNF), never the whole image, and caches the last block.
+
+CSO blocks use raw deflate, decoded with the framework `DeflateStream`. ZSO blocks use the LZ4
+block format, for which .NET has no built-in decoder. EmuShelf ships a small hand-rolled LZ4 block
+decoder (~60 lines) instead of taking a NuGet dependency: only a few early blocks are ever decoded,
+the block format is stable and simple, and avoiding a native/third-party compression dependency
+keeps the portable build and its license surface unchanged. The decoder is bounded and returns
+false on any malformed input, falling back to the filename serial. Only CSOv1/ZSO v1 are accepted;
+other versions and unknown magic fall back rather than guess.
+
+## 2026-07-17 — M11 Phase 4 ports a bounded CHD reader, verified against chdman
+
+CHD is the last and hardest container. A correct reader needs the compressed v5 hunk map
+(MAME's canonical Huffman coding), a crc16 self-check, per-hunk `zlib`/`lzma` decode, and — for
+CD geometry — `cdzl`/`cdlz` with frame reassembly. There is no maintained, permissively licensed
+pure-C# CHD library (RomVault/CHDSharp ships without any license), so EmuShelf ports the format
+from MAME/libchdr (BSD-3-Clause) and vendors a minimal LZMA decoder derived from the public-domain
+LZMA SDK rather than taking a native dependency (which the M10 RetroAchievements decision already
+rejected for the same portability reasons). Both are credited in `THIRD-PARTY-NOTICES.md`.
+
+Because a from-scratch decoder is unverifiable by inspection, correctness was established against
+`chdman` 0.288: `createdvd`/`createcd` produce reference vectors and `extractcd` produces the
+expected bytes. The committed CI fixtures are tiny DVD `zlib`/`lzma` CHDs that decode byte-for-byte
+to the source ISO and yield the boot serial. The CD path (`cdzl`/`cdlz` + Mode 2 Form 1 frame
+reassembly) was verified byte-for-byte against a real CD CHD (20k frames) and the map crc matched
+on real CD and DVD CHDs; an opt-in test (`EMUSHELF_TEST_CHD_DIR`) re-runs that check on real files.
+
+Scope and safety: the reader only decompresses the few hunks that back SYSTEM.CNF, never the whole
+image; it regenerates no sync/ECC (the 2048 user bytes it returns do not depend on them); and
+`huff`, `flac`, and `cdfl` (audio) hunks are unsupported and fall back to the filename serial. The
+crc16 map self-check makes a mis-decode fail closed rather than return a wrong serial. Reads are
+bounded and never modify the source file.

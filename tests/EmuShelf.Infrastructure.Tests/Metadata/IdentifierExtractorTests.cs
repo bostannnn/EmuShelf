@@ -30,6 +30,25 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void PlayStationExtractor_ReadsSerialFromSystemCnf_IgnoringEarlierDecoy()
+    {
+        // A valid ISO9660 image whose reserved system area contains a decoy product code
+        // ahead of SYSTEM.CNF. The targeted read must return the real boot serial, proving
+        // it reads SYSTEM.CNF directly instead of linearly scanning the disc.
+        var path = Path.Combine(BaseDirectory, "game.iso");
+        File.WriteAllBytes(
+            path,
+            PlayStationIsoBuilder.BuildPlayStation2Iso("SLUS_200.64", decoySerial: "SLES-00001"));
+        var game = NewGame("playstation2", path);
+
+        var identifier = Assert.Single(new PlayStationIdentifierExtractor().Extract(game));
+
+        Assert.Equal("SLUS-20064", identifier.Value);
+        Assert.Equal("DiscContent", identifier.Source);
+        Assert.True(identifier.IsPrimary);
+    }
+
+    [Fact]
     public void PlayStationExtractor_FollowsM3uAndCueReferences()
     {
         var disc1 = Path.Combine(BaseDirectory, "disc1.bin");
@@ -47,6 +66,78 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
             .Extract(NewGame("playstation", playlist));
 
         Assert.Equal(["SCUS-94163", "SCUS-94491"], identifiers.Select(item => item.Value));
+    }
+
+    [Theory]
+    [InlineData("SLUS-00594", "SLUS-00594")]
+    [InlineData("SCUS94163", "SCUS-94163")]
+    public void PlayStationExtractor_ReadsSerialFromPbpParamSfoDiscId(
+        string discId,
+        string expected)
+    {
+        var path = Path.Combine(BaseDirectory, "Some Game.pbp");
+        File.WriteAllBytes(path, PbpBuilder.BuildWithDiscId(discId));
+
+        var identifier = Assert.Single(new PlayStationIdentifierExtractor()
+            .Extract(NewGame("playstation", path)));
+
+        Assert.Equal(expected, identifier.Value);
+        Assert.Equal("DiscContent", identifier.Source);
+        Assert.True(identifier.IsPrimary);
+    }
+
+    [Fact]
+    public void PlayStationExtractor_MalformedPbp_FallsBackToFilenameSerial()
+    {
+        var path = Path.Combine(BaseDirectory, "Gran Turismo [SCUS-94194].pbp");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5, 6, 7, 8]);
+
+        var identifier = Assert.Single(new PlayStationIdentifierExtractor()
+            .Extract(NewGame("playstation", path)));
+
+        Assert.Equal("SCUS-94194", identifier.Value);
+        Assert.Equal("Filename", identifier.Source);
+    }
+
+    [Fact]
+    public void PlayStationExtractor_ReadsSerialFromCsoDeflateImage()
+    {
+        var iso = PlayStationIsoBuilder.BuildPlayStation2Iso("SLUS_200.64", decoySerial: "SLES-00001");
+        var path = Path.Combine(BaseDirectory, "game.cso");
+        File.WriteAllBytes(path, CompressedIsoBuilder.BuildCso(iso));
+
+        var identifier = Assert.Single(new PlayStationIdentifierExtractor()
+            .Extract(NewGame("playstation2", path)));
+
+        Assert.Equal("SLUS-20064", identifier.Value);
+        Assert.Equal("DiscContent", identifier.Source);
+    }
+
+    [Fact]
+    public void PlayStationExtractor_ReadsSerialFromZsoLz4Image()
+    {
+        var iso = PlayStationIsoBuilder.BuildPlayStation2Iso("SLUS_200.64", decoySerial: "SLES-00001");
+        var path = Path.Combine(BaseDirectory, "game.zso");
+        File.WriteAllBytes(path, CompressedIsoBuilder.BuildZso(iso));
+
+        var identifier = Assert.Single(new PlayStationIdentifierExtractor()
+            .Extract(NewGame("playstation2", path)));
+
+        Assert.Equal("SLUS-20064", identifier.Value);
+        Assert.Equal("DiscContent", identifier.Source);
+    }
+
+    [Fact]
+    public void PlayStationExtractor_CorruptCso_FallsBackToFilenameSerial()
+    {
+        var path = Path.Combine(BaseDirectory, "Ico [SLUS-20495].cso");
+        File.WriteAllBytes(path, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+        var identifier = Assert.Single(new PlayStationIdentifierExtractor()
+            .Extract(NewGame("playstation2", path)));
+
+        Assert.Equal("SLUS-20495", identifier.Value);
+        Assert.Equal("Filename", identifier.Source);
     }
 
     [Fact]

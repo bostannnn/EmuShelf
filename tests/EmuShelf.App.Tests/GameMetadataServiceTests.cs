@@ -138,12 +138,61 @@ public class GameMetadataServiceTests
         Assert.False(File.Exists(temporaryPath));
     }
 
+    [Fact]
+    public async Task Enrich_ReusesStoredIdentifiers_WithoutReextractingOnRerun()
+    {
+        var game = new Game
+        {
+            Id = 10,
+            SystemId = "test-system",
+            Path = "/games/filename.iso",
+            Title = "filename",
+            TitleOrigin = GameTitleOrigin.Filename,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game);
+        var extractor = new CountingExtractor();
+        var candidate = new ArtworkCandidate(
+            "test-art",
+            new Uri("https://example.test/cover.jpg"),
+            ".jpg");
+        var service = new GameMetadataService(
+            store,
+            [
+                new MetadataSystemProfile(
+                    "test-system",
+                    GameIdentifierKind.Serial,
+                    new Uri("https://example.test/catalog.dat"),
+                    extractor,
+                    [new FixedArtworkProvider(candidate)]),
+            ],
+            new FixedCatalog(),
+            new FixedDownloader(new DownloadedArtwork(candidate, Path.GetTempFileName())),
+            new RecordingCoverService());
+
+        await service.EnrichAsync([game.Id], TestContext.Current.CancellationToken);
+        await service.EnrichAsync([game.Id], TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, extractor.Calls);
+    }
+
     private sealed class FixedExtractor : IGameIdentifierExtractor
     {
         public IReadOnlyList<GameIdentifier> Extract(Game game) =>
         [
             new GameIdentifier(GameIdentifierKind.Serial, "SLUS-12345", "Test", true),
         ];
+    }
+
+    private sealed class CountingExtractor : IGameIdentifierExtractor
+    {
+        public int Calls { get; private set; }
+
+        public IReadOnlyList<GameIdentifier> Extract(Game game)
+        {
+            Calls++;
+            return [new GameIdentifier(GameIdentifierKind.Serial, "SLUS-12345", "Test", true)];
+        }
     }
 
     private sealed class FixedCatalog : IGameMetadataCatalog
@@ -208,12 +257,17 @@ public class GameMetadataServiceTests
 
     private sealed class RecordingMetadataStore(Game game) : IGameMetadataStore
     {
+        private IReadOnlyList<GameIdentifier> _identifiers = [];
+
         public Game Game { get; private set; } = game;
         public GameMetadataAttempt? LastAttempt { get; private set; }
 
         public Game? GetGame(long gameId) => gameId == Game.Id ? Game : null;
         public IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null) => [Game];
-        public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers) { }
+        public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId) => _identifiers;
+
+        public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers) =>
+            _identifiers = identifiers;
 
         public bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle)
         {

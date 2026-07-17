@@ -7,24 +7,29 @@ using EmuShelf.Integrations.Importing;
 namespace EmuShelf.Integrations.Metadata;
 
 /// <summary>
-/// Finds PlayStation product codes in the early disc data where SYSTEM.CNF and
-/// its boot executable live. Descriptor and playlist files are followed read-only.
+/// Finds PlayStation product codes by reading the disc's SYSTEM.CNF boot record directly.
+/// Descriptor and playlist files are followed read-only. When a disc has no readable
+/// layout, a bounded early-exit scan of the early data is used, then a filename fallback.
 /// Compressed containers fall back to an explicit serial in their filename.
 /// </summary>
 public sealed partial class PlayStationIdentifierExtractor : IGameIdentifierExtractor
 {
-    private const int MaximumBytesToInspect = 32 * 1024 * 1024;
+    // A disc with no readable ISO9660 layout is scanned only up to this bound, and the
+    // scan stops at the first product code. Real discs are read via SYSTEM.CNF instead.
+    private const int MaximumFallbackBytes = 16 * 1024 * 1024;
     private const int ChunkSize = 128 * 1024;
+
+    private static readonly string[] CompressedExtensions =
+        [".chd", ".cso", ".zso", ".pbp"];
 
     public IReadOnlyList<GameIdentifier> Extract(Game game)
     {
-        var paths = ResolveContentPaths(game.Path);
         var results = new List<GameIdentifier>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var path in paths)
+        foreach (var disc in ResolveDiscEntries(game.Path))
         {
-            foreach (var serial in FindSerialsInContent(path))
+            foreach (var serial in ReadSerialsForDisc(disc))
             {
                 if (seen.Add(serial))
                     results.Add(new GameIdentifier(
@@ -37,7 +42,7 @@ public sealed partial class PlayStationIdentifierExtractor : IGameIdentifierExtr
 
         if (results.Count == 0)
         {
-            foreach (var path in paths.Prepend(game.Path))
+            foreach (var path in ResolveDiscEntries(game.Path).Prepend(game.Path))
             {
                 foreach (Match match in ProductCodeRegex().Matches(Path.GetFileNameWithoutExtension(path)))
                 {
@@ -61,27 +66,49 @@ public sealed partial class PlayStationIdentifierExtractor : IGameIdentifierExtr
         return match.Success ? Normalize(match) : value.Trim().ToUpperInvariant();
     }
 
-    private static IReadOnlyList<string> ResolveContentPaths(string entryPath)
+    /// <summary>A single library entry resolves to one or more disc images (via M3U).</summary>
+    private static IReadOnlyList<string> ResolveDiscEntries(string entryPath) =>
+        Path.GetExtension(entryPath).Equals(".m3u", StringComparison.OrdinalIgnoreCase)
+            ? ReferencedFileParser.ParseM3u(entryPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [entryPath];
+
+    /// <summary>The raw data files backing a disc image, used only for the bounded fallback.</summary>
+    private static IReadOnlyList<string> ResolveDataFiles(string discPath) =>
+        Path.GetExtension(discPath).Equals(".cue", StringComparison.OrdinalIgnoreCase)
+            ? ReferencedFileParser.ParseCue(discPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [discPath];
+
+    private static IReadOnlyList<string> ReadSerialsForDisc(string discPath)
     {
-        var extension = Path.GetExtension(entryPath).ToLowerInvariant();
-        var paths = extension switch
+        var targeted = PlayStationDiscSerialReader.TryReadSerial(discPath)
+            ?? PbpSerialReader.TryReadSerial(discPath);
+        if (targeted is not null)
+            return [targeted];
+
+        var found = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dataPath in ResolveDataFiles(discPath))
         {
-            ".m3u" => ReferencedFileParser.ParseM3u(entryPath)
-                .SelectMany(ResolveContentPaths)
-                .ToArray(),
-            ".cue" => ReferencedFileParser.ParseCue(entryPath),
-            _ => [entryPath],
-        };
-        return paths.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            foreach (var serial in BoundedScanForSerials(dataPath))
+            {
+                if (seen.Add(serial))
+                    found.Add(serial);
+            }
+        }
+        return found;
     }
 
-    private static IReadOnlyList<string> FindSerialsInContent(string path)
+    private static IReadOnlyList<string> BoundedScanForSerials(string path)
     {
         var extension = Path.GetExtension(path);
-        if (extension.Equals(".chd", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".cso", StringComparison.OrdinalIgnoreCase))
+        foreach (var compressed in CompressedExtensions)
         {
-            return [];
+            if (extension.Equals(compressed, StringComparison.OrdinalIgnoreCase))
+                return [];
         }
 
         try
@@ -96,30 +123,25 @@ public sealed partial class PlayStationIdentifierExtractor : IGameIdentifierExtr
             var buffer = new byte[ChunkSize + 64];
             var overlap = 0;
             var inspected = 0L;
-            var found = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            while (inspected < MaximumBytesToInspect)
+            while (inspected < MaximumFallbackBytes)
             {
-                var requested = (int)Math.Min(ChunkSize, MaximumBytesToInspect - inspected);
+                var requested = (int)Math.Min(ChunkSize, MaximumFallbackBytes - inspected);
                 var read = stream.Read(buffer, overlap, requested);
                 if (read == 0)
                     break;
 
                 var text = Encoding.ASCII.GetString(buffer, 0, overlap + read);
-                foreach (Match match in ProductCodeRegex().Matches(text))
-                {
-                    var serial = Normalize(match);
-                    if (seen.Add(serial))
-                        found.Add(serial);
-                }
+                var match = ProductCodeRegex().Match(text);
+                if (match.Success)
+                    return [Normalize(match)];
 
                 var total = overlap + read;
                 overlap = Math.Min(64, total);
                 Buffer.BlockCopy(buffer, total - overlap, buffer, 0, overlap);
                 inspected += read;
             }
-            return found;
+            return [];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                                    ArgumentException or NotSupportedException)

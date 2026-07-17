@@ -56,6 +56,32 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
         return games;
     }
 
+    public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT Kind, Value, Source, IsPrimary
+            FROM GameIdentifiers
+            WHERE GameId = $gameId
+            ORDER BY IsPrimary DESC, rowid;
+            """;
+        command.Parameters.AddWithValue("$gameId", gameId);
+
+        var identifiers = new List<GameIdentifier>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            identifiers.Add(new GameIdentifier(
+                (GameIdentifierKind)reader.GetInt32(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetInt64(3) != 0));
+        }
+        return identifiers;
+    }
+
     public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers)
     {
         using var connection = _database.CreateConnection();

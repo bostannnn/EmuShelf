@@ -45,6 +45,8 @@ public interface IGameMetadataStore
 
     IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null);
 
+    IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId);
+
     void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers);
 
     bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle);

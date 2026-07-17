@@ -4,6 +4,10 @@
     <ProjectReference Include="..\EmuShelf.Core\EmuShelf.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmuShelf.Infrastructure.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

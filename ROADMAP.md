@@ -77,7 +77,7 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 1. Identification feasibility gate
 
-- [ ] Put RetroAchievements game identification behind a Core interface and evaluate the
+- [x] Put RetroAchievements game identification behind a Core interface and evaluate the
       official `rcheevos` hash implementation rather than matching by title, filename, or
       emulator-private data. Record the dependency/version/license decision before it lands.
 - [ ] Prove exact hash matches with fixtures for every currently imported format: PS1
@@ -85,12 +85,22 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       `.cso`, `.m3u`), and GameCube/Wii (`.iso`, `.rvz`, `.wbfs`, `.gcm`, `.ciso`).
       Raw/CUE media can use the stock disc reader; compressed containers need compatible
       logical-disc reader adapters and must not silently fall back to whole-file MD5.
+  - [x] Add official-vector parity fixtures and readers for PS1/PS2 cooked ISO/BIN,
+        ordinary CUE/BIN (2048- and 2352-byte sectors), M3U entries resolving to those
+        media, and GameCube ISO/GCM. The test assemblies compile; executing the fixtures
+        remains a verification gate because the current sandbox cannot start its socket-based
+        .NET test host and the outside-sandbox run was not approved.
+  - [ ] Add compatible logical-disc readers and parity fixtures for CHD, CSO, PBP, RVZ,
+        WBFS, CISO, and Wii partitions before claiming those formats.
 - [ ] Make the supported-format result an explicit gate: ship only formats with verified
       parity on Windows and macOS, and present all other cases as `Unknown`, never `No`.
       PlayStation 3 is out of scope because RetroAchievements has no PS3 console id.
 - [ ] Cache each successful or terminal identification by game id plus a source fingerprint
       (size/modified time and descriptor dependencies for CUE/M3U). Re-identify only new or
       changed games, on a single background worker, without a full startup pass.
+  - [x] Add schema-v4 identification records, dependency fingerprints, and a composed
+        single-worker service that reuses unchanged terminal results. Wiring that worker
+        only to newly imported/changed games remains part of the account/catalogue slice.
 
 ### 2. Account connection and read-only API client
 
@@ -126,10 +136,12 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 - [ ] Add a small neutral achievement/trophy mark to a grid tile only after the local image's
       canonical hash matches an achievement-bearing RA game. Do not import RA branding unless
       its redistribution terms have been verified.
-- [ ] Add an Achievements column to list view with `Yes`, `No`, or `—`: `No` means a hash was
-      computed successfully and is absent from a fresh achievement-bearing catalogue; `—`
-      means not connected, pending, unsupported format/system, stale catalogue, or failure.
-      Tooltips explain the state and show cached `unlocked / total` progress when available.
+- [ ] Add an Achievements column to list view showing cached `unlocked / total` progress on a
+      match (including `0 / total` before anything is earned), or `—` in every other case. Do
+      not print a `Yes`/`No` word: the fraction already implies a match, and its absence covers
+      the rest. Tooltips still distinguish the reasons behind a `—`: no achievement set for a
+      successfully hashed image, versus not connected, pending, unsupported format/system, stale
+      catalogue, or failure.
 
 ### 5. Steam-like achievements popup
 
@@ -164,12 +176,68 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 - [ ] Add client/cache tests for valid and invalid credentials, redaction, offline startup,
       stale-while-revalidate, cancellation, corrupt cache, 429 `Retry-After`, server errors,
       duplicate requests, and account switching.
-- [ ] Add headless UI tests for `Yes`/`No`/`—` semantics, cached progress, popup states, and
-      post-session refresh. Keep `dotnet build` and `dotnet test` green on macOS and Windows.
+- [ ] Add headless UI tests for the `unlocked / total`-or-`—` column semantics (including the
+      `0 / total` match case and each tooltip reason behind a `—`), cached progress, popup states,
+      and post-session refresh. Keep `dotnet build` and `dotnet test` green on macOS and Windows.
 - [ ] On real Windows, connect a test RA account and verify one supported game in DuckStation,
       PCSX2, and Dolphin: EmuShelf identifies it before launch, the emulator performs the
       unlock, and EmuShelf reflects the new progress after process exit without writing to the
       game or emulator data.
+
+## M11 — Metadata matching: speed and coverage
+
+Follow-up to M9. The first enrichment implementation re-derives each PlayStation serial by
+brute-force scanning up to 32 MiB of every disc on every pass, at a two-wide concurrency gate,
+and cannot read the compressed containers most libraries actually use. External tools
+(DuckStation, PCSX2) are fast and complete because they read the serial from a tiny known
+location or decode the container, then fan cover downloads out widely. This milestone closes
+that gap. See `DECISIONS.md` for the diagnosis.
+
+### Phase 1 — Targeted reads, identifier caching, pipeline decoupling ✅ (2026-07-16)
+
+- [x] Replace the 32 MiB PlayStation serial scan with a targeted `SYSTEM.CNF` read that reuses
+      the existing `CdSectorReader`/ISO9660 walk from the RetroAchievements disc code; keep a
+      bounded, early-exit ASCII fallback and the filename fallback.
+- [x] Reuse stored identifiers instead of re-extracting on every enrichment pass
+      (`IGameMetadataStore.GetIdentifiers`); only scan a disc that has none.
+- [x] Split enrichment into disk-bound and network-bound stages with independent concurrency so
+      cover downloads are no longer throttled behind disc reads.
+- [x] Give the metadata `HttpClient` a pooled handler with a raised per-server connection limit.
+- [x] Fixtures: valid 2048-sector ISO9660 targeted read with decoy-serial precision, cached-
+      identifier reuse, and store round-trip. `dotnet build`/`dotnet test` green on macOS.
+
+### Phase 2 — PBP support (`.pbp`) ✅ (2026-07-16)
+
+- [x] Read the serial from the embedded `PARAM.SFO` `DISC_ID` key (uncompressed, targeted).
+- [x] Fixtures: known `DISC_ID` (with and without separators), malformed/truncated PBP falls back
+      to filename.
+
+### Phase 3 — CSO / ZSO support (`.cso`, `.zso`) ✅ (2026-07-16)
+
+- [x] Decode the block index (deflate for CSO, lz4 for ZSO) to expose logical sectors to the
+      shared ISO9660 reader through a common `ILogicalSectorReader`; no second `SYSTEM.CNF` parser.
+- [x] Hand-rolled minimal LZ4 block decoder (no new dependency); rationale in `DECISIONS.md`.
+- [x] Fixtures: CSO (deflate) and ZSO (lz4) wrapping a known-serial ISO with a decoy; corrupt
+      header falls back to filename; LZ4 decoder unit tests (literals, overlapping match, truncation).
+
+### Phase 4 — CHD support (`.chd`) ✅ (2026-07-17)
+
+- [x] Decode the CHD v5 header and the Huffman-coded hunk map (ported from MAME/libchdr with a
+      crc16 self-check), then decompress only the hunks backing the read sectors: `zlib`/`lzma`
+      for DVD geometry and `cdzl`/`cdlz` (with CD frame reassembly) for CD geometry. `huff`, `flac`,
+      and `cdfl` hunks gracefully fall back to the filename serial.
+- [x] Vendor a minimal public-domain LZMA decoder (no third-party package); credited in
+      `THIRD-PARTY-NOTICES.md` alongside the MAME/libchdr-derived CHD code.
+- [x] Verified byte-exact against chdman 0.288 vectors: committed tiny DVD `zlib`/`lzma` fixtures in
+      CI, plus a real CD CHD (`cdlz`+`cdzl`, 20k frames) and an opt-in real-file smoke test
+      (`EMUSHELF_TEST_CHD_DIR`). Reads are bounded and never modify the source.
+
+### Phase 5 — Nintendo disc-id cover route
+
+- [ ] Add an id-addressed GameCube/Wii cover provider keyed by the six-character disc id, ordered
+      before the fragile title-based Libretro fallback. Verify the exact cover URL, region
+      mapping, and redistribution terms before it ships; record them in `THIRD-PARTY-NOTICES.md`.
+- [ ] Fixtures: candidate URL per region; 404 falls back to the Libretro title provider.
 
 ## Backlog (deferred, not in the current v1 sequence)
 
