@@ -477,3 +477,28 @@ Libretro title fallback are a better, lighter fit. OpenVGDB becomes worthwhile w
 cartridge system (SNES/NES/Genesis) is added — the case OpenEmu actually uses it for — at which
 point it wires in as the primary catalog and first artwork provider with today's providers behind
 it, and the DB-distribution + licensing questions get settled then.
+
+## 2026-07-18 — M10 §2: read-only Web API client with platform credential storage
+
+The RetroAchievements integration authenticates with a username and a **Web API key** (Web API
+query keys `z` and `y`), which is credential setup, not a password login, and never reuses an
+emulator's stored token. The key is the only secret. It is held behind a Core abstraction
+(`IRetroAchievementsCredentialStore`) and never written to `settings.json`, diagnostics, exception
+text, or a logged request URI — a test asserts the key is sent in the query yet absent from every
+log message. The non-secret identity (username plus the returned stable ULID) lives in
+`settings.json`; only that pairing is persisted, so a lost key means reconnect, not data loss.
+
+Storage is platform-specific. Windows (the v1 ship target) uses a DPAPI-protected blob under
+portable `Settings/`, encrypted for the current user via `crypt32` `CryptProtectData` reached
+through P/Invoke — chosen over the `System.Security.Cryptography.ProtectedData` package to avoid a
+new dependency and keep the build self-contained. macOS development uses a session-only in-memory
+store because there is no verified portable at-rest protection there yet; it never persists the
+secret, so a reconnect is required after each restart. Both sit behind the same Core interface, so
+Core stays platform-agnostic and the choice is a single OS-keyed factory.
+
+The `IRetroAchievementsClient` exposes only the read endpoints EmuShelf needs (profile validation,
+per-console game/hash catalogue, and batched user progress) and maps authentication, offline,
+malformed-response, 429 (with `Retry-After`), and server failures to distinct result states so
+callers retain usable cached data and never auto-retry an authentication failure. The pieces are
+built and unit-tested; wiring the account service into the app and the Settings connect card land
+with the library-presentation UI slice, since that is their first consumer.

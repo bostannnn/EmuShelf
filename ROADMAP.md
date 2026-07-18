@@ -97,8 +97,12 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
         M11, with parity fixtures proving they hash byte-identically to the uncompressed disc
         (CSO/ZSO in-code; CHD verified against a real chdman-produced container). A malformed
         container falls back to `UnsupportedFormat`, never whole-file MD5.
-  - [ ] Add readers and parity fixtures for `.pbp`, and for the GameCube/Wii containers RVZ,
-        WBFS, and CISO plus Wii AES partitions, before claiming those formats.
+  - [ ] **Paused (2026-07-18).** Add readers and parity fixtures for `.pbp`, and for the
+        GameCube/Wii containers RVZ, WBFS, and CISO plus Wii AES partitions, before claiming
+        those formats. These stay `UnsupportedFormat` for now; work resumes after the account,
+        catalogue, and UI slices (§2–§7) land so the feature is usable on the formats already
+        verified. `.pbp` is the small next step (serial-only reader exists); the GameCube/Wii
+        containers and Wii AES are the larger effort.
 - [ ] Make the supported-format result an explicit gate: ship only formats with verified
       parity on Windows and macOS, and present all other cases as `Unknown`, never `No`.
       PlayStation 3 is out of scope because RetroAchievements has no PS3 console id.
@@ -113,19 +117,20 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 2. Account connection and read-only API client
 
-- [ ] Add a Settings card to connect with RetroAchievements username and **Web API key**;
-      this is credential setup, not password login. Validate with `API_GetUserProfile`, save
-      the returned stable ULID, and support disconnect/reconnect. Never read or reuse an
-      emulator's RetroAchievements password or token.
-- [ ] Put the API key behind a platform-specific Core abstraction, never in ordinary
-      `settings.json`, diagnostics, exception text, or a logged request URI. Recommended v1
-      storage is a DPAPI-protected blob under portable `Settings/` on Windows and a
-      session-only provider for macOS development; confirm this portability/security tradeoff
-      in `DECISIONS.md` before implementation.
-- [ ] Implement a typed, cancellable HTTP client for only the required read endpoints:
-      profile validation, system game/hash catalogues, progress for specific local game ids,
-      and full game/user progress. Treat authentication, offline, malformed-response, 429,
-      and server failures as distinct results while retaining usable cached data.
+- [x] Account connection logic: `RetroAchievementsAccountService` validates username + **Web API
+      key** with `API_GetUserProfile`, saves the returned ULID, and supports disconnect/reconnect
+      (credential setup, not password login; never reuses an emulator token). The Settings connect
+      **card** (the UI) is deferred to the library-presentation slice, its first consumer.
+- [x] Put the API key behind a platform-specific Core abstraction
+      (`IRetroAchievementsCredentialStore`), never in `settings.json`, diagnostics, exception text,
+      or a logged request URI (test-asserted). Windows = DPAPI-protected blob under portable
+      `Settings/` via `crypt32` P/Invoke (no new package); macOS dev = session-only. Only the
+      non-secret username + ULID persist to `settings.json`. Tradeoff recorded in `DECISIONS.md`.
+- [x] Typed, cancellable `IRetroAchievementsClient` for the required read endpoints (profile
+      validation, per-console game/hash catalogue, batched user progress). Authentication, offline,
+      malformed-response, 429 (with `Retry-After`), and server failures map to distinct results so
+      callers keep cached data and never auto-retry auth failures. Full game/user progress for the
+      popup lands with §5. 15 unit tests (result mapping, parsing, redaction, connect/disconnect).
 
 ### 3. Portable catalogue and progress cache
 

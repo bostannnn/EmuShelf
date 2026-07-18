@@ -10,4 +10,10 @@ public sealed record AppSettings
 
     /// <summary>Prevents the contextual consent prompt from appearing on every import.</summary>
     public bool MetadataConsentPromptShown { get; init; }
+
+    /// <summary>Connected RetroAchievements username, or null when not connected. Not a secret.</summary>
+    public string? RetroAchievementsUsername { get; init; }
+
+    /// <summary>RetroAchievements' stable ULID for the connected account. Not a secret.</summary>
+    public string? RetroAchievementsUserUlid { get; init; }
 }
