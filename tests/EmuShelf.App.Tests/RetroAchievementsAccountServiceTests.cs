@@ -27,6 +27,7 @@ public class RetroAchievementsAccountServiceTests
         Assert.Equal("Player", settings.Load().RetroAchievementsUsername);
         Assert.Equal("ULID-9", settings.Load().RetroAchievementsUserUlid);
         Assert.Equal("SECRETKEY", service.CurrentCredentials!.ApiKey);
+        Assert.Equal("ULID-9", service.CurrentCredentials.UserUlid);
     }
 
     [Fact]

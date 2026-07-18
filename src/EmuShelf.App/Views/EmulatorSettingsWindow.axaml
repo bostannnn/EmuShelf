@@ -283,6 +283,16 @@
                                     </Grid>
                                 </StackPanel>
 
+                                <StackPanel IsVisible="{Binding HasRetroAchievementsProgress}" Spacing="5">
+                                    <TextBlock Text="{Binding RetroAchievementsProgressText}"
+                                               FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <ProgressBar Minimum="0"
+                                                 Maximum="{Binding RetroAchievementsProgressTotal}"
+                                                 Value="{Binding RetroAchievementsProgressCompleted}"
+                                                 Height="6" />
+                                </StackPanel>
+
                                 <TextBlock Text="{Binding RetroAchievementsStatusText}"
                                            IsVisible="{Binding HasRetroAchievementsStatus}"
                                            FontSize="11" TextWrapping="Wrap"

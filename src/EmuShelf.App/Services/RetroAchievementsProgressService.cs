@@ -18,7 +18,8 @@ public interface IRetroAchievementsProgressService
 {
     Task<RetroAchievementsProgressRefreshSummary> RefreshAllAsync(
         RetroAchievementsCredentials credentials,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress = null);
 
     /// <summary>Drops all cached progress (e.g. when the account disconnects).</summary>
     void Clear();
@@ -46,18 +47,24 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
 
     public async Task<RetroAchievementsProgressRefreshSummary> RefreshAllAsync(
         RetroAchievementsCredentials credentials,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
     {
         await _worker.WaitAsync(cancellationToken);
         try
         {
             var ids = _store.GetLinkedRetroAchievementsGameIds();
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.RefreshingProgress,
+                Completed: 0,
+                Total: ids.Count));
             if (ids.Count == 0)
                 return new RetroAchievementsProgressRefreshSummary(
                     0, 0, RetroAchievementsRequestStatus.Success);
 
             var refreshedAt = _timeProvider.GetUtcNow();
             var updated = 0;
+            var completed = 0;
             var status = RetroAchievementsRequestStatus.Success;
 
             for (var offset = 0; offset < ids.Count; offset += RetroAchievementsApi.MaxUserProgressBatchSize)
@@ -76,11 +83,17 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
                     break;
                 }
 
-                foreach (var progress in response.Value!)
+                foreach (var gameProgress in response.Value!)
                 {
-                    _store.SaveProgress(progress, refreshedAt);
+                    _store.SaveProgress(gameProgress, refreshedAt);
                     updated++;
                 }
+
+                completed += batch.Length;
+                progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                    RetroAchievementsLibrarySyncPhase.RefreshingProgress,
+                    Completed: completed,
+                    Total: ids.Count));
             }
 
             _logger.Information(

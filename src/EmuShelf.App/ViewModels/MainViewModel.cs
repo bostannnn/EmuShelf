@@ -42,6 +42,10 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRetroAchievementsAccountService? _retroAccount;
     private readonly IRetroAchievementsMatchingService? _retroMatching;
     private readonly IRetroAchievementsProgressService? _retroProgress;
+    // Coordinates the full identify → match → progress sequence. Individual services also
+    // serialize their own work, but this prevents an import finishing halfway through a connect
+    // and leaving newly hashed games unmatched.
+    private readonly SemaphoreSlim _retroAchievementsPipeline = new(1, 1);
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -991,6 +995,7 @@ public partial class MainViewModel : ViewModelBase
                     ? null
                     : new RetroAchievementsSettingsContext(
                         _retroAccount.Account,
+                        _retroAccount.IsConnected,
                         ConnectRetroAchievementsAsync,
                         DisconnectRetroAchievementsAsync));
         }
@@ -1001,29 +1006,28 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    // Connect pipeline: validate the account, then (on success) resolve matches against the
-    // console catalogues, refresh progress, and reload the library so the marks and column
-    // appear. Matching and progress failures are non-fatal — the connection still succeeds.
-    internal async Task<RetroAchievementsConnectionResult> ConnectRetroAchievementsAsync(
+    // Connect pipeline: validate the account, identify the existing library, resolve hashes
+    // against console catalogues, refresh progress, and reload so marks and columns appear.
+    // Matching and progress failures are non-fatal — the validated account stays connected.
+    internal async Task<RetroAchievementsConnectionSummary> ConnectRetroAchievementsAsync(
         string username,
         string apiKey,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress,
         CancellationToken cancellationToken)
     {
         if (_retroAccount is null)
-            return RetroAchievementsConnectionResult.ServerError;
+            return new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.ServerError);
 
         var result = await _retroAccount.ConnectAsync(username, apiKey, cancellationToken);
         if (result != RetroAchievementsConnectionResult.Connected)
-            return result;
+            return new RetroAchievementsConnectionSummary(result);
 
-        var credentials = _retroAccount.CurrentCredentials;
-        if (_retroMatching is not null)
-            await _retroMatching.MatchAsync(credentials, forceRefreshCatalogues: false, cancellationToken);
-        if (_retroProgress is not null && credentials is not null)
-            await _retroProgress.RefreshAllAsync(credentials, cancellationToken);
-
-        await ReloadGamesAsync();
-        return result;
+        var gameIds = await Task.Run(
+            () => _library.GetGames().Select(game => game.Id).ToArray(),
+            cancellationToken);
+        var sync = await SynchronizeRetroAchievementsAsync(gameIds, progress, cancellationToken);
+        return new RetroAchievementsConnectionSummary(result, sync);
     }
 
     internal async Task DisconnectRetroAchievementsAsync(CancellationToken cancellationToken)
@@ -1031,9 +1035,20 @@ public partial class MainViewModel : ViewModelBase
         if (_retroAccount is null)
             return;
 
-        await _retroAccount.DisconnectAsync(cancellationToken);
-        _retroProgress?.Clear(); // progress is account-scoped (review finding #1)
-        await ReloadGamesAsync();
+        // Account-scoped progress must not be cleared while an import-triggered sync still has
+        // the old credentials. The same lock also makes any queued import recheck the now-
+        // disconnected account before it reads a game or writes new progress.
+        await _retroAchievementsPipeline.WaitAsync(cancellationToken);
+        try
+        {
+            await _retroAccount.DisconnectAsync(cancellationToken);
+            _retroProgress?.Clear();
+            await ReloadGamesAsync();
+        }
+        finally
+        {
+            _retroAchievementsPipeline.Release();
+        }
     }
 
     private async Task MaybeStartMetadataForImportAsync(IReadOnlyList<long> addedGameIds)
@@ -1041,10 +1056,10 @@ public partial class MainViewModel : ViewModelBase
         if (addedGameIds.Count == 0)
             return;
 
-        // Local RetroAchievements hashing is independent of network-metadata consent and
-        // runs quietly in the background so links are ready when the feature surfaces.
-        if (_retroAchievements is not null)
-            _ = IdentifyForRetroAchievementsAsync(addedGameIds);
+        // Disc identification is now explicitly gated on a connected account. Existing games
+        // are backfilled once on connect; later imports use the same serialized full pipeline.
+        if (_retroAchievements is not null && _retroAccount?.IsConnected == true)
+            _ = SynchronizeImportedRetroAchievementsAsync(addedGameIds);
 
         var shouldFetch = _metadataPreferences.AutomaticallyFetchAfterImport;
         if (!shouldFetch && !_metadataPreferences.ConsentPromptShown)
@@ -1084,15 +1099,99 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private async Task IdentifyForRetroAchievementsAsync(IReadOnlyList<long> gameIds)
+    private async Task<RetroAchievementsLibrarySyncSummary?> SynchronizeRetroAchievementsAsync(
+        IReadOnlyList<long> gameIds,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (_retroAchievements is null)
+            return null;
+
+        await _retroAchievementsPipeline.WaitAsync(cancellationToken);
+        try
+        {
+            // An import can have been queued while connected, then waited behind a different
+            // sync until after disconnect. Do not identify media or recreate account-scoped
+            // cache rows for a no-longer-connected account.
+            if (_retroAccount?.IsConnected != true)
+                return null;
+
+            var identification = await _retroAchievements.IdentifyAsync(
+                gameIds,
+                cancellationToken,
+                progress);
+
+            RetroAchievementsMatchSummary? matching = null;
+            RetroAchievementsProgressRefreshSummary? achievementProgress = null;
+            var credentials = _retroAccount?.CurrentCredentials;
+
+            if (_retroMatching is not null && credentials is not null)
+            {
+                try
+                {
+                    matching = await _retroMatching.MatchAsync(
+                        credentials,
+                        forceRefreshCatalogues: false,
+                        cancellationToken,
+                        progress);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    // A validated account remains connected if a cache/network operation fails;
+                    // stale links and cached progress are still useful to the library display.
+                    _logger.Warning("RetroAchievements catalogue matching failed.", ex);
+                }
+            }
+
+            if (_retroProgress is not null && credentials is not null)
+            {
+                try
+                {
+                    achievementProgress = await _retroProgress.RefreshAllAsync(
+                        credentials,
+                        cancellationToken,
+                        progress);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("RetroAchievements progress refresh failed.", ex);
+                }
+            }
+
+            await ReloadGamesAsync();
+            return new RetroAchievementsLibrarySyncSummary(
+                identification,
+                matching,
+                achievementProgress);
+        }
+        finally
+        {
+            _retroAchievementsPipeline.Release();
+        }
+    }
+
+    private async Task SynchronizeImportedRetroAchievementsAsync(IReadOnlyList<long> gameIds)
     {
         try
         {
-            await _retroAchievements!.IdentifyAsync(gameIds);
+            await SynchronizeRetroAchievementsAsync(gameIds, progress: null, CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            // Import-triggered work has no cancellation source today, but retain the same
+            // cancellation semantics as the explicit Settings connection path.
         }
         catch (Exception ex)
         {
-            _logger.Warning("RetroAchievements identification for imported games failed.", ex);
+            _logger.Warning("RetroAchievements synchronization for imported games failed.", ex);
         }
     }
 

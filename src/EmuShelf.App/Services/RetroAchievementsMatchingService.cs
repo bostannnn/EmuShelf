@@ -21,7 +21,8 @@ public interface IRetroAchievementsMatchingService
     Task<RetroAchievementsMatchSummary> MatchAsync(
         RetroAchievementsCredentials? credentials,
         bool forceRefreshCatalogues,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress = null);
 }
 
 public sealed class RetroAchievementsMatchingService : IRetroAchievementsMatchingService
@@ -44,7 +45,8 @@ public sealed class RetroAchievementsMatchingService : IRetroAchievementsMatchin
     public async Task<RetroAchievementsMatchSummary> MatchAsync(
         RetroAchievementsCredentials? credentials,
         bool forceRefreshCatalogues,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
     {
         await _worker.WaitAsync(cancellationToken);
         try
@@ -69,37 +71,61 @@ public sealed class RetroAchievementsMatchingService : IRetroAchievementsMatchin
             var matched = 0;
             var noAchievements = 0;
             var unresolved = 0;
+            var total = byConsole.Values.Sum(games => games.Count);
+            var completed = 0;
+
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.Matching,
+                Completed: 0,
+                Total: total));
 
             foreach (var (consoleId, games) in byConsole)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                    RetroAchievementsLibrarySyncPhase.Matching,
+                    Completed: completed,
+                    Total: total,
+                    CurrentGameTitle: games[0].Title));
                 var lookup = await _catalogue.GetLookupAsync(
                     consoleId, credentials, forceRefreshCatalogues, cancellationToken);
 
                 foreach (var game in games)
                 {
+                    progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                        RetroAchievementsLibrarySyncPhase.Matching,
+                        Completed: completed,
+                        Total: total,
+                        CurrentGameTitle: game.Title));
                     processed++;
                     if (lookup is null)
                     {
                         unresolved++;
-                        continue;
-                    }
-
-                    var match = lookup.Find(game.CanonicalHash);
-                    if (match is not null)
-                    {
-                        _store.SaveCatalogueMatch(game.GameId, match.GameId, hasAchievements: true);
-                        matched++;
-                    }
-                    else if (lookup.IsFresh)
-                    {
-                        _store.SaveCatalogueMatch(game.GameId, null, hasAchievements: false);
-                        noAchievements++;
                     }
                     else
                     {
-                        unresolved++;
+                        var match = lookup.Find(game.CanonicalHash);
+                        if (match is not null)
+                        {
+                            _store.SaveCatalogueMatch(game.GameId, match.GameId, hasAchievements: true);
+                            matched++;
+                        }
+                        else if (lookup.IsFresh)
+                        {
+                            _store.SaveCatalogueMatch(game.GameId, null, hasAchievements: false);
+                            noAchievements++;
+                        }
+                        else
+                        {
+                            unresolved++;
+                        }
                     }
+
+                    completed++;
+                    progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                        RetroAchievementsLibrarySyncPhase.Matching,
+                        Completed: completed,
+                        Total: total));
                 }
             }
 

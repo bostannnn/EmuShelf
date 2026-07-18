@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Systems;
@@ -54,11 +55,25 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial string RetroAchievementsStatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRetroAchievementsProgress))]
     public partial bool IsRetroAchievementsBusy { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRetroAchievementsProgress))]
+    public partial int RetroAchievementsProgressCompleted { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRetroAchievementsProgress))]
+    public partial int RetroAchievementsProgressTotal { get; set; }
+
+    [ObservableProperty]
+    public partial string RetroAchievementsProgressText { get; set; } = string.Empty;
 
     public bool IsRetroAchievementsConnected => !string.IsNullOrEmpty(ConnectedAccountName);
     public bool IsRetroAchievementsDisconnected => !IsRetroAchievementsConnected;
     public bool HasRetroAchievementsStatus => !string.IsNullOrWhiteSpace(RetroAchievementsStatusText);
+    public bool HasRetroAchievementsProgress =>
+        IsRetroAchievementsBusy && RetroAchievementsProgressTotal > 0;
 
     [ObservableProperty]
     public partial bool IsSaving { get; set; }
@@ -109,8 +124,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             : [SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements];
         if (retroAchievements?.CurrentAccount is { } account)
         {
-            ConnectedAccountName = account.Username;
             RetroAchievementsUsername = account.Username;
+            if (retroAchievements.IsConnected)
+            {
+                ConnectedAccountName = account.Username;
+            }
+            else
+            {
+                RetroAchievementsStatusText =
+                    "Reconnect required: this platform keeps your Web API key only for the current session.";
+            }
         }
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(systems.Select((system, index) =>
         {
@@ -247,13 +270,21 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
         IsRetroAchievementsBusy = true;
         RetroAchievementsStatusText = "Connecting…";
+        RetroAchievementsProgressCompleted = 0;
+        RetroAchievementsProgressTotal = 0;
+        RetroAchievementsProgressText = string.Empty;
         try
         {
-            var result = await _retroAchievements.ConnectAsync(username, apiKey, CancellationToken.None);
+            var outcome = await _retroAchievements.ConnectAsync(
+                username,
+                apiKey,
+                new Progress<RetroAchievementsLibrarySyncProgress>(ApplyRetroAchievementsProgress),
+                CancellationToken.None);
+            var result = outcome.Result;
             RetroAchievementsStatusText = result switch
             {
                 RetroAchievementsConnectionResult.Connected =>
-                    "Connected. Your library is checking for achievements.",
+                    BuildConnectedStatus(outcome.Sync),
                 RetroAchievementsConnectionResult.AuthenticationFailed =>
                     "That username or Web API key wasn't accepted.",
                 RetroAchievementsConnectionResult.Offline =>
@@ -308,4 +339,52 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(false);
+
+    internal void ApplyRetroAchievementsProgress(RetroAchievementsLibrarySyncProgress progress)
+    {
+        RetroAchievementsProgressCompleted = progress.Completed;
+        RetroAchievementsProgressTotal = progress.Total;
+        RetroAchievementsProgressText = progress.Phase switch
+        {
+            RetroAchievementsLibrarySyncPhase.Identifying when progress.CurrentGameTitle is not null =>
+                $"Identifying {Math.Min(progress.Completed + 1, progress.Total)} of {progress.Total}: " +
+                progress.CurrentGameTitle,
+            RetroAchievementsLibrarySyncPhase.Identifying =>
+                $"Identifying {progress.Completed} of {progress.Total}",
+            RetroAchievementsLibrarySyncPhase.Matching when progress.CurrentGameTitle is not null =>
+                $"Matching {Math.Min(progress.Completed + 1, progress.Total)} of {progress.Total}: " +
+                progress.CurrentGameTitle,
+            RetroAchievementsLibrarySyncPhase.Matching =>
+                $"Matching {progress.Completed} of {progress.Total}",
+            RetroAchievementsLibrarySyncPhase.RefreshingProgress =>
+                $"Refreshing progress for {progress.Completed} of {progress.Total} matched games",
+            _ => string.Empty,
+        };
+    }
+
+    private static string BuildConnectedStatus(RetroAchievementsLibrarySyncSummary? sync)
+    {
+        if (sync is null)
+            return "Connected. RetroAchievements will check games as they are added.";
+
+        var identification = sync.Identification;
+        var identificationText = identification.Hashed == 0 && identification.Reused == 0
+            ? "No games could be identified"
+            : $"{identification.Hashed} identified, {identification.Reused} already cached";
+        if (identification.Unsupported > 0)
+            identificationText += $", {identification.Unsupported} unsupported";
+        if (identification.Failed > 0)
+            identificationText += $", {identification.Failed} unreadable or invalid";
+
+        var matchingText = sync.Matching is null
+            ? "matching unavailable"
+            : $"{sync.Matching.Matched} matched, {sync.Matching.NoAchievements} without achievements, " +
+              $"{sync.Matching.Unresolved} unresolved";
+        var progressText = sync.Progress is null
+            ? "progress refresh unavailable"
+            : sync.Progress.Status == RetroAchievementsRequestStatus.Success
+                ? $"{sync.Progress.UpdatedGames} progress summaries refreshed"
+                : $"progress refresh {sync.Progress.Status.ToString().ToLowerInvariant()}";
+        return $"Connected. {identificationText}; {matchingText}; {progressText}.";
+    }
 }

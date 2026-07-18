@@ -37,10 +37,15 @@ public sealed record RetroAchievementsResponse<T>(
 }
 
 /// <summary>
-/// The username and Web API key used to authenticate read-only calls. This is a Web API key —
-/// credential setup, never a password login — and must never be logged or placed in a logged URI.
+/// The username and Web API key used to authenticate read-only calls. The optional stable user id
+/// is used when querying account-owned data so a later username change does not break progress
+/// refreshes. This is a Web API key — credential setup, never a password login — and must never
+/// be logged or placed in a logged URI.
 /// </summary>
-public sealed record RetroAchievementsCredentials(string Username, string ApiKey);
+public sealed record RetroAchievementsCredentials(
+    string Username,
+    string ApiKey,
+    string? UserUlid = null);
 
 public static class RetroAchievementsApi
 {

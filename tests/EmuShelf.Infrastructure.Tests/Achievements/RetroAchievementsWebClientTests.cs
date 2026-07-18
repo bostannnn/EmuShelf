@@ -57,6 +57,22 @@ public class RetroAchievementsWebClientTests
     }
 
     [Fact]
+    public async Task GetUserProgress_UsesStableUlidWhenAvailable()
+    {
+        var handler = new StubHandler
+        {
+            Response = Ok("{}"),
+        };
+        var client = new RetroAchievementsWebClient(new HttpClient(handler));
+        var credentials = new RetroAchievementsCredentials("OldName", "SECRETKEY", "ULID-123");
+
+        await client.GetUserProgressAsync(credentials, [1234], Cancellation);
+
+        Assert.Contains("u=ULID-123", handler.LastRequestUri!.Query);
+        Assert.DoesNotContain("u=OldName", handler.LastRequestUri.Query);
+    }
+
+    [Fact]
     public async Task GetUserProgress_EmptyIdList_ShortCircuitsWithoutRequest()
     {
         var handler = new StubHandler { Throw = new HttpRequestException("should not be called") };

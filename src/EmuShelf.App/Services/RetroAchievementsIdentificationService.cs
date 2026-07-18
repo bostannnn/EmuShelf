@@ -14,7 +14,8 @@ public interface IRetroAchievementsIdentificationService
 {
     Task<RetroAchievementsIdentificationSummary> IdentifyAsync(
         IEnumerable<long> gameIds,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress = null);
 }
 
 /// <summary>
@@ -41,7 +42,8 @@ public sealed class RetroAchievementsIdentificationService
 
     public async Task<RetroAchievementsIdentificationSummary> IdentifyAsync(
         IEnumerable<long> gameIds,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
     {
         var ids = gameIds.Distinct().ToArray();
         if (ids.Length == 0)
@@ -51,7 +53,7 @@ public sealed class RetroAchievementsIdentificationService
         try
         {
             return await Task.Run(
-                () => IdentifyCore(ids, cancellationToken),
+                () => IdentifyCore(ids, cancellationToken, progress),
                 cancellationToken);
         }
         finally
@@ -62,13 +64,19 @@ public sealed class RetroAchievementsIdentificationService
 
     private RetroAchievementsIdentificationSummary IdentifyCore(
         IReadOnlyList<long> gameIds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress)
     {
         var processed = 0;
         var reused = 0;
         var hashed = 0;
         var unsupported = 0;
         var failed = 0;
+
+        progress?.Report(new RetroAchievementsLibrarySyncProgress(
+            RetroAchievementsLibrarySyncPhase.Identifying,
+            Completed: 0,
+            Total: gameIds.Count));
 
         foreach (var gameId in gameIds)
         {
@@ -79,6 +87,11 @@ public sealed class RetroAchievementsIdentificationService
                 if (game is null)
                     continue;
 
+                progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                    RetroAchievementsLibrarySyncPhase.Identifying,
+                    Completed: processed,
+                    Total: gameIds.Count,
+                    CurrentGameTitle: game.Title));
                 processed++;
                 var snapshot = _hasher.Inspect(game);
                 var existing = _store.GetGameLink(gameId);
@@ -126,6 +139,13 @@ public sealed class RetroAchievementsIdentificationService
                 _logger.Warning(
                     $"RetroAchievements identification failed for game id {gameId}.",
                     ex);
+            }
+            finally
+            {
+                progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                    RetroAchievementsLibrarySyncPhase.Identifying,
+                    Completed: processed,
+                    Total: gameIds.Count));
             }
         }
 

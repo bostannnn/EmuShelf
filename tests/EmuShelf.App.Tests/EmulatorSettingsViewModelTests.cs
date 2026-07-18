@@ -92,10 +92,12 @@ public class EmulatorSettingsViewModelTests
         var calls = new List<(string User, string Key)>();
         var context = new RetroAchievementsSettingsContext(
             CurrentAccount: null,
-            ConnectAsync: (user, key, _) =>
+            IsConnected: false,
+            ConnectAsync: (user, key, _, _) =>
             {
                 calls.Add((user, key));
-                return Task.FromResult(RetroAchievementsConnectionResult.Connected);
+                return Task.FromResult(new RetroAchievementsConnectionSummary(
+                    RetroAchievementsConnectionResult.Connected));
             },
             DisconnectAsync: _ => Task.CompletedTask);
         var viewModel = CreateViewModel(retroAchievements: context);
@@ -116,7 +118,9 @@ public class EmulatorSettingsViewModelTests
     {
         var context = new RetroAchievementsSettingsContext(
             null,
-            (_, _, _) => Task.FromResult(RetroAchievementsConnectionResult.AuthenticationFailed),
+            false,
+            (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.AuthenticationFailed)),
             _ => Task.CompletedTask);
         var viewModel = CreateViewModel(retroAchievements: context);
         viewModel.RetroAchievementsUsername = "Player";
@@ -129,15 +133,53 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void RetroAchievements_SessionOnlyCredentialAfterRestart_RequiresReconnect()
+    {
+        var context = new RetroAchievementsSettingsContext(
+            new RetroAchievementsAccount("Player", "ULID-9"),
+            IsConnected: false,
+            ConnectAsync: (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.Connected)),
+            DisconnectAsync: _ => Task.CompletedTask);
+
+        var viewModel = CreateViewModel(retroAchievements: context);
+
+        Assert.False(viewModel.IsRetroAchievementsConnected);
+        Assert.True(viewModel.IsRetroAchievementsDisconnected);
+        Assert.Equal("Player", viewModel.RetroAchievementsUsername);
+        Assert.Contains("Reconnect required", viewModel.RetroAchievementsStatusText);
+    }
+
+    [AvaloniaFact]
+    public void RetroAchievements_ProgressNamesTheGameCurrentlyBeingIdentified()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.IsRetroAchievementsBusy = true;
+
+        viewModel.ApplyRetroAchievementsProgress(new RetroAchievementsLibrarySyncProgress(
+            RetroAchievementsLibrarySyncPhase.Identifying,
+            Completed: 2,
+            Total: 7,
+            CurrentGameTitle: "Metal Gear Solid"));
+
+        Assert.True(viewModel.HasRetroAchievementsProgress);
+        Assert.Equal(2, viewModel.RetroAchievementsProgressCompleted);
+        Assert.Equal(7, viewModel.RetroAchievementsProgressTotal);
+        Assert.Equal("Identifying 3 of 7: Metal Gear Solid", viewModel.RetroAchievementsProgressText);
+    }
+
+    [AvaloniaFact]
     public async Task RetroAchievements_ConnectWithEmptyFields_DoesNotCallPipeline()
     {
         var calls = 0;
         var context = new RetroAchievementsSettingsContext(
             null,
-            (_, _, _) =>
+            false,
+            (_, _, _, _) =>
             {
                 calls++;
-                return Task.FromResult(RetroAchievementsConnectionResult.Connected);
+                return Task.FromResult(new RetroAchievementsConnectionSummary(
+                    RetroAchievementsConnectionResult.Connected));
             },
             _ => Task.CompletedTask);
         var viewModel = CreateViewModel(retroAchievements: context);
@@ -154,7 +196,9 @@ public class EmulatorSettingsViewModelTests
         var disconnects = 0;
         var context = new RetroAchievementsSettingsContext(
             new RetroAchievementsAccount("Player", "ULID-9"),
-            (_, _, _) => Task.FromResult(RetroAchievementsConnectionResult.Connected),
+            true,
+            (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.Connected)),
             _ =>
             {
                 disconnects++;

@@ -165,9 +165,14 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       (no set, pending, unsupported, not connected, stale). Both verified by headless render tests.
 - [x] Settings is now sectioned (General / Emulators / RetroAchievements) instead of one long list.
       The RetroAchievements section is a connect card (username + masked Web API key) driving the
-      §2 account service; on connect it runs the match then progress pipeline and reloads the
-      library so marks appear; disconnect clears the account and the account-scoped progress cache
-      (review finding #1). 5 view-model tests cover connect/auth-fail/empty/disconnect/sections.
+      §2 account service; on connect it performs an explicit, cached backfill identification of
+      the existing library, then matches hashes, refreshes progress, and reloads the library so
+      marks appear. Settings shows the active phase, a real progress bar, and the game currently
+      being identified/matched; later imports join the same serialized pipeline. Disconnect clears
+      the account and account-scoped progress cache only after in-flight sync work finishes, while
+      macOS session-only credentials show a reconnect-required state after restart. Tests cover
+      the existing-library pipeline, post-import identification, progress presentation, auth
+      failures, disconnect/import overlap, and sections.
 
 ### 5. Steam-like achievements popup
 

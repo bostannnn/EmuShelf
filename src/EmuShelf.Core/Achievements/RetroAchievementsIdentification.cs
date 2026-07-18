@@ -66,7 +66,11 @@ public interface IRetroAchievementsGameHasher
 }
 
 /// <summary>A locally hashed game awaiting catalogue resolution.</summary>
-public sealed record RetroAchievementsHashedGame(long GameId, string SystemId, string CanonicalHash);
+public sealed record RetroAchievementsHashedGame(
+    long GameId,
+    string SystemId,
+    string CanonicalHash,
+    string Title = "");
 
 public interface IRetroAchievementsStore
 {

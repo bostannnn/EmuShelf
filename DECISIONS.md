@@ -502,3 +502,36 @@ malformed-response, 429 (with `Retry-After`), and server failures to distinct re
 callers retain usable cached data and never auto-retry an authentication failure. The pieces are
 built and unit-tested; wiring the account service into the app and the Settings connect card land
 with the library-presentation UI slice, since that is their first consumer.
+
+## 2026-07-18 — M10 §4 backfills only on an explicit account connection
+
+The initial Stage 4 wiring matched only games that had already been identified at import time. A
+library created before RetroAchievements was enabled therefore produced a successful connection
+followed by a misleading zero-game match pass. The account connection is now the explicit,
+user-approved backfill event: it reads every library entry once through the cached identification
+service, then resolves hashes, refreshes progress, and reloads the display. It is deliberately not
+a startup scan; unchanged terminal records still avoid reopening their game image.
+
+Identification, catalogue matching, and progress refresh run as one serialized pipeline. New
+imports join that pipeline only while an account has a usable key, so a user who never enables
+RetroAchievements does not incur disc I/O, and a game that finishes hashing cannot be stranded
+without a later catalogue match. Settings receives typed phase progress and displays the currently
+identified/matched game plus a determinate bar. Matching/progress failures do not disconnect a
+validated account; cached data remains visible and the final status says which follow-up work was
+unavailable.
+
+On macOS, the persisted non-secret identity is not a connection: the Web API key remains
+session-only. Settings now shows a reconnect-required form after restart instead of a false
+connected state. The returned RA ULID is used for account progress requests, while the current
+username remains the authenticated identity, so a username rename cannot break cached-account
+progress refreshes.
+
+## 2026-07-18 — M10 §4 disconnect is serialized with account-scoped sync work
+
+`RetroAchievementProgress` has no account id by design and is cleared on disconnect. An
+import-triggered background sync can otherwise capture credentials, then complete after the clear
+and repopulate the disconnected account's progress. Disconnect now acquires the same pipeline lock
+as identification/matching/progress, waits for in-flight work to finish, clears the cache, and only
+then releases queued work. A queued import rechecks that an account is still connected after
+acquiring the lock, so it does not read media or write account data after disconnect. A regression
+test holds a progress refresh in flight and proves the cache is cleared only after it completes.

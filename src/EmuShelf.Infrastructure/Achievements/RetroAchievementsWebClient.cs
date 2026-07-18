@@ -81,7 +81,7 @@ public sealed class RetroAchievementsWebClient : IRetroAchievementsClient
             credentials,
             new Dictionary<string, string>
             {
-                ["u"] = credentials.Username,
+                ["u"] = credentials.UserUlid ?? credentials.Username,
                 ["i"] = string.Join(',', gameIds),
             },
             ParseUserProgress,

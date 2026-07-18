@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
@@ -47,7 +48,10 @@ public class MainViewModelTests : IDisposable
         IAppThemeService? themes = null,
         IGameMetadataService? metadata = null,
         IMetadataPreferencesService? metadataPreferences = null,
-        IRetroAchievementsIdentificationService? retroAchievements = null)
+        IRetroAchievementsIdentificationService? retroAchievements = null,
+        IRetroAchievementsAccountService? retroAccount = null,
+        IRetroAchievementsMatchingService? retroMatching = null,
+        IRetroAchievementsProgressService? retroProgress = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -62,7 +66,10 @@ public class MainViewModelTests : IDisposable
             themeService: themes,
             metadataService: metadata,
             metadataPreferences: metadataPreferences,
-            retroAchievements: retroAchievements);
+            retroAchievements: retroAchievements,
+            retroAccount: retroAccount,
+            retroMatching: retroMatching,
+            retroProgress: retroProgress);
     }
 
     private string MakeRomsFolder()
@@ -170,7 +177,8 @@ public class MainViewModelTests : IDisposable
         var vm = CreateViewModel(
             metadata: metadata,
             metadataPreferences: new RecordingMetadataPreferences(),
-            retroAchievements: achievements);
+            retroAchievements: achievements,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true));
 
         await vm.AddGamesCommand.ExecuteAsync(null);
         await achievements.Called.WaitAsync(TimeSpan.FromSeconds(2));
@@ -178,6 +186,87 @@ public class MainViewModelTests : IDisposable
         // Local hashing runs on the imported game regardless of the network-metadata choice.
         Assert.Single(achievements.GameIds);
         Assert.False(metadata.Called.IsCompleted);
+    }
+
+    [AvaloniaFact]
+    public async Task Connect_BackfillsExistingLibraryBeforeMatchingAndRefreshingProgress()
+    {
+        var path = Path.Combine(_baseDirectory, "Existing.cue");
+        File.WriteAllText(path, "FILE \"Existing.bin\" BINARY");
+        _library.AddGames([
+            new Game
+            {
+                SystemId = Ps1.Id,
+                Path = path,
+                Title = "Existing game",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var identification = new RecordingRetroAchievementsIdentificationService();
+        var account = new RecordingRetroAchievementsAccountService(isConnected: false);
+        var matching = new RecordingRetroAchievementsMatchingService();
+        var progress = new RecordingRetroAchievementsProgressService();
+        var reported = new RecordingProgress<RetroAchievementsLibrarySyncProgress>();
+        var vm = CreateViewModel(
+            retroAchievements: identification,
+            retroAccount: account,
+            retroMatching: matching,
+            retroProgress: progress);
+
+        var outcome = await vm.ConnectRetroAchievementsAsync(
+            "Player",
+            "SECRET",
+            reported,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(RetroAchievementsConnectionResult.Connected, outcome.Result);
+        Assert.Equal([gameId], identification.GameIds);
+        Assert.Equal(1, matching.Calls);
+        Assert.Equal(1, progress.Calls);
+        Assert.NotNull(outcome.Sync);
+        Assert.Contains(reported.Values, value =>
+            value.Phase == RetroAchievementsLibrarySyncPhase.Identifying &&
+            value.CurrentGameTitle == "Existing game");
+        Assert.Contains(reported.Values, value =>
+            value.Phase == RetroAchievementsLibrarySyncPhase.Matching);
+        Assert.Contains(reported.Values, value =>
+            value.Phase == RetroAchievementsLibrarySyncPhase.RefreshingProgress);
+    }
+
+    [AvaloniaFact]
+    public async Task Disconnect_WaitsForBackgroundImportSyncBeforeClearingAccountProgress()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var identification = new RecordingRetroAchievementsIdentificationService();
+        var account = new RecordingRetroAchievementsAccountService(isConnected: true);
+        var progress = new BlockingRetroAchievementsProgressService();
+        var vm = CreateViewModel(
+            retroAchievements: identification,
+            retroAccount: account,
+            retroMatching: new RecordingRetroAchievementsMatchingService(),
+            retroProgress: progress);
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        await progress.Started.WaitAsync(TimeSpan.FromSeconds(2));
+        var disconnect = vm.DisconnectRetroAchievementsAsync(TestContext.Current.CancellationToken);
+        try
+        {
+            Assert.False(disconnect.IsCompleted);
+            Assert.False(progress.Cleared);
+        }
+        finally
+        {
+            progress.CompleteRefresh();
+        }
+
+        await disconnect;
+
+        Assert.True(progress.Cleared);
+        Assert.False(account.IsConnected);
     }
 
     [AvaloniaFact]
@@ -873,13 +962,130 @@ public class MainViewModelTests : IDisposable
 
         public Task<RetroAchievementsIdentificationSummary> IdentifyAsync(
             IEnumerable<long> gameIds,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
         {
             GameIds = gameIds.ToArray();
             _called.TrySetResult();
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.Identifying,
+                0,
+                GameIds.Count,
+                "Existing game"));
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.Identifying,
+                GameIds.Count,
+                GameIds.Count));
             return Task.FromResult(new RetroAchievementsIdentificationSummary(
                 GameIds.Count, 0, GameIds.Count, 0, 0));
         }
+    }
+
+    private sealed class RecordingRetroAchievementsAccountService(bool isConnected)
+        : IRetroAchievementsAccountService
+    {
+        public RetroAchievementsAccount? Account { get; } = new("Player", "ULID-9");
+        public bool IsConnected { get; private set; } = isConnected;
+        public RetroAchievementsCredentials? CurrentCredentials => IsConnected
+            ? new RetroAchievementsCredentials("Player", "SECRET", "ULID-9")
+            : null;
+
+        public Task<RetroAchievementsConnectionResult> ConnectAsync(
+            string username,
+            string apiKey,
+            CancellationToken cancellationToken = default)
+        {
+            IsConnected = true;
+            return Task.FromResult(RetroAchievementsConnectionResult.Connected);
+        }
+
+        public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        {
+            IsConnected = false;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingRetroAchievementsMatchingService : IRetroAchievementsMatchingService
+    {
+        public int Calls { get; private set; }
+
+        public Task<RetroAchievementsMatchSummary> MatchAsync(
+            RetroAchievementsCredentials? credentials,
+            bool forceRefreshCatalogues,
+            CancellationToken cancellationToken = default,
+            IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
+        {
+            Calls++;
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.Matching,
+                0,
+                1,
+                "Existing game"));
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.Matching,
+                1,
+                1));
+            return Task.FromResult(new RetroAchievementsMatchSummary(1, 1, 0, 0, 0));
+        }
+    }
+
+    private sealed class RecordingRetroAchievementsProgressService : IRetroAchievementsProgressService
+    {
+        public int Calls { get; private set; }
+
+        public Task<RetroAchievementsProgressRefreshSummary> RefreshAllAsync(
+            RetroAchievementsCredentials credentials,
+            CancellationToken cancellationToken = default,
+            IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
+        {
+            Calls++;
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.RefreshingProgress,
+                1,
+                1));
+            return Task.FromResult(new RetroAchievementsProgressRefreshSummary(
+                1,
+                1,
+                RetroAchievementsRequestStatus.Success));
+        }
+
+        public void Clear() { }
+    }
+
+    private sealed class BlockingRetroAchievementsProgressService : IRetroAchievementsProgressService
+    {
+        private readonly TaskCompletionSource _started =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _complete =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Started => _started.Task;
+        public bool Cleared { get; private set; }
+
+        public async Task<RetroAchievementsProgressRefreshSummary> RefreshAllAsync(
+            RetroAchievementsCredentials credentials,
+            CancellationToken cancellationToken = default,
+            IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
+        {
+            _started.TrySetResult();
+            await _complete.Task.WaitAsync(cancellationToken);
+            return new RetroAchievementsProgressRefreshSummary(
+                1,
+                1,
+                RetroAchievementsRequestStatus.Success);
+        }
+
+        public void Clear() => Cleared = true;
+
+        public void CompleteRefresh() => _complete.TrySetResult();
+    }
+
+    private sealed class RecordingProgress<T> : IProgress<T>
+    {
+        public List<T> Values { get; } = [];
+
+        public void Report(T value) => Values.Add(value);
     }
 
     private sealed class RecordingMetadataPreferences : IMetadataPreferencesService

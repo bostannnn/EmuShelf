@@ -12,8 +12,40 @@ namespace EmuShelf.App.Services;
 /// </summary>
 public sealed record RetroAchievementsSettingsContext(
     RetroAchievementsAccount? CurrentAccount,
-    Func<string, string, CancellationToken, Task<RetroAchievementsConnectionResult>> ConnectAsync,
+    bool IsConnected,
+    Func<string, string, IProgress<RetroAchievementsLibrarySyncProgress>?, CancellationToken,
+        Task<RetroAchievementsConnectionSummary>> ConnectAsync,
     Func<CancellationToken, Task> DisconnectAsync);
+
+/// <summary>One observable step in the account connection library sync.</summary>
+public enum RetroAchievementsLibrarySyncPhase
+{
+    Identifying,
+    Matching,
+    RefreshingProgress,
+}
+
+/// <summary>
+/// Progress raised while a connected account is resolving the local library. The current game is
+/// supplied for disk-bound identification and catalogue matching; progress refreshes operate on
+/// RA game ids, so they do not have a local title to display.
+/// </summary>
+public sealed record RetroAchievementsLibrarySyncProgress(
+    RetroAchievementsLibrarySyncPhase Phase,
+    int Completed,
+    int Total,
+    string? CurrentGameTitle = null);
+
+/// <summary>Detailed result of one successful credential validation and its follow-up library sync.</summary>
+public sealed record RetroAchievementsLibrarySyncSummary(
+    RetroAchievementsIdentificationSummary Identification,
+    RetroAchievementsMatchSummary? Matching,
+    RetroAchievementsProgressRefreshSummary? Progress);
+
+/// <summary>Result returned to Settings after credentials and, when possible, the library sync complete.</summary>
+public sealed record RetroAchievementsConnectionSummary(
+    RetroAchievementsConnectionResult Result,
+    RetroAchievementsLibrarySyncSummary? Sync = null);
 
 public enum RetroAchievementsConnectionResult
 {
@@ -86,7 +118,10 @@ public sealed class RetroAchievementsAccountService : IRetroAchievementsAccountS
             var apiKey = _credentialStore.GetApiKey();
             return string.IsNullOrEmpty(apiKey)
                 ? null
-                : new RetroAchievementsCredentials(_account.Username, apiKey);
+                : new RetroAchievementsCredentials(
+                    _account.Username,
+                    apiKey,
+                    _account.UserUlid);
         }
     }
 

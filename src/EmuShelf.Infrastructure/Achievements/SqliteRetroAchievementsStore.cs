@@ -90,7 +90,7 @@ public sealed class SqliteRetroAchievementsStore
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT l.GameId, g.SystemId, l.CanonicalHash
+            SELECT l.GameId, g.SystemId, l.CanonicalHash, g.Title
             FROM RetroAchievementGameLinks l
             JOIN Games g ON g.Id = l.GameId
             WHERE l.Status = $hashed AND l.CanonicalHash IS NOT NULL;
@@ -104,7 +104,8 @@ public sealed class SqliteRetroAchievementsStore
             results.Add(new RetroAchievementsHashedGame(
                 reader.GetInt64(0),
                 reader.GetString(1),
-                reader.GetString(2)));
+                reader.GetString(2),
+                reader.GetString(3)));
         }
         return results;
     }
