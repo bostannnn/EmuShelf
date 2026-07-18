@@ -42,6 +42,15 @@ public sealed record RetroAchievementsResponse<T>(
 /// </summary>
 public sealed record RetroAchievementsCredentials(string Username, string ApiKey);
 
+public static class RetroAchievementsApi
+{
+    /// <summary>
+    /// Maximum game ids per <see cref="IRetroAchievementsClient.GetUserProgressAsync"/> call;
+    /// larger sets must be split by the caller so the request URI stays within server limits.
+    /// </summary>
+    public const int MaxUserProgressBatchSize = 100;
+}
+
 /// <summary>Validated account profile. <see cref="UserUlid"/> is RetroAchievements' stable id.</summary>
 public sealed record RetroAchievementsProfile(
     string Username,

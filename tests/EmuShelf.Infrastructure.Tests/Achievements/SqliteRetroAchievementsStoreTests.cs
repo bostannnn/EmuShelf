@@ -126,6 +126,41 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Empty(_store.GetHashedGames());
     }
 
+    [Fact]
+    public void Progress_LinkedIdsSaveGetAndClear_RoundTrip()
+    {
+        var gameId = AddGame();
+        _store.SaveIdentification(
+            gameId,
+            new RetroAchievementsHashResult(
+                RetroAchievementsIdentificationStatus.Hashed,
+                "abc123",
+                "algorithm-v1",
+                "fingerprint",
+                DateTimeOffset.UtcNow,
+                null));
+        _store.SaveCatalogueMatch(gameId, retroAchievementsGameId: 1234, hasAchievements: true);
+
+        Assert.Equal([1234], _store.GetLinkedRetroAchievementsGameIds());
+
+        var refreshedAt = new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
+        _store.SaveProgress(new RetroAchievementsGameProgress(1234, 40, 12, 3), refreshedAt);
+
+        var snapshot = _store.GetProgress(1234);
+        Assert.NotNull(snapshot);
+        Assert.Equal(40, snapshot!.Progress.AchievementCount);
+        Assert.Equal(12, snapshot.Progress.NumAwarded);
+        Assert.Equal(3, snapshot.Progress.NumAwardedHardcore);
+        Assert.Equal(refreshedAt, snapshot.LastRefreshedAt);
+
+        // Re-saving overwrites, and clearing drops everything (account-scoped).
+        _store.SaveProgress(new RetroAchievementsGameProgress(1234, 40, 20, 5), refreshedAt);
+        Assert.Equal(20, _store.GetProgress(1234)!.Progress.NumAwarded);
+
+        _store.ClearProgress();
+        Assert.Null(_store.GetProgress(1234));
+    }
+
     private long AddGame()
     {
         var path = Path.Combine(BaseDirectory, "game.iso");

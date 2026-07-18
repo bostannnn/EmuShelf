@@ -144,9 +144,11 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       link (RA game id + has-achievements). A miss against a **fresh** catalogue records "no
       achievements"; a miss against a stale/absent catalogue is left unresolved so it never
       becomes a false "no". 13 unit tests (TTL, stale fallback, force refresh, match/miss states).
-- [ ] Add schema-v5 records for account-scoped **progress summaries** (unlocked / total,
-      hardcore) and last-successful refresh times, available offline. (Link resolution already
-      lands in the v4 columns above; this adds the per-account progress table.)
+- [x] Add schema-v5 `RetroAchievementProgress` records for account-scoped **progress summaries**
+      (awarded / total, hardcore) with last-refresh times, available offline. Store methods live
+      on a separate `IRetroAchievementsProgressStore`; `RetroAchievementsProgressService` refreshes
+      linked RA game ids in `MaxUserProgressBatchSize` batches, stops and reports on failure while
+      keeping the cache, and can clear on disconnect. 6 unit tests (round-trip, batching, failure).
 - [ ] Download achievement badges on demand, off the UI thread, into a bounded
       `Cache/RetroAchievements/Badges/` cache. Deduplicate concurrent requests and render a
       local placeholder when an image is unavailable. **Deferred to §5**, where badges render.

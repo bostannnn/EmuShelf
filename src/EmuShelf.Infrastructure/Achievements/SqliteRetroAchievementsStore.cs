@@ -7,7 +7,8 @@ using Microsoft.Data.Sqlite;
 
 namespace EmuShelf.Infrastructure.Achievements;
 
-public sealed class SqliteRetroAchievementsStore : IRetroAchievementsStore
+public sealed class SqliteRetroAchievementsStore
+    : IRetroAchievementsStore, IRetroAchievementsProgressStore
 {
     private const string GameColumns =
         "Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin, IsAvailable, DateAdded";
@@ -141,6 +142,79 @@ public sealed class SqliteRetroAchievementsStore : IRetroAchievementsStore
         command.Parameters.AddWithValue(
             "$has",
             hasAchievements is null ? DBNull.Value : hasAchievements.Value ? 1 : 0);
+        command.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<int> GetLinkedRetroAchievementsGameIds()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT DISTINCT RetroAchievementsGameId
+            FROM RetroAchievementGameLinks
+            WHERE RetroAchievementsGameId IS NOT NULL;
+            """;
+        using var reader = command.ExecuteReader();
+        var ids = new List<int>();
+        while (reader.Read())
+            ids.Add(reader.GetInt32(0));
+        return ids;
+    }
+
+    public RetroAchievementsProgressSnapshot? GetProgress(int retroAchievementsGameId)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT AchievementCount, NumAwarded, NumAwardedHardcore, LastRefreshUnixMilliseconds
+            FROM RetroAchievementProgress
+            WHERE RetroAchievementsGameId = $id;
+            """;
+        command.Parameters.AddWithValue("$id", retroAchievementsGameId);
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        return new RetroAchievementsProgressSnapshot(
+            new RetroAchievementsGameProgress(
+                retroAchievementsGameId,
+                reader.GetInt32(0),
+                reader.GetInt32(1),
+                reader.GetInt32(2)),
+            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)));
+    }
+
+    public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO RetroAchievementProgress (
+                RetroAchievementsGameId, AchievementCount, NumAwarded,
+                NumAwardedHardcore, LastRefreshUnixMilliseconds)
+            VALUES ($id, $count, $awarded, $hardcore, $refreshed)
+            ON CONFLICT(RetroAchievementsGameId) DO UPDATE SET
+                AchievementCount = excluded.AchievementCount,
+                NumAwarded = excluded.NumAwarded,
+                NumAwardedHardcore = excluded.NumAwardedHardcore,
+                LastRefreshUnixMilliseconds = excluded.LastRefreshUnixMilliseconds;
+            """;
+        command.Parameters.AddWithValue("$id", progress.GameId);
+        command.Parameters.AddWithValue("$count", progress.AchievementCount);
+        command.Parameters.AddWithValue("$awarded", progress.NumAwarded);
+        command.Parameters.AddWithValue("$hardcore", progress.NumAwardedHardcore);
+        command.Parameters.AddWithValue("$refreshed", refreshedAt.ToUnixTimeMilliseconds());
+        command.ExecuteNonQuery();
+    }
+
+    public void ClearProgress()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM RetroAchievementProgress;";
         command.ExecuteNonQuery();
     }
 

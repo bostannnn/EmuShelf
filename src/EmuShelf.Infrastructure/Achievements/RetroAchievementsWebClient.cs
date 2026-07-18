@@ -22,7 +22,7 @@ public sealed class RetroAchievementsWebClient : IRetroAchievementsClient
     /// Upper bound on ids per <see cref="GetUserProgressAsync"/> call. A larger set must be split
     /// by the caller (the §6 refresh coordinator) so the request URI cannot exceed server limits.
     /// </summary>
-    public const int MaxUserProgressBatchSize = 100;
+    public const int MaxUserProgressBatchSize = RetroAchievementsApi.MaxUserProgressBatchSize;
 
     private readonly HttpClient _httpClient;
     private readonly Uri _baseAddress;
