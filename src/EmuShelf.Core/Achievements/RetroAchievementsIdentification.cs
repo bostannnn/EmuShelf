@@ -65,6 +65,9 @@ public interface IRetroAchievementsGameHasher
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>A locally hashed game awaiting catalogue resolution.</summary>
+public sealed record RetroAchievementsHashedGame(long GameId, string SystemId, string CanonicalHash);
+
 public interface IRetroAchievementsStore
 {
     Game? GetGame(long gameId);
@@ -72,4 +75,14 @@ public interface IRetroAchievementsStore
     RetroAchievementsGameLink? GetGameLink(long gameId);
 
     void SaveIdentification(long gameId, RetroAchievementsHashResult result);
+
+    /// <summary>Returns every game with a successfully calculated canonical hash, for matching.</summary>
+    IReadOnlyList<RetroAchievementsHashedGame> GetHashedGames();
+
+    /// <summary>
+    /// Records the outcome of resolving a hash against a fresh catalogue: a matched RA game id and
+    /// whether it has achievements, or (null, false) for a fresh miss. Leave unresolved (do not
+    /// call) when the catalogue was stale, so a miss never becomes a false "no".
+    /// </summary>
+    void SaveCatalogueMatch(long gameId, int? retroAchievementsGameId, bool? hasAchievements);
 }

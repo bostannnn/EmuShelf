@@ -97,6 +97,53 @@ public sealed class SqliteRetroAchievementsStore : IRetroAchievementsStore
         command.ExecuteNonQuery();
     }
 
+    public IReadOnlyList<RetroAchievementsHashedGame> GetHashedGames()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT l.GameId, g.SystemId, l.CanonicalHash
+            FROM RetroAchievementGameLinks l
+            JOIN Games g ON g.Id = l.GameId
+            WHERE l.Status = $hashed AND l.CanonicalHash IS NOT NULL;
+            """;
+        command.Parameters.AddWithValue(
+            "$hashed", (int)RetroAchievementsIdentificationStatus.Hashed);
+        using var reader = command.ExecuteReader();
+        var results = new List<RetroAchievementsHashedGame>();
+        while (reader.Read())
+        {
+            results.Add(new RetroAchievementsHashedGame(
+                reader.GetInt64(0),
+                reader.GetString(1),
+                reader.GetString(2)));
+        }
+        return results;
+    }
+
+    public void SaveCatalogueMatch(
+        long gameId,
+        int? retroAchievementsGameId,
+        bool? hasAchievements)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            UPDATE RetroAchievementGameLinks
+            SET RetroAchievementsGameId = $raId, HasAchievements = $has
+            WHERE GameId = $gameId;
+            """;
+        command.Parameters.AddWithValue("$gameId", gameId);
+        command.Parameters.AddWithValue(
+            "$raId", (object?)retroAchievementsGameId ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$has",
+            hasAchievements is null ? DBNull.Value : hasAchievements.Value ? 1 : 0);
+        command.ExecuteNonQuery();
+    }
+
     private Game ReadGame(SqliteDataReader reader) => new()
     {
         Id = reader.GetInt64(0),

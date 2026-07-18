@@ -83,6 +83,49 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Null(_store.GetGameLink(gameId));
     }
 
+    [Fact]
+    public void GetHashedGames_ReturnsHashedOnly_AndSaveCatalogueMatchRoundTrips()
+    {
+        var gameId = AddGame();
+        _store.SaveIdentification(
+            gameId,
+            new RetroAchievementsHashResult(
+                RetroAchievementsIdentificationStatus.Hashed,
+                "abc123",
+                "algorithm-v1",
+                "fingerprint",
+                DateTimeOffset.UtcNow,
+                null));
+
+        var entry = Assert.Single(_store.GetHashedGames());
+        Assert.Equal(gameId, entry.GameId);
+        Assert.Equal("playstation2", entry.SystemId);
+        Assert.Equal("abc123", entry.CanonicalHash);
+
+        _store.SaveCatalogueMatch(gameId, retroAchievementsGameId: 1234, hasAchievements: true);
+        var link = _store.GetGameLink(gameId);
+
+        Assert.Equal(1234, link!.RetroAchievementsGameId);
+        Assert.True(link.HasAchievements);
+    }
+
+    [Fact]
+    public void GetHashedGames_ExcludesUnhashedResults()
+    {
+        var gameId = AddGame();
+        _store.SaveIdentification(
+            gameId,
+            new RetroAchievementsHashResult(
+                RetroAchievementsIdentificationStatus.UnsupportedFormat,
+                null,
+                "algorithm-v1",
+                "fingerprint",
+                DateTimeOffset.UtcNow,
+                "unsupported"));
+
+        Assert.Empty(_store.GetHashedGames());
+    }
+
     private long AddGame()
     {
         var path = Path.Combine(BaseDirectory, "game.iso");

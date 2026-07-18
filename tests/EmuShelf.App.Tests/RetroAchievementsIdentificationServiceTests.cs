@@ -104,6 +104,15 @@ public class RetroAchievementsIdentificationServiceTests
                 result.AttemptedAt,
                 result.Error);
         }
+
+        public IReadOnlyList<RetroAchievementsHashedGame> GetHashedGames() => [];
+
+        public void SaveCatalogueMatch(
+            long gameId,
+            int? retroAchievementsGameId,
+            bool? hasAchievements)
+        {
+        }
     }
 
     private sealed class RecordingHasher(string fingerprint) : IRetroAchievementsGameHasher

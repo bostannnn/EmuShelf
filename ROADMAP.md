@@ -134,16 +134,22 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 3. Portable catalogue and progress cache
 
-- [ ] Cache achievement-bearing game/hash catalogues for PlayStation (RA 12), GameCube
-      (RA 16), Wii (RA 19), and PlayStation 2 (RA 21) under `Cache/RetroAchievements/`.
-      Request `API_GetGameList` with achievements and hashes, at most once per system every
-      seven days unless the user explicitly refreshes it.
-- [ ] Add schema-versioned records for local-game-to-RA links, identification status and
-      fingerprint, account-scoped progress summaries, achievement details/unlock dates, and
-      last-successful refresh times. Personal progress remains available offline.
+- [x] Cache achievement-bearing game/hash catalogues for PlayStation (RA 12), GameCube
+      (RA 16), Wii (RA 19), and PlayStation 2 (RA 21) as JSON under `Cache/RetroAchievements/`
+      (`RetroAchievementsCatalogueCache`). `API_GetGameList` (achievements + hashes) is requested
+      at most once per console every seven days unless refresh is forced, a stale cache is still
+      served offline, and the response is exposed as a hash→game lookup.
+- [x] Hash→game matching (`RetroAchievementsMatchingService` + `RetroAchievementsConsoles`):
+      resolves each locally hashed game against its console catalogue and updates the schema-v4
+      link (RA game id + has-achievements). A miss against a **fresh** catalogue records "no
+      achievements"; a miss against a stale/absent catalogue is left unresolved so it never
+      becomes a false "no". 13 unit tests (TTL, stale fallback, force refresh, match/miss states).
+- [ ] Add schema-v5 records for account-scoped **progress summaries** (unlocked / total,
+      hardcore) and last-successful refresh times, available offline. (Link resolution already
+      lands in the v4 columns above; this adds the per-account progress table.)
 - [ ] Download achievement badges on demand, off the UI thread, into a bounded
       `Cache/RetroAchievements/Badges/` cache. Deduplicate concurrent requests and render a
-      local placeholder when an image is unavailable.
+      local placeholder when an image is unavailable. **Deferred to §5**, where badges render.
 
 ### 4. Library availability presentation
 
