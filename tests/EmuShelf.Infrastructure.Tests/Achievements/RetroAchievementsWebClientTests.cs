@@ -104,6 +104,29 @@ public class RetroAchievementsWebClientTests
     }
 
     [Fact]
+    public async Task AuthenticationTimeout419_MapsToAuthenticationFailed()
+    {
+        // RetroAchievements runs on Laravel, which answers an unauthenticated request with 419.
+        var client = Client(new HttpResponseMessage((HttpStatusCode)419));
+
+        var response = await client.GetUserProfileAsync(Credentials, Cancellation);
+
+        Assert.Equal(RetroAchievementsRequestStatus.AuthenticationFailed, response.Status);
+    }
+
+    [Fact]
+    public async Task GetUserProgress_TooManyIds_ThrowsSoTheCallerBatches()
+    {
+        var client = Client(Ok("{}"));
+        var ids = Enumerable
+            .Range(1, RetroAchievementsWebClient.MaxUserProgressBatchSize + 1)
+            .ToArray();
+
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => client.GetUserProgressAsync(Credentials, ids, Cancellation));
+    }
+
+    [Fact]
     public async Task TransportFailure_MapsToOffline()
     {
         var handler = new StubHandler { Throw = new HttpRequestException("no network") };

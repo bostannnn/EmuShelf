@@ -63,6 +63,24 @@ public class RetroAchievementsAccountServiceTests
     }
 
     [Fact]
+    public async Task Connect_WhenKeyStorageFails_ReturnsLocalStorageFailedAndRollsBack()
+    {
+        var settings = new InMemorySettingsService();
+        var store = new ThrowingCredentialStore();
+        var client = new FakeClient(RetroAchievementsResponse<RetroAchievementsProfile>.Success(
+            new RetroAchievementsProfile("Player", "ULID-9", 100, 10)));
+        var service = new RetroAchievementsAccountService(settings, settings.Load(), store, client);
+
+        var result = await service.ConnectAsync("Player", "SECRETKEY", Cancellation);
+
+        Assert.Equal(RetroAchievementsConnectionResult.LocalStorageFailed, result);
+        Assert.False(service.IsConnected);
+        Assert.Null(service.Account);
+        Assert.Null(settings.Load().RetroAchievementsUsername);
+        Assert.True(store.WasCleared); // the partially stored key was rolled back
+    }
+
+    [Fact]
     public async Task Disconnect_ClearsIdentityAndKey()
     {
         var settings = new InMemorySettingsService();
@@ -106,6 +124,15 @@ public class RetroAchievementsAccountServiceTests
 
         public AppSettings Load() => _settings;
         public void Save(AppSettings settings) => _settings = settings;
+    }
+
+    private sealed class ThrowingCredentialStore : IRetroAchievementsCredentialStore
+    {
+        public bool WasCleared { get; private set; }
+
+        public string? GetApiKey() => null;
+        public void SaveApiKey(string apiKey) => throw new IOException("no space left on device");
+        public void ClearApiKey() => WasCleared = true;
     }
 
     private sealed class FakeClient(RetroAchievementsResponse<RetroAchievementsProfile>? profile)

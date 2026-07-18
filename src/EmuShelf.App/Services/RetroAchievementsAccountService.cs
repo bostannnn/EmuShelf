@@ -11,6 +11,9 @@ public enum RetroAchievementsConnectionResult
     Offline,
     ServerError,
     RateLimited,
+
+    /// <summary>Validation succeeded but the key or identity could not be stored on this machine.</summary>
+    LocalStorageFailed,
 }
 
 /// <summary>
@@ -92,19 +95,46 @@ public sealed class RetroAchievementsAccountService : IRetroAchievementsAccountS
             return Map(response.Status);
 
         var profile = response.Value!;
-        _credentialStore.SaveApiKey(trimmedKey);
+        try
+        {
+            _credentialStore.SaveApiKey(trimmedKey);
+            await PersistAsync(profile.Username, profile.UserUlid, cancellationToken);
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // Validation succeeded but storing the key or identity failed (DPAPI error, read-only
+            // or full Settings/). Roll back any stored key so a secret is never left without an
+            // identity, and report a result instead of throwing out of a result-returning method.
+            _logger.Error("Connected to RetroAchievements but could not store credentials locally.", ex);
+            TryClearCredential();
+            _account = null;
+            return RetroAchievementsConnectionResult.LocalStorageFailed;
+        }
+
         _account = new RetroAchievementsAccount(profile.Username, profile.UserUlid);
-        await PersistAsync(profile.Username, profile.UserUlid, cancellationToken);
         _logger.Information($"Connected RetroAchievements account {profile.Username}.");
         return RetroAchievementsConnectionResult.Connected;
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
-        _credentialStore.ClearApiKey();
+        TryClearCredential();
         _account = null;
         await PersistAsync(null, null, cancellationToken);
         _logger.Information("Disconnected the RetroAchievements account.");
+    }
+
+    private void TryClearCredential()
+    {
+        try
+        {
+            _credentialStore.ClearApiKey();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Warning("Could not remove the stored RetroAchievements key.", ex);
+        }
     }
 
     private static RetroAchievementsAccount? BuildAccount(AppSettings settings) =>
