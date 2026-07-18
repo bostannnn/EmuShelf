@@ -41,6 +41,9 @@ public sealed class AppBootstrapper
     public IGameLibrary Library { get; }
     public IGameMetadataStore MetadataStore { get; }
     public IRetroAchievementsStore RetroAchievementsStore { get; }
+    public IRetroAchievementsReadStore RetroAchievementsReadStore { get; }
+    public IRetroAchievementsProgressStore RetroAchievementsProgressStore { get; }
+    public IRetroAchievementsCredentialStore RetroAchievementsCredentialStore { get; }
     public IRetroAchievementsGameHasher RetroAchievementsHasher { get; }
     public IRetroAchievementsIdentificationService RetroAchievementsIdentification { get; }
     public IReadOnlyList<MetadataSystemProfile> MetadataProfiles { get; }
@@ -91,7 +94,12 @@ public sealed class AppBootstrapper
         Emulators = KnownEmulators.All;
         Library = new GameLibrary(database, PathResolver);
         MetadataStore = new SqliteGameMetadataStore(database, PathResolver);
-        RetroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
+        var retroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
+        RetroAchievementsStore = retroAchievementsStore;
+        RetroAchievementsReadStore = retroAchievementsStore;
+        RetroAchievementsProgressStore = retroAchievementsStore;
+        RetroAchievementsCredentialStore =
+            RetroAchievementsCredentialStoreFactory.Create(Paths, Logger);
         RetroAchievementsHasher = new RetroAchievementsGameHasher();
         RetroAchievementsIdentification = new RetroAchievementsIdentificationService(
             RetroAchievementsStore,

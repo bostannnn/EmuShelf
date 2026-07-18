@@ -8,10 +8,14 @@ using Microsoft.Data.Sqlite;
 namespace EmuShelf.Infrastructure.Achievements;
 
 public sealed class SqliteRetroAchievementsStore
-    : IRetroAchievementsStore, IRetroAchievementsProgressStore
+    : IRetroAchievementsStore, IRetroAchievementsProgressStore, IRetroAchievementsReadStore
 {
     private const string GameColumns =
         "Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin, IsAvailable, DateAdded";
+
+    private const string LinkColumns =
+        "GameId, Status, CanonicalHash, HashAlgorithmVersion, SourceFingerprint, " +
+        "RetroAchievementsGameId, HasAchievements, LastAttemptUnixMilliseconds, LastError";
 
     private readonly LibraryDatabase _database;
     private readonly IRelativePathResolver _pathResolver;
@@ -39,28 +43,10 @@ public sealed class SqliteRetroAchievementsStore
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
-            SELECT GameId, Status, CanonicalHash, HashAlgorithmVersion,
-                   SourceFingerprint, RetroAchievementsGameId, HasAchievements,
-                   LastAttemptUnixMilliseconds, LastError
-            FROM RetroAchievementGameLinks
-            WHERE GameId = $gameId;
-            """;
+            $"SELECT {LinkColumns} FROM RetroAchievementGameLinks WHERE GameId = $gameId;";
         command.Parameters.AddWithValue("$gameId", gameId);
         using var reader = command.ExecuteReader();
-        if (!reader.Read())
-            return null;
-
-        return new RetroAchievementsGameLink(
-            reader.GetInt64(0),
-            (RetroAchievementsIdentificationStatus)reader.GetInt32(1),
-            reader.IsDBNull(2) ? null : reader.GetString(2),
-            reader.GetString(3),
-            reader.GetString(4),
-            reader.IsDBNull(5) ? null : reader.GetInt32(5),
-            reader.IsDBNull(6) ? null : reader.GetInt64(6) != 0,
-            DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
-            reader.IsDBNull(8) ? null : reader.GetString(8));
+        return reader.Read() ? ReadLink(reader) : null;
     }
 
     public void SaveIdentification(long gameId, RetroAchievementsHashResult result)
@@ -217,6 +203,55 @@ public sealed class SqliteRetroAchievementsStore
         command.CommandText = "DELETE FROM RetroAchievementProgress;";
         command.ExecuteNonQuery();
     }
+
+    public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT {LinkColumns} FROM RetroAchievementGameLinks;";
+        using var reader = command.ExecuteReader();
+        var links = new Dictionary<long, RetroAchievementsGameLink>();
+        while (reader.Read())
+        {
+            var link = ReadLink(reader);
+            links[link.GameId] = link;
+        }
+        return links;
+    }
+
+    public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT RetroAchievementsGameId, AchievementCount, NumAwarded,
+                   NumAwardedHardcore, LastRefreshUnixMilliseconds
+            FROM RetroAchievementProgress;
+            """;
+        using var reader = command.ExecuteReader();
+        var progress = new Dictionary<int, RetroAchievementsProgressSnapshot>();
+        while (reader.Read())
+        {
+            var id = reader.GetInt32(0);
+            progress[id] = new RetroAchievementsProgressSnapshot(
+                new RetroAchievementsGameProgress(
+                    id, reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3)),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)));
+        }
+        return progress;
+    }
+
+    private static RetroAchievementsGameLink ReadLink(SqliteDataReader reader) => new(
+        reader.GetInt64(0),
+        (RetroAchievementsIdentificationStatus)reader.GetInt32(1),
+        reader.IsDBNull(2) ? null : reader.GetString(2),
+        reader.GetString(3),
+        reader.GetString(4),
+        reader.IsDBNull(5) ? null : reader.GetInt32(5),
+        reader.IsDBNull(6) ? null : reader.GetInt64(6) != 0,
+        DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
+        reader.IsDBNull(8) ? null : reader.GetString(8));
 
     private Game ReadGame(SqliteDataReader reader) => new()
     {

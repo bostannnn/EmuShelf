@@ -161,6 +161,34 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Null(_store.GetProgress(1234));
     }
 
+    [Fact]
+    public void GetAllLinks_AndGetAllProgress_ReturnStoredRowsForDisplay()
+    {
+        var gameId = AddGame();
+        _store.SaveIdentification(
+            gameId,
+            new RetroAchievementsHashResult(
+                RetroAchievementsIdentificationStatus.Hashed,
+                "abc123",
+                "algorithm-v1",
+                "fingerprint",
+                DateTimeOffset.UtcNow,
+                null));
+        _store.SaveCatalogueMatch(gameId, retroAchievementsGameId: 1234, hasAchievements: true);
+        _store.SaveProgress(
+            new RetroAchievementsGameProgress(1234, 40, 12, 3),
+            new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
+
+        var links = _store.GetAllLinks();
+        var progress = _store.GetAllProgress();
+
+        Assert.Equal(1234, links[gameId].RetroAchievementsGameId);
+        Assert.True(links[gameId].HasAchievements);
+        Assert.Equal(12, progress[1234].Progress.NumAwarded);
+        Assert.Equal(40, progress[1234].Progress.AchievementCount);
+        Assert.Equal(3, progress[1234].Progress.NumAwardedHardcore);
+    }
+
     private long AddGame()
     {
         var path = Path.Combine(BaseDirectory, "game.iso");

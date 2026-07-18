@@ -9,6 +9,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
@@ -37,6 +38,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IGameMetadataService _metadataService;
     private readonly IMetadataPreferencesService _metadataPreferences;
     private readonly IRetroAchievementsIdentificationService? _retroAchievements;
+    private readonly IRetroAchievementsReadStore? _retroAchievementsRead;
+    private readonly IRetroAchievementsAccountService? _retroAccount;
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -157,7 +160,9 @@ public partial class MainViewModel : ViewModelBase
         IGameMetadataService? metadataService = null,
         IMetadataPreferencesService? metadataPreferences = null,
         IAppLogger? logger = null,
-        IRetroAchievementsIdentificationService? retroAchievements = null)
+        IRetroAchievementsIdentificationService? retroAchievements = null,
+        IRetroAchievementsReadStore? retroAchievementsRead = null,
+        IRetroAchievementsAccountService? retroAccount = null)
     {
         _library = library;
         _scanner = scanner;
@@ -172,6 +177,8 @@ public partial class MainViewModel : ViewModelBase
         _metadataService = metadataService ?? new NullGameMetadataService();
         _metadataPreferences = metadataPreferences ?? new NullMetadataPreferencesService();
         _retroAchievements = retroAchievements;
+        _retroAchievementsRead = retroAchievementsRead;
+        _retroAccount = retroAccount;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -314,6 +321,8 @@ public partial class MainViewModel : ViewModelBase
                         artwork,
                         gameSystem.CoverAspectRatio));
                 }
+
+                ApplyAchievementDisplays(viewModels);
                 return viewModels;
             });
 
@@ -337,6 +346,36 @@ public partial class MainViewModel : ViewModelBase
         {
             _logger.Error("Could not load the current library view.", ex);
             StatusText = $"Could not load library: {ex.Message}";
+        }
+    }
+
+    // Resolves each game's achievement presentation from the cached links + progress and the
+    // current connection state, so the grid mark and list column render from local data alone
+    // (no network). Runs on the load worker before the view models reach the bound collection.
+    private void ApplyAchievementDisplays(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_retroAchievementsRead is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var links = _retroAchievementsRead.GetAllLinks();
+            var progress = _retroAchievementsRead.GetAllProgress();
+            var connected = _retroAccount?.IsConnected ?? false;
+            foreach (var viewModel in viewModels)
+            {
+                links.TryGetValue(viewModel.Id, out var link);
+                RetroAchievementsProgressSnapshot? snapshot = null;
+                if (link?.RetroAchievementsGameId is { } raGameId)
+                    progress.TryGetValue(raGameId, out snapshot);
+                viewModel.ApplyAchievementsDisplay(
+                    RetroAchievementsDisplay.For(connected, link, snapshot));
+            }
+        }
+        catch (Exception ex)
+        {
+            // The library must still render if the achievement tables are unreadable.
+            _logger.Warning("Could not resolve RetroAchievements display state.", ex);
         }
     }
 

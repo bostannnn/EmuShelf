@@ -2,6 +2,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
 
 namespace EmuShelf.App.ViewModels;
@@ -60,7 +61,26 @@ public partial class GameViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>Whether the grid tile shows the achievement/trophy mark (a confirmed RA match).</summary>
+    [ObservableProperty]
+    public partial bool ShowAchievementMark { get; set; }
+
+    /// <summary>List-view Achievements column: an <c>awarded/total</c> fraction or an em dash.</summary>
+    [ObservableProperty]
+    public partial string AchievementsColumnText { get; set; } = RetroAchievementsDisplay.Dash;
+
+    [ObservableProperty]
+    public partial string AchievementsTooltip { get; set; } = string.Empty;
+
     public bool HasCoverImage => CoverImage is not null;
+
+    /// <summary>Applies a resolved achievement presentation from the display state machine.</summary>
+    public void ApplyAchievementsDisplay(RetroAchievementsDisplay display)
+    {
+        ShowAchievementMark = display.ShowMark;
+        AchievementsColumnText = display.ColumnText;
+        AchievementsTooltip = display.Tooltip;
+    }
 
     public GameViewModel(
         Game game,

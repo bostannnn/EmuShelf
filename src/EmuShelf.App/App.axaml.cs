@@ -7,6 +7,7 @@ using EmuShelf.App.Startup;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Launching;
+using EmuShelf.Infrastructure.Achievements;
 using EmuShelf.Infrastructure.Metadata;
 
 namespace EmuShelf.App;
@@ -15,6 +16,7 @@ public partial class App : Application
 {
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
     private HttpClient? _metadataHttpClient;
+    private HttpClient? _retroAchievementsHttpClient;
 
     public override void Initialize()
     {
@@ -64,6 +66,19 @@ public partial class App : Application
                     Bootstrapper.Logger),
                 coverService,
                 Bootstrapper.Logger);
+            _retroAchievementsHttpClient = new HttpClient
+            {
+                Timeout = TimeSpan.FromSeconds(30),
+            };
+            _retroAchievementsHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            var retroAchievementsClient = new RetroAchievementsWebClient(
+                _retroAchievementsHttpClient, Bootstrapper.Logger);
+            var retroAchievementsAccount = new RetroAchievementsAccountService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                Bootstrapper.RetroAchievementsCredentialStore,
+                retroAchievementsClient,
+                Bootstrapper.Logger);
             var viewModel = new MainViewModel(
                 Bootstrapper.Library,
                 Bootstrapper.FolderScanner,
@@ -79,7 +94,9 @@ public partial class App : Application
                 metadataService,
                 metadataPreferences,
                 Bootstrapper.Logger,
-                Bootstrapper.RetroAchievementsIdentification);
+                Bootstrapper.RetroAchievementsIdentification,
+                Bootstrapper.RetroAchievementsReadStore,
+                retroAchievementsAccount);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
@@ -92,6 +109,7 @@ public partial class App : Application
             desktop.Exit += (_, _) =>
             {
                 _metadataHttpClient?.Dispose();
+                _retroAchievementsHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");
             };
 

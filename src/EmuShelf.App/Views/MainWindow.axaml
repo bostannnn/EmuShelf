@@ -18,6 +18,11 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
+    <Window.Resources>
+        <!-- Neutral trophy glyph (mdi-trophy) for the achievement mark; not RA branding. -->
+        <StreamGeometry x:Key="AchievementTrophyGeometry">M18,2H6V4H2V9C2,11.21 3.79,13 6,13V13.5C6,15.43 7.5,17 9.34,17.15L9,18H7V20H17V18H15L14.66,17.15C16.5,17 18,15.43 18,13.5V13C20.21,13 22,11.21 22,9V4H18V2M6,11C4.9,11 4,10.1 4,9V6H6V11M20,9C20,10.1 19.1,11 18,11V6H20V9Z</StreamGeometry>
+    </Window.Resources>
+
     <Window.Styles>
         <Style Selector="Button.toolbar-button">
             <Setter Property="MinWidth" Value="36" />
@@ -438,6 +443,18 @@
                                                        MaxWidth="260" TextWrapping="Wrap" />
                                         </ToolTip.Tip>
                                     </Border>
+                                    <!-- Achievement mark: shown only on a confirmed RA hash match. -->
+                                    <Border IsVisible="{Binding ShowAchievementMark}"
+                                            Width="24" Height="24" CornerRadius="12" Margin="8"
+                                            HorizontalAlignment="Left" VerticalAlignment="Top"
+                                            Background="{DynamicResource EmuPopoverBrush}"
+                                            BorderBrush="{DynamicResource EmuStrongBorderBrush}"
+                                            BorderThickness="1"
+                                            ToolTip.Tip="{Binding AchievementsTooltip}">
+                                        <PathIcon Width="13" Height="13"
+                                                  Data="{StaticResource AchievementTrophyGeometry}"
+                                                  Foreground="{DynamicResource EmuAccentBrush}" />
+                                    </Border>
                                 </Panel>
                                 </Grid>
 
@@ -497,7 +514,7 @@
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
-                            <Grid ColumnDefinitions="66,*,150,90,100" Classes="game-row"
+                            <Grid ColumnDefinitions="66,*,150,90,96,100" Classes="game-row"
                                   Classes.unavailable="{Binding !IsAvailable}"
                                   DoubleTapped="OnGameDoubleTapped">
                                 <Grid.ContextMenu>
@@ -543,7 +560,17 @@
                                 <TextBlock Grid.Column="3" Text="{Binding FormatLabel}"
                                            VerticalAlignment="Center"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                <TextBlock Grid.Column="4" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="5"
+                                            VerticalAlignment="Center"
+                                            ToolTip.Tip="{Binding AchievementsTooltip}">
+                                    <PathIcon IsVisible="{Binding ShowAchievementMark}"
+                                              Width="11" Height="11"
+                                              Data="{StaticResource AchievementTrophyGeometry}"
+                                              Foreground="{DynamicResource EmuAccentBrush}" />
+                                    <TextBlock Text="{Binding AchievementsColumnText}"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="5" VerticalAlignment="Center"
                                            Text="{Binding IsAvailable, Converter={x:Static vm:AvailabilityText.Instance}}"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <Popup Grid.Column="1" IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
