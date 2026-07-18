@@ -8,7 +8,10 @@ using Microsoft.Data.Sqlite;
 namespace EmuShelf.Infrastructure.Achievements;
 
 public sealed class SqliteRetroAchievementsStore
-    : IRetroAchievementsStore, IRetroAchievementsProgressStore, IRetroAchievementsReadStore
+    : IRetroAchievementsStore,
+      IRetroAchievementsProgressStore,
+      IRetroAchievementsReadStore,
+      IRetroAchievementsDetailsStore
 {
     private const string GameColumns =
         "Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin, IsAvailable, DateAdded";
@@ -202,6 +205,151 @@ public sealed class SqliteRetroAchievementsStore
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText = "DELETE FROM RetroAchievementProgress;";
+        command.ExecuteNonQuery();
+    }
+
+    public RetroAchievementsDetailsSnapshot? GetDetails(int retroAchievementsGameId)
+    {
+        using var connection = _database.CreateConnection();
+        using var header = connection.CreateCommand();
+        header.CommandText =
+            """
+            SELECT Title, AchievementCount, NumAwarded, NumAwardedHardcore,
+                   LastRefreshUnixMilliseconds
+            FROM RetroAchievementGameDetails
+            WHERE RetroAchievementsGameId = $id;
+            """;
+        header.Parameters.AddWithValue("$id", retroAchievementsGameId);
+        using var headerReader = header.ExecuteReader();
+        if (!headerReader.Read())
+            return null;
+
+        var title = headerReader.GetString(0);
+        var achievementCount = headerReader.GetInt32(1);
+        var numAwarded = headerReader.GetInt32(2);
+        var numAwardedHardcore = headerReader.GetInt32(3);
+        var lastRefreshedAt = DateTimeOffset.FromUnixTimeMilliseconds(headerReader.GetInt64(4));
+
+        using var achievementsCommand = connection.CreateCommand();
+        achievementsCommand.CommandText =
+            """
+            SELECT AchievementId, Title, Description, Points, BadgeName, DisplayOrder,
+                   DateEarnedUnixMilliseconds, DateEarnedHardcoreUnixMilliseconds
+            FROM RetroAchievementDetails
+            WHERE RetroAchievementsGameId = $id
+            ORDER BY DisplayOrder, AchievementId;
+            """;
+        achievementsCommand.Parameters.AddWithValue("$id", retroAchievementsGameId);
+        using var achievementReader = achievementsCommand.ExecuteReader();
+        var achievements = new List<RetroAchievementsAchievement>();
+        while (achievementReader.Read())
+        {
+            achievements.Add(new RetroAchievementsAchievement(
+                achievementReader.GetInt32(0),
+                achievementReader.GetString(1),
+                achievementReader.GetString(2),
+                achievementReader.GetInt32(3),
+                achievementReader.GetString(4),
+                achievementReader.GetInt32(5),
+                achievementReader.IsDBNull(6)
+                    ? null
+                    : DateTimeOffset.FromUnixTimeMilliseconds(achievementReader.GetInt64(6)),
+                achievementReader.IsDBNull(7)
+                    ? null
+                    : DateTimeOffset.FromUnixTimeMilliseconds(achievementReader.GetInt64(7))));
+        }
+
+        return new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                retroAchievementsGameId,
+                title,
+                achievementCount,
+                numAwarded,
+                numAwardedHardcore,
+                achievements),
+            lastRefreshedAt);
+    }
+
+    public void SaveDetails(RetroAchievementsGameDetails details, DateTimeOffset refreshedAt)
+    {
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+
+        using (var header = connection.CreateCommand())
+        {
+            header.Transaction = transaction;
+            header.CommandText =
+                """
+                INSERT INTO RetroAchievementGameDetails (
+                    RetroAchievementsGameId, Title, AchievementCount, NumAwarded,
+                    NumAwardedHardcore, LastRefreshUnixMilliseconds)
+                VALUES ($id, $title, $count, $awarded, $hardcore, $refreshed)
+                ON CONFLICT(RetroAchievementsGameId) DO UPDATE SET
+                    Title = excluded.Title,
+                    AchievementCount = excluded.AchievementCount,
+                    NumAwarded = excluded.NumAwarded,
+                    NumAwardedHardcore = excluded.NumAwardedHardcore,
+                    LastRefreshUnixMilliseconds = excluded.LastRefreshUnixMilliseconds;
+                """;
+            header.Parameters.AddWithValue("$id", details.GameId);
+            header.Parameters.AddWithValue("$title", details.Title);
+            header.Parameters.AddWithValue("$count", details.AchievementCount);
+            header.Parameters.AddWithValue("$awarded", details.NumAwarded);
+            header.Parameters.AddWithValue("$hardcore", details.NumAwardedHardcore);
+            header.Parameters.AddWithValue("$refreshed", refreshedAt.ToUnixTimeMilliseconds());
+            header.ExecuteNonQuery();
+        }
+
+        using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = transaction;
+            delete.CommandText =
+                "DELETE FROM RetroAchievementDetails WHERE RetroAchievementsGameId = $id;";
+            delete.Parameters.AddWithValue("$id", details.GameId);
+            delete.ExecuteNonQuery();
+        }
+
+        foreach (var achievement in details.Achievements)
+        {
+            using var insert = connection.CreateCommand();
+            insert.Transaction = transaction;
+            insert.CommandText =
+                """
+                INSERT INTO RetroAchievementDetails (
+                    RetroAchievementsGameId, AchievementId, Title, Description, Points, BadgeName,
+                    DisplayOrder, DateEarnedUnixMilliseconds, DateEarnedHardcoreUnixMilliseconds)
+                VALUES (
+                    $gameId, $achievementId, $title, $description, $points, $badgeName,
+                    $displayOrder, $earned, $hardcore);
+                """;
+            insert.Parameters.AddWithValue("$gameId", details.GameId);
+            insert.Parameters.AddWithValue("$achievementId", achievement.AchievementId);
+            insert.Parameters.AddWithValue("$title", achievement.Title);
+            insert.Parameters.AddWithValue("$description", achievement.Description);
+            insert.Parameters.AddWithValue("$points", achievement.Points);
+            insert.Parameters.AddWithValue("$badgeName", achievement.BadgeName);
+            insert.Parameters.AddWithValue("$displayOrder", achievement.DisplayOrder);
+            insert.Parameters.AddWithValue(
+                "$earned",
+                achievement.DateEarned is { } earned
+                    ? earned.ToUnixTimeMilliseconds()
+                    : DBNull.Value);
+            insert.Parameters.AddWithValue(
+                "$hardcore",
+                achievement.DateEarnedHardcore is { } hardcore
+                    ? hardcore.ToUnixTimeMilliseconds()
+                    : DBNull.Value);
+            insert.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    public void ClearDetails()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM RetroAchievementGameDetails;";
         command.ExecuteNonQuery();
     }
 

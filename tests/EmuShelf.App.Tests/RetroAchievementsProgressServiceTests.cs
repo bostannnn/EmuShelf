@@ -121,5 +121,11 @@ public class RetroAchievementsProgressServiceTests
             int consoleId,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<RetroAchievementsResponse<RetroAchievementsGameDetails>> GetGameDetailsAsync(
+            RetroAchievementsCredentials credentials,
+            int gameId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

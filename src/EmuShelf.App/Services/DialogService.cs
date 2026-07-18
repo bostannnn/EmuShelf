@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Achievements;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
@@ -20,13 +21,22 @@ public sealed class DialogService : IDialogService
 {
     private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
     private readonly IAppLogger _logger;
+    private readonly IRetroAchievementsDetailsService? _retroAchievementsDetails;
+    private readonly IRetroAchievementsAccountService? _retroAchievementsAccount;
+    private readonly IRetroAchievementsBadgeCache? _retroAchievementsBadges;
 
     public DialogService(
         IClassicDesktopStyleApplicationLifetime lifetime,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        IRetroAchievementsDetailsService? retroAchievementsDetails = null,
+        IRetroAchievementsAccountService? retroAchievementsAccount = null,
+        IRetroAchievementsBadgeCache? retroAchievementsBadges = null)
     {
         _lifetime = lifetime;
         _logger = logger ?? NullAppLogger.Instance;
+        _retroAchievementsDetails = retroAchievementsDetails;
+        _retroAchievementsAccount = retroAchievementsAccount;
+        _retroAchievementsBadges = retroAchievementsBadges;
     }
 
     private Window? Owner => _lifetime.MainWindow;
@@ -174,6 +184,38 @@ public sealed class DialogService : IDialogService
         try
         {
             await dialog.ShowDialog<bool>(owner);
+        }
+        finally
+        {
+            _activeDialog = null;
+        }
+    }
+
+    public async Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId)
+    {
+        var owner = Owner;
+        if (owner is null || _retroAchievementsDetails is null || _retroAchievementsAccount is null)
+            return;
+
+        // Reading the small SQLite cache happens before the window opens, on a worker, so the
+        // first frame is already useful even if the optional API refresh is unavailable.
+        var cached = await Task.Run(() => _retroAchievementsDetails.GetCached(retroAchievementsGameId));
+        var viewModel = new AchievementDetailsViewModel(
+            gameTitle,
+            retroAchievementsGameId,
+            _retroAchievementsDetails,
+            _retroAchievementsAccount,
+            _retroAchievementsBadges,
+            cached);
+        var dialog = new AchievementDetailsWindow { DataContext = viewModel };
+        viewModel.CloseRequested += dialog.Close;
+        dialog.Opened += (_, _) => _ = viewModel.RefreshIfStaleAsync();
+        dialog.Closed += (_, _) => viewModel.Dispose();
+
+        _activeDialog = dialog;
+        try
+        {
+            await dialog.ShowDialog(owner);
         }
         finally
         {

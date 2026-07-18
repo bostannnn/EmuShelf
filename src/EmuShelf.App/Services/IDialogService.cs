@@ -41,4 +41,7 @@ public interface IDialogService
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null);
+
+    /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
+    Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);
 }

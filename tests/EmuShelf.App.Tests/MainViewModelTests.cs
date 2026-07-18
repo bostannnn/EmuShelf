@@ -49,9 +49,11 @@ public class MainViewModelTests : IDisposable
         IGameMetadataService? metadata = null,
         IMetadataPreferencesService? metadataPreferences = null,
         IRetroAchievementsIdentificationService? retroAchievements = null,
+        IRetroAchievementsReadStore? retroAchievementsRead = null,
         IRetroAchievementsAccountService? retroAccount = null,
         IRetroAchievementsMatchingService? retroMatching = null,
-        IRetroAchievementsProgressService? retroProgress = null)
+        IRetroAchievementsProgressService? retroProgress = null,
+        IRetroAchievementsDetailsService? retroDetails = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -67,9 +69,11 @@ public class MainViewModelTests : IDisposable
             metadataService: metadata,
             metadataPreferences: metadataPreferences,
             retroAchievements: retroAchievements,
+            retroAchievementsRead: retroAchievementsRead,
             retroAccount: retroAccount,
             retroMatching: retroMatching,
-            retroProgress: retroProgress);
+            retroProgress: retroProgress,
+            retroDetails: retroDetails);
     }
 
     private string MakeRomsFolder()
@@ -244,11 +248,13 @@ public class MainViewModelTests : IDisposable
         var identification = new RecordingRetroAchievementsIdentificationService();
         var account = new RecordingRetroAchievementsAccountService(isConnected: true);
         var progress = new BlockingRetroAchievementsProgressService();
+        var details = new RecordingRetroAchievementsDetailsService();
         var vm = CreateViewModel(
             retroAchievements: identification,
             retroAccount: account,
             retroMatching: new RecordingRetroAchievementsMatchingService(),
-            retroProgress: progress);
+            retroProgress: progress,
+            retroDetails: details);
 
         await vm.AddGamesCommand.ExecuteAsync(null);
         await progress.Started.WaitAsync(TimeSpan.FromSeconds(2));
@@ -266,7 +272,34 @@ public class MainViewModelTests : IDisposable
         await disconnect;
 
         Assert.True(progress.Cleared);
+        Assert.True(details.Cleared);
         Assert.False(account.IsConnected);
+    }
+
+    [AvaloniaFact]
+    public async Task ConfirmedAchievementLink_OpensDetailsThroughGameCommand()
+    {
+        var path = Path.Combine(_baseDirectory, "Achievements.cue");
+        File.WriteAllText(path, "FILE \"Achievements.bin\" BINARY");
+        _library.AddGames([
+            new Game
+            {
+                SystemId = Ps1.Id,
+                Path = path,
+                Title = "Achievements game",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var readStore = new StaticRetroAchievementsReadStore(gameId, 1234);
+        var vm = CreateViewModel(retroAchievementsRead: readStore);
+
+        await vm.ReloadGamesAsync();
+        var game = Assert.Single(vm.Games);
+        await game.OpenAchievementsCommand.ExecuteAsync(game);
+
+        Assert.True(game.CanOpenAchievementDetails);
+        Assert.Equal(("Achievements game", 1234), _dialogs.AchievementDetailsRequest);
     }
 
     [AvaloniaFact]
@@ -1006,6 +1039,28 @@ public class MainViewModelTests : IDisposable
         }
     }
 
+    private sealed class StaticRetroAchievementsReadStore(long localGameId, int retroAchievementsGameId)
+        : IRetroAchievementsReadStore
+    {
+        public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks() =>
+            new Dictionary<long, RetroAchievementsGameLink>
+            {
+                [localGameId] = new RetroAchievementsGameLink(
+                    localGameId,
+                    RetroAchievementsIdentificationStatus.Hashed,
+                    "hash",
+                    "algorithm",
+                    "fingerprint",
+                    retroAchievementsGameId,
+                    true,
+                    DateTimeOffset.UtcNow,
+                    null),
+            };
+
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() =>
+            new Dictionary<int, RetroAchievementsProgressSnapshot>();
+    }
+
     private sealed class RecordingRetroAchievementsMatchingService : IRetroAchievementsMatchingService
     {
         public int Calls { get; private set; }
@@ -1079,6 +1134,22 @@ public class MainViewModelTests : IDisposable
         public void Clear() => Cleared = true;
 
         public void CompleteRefresh() => _complete.TrySetResult();
+    }
+
+    private sealed class RecordingRetroAchievementsDetailsService : IRetroAchievementsDetailsService
+    {
+        public bool Cleared { get; private set; }
+
+        public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => null;
+
+        public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
+            RetroAchievementsCredentials credentials,
+            int retroAchievementsGameId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
+                RetroAchievementsRequestStatus.Offline));
+
+        public void Clear() => Cleared = true;
     }
 
     private sealed class RecordingProgress<T> : IProgress<T>

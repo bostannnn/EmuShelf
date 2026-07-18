@@ -73,6 +73,49 @@ public class RetroAchievementsWebClientTests
     }
 
     [Fact]
+    public async Task GetGameDetails_ParsesDisplayOrderAwardsAndUsesUserMetadataFlag()
+    {
+        var handler = new StubHandler
+        {
+            Response = Ok(
+                """
+                {
+                  "ID":1234,"Title":"Spyro","NumAchievements":2,
+                  "NumAwardedToUser":1,"NumAwardedToUserHardcore":1,
+                  "Achievements":{
+                    "8":{"ID":8,"Title":"Second","Description":"Later","Points":10,
+                         "BadgeName":"000008","DisplayOrder":2,"DateEarned":null,
+                         "DateEarnedHardcore":null},
+                    "7":{"ID":7,"Title":"First","Description":"Earlier","Points":"5",
+                         "BadgeName":"000007","DisplayOrder":1,
+                         "DateEarned":"2026-07-18 10:30:00",
+                         "DateEarnedHardcore":"2026-07-18 10:30:00"}
+                  }
+                }
+                """),
+        };
+        var client = new RetroAchievementsWebClient(new HttpClient(handler));
+        var credentials = new RetroAchievementsCredentials("Player", "SECRETKEY", "ULID-123");
+
+        var response = await client.GetGameDetailsAsync(credentials, 1234, Cancellation);
+
+        Assert.True(response.IsSuccess);
+        var details = response.Value!;
+        Assert.Equal("Spyro", details.Title);
+        Assert.Equal(2, details.TotalAchievements);
+        Assert.Equal(1, details.UnlockedAchievements);
+        Assert.Equal(5, details.EarnedPoints);
+        Assert.Equal(15, details.TotalPoints);
+        var earned = details.Achievements.Single(achievement => achievement.AchievementId == 7);
+        Assert.True(earned.IsEarned);
+        Assert.True(earned.IsHardcore);
+        Assert.Equal(new DateTimeOffset(2026, 7, 18, 10, 30, 0, TimeSpan.Zero), earned.DateEarned);
+        Assert.Contains("u=ULID-123", handler.LastRequestUri!.Query);
+        Assert.Contains("g=1234", handler.LastRequestUri.Query);
+        Assert.Contains("a=1", handler.LastRequestUri.Query);
+    }
+
+    [Fact]
     public async Task GetUserProgress_EmptyIdList_ShortCircuitsWithoutRequest()
     {
         var handler = new StubHandler { Throw = new HttpRequestException("should not be called") };
@@ -177,6 +220,22 @@ public class RetroAchievementsWebClientTests
 
         Assert.Contains("y=SECRETKEY", handler.LastRequestUri!.Query); // sent to the API as required
         Assert.NotEmpty(logger.Messages); // the failure was logged
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("SECRETKEY"));
+    }
+
+    [Fact]
+    public async Task GameDetails_ApiKeyIsNotLoggedOnFailure()
+    {
+        var handler = new StubHandler
+        {
+            Response = new HttpResponseMessage(HttpStatusCode.InternalServerError),
+        };
+        var logger = new RecordingLogger();
+        var client = new RetroAchievementsWebClient(new HttpClient(handler), logger);
+
+        await client.GetGameDetailsAsync(Credentials, 1234, Cancellation);
+
+        Assert.Contains("y=SECRETKEY", handler.LastRequestUri!.Query);
         Assert.DoesNotContain(logger.Messages, message => message.Contains("SECRETKEY"));
     }
 

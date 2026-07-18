@@ -131,5 +131,11 @@ public class RetroAchievementsCatalogueCacheTests : TempAppDirectoryTestBase
             IReadOnlyList<int> gameIds,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<RetroAchievementsResponse<RetroAchievementsGameDetails>> GetGameDetailsAsync(
+            RetroAchievementsCredentials credentials,
+            int gameId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

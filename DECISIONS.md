@@ -593,3 +593,62 @@ present. `cdfl` uses a managed Shamisen FLAC decoder to reconstruct its sector p
 the byte order that libchdr restores on little-endian hosts. This adds no native deployment
 dependency; the package and its MIT/BSD notices ship with the app. A real `chdman`-generated
 `cdfl` fixture proves the recovered `SYSTEM.CNF` bytes.
+
+## 2026-07-18 — M10 §5 caches game detail in SQLite and public badges separately
+
+The compact achievement window uses the current official
+`API_GetGameInfoAndUserProgress` endpoint with `u` (the stored stable ULID when available),
+`g` (the resolved RA game id), and `a=1`. The award-metadata flag is essential: it returns each
+achievement's earned and hardcore-earned timestamps, along with display order, badge id, title,
+description, and points. The existing Web API key remains only in the request URI constructed in
+memory; logs contain the endpoint and result only, and macOS continues to hold that key
+session-only.
+
+Full detail is account-scoped just like progress, so it lives in schema-v6 SQLite tables and is
+cleared on disconnect. A generation guard prevents an old in-flight detail request from
+repopulating the cache after disconnect/account switch. The popup reads this cache before opening,
+then refreshes on a five-minute TTL or a manual Refresh action. Its primary fraction and earned
+points are derived from *any* earned timestamp; `DateEarnedHardcore` adds a Hardcore marker rather
+than excluding softcore awards. This keeps a useful offline view without polling while an emulator
+is running.
+
+Badge images are public, unauthenticated PNGs fetched only when the detail list needs them. They
+are atomically cached under portable `Cache/RetroAchievements/Badges/`, coalesced per badge,
+limited to four downloads at once, and bounded to 750 entries / 96 MiB by least-recently-used
+access time. A failed, invalid, missing, or evicted badge leaves the local placeholder visible;
+no badge fetch or cache write can touch ROMs, emulator configuration, or RA account state.
+
+## 2026-07-18 — Achievement rows reserve a fixed metadata column
+
+Achievement descriptions vary wildly in length, and Avalonia's vertically scrolling content can
+otherwise measure a wrapping row beyond the popup's visible width. The achievement list therefore
+disables horizontal scrolling and reserves an 88-logical-pixel trailing column for points and the
+lock/softcore/hardcore pill; title and description occupy the remaining constrained column and
+truncate after the intended visual bounds. This prevents the trailing metadata from escaping under
+the scrollbar/window edge while keeping badge, title, description, earned date, and state readable
+at the popup's minimum width.
+
+## 2026-07-18 — Correction: reserve 112 pixels and bind rows to the scroll viewport
+
+The first rail pass used 88 logical pixels, but a vertical `StackPanel` can measure item templates
+at their preferred width; long descriptions then made individual cards wider despite the fixed
+rail. The final layout binds the `ItemsControl` width to the scroll viewport (horizontal scrolling
+remains disabled) and reserves 112 logical pixels for the rail. The card itself is 108 logical
+pixels tall: points are pinned in the rail's top cell and the state pill in its bottom cell, while
+description is capped at two lines in the independent centre column. A headless test supplies a
+deliberately long description and asserts every rail has the same width and x-position.
+
+## 2026-07-18 — Correction: achievement cards use three fixed visual regions
+
+The 112-pixel trailing rail made the facts technically stable, but did not give the achievement
+card a clear visual hierarchy and its combination with `ScrollViewer` padding could clip the
+outer card edges. The final compact card instead follows the established console-list pattern:
+an 88-pixel bordered badge bay, a flexible description field, and a 152-pixel bordered
+reward/status dock. The dock contains separate, vertically centred `REWARD` and `STATUS` cells;
+the point value and locked/softcore/hardcore label cannot move when the description wraps.
+
+The scroll viewport owns the list width with no internal padding; individual cards take an
+external 16-pixel horizontal margin. This preserves visible left and right card borders while
+keeping the fixed dock inside the viewport. The dark-theme headless test verifies all cards are
+inset, every reward dock has the same width and x-position, and a deliberately long description
+does not change either property.

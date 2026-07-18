@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using System.Text.Json;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
@@ -85,6 +86,29 @@ public sealed class RetroAchievementsWebClient : IRetroAchievementsClient
                 ["i"] = string.Join(',', gameIds),
             },
             ParseUserProgress,
+            cancellationToken);
+    }
+
+    public async Task<RetroAchievementsResponse<RetroAchievementsGameDetails>> GetGameDetailsAsync(
+        RetroAchievementsCredentials credentials,
+        int gameId,
+        CancellationToken cancellationToken = default)
+    {
+        if (gameId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(gameId));
+
+        // The official detail endpoint only includes per-achievement user award metadata when
+        // a=1 is supplied. We need that metadata to render both earned dates and hardcore state.
+        return await SendAsync(
+            "API_GetGameInfoAndUserProgress.php",
+            credentials,
+            new Dictionary<string, string>
+            {
+                ["u"] = credentials.UserUlid ?? credentials.Username,
+                ["g"] = gameId.ToString(CultureInfo.InvariantCulture),
+                ["a"] = "1",
+            },
+            root => ParseGameDetails(root, gameId),
             cancellationToken);
     }
 
@@ -241,6 +265,46 @@ public sealed class RetroAchievementsWebClient : IRetroAchievementsClient
         return progress;
     }
 
+    private static RetroAchievementsGameDetails? ParseGameDetails(JsonElement root, int requestedGameId)
+    {
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("Achievements", out var achievementsElement) ||
+            achievementsElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var achievements = new List<RetroAchievementsAchievement>();
+        foreach (var property in achievementsElement.EnumerateObject())
+        {
+            if (property.Value.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var achievementId = GetInt(property.Value, "ID");
+            if (achievementId <= 0 && !int.TryParse(property.Name, out achievementId))
+                continue;
+
+            achievements.Add(new RetroAchievementsAchievement(
+                achievementId,
+                GetString(property.Value, "Title") ?? string.Empty,
+                GetString(property.Value, "Description") ?? string.Empty,
+                GetInt(property.Value, "Points"),
+                GetString(property.Value, "BadgeName") ?? string.Empty,
+                GetInt(property.Value, "DisplayOrder"),
+                GetDate(property.Value, "DateEarned"),
+                GetDate(property.Value, "DateEarnedHardcore")));
+        }
+
+        var responseGameId = GetInt(root, "ID");
+        return new RetroAchievementsGameDetails(
+            responseGameId > 0 ? responseGameId : requestedGameId,
+            GetString(root, "Title") ?? string.Empty,
+            GetInt(root, "NumAchievements"),
+            GetInt(root, "NumAwardedToUser"),
+            GetInt(root, "NumAwardedToUserHardcore"),
+            achievements);
+    }
+
     private static string? GetString(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString()
@@ -256,5 +320,20 @@ public sealed class RetroAchievementsWebClient : IRetroAchievementsClient
             JsonValueKind.String when int.TryParse(value.GetString(), out var parsed) => parsed,
             _ => 0,
         };
+    }
+
+    private static DateTimeOffset? GetDate(JsonElement element, string name)
+    {
+        var text = GetString(element, name);
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        return DateTimeOffset.TryParse(
+            text,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed
+            : null;
     }
 }

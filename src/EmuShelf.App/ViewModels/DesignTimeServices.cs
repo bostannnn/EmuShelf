@@ -105,6 +105,8 @@ internal sealed class NullDialogService : IDialogService
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null) => Task.CompletedTask;
+    public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
+        Task.CompletedTask;
 }
 
 internal sealed class NullEmulatorConfigurationStore : IEmulatorConfigurationStore

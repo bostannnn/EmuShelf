@@ -155,5 +155,12 @@ public class RetroAchievementsAccountServiceTests
             IReadOnlyList<int> gameIds,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(RetroAchievementsResponse<IReadOnlyList<RetroAchievementsGameProgress>>.Success([]));
+
+        public Task<RetroAchievementsResponse<RetroAchievementsGameDetails>> GetGameDetailsAsync(
+            RetroAchievementsCredentials credentials,
+            int gameId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(RetroAchievementsResponse<RetroAchievementsGameDetails>.Failure(
+                RetroAchievementsRequestStatus.ServerError));
     }
 }

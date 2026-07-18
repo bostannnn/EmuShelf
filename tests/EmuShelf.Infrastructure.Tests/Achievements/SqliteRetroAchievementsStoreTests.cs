@@ -189,6 +189,41 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Equal(3, progress[1234].Progress.NumAwardedHardcore);
     }
 
+    [Fact]
+    public void Details_RoundTripInDisplayOrder_AndClearWithAccountData()
+    {
+        var refreshedAt = new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
+        _store.SaveDetails(
+            new RetroAchievementsGameDetails(
+                1234,
+                "Spyro",
+                2,
+                1,
+                1,
+                [
+                    new RetroAchievementsAchievement(
+                        8, "Second", "Later", 10, "000008", 2, null, null),
+                    new RetroAchievementsAchievement(
+                        7, "First", "Earlier", 5, "000007", 1,
+                        refreshedAt, refreshedAt),
+                ]),
+            refreshedAt);
+
+        var snapshot = _store.GetDetails(1234);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(refreshedAt, snapshot!.LastRefreshedAt);
+        Assert.Equal("Spyro", snapshot.Details.Title);
+        Assert.Equal([7, 8], snapshot.Details.Achievements.Select(item => item.AchievementId));
+        Assert.Equal(1, snapshot.Details.UnlockedAchievements);
+        Assert.Equal(1, snapshot.Details.UnlockedHardcoreAchievements);
+        Assert.Equal(5, snapshot.Details.EarnedPoints);
+
+        _store.ClearDetails();
+
+        Assert.Null(_store.GetDetails(1234));
+    }
+
     private long AddGame()
     {
         var path = Path.Combine(BaseDirectory, "game.iso");

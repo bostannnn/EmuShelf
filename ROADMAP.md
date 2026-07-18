@@ -155,9 +155,9 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       on a separate `IRetroAchievementsProgressStore`; `RetroAchievementsProgressService` refreshes
       linked RA game ids in `MaxUserProgressBatchSize` batches, stops and reports on failure while
       keeping the cache, and can clear on disconnect. 6 unit tests (round-trip, batching, failure).
-- [ ] Download achievement badges on demand, off the UI thread, into a bounded
+- [x] Download achievement badges on demand, off the UI thread, into a bounded
       `Cache/RetroAchievements/Badges/` cache. Deduplicate concurrent requests and render a
-      local placeholder when an image is unavailable. **Deferred to §5**, where badges render.
+      local placeholder when an image is unavailable. **Completed in §5**, where badges render.
 
 ### 4. Library availability presentation
 
@@ -182,15 +182,15 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 5. Steam-like achievements popup
 
-- [ ] Open a compact game achievements window from the grid mark, list row, or context menu.
+- [x] Open a compact game achievements window from the grid mark, list row, or context menu.
       Show the game title, `unlocked / total`, progress bar, earned points, and last refresh,
       followed by the RA display-ordered achievement list with badge, title, description,
       points, earned date, and locked/unlocked state.
-- [ ] Count any earned achievement toward the primary progress bar and additionally mark
+- [x] Count any earned achievement toward the primary progress bar and additionally mark
       hardcore unlocks, rather than forcing a softcore/hardcore mode choice. The first pass
       displays the resolved game's core data returned by the Web API; leaderboards, rich
       presence, activity feeds, and separate subset/multiset controls are deferred.
-- [ ] Render cached content immediately and refresh in the background only when detail data is
+- [x] Render cached content immediately and refresh in the background only when detail data is
       older than five minutes or the user requests it. Keep the popup useful when offline.
 
 ### 6. Refresh and rate-limit policy

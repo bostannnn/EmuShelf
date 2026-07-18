@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 5;
+    private const int CurrentSchemaVersion = 6;
 
     private readonly IAppPaths _appPaths;
 
@@ -65,8 +65,14 @@ public sealed class LibraryDatabase
             version = 4;
         }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 5)
+        {
             ApplyMigrationV5(connection);
+            version = 5;
+        }
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV6(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -237,6 +243,46 @@ public sealed class LibraryDatabase
             );
 
             UPDATE SchemaVersion SET Version = 5;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV6(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE RetroAchievementGameDetails (
+                RetroAchievementsGameId INTEGER PRIMARY KEY,
+                Title TEXT NOT NULL,
+                AchievementCount INTEGER NOT NULL,
+                NumAwarded INTEGER NOT NULL,
+                NumAwardedHardcore INTEGER NOT NULL,
+                LastRefreshUnixMilliseconds INTEGER NOT NULL
+            );
+
+            CREATE TABLE RetroAchievementDetails (
+                RetroAchievementsGameId INTEGER NOT NULL,
+                AchievementId INTEGER NOT NULL,
+                Title TEXT NOT NULL,
+                Description TEXT NOT NULL,
+                Points INTEGER NOT NULL,
+                BadgeName TEXT NOT NULL,
+                DisplayOrder INTEGER NOT NULL,
+                DateEarnedUnixMilliseconds INTEGER NULL,
+                DateEarnedHardcoreUnixMilliseconds INTEGER NULL,
+                PRIMARY KEY (RetroAchievementsGameId, AchievementId),
+                FOREIGN KEY (RetroAchievementsGameId)
+                    REFERENCES RetroAchievementGameDetails (RetroAchievementsGameId)
+                    ON DELETE CASCADE
+            );
+            CREATE INDEX IX_RetroAchievementDetails_DisplayOrder
+                ON RetroAchievementDetails (RetroAchievementsGameId, DisplayOrder, AchievementId);
+
+            UPDATE SchemaVersion SET Version = 6;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

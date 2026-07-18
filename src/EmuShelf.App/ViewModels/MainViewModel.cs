@@ -42,6 +42,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRetroAchievementsAccountService? _retroAccount;
     private readonly IRetroAchievementsMatchingService? _retroMatching;
     private readonly IRetroAchievementsProgressService? _retroProgress;
+    private readonly IRetroAchievementsDetailsService? _retroDetails;
     // Coordinates the full identify → match → progress sequence. Individual services also
     // serialize their own work, but this prevents an import finishing halfway through a connect
     // and leaving newly hashed games unmatched.
@@ -170,7 +171,8 @@ public partial class MainViewModel : ViewModelBase
         IRetroAchievementsReadStore? retroAchievementsRead = null,
         IRetroAchievementsAccountService? retroAccount = null,
         IRetroAchievementsMatchingService? retroMatching = null,
-        IRetroAchievementsProgressService? retroProgress = null)
+        IRetroAchievementsProgressService? retroProgress = null,
+        IRetroAchievementsDetailsService? retroDetails = null)
     {
         _library = library;
         _scanner = scanner;
@@ -189,6 +191,7 @@ public partial class MainViewModel : ViewModelBase
         _retroAccount = retroAccount;
         _retroMatching = retroMatching;
         _retroProgress = retroProgress;
+        _retroDetails = retroDetails;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -329,7 +332,8 @@ public partial class MainViewModel : ViewModelBase
                         RemoveGameCommand,
                         LoadGameCoverCommand,
                         artwork,
-                        gameSystem.CoverAspectRatio));
+                        gameSystem.CoverAspectRatio,
+                        OpenAchievementDetailsCommand));
                 }
 
                 ApplyAchievementDisplays(viewModels);
@@ -380,6 +384,10 @@ public partial class MainViewModel : ViewModelBase
                     progress.TryGetValue(raGameId, out snapshot);
                 viewModel.ApplyAchievementsDisplay(
                     RetroAchievementsDisplay.For(connected, link, snapshot));
+                viewModel.ApplyAchievementLink(
+                    link is { HasAchievements: true, RetroAchievementsGameId: { } linkedGameId }
+                        ? linkedGameId
+                        : null);
             }
         }
         catch (Exception ex)
@@ -783,6 +791,23 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    [RelayCommand]
+    private async Task OpenAchievementDetailsAsync(GameViewModel? game)
+    {
+        if (game?.RetroAchievementsGameId is not { } retroAchievementsGameId)
+            return;
+
+        try
+        {
+            await _dialogs.ShowAchievementDetailsAsync(game.Title, retroAchievementsGameId);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not open achievements for game id {game.Id}.", ex);
+            StatusText = $"Could not open achievements for {game.Title}: {ex.Message}";
+        }
+    }
+
     private void SuspendFrontendUiWork()
     {
         _isFrontendSuspended = true;
@@ -1043,6 +1068,7 @@ public partial class MainViewModel : ViewModelBase
         {
             await _retroAccount.DisconnectAsync(cancellationToken);
             _retroProgress?.Clear();
+            _retroDetails?.Clear();
             await ReloadGamesAsync();
         }
         finally

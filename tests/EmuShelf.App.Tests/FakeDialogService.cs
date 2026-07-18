@@ -21,6 +21,7 @@ internal sealed class FakeDialogService : IDialogService
     public Exception? SettingsException { get; set; }
     public int SettingsShown { get; private set; }
     public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
+    public (string GameTitle, int RetroAchievementsGameId)? AchievementDetailsRequest { get; private set; }
 
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult(FilesToReturn);
     public Task<string?> PickFolderAsync() => Task.FromResult(FolderToReturn);
@@ -58,6 +59,12 @@ internal sealed class FakeDialogService : IDialogService
         RetroAchievementsContext = retroAchievements;
         if (SettingsException is not null)
             return Task.FromException(SettingsException);
+        return Task.CompletedTask;
+    }
+
+    public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId)
+    {
+        AchievementDetailsRequest = (gameTitle, retroAchievementsGameId);
         return Task.CompletedTask;
     }
 }

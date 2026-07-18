@@ -1,0 +1,197 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        x:Class="EmuShelf.App.Views.AchievementDetailsWindow"
+        x:DataType="vm:AchievementDetailsViewModel"
+        Title="Achievements"
+        Width="660" Height="590"
+        MinWidth="470" MinHeight="390"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Styles>
+        <Style Selector="Border.achievement-row">
+            <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="Border.achievement-badge-panel">
+            <Setter Property="Background" Value="{DynamicResource EmuFormatPillBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="0,0,1,0" />
+        </Style>
+        <Style Selector="Border.achievement-badge">
+            <Setter Property="Background" Value="{DynamicResource EmuCoverWellBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="7" />
+        </Style>
+        <Style Selector="Border.achievement-reward-panel">
+            <Setter Property="Background" Value="{DynamicResource EmuFormatPillBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1,0,0,0" />
+            <Setter Property="Padding" Value="12,9" />
+        </Style>
+        <Style Selector="Border.achievement-state">
+            <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="7,3" />
+        </Style>
+    </Window.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Border Grid.Row="0" Background="{DynamicResource EmuToolbarBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1"
+                Padding="20,16">
+            <StackPanel Spacing="8">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="ACHIEVEMENTS" FontSize="10" FontWeight="Bold"
+                                   LetterSpacing="1.2"
+                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                        <TextBlock Text="{Binding GameTitle}" FontSize="21" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="Refresh"
+                            Command="{Binding RefreshCommand}"
+                            IsEnabled="{Binding !IsRefreshing}"
+                            VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"
+                      IsVisible="{Binding HasAchievements}">
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="{Binding ProgressText}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                        <ProgressBar x:Name="AchievementProgress" Minimum="0"
+                                     Maximum="{Binding ProgressMaximum}"
+                                     Value="{Binding UnlockedCount}" Height="7" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="2">
+                        <TextBlock Text="{Binding PointsText}" FontWeight="SemiBold"
+                                   HorizontalAlignment="Right"
+                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                        <TextBlock Text="{Binding LastRefreshText}" FontSize="10.5"
+                                   HorizontalAlignment="Right"
+                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
+                           TextWrapping="Wrap" FontSize="11"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="1">
+            <ScrollViewer x:Name="AchievementScrollViewer" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="AchievementList" ItemsSource="{Binding Achievements}"
+                              HorizontalAlignment="Stretch"
+                              Width="{Binding Viewport.Width, ElementName=AchievementScrollViewer}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="8" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                            <!-- Console achievement pattern: a fixed icon tile, a readable
+                                 description field, and a dedicated reward/status dock. -->
+                            <Border Classes="achievement-row" Height="128" Margin="16,6">
+                                <Grid ColumnDefinitions="88,*,152" ClipToBounds="True">
+                                    <Border Classes="achievement-badge-panel">
+                                        <Border Classes="achievement-badge" Width="64" Height="64"
+                                                ClipToBounds="True" HorizontalAlignment="Center"
+                                                VerticalAlignment="Center">
+                                            <Panel>
+                                                <TextBlock Text="★" FontSize="26" HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}"
+                                                       Stretch="UniformToFill" />
+                                            </Panel>
+                                        </Border>
+                                    </Border>
+
+                                    <Border Grid.Column="1" Padding="16,13">
+                                        <Grid RowDefinitions="Auto,*,Auto">
+                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                            <TextBlock Grid.Row="1" Text="{Binding Description}"
+                                                       TextWrapping="Wrap" MaxLines="2"
+                                                       TextTrimming="CharacterEllipsis" FontSize="11.5"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <TextBlock Grid.Row="2" Text="{Binding EarnedText}"
+                                                       FontSize="10.5"
+                                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- These two cells are deliberately independent of the
+                                         description, mirroring the fixed reward dock in console
+                                         achievement lists. -->
+                                    <Border Grid.Column="2" Classes="achievement-reward-panel">
+                                        <Grid RowDefinitions="*,1,*">
+                                            <StackPanel Classes="achievement-points-zone"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock Text="REWARD" FontSize="8.5" FontWeight="Bold"
+                                                           LetterSpacing="0.8" TextAlignment="Center"
+                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                <TextBlock Text="{Binding PointsText}" FontSize="13"
+                                                           FontWeight="SemiBold" TextAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                            </StackPanel>
+                                            <Border Grid.Row="1"
+                                                    Background="{DynamicResource EmuStrongBorderBrush}" />
+                                            <StackPanel Grid.Row="2" Classes="achievement-status-zone"
+                                                        HorizontalAlignment="Stretch"
+                                                        VerticalAlignment="Center" Spacing="3">
+                                                <TextBlock Text="STATUS" FontSize="8.5" FontWeight="Bold"
+                                                           LetterSpacing="0.8" TextAlignment="Center"
+                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                <Border Classes="achievement-state">
+                                                    <TextBlock Text="{Binding UnlockStateText}" FontSize="10"
+                                                               FontWeight="SemiBold" TextAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                </Border>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            <Border IsVisible="{Binding !HasAchievements}"
+                    HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="330"
+                    Padding="22,18" CornerRadius="10"
+                    Background="{DynamicResource EmuCardBrush}"
+                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="{Binding EmptyStateTitle}" FontSize="15" FontWeight="SemiBold"
+                               TextAlignment="Center"
+                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                    <TextBlock Text="{Binding EmptyStateDescription}" TextWrapping="Wrap"
+                               TextAlignment="Center" FontSize="11.5"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{DynamicResource EmuToolbarBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0"
+                Padding="16,10">
+            <Button Content="Close" Command="{Binding CloseCommand}"
+                    HorizontalAlignment="Right" IsCancel="True" />
+        </Border>
+    </Grid>
+</Window>

@@ -43,6 +43,7 @@ public sealed class AppBootstrapper
     public IRetroAchievementsStore RetroAchievementsStore { get; }
     public IRetroAchievementsReadStore RetroAchievementsReadStore { get; }
     public IRetroAchievementsProgressStore RetroAchievementsProgressStore { get; }
+    public IRetroAchievementsDetailsStore RetroAchievementsDetailsStore { get; }
     public IRetroAchievementsCredentialStore RetroAchievementsCredentialStore { get; }
     public IRetroAchievementsGameHasher RetroAchievementsHasher { get; }
     public IRetroAchievementsIdentificationService RetroAchievementsIdentification { get; }
@@ -98,6 +99,7 @@ public sealed class AppBootstrapper
         RetroAchievementsStore = retroAchievementsStore;
         RetroAchievementsReadStore = retroAchievementsStore;
         RetroAchievementsProgressStore = retroAchievementsStore;
+        RetroAchievementsDetailsStore = retroAchievementsStore;
         RetroAchievementsCredentialStore =
             RetroAchievementsCredentialStoreFactory.Create(Paths, Logger);
         RetroAchievementsHasher = new RetroAchievementsGameHasher();

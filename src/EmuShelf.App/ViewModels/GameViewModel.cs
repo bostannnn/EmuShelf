@@ -39,7 +39,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> SetCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> RemoveCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
+    public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
     public string? CoverPath { get; private set; }
+    public int? RetroAchievementsGameId { get; private set; }
     public bool IsCoverLoading { get; set; }
     public int CoverRevision { get; private set; }
 
@@ -72,6 +74,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string AchievementsTooltip { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    public partial bool CanOpenAchievementDetails { get; set; }
+
     public bool HasCoverImage => CoverImage is not null;
 
     /// <summary>Applies a resolved achievement presentation from the display state machine.</summary>
@@ -80,6 +85,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
         ShowAchievementMark = display.ShowMark;
         AchievementsColumnText = display.ColumnText;
         AchievementsTooltip = display.Tooltip;
+    }
+
+    /// <summary>Only confirmed achievement-bearing catalogue links can open the detail popup.</summary>
+    public void ApplyAchievementLink(int? retroAchievementsGameId)
+    {
+        RetroAchievementsGameId = retroAchievementsGameId;
+        CanOpenAchievementDetails = retroAchievementsGameId is not null;
     }
 
     public GameViewModel(
@@ -93,7 +105,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
         IAsyncRelayCommand<GameViewModel?>? removeCommand = null,
         IAsyncRelayCommand<GameViewModel?>? loadCoverCommand = null,
         IImage? platformArtwork = null,
-        double coverAspectRatio = DefaultCoverAspectRatio)
+        double coverAspectRatio = DefaultCoverAspectRatio,
+        IAsyncRelayCommand<GameViewModel?>? openAchievementsCommand = null)
     {
         Model = game;
         Id = game.Id;
@@ -120,6 +133,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         SetCoverCommand = setCoverCommand ?? NoGameCommand;
         RemoveCommand = removeCommand ?? NoGameCommand;
         LoadCoverCommand = loadCoverCommand ?? NoGameCommand;
+        OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
     }
 
     partial void OnTitleChanged(string value)

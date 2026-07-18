@@ -80,6 +80,21 @@
         <Style Selector="ToggleButton.view-toggle:pointerover">
             <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
         </Style>
+        <Style Selector="Button.achievement-mark">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style Selector="Button.achievement-mark:pointerover">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
         <Style Selector="ToggleButton.view-toggle:checked">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
@@ -364,6 +379,10 @@
                                     <ContextMenu>
                                         <MenuItem Header="Launch" Command="{Binding LaunchCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="Achievements…"
+                                                  IsVisible="{Binding CanOpenAchievementDetails}"
+                                                  Command="{Binding OpenAchievementsCommand}"
+                                                  CommandParameter="{Binding}" />
                                         <Separator />
                                         <MenuItem Header="Edit title…"
                                                   Command="{Binding BeginEditTitleCommand}" />
@@ -444,17 +463,16 @@
                                         </ToolTip.Tip>
                                     </Border>
                                     <!-- Achievement mark: shown only on a confirmed RA hash match. -->
-                                    <Border IsVisible="{Binding ShowAchievementMark}"
-                                            Width="24" Height="24" CornerRadius="12" Margin="8"
-                                            HorizontalAlignment="Left" VerticalAlignment="Top"
-                                            Background="{DynamicResource EmuPopoverBrush}"
-                                            BorderBrush="{DynamicResource EmuStrongBorderBrush}"
-                                            BorderThickness="1"
+                                    <Button Classes="achievement-mark"
+                                            IsVisible="{Binding ShowAchievementMark}"
+                                            Margin="8"
+                                            Command="{Binding OpenAchievementsCommand}"
+                                            CommandParameter="{Binding}"
                                             ToolTip.Tip="{Binding AchievementsTooltip}">
                                         <PathIcon Width="13" Height="13"
                                                   Data="{StaticResource AchievementTrophyGeometry}"
                                                   Foreground="{DynamicResource EmuAccentBrush}" />
-                                    </Border>
+                                    </Button>
                                 </Panel>
                                 </Grid>
 
@@ -502,11 +520,12 @@
             <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20">
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
-                    <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,100">
+                    <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,96,100">
                         <TextBlock Grid.Column="1" Text="TITLE" />
                         <TextBlock Grid.Column="2" Text="CONSOLE" />
                         <TextBlock Grid.Column="3" Text="FORMAT" />
-                        <TextBlock Grid.Column="4" Text="STATUS" />
+                        <TextBlock Grid.Column="4" Text="ACHIEVEMENTS" />
+                        <TextBlock Grid.Column="5" Text="STATUS" />
                     </Grid>
                 </Border>
                 <ListBox Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
@@ -520,6 +539,10 @@
                                 <Grid.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Launch" Command="{Binding LaunchCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="Achievements…"
+                                                  IsVisible="{Binding CanOpenAchievementDetails}"
+                                                  Command="{Binding OpenAchievementsCommand}"
                                                   CommandParameter="{Binding}" />
                                         <Separator />
                                         <MenuItem Header="Edit title…"
