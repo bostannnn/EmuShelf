@@ -155,7 +155,8 @@ public class MainWindowVisualSnapshotTests
                 },
                 system.Name,
                 system.ShortName,
-                system.AccentColor));
+                system.AccentColor,
+                coverAspectRatio: system.CoverAspectRatio));
         }
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;

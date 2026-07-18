@@ -122,7 +122,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
             {
                 sourcePath = ResolveM3u(sourcePath, dependencies);
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-                canHash = extension is ".iso" or ".bin" or ".cue";
+                canHash = extension is ".iso" or ".bin" or ".cue" or ".chd" or ".cso" or ".zso";
                 if (extension == ".cue")
                     dependencies.AddRange(CueSheetParser.GetReferencedFiles(sourcePath));
 

@@ -9,6 +9,9 @@ public static class KnownMetadataProfiles
     private static readonly IGameIdentifierExtractor NintendoExtractor =
         new NintendoDiscIdentifierExtractor();
 
+    // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
+    // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of
+    // covers trips in a burst (HTTP 429), whereas jsDelivr is built to serve those files in bulk.
     public static IReadOnlyList<MetadataSystemProfile> All { get; } =
     [
         new(
@@ -19,7 +22,7 @@ public static class KnownMetadataProfiles
             [
                 new XlenoreArtworkProvider(
                     "xlenore-psx",
-                    "https://raw.githubusercontent.com/xlenore/psx-covers/main/covers/default"),
+                    "https://cdn.jsdelivr.net/gh/xlenore/psx-covers@main/covers/default"),
                 new LibretroArtworkProvider("Sony - PlayStation"),
             ]),
         new(
@@ -30,7 +33,7 @@ public static class KnownMetadataProfiles
             [
                 new XlenoreArtworkProvider(
                     "xlenore-ps2",
-                    "https://raw.githubusercontent.com/xlenore/ps2-covers/main/covers/default"),
+                    "https://cdn.jsdelivr.net/gh/xlenore/ps2-covers@main/covers/default"),
                 new LibretroArtworkProvider("Sony - PlayStation 2"),
             ]),
         new(

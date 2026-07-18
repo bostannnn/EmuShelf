@@ -32,10 +32,7 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
             HttpResponseMessage response;
             try
             {
-                response = await _httpClient.GetAsync(
-                    candidate.SourceUri,
-                    HttpCompletionOption.ResponseHeadersRead,
-                    cancellationToken);
+                response = await GetWithRetryAsync(candidate.SourceUri, cancellationToken);
             }
             catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -121,6 +118,47 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
             }
         }
         return null;
+    }
+
+    // Cover hosts (GitHub raw, CDNs) rate-limit bulk fetches with HTTP 429/503. A whole
+    // library's worth of covers can trip that in a burst, so a throttled response is
+    // retried with a short, capped backoff instead of being dropped like a 404.
+    private async Task<HttpResponseMessage> GetWithRetryAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        const int maxAttempts = 3;
+        for (var attempt = 1; ; attempt++)
+        {
+            var response = await _httpClient.GetAsync(
+                uri,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            if (attempt >= maxAttempts || !IsThrottled(response.StatusCode))
+                return response;
+
+            var status = response.StatusCode;
+            var delay = ThrottleDelay(response, attempt);
+            response.Dispose();
+            _logger.Information(
+                $"Artwork host returned HTTP {(int)status}; retrying in {delay.TotalSeconds:0.#}s: {uri}");
+            await Task.Delay(delay, cancellationToken);
+        }
+    }
+
+    private static bool IsThrottled(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable;
+
+    private static TimeSpan ThrottleDelay(HttpResponseMessage response, int attempt)
+    {
+        // Honor Retry-After when the host sends it, but cap it so one slow host cannot
+        // stall an entire library's enrichment; otherwise use exponential backoff.
+        var retryAfter = response.Headers.RetryAfter;
+        var suggested = retryAfter?.Delta
+            ?? (retryAfter?.Date is { } date ? date - DateTimeOffset.UtcNow : (TimeSpan?)null)
+            ?? TimeSpan.FromMilliseconds(400 * Math.Pow(2, attempt - 1));
+        if (suggested < TimeSpan.Zero)
+            suggested = TimeSpan.Zero;
+        var cap = TimeSpan.FromSeconds(5);
+        return suggested > cap ? cap : suggested;
     }
 
     private void LogCandidateFailure(

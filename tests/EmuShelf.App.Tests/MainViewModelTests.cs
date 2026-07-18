@@ -46,7 +46,8 @@ public class MainViewModelTests : IDisposable
         IGameCoverService? covers = null,
         IAppThemeService? themes = null,
         IGameMetadataService? metadata = null,
-        IMetadataPreferencesService? metadataPreferences = null)
+        IMetadataPreferencesService? metadataPreferences = null,
+        IRetroAchievementsIdentificationService? retroAchievements = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -60,7 +61,8 @@ public class MainViewModelTests : IDisposable
             covers: covers,
             themeService: themes,
             metadataService: metadata,
-            metadataPreferences: metadataPreferences);
+            metadataPreferences: metadataPreferences,
+            retroAchievements: retroAchievements);
     }
 
     private string MakeRomsFolder()
@@ -154,6 +156,28 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(MetadataConsentChoice.Always, preferences.RecordedChoice);
         Assert.True(preferences.AutomaticallyFetchAfterImport);
         Assert.Single(metadata.GameIds);
+    }
+
+    [AvaloniaFact]
+    public async Task Import_RunsRetroAchievementsIdentification_EvenWhenMetadataDeclined()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        _dialogs.MetadataConsentToReturn = MetadataConsentChoice.NotNow;
+        var metadata = new RecordingMetadataService();
+        var achievements = new RecordingRetroAchievementsIdentificationService();
+        var vm = CreateViewModel(
+            metadata: metadata,
+            metadataPreferences: new RecordingMetadataPreferences(),
+            retroAchievements: achievements);
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        await achievements.Called.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // Local hashing runs on the imported game regardless of the network-metadata choice.
+        Assert.Single(achievements.GameIds);
+        Assert.False(metadata.Called.IsCompleted);
     }
 
     [AvaloniaFact]
@@ -836,6 +860,26 @@ public class MainViewModelTests : IDisposable
             string? systemId = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new MetadataEnrichmentSummary(0, 0, 0, 0, 0));
+    }
+
+    private sealed class RecordingRetroAchievementsIdentificationService
+        : IRetroAchievementsIdentificationService
+    {
+        private readonly TaskCompletionSource _called =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Called => _called.Task;
+        public IReadOnlyList<long> GameIds { get; private set; } = [];
+
+        public Task<RetroAchievementsIdentificationSummary> IdentifyAsync(
+            IEnumerable<long> gameIds,
+            CancellationToken cancellationToken = default)
+        {
+            GameIds = gameIds.ToArray();
+            _called.TrySetResult();
+            return Task.FromResult(new RetroAchievementsIdentificationSummary(
+                GameIds.Count, 0, GameIds.Count, 0, 0));
+        }
     }
 
     private sealed class RecordingMetadataPreferences : IMetadataPreferencesService

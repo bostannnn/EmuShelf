@@ -8,12 +8,18 @@ namespace EmuShelf.Integrations.Systems;
 /// </summary>
 public static class KnownSystems
 {
+    // CoverAspectRatio (width:height) is the one canonical frame every cover of a system
+    // is drawn into — real art and the "artwork missing" placeholder alike — so a
+    // platform's covers are uniform in size. PlayStation ships square CD jewel-case art
+    // (1.0); disc-case systems are portrait (0.708, the measured mode of the scanned box
+    // art, ≈ the physical DVD/BD case). Real covers fill this frame, so matching it to the
+    // real scan ratio keeps the crop to a hair of bleed. Tunable per platform.
     public static IReadOnlyList<GameSystem> All { get; } =
     [
-        new("playstation",  "PlayStation",   "PS1", "#8A8FA3"),
-        new("playstation2", "PlayStation 2", "PS2", "#3D6DB5"),
-        new("playstation3", "PlayStation 3", "PS3", "#2E3A87"),
-        new("gamecube",     "GameCube",      "GC",  "#7B68C9"),
-        new("wii",          "Wii",           "Wii", "#49B3C9"),
+        new("playstation",  "PlayStation",   "PS1", "#8A8FA3", 1.0),
+        new("playstation2", "PlayStation 2", "PS2", "#3D6DB5", 0.708),
+        new("playstation3", "PlayStation 3", "PS3", "#2E3A87", 0.708),
+        new("gamecube",     "GameCube",      "GC",  "#7B68C9", 0.708),
+        new("wii",          "Wii",           "Wii", "#49B3C9", 0.708),
     ];
 }

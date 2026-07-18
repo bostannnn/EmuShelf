@@ -413,3 +413,67 @@ folder using Dolphin's mapping (E→US, J→JA, W→ZH, K→KO, PAL→DE/FR/ES/I
 are tried as fallbacks because a given cover may exist under only one folder. Because it is
 id-addressed, it succeeds without a catalog title match. GameTDB is recorded in
 `THIRD-PARTY-NOTICES.md` as an opt-in, not-distributed source subject to publisher rights.
+
+## 2026-07-17 — Covers shrink-wrap their art on a shared shelf
+
+Cover framing was hardcoded in the view model as two buckets: `playstation` and `gamecube`
+got a 1:1 square, everything else a 188×250 portrait. GameCube was misfiled (its retail art is
+portrait disc-case), and — more fundamentally — any fixed frame ratio letterboxes covers whose
+scanned art doesn't match it. Measuring the actual downloaded covers settled the real ratios:
+PlayStation jewel-case scans are square (500×500 → 1.0); disc-case scans (PS2/PS3/GameCube/Wii)
+are ~0.70 (512×723, 512×736…), not the 0.752 the frame assumed — hence the grey bands on the
+left/right of PS2 covers.
+
+An earlier revision let each cover shrink-wrap to its own bitmap, which removed letterbox but made
+same-platform covers different sizes (scans vary ~±1%), and the placeholder — sized off a nominal
+ratio — didn't match. OpenEmu itself preserves real ratios (aspect-fit, bottom-aligned) and only
+looks uniform because its art comes from one curated source (OpenVGDB); EmuShelf pulls from mixed
+providers, so that drift shows. The fix is to **formalize one canonical frame per platform** and
+draw every cover into it.
+
+`GameSystem.CoverAspectRatio` (width÷height) is that canonical frame, applied to the real cover
+*and* the placeholder so a system's covers are all identical in size: PlayStation 1.0 (square
+jewel case), disc systems 0.708 (the measured mode of the scans, ≈ the physical DVD/BD case, and a
+correction of the original 0.752 that caused the first letterbox report). `GameViewModel` sets a
+fixed 188×round(188÷ratio) frame; PS2/PS3/GameCube/Wii → 188×266, PlayStation → 188×188.
+
+Real covers **fill** the frame (`Stretch="UniformToFill"`, clipped to the rounded card). Because
+the frame equals the platform's true scan ratio, fill crops at most ~2px of outer bleed on an
+off-ratio scan — never a visible letterbox and never the meaningful crop the wrong-ratio 0.752
+frame once produced (square art forced into portrait). Frames bottom-align on a fixed 266-tall
+shelf so a square PlayStation cover shares a baseline with taller disc covers and the titles below
+line up; the 1px `EmuCoverBorderBrush` frame and 3px accent selection border stay. Grid
+`MinItemHeight` is 326 / `MinRowSpacing` 20 for the 266 shelf plus title/format rows. A new
+platform adds a `KnownSystems` row with its canonical ratio; if it is taller than the current disc
+frame (e.g. a PSP UMD at ~0.6 → ~313 tall) the shelf height must grow to match.
+
+## 2026-07-17 — Cover repos fetched via jsDelivr; downloader retries throttling
+
+Enriching a large library (≈100 PS2 ROMs) downloaded no covers, while PCSX2 pulls hundreds fine.
+Cause: the xlenore cover repos were fetched from `raw.githubusercontent.com`, which now enforces a
+per-IP anonymous rate limit (tightened by GitHub in 2025). A burst of ~100 cover requests at 12-way
+concurrency trips it, GitHub returns HTTP 429, and `RemoteArtworkDownloader` treated any non-success
+(including 429) as a permanent skip — so the whole batch produced nothing. The Libretro DAT catalog
+was not the culprit: it fetches one file per system, cached 30 days.
+
+Two fixes: (1) cover repos are now fetched through the **jsDelivr CDN**
+(`https://cdn.jsdelivr.net/gh/<user>/<repo>@main/…`) instead of GitHub raw — jsDelivr is built to
+serve repo files in bulk and isn't subject to that per-IP limit (verified: valid PS2/PSX serials
+return 200 image/jpeg). (2) `RemoteArtworkDownloader` now **retries HTTP 429/503** with a short,
+`Retry-After`-aware backoff capped at 5s (max 3 attempts), so transient throttling from any host no
+longer drops a cover. Download concurrency (12) is unchanged; jsDelivr handles it.
+
+## 2026-07-17 — OpenVGDB is deferred until a cartridge system is added
+
+OpenVGDB (the box-art source OpenEmu uses) was considered as the default cover source with the
+current providers as fallback. It fits the `IGameMetadataCatalog` + ordered `IGameArtworkProvider`
+model cleanly, but it is the wrong tool for the current disc-only lineup: it keys on CRC32/MD5/SHA1
+of dumped ROMs (built for cartridge systems), which do not match our compressed disc formats
+(CHD/CUE, RVZ) without decompressing and hashing whole discs; its `releaseCoverFront` URLs point to
+third-party hosts that now block hotlinking or are dead (OpenEmu mirrors them); and the SQLite is
+tens of MB with third-party art whose redistribution terms need clearing. For PS1/PS2/GC/Wii the
+existing serial-addressed Redump matching plus serial/disc-id art (xlenore, GameTDB) and the
+Libretro title fallback are a better, lighter fit. OpenVGDB becomes worthwhile when the first
+cartridge system (SNES/NES/Genesis) is added — the case OpenEmu actually uses it for — at which
+point it wires in as the primary catalog and first artwork provider with today's providers behind
+it, and the DB-distribution + licensing questions get settled then.

@@ -78,7 +78,8 @@ public partial class App : Application
                 themeService,
                 metadataService,
                 metadataPreferences,
-                Bootstrapper.Logger);
+                Bootstrapper.Logger,
+                Bootstrapper.RetroAchievementsIdentification);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

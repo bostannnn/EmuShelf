@@ -36,6 +36,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IAppThemeService _themeService;
     private readonly IGameMetadataService _metadataService;
     private readonly IMetadataPreferencesService _metadataPreferences;
+    private readonly IRetroAchievementsIdentificationService? _retroAchievements;
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -155,7 +156,8 @@ public partial class MainViewModel : ViewModelBase
         IAppThemeService? themeService = null,
         IGameMetadataService? metadataService = null,
         IMetadataPreferencesService? metadataPreferences = null,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        IRetroAchievementsIdentificationService? retroAchievements = null)
     {
         _library = library;
         _scanner = scanner;
@@ -169,6 +171,7 @@ public partial class MainViewModel : ViewModelBase
         _themeService = themeService ?? new NullAppThemeService();
         _metadataService = metadataService ?? new NullGameMetadataService();
         _metadataPreferences = metadataPreferences ?? new NullMetadataPreferencesService();
+        _retroAchievements = retroAchievements;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -308,7 +311,8 @@ public partial class MainViewModel : ViewModelBase
                         SetGameCoverCommand,
                         RemoveGameCommand,
                         LoadGameCoverCommand,
-                        artwork));
+                        artwork,
+                        gameSystem.CoverAspectRatio));
                 }
                 return viewModels;
             });
@@ -951,6 +955,11 @@ public partial class MainViewModel : ViewModelBase
         if (addedGameIds.Count == 0)
             return;
 
+        // Local RetroAchievements hashing is independent of network-metadata consent and
+        // runs quietly in the background so links are ready when the feature surfaces.
+        if (_retroAchievements is not null)
+            _ = IdentifyForRetroAchievementsAsync(addedGameIds);
+
         var shouldFetch = _metadataPreferences.AutomaticallyFetchAfterImport;
         if (!shouldFetch && !_metadataPreferences.ConsentPromptShown)
         {
@@ -986,6 +995,18 @@ public partial class MainViewModel : ViewModelBase
         {
             _logger.Error("Automatic metadata enrichment failed.", ex);
             StatusText = $"Metadata failed: {ex.Message}";
+        }
+    }
+
+    private async Task IdentifyForRetroAchievementsAsync(IReadOnlyList<long> gameIds)
+    {
+        try
+        {
+            await _retroAchievements!.IdentifyAsync(gameIds);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("RetroAchievements identification for imported games failed.", ex);
         }
     }
 

@@ -87,11 +87,18 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       logical-disc reader adapters and must not silently fall back to whole-file MD5.
   - [x] Add official-vector parity fixtures and readers for PS1/PS2 cooked ISO/BIN,
         ordinary CUE/BIN (2048- and 2352-byte sectors), M3U entries resolving to those
-        media, and GameCube ISO/GCM. The test assemblies compile; executing the fixtures
-        remains a verification gate because the current sandbox cannot start its socket-based
-        .NET test host and the outside-sandbox run was not approved.
-  - [ ] Add compatible logical-disc readers and parity fixtures for CHD, CSO, PBP, RVZ,
-        WBFS, CISO, and Wii partitions before claiming those formats.
+        media, and GameCube ISO/GCM. Fixtures now execute and pass: each expected MD5 is the
+        verbatim constant from rcheevos `test/rhash/test_hash_disc.c` at the pinned commit, so
+        the C# hashers are byte-identical to rcheevos. Added all four edge-case parity fixtures
+        too (no `SYSTEM.CNF` → PSX.EXE fallback, executable in a subdirectory via the multi-level
+        ISO9660 walk, extra-slash boot path, and a PS1 disc under the PS2 console id).
+  - [x] Add PlayStation compressed-container support: the hasher now opens `.chd` (zlib/LZMA,
+        cdzl/cdlz) and `.cso`/`.zso` through the shared `ILogicalSectorReader` readers built for
+        M11, with parity fixtures proving they hash byte-identically to the uncompressed disc
+        (CSO/ZSO in-code; CHD verified against a real chdman-produced container). A malformed
+        container falls back to `UnsupportedFormat`, never whole-file MD5.
+  - [ ] Add readers and parity fixtures for `.pbp`, and for the GameCube/Wii containers RVZ,
+        WBFS, and CISO plus Wii AES partitions, before claiming those formats.
 - [ ] Make the supported-format result an explicit gate: ship only formats with verified
       parity on Windows and macOS, and present all other cases as `Unknown`, never `No`.
       PlayStation 3 is out of scope because RetroAchievements has no PS3 console id.
@@ -99,8 +106,10 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       (size/modified time and descriptor dependencies for CUE/M3U). Re-identify only new or
       changed games, on a single background worker, without a full startup pass.
   - [x] Add schema-v4 identification records, dependency fingerprints, and a composed
-        single-worker service that reuses unchanged terminal results. Wiring that worker
-        only to newly imported/changed games remains part of the account/catalogue slice.
+        single-worker service that reuses unchanged terminal results. The worker is now wired
+        to run on newly imported games after import, off the UI thread and independent of the
+        network-metadata consent. Gating it on an RA-enabled flag is deferred to the §2 account
+        slice so it does not read discs for users who never connect an account.
 
 ### 2. Account connection and read-only API client
 

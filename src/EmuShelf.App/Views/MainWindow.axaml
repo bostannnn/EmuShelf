@@ -111,9 +111,10 @@
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BoxShadow" Value="0 13 30 0 #54000000" />
         </Style>
+        <!-- Selection is shown by an overlay ring outside the fixed frame (see the tile),
+             not by thickening this border — a thicker border would shrink the content box
+             and reflow/rescale the cover on click. -->
         <Style Selector="StackPanel.game-tile.selected Border.cover-card">
-            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
-            <Setter Property="BorderThickness" Value="3" />
             <Setter Property="BoxShadow" Value="0 12 30 0 #66000000" />
         </Style>
         <Style Selector="ListBox.game-list ListBoxItem">
@@ -344,8 +345,8 @@
             <ScrollViewer IsVisible="{Binding IsGridView}">
                 <ItemsRepeater ItemsSource="{Binding Games}" Margin="32,28,28,34">
                     <ItemsRepeater.Layout>
-                        <UniformGridLayout MinItemWidth="188" MinItemHeight="330"
-                                           MinColumnSpacing="28" MinRowSpacing="26" />
+                        <UniformGridLayout MinItemWidth="188" MinItemHeight="326"
+                                           MinColumnSpacing="28" MinRowSpacing="20" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
@@ -370,7 +371,14 @@
                                     </ContextMenu>
                                 </StackPanel.ContextMenu>
 
-                                <Grid Width="188" Height="250">
+                                <!-- Fixed per-platform frame: every cover of a system shares one size
+                                     (from GameSystem.CoverAspectRatio) for the real art and the placeholder
+                                     alike, so a platform's covers are uniform. Frames bottom-align on the
+                                     shelf (sized to the tallest platform) so mixed platforms share a
+                                     baseline and titles line up. Real covers fill the frame — since it
+                                     equals the platform's true scan ratio the crop is a hair of bleed,
+                                     never a letterbox. -->
+                                <Grid Width="188" Height="266">
                                 <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                        VerticalAlignment="Bottom">
                                     <Border Classes="cover-card"
@@ -380,7 +388,8 @@
                                             AttachedToVisualTree="OnGameCoverAttached"
                                             DataContextChanged="OnGameCoverDataContextChanged">
                                         <Panel>
-                                            <Grid IsVisible="{Binding !HasCoverImage}" RowDefinitions="5,*,Auto">
+                                            <Grid IsVisible="{Binding !HasCoverImage}"
+                                                  RowDefinitions="5,*,Auto">
                                                 <Border Grid.Row="0" Background="{Binding AccentColor}" />
                                                 <StackPanel Grid.Row="1" HorizontalAlignment="Center"
                                                             VerticalAlignment="Center" Spacing="14">
@@ -408,9 +417,16 @@
                                             </Grid>
                                             <Image Source="{Binding CoverImage}"
                                                    IsVisible="{Binding HasCoverImage}"
-                                                   Stretch="Uniform" />
+                                                   Stretch="UniformToFill" />
                                         </Panel>
                                     </Border>
+                                    <!-- Selection ring: sits just outside the fixed frame (negative
+                                         margin) and is non-interactive, so it never resizes the cover. -->
+                                    <Border IsVisible="{Binding IsSelected}" IsHitTestVisible="False"
+                                            Margin="-2" CornerRadius="7"
+                                            Background="Transparent"
+                                            BorderBrush="{DynamicResource EmuAccentBrush}"
+                                            BorderThickness="3" />
                                     <Border IsVisible="{Binding !IsAvailable}"
                                             Background="#E1292D34" CornerRadius="4"
                                             Padding="7,4" Margin="8"
@@ -512,7 +528,7 @@
                                                RenderOptions.BitmapInterpolationMode="None" />
                                         <Image Source="{Binding CoverImage}"
                                                IsVisible="{Binding HasCoverImage}"
-                                               Stretch="Uniform" />
+                                               Stretch="UniformToFill" />
                                     </Panel>
                                 </Border>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">

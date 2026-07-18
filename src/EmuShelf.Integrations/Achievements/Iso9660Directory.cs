@@ -7,7 +7,7 @@ namespace EmuShelf.Integrations.Achievements;
 /// <see cref="CdSectorReader"/> and by container adapters (e.g. CSO/ZSO) so the ISO9660
 /// walk and serial reader are container-agnostic.
 /// </summary>
-internal interface ILogicalSectorReader
+internal interface ILogicalSectorReader : IDisposable
 {
     int FirstTrackSector { get; }
 

@@ -16,6 +16,12 @@ public partial class GameViewModel : ObservableObject, IDisposable
     private static readonly IAsyncRelayCommand<GameViewModel?> NoGameCommand =
         new AsyncRelayCommand<GameViewModel?>(_ => Task.CompletedTask);
 
+    /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
+    private const double CoverFrameWidth = 188;
+
+    /// <summary>Default frame ratio (portrait disc case) when a caller omits one.</summary>
+    private const double DefaultCoverAspectRatio = 0.708;
+
     public Game Model { get; private set; }
     public long Id { get; }
     public string SystemId { get; }
@@ -66,7 +72,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
         IAsyncRelayCommand<GameViewModel?>? setCoverCommand = null,
         IAsyncRelayCommand<GameViewModel?>? removeCommand = null,
         IAsyncRelayCommand<GameViewModel?>? loadCoverCommand = null,
-        IImage? platformArtwork = null)
+        IImage? platformArtwork = null,
+        double coverAspectRatio = DefaultCoverAspectRatio)
     {
         Model = game;
         Id = game.Id;
@@ -80,8 +87,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
         AccentColor = accentColor;
         PlatformArtwork = platformArtwork ??
             EmuShelf.App.ViewModels.PlatformArtwork.ForSystem(game.SystemId);
-        CoverWidth = 188;
-        CoverHeight = game.SystemId is "playstation" or "gamecube" ? 188 : 250;
+        // One fixed frame per platform, shared by the real cover and the placeholder,
+        // so a system's covers are uniform (see the grid tile in MainWindow.axaml).
+        CoverWidth = CoverFrameWidth;
+        CoverHeight = Math.Round(CoverFrameWidth / coverAspectRatio);
         FormatLabel = System.IO.Path.GetExtension(game.Path) is { Length: > 1 } extension
             ? extension[1..].ToUpperInvariant()
             : "FOLDER";

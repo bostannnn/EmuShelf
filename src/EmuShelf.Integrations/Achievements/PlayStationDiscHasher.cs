@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
+using EmuShelf.Integrations.Metadata;
+using EmuShelf.Integrations.Metadata.Chd;
 
 namespace EmuShelf.Integrations.Achievements;
 
@@ -12,7 +14,7 @@ internal static class PlayStationDiscHasher
         bool isPlayStation2,
         CancellationToken cancellationToken)
     {
-        using var disc = CdSectorReader.Open(path);
+        using var disc = OpenDisc(path);
         if (isPlayStation2)
         {
             var ps2 = TryHash(disc, "BOOT2", "cdrom0:", isPlayStation: false, cancellationToken);
@@ -29,8 +31,29 @@ internal static class PlayStationDiscHasher
             ?? throw new InvalidDataException("The primary PlayStation executable was not found.");
     }
 
+    // Opens the logical-disc reader for a container. CHD and CSO/ZSO reuse the readers written
+    // for metadata extraction; raw images and CUE sheets use the stock CD reader. A compressed
+    // container that cannot be opened (unsupported CHD codec, malformed header) surfaces as an
+    // unsupported format rather than falling back to a different algorithm.
+    private static ILogicalSectorReader OpenDisc(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (extension.Equals(".chd", StringComparison.OrdinalIgnoreCase))
+            return ChdSectorSource.TryOpen(path)
+                ?? throw new UnsupportedDiscLayoutException(
+                    "This CHD uses a codec the local reader does not support.");
+
+        if (extension.Equals(".cso", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".zso", StringComparison.OrdinalIgnoreCase))
+            return CompressedIsoSectorSource.TryOpen(path)
+                ?? throw new UnsupportedDiscLayoutException(
+                    "This compressed ISO could not be opened by the local reader.");
+
+        return CdSectorReader.Open(path);
+    }
+
     private static string? TryHash(
-        CdSectorReader disc,
+        ILogicalSectorReader disc,
         string bootKey,
         string cdromPrefix,
         bool isPlayStation,
@@ -61,7 +84,7 @@ internal static class PlayStationDiscHasher
     }
 
     private static DiscFile? FindExecutable(
-        CdSectorReader disc,
+        ILogicalSectorReader disc,
         string bootKey,
         string cdromPrefix)
     {
@@ -113,7 +136,7 @@ internal static class PlayStationDiscHasher
 
     private static void AppendFile(
         IncrementalHash md5,
-        CdSectorReader disc,
+        ILogicalSectorReader disc,
         uint sector,
         uint requestedSize,
         CancellationToken cancellationToken)
