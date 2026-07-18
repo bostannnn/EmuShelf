@@ -1,15 +1,30 @@
+using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
 using EmuShelf.Infrastructure.Tests.Metadata;
 using EmuShelf.Integrations.Achievements;
+using ZstdSharp;
 
 namespace EmuShelf.Infrastructure.Tests.Achievements;
 
 public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
 {
     private readonly RetroAchievementsGameHasher _hasher = new();
+
+    [Theory]
+    [InlineData("playstation", "rcheevos-2ac45d3-playstation-v3")]
+    [InlineData("playstation2", "rcheevos-2ac45d3-playstation-v3")]
+    [InlineData("gamecube", "rcheevos-2ac45d3-nintendo-v2")]
+    [InlineData("wii", "rcheevos-2ac45d3-nintendo-v2")]
+    public void AlgorithmVersion_IsScopedByHashReader(string systemId, string expectedVersion)
+    {
+        var game = Game(systemId, Path.Combine(BaseDirectory, "game.iso"));
+
+        Assert.Equal(expectedVersion, _hasher.GetAlgorithmVersion(game));
+        Assert.True(_hasher.IsAlgorithmVersionCompatible(game, "rcheevos-2ac45d3-disc-v2"));
+    }
 
     [Theory]
     [InlineData(false)]
@@ -67,6 +82,96 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
 
         Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
         Assert.Equal("c7803b704fa43d22d8f6e55f4789cb45", result.CanonicalHash);
+    }
+
+    [Theory]
+    [InlineData(".ciso")]
+    [InlineData(".wbfs")]
+    [InlineData(".rvz")]
+    public void Identify_GameCubeContainers_MatchOfficialRcheevosVector(string extension)
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var image = CreateGameCubeImage(32);
+        var path = Path.Combine(BaseDirectory, "game" + extension);
+        var container = extension switch
+        {
+            ".ciso" => BuildNintendoCiso(image),
+            ".wbfs" => BuildNintendoWbfs(image),
+            ".rvz" => BuildNintendoRvz(image, usePacking: true),
+            _ => throw new ArgumentOutOfRangeException(nameof(extension)),
+        };
+        File.WriteAllBytes(path, container);
+
+        var result = _hasher.Identify(Game("gamecube", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("c7803b704fa43d22d8f6e55f4789cb45", result.CanonicalHash);
+    }
+
+    [Theory]
+    [InlineData(".iso")]
+    [InlineData(".ciso")]
+    [InlineData(".wbfs")]
+    public void Identify_EncryptedWiiContainers_SelectTheCanonicalPartitionBytes(string extension)
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var image = CreateEncryptedWiiImage();
+        var path = Path.Combine(BaseDirectory, "game" + extension);
+        var container = extension switch
+        {
+            ".iso" => image,
+            ".ciso" => BuildNintendoCiso(image),
+            ".wbfs" => BuildNintendoWbfs(image),
+            _ => throw new ArgumentOutOfRangeException(nameof(extension)),
+        };
+        File.WriteAllBytes(path, container);
+
+        var result = _hasher.Identify(Game("wii", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("0671ce24e5e643842b6439e726986977", result.CanonicalHash);
+    }
+
+    [Fact]
+    public void Identify_WiiRvz_ReconstructsTheEncryptedPartitionBytes()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "game.rvz");
+        File.WriteAllBytes(path, BuildPartitionedWiiRvz());
+
+        var result = _hasher.Identify(Game("wii", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("97b7907eb06bfe07780b7b0f666f6a6e", result.CanonicalHash);
+    }
+
+    [Fact]
+    public void Identify_DecryptedWiiIso_AppendsTheCanonicalPartitionHash()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "game.iso");
+        File.WriteAllBytes(path, CreateDecryptedWiiImage());
+
+        var result = _hasher.Identify(Game("wii", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("a4c7fbc3f6a0aaa953b83c278e0f2c76", result.CanonicalHash);
+    }
+
+    [Fact]
+    public void Identify_MalformedNintendoRvz_IsUnsupportedFormat()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "game.rvz");
+        var rvz = BuildNintendoRvz(CreateGameCubeImage(32));
+        var rawEntryTableOffset = checked((int)BinaryPrimitives.ReadUInt64BigEndian(rvz.AsSpan(0x48 + 0xB8, 8)));
+        rvz[rawEntryTableOffset] ^= 0xFF;
+        File.WriteAllBytes(path, rvz);
+
+        var result = _hasher.Identify(Game("gamecube", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
     }
 
     [Fact]
@@ -281,7 +386,7 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
 
     [Theory]
     [InlineData("gamecube", ".rvz")]
-    [InlineData("wii", ".iso")]
+    [InlineData("wii", ".rvz")]
     [InlineData("playstation3", "")]
     public void Identify_UnverifiedFormatsRemainUnsupported(
         string systemId,
@@ -468,6 +573,258 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
         }
         return image;
     }
+
+    private static byte[] CreateEncryptedWiiImage()
+    {
+        var image = new byte[1024 * 1024];
+        FillImage(image);
+        image[0x18] = 0x5D;
+        image[0x19] = 0x1C;
+        image[0x1A] = 0x9E;
+        image[0x1B] = 0xA3;
+        image[0x61] = 0; // Encrypted Wii disc.
+
+        const int partitionTable = 0x40020;
+        const int partitionOffset = 0x50000;
+        const int tmdOffset = 0x3000;
+        const int dataOffset = 0x80000;
+        const int dataSize = 0x10000;
+        image.AsSpan(0x40000, 32).Clear();
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(0x40000, 4), 1);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(0x40004, 4), partitionTable >> 2);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(partitionTable, 4), partitionOffset >> 2);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(partitionTable + 4, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(partitionOffset + 0x2A4, 4), 16);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(partitionOffset + 0x2A8, 4), tmdOffset >> 2);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(partitionOffset + 0x2B8, 4), dataOffset >> 2);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(partitionOffset + 0x2BC, 4), dataSize >> 2);
+        FillImage(image.AsSpan(partitionOffset + tmdOffset, 16));
+        FillImage(image.AsSpan(dataOffset + 0x400, 0x7C00));
+        FillImage(image.AsSpan(dataOffset + 0x8000 + 0x400, 0x7C00));
+        return image;
+    }
+
+    private static byte[] CreateDecryptedWiiImage()
+    {
+        var image = CreateEncryptedWiiImage();
+        const int dataOffset = 0x80000;
+        image[0x61] = 1;
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(0x50000 + 0x2BC, 4), 0x10000 >> 2);
+        image.AsSpan(dataOffset, 0x5000).Clear();
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(dataOffset + 0x2440 + 0x14, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(dataOffset + 0x2440 + 0x18, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(dataOffset + 0x420, 4), 0xC00);
+        var dol = dataOffset + 0x3000;
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(dol, 4), 0xC40);
+        BinaryPrimitives.WriteUInt32BigEndian(image.AsSpan(dol + 0x90, 4), 0x40);
+        FillImage(image.AsSpan(dataOffset + 0x3100, 0x100));
+        return image;
+    }
+
+    private static byte[] BuildNintendoCiso(byte[] image)
+    {
+        const int headerSize = 0x8000;
+        const int blockSize = 0x200000;
+        var blocks = (image.Length + blockSize - 1) / blockSize;
+        var output = new byte[headerSize + blocks * blockSize];
+        "CISO"u8.CopyTo(output);
+        BinaryPrimitives.WriteUInt32LittleEndian(output.AsSpan(4, 4), blockSize);
+        for (var index = 0; index < blocks; index++)
+            output[8 + index] = 1;
+        image.CopyTo(output.AsSpan(headerSize));
+        return output;
+    }
+
+    private static byte[] BuildNintendoWbfs(byte[] image)
+    {
+        const int sectorSize = 0x200000;
+        var logicalBlocks = (image.Length + sectorSize - 1) / sectorSize;
+        var physicalBlocks = logicalBlocks + 2;
+        var output = new byte[physicalBlocks * sectorSize];
+        "WBFS"u8.CopyTo(output);
+        BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(4, 4), (uint)physicalBlocks);
+        output[8] = 21;
+        output[9] = 21;
+        output[12] = 1;
+        var map = output.AsSpan(sectorSize + 0x100, logicalBlocks * 2);
+        for (var index = 0; index < logicalBlocks; index++)
+            BinaryPrimitives.WriteUInt16BigEndian(map.Slice(index * 2, 2), (ushort)(index + 2));
+        image.CopyTo(output.AsSpan(sectorSize * 2));
+        return output;
+    }
+
+    private static byte[] BuildNintendoRvz(byte[] image, bool usePacking = false)
+    {
+        const int header1Size = 0x48;
+        const int header2Size = 0xDC;
+        const int chunkSize = 0x100000;
+        const uint compressionType = 5; // Zstandard, the normal Dolphin RVZ path.
+        var groupCount = (image.Length + chunkSize - 1) / chunkSize;
+        var rawEntries = new byte[24];
+        BinaryPrimitives.WriteUInt64BigEndian(rawEntries.AsSpan(0, 8), 0);
+        BinaryPrimitives.WriteUInt64BigEndian(rawEntries.AsSpan(8, 8), (ulong)image.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(rawEntries.AsSpan(16, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(rawEntries.AsSpan(20, 4), (uint)groupCount);
+
+        using var compressor = new Compressor(5);
+        var compressedRawEntries = compressor.Wrap(rawEntries).ToArray();
+        var compressedGroups = new byte[groupCount][];
+        var packedGroupSizes = new int[groupCount];
+        for (var index = 0; index < groupCount; index++)
+        {
+            var payload = image.AsSpan(index * chunkSize, chunkSize).ToArray();
+            if (usePacking)
+            {
+                var packed = new byte[payload.Length + 4];
+                BinaryPrimitives.WriteUInt32BigEndian(packed, (uint)payload.Length);
+                payload.CopyTo(packed.AsSpan(4));
+                packedGroupSizes[index] = packed.Length;
+                payload = packed;
+            }
+            compressedGroups[index] = compressor.Wrap(payload).ToArray();
+        }
+
+        var rawOffset = header1Size + header2Size;
+        var groupOffset = Align4(rawOffset + compressedRawEntries.Length);
+        var groupTableLength = groupCount * 12;
+        var compressedGroupTable = Array.Empty<byte>();
+        var dataOffset = 0;
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            dataOffset = Align4(groupOffset + (compressedGroupTable.Length == 0
+                ? groupTableLength
+                : compressedGroupTable.Length));
+            var groupTable = new byte[groupTableLength];
+            var tableCursor = dataOffset;
+            for (var index = 0; index < groupCount; index++)
+            {
+                var group = compressedGroups[index];
+                BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(index * 12, 4), (uint)(tableCursor >> 2));
+                BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(index * 12 + 4, 4),
+                    0x80000000u | (uint)group.Length);
+                BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(index * 12 + 8, 4),
+                    (uint)packedGroupSizes[index]);
+                tableCursor += Align4(group.Length);
+            }
+
+            var nextCompressedTable = compressor.Wrap(groupTable).ToArray();
+            if (nextCompressedTable.Length == compressedGroupTable.Length)
+            {
+                compressedGroupTable = nextCompressedTable;
+                break;
+            }
+
+            compressedGroupTable = nextCompressedTable;
+        }
+
+        dataOffset = Align4(groupOffset + compressedGroupTable.Length);
+        var outputSize = dataOffset + compressedGroups.Sum(group => Align4(group.Length));
+        var output = new byte[outputSize];
+        compressedRawEntries.CopyTo(output.AsSpan(rawOffset));
+        compressedGroupTable.CopyTo(output.AsSpan(groupOffset));
+        var cursor = dataOffset;
+        for (var index = 0; index < groupCount; index++)
+        {
+            var group = compressedGroups[index];
+            group.CopyTo(output.AsSpan(cursor));
+            cursor += Align4(group.Length);
+        }
+
+        var header2 = output.AsSpan(header1Size, header2Size);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0, 4), 1); // GameCube
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(4, 4), compressionType);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0x0C, 4), chunkSize);
+        image.AsSpan(0, 0x80).CopyTo(header2.Slice(0x10, 0x80));
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xB4, 4), 1);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0xB8, 8), (ulong)rawOffset);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xC0, 4), (uint)compressedRawEntries.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xC4, 4), (uint)groupCount);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0xC8, 8), (ulong)groupOffset);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xD0, 4), (uint)compressedGroupTable.Length);
+
+        var header1 = output.AsSpan(0, header1Size);
+        "RVZ\x01"u8.CopyTo(header1);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(4, 4), 0x01000000);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(8, 4), 0x00030000);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(0x0C, 4), header2Size);
+        SHA1.HashData(header2).CopyTo(header1.Slice(0x10, 20));
+        BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x24, 8), (ulong)image.Length);
+        BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x2C, 8), (ulong)output.Length);
+        SHA1.HashData(header1.Slice(0, 0x34)).CopyTo(header1.Slice(0x34, 20));
+        return output;
+    }
+
+    private static byte[] BuildPartitionedWiiRvz()
+    {
+        const int header1Size = 0x48;
+        const int header2Size = 0xDC;
+        const int chunkSize = 0x8000;
+        const int partitionDataOffset = 0x80000;
+        const int rawSize = partitionDataOffset;
+        const int rawGroups = rawSize / chunkSize;
+        const int groupCount = rawGroups + 1;
+        var rawImage = CreateEncryptedWiiImage();
+        BinaryPrimitives.WriteUInt32BigEndian(rawImage.AsSpan(0x50000 + 0x2BC, 4), chunkSize >> 2);
+
+        var partitionOffset = header1Size + header2Size;
+        var rawEntryOffset = partitionOffset + 0x30;
+        var groupEntryOffset = rawEntryOffset + 24;
+        var dataOffset = groupEntryOffset + groupCount * 12;
+        var output = new byte[dataOffset + rawSize + 4 + 0x7C00];
+
+        var partitionEntry = output.AsSpan(partitionOffset, 0x30);
+        BinaryPrimitives.WriteUInt32BigEndian(partitionEntry.Slice(16, 4), partitionDataOffset / chunkSize);
+        BinaryPrimitives.WriteUInt32BigEndian(partitionEntry.Slice(20, 4), 1);
+        BinaryPrimitives.WriteUInt32BigEndian(partitionEntry.Slice(24, 4), rawGroups);
+        BinaryPrimitives.WriteUInt32BigEndian(partitionEntry.Slice(28, 4), 1);
+
+        var rawEntry = output.AsSpan(rawEntryOffset, 24);
+        BinaryPrimitives.WriteUInt64BigEndian(rawEntry.Slice(0, 8), 0);
+        BinaryPrimitives.WriteUInt64BigEndian(rawEntry.Slice(8, 8), rawSize);
+        BinaryPrimitives.WriteUInt32BigEndian(rawEntry.Slice(20, 4), rawGroups);
+
+        var groupTable = output.AsSpan(groupEntryOffset, groupCount * 12);
+        var cursor = dataOffset;
+        for (var index = 0; index < rawGroups; index++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(groupTable.Slice(index * 12, 4), (uint)(cursor >> 2));
+            BinaryPrimitives.WriteUInt32BigEndian(groupTable.Slice(index * 12 + 4, 4), chunkSize);
+            rawImage.AsSpan(index * chunkSize, chunkSize).CopyTo(output.AsSpan(cursor));
+            cursor += chunkSize;
+        }
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.Slice(rawGroups * 12, 4), (uint)(cursor >> 2));
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.Slice(rawGroups * 12 + 4, 4), 4 + 0x7C00);
+        // An empty exception list is two bytes, followed by its required 4-byte alignment.
+        // The rest is one 0x7C00-byte decrypted Wii cluster filled with zeroes.
+
+        var header2 = output.AsSpan(header1Size, header2Size);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0, 4), 2); // Wii
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0x0C, 4), chunkSize);
+        rawImage.AsSpan(0, 0x80).CopyTo(header2.Slice(0x10, 0x80));
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0x90, 4), 1);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0x94, 4), 0x30);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0x98, 8), (ulong)partitionOffset);
+        SHA1.HashData(partitionEntry).CopyTo(header2.Slice(0xA0, 20));
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xB4, 4), 1);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0xB8, 8), (ulong)rawEntryOffset);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xC0, 4), 24);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xC4, 4), groupCount);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0xC8, 8), (ulong)groupEntryOffset);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xD0, 4), (uint)groupTable.Length);
+
+        var header1 = output.AsSpan(0, header1Size);
+        "RVZ\x01"u8.CopyTo(header1);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(4, 4), 0x01000000);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(8, 4), 0x00030000);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(0x0C, 4), header2Size);
+        SHA1.HashData(header2).CopyTo(header1.Slice(0x10, 20));
+        BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x24, 8), partitionDataOffset + chunkSize);
+        BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x2C, 8), (ulong)output.Length);
+        SHA1.HashData(header1.Slice(0, 0x34)).CopyTo(header1.Slice(0x34, 20));
+        return output;
+    }
+
+    private static int Align4(int value) => (value + 3) & ~3;
 
     private static void FillImage(Span<byte> image)
     {

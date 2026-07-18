@@ -535,3 +535,61 @@ as identification/matching/progress, waits for in-flight work to finish, clears 
 then releases queued work. A queued import rechecks that an account is still connected after
 acquiring the lock, so it does not read media or write account data after disconnect. A regression
 test holds a progress refresh in flight and proves the cache is cleared only after it completes.
+
+## 2026-07-18 — Expansion uses an RPCS3-owned PS3 list and a core-aware RetroArch launcher
+
+The next platform expansion supersedes the deferred M5 plan to recursively discover PS3 game
+directories. PlayStation 3 discovery is instead an explicit, read-only synchronization from the
+user-selected RPCS3 data/config location. Only entries already known to RPCS3 may enter
+EmuShelf; the integration may read targeted metadata from such an entry to validate or enrich it,
+but must never promote an arbitrary directory into a PS3 game. The adapter is versioned and fails
+closed if RPCS3's game-list format is unsupported. It neither writes RPCS3 files nor deletes a
+user's EmuShelf row when an entry later disappears from RPCS3.
+
+RetroArch remains an external launcher, not an emulator-core frontend. It is configured once as a
+shared executable, with one manually chosen installed core file per supported system (Mega Drive /
+Genesis, Nintendo DS, and Game Boy Advance). EmuShelf launches the configured core explicitly with
+the game path so its behavior is deterministic when multiple cores accept an extension. It does
+not download/update cores, choose one per game, enumerate an installation, or change RetroArch's
+core options, overrides, playlists, credentials, or achievement settings. That narrow core-path
+setting is necessary because the supported command-line launch form requires both a core and
+content path; it is deliberately not a rich core-selection UI.
+
+Mega Drive and Genesis share one EmuShelf system/sidebar category rather than duplicating the same
+catalogue by regional name. PS3 remains outside RetroAchievements; PSP and the three new
+RetroArch systems join it only after their exact local identification is proven against the
+pinned hashing baseline. Covers use the existing opt-in, exact-match, ownership-preserving
+metadata pipeline; provider and licensing choices are feasibility gates, not assumptions.
+
+## 2026-07-18 — Nintendo RetroAchievements containers are read as logical discs
+
+RetroAchievements identification now opens GameCube and Wii `.ciso`, `.wbfs`, and Dolphin `.rvz`
+files through a shared, read-only logical-disc reader rather than treating a container as a raw
+file. CISO sparse blocks and WBFS mappings return their logical zeroes; RVZ validates its headers
+and metadata hashes, supports the standard uncompressed and Zstandard chunk codecs, and decodes
+RVZ packed padding. Wii RVZ partition chunks are restored to the encrypted sectors consumed by
+the pinned rcheevos algorithm: the reader regenerates hash blocks from decrypted data, applies
+stored hash exceptions, and encrypts the clusters with the partition key. This keeps the existing
+algorithm byte-oriented and does not modify source media.
+
+`ZstdSharp.Port` 0.8.8 is the deliberately managed, MIT-licensed dependency for RVZ Zstandard
+chunks. It avoids adding a native deployment dependency to the macOS/Windows application. RVZ
+files using other codecs (bzip2/LZMA/LZMA2), as well as already-decrypted Wii RVZ images, remain
+explicitly unsupported until their logical bytes have matching fixtures. Every malformed/
+unsupported container stays `Unknown`; there is no whole-file-MD5 or filename fallback.
+
+## 2026-07-18 — RetroAchievements cache versions follow the affected disc reader
+
+The earlier global `rcheevos-2ac45d3-disc-v2` cache version was too coarse: an improvement to one
+container reader caused every unrelated disc to be hashed again. Identification now records a
+PlayStation-family or Nintendo reader version and treats the existing global-v2 successful hashes
+as compatible during migration. A legacy invalid result is retried, because it may have been
+caused by a now-fixed reader; a current-version result remains cached. This preserves valid PS1,
+PS2, GameCube, and Wii work while allowing an affected reader to advance independently.
+
+The PlayStation reader advances to v3 for CD CHD. CHD CD hunks can contain cooked user data rather
+than raw sectors, so the 16/24-byte CD header is skipped only when the sync pattern is actually
+present. `cdfl` uses a managed Shamisen FLAC decoder to reconstruct its sector payload, including
+the byte order that libchdr restores on little-endian hosts. This adds no native deployment
+dependency; the package and its MIT/BSD notices ship with the app. A real `chdman`-generated
+`cdfl` fixture proves the recovered `SYSTEM.CNF` bytes.

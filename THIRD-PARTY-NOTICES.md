@@ -38,7 +38,7 @@ No native rcheevos binary is bundled.
 ## CHD (Compressed Hunks of Data) decoding
 
 EmuShelf's read-only `.chd` decoder is a C# port of the CHD v5 container format —
-the Huffman-coded hunk map, crc16 self-check, and the `zlib`/`lzma`/`cdzl`/`cdlz`
+the Huffman-coded hunk map, crc16 self-check, and the `zlib`/`lzma`/`cdzl`/`cdlz`/`cdfl`
 hunk codecs with CD frame reassembly — used only to read a disc's boot serial. It is
 derived from the MAME CHD implementation and the
 [`libchdr`](https://github.com/rtissera/libchdr) reference port. No MAME or libchdr
@@ -52,6 +52,29 @@ The LZMA hunk decoder is a minimal C# implementation based on Igor Pavlov's
 [LZMA SDK](https://www.7-zip.org/sdk.html) reference decoder.
 
 - License: public domain (the LZMA SDK is placed in the public domain by its author).
+
+## Zstandard decoding for Dolphin RVZ images
+
+EmuShelf uses the managed [`ZstdSharp.Port`](https://github.com/oleg-st/ZstdSharp) package only
+to decode the standard Zstandard-compressed chunks in read-only Dolphin RVZ images. It is a C#
+port of Zstandard; no native binary is bundled.
+
+- Copyright: Copyright (c) 2021 Oleg Stepanischev.
+- License: MIT; the complete text is retained in
+  `src/EmuShelf.App/Assets/ThirdParty/ZstdSharp-LICENSE.txt`.
+
+## FLAC decoding for CD CHD images
+
+EmuShelf uses the managed `Shamisen.Codecs.Flac` 0.1.0-alpha.0.8.0 package and its
+`Shamisen.Core` dependency solely to decode the `cdfl` FLAC payload in read-only CD CHD
+images. No native decoder is bundled. The package is MIT-licensed and includes ported
+libFLAC and Intel Intelligent Storage Acceleration Library source under BSD-3-Clause terms.
+
+- Copyright: Copyright (c) 2022 MineCake1.4.7; libFLAC Copyright (c) 2000-2009 Josh
+  Coalson and (c) 2011-2016 Xiph.Org Foundation; Intel ISA-L Copyright (c) 2011-2017
+  Intel Corporation.
+- License: MIT and BSD-3-Clause; complete notices are retained in
+  `src/EmuShelf.App/Assets/ThirdParty/Shamisen.Codecs.Flac-LICENSE.txt`.
 
 ## Opt-in network metadata sources (not distributed)
 

@@ -28,11 +28,11 @@ Avalonia shell: system sidebar fed from Integrations, toolbar (grid/list toggle,
 - [x] .m3u playlists: playlist is the game entry; referenced discs hidden.
 - [x] GC vs Wii disambiguation by disc-header magic words (plain and within .rvz/.wbfs containers).
 
-## M5 — PS3 importing → moved to Backlog (2026-07-12)
+## M5 — PS3 importing → superseded by M13 (2026-07-12)
 
-Deferred; see **Backlog** at the end of this file. Milestone numbers M6–M8 are kept
-as-is so references don't shift. M6's Windows verification remains pending while the
-current implementation milestone is M8.
+The original directory-scanning design was deferred and is now superseded by the
+user-requested **M13** RPCS3-library sync design. Milestone numbers M6–M8 remain as-is
+so existing references do not shift.
 
 ## M6 — Emulator configuration and launching
 
@@ -40,7 +40,8 @@ current implementation milestone is M8.
 - [x] Argument templates with {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}; args passed as an array, never a shell string.
 - [x] Launch flow: validate game + emulator, minimize frontend, start process, track exit, restore. Double-click and context menu.
 - [x] Launch-failure feedback in a contextual notification.
-- [ ] Verify on Windows with real emulators (DuckStation, PCSX2, RPCS3, Dolphin).
+- [ ] Verify the current file-based launch paths on Windows with DuckStation, PCSX2, and
+      Dolphin. RPCS3 has its own source-import and launch acceptance gate in M13.
 
 ## M7 — Titles, covers, and editing ✅ (2026-07-13)
 
@@ -56,7 +57,8 @@ current implementation milestone is M8.
 - [x] Performance pass: indexed/limited recent queries, batched availability writes, bulk UI collection refreshes, ReadyToRun Windows startup, and deferred cover UI work during play.
 - [x] Error handling and daily diagnostic logging to portable `Logs/` files.
 - [x] Self-contained portable win-x64 zip plus SHA-256 checksum via CI.
-- [ ] Test the scoped Windows acceptance checklist on a real Windows machine. The original §14 PS3/RPCS3 portion remains deferred with the PS3 backlog.
+- [ ] Test the scoped Windows acceptance checklist on a real Windows machine. PS3/RPCS3
+      returns in M13 with a deliberately different, emulator-library-owned import model.
 
 ## M9 — Opt-in metadata enrichment ✅ (2026-07-13)
 
@@ -97,12 +99,16 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
         M11, with parity fixtures proving they hash byte-identically to the uncompressed disc
         (CSO/ZSO in-code; CHD verified against a real chdman-produced container). A malformed
         container falls back to `UnsupportedFormat`, never whole-file MD5.
-  - [ ] **Paused (2026-07-18).** Add readers and parity fixtures for `.pbp`, and for the
-        GameCube/Wii containers RVZ, WBFS, and CISO plus Wii AES partitions, before claiming
-        those formats. These stay `UnsupportedFormat` for now; work resumes after the account,
-        catalogue, and UI slices (§2–§7) land so the feature is usable on the formats already
-        verified. `.pbp` is the small next step (serial-only reader exists); the GameCube/Wii
-        containers and Wii AES are the larger effort.
+  - [x] Add a read-only Nintendo logical-disc layer for GameCube/Wii CISO and WBFS plus
+        Dolphin RVZ with the ordinary `none`/Zstandard codecs. GameCube ISO/GCM, CISO, WBFS,
+        and a genuinely Zstandard-compressed RVZ all reproduce the official rcheevos GameCube
+        vector. Wii ISO/CISO/WBFS use the upstream partition/TMD/encrypted-cluster selection;
+        encrypted Wii RVZ reconstructs the encrypted partition sectors (including RVZ hash
+        exceptions) before hashing, with a fixture covering that reconstruction. Malformed
+        images, already-decrypted Wii RVZ images, and RVZ files using an unverified codec remain
+        `UnsupportedFormat`; no format falls back to a whole-file hash.
+  - [ ] **Paused (2026-07-18).** `.pbp` remains outside the verified gate. It is the next small
+        reader slice; all unsupported formats continue to show `Unknown`, never `No`.
 - [ ] Make the supported-format result an explicit gate: ship only formats with verified
       parity on Windows and macOS, and present all other cases as `Unknown`, never `No`.
       PlayStation 3 is out of scope because RetroAchievements has no PS3 console id.
@@ -272,18 +278,160 @@ that gap. See `DECISIONS.md` for the diagnosis.
 - [x] Tests: candidate URLs per region with fallback order; non-disc-id identifiers ignored;
       unavailable covers 404 and fall through to the Libretro title provider.
 
-## Backlog (deferred, not in the current v1 sequence)
+## M12 — Expansion launcher and library-source foundation (planned)
 
-### PS3 importing (was M5) — deferred 2026-07-12
+This is the common work required before adding the requested platforms. It keeps the
+current per-system launch experience while allowing one RetroArch installation to serve
+several systems and one external emulator to own a game catalogue.
 
-- [ ] Recognize PS3 game directories (PS3_GAME/USRDIR/EBOOT.BIN layout and RPCS3-installed games).
-- [ ] Parse PARAM.SFO for default titles.
-- [ ] Scan a folder of many game dirs, or add one game dir; each recognized dir = one entry.
+- [ ] Introduce a backwards-compatible launcher mapping: an emulator executable may be
+      shared by several systems, while each system retains its own editable launch template
+      and settings. Migrate existing per-system executable paths and arguments without
+      losing portable relative paths or changing current DuckStation/PCSX2/Dolphin behavior.
+- [ ] Add a controlled per-system `CorePath` launch setting for RetroArch systems and one
+      additional template placeholder. The Settings UI selects an already installed core
+      file; it does not download, update, enumerate, configure, or switch cores per game.
+      A missing core is a preflight error, not a reason to start RetroArch without content.
+- [ ] Register PSP, Mega Drive / Genesis, Nintendo DS, and Game Boy Advance as stable,
+      separately filterable systems. Reuse licensed platform art where available; choose
+      each platform's canonical cover ratio from representative licensed/sample artwork
+      before finalizing the grid shelf.
+- [ ] Add a read-only external-library-source contract alongside the existing folder
+      scanner. Source imports must retain their source provenance, run only on an explicit
+      user action or rescan, reconcile without deleting user library rows, and preserve the
+      no-full-library-scan-at-startup rule.
+- [ ] Cover migrations, missing executable/core failures, source-refresh cancellation,
+      and portable relocation with a shared emulator/core must have deterministic tests on
+      macOS and Windows.
 
-Directory-based importing is the one system that needs custom scanning code (design doc
-§6/§9). It slots in behind the existing `IGameImportRules` / directory-aware
-`IAvailabilityChecker` seams from M3 without reworking the shared scanner. Note the
-knock-on effects while this is parked: the PlayStation 3 sidebar system stays empty, and
-M6's RPCS3 launch verification has no PS3 entries to launch until this is picked up. The
-design doc's §14 "first usable version" includes PS3/RPCS3, so shipping v1 with this in the
-backlog is a deliberate scope reduction of that definition.
+## M13 — PlayStation 3 from the RPCS3 game library (planned)
+
+This replaces the original PS3 directory scanner. EmuShelf will show only games that RPCS3
+itself knows about; it will never recursively discover arbitrary PS3 directories or offer
+an individual PS3-folder import.
+
+- [ ] Add an explicit **Sync RPCS3 library** action. The user selects the RPCS3 data/config
+      location (no auto-detection); the integration reads only RPCS3's own game-list data
+      through a versioned, read-only adapter. A changed or unsupported upstream format must
+      fail with an actionable message and import nothing rather than guess.
+- [ ] Import the RPCS3-recorded path, title, title id, and availability as one PS3 entry,
+      with source provenance. The recorded list is authoritative for discovery; a targeted
+      `PARAM.SFO` read may validate/enrich an already listed entry but must never turn an
+      unlisted directory into a library game. Entries absent from a later sync remain in
+      EmuShelf and are visibly unavailable/source-missing until the user removes them.
+- [ ] Treat RPCS3-supplied title data as embedded metadata that can replace a filename only;
+      manual title/cover edits always win. The title id is the exact evidence for the later
+      PS3 cover route, not a title-similarity key.
+- [ ] Verify the current RPCS3 launch contract on real Windows with an imported installed
+      game and a listed disc/directory game: quoted paths, minimize/restore, non-zero exit,
+      source refresh while the app is open, and no writes to RPCS3 data or game files.
+- [ ] Keep PS3 out of RetroAchievements matching and display it as unsupported: there is no
+      RetroAchievements PlayStation 3 console mapping in the existing design.
+
+## M14 — PSP and PPSSPP (planned)
+
+- [ ] Add a PSP file-import profile after a format feasibility pass against the chosen PPSSPP
+      release. Start only with individually launchable formats whose import, metadata, and
+      launch behavior are verified; archive support waits for an exact content/identity
+      design rather than treating a ZIP as an opaque game file.
+- [ ] Read the small PSP `PARAM.SFO` evidence (`DISC_ID`, title where trustworthy) from each
+      accepted format without modifying it. Use it for later exact metadata lookup, retain
+      distinct regions/revisions as distinct paths, and fall back to the filename only for
+      display when evidence is invalid or unavailable.
+- [ ] Add PPSSPP executable selection and an argv-safe default game-path launch template;
+      prove the contract with paths containing spaces, failed launch preflight, and tracked
+      process exit on Windows. PPSSPP remains responsible for emulator settings and actual
+      achievement unlocking.
+- [ ] Add file-recognition, SFO/container, availability, and launch fixtures; every reader
+      must prove that source bytes and timestamps remain unchanged.
+
+## M15 — RetroArch as a core-aware launcher (planned)
+
+RetroArch is a shortcut launcher with one necessary per-system choice: the default installed
+Libretro core. It is not a core manager and EmuShelf will not edit RetroArch configuration,
+core options, overrides, playlists, or achievements settings.
+
+- [ ] Configure one shared RetroArch executable plus one manually selected default core for
+      each of Mega Drive / Genesis, Nintendo DS, and Game Boy Advance. Keep the choice at
+      system scope, not a prompt at every launch and not a per-game setting.
+- [ ] Launch content through the explicit core-and-content argv form (`-L {CorePath}` plus
+      `{GamePath}`), so several compatible installed cores cannot produce an ambiguous or
+      different launch. Continue to use argument arrays, never a shell string.
+- [ ] Show the configured core's file name and a clear replace/clear action in Settings;
+      reject a missing core, unsupported selected content, or malformed template before
+      minimizing EmuShelf. Do not scan RetroArch's installation to infer or download cores.
+- [ ] Prove a shared portable RetroArch installation can move with EmuShelf and the library;
+      verify each platform's core is invoked, saved RetroArch overrides remain untouched, and
+      EmuShelf restores after the process exits.
+
+## M16 — Mega Drive / Genesis library (planned)
+
+Mega Drive and Genesis are one system, not duplicate regional sidebars: the label recognizes
+both names while the library keeps regions and revisions as separate game entries.
+
+- [ ] Add strict folder and explicit-file recognition for the agreed single-ROM Mega Drive
+      formats. Normalize known copier/interleaved layouts only where fixtures prove the
+      result; exclude ambiguous archives and unsupported dumps from automatic discovery.
+- [ ] Extract a bounded normalized-ROM checksum for exact catalogue/achievement matching,
+      including copier-header and interleaving fixtures. A filename is presentation fallback,
+      never automatic metadata evidence.
+- [ ] Launch through the M15 RetroArch core mapping and verify scan, rescan, availability,
+      portable paths, cover placeholder ratio, and real Windows launch.
+
+## M17 — Nintendo DS library (planned)
+
+- [ ] Add strict `.nds`-format discovery and explicit-file import, with no archive support in
+      the first pass. Read the ROM header game code and title as local evidence without
+      modifying the ROM.
+- [ ] Use a normalized ROM checksum as a required exact-match fallback where revisions share
+      a DS game code; malformed headers, homebrew, and unsupported containers remain visibly
+      unmatched rather than being title-guessed.
+- [ ] Launch through the M15 RetroArch core mapping and add header/checksum, availability,
+      portable-path, placeholder-ratio, and real Windows launch coverage.
+
+## M18 — Game Boy Advance library (planned)
+
+- [ ] Add strict `.gba`-format discovery and explicit-file import, deferring archives and
+      headered/converted variants until their normalization has test vectors.
+- [ ] Read bounded header evidence for display but use a normalized ROM checksum for exact
+      catalogue/achievement matching, so regional revisions and altered dumps cannot collide.
+- [ ] Launch through the M15 RetroArch core mapping and add checksum, availability,
+      portable-path, placeholder-ratio, and real Windows launch coverage.
+
+## M19 — Exact covers and RetroAchievements for the expansion systems (planned)
+
+This extends the opt-in M9 metadata pipeline and the read-only M10 achievement pipeline;
+it must not create a second downloader, account flow, or background polling mechanism.
+
+- [ ] For PS3, PSP, Mega Drive / Genesis, DS, and GBA, select a catalogue and artwork provider
+      only after validating its identifier semantics, availability, licensing/terms, update
+      behavior, image limits, and a real 200/404 fallback. Prefer id/checksum-addressed art;
+      use a title-addressed fallback only after an exact catalogue match. Record sources and
+      redistribution status in `THIRD-PARTY-NOTICES.md` before shipping.
+- [ ] Extend the existing consent, caching, bounded downloader, thumbnail staging, provenance,
+      and user-ownership rules. Downloaded covers remain under portable `Covers/` and may fill
+      only an empty/non-user cover; a manual edit made during a fetch wins. No game art or
+      catalogue is bundled by default.
+- [ ] Add PSP, Mega Drive / Genesis, DS, and GBA to RetroAchievements only after each accepted
+      format has byte-for-byte parity fixtures against the pinned `rcheevos` behavior and its
+      console catalogue semantics have been verified. Unsupported containers, archives, hacks,
+      and uncertain matches stay `Unknown`, never `No achievements`.
+- [ ] Reuse the current account credential handling, cached catalogue/progress policy, rate
+      limiter, library mark, and achievement popup. PPSSPP and RetroArch/core settings alone
+      perform unlock/submission; EmuShelf identifies and displays cached progress after launch.
+      PS3 remains excluded from this milestone.
+- [ ] Add offline/stale-cache, 429, provider failure, manual-edit race, account switch, and
+      post-session-refresh tests for every new supported system; validate one real supported
+      game per applicable emulator/core on Windows without writing to game or emulator data.
+
+## M20 — Expansion release acceptance (planned)
+
+- [ ] Extend `docs/windows-test-checklist.md` with the M13 RPCS3-library-sync path, PPSSPP,
+      and the three RetroArch systems. Record the exact emulator/core versions and the supported
+      import-format matrix used for each run.
+- [ ] Test first launch, empty/error states, source/cancelled rescan, unavailable records,
+      paths containing spaces, external/portable-drive relocation, cover fetch/placeholder,
+      core and emulator launch preflight, process restoration, and manual metadata ownership.
+- [ ] On a real Windows machine, verify RetroAchievements end to end for one validated PSP and
+      one validated RetroArch-platform game: EmuShelf shows only read-only progress after the
+      emulator/core unlocks and submits it. Verify PS3 stays explicitly unsupported.

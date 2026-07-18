@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using EmuShelf.Integrations.Achievements;
+using Shamisen.Codecs.Flac;
+using Shamisen.Data;
 
 namespace EmuShelf.Integrations.Metadata.Chd;
 
@@ -9,7 +11,7 @@ namespace EmuShelf.Integrations.Metadata.Chd;
 /// Huffman-coded hunk map and decompressing only the hunks that back the requested
 /// sectors. Ported from MAME/libchdr and verified against chdman-produced vectors.
 /// Supports DVD-geometry images (2048-byte units: zlib/LZMA) and CD-geometry images
-/// (2352/2448-byte frames: cdzl/cdlz); other codecs and parents fall back to the caller.
+/// (2352/2448-byte frames: cdzl/cdlz/cdfl); other codecs and parents fall back to the caller.
 /// </summary>
 internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
 {
@@ -18,6 +20,8 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
     private const int CdSubcodeData = 96;
     private const int MapEntryBytes = 12;
     private const int MaxSelfDepth = 8;
+    private static ReadOnlySpan<byte> RawCdSyncPattern =>
+        [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00];
 
     private const byte TypeNone = 4;
     private const byte TypeSelf = 5;
@@ -126,7 +130,9 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
             return destination.Length;
         }
 
-        // CD: each logical unit is a frame; the 2048 user bytes sit past the sector header.
+        // CD: cdzl/cdlz chunks can hold full raw frames or cooked user data padded to a CD-frame
+        // unit. Only raw frames have the 16/24-byte header; treating a cooked frame as raw drops
+        // the beginning of SYSTEM.CNF (including BOOT2) and makes valid PS2 CD images look invalid.
         var frameOffset = (long)sector * _unitBytes;
         if (frameOffset + CdSectorData > _logicalBytes)
             return 0;
@@ -134,8 +140,16 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
         if (cdHunk is null)
             return 0;
         var frameByte = (int)(frameOffset % _hunkBytes);
-        var headerSize = cdHunk[frameByte + 15] == 2 ? 24 : 16; // Mode 2 Form 1 vs Mode 1
-        var start = frameByte + headerSize;
+        if (frameByte < 0 || frameByte + CdSectorData > cdHunk.Length)
+            return 0;
+
+        var frame = cdHunk.AsSpan(frameByte, CdSectorData);
+        var start = frameByte;
+        if (frame[..RawCdSyncPattern.Length].SequenceEqual(RawCdSyncPattern))
+        {
+            var headerSize = frame[15] == 2 ? 24 : 16; // Mode 2 Form 1 vs Mode 1
+            start += headerSize;
+        }
         if (start + destination.Length > cdHunk.Length)
             return 0;
         cdHunk.AsSpan(start, destination.Length).CopyTo(destination);
@@ -188,8 +202,57 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
             "zlib" => Inflate(input, 0, input.Length, (int)_hunkBytes),
             "lzma" => DecodeLzma(input, 0, input.Length, (int)_hunkBytes),
             "cdzl" or "cdlz" => DecodeCdHunk(codec, input),
+            "cdfl" => DecodeCdFlacHunk(input),
             _ => null,
         };
+    }
+
+    private byte[]? DecodeCdFlacHunk(byte[] input)
+    {
+        try
+        {
+            var frames = checked((int)(_hunkBytes / _unitBytes));
+            var samplesPerChannel = checked(frames * CdSectorData / 4);
+            var samples = new int[checked(samplesPerChannel * 2)];
+            using var source = new StreamDataSource(new MemoryStream(
+                BuildCdFlacStream(input, samplesPerChannel), writable: false));
+            using var parser = new FlacParser(source);
+            // FlacParser normalizes decoded PCM samples to 32-bit integers, even for the
+            // 16-bit FLAC stream written by chdman. The encoded bit depth is therefore
+            // not represented by the output format here.
+            if (parser.Format is not { SampleRate: 44100, Channels: 2 })
+                return null;
+
+            var written = 0;
+            while (written < samples.Length)
+            {
+                var read = parser.Read(samples.AsSpan(written)).Length;
+                if (read <= 0)
+                    return null;
+                written += read;
+            }
+
+            var decoded = new byte[checked(frames * CdSectorData)];
+            for (var index = 0; index < samples.Length; index++)
+            {
+                if (samples[index] is < short.MinValue or > short.MaxValue)
+                    return null;
+                // libchdr asks its FLAC decoder to byte-swap samples on little-endian
+                // hosts before placing them back into the CD frame. Shamisen exposes
+                // the decoded sample value, so restore the CHD's on-disk byte order.
+                BinaryPrimitives.WriteInt16BigEndian(
+                    decoded.AsSpan(index * sizeof(short), sizeof(short)),
+                    (short)samples[index]);
+            }
+
+            return ReassembleCdFrames(decoded, frames, subcode: null);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidDataException or
+                                   EndOfStreamException or IOException or OverflowException or
+                                   FlacException)
+        {
+            return null;
+        }
     }
 
     private byte[]? DecodeCdHunk(string codec, byte[] input)
@@ -223,8 +286,14 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
                 return null;
         }
 
-        // Reassemble frames. Sync/ECC are intentionally not regenerated: the 2048 user
-        // bytes this reader returns are unaffected by them.
+        return ReassembleCdFrames(sectors, frames, subcode);
+    }
+
+    // Sync/ECC are intentionally not regenerated: the 2048 user bytes this reader returns are
+    // unaffected by them. cdfl's trailing compressed subcode is not needed for logical sectors.
+    private byte[] ReassembleCdFrames(byte[] sectors, int frames, byte[]? subcode)
+    {
+        var subcodeSize = checked((int)_unitBytes - CdSectorData);
         var hunk = new byte[_hunkBytes];
         for (var frame = 0; frame < frames; frame++)
         {
@@ -235,6 +304,31 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
                     hunk, frame * (int)_unitBytes + CdSectorData, subcodeSize);
         }
         return hunk;
+    }
+
+    private static byte[] BuildCdFlacStream(byte[] compressed, int samplesPerChannel)
+    {
+        const int StreamInfoSize = 34;
+        var blockSize = GetCdFlacBlockSize(samplesPerChannel * 4);
+        var stream = new byte[checked(4 + 4 + StreamInfoSize + compressed.Length)];
+        "fLaC"u8.CopyTo(stream);
+        stream[4] = 0x80; // Final metadata block: STREAMINFO.
+        stream[7] = StreamInfoSize;
+        BinaryPrimitives.WriteUInt16BigEndian(stream.AsSpan(8, 2), checked((ushort)blockSize));
+        BinaryPrimitives.WriteUInt16BigEndian(stream.AsSpan(10, 2), checked((ushort)blockSize));
+        var streamInfo = ((ulong)44100 << 44) | ((ulong)1 << 41) |
+                         ((ulong)15 << 36) | (uint)samplesPerChannel;
+        BinaryPrimitives.WriteUInt64BigEndian(stream.AsSpan(18, 8), streamInfo);
+        compressed.CopyTo(stream, 4 + 4 + StreamInfoSize);
+        return stream;
+    }
+
+    private static int GetCdFlacBlockSize(int byteCount)
+    {
+        var blockSize = byteCount / 4;
+        while (blockSize > 2048)
+            blockSize /= 2;
+        return blockSize;
     }
 
     private static byte[]? Inflate(byte[] input, int offset, int length, int outputSize)

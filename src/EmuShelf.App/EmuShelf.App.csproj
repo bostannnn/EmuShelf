@@ -16,6 +16,12 @@
     <None Update="Assets\ThirdParty\RetroAchievements\LICENSE.txt"
           CopyToOutputDirectory="PreserveNewest"
           TargetPath="ThirdParty\RetroAchievements\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\ZstdSharp-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\ZstdSharp\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\Shamisen.Codecs.Flac-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\Shamisen.Codecs.Flac\LICENSE.txt" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md"
           Link="THIRD-PARTY-NOTICES.md"
           CopyToOutputDirectory="PreserveNewest"

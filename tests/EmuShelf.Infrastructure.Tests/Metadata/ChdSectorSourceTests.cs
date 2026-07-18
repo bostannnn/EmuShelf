@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EmuShelf.Core.Library;
 using EmuShelf.Integrations.Metadata;
 using EmuShelf.Integrations.Metadata.Chd;
@@ -50,6 +51,46 @@ public class ChdSectorSourceTests
         Assert.Equal("DiscContent", identifier.Source);
     }
 
+    [Fact]
+    public void CompressedCd_CookedFrameBytes_AreNotOffsetAsRawHeaders_WhenChdmanAvailable()
+    {
+        var chdman = FindChdman();
+        if (chdman is null)
+            return;
+
+        var directory = Path.Combine(Path.GetTempPath(), "EmuShelfTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            const int sector = 3;
+            var cooked = new byte[2048 * 32];
+            var expected = cooked.AsSpan(sector * 2048, 2048);
+            "BOOT2 = cdrom0:\\SLUS_209.50;1\r\n"u8.CopyTo(expected);
+            for (var index = 32; index < expected.Length; index++)
+                expected[index] = (byte)(index * 17);
+
+            var binPath = Path.Combine(directory, "source.bin");
+            var cuePath = Path.Combine(directory, "source.cue");
+            var chdPath = Path.Combine(directory, "source.chd");
+            File.WriteAllBytes(binPath, ConvertToMode1Frames(cooked));
+            File.WriteAllText(
+                cuePath,
+                "FILE \"source.bin\" BINARY\n  TRACK 01 MODE1/2352\n    INDEX 01 00:00:00\n");
+            RunChdman(chdman, "createcd", cuePath, chdPath, "cdfl");
+
+            using var source = ChdSectorSource.TryOpen(chdPath);
+            Assert.NotNull(source);
+            var actual = new byte[2048];
+
+            Assert.Equal(2048, source!.ReadSector(sector, actual));
+            Assert.Equal(expected.ToArray(), actual);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     // Opt-in coverage against real CD/DVD CHDs. Point EMUSHELF_TEST_CHD_DIR at a folder of
     // real .chd files to smoke-test decoding on real hunks; skipped (passes trivially) in CI.
     [Fact]
@@ -86,5 +127,55 @@ public class ChdSectorSourceTests
             Array.Copy(buffer, 0, result, sector * 2048, 2048);
         }
         return result;
+    }
+
+    private static string? FindChdman()
+    {
+        foreach (var candidate in new[]
+                 {
+                     "/opt/homebrew/bin/chdman", "/usr/local/bin/chdman",
+                     "/usr/bin/chdman", "chdman",
+                 })
+        {
+            if (candidate == "chdman" || File.Exists(candidate))
+                return candidate;
+        }
+
+        return null;
+    }
+
+    private static void RunChdman(
+        string chdman,
+        string command,
+        string inputPath,
+        string outputPath,
+        string compression)
+    {
+        using var process = Process.Start(new ProcessStartInfo(chdman)
+        {
+            ArgumentList = { command, "-i", inputPath, "-o", outputPath, "-c", compression },
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        })!;
+        process.WaitForExit();
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"chdman {command} failed ({process.ExitCode}): {process.StandardError.ReadToEnd()}");
+    }
+
+    private static byte[] ConvertToMode1Frames(byte[] cooked)
+    {
+        var frames = new byte[checked((cooked.Length / 2048) * 2352)];
+        for (var sector = 0; sector < cooked.Length / 2048; sector++)
+        {
+            var frame = frames.AsSpan(sector * 2352, 2352);
+            frame[0] = 0x00;
+            frame.Slice(1, 10).Fill(0xFF);
+            frame[11] = 0x00;
+            frame[15] = 1;
+            cooked.AsSpan(sector * 2048, 2048).CopyTo(frame[16..]);
+        }
+
+        return frames;
     }
 }

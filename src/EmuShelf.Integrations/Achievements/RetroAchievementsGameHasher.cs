@@ -17,7 +17,24 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
 
-    public string AlgorithmVersion => "rcheevos-2ac45d3-disc-v1";
+    // v2 was the first version that added verified logical-disc readers for GameCube/Wii CISO,
+    // WBFS, and RVZ. It was persisted globally before per-system versions existed, so it remains
+    // compatible with both current readers. Future reader changes can now invalidate only the
+    // affected system.
+    private const string LegacyGlobalV2 = "rcheevos-2ac45d3-disc-v2";
+    // v3 adds cooked CD-CHD and cdfl support. It advances only the affected reader.
+    private const string PlayStationAlgorithmV3 = "rcheevos-2ac45d3-playstation-v3";
+    private const string NintendoAlgorithmV2 = "rcheevos-2ac45d3-nintendo-v2";
+
+    public string GetAlgorithmVersion(Game game) => game.SystemId switch
+    {
+        PlayStationId or PlayStation2Id => PlayStationAlgorithmV3,
+        GameCubeId or WiiId => NintendoAlgorithmV2,
+        _ => LegacyGlobalV2,
+    };
+
+    public bool IsAlgorithmVersionCompatible(Game game, string persistedVersion) =>
+        persistedVersion == GetAlgorithmVersion(game) || persistedVersion == LegacyGlobalV2;
 
     public RetroAchievementsSourceSnapshot Inspect(Game game) =>
         InspectInternal(game).Snapshot;
@@ -27,13 +44,14 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         CancellationToken cancellationToken = default)
     {
         var inspected = InspectInternal(game);
+        var algorithmVersion = GetAlgorithmVersion(game);
         var attemptedAt = DateTimeOffset.UtcNow;
         if (!inspected.Snapshot.CanHash)
         {
             return new RetroAchievementsHashResult(
                 inspected.Snapshot.Status,
                 null,
-                AlgorithmVersion,
+                algorithmVersion,
                 inspected.Snapshot.Fingerprint,
                 attemptedAt,
                 inspected.Snapshot.Error);
@@ -58,6 +76,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 GameCubeId => GameCubeDiscHasher.Hash(
                     inspected.SourcePath!,
                     cancellationToken),
+                WiiId => WiiDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    cancellationToken),
                 _ => throw new UnsupportedDiscLayoutException(
                     "This system does not have a verified local hash reader."),
             };
@@ -75,6 +96,11 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         {
             status = RetroAchievementsIdentificationStatus.InvalidMedia;
             error = ex.Message;
+        }
+        catch (OverflowException)
+        {
+            status = RetroAchievementsIdentificationStatus.InvalidMedia;
+            error = "The game image contains invalid size or offset data.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                                    ArgumentException or NotSupportedException)
@@ -99,7 +125,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         return new RetroAchievementsHashResult(
             status,
             status == RetroAchievementsIdentificationStatus.Hashed ? hash : null,
-            AlgorithmVersion,
+            algorithmVersion,
             inspected.Snapshot.Fingerprint,
             attemptedAt,
             error);
@@ -132,13 +158,16 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
             else if (game.SystemId == GameCubeId)
             {
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-                canHash = extension is ".iso" or ".gcm";
+                canHash = extension is ".iso" or ".gcm" or ".ciso" or ".wbfs" or ".rvz";
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified logical-disc reader.";
             }
             else if (game.SystemId == WiiId)
             {
-                error = "Wii partition hashing is not in the verified format gate yet.";
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".iso" or ".ciso" or ".wbfs" or ".rvz";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified logical-disc reader.";
             }
             else
             {

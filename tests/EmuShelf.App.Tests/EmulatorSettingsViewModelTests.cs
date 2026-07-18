@@ -114,6 +114,37 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task RetroAchievements_Connect_DescribesCurrentSyncWorkAndReusedResults()
+    {
+        var sync = new RetroAchievementsLibrarySyncSummary(
+            new RetroAchievementsIdentificationSummary(
+                Processed: 7,
+                Reused: 1,
+                Hashed: 5,
+                Unsupported: 0,
+                Failed: 1),
+            Matching: null,
+            Progress: null);
+        var context = new RetroAchievementsSettingsContext(
+            CurrentAccount: null,
+            IsConnected: false,
+            ConnectAsync: (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.Connected,
+                sync)),
+            DisconnectAsync: _ => Task.CompletedTask);
+        var viewModel = CreateViewModel(retroAchievements: context);
+        viewModel.RetroAchievementsUsername = "Player";
+        viewModel.RetroAchievementsApiKey = "SECRET";
+
+        await viewModel.ConnectRetroAchievementsCommand.ExecuteAsync(null);
+
+        Assert.Equal(
+            "Connected. 5 hashes calculated this sync, 1 prior result reused, 1 unreadable or invalid; " +
+            "matching unavailable; progress refresh unavailable.",
+            viewModel.RetroAchievementsStatusText);
+    }
+
+    [AvaloniaFact]
     public async Task RetroAchievements_ConnectAuthFailure_ReportsWithoutConnecting()
     {
         var context = new RetroAchievementsSettingsContext(

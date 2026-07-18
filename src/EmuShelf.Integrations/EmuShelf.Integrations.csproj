@@ -5,6 +5,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+    <PackageReference Include="Shamisen.Codecs.Flac" Version="0.1.0-alpha.0.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="EmuShelf.Infrastructure.Tests" />
   </ItemGroup>
 

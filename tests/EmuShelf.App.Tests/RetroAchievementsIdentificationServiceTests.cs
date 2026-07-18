@@ -46,6 +46,87 @@ public class RetroAchievementsIdentificationServiceTests
     }
 
     [Fact]
+    public async Task IdentifyAsync_RehashesWhenHashAlgorithmChanges()
+    {
+        var game = Game(1);
+        var store = new MemoryStore(game);
+        var hasher = new RecordingHasher("fingerprint-1");
+        var service = new RetroAchievementsIdentificationService(store, hasher);
+        await service.IdentifyAsync([game.Id], TestContext.Current.CancellationToken);
+
+        hasher.AlgorithmVersion = "test-v2";
+        var result = await service.IdentifyAsync(
+            [game.Id],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Hashed);
+        Assert.Equal(2, hasher.IdentifyCount);
+        Assert.Equal("test-v2", store.Link!.HashAlgorithmVersion);
+    }
+
+    [Fact]
+    public async Task IdentifyAsync_ReusesACompatibleLegacyHashAlgorithm()
+    {
+        var game = Game(1);
+        var store = new MemoryStore(game)
+        {
+            Link = new RetroAchievementsGameLink(
+                game.Id,
+                RetroAchievementsIdentificationStatus.Hashed,
+                "0123456789abcdef0123456789abcdef",
+                "legacy-v2",
+                "fingerprint-1",
+                null,
+                null,
+                DateTimeOffset.UtcNow,
+                null),
+        };
+        var hasher = new RecordingHasher("fingerprint-1")
+        {
+            CompatibleVersions = new HashSet<string> { "test-v1", "legacy-v2" },
+        };
+        var service = new RetroAchievementsIdentificationService(store, hasher);
+
+        var result = await service.IdentifyAsync(
+            [game.Id],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Reused);
+        Assert.Equal(0, hasher.IdentifyCount);
+    }
+
+    [Fact]
+    public async Task IdentifyAsync_RehashesACompatibleLegacyInvalidResult()
+    {
+        var game = Game(1);
+        var store = new MemoryStore(game)
+        {
+            Link = new RetroAchievementsGameLink(
+                game.Id,
+                RetroAchievementsIdentificationStatus.InvalidMedia,
+                null,
+                "legacy-v2",
+                "fingerprint-1",
+                null,
+                null,
+                DateTimeOffset.UtcNow,
+                "An older reader could not parse this image."),
+        };
+        var hasher = new RecordingHasher("fingerprint-1")
+        {
+            CompatibleVersions = new HashSet<string> { "test-v1", "legacy-v2" },
+        };
+        var service = new RetroAchievementsIdentificationService(store, hasher);
+
+        var result = await service.IdentifyAsync(
+            [game.Id],
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Hashed);
+        Assert.Equal(1, hasher.IdentifyCount);
+    }
+
+    [Fact]
     public async Task IdentifyAsync_DoesNotPermanentlyReuseUnreadableAttempt()
     {
         var game = Game(1);
@@ -119,7 +200,13 @@ public class RetroAchievementsIdentificationServiceTests
     {
         public string Fingerprint { get; set; } = fingerprint;
         public int IdentifyCount { get; private set; }
-        public string AlgorithmVersion => "test-v1";
+        public string AlgorithmVersion { get; set; } = "test-v1";
+        public IReadOnlySet<string>? CompatibleVersions { get; set; }
+
+        public string GetAlgorithmVersion(Game game) => AlgorithmVersion;
+
+        public bool IsAlgorithmVersionCompatible(Game game, string persistedVersion) =>
+            CompatibleVersions?.Contains(persistedVersion) ?? persistedVersion == AlgorithmVersion;
 
         public RetroAchievementsSourceSnapshot Inspect(Game game) =>
             new(
@@ -136,7 +223,7 @@ public class RetroAchievementsIdentificationServiceTests
             return new RetroAchievementsHashResult(
                 RetroAchievementsIdentificationStatus.Hashed,
                 "0123456789abcdef0123456789abcdef",
-                AlgorithmVersion,
+                GetAlgorithmVersion(game),
                 Fingerprint,
                 DateTimeOffset.UtcNow,
                 null);

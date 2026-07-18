@@ -368,9 +368,20 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             return "Connected. RetroAchievements will check games as they are added.";
 
         var identification = sync.Identification;
-        var identificationText = identification.Hashed == 0 && identification.Reused == 0
+        var identificationParts = new List<string>();
+        if (identification.Hashed > 0)
+        {
+            var noun = identification.Hashed == 1 ? "hash" : "hashes";
+            identificationParts.Add($"{identification.Hashed} {noun} calculated this sync");
+        }
+        if (identification.Reused > 0)
+        {
+            var noun = identification.Reused == 1 ? "result" : "results";
+            identificationParts.Add($"{identification.Reused} prior {noun} reused");
+        }
+        var identificationText = identificationParts.Count == 0
             ? "No games could be identified"
-            : $"{identification.Hashed} identified, {identification.Reused} already cached";
+            : string.Join(", ", identificationParts);
         if (identification.Unsupported > 0)
             identificationText += $", {identification.Unsupported} unsupported";
         if (identification.Failed > 0)

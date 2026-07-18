@@ -95,14 +95,20 @@ public sealed class RetroAchievementsIdentificationService
                 processed++;
                 var snapshot = _hasher.Inspect(game);
                 var existing = _store.GetGameLink(gameId);
+                var usesCurrentAlgorithm = existing is not null &&
+                    string.Equals(
+                        existing.HashAlgorithmVersion,
+                        _hasher.GetAlgorithmVersion(game),
+                        StringComparison.Ordinal);
                 if (existing is not null &&
                     existing.Status is not (
                         RetroAchievementsIdentificationStatus.NotAttempted or
                         RetroAchievementsIdentificationStatus.Unreadable) &&
-                    string.Equals(
-                        existing.HashAlgorithmVersion,
-                        _hasher.AlgorithmVersion,
-                        StringComparison.Ordinal) &&
+                    (usesCurrentAlgorithm ||
+                     (existing.Status != RetroAchievementsIdentificationStatus.InvalidMedia &&
+                      _hasher.IsAlgorithmVersionCompatible(
+                          game,
+                          existing.HashAlgorithmVersion))) &&
                     string.Equals(
                         existing.SourceFingerprint,
                         snapshot.Fingerprint,

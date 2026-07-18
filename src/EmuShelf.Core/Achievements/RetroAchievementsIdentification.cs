@@ -56,7 +56,15 @@ public sealed record RetroAchievementsGameLink(
 /// </summary>
 public interface IRetroAchievementsGameHasher
 {
-    string AlgorithmVersion { get; }
+    /// <summary>Returns the version of the canonical hash algorithm for this game's system.</summary>
+    string GetAlgorithmVersion(Game game);
+
+    /// <summary>
+    /// Determines whether a persisted algorithm version produces the same canonical hash for the
+    /// supplied game. This permits a narrowly scoped compatibility migration without reopening
+    /// unchanged media from systems whose hash readers did not change.
+    /// </summary>
+    bool IsAlgorithmVersionCompatible(Game game, string persistedVersion);
 
     RetroAchievementsSourceSnapshot Inspect(Game game);
 

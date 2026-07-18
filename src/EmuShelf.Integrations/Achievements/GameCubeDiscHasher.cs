@@ -12,32 +12,58 @@ internal static class GameCubeDiscHasher
 
     public static string Hash(string path, CancellationToken cancellationToken)
     {
-        using var stream = new FileStream(
-            path,
-            FileMode.Open,
-            FileAccess.Read,
-            FileShare.ReadWrite | FileShare.Delete);
+        using var disc = NintendoDiscImageReader.TryOpen(path)
+            ?? throw new UnsupportedDiscLayoutException(
+                "This GameCube container does not have a verified logical-disc reader.");
+        return Hash(disc, 0, 0, cancellationToken);
+    }
 
-        Span<byte> magic = stackalloc byte[4];
-        ReadExactlyAt(stream, 0x1C, magic);
-        if (!magic.SequenceEqual(new byte[] { 0xC2, 0x33, 0x9F, 0x3D }))
-            throw new InvalidDataException("The image is not a GameCube disc.");
+    public static string Hash(
+        NintendoDiscImageReader disc,
+        long partitionOffset,
+        int offsetShift,
+        CancellationToken cancellationToken)
+    {
+        if (partitionOffset < 0 || offsetShift is < 0 or > 3)
+            throw new InvalidDataException("The Nintendo disc partition is invalid.");
+
+        if (offsetShift == 0)
+        {
+            Span<byte> magic = stackalloc byte[4];
+            ReadExactlyAt(disc, partitionOffset + 0x1C, magic);
+            if (!magic.SequenceEqual(new byte[] { 0xC2, 0x33, 0x9F, 0x3D }))
+                throw new InvalidDataException("The image is not a GameCube disc.");
+        }
+
+        using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
+        AppendPartitionHash(md5, disc, partitionOffset, offsetShift, cancellationToken);
+        return Convert.ToHexString(md5.GetHashAndReset()).ToLowerInvariant();
+    }
+
+    public static void AppendPartitionHash(
+        IncrementalHash md5,
+        NintendoDiscImageReader disc,
+        long partitionOffset,
+        int offsetShift,
+        CancellationToken cancellationToken)
+    {
+        if (partitionOffset < 0 || offsetShift is < 0 or > 3)
+            throw new InvalidDataException("The Nintendo disc partition is invalid.");
 
         Span<byte> sizes = stackalloc byte[8];
-        ReadExactlyAt(stream, BaseHeaderSize + 0x14, sizes);
+        ReadExactlyAt(disc, partitionOffset + BaseHeaderSize + 0x14, sizes);
         var bodySize = BinaryPrimitives.ReadUInt32BigEndian(sizes[..4]);
         var trailerSize = BinaryPrimitives.ReadUInt32BigEndian(sizes[4..]);
         var requestedHeaderSize = (ulong)BaseHeaderSize + 0x20UL + bodySize + trailerSize;
         var headerSize = (int)Math.Min((ulong)MaxHeaderSize, requestedHeaderSize);
 
         var header = new byte[headerSize];
-        ReadExactlyAt(stream, 0, header);
-        var dolOffset = BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0x420, 4));
+        ReadExactlyAt(disc, partitionOffset, header);
+        var dolOffset = checked((long)BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(0x420, 4)) << offsetShift);
 
         var dolHeader = new byte[DolHeaderSize];
-        ReadExactlyAt(stream, dolOffset, dolHeader);
+        ReadExactlyAt(disc, partitionOffset + dolOffset, dolHeader);
 
-        using var md5 = IncrementalHash.CreateHash(HashAlgorithmName.MD5);
         md5.AppendData(header);
         var buffer = new byte[MaxChunkSize];
         for (var index = 0; index < 18; index++)
@@ -50,25 +76,22 @@ internal static class GameCubeDiscHasher
             if (remaining == 0)
                 continue;
 
-            stream.Position = offset;
+            var sectionOffset = checked((long)offset << offsetShift);
             while (remaining > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var count = (int)Math.Min((uint)buffer.Length, remaining);
-                stream.ReadExactly(buffer.AsSpan(0, count));
+                ReadExactlyAt(disc, partitionOffset + sectionOffset, buffer.AsSpan(0, count));
                 md5.AppendData(buffer, 0, count);
                 remaining -= (uint)count;
+                sectionOffset += count;
             }
         }
-
-        return Convert.ToHexString(md5.GetHashAndReset()).ToLowerInvariant();
     }
 
-    private static void ReadExactlyAt(FileStream stream, long offset, Span<byte> buffer)
+    private static void ReadExactlyAt(NintendoDiscImageReader disc, long offset, Span<byte> buffer)
     {
-        if (offset < 0 || offset + buffer.Length > stream.Length)
+        if (!disc.ReadAt(offset, buffer))
             throw new InvalidDataException("The GameCube image ended unexpectedly.");
-        stream.Position = offset;
-        stream.ReadExactly(buffer);
     }
 }
