@@ -22,8 +22,6 @@ public sealed class RetroAchievementsCatalogueLookup
 
     public bool IsFresh { get; }
 
-    public int GameCount => _byHash.Values.Distinct().Count();
-
     /// <summary>Returns the RA game a canonical hash maps to, or null when the catalogue has none.</summary>
     public RetroAchievementsCatalogueMatch? Find(string canonicalHash) =>
         _byHash.TryGetValue(canonicalHash.ToLowerInvariant(), out var match) ? match : null;

@@ -2,6 +2,7 @@ using System.Text.Json;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Storage;
+using EmuShelf.Infrastructure.Storage;
 
 namespace EmuShelf.Infrastructure.Achievements;
 
@@ -111,9 +112,9 @@ public sealed class RetroAchievementsCatalogueCache : IRetroAchievementsCatalogu
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(_directory);
-        var tempPath = path + ".tmp";
-        await using (var stream = File.Create(tempPath))
-            await JsonSerializer.SerializeAsync(stream, games, cancellationToken: cancellationToken);
-        File.Move(tempPath, path, overwrite: true);
+        await AtomicFile.WriteAsync(
+            path,
+            (stream, token) => JsonSerializer.SerializeAsync(stream, games, cancellationToken: token),
+            cancellationToken);
     }
 }

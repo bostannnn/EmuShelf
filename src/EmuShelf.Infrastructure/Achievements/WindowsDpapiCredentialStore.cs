@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using System.Text;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
+using EmuShelf.Infrastructure.Storage;
 
 namespace EmuShelf.Infrastructure.Achievements;
 
@@ -47,9 +48,7 @@ public sealed class WindowsDpapiCredentialStore : IRetroAchievementsCredentialSt
         var plain = Encoding.UTF8.GetBytes(apiKey);
         var protectedBytes = Protect(plain)
             ?? throw new InvalidOperationException("DPAPI protection failed for the API key.");
-        var tempPath = _blobPath + ".tmp";
-        File.WriteAllBytes(tempPath, protectedBytes);
-        File.Move(tempPath, _blobPath, overwrite: true);
+        AtomicFile.WriteAllBytes(_blobPath, protectedBytes);
     }
 
     public void ClearApiKey()

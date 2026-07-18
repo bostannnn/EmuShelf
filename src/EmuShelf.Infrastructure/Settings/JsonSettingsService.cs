@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
+using EmuShelf.Infrastructure.Storage;
 
 namespace EmuShelf.Infrastructure.Settings;
 
@@ -48,8 +49,6 @@ public sealed class JsonSettingsService : ISettingsService
 
         // Write-then-rename so a crash or removed drive mid-write can't truncate the live
         // file into invalid JSON (which Load would silently discard back to defaults).
-        var tempPath = _appPaths.SettingsFilePath + ".tmp";
-        File.WriteAllText(tempPath, json);
-        File.Move(tempPath, _appPaths.SettingsFilePath, overwrite: true);
+        AtomicFile.WriteAllText(_appPaths.SettingsFilePath, json);
     }
 }

@@ -15,7 +15,4 @@ public static class RetroAchievementsConsoles
         "wii" => 19,
         _ => null,
     };
-
-    /// <summary>The RA console ids whose catalogues EmuShelf caches, in a stable order.</summary>
-    public static IReadOnlyList<int> SupportedConsoleIds { get; } = [12, 21, 16, 19];
 }
