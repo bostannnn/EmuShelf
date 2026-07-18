@@ -155,15 +155,19 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 4. Library availability presentation
 
-- [ ] Add a small neutral achievement/trophy mark to a grid tile only after the local image's
-      canonical hash matches an achievement-bearing RA game. Do not import RA branding unless
-      its redistribution terms have been verified.
-- [ ] Add an Achievements column to list view showing cached `unlocked / total` progress on a
-      match (including `0 / total` before anything is earned), or `—` in every other case. Do
-      not print a `Yes`/`No` word: the fraction already implies a match, and its absence covers
-      the rest. Tooltips still distinguish the reasons behind a `—`: no achievement set for a
-      successfully hashed image, versus not connected, pending, unsupported format/system, stale
-      catalogue, or failure.
+- [x] A pure `RetroAchievementsDisplay` state machine resolves link + progress + connection into
+      `(ShowMark, ColumnText, Tooltip)`, so the grid mark and list column can never disagree.
+      `GameViewModel` exposes the three; `MainViewModel` fills them from `IRetroAchievementsReadStore`
+      (all links + progress in two queries) on the load worker. 12 state-machine + 1 store tests.
+- [x] Grid tile shows a small neutral trophy mark (mdi-trophy geometry, not RA branding) only on a
+      confirmed hash match. List view has an Achievements column showing cached `awarded / total`
+      (including `0 / total`) or `—`, with tooltips distinguishing the reasons behind a `—`
+      (no set, pending, unsupported, not connected, stale). Both verified by headless render tests.
+- [x] Settings is now sectioned (General / Emulators / RetroAchievements) instead of one long list.
+      The RetroAchievements section is a connect card (username + masked Web API key) driving the
+      §2 account service; on connect it runs the match then progress pipeline and reloads the
+      library so marks appear; disconnect clears the account and the account-scoped progress cache
+      (review finding #1). 5 view-model tests cover connect/auth-fail/empty/disconnect/sections.
 
 ### 5. Steam-like achievements popup
 

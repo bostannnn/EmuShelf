@@ -103,7 +103,8 @@ internal sealed class NullDialogService : IDialogService
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
         LibraryMaintenanceActions maintenance,
-        IMetadataPreferencesService metadataPreferences) => Task.CompletedTask;
+        IMetadataPreferencesService metadataPreferences,
+        RetroAchievementsSettingsContext? retroAchievements = null) => Task.CompletedTask;
 }
 
 internal sealed class NullEmulatorConfigurationStore : IEmulatorConfigurationStore

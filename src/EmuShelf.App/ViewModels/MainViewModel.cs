@@ -40,6 +40,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRetroAchievementsIdentificationService? _retroAchievements;
     private readonly IRetroAchievementsReadStore? _retroAchievementsRead;
     private readonly IRetroAchievementsAccountService? _retroAccount;
+    private readonly IRetroAchievementsMatchingService? _retroMatching;
+    private readonly IRetroAchievementsProgressService? _retroProgress;
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -162,7 +164,9 @@ public partial class MainViewModel : ViewModelBase
         IAppLogger? logger = null,
         IRetroAchievementsIdentificationService? retroAchievements = null,
         IRetroAchievementsReadStore? retroAchievementsRead = null,
-        IRetroAchievementsAccountService? retroAccount = null)
+        IRetroAchievementsAccountService? retroAccount = null,
+        IRetroAchievementsMatchingService? retroMatching = null,
+        IRetroAchievementsProgressService? retroProgress = null)
     {
         _library = library;
         _scanner = scanner;
@@ -179,6 +183,8 @@ public partial class MainViewModel : ViewModelBase
         _retroAchievements = retroAchievements;
         _retroAchievementsRead = retroAchievementsRead;
         _retroAccount = retroAccount;
+        _retroMatching = retroMatching;
+        _retroProgress = retroProgress;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -980,13 +986,54 @@ public partial class MainViewModel : ViewModelBase
                     RescanAllFromSettingsAsync,
                     FetchMetadataForSystemFromSettingsAsync,
                     FetchAllMetadataFromSettingsAsync),
-                _metadataPreferences);
+                _metadataPreferences,
+                _retroAccount is null
+                    ? null
+                    : new RetroAchievementsSettingsContext(
+                        _retroAccount.Account,
+                        ConnectRetroAchievementsAsync,
+                        DisconnectRetroAchievementsAsync));
         }
         catch (Exception ex)
         {
             _logger.Error("Could not open emulator settings.", ex);
             StatusText = $"Could not open emulator settings: {ex.Message}";
         }
+    }
+
+    // Connect pipeline: validate the account, then (on success) resolve matches against the
+    // console catalogues, refresh progress, and reload the library so the marks and column
+    // appear. Matching and progress failures are non-fatal — the connection still succeeds.
+    internal async Task<RetroAchievementsConnectionResult> ConnectRetroAchievementsAsync(
+        string username,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        if (_retroAccount is null)
+            return RetroAchievementsConnectionResult.ServerError;
+
+        var result = await _retroAccount.ConnectAsync(username, apiKey, cancellationToken);
+        if (result != RetroAchievementsConnectionResult.Connected)
+            return result;
+
+        var credentials = _retroAccount.CurrentCredentials;
+        if (_retroMatching is not null)
+            await _retroMatching.MatchAsync(credentials, forceRefreshCatalogues: false, cancellationToken);
+        if (_retroProgress is not null && credentials is not null)
+            await _retroProgress.RefreshAllAsync(credentials, cancellationToken);
+
+        await ReloadGamesAsync();
+        return result;
+    }
+
+    internal async Task DisconnectRetroAchievementsAsync(CancellationToken cancellationToken)
+    {
+        if (_retroAccount is null)
+            return;
+
+        await _retroAccount.DisconnectAsync(cancellationToken);
+        _retroProgress?.Clear(); // progress is account-scoped (review finding #1)
+        await ReloadGamesAsync();
     }
 
     private async Task MaybeStartMetadataForImportAsync(IReadOnlyList<long> addedGameIds)

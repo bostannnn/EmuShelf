@@ -1,6 +1,7 @@
 using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Launching;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
@@ -85,8 +86,101 @@ public class EmulatorSettingsViewModelTests
         Assert.Equal("All console folders rescanned", viewModel.MaintenanceStatusText);
     }
 
+    [AvaloniaFact]
+    public async Task RetroAchievements_Connect_UpdatesStateAndRunsPipeline()
+    {
+        var calls = new List<(string User, string Key)>();
+        var context = new RetroAchievementsSettingsContext(
+            CurrentAccount: null,
+            ConnectAsync: (user, key, _) =>
+            {
+                calls.Add((user, key));
+                return Task.FromResult(RetroAchievementsConnectionResult.Connected);
+            },
+            DisconnectAsync: _ => Task.CompletedTask);
+        var viewModel = CreateViewModel(retroAchievements: context);
+        viewModel.RetroAchievementsUsername = "Player";
+        viewModel.RetroAchievementsApiKey = "SECRET";
+
+        await viewModel.ConnectRetroAchievementsCommand.ExecuteAsync(null);
+
+        Assert.Equal(("Player", "SECRET"), Assert.Single(calls));
+        Assert.True(viewModel.IsRetroAchievementsConnected);
+        Assert.Equal("Player", viewModel.ConnectedAccountName);
+        Assert.Equal(string.Empty, viewModel.RetroAchievementsApiKey); // key not kept in the form
+        Assert.Contains(SettingsSection.RetroAchievements, viewModel.Sections);
+    }
+
+    [AvaloniaFact]
+    public async Task RetroAchievements_ConnectAuthFailure_ReportsWithoutConnecting()
+    {
+        var context = new RetroAchievementsSettingsContext(
+            null,
+            (_, _, _) => Task.FromResult(RetroAchievementsConnectionResult.AuthenticationFailed),
+            _ => Task.CompletedTask);
+        var viewModel = CreateViewModel(retroAchievements: context);
+        viewModel.RetroAchievementsUsername = "Player";
+        viewModel.RetroAchievementsApiKey = "WRONG";
+
+        await viewModel.ConnectRetroAchievementsCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsRetroAchievementsConnected);
+        Assert.Contains("wasn't accepted", viewModel.RetroAchievementsStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task RetroAchievements_ConnectWithEmptyFields_DoesNotCallPipeline()
+    {
+        var calls = 0;
+        var context = new RetroAchievementsSettingsContext(
+            null,
+            (_, _, _) =>
+            {
+                calls++;
+                return Task.FromResult(RetroAchievementsConnectionResult.Connected);
+            },
+            _ => Task.CompletedTask);
+        var viewModel = CreateViewModel(retroAchievements: context);
+
+        await viewModel.ConnectRetroAchievementsCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, calls);
+        Assert.Contains("Enter your username", viewModel.RetroAchievementsStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task RetroAchievements_Disconnect_ClearsStateAndRunsPipeline()
+    {
+        var disconnects = 0;
+        var context = new RetroAchievementsSettingsContext(
+            new RetroAchievementsAccount("Player", "ULID-9"),
+            (_, _, _) => Task.FromResult(RetroAchievementsConnectionResult.Connected),
+            _ =>
+            {
+                disconnects++;
+                return Task.CompletedTask;
+            });
+        var viewModel = CreateViewModel(retroAchievements: context);
+        Assert.True(viewModel.IsRetroAchievementsConnected); // seeded from the existing account
+
+        await viewModel.DisconnectRetroAchievementsCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, disconnects);
+        Assert.False(viewModel.IsRetroAchievementsConnected);
+    }
+
+    [AvaloniaFact]
+    public void Sections_WithoutRetroAchievementsContext_OmitThatSection()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.DoesNotContain(SettingsSection.RetroAchievements, viewModel.Sections);
+        Assert.False(viewModel.HasRetroAchievements);
+    }
+
     private EmulatorSettingsViewModel CreateViewModel(
-        LibraryMaintenanceActions? maintenance = null) => new(
+        LibraryMaintenanceActions? maintenance = null,
+        RetroAchievementsSettingsContext? retroAchievements = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         KnownSystems.All.ToDictionary(
@@ -95,7 +189,8 @@ public class EmulatorSettingsViewModelTests
             StringComparer.Ordinal),
         _configurations,
         _dialogs,
-        maintenance);
+        maintenance,
+        retroAchievements: retroAchievements);
 
     private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore
     {

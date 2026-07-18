@@ -79,6 +79,14 @@ public partial class App : Application
                 Bootstrapper.RetroAchievementsCredentialStore,
                 retroAchievementsClient,
                 Bootstrapper.Logger);
+            var retroAchievementsCatalogue = new RetroAchievementsCatalogueCache(
+                Bootstrapper.Paths, retroAchievementsClient, Bootstrapper.Logger);
+            var retroAchievementsMatching = new RetroAchievementsMatchingService(
+                Bootstrapper.RetroAchievementsStore, retroAchievementsCatalogue, Bootstrapper.Logger);
+            var retroAchievementsProgress = new RetroAchievementsProgressService(
+                Bootstrapper.RetroAchievementsProgressStore,
+                retroAchievementsClient,
+                logger: Bootstrapper.Logger);
             var viewModel = new MainViewModel(
                 Bootstrapper.Library,
                 Bootstrapper.FolderScanner,
@@ -96,7 +104,9 @@ public partial class App : Application
                 Bootstrapper.Logger,
                 Bootstrapper.RetroAchievementsIdentification,
                 Bootstrapper.RetroAchievementsReadStore,
-                retroAchievementsAccount);
+                retroAchievementsAccount,
+                retroAchievementsMatching,
+                retroAchievementsProgress);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

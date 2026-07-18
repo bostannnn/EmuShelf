@@ -46,8 +46,23 @@
             </StackPanel>
         </Border>
 
-        <ScrollViewer Grid.Row="1" Background="{DynamicResource EmuLibraryBrush}">
-            <StackPanel Margin="24,20,24,12" Spacing="4">
+        <Grid Grid.Row="1" ColumnDefinitions="196,*">
+            <Border Grid.Column="0" Background="{DynamicResource EmuSidebarBrush}"
+                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,1,0">
+                <ListBox ItemsSource="{Binding Sections}"
+                         SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
+                         Background="Transparent" BorderThickness="0" Padding="10,14">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" FontSize="13.5" Padding="4,3" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <ScrollViewer Grid.Column="1" Background="{DynamicResource EmuLibraryBrush}">
+                <Panel Margin="24,20,24,12">
+                    <StackPanel IsVisible="{Binding IsGeneralSection}" Spacing="4">
                 <Border Background="{DynamicResource EmuCardBrush}"
                         BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="1" CornerRadius="9"
@@ -111,6 +126,9 @@
                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                     </Grid>
                 </Border>
+                    </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsEmulatorsSection}" Spacing="4">
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:EmulatorSettingsRowViewModel">
@@ -209,9 +227,72 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+                    </StackPanel>
 
-            </StackPanel>
-        </ScrollViewer>
+                    <StackPanel IsVisible="{Binding IsRetroAchievementsSection}" Spacing="12">
+                        <Border Background="{DynamicResource EmuCardBrush}"
+                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                BorderThickness="1" CornerRadius="9" Padding="18">
+                            <StackPanel Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="RETROACHIEVEMENTS" FontSize="10"
+                                               FontWeight="Bold" LetterSpacing="1"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                               Text="Connect with your username and Web API key to see which games have achievements and your progress. EmuShelf only reads your progress — your emulator still unlocks achievements." />
+                                </StackPanel>
+
+                                <Grid IsVisible="{Binding IsRetroAchievementsConnected}"
+                                      ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="Connected" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding ConnectedAccountName}"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Disconnect" VerticalAlignment="Center"
+                                            Command="{Binding DisconnectRetroAchievementsCommand}"
+                                            IsEnabled="{Binding !IsRetroAchievementsBusy}" />
+                                </Grid>
+
+                                <StackPanel IsVisible="{Binding IsRetroAchievementsDisconnected}" Spacing="9">
+                                    <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
+                                               LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBox Text="{Binding RetroAchievementsUsername, Mode=TwoWay}"
+                                             Background="{DynamicResource EmuInputBrush}"
+                                             BorderBrush="{DynamicResource EmuBorderBrush}"
+                                             PlaceholderText="Your RetroAchievements username" />
+                                    <TextBlock Text="WEB API KEY" FontSize="10" FontWeight="SemiBold"
+                                               LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBox Text="{Binding RetroAchievementsApiKey, Mode=TwoWay}"
+                                             PasswordChar="●"
+                                             Background="{DynamicResource EmuInputBrush}"
+                                             BorderBrush="{DynamicResource EmuBorderBrush}"
+                                             PlaceholderText="From your RA control panel → Keys" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" Margin="0,2,0,0">
+                                        <HyperlinkButton Grid.Column="0" Content="Where's my Web API key?"
+                                                         NavigateUri="https://retroachievements.org/controlpanel.php"
+                                                         Padding="0" VerticalAlignment="Center"
+                                                         HorizontalAlignment="Left" />
+                                        <Button Grid.Column="1" Content="Connect" Classes="accent"
+                                                Command="{Binding ConnectRetroAchievementsCommand}"
+                                                IsEnabled="{Binding !IsRetroAchievementsBusy}" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <TextBlock Text="{Binding RetroAchievementsStatusText}"
+                                           IsVisible="{Binding HasRetroAchievementsStatus}"
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Panel>
+            </ScrollViewer>
+        </Grid>
 
         <Border Grid.Row="2" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0"

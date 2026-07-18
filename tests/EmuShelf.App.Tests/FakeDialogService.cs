@@ -43,15 +43,19 @@ internal sealed class FakeDialogService : IDialogService
         MetadataConsentPrompts++;
         return Task.FromResult(MetadataConsentToReturn);
     }
+    public RetroAchievementsSettingsContext? RetroAchievementsContext { get; private set; }
+
     public Task ShowEmulatorSettingsAsync(
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
         LibraryMaintenanceActions maintenance,
-        IMetadataPreferencesService metadataPreferences)
+        IMetadataPreferencesService metadataPreferences,
+        RetroAchievementsSettingsContext? retroAchievements = null)
     {
         SettingsShown++;
         MaintenanceActions = maintenance;
+        RetroAchievementsContext = retroAchievements;
         if (SettingsException is not null)
             return Task.FromException(SettingsException);
         return Task.CompletedTask;

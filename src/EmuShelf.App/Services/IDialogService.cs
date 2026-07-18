@@ -39,5 +39,6 @@ public interface IDialogService
         IReadOnlyList<EmulatorDefinition> emulators,
         IEmulatorConfigurationStore configurations,
         LibraryMaintenanceActions maintenance,
-        IMetadataPreferencesService metadataPreferences);
+        IMetadataPreferencesService metadataPreferences,
+        RetroAchievementsSettingsContext? retroAchievements = null);
 }

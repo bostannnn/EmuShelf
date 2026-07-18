@@ -4,6 +4,17 @@ using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App.Services;
 
+/// <summary>
+/// What the Settings RetroAchievements section needs from the main view model: the current
+/// account and delegates that run the full connect/disconnect pipeline (validate, then match and
+/// refresh progress, then reload the library display). Keeps the settings view model unaware of
+/// the matching/progress services and the library.
+/// </summary>
+public sealed record RetroAchievementsSettingsContext(
+    RetroAchievementsAccount? CurrentAccount,
+    Func<string, string, CancellationToken, Task<RetroAchievementsConnectionResult>> ConnectAsync,
+    Func<CancellationToken, Task> DisconnectAsync);
+
 public enum RetroAchievementsConnectionResult
 {
     Connected,
