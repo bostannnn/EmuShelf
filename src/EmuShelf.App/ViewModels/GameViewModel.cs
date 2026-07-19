@@ -23,6 +23,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Default frame ratio (portrait disc case) when a caller omits one.</summary>
     private const double DefaultCoverAspectRatio = 0.708;
 
+    /// <summary>Fixed list-row thumbnail height; the width follows the platform ratio so the
+    /// list thumbnail keeps each platform's true cover shape (square for PS1, portrait for
+    /// disc-case systems) instead of cropping every cover into one hardcoded portrait box.</summary>
+    private const double ListCoverFrameHeight = 52;
+
     public Game Model { get; private set; }
     public long Id { get; }
     public string SystemId { get; }
@@ -32,8 +37,41 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public string AccentColor { get; }
     public string FormatLabel { get; }
     public IImage? PlatformArtwork { get; }
-    public double CoverWidth { get; }
-    public double CoverHeight { get; }
+    private double _coverWidth;
+    private double _coverHeight;
+    private double _shelfCoverHeight;
+
+    /// <summary>Width of this tile's cover. The library recomputes it from the viewport width
+    /// (see <see cref="ApplyCoverLayout"/>) so a whole number of columns fills the row.</summary>
+    public double CoverWidth { get => _coverWidth; private set => SetProperty(ref _coverWidth, value); }
+
+    /// <summary>Cover height for the current width, preserving the platform's aspect ratio.</summary>
+    public double CoverHeight { get => _coverHeight; private set => SetProperty(ref _coverHeight, value); }
+
+    public double ListCoverWidth { get; }
+    public double ListCoverHeight { get; }
+
+    /// <summary>Platform cover aspect ratio (width:height); the library uses it to choose the
+    /// shelf height for a mixed view.</summary>
+    public double CoverAspectRatio { get; }
+
+    /// <summary>Height of the grid cover shelf this tile sits in: the tallest cover in the
+    /// current view, so a mixed collection bottom-aligns covers to one baseline while a single
+    /// short-cover platform (square PS1 art) still packs tightly.</summary>
+    public double ShelfCoverHeight
+    {
+        get => _shelfCoverHeight;
+        private set => SetProperty(ref _shelfCoverHeight, value);
+    }
+
+    /// <summary>Sets the cover width (recomputed from the current viewport) and the shared shelf
+    /// height; the cover height follows from the platform aspect ratio.</summary>
+    public void ApplyCoverLayout(double coverWidth, double shelfCoverHeight)
+    {
+        CoverWidth = coverWidth;
+        CoverHeight = Math.Round(coverWidth / CoverAspectRatio);
+        ShelfCoverHeight = shelfCoverHeight;
+    }
     public IAsyncRelayCommand<GameViewModel?> LaunchCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SaveTitleCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SetCoverCommand { get; }
@@ -139,8 +177,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
             EmuShelf.App.ViewModels.PlatformArtwork.ForSystem(game.SystemId);
         // One fixed frame per platform, shared by the real cover and the placeholder,
         // so a system's covers are uniform (see the grid tile in MainWindow.axaml).
-        CoverWidth = CoverFrameWidth;
-        CoverHeight = Math.Round(CoverFrameWidth / coverAspectRatio);
+        CoverAspectRatio = coverAspectRatio;
+        // Default to the fixed frame width until the library recomputes it from the viewport.
+        ApplyCoverLayout(CoverFrameWidth, Math.Round(CoverFrameWidth / coverAspectRatio));
+        // List rows share one height so they align; the width follows the platform ratio so a
+        // square PS1 cover stays square instead of being cropped into a portrait thumbnail.
+        ListCoverHeight = ListCoverFrameHeight;
+        ListCoverWidth = Math.Round(ListCoverFrameHeight * coverAspectRatio);
         FormatLabel = System.IO.Path.GetExtension(game.Path) is { Length: > 1 } extension
             ? extension[1..].ToUpperInvariant()
             : "FOLDER";

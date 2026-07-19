@@ -41,7 +41,7 @@ public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("nds"));
         Assert.Equal(["nds"], analysis.SuggestedSystems.Select(system => system.Id));
         Assert.True(_rules.IsFolderCandidate(path, System("nds")));
-        Assert.Equal("Example DS", metadata.EmbeddedTitle);
+        Assert.Null(metadata.EmbeddedTitle);
         Assert.Collection(
             metadata.Identifiers,
             identifier =>
@@ -73,7 +73,7 @@ public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
         Assert.NotNull(header);
         Assert.True(header.IsHomebrew);
         Assert.Null(header.GameCode);
-        Assert.Equal("Homebrew", metadata.EmbeddedTitle);
+        Assert.Null(metadata.EmbeddedTitle);
         var identifier = Assert.Single(metadata.Identifiers);
         Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
         Assert.True(identifier.IsPrimary);

@@ -402,6 +402,24 @@ public sealed class GameLibrary : IGameLibrary
         insertedIdCommand.Transaction = transaction;
         insertedIdCommand.CommandText = "SELECT last_insert_rowid();";
 
+        using var repairFilenameTitleCommand = connection.CreateCommand();
+        repairFilenameTitleCommand.Transaction = transaction;
+        repairFilenameTitleCommand.CommandText =
+            """
+            UPDATE Games
+            SET Title = $title, TitleOrigin = $filename
+            WHERE SystemId = $systemId AND Path = $path
+              AND TitleOrigin = $embedded AND $incomingOrigin = $filename;
+            """;
+        var repairSystemId = repairFilenameTitleCommand.Parameters.Add("$systemId", SqliteType.Text);
+        var repairPath = repairFilenameTitleCommand.Parameters.Add("$path", SqliteType.Text);
+        var repairTitle = repairFilenameTitleCommand.Parameters.Add("$title", SqliteType.Text);
+        repairFilenameTitleCommand.Parameters.AddWithValue("$filename", (int)GameTitleOrigin.Filename);
+        repairFilenameTitleCommand.Parameters.AddWithValue("$embedded", (int)GameTitleOrigin.Embedded);
+        var repairIncomingOrigin = repairFilenameTitleCommand.Parameters.Add(
+            "$incomingOrigin",
+            SqliteType.Integer);
+
         var addedIds = new List<long>();
         foreach (var game in games)
         {
@@ -419,6 +437,11 @@ public sealed class GameLibrary : IGameLibrary
             isAvailable.Value = game.IsAvailable ? 1 : 0;
             dateAdded.Value = game.DateAdded.ToString("O", CultureInfo.InvariantCulture);
             dateAddedUnixMilliseconds.Value = game.DateAdded.ToUnixTimeMilliseconds();
+            repairSystemId.Value = systemIdParameter.Value;
+            repairPath.Value = path.Value;
+            repairTitle.Value = title.Value;
+            repairIncomingOrigin.Value = titleOrigin.Value;
+            repairFilenameTitleCommand.ExecuteNonQuery();
             if (command.ExecuteNonQuery() > 0)
                 addedIds.Add((long)insertedIdCommand.ExecuteScalar()!);
         }

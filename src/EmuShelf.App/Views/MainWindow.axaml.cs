@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using EmuShelf.App.ViewModels;
@@ -69,6 +70,19 @@ public partial class MainWindow : Window
         {
             viewModel.SelectedGame = game;
         }
+    }
+
+    // View wiring only: report the grid area's width so the view model can size covers to fill a
+    // whole number of columns (and re-fill when the sidebar collapses or the window resizes), then
+    // widen the grid cells (MinItemWidth) to match — the layout otherwise pins cells to 188.
+    private void OnLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+            return;
+
+        viewModel.LibraryViewportWidth = e.NewSize.Width;
+        if (LibraryRepeater.Layout is UniformGridLayout layout)
+            layout.MinItemWidth = viewModel.GridCoverWidth;
     }
 
     // View wiring only: virtualization decides when a cover control is realized; the

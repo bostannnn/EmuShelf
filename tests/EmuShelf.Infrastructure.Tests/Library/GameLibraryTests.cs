@@ -69,6 +69,31 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void ReconcileImport_ReplacesEmbeddedTitleWithFilenameButPreservesCatalogAndUserTitles()
+    {
+        var embeddedPath = "/games/gba/translated-game.gba";
+        _library.AddGames([
+            NewGame("gba", embeddedPath, "INTERNAL ID") with { TitleOrigin = GameTitleOrigin.Embedded },
+            NewGame("gba", "/games/gba/catalog-game.gba", "Catalog title") with { TitleOrigin = GameTitleOrigin.Catalog },
+            NewGame("gba", "/games/gba/user-game.gba", "User title") with { TitleOrigin = GameTitleOrigin.User },
+        ]);
+
+        _library.ReconcileImport("gba",
+        [
+            NewGame("gba", embeddedPath, "Translated Game") with { TitleOrigin = GameTitleOrigin.Filename },
+            NewGame("gba", "/games/gba/catalog-game.gba", "Catalog fallback") with { TitleOrigin = GameTitleOrigin.Filename },
+            NewGame("gba", "/games/gba/user-game.gba", "User fallback") with { TitleOrigin = GameTitleOrigin.Filename },
+        ], []);
+
+        var games = _library.GetGames("gba");
+        var translated = games.Single(game => game.Path == embeddedPath);
+        Assert.Equal("Translated Game", translated.Title);
+        Assert.Equal(GameTitleOrigin.Filename, translated.TitleOrigin);
+        Assert.Equal("Catalog title", games.Single(game => game.Path.EndsWith("catalog-game.gba")).Title);
+        Assert.Equal("User title", games.Single(game => game.Path.EndsWith("user-game.gba")).Title);
+    }
+
+    [Fact]
     public void GetGames_FiltersBySystem_AndOrdersByTitle()
     {
         _library.AddGames([

@@ -42,12 +42,25 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
             SELECT {GameColumns}
             FROM Games
             WHERE ($systemId IS NULL OR SystemId = $systemId)
-              AND (CoverPath IS NULL OR TitleOrigin IN ($legacy, $filename))
+              AND (
+                  CoverPath IS NULL
+                  OR TitleOrigin IN ($legacy, $filename)
+                  OR (
+                      TitleOrigin = $embedded
+                      AND EXISTS (
+                          SELECT 1
+                          FROM GameMetadata
+                          WHERE GameMetadata.GameId = Games.Id
+                            AND GameMetadata.CanonicalTitle IS NOT NULL
+                      )
+                  )
+              )
             ORDER BY Id;
             """;
         command.Parameters.AddWithValue("$systemId", (object?)systemId ?? DBNull.Value);
         command.Parameters.AddWithValue("$legacy", (int)GameTitleOrigin.LegacyUnknown);
         command.Parameters.AddWithValue("$filename", (int)GameTitleOrigin.Filename);
+        command.Parameters.AddWithValue("$embedded", (int)GameTitleOrigin.Embedded);
 
         var games = new List<Game>();
         using var reader = command.ExecuteReader();
@@ -128,7 +141,7 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
             SET Title = $title, TitleOrigin = $catalog
             WHERE Id = $id
               AND (
-                  TitleOrigin IN ($filename, $catalog)
+                  TitleOrigin IN ($filename, $embedded, $catalog)
                   OR (TitleOrigin = $legacy AND Title = $filenameTitle)
               );
             """;
@@ -136,6 +149,7 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
         command.Parameters.AddWithValue("$id", gameId);
         command.Parameters.AddWithValue("$catalog", (int)GameTitleOrigin.Catalog);
         command.Parameters.AddWithValue("$filename", (int)GameTitleOrigin.Filename);
+        command.Parameters.AddWithValue("$embedded", (int)GameTitleOrigin.Embedded);
         command.Parameters.AddWithValue("$legacy", (int)GameTitleOrigin.LegacyUnknown);
         command.Parameters.AddWithValue("$filenameTitle", filenameTitle);
         return command.ExecuteNonQuery() > 0;

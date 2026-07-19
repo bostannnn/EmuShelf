@@ -23,9 +23,9 @@ public static class KnownSystems
         new("wii",          "Wii",           "Wii", "#49B3C9", 0.708),
         // These systems share their portable RetroArch installation, while each one's
         // integration-owned reader controls when a file is eligible for import.
-        new("psp",          "PSP",           "PSP", "#596EBC", 0.708),
+        new("psp",          "PSP",           "PSP", "#596EBC", 0.581),
         new("megadrive",    "Mega Drive / Genesis", "MD", "#3A6D74", 0.708),
-        new("nds",          "Nintendo DS",   "DS",  "#7580B9", 0.708),
-        new("gba",          "Game Boy Advance", "GBA", "#7065A7", 0.708),
+        new("nds",          "Nintendo DS",   "DS",  "#7580B9", 1.115),
+        new("gba",          "Game Boy Advance", "GBA", "#7065A7", 1.0),
     ];
 }

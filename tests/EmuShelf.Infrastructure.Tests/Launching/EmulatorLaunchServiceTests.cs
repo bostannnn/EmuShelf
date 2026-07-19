@@ -1,5 +1,6 @@
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Diagnostics;
 
 namespace EmuShelf.Infrastructure.Tests.Launching;
 
@@ -12,6 +13,7 @@ public class EmulatorLaunchServiceTests : IDisposable
     private readonly FakeConfigurationStore _configurations = new();
     private readonly RecordingProcessRunner _runner = new();
     private readonly RecordingFrontend _frontend = new();
+    private readonly RecordingLogger _logger = new();
     private readonly EmulatorDefinition _emulator = new(
         "test-emulator",
         "Test Emulator",
@@ -75,6 +77,13 @@ public class EmulatorLaunchServiceTests : IDisposable
         Assert.Equal(Path.GetDirectoryName(executable), _runner.WorkingDirectory);
         Assert.True(_frontend.WasMinimized);
         Assert.True(_frontend.WasRestored);
+        Assert.Equal(
+            [
+                "Launching Test Emulator for Test Game.",
+                "Test Emulator exited with code 0.",
+                "Restored EmuShelf after Test Emulator exited.",
+            ],
+            _logger.InformationMessages);
     }
 
     [Fact]
@@ -219,13 +228,15 @@ public class EmulatorLaunchServiceTests : IDisposable
         _configurations,
         _runner,
         _frontend,
-        [_emulator]);
+        [_emulator],
+        _logger);
 
     private EmulatorLaunchService CreateCoreService() => new(
         _configurations,
         _runner,
         _frontend,
-        [_coreEmulator]);
+        [_coreEmulator],
+        _logger);
 
     private Game CreateGameFile(string relativePath = "game.cue", string systemId = "test-system")
     {
@@ -287,5 +298,14 @@ public class EmulatorLaunchServiceTests : IDisposable
         public bool WasRestored { get; private set; }
         public void Minimize() => WasMinimized = true;
         public void Restore() => WasRestored = true;
+    }
+
+    private sealed class RecordingLogger : IAppLogger
+    {
+        public List<string> InformationMessages { get; } = [];
+
+        public void Information(string message) => InformationMessages.Add(message);
+        public void Warning(string message, Exception? exception = null) { }
+        public void Error(string message, Exception? exception = null) { }
     }
 }

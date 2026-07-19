@@ -95,7 +95,7 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
 
         foreach (var (path, systemId, expectedHash) in new[]
                  {
-                     (gbaPath, "gba", "74cdb526e30e8b28bf5362209a9c3ca6"),
+                     (gbaPath, "gba", "a83fde468fd18dadaa76af67fb024a21"),
                      (ndsPath, "nds", "76a7f76f7bccd2ee9e85e4e575b451d1"),
                  })
         {

@@ -33,10 +33,13 @@ public class PlatformArtworkTests
             0.708,
             KnownSystems.All.Single(system => system.Id == "megadrive").CoverAspectRatio);
         Assert.Equal(
-            0.708,
+            1.115,
             KnownSystems.All.Single(system => system.Id == "nds").CoverAspectRatio);
         Assert.Equal(
-            0.708,
+            0.581,
+            KnownSystems.All.Single(system => system.Id == "psp").CoverAspectRatio);
+        Assert.Equal(
+            1.0,
             KnownSystems.All.Single(system => system.Id == "gba").CoverAspectRatio);
     }
 }

@@ -42,6 +42,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return preparation.Failure;
         }
 
+        _logger.Information($"Launching {preparation.EmulatorName} for {game.Title}.");
         _frontend.Minimize();
         try
         {
@@ -50,6 +51,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                 preparation.Arguments!,
                 preparation.WorkingDirectory!,
                 cancellationToken);
+            _logger.Information($"{preparation.EmulatorName} exited with code {exitCode}.");
             if (exitCode == 0)
                 return new GameLaunchResult(true, $"{game.Title} finished", ProcessExited: true);
 
@@ -68,6 +70,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         finally
         {
             _frontend.Restore();
+            _logger.Information($"Restored EmuShelf after {preparation.EmulatorName} exited.");
         }
     }
 

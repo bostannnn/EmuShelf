@@ -29,14 +29,18 @@ public sealed record MetadataEnrichmentSummary(
     }
 }
 
+public sealed record MetadataEnrichmentProgress(int Completed, int Total, string? CurrentGameTitle);
+
 public interface IGameMetadataService
 {
     Task<MetadataEnrichmentSummary> EnrichAsync(
         IEnumerable<long> gameIds,
+        IProgress<MetadataEnrichmentProgress>? progress = null,
         CancellationToken cancellationToken = default);
 
     Task<MetadataEnrichmentSummary> EnrichMissingAsync(
         string? systemId = null,
+        IProgress<MetadataEnrichmentProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -74,6 +78,7 @@ public sealed class GameMetadataService : IGameMetadataService
 
     public async Task<MetadataEnrichmentSummary> EnrichMissingAsync(
         string? systemId = null,
+        IProgress<MetadataEnrichmentProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var ids = await Task.Run(
@@ -81,11 +86,12 @@ public sealed class GameMetadataService : IGameMetadataService
                 .Select(game => game.Id)
                 .ToArray(),
             cancellationToken);
-        return await EnrichAsync(ids, cancellationToken);
+        return await EnrichAsync(ids, progress, cancellationToken);
     }
 
     public async Task<MetadataEnrichmentSummary> EnrichAsync(
         IEnumerable<long> gameIds,
+        IProgress<MetadataEnrichmentProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var ids = gameIds.Distinct().ToArray();
@@ -97,8 +103,15 @@ public sealed class GameMetadataService : IGameMetadataService
         {
             using var identifyGate = new SemaphoreSlim(IdentifyParallelism, IdentifyParallelism);
             using var downloadGate = new SemaphoreSlim(DownloadParallelism, DownloadParallelism);
-            var tasks = ids.Select(id =>
-                EnrichGameAsync(id, identifyGate, downloadGate, cancellationToken));
+            var completed = 0;
+            var tasks = ids.Select(async id =>
+            {
+                var title = _store.GetGame(id)?.Title;
+                var result = await EnrichGameAsync(id, identifyGate, downloadGate, cancellationToken);
+                progress?.Report(new MetadataEnrichmentProgress(
+                    Interlocked.Increment(ref completed), ids.Length, title));
+                return result;
+            });
             var results = await Task.WhenAll(tasks);
             return new MetadataEnrichmentSummary(
                 results.Length,
@@ -201,8 +214,16 @@ public sealed class GameMetadataService : IGameMetadataService
                 current is { CoverPath: null } &&
                 current.CoverOrigin != GameCoverOrigin.User)
             {
+                var filenameMatch = new GameCatalogMatch(
+                    "filename-fallback",
+                    Path.GetFileNameWithoutExtension(current.Path),
+                    Path.GetFileNameWithoutExtension(current.Path),
+                    null);
                 var candidates = profile.ArtworkProviders
                     .SelectMany(provider => provider.GetCandidates(identifiers, match))
+                    .Concat(profile.ArtworkProviders.SelectMany(provider =>
+                        provider.GetCandidates(identifiers, filenameMatch)))
+                    .DistinctBy(candidate => candidate.SourceUri)
                     .ToArray();
 
                 // Download stage: network-bound, gated separately from disc reads.
@@ -244,10 +265,11 @@ public sealed class GameMetadataService : IGameMetadataService
                 }
             }
 
-            var unmatched = match is null && !coverApplied && catalogError is null;
+            var hasCover = coverApplied || current?.CoverPath is not null;
+            var unmatched = match is null && !hasCover && catalogError is null;
             var status = match is not null
                 ? GameMetadataStatus.Matched
-                : coverApplied
+                : hasCover
                     ? GameMetadataStatus.Partial
                     : catalogError is not null
                         ? GameMetadataStatus.Failed
@@ -324,11 +346,13 @@ internal sealed class NullGameMetadataService : IGameMetadataService
 {
     public Task<MetadataEnrichmentSummary> EnrichAsync(
         IEnumerable<long> gameIds,
+        IProgress<MetadataEnrichmentProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new MetadataEnrichmentSummary(0, 0, 0, 0, 0));
 
     public Task<MetadataEnrichmentSummary> EnrichMissingAsync(
         string? systemId = null,
+        IProgress<MetadataEnrichmentProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new MetadataEnrichmentSummary(0, 0, 0, 0, 0));
 }

@@ -18,6 +18,8 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     private readonly string _catalogDirectory;
     private readonly ConcurrentDictionary<string, Lazy<Task<CatalogIndex>>> _indexes =
         new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> DownloadLocks =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public LibretroDatCatalog(IAppPaths paths, HttpClient httpClient)
     {
@@ -75,14 +77,34 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         CancellationToken cancellationToken)
     {
         var path = Path.Combine(_catalogDirectory, $"{profile.SystemId}.dat");
-        if (!File.Exists(path) ||
-            DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > CatalogFreshness)
-        {
-            await DownloadCatalogAsync(profile.CatalogUri, path, cancellationToken);
-        }
+        await EnsureCurrentCatalogAsync(profile.CatalogUri, path, cancellationToken);
 
         return await Task.Run(() => Parse(path, profile.CatalogKeyKind), cancellationToken);
     }
+
+    private async Task EnsureCurrentCatalogAsync(
+        Uri uri,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (IsCurrent(path))
+            return;
+
+        var downloadLock = DownloadLocks.GetOrAdd(path, _ => new SemaphoreSlim(1, 1));
+        await downloadLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!IsCurrent(path))
+                await DownloadCatalogAsync(uri, path, cancellationToken);
+        }
+        finally
+        {
+            downloadLock.Release();
+        }
+    }
+
+    private static bool IsCurrent(string path) =>
+        File.Exists(path) && DateTime.UtcNow - File.GetLastWriteTimeUtc(path) <= CatalogFreshness;
 
     private async Task DownloadCatalogAsync(
         Uri uri,
@@ -101,14 +123,16 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         try
         {
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using var destination = new FileStream(
-                tempPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                81920,
-                FileOptions.Asynchronous);
-            await CopyWithLimitAsync(source, destination, MaximumCatalogBytes, cancellationToken);
+            await using (var destination = new FileStream(
+                             tempPath,
+                             FileMode.CreateNew,
+                             FileAccess.Write,
+                             FileShare.None,
+                             81920,
+                             FileOptions.Asynchronous))
+            {
+                await CopyWithLimitAsync(source, destination, MaximumCatalogBytes, cancellationToken);
+            }
             File.Move(tempPath, destinationPath, overwrite: true);
         }
         finally

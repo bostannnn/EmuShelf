@@ -107,7 +107,8 @@ public class MainViewModelTests : IDisposable
         string fileName,
         byte[] bytes,
         string expectedTitle,
-        string expectedGameCode)
+        string expectedGameCode,
+        GameTitleOrigin expectedTitleOrigin = GameTitleOrigin.Embedded)
     {
         var folder = Path.Combine(_baseDirectory, system.Id);
         Directory.CreateDirectory(folder);
@@ -121,7 +122,7 @@ public class MainViewModelTests : IDisposable
 
         var game = Assert.Single(_library.GetGames(system.Id));
         Assert.Equal(expectedTitle, game.Title);
-        Assert.Equal(GameTitleOrigin.Embedded, game.TitleOrigin);
+        Assert.Equal(expectedTitleOrigin, game.TitleOrigin);
         Assert.True(game.IsAvailable);
         var identifiers = _metadataStore.GetIdentifiers(game.Id);
         var gameCode = Assert.Single(identifiers, identifier => identifier.Kind == GameIdentifierKind.TitleId);
@@ -167,7 +168,7 @@ public class MainViewModelTests : IDisposable
         System.Text.Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0xAC);
         "01"u8.CopyTo(bytes.AsSpan(0xB0));
         bytes[0xB2] = 0x96;
-        byte checksum = 0x19;
+        byte checksum = unchecked((byte)-0x19);
         foreach (var value in bytes.AsSpan(0xA0, 0x1D))
             checksum -= value;
         bytes[0xBD] = checksum;
@@ -272,7 +273,8 @@ public class MainViewModelTests : IDisposable
             "Example DS.nds",
             CreateNintendoDsRom("Example DS", "ABCE"),
             "Example DS",
-            "ABCE");
+            "ABCE",
+            GameTitleOrigin.Filename);
 
     [AvaloniaFact]
     public Task GameBoyAdvanceFolderImport_RescanAndAvailabilityPersistHeaderAndExactEvidence() =>
@@ -281,7 +283,8 @@ public class MainViewModelTests : IDisposable
             "Example GBA.gba",
             CreateGameBoyAdvanceRom("Example GBA", "ABCE"),
             "Example GBA",
-            "ABCE");
+            "ABCE",
+            GameTitleOrigin.Filename);
 
     [AvaloniaFact]
     public async Task AddGames_PspEmbeddedEvidenceSetsTheTitleAndPersistsExactIdentifier()
@@ -993,7 +996,8 @@ public class MainViewModelTests : IDisposable
             metadataPreferences: preferences);
         await vm.OpenSettingsCommand.ExecuteAsync(null);
 
-        await _dialogs.MaintenanceActions!.FetchAllMetadata!();
+        await _dialogs.MaintenanceActions!.FetchAllMetadata!(
+            new Progress<MetadataEnrichmentProgress>());
 
         Assert.Equal(MetadataConsentChoice.FetchOnce, preferences.RecordedChoice);
         Assert.True(preferences.ConsentPromptShown);
@@ -1524,6 +1528,7 @@ public class MainViewModelTests : IDisposable
 
         public Task<MetadataEnrichmentSummary> EnrichAsync(
             IEnumerable<long> gameIds,
+            IProgress<MetadataEnrichmentProgress>? progress = null,
             CancellationToken cancellationToken = default)
         {
             GameIds = gameIds.ToArray();
@@ -1538,6 +1543,7 @@ public class MainViewModelTests : IDisposable
 
         public Task<MetadataEnrichmentSummary> EnrichMissingAsync(
             string? systemId = null,
+            IProgress<MetadataEnrichmentProgress>? progress = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(new MetadataEnrichmentSummary(0, 0, 0, 0, 0));
     }

@@ -40,7 +40,7 @@ public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("gba"));
         Assert.Equal(["gba"], analysis.SuggestedSystems.Select(system => system.Id));
         Assert.True(_rules.IsFolderCandidate(path, System("gba")));
-        Assert.Equal("Example GBA", metadata.EmbeddedTitle);
+        Assert.Null(metadata.EmbeddedTitle);
         Assert.Collection(
             metadata.Identifiers,
             identifier =>
@@ -162,7 +162,7 @@ public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
 
     private static byte CalculateHeaderChecksum(ReadOnlySpan<byte> bytes)
     {
-        byte checksum = 0x19;
+        byte checksum = unchecked((byte)-0x19);
         foreach (var value in bytes.Slice(0xA0, 0x1D))
             checksum -= value;
         return checksum;

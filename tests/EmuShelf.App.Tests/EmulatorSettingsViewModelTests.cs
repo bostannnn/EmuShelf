@@ -100,6 +100,25 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void RetroArchCoreRow_FiltersInstalledCoreOptionsWithoutChangingSelection()
+    {
+        var row = CreateViewModel().Rows.Single(candidate => candidate.SystemId == "gba");
+        var selected = new EmulatorSettingsRowViewModel.LibretroCoreOption(
+            "mgba_libretro.dll", "/portable/RetroArch/cores/mgba_libretro.dll");
+        row.AvailableCores.Add(selected);
+        row.AvailableCores.Add(new EmulatorSettingsRowViewModel.LibretroCoreOption(
+            "vba_next_libretro.dll", "/portable/RetroArch/cores/vba_next_libretro.dll"));
+        row.SelectedCore = selected;
+
+        row.CoreSearchText = "vba";
+
+        Assert.Single(row.FilteredCores);
+        Assert.Equal("vba_next_libretro.dll", row.FilteredCores[0].Name);
+        Assert.Same(selected, row.SelectedCore);
+        Assert.Equal(selected.Path, row.CorePath);
+    }
+
+    [AvaloniaFact]
     public async Task BrowseAndResetCommands_UpdateTheEditableRow()
     {
         _dialogs.EmulatorExecutableToReturn = "/portable/duckstation.exe";
@@ -144,8 +163,7 @@ public class EmulatorSettingsViewModelTests
         var viewModel = CreateViewModel(maintenance);
         var playStation = viewModel.Rows.Single(row => row.SystemId == "playstation");
 
-        Assert.True(playStation.IsExpanded);
-        Assert.All(viewModel.Rows.Skip(1), row => Assert.False(row.IsExpanded));
+        Assert.All(viewModel.Rows, row => Assert.False(row.IsExpanded));
         await playStation.RescanLibraryCommand.ExecuteAsync(null);
         Assert.Equal(["playstation"], rescannedSystems);
         Assert.Equal("playstation rescan complete", playStation.MaintenanceStatusText);

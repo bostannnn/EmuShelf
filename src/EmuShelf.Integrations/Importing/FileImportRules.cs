@@ -247,7 +247,6 @@ public sealed class FileImportRules : IGameImportRules
 
         if (system.Id == NintendoDsId && NintendoDsRomReader.TryRead(path) is { } nintendoDsEvidence)
             return CreateCartridgeMetadata(
-                nintendoDsEvidence.Title,
                 nintendoDsEvidence.GameCode,
                 "Nintendo DS header",
                 nintendoDsEvidence.Sha1,
@@ -255,7 +254,6 @@ public sealed class FileImportRules : IGameImportRules
 
         if (system.Id == GameBoyAdvanceId && GameBoyAdvanceRomReader.TryRead(path) is { } gameBoyAdvanceEvidence)
             return CreateCartridgeMetadata(
-                gameBoyAdvanceEvidence.Title,
                 gameBoyAdvanceEvidence.GameCode,
                 "Game Boy Advance header",
                 gameBoyAdvanceEvidence.Sha1,
@@ -275,7 +273,6 @@ public sealed class FileImportRules : IGameImportRules
     }
 
     private static GameImportMetadata CreateCartridgeMetadata(
-        string? title,
         string? gameCode,
         string gameCodeSource,
         string sha1,
@@ -294,7 +291,7 @@ public sealed class FileImportRules : IGameImportRules
             sha1,
             sha1Source,
             IsPrimary: true));
-        return new GameImportMetadata(title, identifiers);
+        return new GameImportMetadata(null, identifiers);
     }
 
     private GameSystem? FindSystem(string id) =>

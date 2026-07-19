@@ -92,7 +92,7 @@
                         BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="1" CornerRadius="9"
                         Padding="16" Margin="0,0,0,12">
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto"
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
                           ColumnSpacing="16" RowSpacing="8">
                         <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
                             <TextBlock Text="METADATA AND ARTWORK" FontSize="10"
@@ -124,6 +124,13 @@
                                    IsVisible="{Binding HasMetadataStatus}"
                                    FontSize="11" TextWrapping="Wrap"
                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="4"
+                                    IsVisible="{Binding HasMetadataProgress}">
+                            <ProgressBar Minimum="0" Maximum="{Binding MetadataProgressTotal}"
+                                         Value="{Binding MetadataProgressCompleted}" Height="6" />
+                            <TextBlock Text="{Binding MetadataProgressText}" FontSize="11"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        </StackPanel>
                     </Grid>
                 </Border>
                     </StackPanel>
@@ -207,29 +214,42 @@
                                                  BorderBrush="{DynamicResource EmuBorderBrush}"
                                                  FontFamily="Monospace" />
                                         <StackPanel IsVisible="{Binding RequiresCorePath}" Spacing="5">
-                                            <TextBlock Text="RETROARCH CORE" FontSize="10" FontWeight="SemiBold"
-                                                       LetterSpacing="0.7"
-                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                            <TextBlock Text="{Binding CoreFileName}"
-                                                       FontSize="12" FontWeight="SemiBold"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       ToolTip.Tip="{Binding CorePath}"
-                                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                                <TextBox Grid.Column="0" Text="{Binding CorePath, Mode=TwoWay}"
-                                                         Background="{DynamicResource EmuInputBrush}"
-                                                         BorderBrush="{DynamicResource EmuBorderBrush}"
-                                                         PlaceholderText="Select an installed core file" />
-                                                <Button Grid.Column="1" Content="Replace…"
-                                                        Command="{Binding BrowseCoreCommand}" />
-                                                <Button Grid.Column="2" Content="Clear"
-                                                        Command="{Binding ClearCoreCommand}" />
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                <TextBlock Grid.Column="0" Text="RETROARCH CORE" FontSize="10" FontWeight="SemiBold"
+                                                           LetterSpacing="0.7"
+                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <Button Grid.Column="1" Content="Clear"
+                                                        Command="{Binding ClearCoreCommand}"
+                                                        Padding="8,3" FontSize="11" />
                                             </Grid>
-                                            <TextBlock Text="EmuShelf only uses the core you select; it never scans, downloads, or changes RetroArch cores or settings."
+                                            <TextBox Text="{Binding CoreSearchText, Mode=TwoWay}"
+                                                     Background="{DynamicResource EmuInputBrush}"
+                                                     BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                     PlaceholderText="Filter installed cores" />
+                                            <Border Height="132"
+                                                    Background="{DynamicResource EmuInputBrush}"
+                                                    BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                    BorderThickness="1" CornerRadius="4">
+                                                <ListBox ItemsSource="{Binding FilteredCores}"
+                                                         SelectedItem="{Binding SelectedCore, Mode=TwoWay}"
+                                                         Background="Transparent" BorderThickness="0"
+                                                         Foreground="{DynamicResource EmuTextPrimaryBrush}"
+                                                         Padding="3">
+                                                    <ListBox.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Name}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Margin="6,3" />
+                                                        </DataTemplate>
+                                                    </ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </Border>
+                                            <TextBlock Text="Lists installed cores beside the configured RetroArch executable. EmuShelf never downloads or changes RetroArch cores or settings."
                                                        FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         </StackPanel>
-                                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="0,5,0,0">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,5,0,0">
                                             <TextBlock Grid.Column="0" Text="{Binding MaintenanceStatusText}"
                                                        IsVisible="{Binding HasMaintenanceStatus}"
                                                        FontSize="11" TextWrapping="Wrap"
@@ -245,10 +265,6 @@
                                                     Command="{Binding RescanLibraryCommand}"
                                                     IsEnabled="{Binding CanRescan}"
                                                     ToolTip.Tip="Recheck this console's remembered folders" />
-                                            <Button Grid.Column="3" Content="Fetch metadata"
-                                                    Command="{Binding FetchMetadataCommand}"
-                                                    IsEnabled="{Binding CanFetchMetadata}"
-                                                    ToolTip.Tip="Fetch missing titles and covers for this console" />
                                         </Grid>
                                     </StackPanel>
                                 </Grid>

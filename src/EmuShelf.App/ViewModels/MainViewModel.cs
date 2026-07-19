@@ -109,6 +109,41 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GameViewModel? SelectedGame { get; set; }
 
+    [ObservableProperty]
+    public partial bool IsNavigationCollapsed { get; set; }
+
+    /// <summary>Width of the console/collections rail: a full label column when expanded, a
+    /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
+    public double NavigationWidth => IsNavigationCollapsed ? 72 : 246;
+
+    /// <summary>True when the rail shows labels; the positive form keeps element-name XAML
+    /// bindings simple (no negation inside a cast path).</summary>
+    public bool IsNavigationExpanded => !IsNavigationCollapsed;
+
+    partial void OnIsNavigationCollapsedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(NavigationWidth));
+        OnPropertyChanged(nameof(IsNavigationExpanded));
+    }
+
+    // Grid cover sizing: covers grow from a 188px floor up to a cap so a whole number of columns
+    // fills the library width (no lopsided right gutter) as the window or sidebar resizes.
+    private const double MinCoverWidth = 188;
+    private const double MaxCoverWidth = 232;
+    private const double CoverColumnSpacing = 28;    // matches UniformGridLayout MinColumnSpacing
+    private const double GridHorizontalPadding = 60; // ItemsRepeater Margin left(32) + right(28)
+
+    /// <summary>Current width of the library grid area; the cover width is derived from it.</summary>
+    [ObservableProperty]
+    public partial double LibraryViewportWidth { get; set; }
+
+    /// <summary>Cover width computed for the current viewport. The grid layout uses it as the
+    /// uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
+    [ObservableProperty]
+    public partial double GridCoverWidth { get; set; }
+
+    partial void OnLibraryViewportWidthChanged(double value) => UpdateCoverLayout();
+
     public bool IsSystemTheme => CurrentTheme == ThemePreference.System;
     public bool IsLightTheme => CurrentTheme == ThemePreference.Light;
     public bool IsDarkTheme => CurrentTheme == ThemePreference.Dark;
@@ -254,6 +289,9 @@ public partial class MainViewModel : ViewModelBase
     private void ClearStatus() => StatusText = string.Empty;
 
     [RelayCommand]
+    private void ToggleNavigation() => IsNavigationCollapsed = !IsNavigationCollapsed;
+
+    [RelayCommand]
     private Task ShowAllGamesAsync() => ShowCollectionAsync(LibraryScope.AllGames);
 
     [RelayCommand]
@@ -296,6 +334,34 @@ public partial class MainViewModel : ViewModelBase
             oldValue.IsSelected = false;
         if (newValue is not null)
             newValue.IsSelected = true;
+    }
+
+    // Recompute the cover width for the current viewport so a whole number of columns fills the
+    // row (no lopsided right gutter), then push it and the shared shelf height to every tile. The
+    // shelf height is the tallest cover in the view so a mixed collection stays baseline-aligned.
+    private void UpdateCoverLayout()
+    {
+        var coverWidth = MinCoverWidth;
+        var available = LibraryViewportWidth - GridHorizontalPadding;
+        if (available >= MinCoverWidth)
+        {
+            var columns = Math.Max(
+                1,
+                (int)((available + CoverColumnSpacing) / (MinCoverWidth + CoverColumnSpacing)));
+            coverWidth = Math.Floor((available - (columns - 1) * CoverColumnSpacing) / columns);
+            coverWidth = Math.Clamp(coverWidth, MinCoverWidth, MaxCoverWidth);
+        }
+
+        // Drives the layout's cell width; the view sets UniformGridLayout.MinItemWidth from it.
+        GridCoverWidth = coverWidth;
+
+        if (_systemGames.Count == 0)
+            return;
+
+        var shelfCoverHeight = _systemGames.Max(
+            game => Math.Round(coverWidth / game.CoverAspectRatio));
+        foreach (var game in _systemGames)
+            game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
     }
 
     internal async Task ReloadGamesAsync()
@@ -364,6 +430,7 @@ public partial class MainViewModel : ViewModelBase
                 existingGame.Dispose();
             _systemGames.Clear();
             _systemGames.AddRange(games);
+            UpdateCoverLayout();
             ApplyFilter();
         }
         catch (Exception ex)
@@ -1470,17 +1537,19 @@ public partial class MainViewModel : ViewModelBase
     private Task<string> FetchMetadataForSystemFromSettingsAsync(string systemId) =>
         FetchMissingMetadataFromSettingsAsync(systemId);
 
-    private Task<string> FetchAllMetadataFromSettingsAsync() =>
-        FetchMissingMetadataFromSettingsAsync(null);
+    private Task<string> FetchAllMetadataFromSettingsAsync(IProgress<MetadataEnrichmentProgress> progress) =>
+        FetchMissingMetadataFromSettingsAsync(null, progress);
 
-    private async Task<string> FetchMissingMetadataFromSettingsAsync(string? systemId)
+    private async Task<string> FetchMissingMetadataFromSettingsAsync(
+        string? systemId,
+        IProgress<MetadataEnrichmentProgress>? progress = null)
     {
         // Clicking a manual fetch is itself an explicit one-time opt-in. Remember that
         // decision so the first-import prompt is not shown later for the same user.
         if (!_metadataPreferences.ConsentPromptShown)
             await _metadataPreferences.RecordConsentAsync(MetadataConsentChoice.FetchOnce);
 
-        var summary = await _metadataService.EnrichMissingAsync(systemId);
+        var summary = await _metadataService.EnrichMissingAsync(systemId, progress);
         await ReloadGamesAsync();
         StatusText = summary.ToStatusText();
         return StatusText;

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
@@ -12,7 +13,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _logger;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _rescanLibrary;
-    private readonly Func<EmulatorSettingsRowViewModel, Task>? _fetchMetadata;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _syncLibrary;
 
     public string SystemId { get; }
@@ -25,6 +25,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public string EmulatorInstallationId { get; }
     public bool RequiresCorePath { get; }
     public bool IsExecutableShared { get; }
+    public ObservableCollection<LibretroCoreOption> AvailableCores { get; } = [];
+    public ObservableCollection<LibretroCoreOption> FilteredCores { get; } = [];
     public string ExecutableDescription => IsExecutableShared
         ? "Shared executable"
         : "Executable";
@@ -48,14 +50,18 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public partial string CorePath { get; set; }
 
     [ObservableProperty]
+    public partial LibretroCoreOption? SelectedCore { get; set; }
+
+    [ObservableProperty]
+    public partial string CoreSearchText { get; set; } = string.Empty;
+
+    [ObservableProperty]
     public partial bool IsExpanded { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRescan))]
-    [NotifyPropertyChangedFor(nameof(CanFetchMetadata))]
     [NotifyPropertyChangedFor(nameof(CanSyncLibrary))]
     [NotifyCanExecuteChangedFor(nameof(RescanLibraryCommand))]
-    [NotifyCanExecuteChangedFor(nameof(FetchMetadataCommand))]
     [NotifyCanExecuteChangedFor(nameof(SyncLibraryCommand))]
     public partial bool IsMaintenanceBlocked { get; set; }
 
@@ -65,7 +71,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
 
     public bool HasRescanLibrary => _rescanLibrary is not null;
     public bool CanRescan => HasRescanLibrary && !IsMaintenanceBlocked;
-    public bool CanFetchMetadata => _fetchMetadata is not null && !IsMaintenanceBlocked;
     public bool HasSyncLibrary => _syncLibrary is not null;
     public bool CanSyncLibrary => HasSyncLibrary && !IsMaintenanceBlocked;
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
@@ -76,7 +81,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         EmulatorConfiguration? configuration,
         IDialogService dialogs,
         Func<EmulatorSettingsRowViewModel, Task>? rescanLibrary = null,
-        Func<EmulatorSettingsRowViewModel, Task>? fetchMetadata = null,
         Func<EmulatorSettingsRowViewModel, Task>? syncLibrary = null,
         bool isExpanded = false,
         string? emulatorInstallationId = null,
@@ -86,7 +90,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
         _rescanLibrary = rescanLibrary;
-        _fetchMetadata = fetchMetadata;
         _syncLibrary = syncLibrary;
         SystemId = system.Id;
         SystemName = system.Name;
@@ -103,10 +106,75 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         ExecutablePath = configuration?.ExecutablePath ?? string.Empty;
         LaunchArguments = configuration?.LaunchArguments ?? emulator.DefaultLaunchArguments;
         CorePath = configuration?.CorePath ?? string.Empty;
+        RefreshAvailableCores();
         IsExpanded = isExpanded;
     }
 
-    partial void OnExecutablePathChanged(string value) => ExecutablePathEdited?.Invoke(this, value);
+    partial void OnExecutablePathChanged(string value)
+    {
+        RefreshAvailableCores();
+        ExecutablePathEdited?.Invoke(this, value);
+    }
+
+    partial void OnCorePathChanged(string value)
+    {
+        SelectedCore = AvailableCores.FirstOrDefault(option =>
+            string.Equals(option.Path, value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    partial void OnSelectedCoreChanged(LibretroCoreOption? value)
+    {
+        if (value is not null && !string.Equals(CorePath, value.Path, StringComparison.OrdinalIgnoreCase))
+            CorePath = value.Path;
+    }
+
+    partial void OnCoreSearchTextChanged(string value) => RefreshFilteredCores();
+
+    private void RefreshAvailableCores()
+    {
+        AvailableCores.Clear();
+        FilteredCores.Clear();
+        if (!RequiresCorePath || string.IsNullOrWhiteSpace(ExecutablePath))
+            return;
+
+        var emulatorDirectory = Path.GetDirectoryName(ExecutablePath);
+        if (string.IsNullOrWhiteSpace(emulatorDirectory))
+            return;
+
+        var coresDirectory = Path.Combine(emulatorDirectory, "cores");
+        try
+        {
+            if (!Directory.Exists(coresDirectory))
+                return;
+
+            foreach (var core in Directory.EnumerateFiles(coresDirectory)
+                         .Where(path => Path.GetExtension(path) is ".dll" or ".dylib" or ".so")
+                         .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase))
+            {
+                AvailableCores.Add(new LibretroCoreOption(Path.GetFileName(core), core));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Warning($"Could not list RetroArch cores for {SystemName}.", ex);
+        }
+
+        SelectedCore = AvailableCores.FirstOrDefault(option =>
+            string.Equals(option.Path, CorePath, StringComparison.OrdinalIgnoreCase));
+        RefreshFilteredCores();
+    }
+
+    private void RefreshFilteredCores()
+    {
+        FilteredCores.Clear();
+        var filter = CoreSearchText.Trim();
+        foreach (var core in AvailableCores.Where(core =>
+                     string.IsNullOrWhiteSpace(filter) ||
+                     core.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+        {
+            FilteredCores.Add(core);
+        }
+    }
 
     [RelayCommand]
     private async Task BrowseAsync()
@@ -153,10 +221,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private Task RescanLibraryAsync() =>
         _rescanLibrary?.Invoke(this) ?? Task.CompletedTask;
 
-    [RelayCommand(CanExecute = nameof(CanFetchMetadata))]
-    private Task FetchMetadataAsync() =>
-        _fetchMetadata?.Invoke(this) ?? Task.CompletedTask;
-
     [RelayCommand(CanExecute = nameof(CanSyncLibrary))]
     private Task SyncLibraryAsync() =>
         _syncLibrary?.Invoke(this) ?? Task.CompletedTask;
@@ -170,4 +234,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         EmulatorInstallationId = EmulatorInstallationId,
         CorePath = string.IsNullOrWhiteSpace(CorePath) ? null : CorePath.Trim(),
     };
+
+    public sealed record LibretroCoreOption(string Name, string Path);
 }

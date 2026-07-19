@@ -104,7 +104,7 @@ public static class GameBoyAdvanceRomReader
     // device type, reserved bytes, and version (0xA0..0xBC).
     private static byte CalculateHeaderChecksum(ReadOnlySpan<byte> bytes)
     {
-        byte checksum = 0x19;
+        byte checksum = unchecked((byte)-0x19);
         foreach (var value in bytes.Slice(TitleOffset, HeaderChecksumOffset - TitleOffset))
             checksum -= value;
         return checksum;

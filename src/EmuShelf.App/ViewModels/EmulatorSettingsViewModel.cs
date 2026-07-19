@@ -100,12 +100,24 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasMetadataStatus))]
     public partial string MetadataStatusText { get; set; } = string.Empty;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMetadataProgress))]
+    public partial int MetadataProgressCompleted { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMetadataProgress))]
+    public partial int MetadataProgressTotal { get; set; }
+
+    [ObservableProperty]
+    public partial string MetadataProgressText { get; set; } = string.Empty;
+
     public bool CanRescanAll => !IsWorking && _maintenance is not null;
     public bool CanFetchAllMetadata =>
         !IsWorking && _maintenance?.FetchAllMetadata is not null;
     public bool IsWorking => IsSaving || IsMaintainingLibrary;
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
     public bool HasMetadataStatus => !string.IsNullOrWhiteSpace(MetadataStatusText);
+    public bool HasMetadataProgress => IsMaintainingLibrary && MetadataProgressTotal > 0;
 
     [ObservableProperty]
     public partial bool AutomaticallyFetchMetadataAfterImport { get; set; }
@@ -143,7 +155,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                     "Reconnect required: this platform keeps your Web API key only for the current session.";
             }
         }
-        var rows = systems.Select((system, index) =>
+        var rows = systems.Select(system =>
         {
             var emulator = emulators.First(candidate => candidate.Supports(system.Id));
             configured.TryGetValue(system.Id, out var configuration);
@@ -165,11 +177,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 configuration,
                 dialogs,
                 maintenance is null || system.Id == "playstation3" ? null : RescanSystemAsync,
-                maintenance?.FetchMetadataForSystem is null ? null : FetchSystemMetadataAsync,
                 system.Id == "playstation3" && maintenance?.SyncRpcs3Library is not null
                     ? SyncRpcs3LibraryAsync
                     : null,
-                isExpanded: index == 0,
+                isExpanded: false,
                 emulatorInstallationId: installationId,
                 isExecutableShared: isShared,
                 logger: _logger);
@@ -204,21 +215,38 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         message => MaintenanceStatusText = message);
 
     [RelayCommand]
-    private Task FetchAllMetadataAsync() => RunMaintenanceAsync(
-        _maintenance?.FetchAllMetadata,
-        "Fetching missing titles and covers…",
-        message => MetadataStatusText = message);
+    private async Task FetchAllMetadataAsync()
+    {
+        if (_maintenance?.FetchAllMetadata is null || IsWorking)
+            return;
+        IsMaintainingLibrary = true;
+        MetadataStatusText = "Fetching missing titles and covers…";
+        MetadataProgressCompleted = 0;
+        MetadataProgressTotal = 0;
+        MetadataProgressText = string.Empty;
+        try
+        {
+            MetadataStatusText = await _maintenance.FetchAllMetadata(
+                new Progress<MetadataEnrichmentProgress>(progress =>
+                {
+                    MetadataProgressCompleted = progress.Completed;
+                    MetadataProgressTotal = progress.Total;
+                    MetadataProgressText = progress.CurrentGameTitle is null
+                        ? $"Fetching {progress.Completed} of {progress.Total}"
+                        : $"Fetching {progress.Completed} of {progress.Total}: {progress.CurrentGameTitle}";
+                }));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Metadata fetch failed from Settings.", ex);
+            MetadataStatusText = $"Metadata fetch failed: {ex.Message}";
+        }
+        finally { IsMaintainingLibrary = false; }
+    }
 
     private Task RescanSystemAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
         _maintenance is null ? null : () => _maintenance.RescanSystem(row.SystemId),
         "Rescanning remembered folders…",
-        message => row.MaintenanceStatusText = message);
-
-    private Task FetchSystemMetadataAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
-        _maintenance?.FetchMetadataForSystem is null
-            ? null
-            : () => _maintenance.FetchMetadataForSystem(row.SystemId),
-        "Fetching missing titles and covers…",
         message => row.MaintenanceStatusText = message);
 
     private Task SyncRpcs3LibraryAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(

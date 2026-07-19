@@ -151,38 +151,52 @@
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="68,*" ColumnDefinitions="246,*">
-        <!-- OpenEmu-inspired navigation rail, rebuilt for EmuShelf rather than copied. -->
+    <Grid RowDefinitions="68,*" ColumnDefinitions="Auto,*">
+        <!-- OpenEmu-inspired navigation rail, rebuilt for EmuShelf rather than copied.
+             Collapses to a narrow icon rail (NavigationWidth) so the library grid reclaims
+             the freed width. -->
         <Border Grid.RowSpan="2" Grid.Column="0"
+                Width="{Binding NavigationWidth}"
                 Background="{DynamicResource EmuSidebarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}"
                 BorderThickness="0,0,1,0">
             <Grid RowDefinitions="68,Auto,Auto,Auto,Auto,*,Auto">
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="18,0">
-                    <StackPanel Orientation="Horizontal" Spacing="11" VerticalAlignment="Center">
-                        <Border Width="34" Height="34" CornerRadius="10"
-                                Background="{DynamicResource EmuAccentBrush}"
-                                BoxShadow="0 4 10 0 #36000000">
-                            <Grid>
-                                <PathIcon Width="19" Height="19" Foreground="White"
-                                          Data="M4,5 H16 A3,3 0 0 1 19,8 V15 A3,3 0 0 1 16,18 H4 A3,3 0 0 1 1,15 V8 A3,3 0 0 1 4,5 Z M5,10 H9 M7,8 V12 M14,9.5 A1,1 0 1 0 14,11.5 A1,1 0 1 0 14,9.5 M17,12 A1,1 0 1 0 17,14 A1,1 0 1 0 17,12" />
-                            </Grid>
-                        </Border>
-                        <StackPanel Spacing="0">
-                            <TextBlock Text="EmuShelf" FontSize="17" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                            <TextBlock Text="PORTABLE LIBRARY" FontSize="8.5" LetterSpacing="1.1"
-                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                    <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                        <Button Grid.Column="0" Classes="toolbar-button"
+                                Command="{Binding ToggleNavigationCommand}"
+                                VerticalAlignment="Center" ToolTip.Tip="Toggle sidebar">
+                            <PathIcon Width="16" Height="16"
+                                      Data="M2,3 H18 V5 H2 Z M2,8.5 H18 V10.5 H2 Z M2,14 H18 V16 H2 Z" />
+                        </Button>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="11"
+                                    Margin="11,0,0,0" VerticalAlignment="Center"
+                                    IsVisible="{Binding !IsNavigationCollapsed}">
+                            <Border Width="34" Height="34" CornerRadius="10"
+                                    Background="{DynamicResource EmuAccentBrush}"
+                                    BoxShadow="0 4 10 0 #36000000">
+                                <Grid>
+                                    <PathIcon Width="19" Height="19" Foreground="White"
+                                              Data="M4,5 H16 A3,3 0 0 1 19,8 V15 A3,3 0 0 1 16,18 H4 A3,3 0 0 1 1,15 V8 A3,3 0 0 1 4,5 Z M5,10 H9 M7,8 V12 M14,9.5 A1,1 0 1 0 14,11.5 A1,1 0 1 0 14,9.5 M17,12 A1,1 0 1 0 17,14 A1,1 0 1 0 17,12" />
+                                </Grid>
+                            </Border>
+                            <StackPanel Spacing="0">
+                                <TextBlock Text="EmuShelf" FontSize="17" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                <TextBlock Text="PORTABLE LIBRARY" FontSize="8.5" LetterSpacing="1.1"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
                 <TextBlock Grid.Row="1" Text="CONSOLES" Margin="18,17,18,7"
                            FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
+                           IsVisible="{Binding !IsNavigationCollapsed}"
                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
 
-                <ListBox Grid.Row="2" Classes="system-list"
+                <ListBox Grid.Row="2" Classes="system-list" x:Name="SystemList"
                          ItemsSource="{Binding Systems}"
                          SelectedItem="{Binding SelectedSystem}"
                          Background="Transparent" BorderThickness="0">
@@ -207,6 +221,7 @@
                                 <TextBlock Grid.Column="1" Text="{Binding Name}"
                                            FontSize="13.5" FontWeight="Medium"
                                            VerticalAlignment="Center"
+                                           IsVisible="{Binding #SystemList.((vm:MainViewModel)DataContext).IsNavigationExpanded}"
                                            TextTrimming="CharacterEllipsis" />
                             </Grid>
                         </DataTemplate>
@@ -215,6 +230,7 @@
 
                 <TextBlock Grid.Row="3" Text="COLLECTIONS" Margin="18,18,18,7"
                            FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
+                           IsVisible="{Binding !IsNavigationCollapsed}"
                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
 
                 <StackPanel Grid.Row="4">
@@ -226,7 +242,8 @@
                                    Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-simple@2x.png"
                                    RenderOptions.BitmapInterpolationMode="None" />
                             <TextBlock Grid.Column="1" Text="All Games" FontSize="13.5"
-                                       FontWeight="Medium" VerticalAlignment="Center" />
+                                       FontWeight="Medium" VerticalAlignment="Center"
+                                       IsVisible="{Binding !IsNavigationCollapsed}" />
                         </Grid>
                     </Button>
                     <Button Classes="collection-item"
@@ -237,7 +254,8 @@
                                    Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
                                    RenderOptions.BitmapInterpolationMode="None" />
                             <TextBlock Grid.Column="1" Text="Recently Added" FontSize="13.5"
-                                       FontWeight="Medium" VerticalAlignment="Center" />
+                                       FontWeight="Medium" VerticalAlignment="Center"
+                                       IsVisible="{Binding !IsNavigationCollapsed}" />
                         </Grid>
                     </Button>
                 </StackPanel>
@@ -249,7 +267,8 @@
                         <PathIcon Width="14" Height="14" VerticalAlignment="Center"
                                   Data="M8,1 H11 V8 H18 V11 H11 V18 H8 V11 H1 V8 H8 Z" />
                         <TextBlock Grid.Column="1" Text="Add to Library" FontWeight="SemiBold"
-                                   HorizontalAlignment="Left" VerticalAlignment="Center" />
+                                   HorizontalAlignment="Left" VerticalAlignment="Center"
+                                   IsVisible="{Binding !IsNavigationCollapsed}" />
                     </Grid>
                     <Button.Flyout>
                         <MenuFlyout>
@@ -362,15 +381,21 @@
         <!-- Cover-first library content. -->
         <Panel Grid.Row="1" Grid.Column="1"
                Background="{DynamicResource EmuLibraryBrush}">
-            <ScrollViewer IsVisible="{Binding IsGridView}">
-                <ItemsRepeater ItemsSource="{Binding Games}" Margin="32,28,28,34">
+            <ScrollViewer IsVisible="{Binding IsGridView}"
+                          SizeChanged="OnLibrarySizeChanged">
+                <ItemsRepeater x:Name="LibraryRepeater" ItemsSource="{Binding Games}"
+                               Margin="32,28,28,34">
                     <ItemsRepeater.Layout>
-                        <UniformGridLayout MinItemWidth="188" MinItemHeight="326"
+                        <!-- Covers are sized responsively (GameViewModel.CoverWidth, recomputed
+                             from the viewport width) so a whole number of columns fills the row with
+                             no lopsided right gutter, and the last partial row still aligns left.
+                             No MinItemHeight: every tile in a view shares one cover-shelf height. -->
+                        <UniformGridLayout MinItemWidth="188"
                                            MinColumnSpacing="28" MinRowSpacing="20" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
-                            <StackPanel Width="188" Spacing="8" Classes="game-tile"
+                            <StackPanel Width="{Binding CoverWidth}" Spacing="8" Classes="game-tile"
                                         Classes.selected="{Binding IsSelected}"
                                         Classes.unavailable="{Binding !IsAvailable}"
                                         Tapped="OnGameTapped"
@@ -402,7 +427,7 @@
                                      baseline and titles line up. Real covers fill the frame — since it
                                      equals the platform's true scan ratio the crop is a hair of bleed,
                                      never a letterbox. -->
-                                <Grid Width="188" Height="266">
+                                <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
                                 <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                        VerticalAlignment="Bottom">
                                     <Border Classes="cover-card"
@@ -479,7 +504,7 @@
                                 <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
                                            TextTrimming="CharacterEllipsis" FontSize="14"
                                            FontWeight="Medium" HorizontalAlignment="Center"
-                                           MaxWidth="188"
+                                           MaxWidth="{Binding CoverWidth}"
                                            Foreground="{DynamicResource EmuTextPrimaryBrush}"
                                            ToolTip.Tip="{Binding Title}" />
                                 <Border Padding="7,2" CornerRadius="7"
@@ -555,7 +580,9 @@
                                                   CommandParameter="{Binding}" />
                                     </ContextMenu>
                                 </Grid.ContextMenu>
-                                <Border Grid.Column="0" Width="43" Height="52" CornerRadius="4"
+                                <Border Grid.Column="0"
+                                        Width="{Binding ListCoverWidth}" Height="{Binding ListCoverHeight}"
+                                        CornerRadius="4"
                                         Background="{DynamicResource EmuCoverWellBrush}"
                                         BorderBrush="{DynamicResource EmuCoverBorderBrush}"
                                         BorderThickness="1" ClipToBounds="True"

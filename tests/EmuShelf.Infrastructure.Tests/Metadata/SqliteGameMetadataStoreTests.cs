@@ -38,6 +38,17 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void CatalogTitle_UpdatesEmbeddedTitle()
+    {
+        var game = AddGame("Original.iso", GameTitleOrigin.Embedded);
+
+        Assert.True(_metadata.TryApplyCatalogTitle(game.Id, "Catalog Title", "Original"));
+        var updated = _metadata.GetGame(game.Id)!;
+        Assert.Equal("Catalog Title", updated.Title);
+        Assert.Equal(GameTitleOrigin.Catalog, updated.TitleOrigin);
+    }
+
+    [Fact]
     public void DownloadedCover_IsPortable_AndCannotReplaceManualCover()
     {
         var game = AddGame("Cover.iso", GameTitleOrigin.Filename);
@@ -121,6 +132,30 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
             "provider",
             "https://example.test/done.png");
 
+        Assert.Empty(_metadata.GetGamesMissingMetadata());
+    }
+
+    [Fact]
+    public void MissingMetadataQuery_IncludesEmbeddedTitleWithKnownCatalogTitleUntilRepaired()
+    {
+        var game = AddGame("InternalId.iso", GameTitleOrigin.Embedded);
+        Assert.True(_metadata.TryApplyDownloadedCover(
+            game.Id,
+            Path.Combine(AppPaths.CoversDirectory, "internal-id.png"),
+            "provider",
+            "https://example.test/internal-id.png"));
+        _metadata.RecordAttempt(new GameMetadataAttempt(
+            game.Id,
+            GameMetadataStatus.Matched,
+            new GameCatalogMatch("catalog", "entry", "Catalog Title", null),
+            "provider",
+            "https://example.test/internal-id.png",
+            null,
+            DateTimeOffset.UtcNow));
+
+        Assert.Single(_metadata.GetGamesMissingMetadata());
+
+        Assert.True(_metadata.TryApplyCatalogTitle(game.Id, "Catalog Title", "InternalId"));
         Assert.Empty(_metadata.GetGamesMissingMetadata());
     }
 

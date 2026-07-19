@@ -40,7 +40,7 @@ public class GameMetadataServiceTests
 
         var summary = await service.EnrichAsync(
             [game.Id],
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, summary.TitlesApplied);
         Assert.Equal(1, summary.CoversApplied);
@@ -86,7 +86,7 @@ public class GameMetadataServiceTests
 
         var summary = await service.EnrichAsync(
             [game.Id],
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, summary.TitlesApplied);
         Assert.Equal(1, summary.CoversApplied);
@@ -130,7 +130,7 @@ public class GameMetadataServiceTests
 
         var summary = await service.EnrichAsync(
             [game.Id],
-            TestContext.Current.CancellationToken);
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(0, summary.TitlesApplied);
         Assert.Equal("Catalog Game (USA)", store.Game.Title);
@@ -170,10 +170,45 @@ public class GameMetadataServiceTests
             new FixedDownloader(new DownloadedArtwork(candidate, Path.GetTempFileName())),
             new RecordingCoverService());
 
-        await service.EnrichAsync([game.Id], TestContext.Current.CancellationToken);
-        await service.EnrichAsync([game.Id], TestContext.Current.CancellationToken);
+        await service.EnrichAsync([game.Id], cancellationToken: TestContext.Current.CancellationToken);
+        await service.EnrichAsync([game.Id], cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(1, extractor.Calls);
+    }
+
+    [Fact]
+    public async Task Enrich_ExistingCoverWithoutCatalogMatch_IsPartialNotUnmatched()
+    {
+        var game = new Game
+        {
+            Id = 11,
+            SystemId = "test-system",
+            Path = "/games/filename.iso",
+            Title = "filename",
+            TitleOrigin = GameTitleOrigin.Filename,
+            CoverPath = "/covers/11.jpg",
+            CoverOrigin = GameCoverOrigin.Downloaded,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game);
+        var service = new GameMetadataService(
+            store,
+            [new MetadataSystemProfile(
+                "test-system",
+                GameIdentifierKind.Serial,
+                new Uri("https://example.test/catalog.dat"),
+                new FixedExtractor(),
+                [])],
+            new NoMatchCatalog(),
+            new FixedDownloader(null),
+            new RecordingCoverService());
+
+        var summary = await service.EnrichAsync(
+            [game.Id],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, summary.Unmatched);
+        Assert.Equal(GameMetadataStatus.Partial, store.LastAttempt?.Status);
     }
 
     private sealed class FixedExtractor : IGameIdentifierExtractor
@@ -217,6 +252,15 @@ public class GameMetadataServiceTests
             Task.FromException<GameCatalogMatch?>(new HttpRequestException("Catalog unavailable"));
     }
 
+    private sealed class NoMatchCatalog : IGameMetadataCatalog
+    {
+        public Task<GameCatalogMatch?> FindMatchAsync(
+            MetadataSystemProfile profile,
+            IReadOnlyList<GameIdentifier> identifiers,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<GameCatalogMatch?>(null);
+    }
+
     private sealed class FixedArtworkProvider(ArtworkCandidate candidate) : IGameArtworkProvider
     {
         public string Id => candidate.ProviderId;
@@ -226,7 +270,7 @@ public class GameMetadataServiceTests
             GameCatalogMatch? match) => [candidate];
     }
 
-    private sealed class FixedDownloader(DownloadedArtwork artwork) : IRemoteArtworkDownloader
+    private sealed class FixedDownloader(DownloadedArtwork? artwork) : IRemoteArtworkDownloader
     {
         public Task<DownloadedArtwork?> DownloadFirstAsync(
             IReadOnlyList<ArtworkCandidate> candidates,
