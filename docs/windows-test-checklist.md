@@ -51,10 +51,30 @@ matching file from `EmuShelf/Logs/`.
 - [ ] A non-zero emulator exit and an intentional scan/configuration failure appear
       in both contextual UI feedback and the portable daily log.
 
-## Current scope exception
+## PlayStation 3 / RPCS3 library
 
-PS3 directory importing and PARAM.SFO title parsing are deliberately deferred in
-`ROADMAP.md`. RPCS3 can be configured in Settings, but RPCS3 game import/launch is
-not an acceptance gate for this Windows candidate. Completing the design document's
-original five-system section 14 definition requires bringing the PS3 backlog back
-into scope.
+- [ ] In Settings for PlayStation 3, choose the RPCS3 configuration folder that contains
+      `games.yml`, then select **Sync RPCS3 library**. Confirm no location is auto-detected
+      and the sync reads only the games recorded in that file; Add Game, Add Folder, and
+      folder rescans must not import PS3 directories.
+- [ ] With one listed installed game and one listed disc/directory game, confirm each entry
+      records the RPCS3 path, title, exact title id, availability, and `RPCS3 library`
+      provenance. An unlisted directory with a valid `PARAM.SFO` must not appear.
+- [ ] Confirm a listed `PARAM.SFO` enriches a filename title only when its `TITLE_ID` exactly
+      matches the RPCS3 list entry. A manual title or cover edit must survive another sync.
+- [ ] Replace `games.yml` with an unsupported or malformed format. The sync must give an
+      actionable failure, import nothing, and leave the file's contents and timestamp
+      unchanged.
+- [ ] Replace the list with a blank file (a valid empty RPCS3 library). Sync must succeed and
+      mark previously listed entries `Source missing`; it must not infer folders or report a
+      format error.
+- [ ] Point a listed title id at a path already owned by a different EmuShelf game. Sync must
+      reject the collision with an actionable message and leave both records unchanged.
+- [ ] Remove an entry from `games.yml` while EmuShelf is open, sync again, and refresh
+      availability. Its existing EmuShelf row must remain as `Source missing`, be blocked
+      from launch, and never be revived by a generic folder/availability rescan.
+- [ ] Launch both listed game types through the current RPCS3 launch template. Verify paths
+      containing spaces remain one argument, EmuShelf minimizes and restores, a non-zero
+      exit is reported, and neither RPCS3 data nor game files are written by EmuShelf.
+- [ ] Confirm PlayStation 3 displays RetroAchievements as unsupported and does not perform
+      RetroAchievements identification or matching.

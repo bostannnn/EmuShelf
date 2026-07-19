@@ -22,6 +22,9 @@
     <None Update="Assets\ThirdParty\Shamisen.Codecs.Flac-LICENSE.txt"
           CopyToOutputDirectory="PreserveNewest"
           TargetPath="ThirdParty\Shamisen.Codecs.Flac\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\YamlDotNet-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\YamlDotNet\LICENSE.txt" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md"
           Link="THIRD-PARTY-NOTICES.md"
           CopyToOutputDirectory="PreserveNewest"

@@ -310,22 +310,22 @@ This replaces the original PS3 directory scanner. EmuShelf will show only games 
 itself knows about; it will never recursively discover arbitrary PS3 directories or offer
 an individual PS3-folder import.
 
-- [ ] Add an explicit **Sync RPCS3 library** action. The user selects the RPCS3 data/config
+- [x] Add an explicit **Sync RPCS3 library** action. The user selects the RPCS3 data/config
       location (no auto-detection); the integration reads only RPCS3's own game-list data
       through a versioned, read-only adapter. A changed or unsupported upstream format must
       fail with an actionable message and import nothing rather than guess.
-- [ ] Import the RPCS3-recorded path, title, title id, and availability as one PS3 entry,
+- [x] Import the RPCS3-recorded path, title, title id, and availability as one PS3 entry,
       with source provenance. The recorded list is authoritative for discovery; a targeted
       `PARAM.SFO` read may validate/enrich an already listed entry but must never turn an
       unlisted directory into a library game. Entries absent from a later sync remain in
       EmuShelf and are visibly unavailable/source-missing until the user removes them.
-- [ ] Treat RPCS3-supplied title data as embedded metadata that can replace a filename only;
+- [x] Treat RPCS3-supplied title data as embedded metadata that can replace a filename only;
       manual title/cover edits always win. The title id is the exact evidence for the later
       PS3 cover route, not a title-similarity key.
 - [ ] Verify the current RPCS3 launch contract on real Windows with an imported installed
       game and a listed disc/directory game: quoted paths, minimize/restore, non-zero exit,
       source refresh while the app is open, and no writes to RPCS3 data or game files.
-- [ ] Keep PS3 out of RetroAchievements matching and display it as unsupported: there is no
+- [x] Keep PS3 out of RetroAchievements matching and display it as unsupported: there is no
       RetroAchievements PlayStation 3 console mapping in the existing design.
 
 ## M14 — PSP and PPSSPP (planned)

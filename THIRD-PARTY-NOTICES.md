@@ -76,6 +76,16 @@ libFLAC and Intel Intelligent Storage Acceleration Library source under BSD-3-Cl
 - License: MIT and BSD-3-Clause; complete notices are retained in
   `src/EmuShelf.App/Assets/ThirdParty/Shamisen.Codecs.Flac-LICENSE.txt`.
 
+## YAML parsing for the read-only RPCS3 game list
+
+EmuShelf uses the managed `YamlDotNet` 18.1.0 package to read the selected RPCS3
+`games.yml` file. It only parses the explicitly supported title-id-to-path mapping;
+EmuShelf never writes that file or any other RPCS3 data.
+
+- Copyright: Copyright (c) 2008-2014 Antoine Aubry and contributors.
+- License: MIT; the complete text is retained in
+  `src/EmuShelf.App/Assets/ThirdParty/YamlDotNet-LICENSE.txt`.
+
 ## Opt-in network metadata sources (not distributed)
 
 EmuShelf can, only after the user opts in, request title catalogs and individual

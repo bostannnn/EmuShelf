@@ -30,6 +30,7 @@ public class MainViewModelTests : IDisposable
     private readonly LibraryDatabase _database;
     private readonly FakeDialogService _dialogs = new();
     private static readonly GameSystem Ps1 = KnownSystems.All.Single(s => s.Id == "playstation");
+    private static readonly GameSystem Ps3 = KnownSystems.All.Single(s => s.Id == "playstation3");
     private static readonly GameSystem GameCube = KnownSystems.All.Single(s => s.Id == "gamecube");
 
     public MainViewModelTests()
@@ -104,6 +105,125 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AddFolder_PlayStation3IsReservedForTheExplicitRpcs3LibrarySync()
+    {
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        _dialogs.SystemToReturn = Ps3;
+        var vm = CreateViewModel();
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        Assert.Empty(_library.GetGames(Ps3.Id));
+        Assert.Empty(_library.GetLibraryFolders(Ps3.Id));
+        Assert.Contains("imported only from RPCS3", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsSyncRpcs3Library_ImportsOnlyRecordedEntriesAndRetainsSourceMissingState()
+    {
+        var configuration = Path.Combine(_baseDirectory, "rpcs3", "config");
+        var game = Path.Combine(_baseDirectory, "rpcs3", "games", "Example Game");
+        Directory.CreateDirectory(configuration);
+        Directory.CreateDirectory(game);
+        File.WriteAllText(Path.Combine(configuration, "games.yml"), $"BLES12345: '{game}'\n");
+        _dialogs.Rpcs3ConfigurationDirectoryToReturn = configuration;
+        var viewModel = CreateViewModel();
+
+        await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.SyncRpcs3Library!();
+
+        var imported = Assert.Single(_library.GetGames("playstation3"));
+        Assert.Equal("BLES12345", imported.ExternalSourceEntryId);
+        Assert.Equal("rpcs3-library", imported.ExternalSourceId);
+        Assert.Equal("Example Game", imported.Title);
+        Assert.Equal(GameTitleOrigin.Filename, imported.TitleOrigin);
+        Assert.True(imported.IsAvailable);
+        Assert.Equal("RPCS3 library sync complete — 1 added", viewModel.StatusText);
+
+        File.WriteAllText(Path.Combine(configuration, "games.yml"), string.Empty);
+        await _dialogs.MaintenanceActions.SyncRpcs3Library();
+        await viewModel.RefreshAvailabilityAsync();
+
+        var sourceMissing = Assert.Single(_library.GetGames("playstation3"));
+        Assert.False(sourceMissing.IsAvailable);
+        var sourceMissingView = Assert.Single(viewModel.Games);
+        Assert.Equal("Source missing", sourceMissingView.AvailabilityText);
+        Assert.Equal("SOURCE MISSING", sourceMissingView.UnavailableBadgeText);
+        Assert.Contains("external emulator library", sourceMissingView.UnavailableLaunchStatus);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsSyncRpcs3Library_ShowsFileMissingWhenRpcs3StillListsThePath()
+    {
+        var configuration = Path.Combine(_baseDirectory, "rpcs3", "config");
+        var game = Path.Combine(_baseDirectory, "rpcs3", "games", "Example Game");
+        Directory.CreateDirectory(configuration);
+        Directory.CreateDirectory(game);
+        File.WriteAllText(Path.Combine(configuration, "games.yml"), $"BLES12345: '{game}'\n");
+        _dialogs.Rpcs3ConfigurationDirectoryToReturn = configuration;
+        var viewModel = CreateViewModel();
+
+        await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.SyncRpcs3Library!();
+        Directory.Delete(game);
+        await _dialogs.MaintenanceActions.SyncRpcs3Library();
+
+        var unavailable = Assert.Single(_library.GetGames("playstation3"));
+        Assert.True(unavailable.IsPresentInExternalSource);
+        Assert.False(unavailable.IsAvailable);
+        var unavailableView = Assert.Single(viewModel.Games);
+        Assert.Equal("Unavailable", unavailableView.AvailabilityText);
+        Assert.Equal("FILE MISSING", unavailableView.UnavailableBadgeText);
+        Assert.Contains("recorded by its external emulator library", unavailableView.UnavailableLaunchStatus);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsSyncRpcs3Library_ReportsAPathConflictWithoutChangingTheLibrary()
+    {
+        var configuration = Path.Combine(_baseDirectory, "rpcs3", "config");
+        var path = Path.Combine(_baseDirectory, "games", "Shared game");
+        Directory.CreateDirectory(configuration);
+        Directory.CreateDirectory(path);
+        File.WriteAllText(Path.Combine(configuration, "games.yml"), $"BLES12345: '{path}'\n");
+        _library.AddGames([
+            new Game
+            {
+                SystemId = Ps1.Id,
+                Path = path,
+                Title = "Manual game",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+        _dialogs.Rpcs3ConfigurationDirectoryToReturn = configuration;
+        var viewModel = CreateViewModel();
+
+        await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.SyncRpcs3Library!();
+
+        Assert.Contains("already owned by a different EmuShelf game", viewModel.StatusText);
+        Assert.Single(_library.GetGames(Ps1.Id));
+        Assert.Empty(_library.GetGames(Ps3.Id));
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsSyncRpcs3Library_RejectsUnsupportedInputWithoutImporting()
+    {
+        var configuration = Path.Combine(_baseDirectory, "rpcs3", "config");
+        Directory.CreateDirectory(configuration);
+        File.WriteAllText(
+            Path.Combine(configuration, "games.yml"),
+            "BLES12345:\n  path: /games/example\n");
+        _dialogs.Rpcs3ConfigurationDirectoryToReturn = configuration;
+        var viewModel = CreateViewModel();
+
+        await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.SyncRpcs3Library!();
+
+        Assert.Empty(_library.GetGames("playstation3"));
+        Assert.Contains("No games were imported", viewModel.StatusText);
+    }
+
+    [AvaloniaFact]
     public async Task AddFolder_ThenSearch_FiltersGames()
     {
         _dialogs.FolderToReturn = MakeRomsFolder();
@@ -147,6 +267,20 @@ public class MainViewModelTests : IDisposable
         await vm.AddGamesCommand.ExecuteAsync(null);
 
         Assert.Equal(["Alpha"], vm.Games.Select(g => g.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task AddGames_PlayStation3IsReservedForTheExplicitRpcs3LibrarySync()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps3;
+        var vm = CreateViewModel();
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        Assert.Empty(_library.GetGames(Ps3.Id));
+        Assert.Contains("imported only from RPCS3", vm.StatusText);
     }
 
     [AvaloniaFact]

@@ -44,6 +44,23 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public int? RetroAchievementsGameId { get; private set; }
     public bool IsCoverLoading { get; set; }
     public int CoverRevision { get; private set; }
+    public bool IsExternalSourceGame => Model.ExternalSourceId is not null;
+    public bool IsExternalSourceMissing =>
+        IsExternalSourceGame && Model.IsPresentInExternalSource == false;
+    public string AvailabilityText => IsAvailable
+        ? "Available"
+        : IsExternalSourceMissing ? "Source missing" : "Unavailable";
+    public string UnavailableBadgeText => IsExternalSourceMissing ? "SOURCE MISSING" : "FILE MISSING";
+    public string UnavailableTooltip => IsExternalSourceMissing
+        ? "This game is no longer listed by its external emulator library. Sync that library again or remove this entry from EmuShelf."
+        : IsExternalSourceGame
+            ? "The path recorded by its external emulator library could not be found. Reconnect its drive, then sync that library."
+        : "The saved game path could not be found. Reconnect its drive or re-add the file.";
+    public string UnavailableLaunchStatus => IsExternalSourceMissing
+        ? $"Cannot launch {Title}: it is no longer listed by its external emulator library."
+        : IsExternalSourceGame
+            ? $"Cannot launch {Title}: the path recorded by its external emulator library could not be found."
+        : $"Cannot launch {Title}: its game file could not be found.";
 
     [ObservableProperty]
     public partial string Title { get; set; }
@@ -140,6 +157,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     {
         Model = Model with { Title = value };
         OnPropertyChanged(nameof(Initials));
+        OnPropertyChanged(nameof(UnavailableLaunchStatus));
     }
 
     partial void OnCoverImageChanging(Bitmap? value)

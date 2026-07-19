@@ -455,10 +455,10 @@
                                             Background="#E1292D34" CornerRadius="4"
                                             Padding="7,4" Margin="8"
                                             HorizontalAlignment="Right" VerticalAlignment="Top">
-                                        <TextBlock Text="FILE MISSING" FontSize="8" FontWeight="Bold"
+                                        <TextBlock Text="{Binding UnavailableBadgeText}" FontSize="8" FontWeight="Bold"
                                                    LetterSpacing="0.9" Foreground="White" />
                                         <ToolTip.Tip>
-                                            <TextBlock Text="The saved game path could not be found. Reconnect its drive or re-add the file."
+                                            <TextBlock Text="{Binding UnavailableTooltip}"
                                                        MaxWidth="260" TextWrapping="Wrap" />
                                         </ToolTip.Tip>
                                     </Border>
@@ -594,7 +594,7 @@
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="5" VerticalAlignment="Center"
-                                           Text="{Binding IsAvailable, Converter={x:Static vm:AvailabilityText.Instance}}"
+                                           Text="{Binding AvailabilityText}"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <Popup Grid.Column="1" IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
                                        Placement="Bottom" IsLightDismissEnabled="True">

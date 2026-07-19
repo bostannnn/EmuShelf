@@ -18,6 +18,7 @@ using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Rpcs3;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -133,6 +134,8 @@ public partial class MainViewModel : ViewModelBase
     };
     public string EmptyLibraryDescription => CurrentLibraryScope == LibraryScope.RecentlyAdded
         ? "Games you import will appear here in newest-first order."
+        : SelectedSystem?.Id == "playstation3"
+            ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
         : "Add game files or a dedicated folder to begin building this shelf.";
     public string ThemeDescription => CurrentTheme switch
     {
@@ -386,7 +389,7 @@ public partial class MainViewModel : ViewModelBase
                 if (link?.RetroAchievementsGameId is { } raGameId)
                     progress.TryGetValue(raGameId, out snapshot);
                 viewModel.ApplyAchievementsDisplay(
-                    RetroAchievementsDisplay.For(connected, link, snapshot));
+                    RetroAchievementsDisplay.For(viewModel.SystemId, connected, link, snapshot));
                 viewModel.ApplyAchievementLink(
                     link is { HasAchievements: true, RetroAchievementsGameId: { } linkedGameId }
                         ? linkedGameId
@@ -509,6 +512,12 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
+            if (system.Id == "playstation3")
+            {
+                StatusText = "PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.";
+                return;
+            }
+
             var accepted = analyses
                 .Where(analysis => analysis.MatchFor(system.Id) is
                     GameFileMatch.Compatible or GameFileMatch.Unrecognized)
@@ -594,6 +603,12 @@ public partial class MainViewModel : ViewModelBase
         if (system is null)
             return;
 
+        if (system.Id == "playstation3")
+        {
+            StatusText = "PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.";
+            return;
+        }
+
         IsBusy = true;
         try
         {
@@ -622,11 +637,19 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private Task RescanSystemAsync() =>
-        SelectedSystem is { } system ? RescanAsync([system], system) : Task.CompletedTask;
+    private Task RescanSystemAsync()
+    {
+        if (SelectedSystem?.Id == "playstation3")
+        {
+            StatusText = "Use Settings to sync the explicitly selected RPCS3 library.";
+            return Task.CompletedTask;
+        }
+
+        return SelectedSystem is { } system ? RescanAsync([system], system) : Task.CompletedTask;
+    }
 
     [RelayCommand]
-    private Task RescanAllAsync() => RescanAsync(Systems, SelectedSystem);
+    private Task RescanAllAsync() => RescanAsync(NonRpcs3Systems(), SelectedSystem);
 
     private async Task<string> RescanSystemFromSettingsAsync(string systemId)
     {
@@ -634,14 +657,79 @@ public partial class MainViewModel : ViewModelBase
         if (system is null)
             return "That console is no longer available.";
 
+        if (system.Id == "playstation3")
+            return "Use Sync RPCS3 library to refresh PlayStation 3 games.";
+
         await RescanAsync([system], SelectedSystem);
         return StatusText;
     }
 
     private async Task<string> RescanAllFromSettingsAsync()
     {
-        await RescanAsync(Systems, SelectedSystem);
+        await RescanAsync(NonRpcs3Systems(), SelectedSystem);
         return StatusText;
+    }
+
+    private IEnumerable<GameSystem> NonRpcs3Systems() =>
+        Systems.Where(system => system.Id != "playstation3");
+
+    private async Task<string> SyncRpcs3LibraryFromSettingsAsync()
+    {
+        if (IsBusy)
+            return "Library work is already in progress.";
+
+        var configurationDirectory = await _dialogs.PickRpcs3ConfigurationDirectoryAsync();
+        if (configurationDirectory is null)
+            return "RPCS3 library sync cancelled.";
+
+        IsBusy = true;
+        try
+        {
+            StatusText = "Reading the RPCS3 game list…";
+            var source = new Rpcs3LibrarySource(configurationDirectory);
+            var result = await new ExternalLibrarySyncService(_library).SyncAsync(source);
+            var playStation3 = Systems.FirstOrDefault(system => system.Id == "playstation3");
+            if (playStation3 is not null)
+                await ShowSystemAsync(playStation3);
+
+            StatusText = BuildRpcs3SyncStatus(result);
+            return StatusText;
+        }
+        catch (Rpcs3LibraryFormatException ex)
+        {
+            _logger.Warning($"RPCS3 library sync was rejected: {ex.Message}");
+            StatusText = $"RPCS3 library sync failed: {ex.Message}";
+            return StatusText;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("RPCS3 library sync failed.", ex);
+            StatusText = $"RPCS3 library sync failed: {ex.Message}";
+            return StatusText;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static string BuildRpcs3SyncStatus(ExternalLibraryImportResult result)
+    {
+        var changes = new List<string>();
+        if (result.AddedCount > 0)
+            changes.Add(result.AddedCount == 1 ? "1 added" : $"{result.AddedCount} added");
+        if (result.UpdatedCount > 0)
+            changes.Add(result.UpdatedCount == 1 ? "1 updated" : $"{result.UpdatedCount} updated");
+        if (result.MarkedSourceMissingCount > 0)
+        {
+            changes.Add(result.MarkedSourceMissingCount == 1
+                ? "1 source-missing"
+                : $"{result.MarkedSourceMissingCount} source-missing");
+        }
+
+        return changes.Count == 0
+            ? "RPCS3 library sync complete — no changes"
+            : $"RPCS3 library sync complete — {string.Join(", ", changes)}";
     }
 
     private async Task RescanAsync(IEnumerable<GameSystem> systems, GameSystem? systemToShow)
@@ -654,7 +742,7 @@ public partial class MainViewModel : ViewModelBase
         {
             var total = 0;
             var addedIds = new List<long>();
-            foreach (var system in systems)
+            foreach (var system in systems.Where(system => system.Id != "playstation3"))
             {
                 var folders = await Task.Run(() => _library.GetLibraryFolders(system.Id));
                 foreach (var folder in folders)
@@ -777,6 +865,11 @@ public partial class MainViewModel : ViewModelBase
         var updates = new List<GameAvailabilityUpdate>();
         foreach (var game in _library.GetGames())
         {
+            // An external source owns this state. A generic startup stat must not revive an
+            // entry that a later source sync retained as source-missing.
+            if (game.ExternalSourceId is not null)
+                continue;
+
             var available = _availabilityChecker.IsAvailable(game);
             if (available != game.IsAvailable)
                 updates.Add(new GameAvailabilityUpdate(game.Id, available));
@@ -793,7 +886,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (!game.IsAvailable)
         {
-            StatusText = $"Cannot launch {game.Title}: its game file could not be found.";
+            StatusText = game.UnavailableLaunchStatus;
             return;
         }
 
@@ -1068,7 +1161,8 @@ public partial class MainViewModel : ViewModelBase
                     RescanSystemFromSettingsAsync,
                     RescanAllFromSettingsAsync,
                     FetchMetadataForSystemFromSettingsAsync,
-                    FetchAllMetadataFromSettingsAsync),
+                    FetchAllMetadataFromSettingsAsync,
+                    SyncRpcs3LibraryFromSettingsAsync),
                 _metadataPreferences,
                 _retroAccount is null
                     ? null

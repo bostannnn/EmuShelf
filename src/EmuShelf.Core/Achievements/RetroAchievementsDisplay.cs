@@ -10,6 +10,19 @@ public sealed record RetroAchievementsDisplay(bool ShowMark, string ColumnText, 
 {
     public const string Dash = "—";
 
+    /// <summary>Applies the console scope before looking at a locally stored identification link.</summary>
+    public static RetroAchievementsDisplay For(
+        string systemId,
+        bool connected,
+        RetroAchievementsGameLink? link,
+        RetroAchievementsProgressSnapshot? progress)
+    {
+        if (RetroAchievementsConsoles.ForSystem(systemId) is null)
+            return Hidden("This console isn't supported by RetroAchievements.");
+
+        return For(connected, link, progress);
+    }
+
     public static RetroAchievementsDisplay For(
         bool connected,
         RetroAchievementsGameLink? link,

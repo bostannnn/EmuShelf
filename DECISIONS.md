@@ -713,3 +713,38 @@ the stable external entry id; a path collision with an unrelated local row fails
 silently claiming the local row. The read completes before the database transaction begins, so a
 cancelled or unsupported adapter imports nothing. M13 will supply the RPCS3-specific, versioned
 read-only adapter and its explicit Sync action on top of this contract.
+
+## 2026-07-19 — M13 accepts only RPCS3's explicit `games.yml` title-id map
+
+RPCS3's current source writes `games.yml` as a top-level mapping from an exact nine-character
+title id to a game root. EmuShelf's version-1 adapter therefore reads only `games.yml` in the
+configuration directory deliberately selected for each sync; it neither auto-detects RPCS3 nor
+walks PS3 folders. It rejects every other YAML shape, invalid title id, or relative path before
+the source reconciliation starts, with an actionable error and no import. The adapter opens its
+list and optional direct `PARAM.SFO`/`PS3_GAME/PARAM.SFO` only for read sharing; it never writes
+RPCS3 data or game files.
+
+The source title id is retained as the external entry id, providing exact evidence for a later PS3
+cover route rather than a similarity match. A matching listed `PARAM.SFO` can improve the filename
+fallback title as embedded metadata, while the existing source reconciliation continues to protect
+user-edited titles and covers. A later absent source entry is `Source missing`; ordinary path
+availability checks never revive it. Because this is an externally curated source, normal PS3
+file/folder import and folder rescans are disabled. PlayStation 3 also remains outside the
+RetroAchievements console mapping and displays its explicit unsupported state.
+
+## 2026-07-19 — M13 tracks source presence separately from path availability
+
+An entry which remains listed by RPCS3 can still be unavailable because its drive or directory is
+offline; that must display as a missing file rather than falsely claiming that RPCS3 removed it.
+Schema-v10 therefore stores external-source presence separately from path availability. A
+successful source refresh marks returned records present and applies their reported availability;
+only records absent from the returned list become both source-missing and unavailable. The v9
+migration preserves the former display as closely as possible from its single stored availability
+bit, after which the next sync establishes the precise state.
+
+Before a reconciliation writes anything, EmuShelf rejects any source path already owned by a
+different library record. A source path collision is actionable and leaves the existing records
+untouched; silently retaining an old source path would make an outdated game appear launchable.
+Finally, a blank `games.yml` is a valid empty RPCS3 library (as upstream accepts it), not an
+unsupported format. It reconciles as an empty source list while all non-empty unsupported shapes
+continue to fail closed.
