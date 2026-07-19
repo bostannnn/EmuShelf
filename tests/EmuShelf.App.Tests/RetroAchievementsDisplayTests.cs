@@ -14,6 +14,20 @@ public class RetroAchievementsDisplayTests
         Assert.Contains("pending", display.Tooltip);
     }
 
+    [Fact]
+    public void PlayStation3_IsShownAsUnsupportedBeforeAnyAchievementLookup()
+    {
+        var display = RetroAchievementsDisplay.For(
+            "playstation3",
+            connected: true,
+            link: null,
+            progress: null);
+
+        Assert.False(display.ShowMark);
+        Assert.Equal(RetroAchievementsDisplay.Dash, display.ColumnText);
+        Assert.Contains("isn't supported", display.Tooltip);
+    }
+
     [Theory]
     [InlineData(RetroAchievementsIdentificationStatus.NotAttempted, "pending")]
     [InlineData(RetroAchievementsIdentificationStatus.UnsupportedFormat, "isn't supported")]
@@ -39,6 +53,17 @@ public class RetroAchievementsDisplayTests
         Assert.True(display.ShowMark);
         Assert.Equal("12/40", display.ColumnText);
         Assert.Equal("12 of 40 unlocked.", display.Tooltip);
+    }
+
+    [Fact]
+    public void Matched_ZeroAwarded_ShowsMarkAndZeroOverTotal()
+    {
+        var link = Link(RetroAchievementsIdentificationStatus.Hashed, hasAchievements: true);
+        var display = RetroAchievementsDisplay.For(connected: true, link, Progress(total: 40, awarded: 0));
+
+        Assert.True(display.ShowMark); // a matched game shows the mark even before any unlock
+        Assert.Equal("0/40", display.ColumnText);
+        Assert.Equal("0 of 40 unlocked.", display.Tooltip);
     }
 
     [Fact]

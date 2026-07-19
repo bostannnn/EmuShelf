@@ -71,8 +71,11 @@ internal static class GameCubeDiscHasher
             cancellationToken.ThrowIfCancellationRequested();
             var offset = BinaryPrimitives.ReadUInt32BigEndian(
                 dolHeader.AsSpan(index * 4, 4));
-            var remaining = BinaryPrimitives.ReadUInt32BigEndian(
-                dolHeader.AsSpan(0x90 + index * 4, 4));
+            // Wii addresses (offsetShift == 2) are stored in 4-byte units, so a segment's SIZE is
+            // scaled by the same shift as its offset — rcheevos applies wii_shift to dol_sizes too.
+            // (GameCube uses offsetShift 0, leaving both unchanged.)
+            var remaining = (long)BinaryPrimitives.ReadUInt32BigEndian(
+                dolHeader.AsSpan(0x90 + index * 4, 4)) << offsetShift;
             if (remaining == 0)
                 continue;
 
@@ -80,10 +83,10 @@ internal static class GameCubeDiscHasher
             while (remaining > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var count = (int)Math.Min((uint)buffer.Length, remaining);
+                var count = (int)Math.Min(buffer.Length, remaining);
                 ReadExactlyAt(disc, partitionOffset + sectionOffset, buffer.AsSpan(0, count));
                 md5.AppendData(buffer, 0, count);
-                remaining -= (uint)count;
+                remaining -= count;
                 sectionOffset += count;
             }
         }

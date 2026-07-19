@@ -27,6 +27,34 @@ public class RetroAchievementsCatalogueCacheTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task CorruptCache_WithinTtl_RefetchesInsteadOfServingGarbage()
+    {
+        var client = new FakeClient(Catalogue(("abc", 1234, "Spyro", 40)));
+        var cache = new RetroAchievementsCatalogueCache(AppPaths, client);
+        await cache.GetLookupAsync(Console, Credentials, forceRefresh: false, Token);
+        await File.WriteAllTextAsync(CachePath, "{ not valid json", Token);
+
+        var lookup = await cache.GetLookupAsync(Console, Credentials, forceRefresh: false, Token);
+
+        Assert.NotNull(lookup);
+        Assert.Equal(1234, lookup!.Find("abc")!.GameId);
+        Assert.Equal(2, client.GameListCalls); // a corrupt within-TTL cache falls through to a refetch
+    }
+
+    [Fact]
+    public async Task CorruptCache_NoCredentials_ReturnsNullInsteadOfThrowing()
+    {
+        var client = new FakeClient(Catalogue(("abc", 1234, "Spyro", 40)));
+        var cache = new RetroAchievementsCatalogueCache(AppPaths, client);
+        await cache.GetLookupAsync(Console, Credentials, forceRefresh: false, Token);
+        await File.WriteAllTextAsync(CachePath, "{ not valid json", Token);
+
+        var lookup = await cache.GetLookupAsync(Console, credentials: null, forceRefresh: false, Token);
+
+        Assert.Null(lookup); // corrupt cache + no way to refetch degrades to "no catalogue", not a crash
+    }
+
+    [Fact]
     public async Task WithinTtl_SecondCall_DoesNotRefetch()
     {
         var client = new FakeClient(Catalogue(("abc", 1234, "Spyro", 40)));

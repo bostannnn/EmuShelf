@@ -17,13 +17,17 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("playstation", "rcheevos-2ac45d3-playstation-v3")]
     [InlineData("playstation2", "rcheevos-2ac45d3-playstation-v3")]
     [InlineData("gamecube", "rcheevos-2ac45d3-nintendo-v2")]
-    [InlineData("wii", "rcheevos-2ac45d3-nintendo-v2")]
+    [InlineData("wii", "rcheevos-2ac45d3-wii-v3")]
     public void AlgorithmVersion_IsScopedByHashReader(string systemId, string expectedVersion)
     {
         var game = Game(systemId, Path.Combine(BaseDirectory, "game.iso"));
 
         Assert.Equal(expectedVersion, _hasher.GetAlgorithmVersion(game));
-        Assert.True(_hasher.IsAlgorithmVersionCompatible(game, "rcheevos-2ac45d3-disc-v2"));
+        // The corrected Wii reader no longer accepts the pre-split global version; every other
+        // reader is unchanged and still does.
+        Assert.Equal(
+            systemId != "wii",
+            _hasher.IsAlgorithmVersionCompatible(game, "rcheevos-2ac45d3-disc-v2"));
     }
 
     [Theory]
@@ -133,6 +137,31 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Identify_CompressedAndNintendoImages_LeaveSourceBytesAndTimestampUnchanged()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var timestamp = new DateTime(2026, 7, 19, 12, 0, 0, DateTimeKind.Utc);
+
+        var cso = Path.Combine(BaseDirectory, "ps1.cso");
+        File.WriteAllBytes(cso, CompressedIsoBuilder.BuildCso(
+            CreatePlayStationImage("SLUS_007.45", 0x07D800, isPs2: false)));
+        var wii = Path.Combine(BaseDirectory, "wii.iso");
+        File.WriteAllBytes(wii, CreateEncryptedWiiImage());
+
+        foreach (var (path, system) in new[] { (cso, "playstation"), (wii, "wii") })
+        {
+            File.SetLastWriteTimeUtc(path, timestamp);
+            var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+            var result = _hasher.Identify(Game(system, path));
+
+            Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+            Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+            Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+        }
+    }
+
+    [Fact]
     public void Identify_WiiRvz_ReconstructsTheEncryptedPartitionBytes()
     {
         Directory.CreateDirectory(BaseDirectory);
@@ -155,7 +184,9 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
         var result = _hasher.Identify(Game("wii", path));
 
         Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
-        Assert.Equal("a4c7fbc3f6a0aaa953b83c278e0f2c76", result.CanonicalHash);
+        // Cross-checked against rcheevos' own rc_hash_wii on this exact image (decrypted path,
+        // wii_shift = 2). The previous value (a4c7fbc3…) was the pre-fix, non-matching output.
+        Assert.Equal("219e0c0f06918801444e6a24f6a0214a", result.CanonicalHash);
     }
 
     [Fact]
@@ -388,6 +419,7 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("gamecube", ".rvz")]
     [InlineData("wii", ".rvz")]
     [InlineData("playstation3", "")]
+    [InlineData("playstation", ".pbp")] // .pbp is cancelled for RA — never matched, always Unknown
     public void Identify_UnverifiedFormatsRemainUnsupported(
         string systemId,
         string extension)

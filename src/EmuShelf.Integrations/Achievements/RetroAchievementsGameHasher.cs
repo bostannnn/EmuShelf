@@ -24,17 +24,29 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string LegacyGlobalV2 = "rcheevos-2ac45d3-disc-v2";
     // v3 adds cooked CD-CHD and cdfl support. It advances only the affected reader.
     private const string PlayStationAlgorithmV3 = "rcheevos-2ac45d3-playstation-v3";
-    private const string NintendoAlgorithmV2 = "rcheevos-2ac45d3-nintendo-v2";
+    // GameCube's reader is unchanged, so it keeps the original combined-Nintendo version string;
+    // persisted GameCube hashes stay valid and are not needlessly recomputed.
+    private const string GameCubeAlgorithm = "rcheevos-2ac45d3-nintendo-v2";
+    // The Wii decrypted-partition reader was corrected to scale DOL segment sizes by wii_shift
+    // (matching rcheevos); the bump recomputes any hash stored by the earlier, incorrect reader.
+    private const string WiiAlgorithmV3 = "rcheevos-2ac45d3-wii-v3";
 
     public string GetAlgorithmVersion(Game game) => game.SystemId switch
     {
         PlayStationId or PlayStation2Id => PlayStationAlgorithmV3,
-        GameCubeId or WiiId => NintendoAlgorithmV2,
+        GameCubeId => GameCubeAlgorithm,
+        WiiId => WiiAlgorithmV3,
         _ => LegacyGlobalV2,
     };
 
-    public bool IsAlgorithmVersionCompatible(Game game, string persistedVersion) =>
-        persistedVersion == GetAlgorithmVersion(game) || persistedVersion == LegacyGlobalV2;
+    public bool IsAlgorithmVersionCompatible(Game game, string persistedVersion)
+    {
+        if (persistedVersion == GetAlgorithmVersion(game))
+            return true;
+        // The pre-per-system global version stays valid for readers unchanged since, but the Wii
+        // decrypted-partition reader was corrected, so a Wii hash stored under it is recomputed.
+        return persistedVersion == LegacyGlobalV2 && game.SystemId != WiiId;
+    }
 
     public RetroAchievementsSourceSnapshot Inspect(Game game) =>
         InspectInternal(game).Snapshot;

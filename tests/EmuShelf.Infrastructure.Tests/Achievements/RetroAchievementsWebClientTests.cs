@@ -207,6 +207,19 @@ public class RetroAchievementsWebClientTests
     }
 
     [Fact]
+    public async Task CancelledToken_PropagatesCancellation_NotOffline()
+    {
+        // A caller's cancellation must surface as cancellation, not be swallowed as an offline
+        // (transport-failure) result, so the coordinator/services can tell the two apart.
+        var client = Client(Ok("{}"));
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => client.GetUserProfileAsync(Credentials, cts.Token));
+    }
+
+    [Fact]
     public async Task ApiKey_IsSentInQuery_ButNeverLogged()
     {
         var handler = new StubHandler
