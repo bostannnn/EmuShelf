@@ -7,6 +7,33 @@ SHA-256 file, extract `EmuShelf-win-x64.zip` to a writable folder, and run
 Record the Windows version, artifact commit, emulator versions, and any failure's
 matching file from `EmuShelf/Logs/`.
 
+## M20 expansion release-run record
+
+Complete this record before marking a run below as passed. Use the exact release or
+nightly build displayed by each emulator/core, not a channel name such as `latest`.
+Record only file names and versions here; do not put account names, tokens, or other
+credentials in this checklist.
+
+| Run date / artifact commit | Windows edition and version | Portable-folder location | Result / log reference |
+| --- | --- | --- | --- |
+|  |  |  |  |
+
+For each expansion-system run, record the executable and core actually selected in
+Settings. A file extension alone is not sufficient: the input must meet the stated
+read-only import contract.
+
+| System | Executable / core selected | Exact emulator/core version or build | Supported input exercised | Pass / fail |
+| --- | --- | --- | --- | --- |
+| PlayStation 3 | `rpcs3.exe` (no core) |  | `games.yml`-listed installed or disc/directory entry; generic file/folder import is unsupported |  |
+| PSP | `PPSSPP*.exe` |  | `.iso` and `.cso` with readable `PSP_GAME/PARAM.SFO` |  |
+| Mega Drive / Genesis | `retroarch.exe` + selected core |  | Header-valid raw `.md`, `.gen`, or `.bin`, or canonical copier/interleaved `.smd` |  |
+| Nintendo DS | `retroarch.exe` + selected core |  | Header-valid raw `.nds` only |  |
+| Game Boy Advance | `retroarch.exe` + selected core |  | Header-valid raw `.gba` only |  |
+
+Do not mark unsupported archives, PSP CHD/PBP, DS DSi-exclusive or copier-header
+images, or GBA headered/copier images as a successful format run. They must remain
+rejected or visibly unmatched as specified below.
+
 ## Portable startup and persistence
 
 - [ ] EmuShelf starts without requiring a separately installed .NET runtime.
@@ -123,3 +150,54 @@ matching file from `EmuShelf/Logs/`.
       exit is reported, and neither RPCS3 data nor game files are written by EmuShelf.
 - [ ] Confirm PlayStation 3 displays RetroAchievements as unsupported and does not perform
       RetroAchievements identification or matching.
+
+## M19 exact covers and RetroAchievements
+
+- [ ] With metadata consent enabled, fetch missing metadata for one verified PS3, PSP, Mega Drive /
+      Genesis, Nintendo DS, and Game Boy Advance entry. Confirm the canonical title and cover are
+      applied only after an exact Redump/No-Intro match, downloaded art is under portable `Covers/`,
+      and the source game/RPCS3 data remains unchanged. A deliberately absent cover must leave the
+      existing placeholder/manual cover intact.
+- [ ] While a cover request is pending, manually choose a cover for the same game. Confirm the
+      manual cover wins and the temporary downloaded file is removed. Disconnect the network or
+      provoke a provider error and confirm cached/manual covers remain visible with no retry loop.
+- [ ] Connect a test RetroAchievements account, then identify and refresh one accepted PSP ISO/CSO,
+      Mega Drive raw/SMD ROM, Nintendo DS ROM, and GBA ROM. Confirm each consults its own console
+      catalogue (PSP 41, Mega Drive 1, DS 18, GBA 5); an archive, headered/unknown layout, or stale
+      catalogue miss must stay unknown rather than display `No achievements`.
+- [ ] Launch the same supported PSP and RetroArch/core games with achievement unlocking enabled in
+      the emulator, then exit normally. Confirm EmuShelf only refreshes cached read-only progress;
+      it must not alter the game, PPSSPP, RetroArch configuration, account credentials, overrides,
+      playlists, or achievement settings. Change/disconnect the account during the post-exit delay
+      and confirm stale progress is not saved to the new account.
+
+## M20 expansion release acceptance
+
+- [ ] Start from a newly extracted artifact with no portable data folders. Confirm the empty
+      library is useful and free of unhandled errors, then cancel each Add Game/Add Folder picker
+      and the RPCS3-configuration-folder picker before a source sync begins. Confirm the cancelled
+      operations add no partial rows, change no manual metadata, trigger no unexpected network
+      fetch, and leave pre-existing source-owned PS3 rows intact until a subsequent successful sync.
+- [ ] Exercise the explicit RPCS3 source path (including blank, malformed, and missing `games.yml`),
+      an ordinary missing-file record, and an external-drive record. Confirm source-owned PS3 rows
+      show `Source missing`, ordinary rows show `File missing`, neither launches while unavailable,
+      and both recover only through their appropriate refresh/sync path.
+- [ ] Repeat imports, metadata/cover fetching, and configured launches with spaces in every portable
+      folder, executable/core path, and supported content path. Move the complete portable folder to
+      a different drive/location, reconnect an external content drive, and confirm relative paths,
+      cover cache/placeholder behavior, and availability survive without rewriting game or emulator
+      data.
+- [ ] With no executable, no RetroArch core, a missing selected executable/core, a directory passed
+      as content, and a malformed launch template, confirm each preflight failure is actionable and
+      leaves EmuShelf visible. Then perform one normal and one non-zero launch for PPSSPP, RPCS3,
+      and each configured RetroArch system; EmuShelf must minimize only after a valid start, restore
+      after exit, and write the outcome to the portable log.
+- [ ] During an exact metadata cover request, assign a manual title and cover. Confirm the manual
+      values survive completion, rescan, source sync, restart, and the move above; an unavailable
+      provider or missing cover must retain the placeholder/manual cover rather than retrying
+      indefinitely.
+- [ ] On a real Windows run, connect a test RetroAchievements account and use one validated PSP
+      image plus one validated Mega Drive / Genesis, Nintendo DS, or Game Boy Advance image. Enable
+      unlocking/submission only in PPSSPP or the selected RetroArch core, unlock an achievement,
+      then exit. Confirm EmuShelf refreshes only its cached read-only progress and PS3 still states
+      that RetroAchievements is unsupported.

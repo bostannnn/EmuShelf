@@ -4,7 +4,8 @@ A lightweight, portable game-library frontend for external emulators, inspired b
 
 EmuShelf organizes PlayStation, PlayStation 2, PlayStation 3, PSP, Mega Drive / Genesis, Nintendo DS, Game Boy Advance, GameCube, and Wii games in a cover-grid library and launches them in separately installed emulators (DuckStation, PCSX2, RPCS3, PPSSPP, RetroArch, and Dolphin). PSP currently accepts standalone ISO and CSO images with a readable `PSP_GAME/PARAM.SFO`. Mega Drive / Genesis accepts header-proven `.md`, `.gen`, and `.bin` ROMs plus canonical copier/interleaved `.smd` dumps. Nintendo DS accepts header-validated raw `.nds` ROMs, and Game Boy Advance accepts header-validated raw `.gba` ROMs; archives, copier-header variants, and other containers remain deliberately unsupported until they have a tested read-only normalization path. PlayStation 3 imports only from an explicitly selected RPCS3 game library. EmuShelf performs no emulation itself, stores all user data beside the executable, and never modifies game files. Optional metadata enrichment can fetch canonical titles and individual covers after the user opts in; no artwork library is bundled.
 
-**Status:** Windows validation candidate. Automated builds and tests pass; real-Windows acceptance is the remaining M8 gate.
+**Status:** Windows validation candidate. Automated builds and tests pass; the remaining work is
+the real-Windows acceptance gates for the expansion platforms and release (M13–M20).
 
 - Product scope: [docs/design-document.pdf](docs/design-document.pdf)
 - Metadata enrichment and new-platform guide: [docs/metadata-enrichment.md](docs/metadata-enrichment.md)
