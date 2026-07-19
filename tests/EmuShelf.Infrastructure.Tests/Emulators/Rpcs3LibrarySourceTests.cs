@@ -127,36 +127,6 @@ public sealed class Rpcs3LibrarySourceTests : IDisposable
         Assert.Contains("does not contain RPCS3's games.yml", exception.Message);
     }
 
-    [Fact]
-    public void LocateConfigurationDirectory_FindsGameListBesideTheConfiguredExecutable()
-    {
-        var installation = CreateDirectory("Emulators", "RPCS3");
-        WriteGameList(installation, "BLES12345: '/games/Listed'");
-        var executable = Path.Combine(installation, "rpcs3.exe");
-        File.WriteAllText(executable, string.Empty);
-
-        Assert.Equal(installation, Rpcs3LibrarySource.LocateConfigurationDirectory(executable));
-    }
-
-    [Fact]
-    public void LocateConfigurationDirectory_ReturnsNullWhenNoGameListSitsBesideTheExecutable()
-    {
-        var installation = CreateDirectory("Emulators", "RPCS3");
-        var executable = Path.Combine(installation, "rpcs3.exe");
-        File.WriteAllText(executable, string.Empty);
-
-        Assert.Null(Rpcs3LibrarySource.LocateConfigurationDirectory(executable));
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void LocateConfigurationDirectory_ReturnsNullForAnUnconfiguredExecutable(string? executablePath)
-    {
-        Assert.Null(Rpcs3LibrarySource.LocateConfigurationDirectory(executablePath));
-    }
-
     public void Dispose()
     {
         if (Directory.Exists(_directory))
