@@ -937,3 +937,67 @@ Before it clamps `PARAM.SFO` or `EBOOT.BIN` to its declared ISO9660 size, pinned
 the file's first 2048-byte logical sector to be complete. M19 does the same: a disk truncated within
 that sector is invalid media, not a candidate hash. Later short reads remain conservatively rejected
 as well, so malformed PSP images cannot produce a potentially non-parity catalogue lookup.
+
+## 2026-07-19 — RetroArch core selection lists only adjacent installed cores
+
+The Settings core selector now lists `.dll`, `.dylib`, and `.so` core binaries directly under the
+`cores/` directory beside the configured RetroArch executable. The user still explicitly chooses
+one default core per system; EmuShelf never guesses a core, searches elsewhere on disk, downloads
+or updates a core, or changes RetroArch configuration, overrides, playlists, or achievement settings.
+This replaces the manual file-path requirement after Windows acceptance testing showed it was an
+unexpected obstacle for a normal portable RetroArch installation.
+
+## 2026-07-19 — Existing downloaded artwork remains partial metadata
+
+Metadata summaries distinguish an actually unmatched game from a game that already has a downloaded
+cover but lacks an exact catalog title match. Re-running enrichment must preserve that distinction:
+the former is reported as unmatched, while the latter remains partial metadata and is not falsely
+reported as a missing cover. This keeps manual/filename artwork fallbacks useful without obscuring
+the remaining catalog-title gap.
+
+## 2026-07-19 — Nintendo DS cover frames use the provider's wide case artwork
+
+The shared cover grid keeps one stable width-to-height frame per system, but Nintendo DS
+Libretro named boxarts are broad DS-case scans rather than the portrait disc-case images
+used by GameCube, Wii, PlayStation, and Mega Drive. Windows acceptance data measured a
+1.115 median ratio across 40 downloaded DS covers, so the DS frame uses that ratio rather
+than the 0.708 portrait default. Exact catalog titles may replace embedded media headers,
+which are evidence rather than user edits and often contain short internal identifiers;
+manual titles remain immutable.
+
+## 2026-07-19 — Core filtering only narrows adjacent installed choices
+
+RetroArch installations can contain many cores, so every core-aware settings card exposes an
+always-visible case-insensitive filter over the adjacent `cores/` directory listing. The filter
+does not infer a core from the system, change the existing selected core, search elsewhere on disk,
+or download anything; the user still explicitly chooses the per-system core.
+
+## 2026-07-19 — GBA filenames are the unmatched presentation fallback
+
+GBA cartridge headers remain authoritative local evidence for the exact SHA-1 and four-character
+game code, but their short internal titles are not reliable library labels for translations and ROM
+hacks. GBA imports therefore present the filename until an exact catalog match supplies a canonical
+title. A rescan repairs only prior embedded-header titles; catalog and user-edited titles remain
+unchanged.
+
+## 2026-07-19 — Cartridge headers identify DS and GBA ROMs, not their library labels
+
+Nintendo DS and Game Boy Advance header titles can be abbreviated or retain the title of an
+unmodified base game. Both integrations therefore persist only their game code and exact checksum
+as header evidence, present the filename initially, and let an exact catalog match replace it with
+a canonical title. The shared import reconciliation upgrades only old embedded-header titles, never
+catalog or user-edited titles. Rich embedded metadata from other formats, such as PSP `PARAM.SFO`,
+continues to be presented when available.
+
+Future cartridge integrations use the same shared import helper, which deliberately returns no
+presentation title. This makes filename-first display the default for systems such as SNES while
+retaining their header identifiers for exact matching; a future format with genuinely rich embedded
+metadata must opt in explicitly rather than inheriting abbreviated header-title display.
+
+## 2026-07-19 — PSP cover frames use the provider's tall scan ratio
+
+The shared cover grid keeps one stable width-to-height frame per system. Eleven PSP thumbnails
+downloaded during Windows acceptance measured a `0.581` median ratio, so PSP uses that tall case
+frame rather than the `0.708` DVD-case default. This is presentation-only; the shared metadata
+pipeline continues to rely on exact serial matches before attempting canonical and filename
+thumbnail titles.

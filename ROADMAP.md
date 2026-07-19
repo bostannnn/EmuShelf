@@ -82,11 +82,12 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 - [x] Put RetroAchievements game identification behind a Core interface and evaluate the
       official `rcheevos` hash implementation rather than matching by title, filename, or
       emulator-private data. Record the dependency/version/license decision before it lands.
-- [ ] Prove exact hash matches with fixtures for every currently imported format: PS1
-      (`.cue`, `.chd`, `.m3u`, `.pbp`, `.iso`), PS2 (`.cue`, `.bin`, `.iso`, `.chd`,
-      `.cso`, `.m3u`), and GameCube/Wii (`.iso`, `.rvz`, `.wbfs`, `.gcm`, `.ciso`).
-      Raw/CUE media can use the stock disc reader; compressed containers need compatible
-      logical-disc reader adapters and must not silently fall back to whole-file MD5.
+- [x] Prove exact hash matches with fixtures for every supported imported format: PS1
+      (`.cue`, `.chd`, `.m3u`, `.iso`), PS2 (`.cue`, `.bin`, `.iso`, `.chd`, `.cso`, `.m3u`), and
+      GameCube/Wii (`.iso`, `.rvz`, `.wbfs`, `.gcm`, `.ciso`). Raw/CUE media use the stock disc
+      reader; compressed containers use compatible logical-disc reader adapters and never silently
+      fall back to whole-file MD5. `.pbp` is cancelled for RetroAchievements (see below): it stays
+      importable and launchable but is never RA-matched, so it shows `Unknown`.
   - [x] Add official-vector parity fixtures and readers for PS1/PS2 cooked ISO/BIN,
         ordinary CUE/BIN (2048- and 2352-byte sectors), M3U entries resolving to those
         media, and GameCube ISO/GCM. Fixtures now execute and pass: each expected MD5 is the
@@ -107,8 +108,11 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
         exceptions) before hashing, with a fixture covering that reconstruction. Malformed
         images, already-decrypted Wii RVZ images, and RVZ files using an unverified codec remain
         `UnsupportedFormat`; no format falls back to a whole-file hash.
-  - [ ] **Paused (2026-07-18).** `.pbp` remains outside the verified gate. It is the next small
-        reader slice; all unsupported formats continue to show `Unknown`, never `No`.
+  - [x] **Cancelled (2026-07-19).** `.pbp` RetroAchievements support is dropped: rcheevos hashes
+        `.pbp` as a PSP whole-file (its CD reader cannot extract a PS1-in-PBP disc), so a PS1 `.pbp`
+        hash cannot be cross-checked against rcheevos the way every other format was. Shipping an
+        unverifiable reader would risk a silent no-match — the failure mode this feature forbids —
+        so `.pbp` stays importable and launchable but is never RA-matched; it shows `Unknown`.
 - [ ] Make the supported-format result an explicit gate: ship only formats with verified
       parity on Windows and macOS, and present all other cases as `Unknown`, never `No`.
       PlayStation 3 is out of scope because RetroAchievements has no PS3 console id.
@@ -211,14 +215,19 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 7. Verification and acceptance
 
-- [ ] Add deterministic fixture tests for every promised hash/container format and M3U/CUE
-      dependency invalidation. Tests must verify source file bytes and timestamps are unchanged.
-- [ ] Add client/cache tests for valid and invalid credentials, redaction, offline startup,
-      stale-while-revalidate, cancellation, corrupt cache, 429 `Retry-After`, server errors,
-      duplicate requests, and account switching.
-- [ ] Add headless UI tests for the `unlocked / total`-or-`—` column semantics (including the
-      `0 / total` match case and each tooltip reason behind a `—`), cached progress, popup states,
-      and post-session refresh. Keep `dotnet build` and `dotnet test` green on macOS and Windows.
+- [x] Deterministic fixture tests cover every verified hash/container format (PS1/PS2 cooked
+      ISO/BIN, CUE/BIN 2048/2352, M3U, CHD, CSO/ZSO; GameCube ISO/GCM/CISO/WBFS/RVZ; encrypted and
+      decrypted Wii ISO/CISO/WBFS/RVZ), the four PS1 boot edge cases, and M3U/CUE dependency
+      invalidation. Nintendo/PlayStation vectors are cross-checked against rcheevos' own algorithm
+      (the decrypted-Wii mismatch this surfaced is fixed), and a test asserts source bytes and
+      timestamps are unchanged for compressed and Nintendo images.
+- [x] Client/cache tests cover valid/invalid credentials, key redaction, offline/stale-while-
+      revalidate cache serving, cancellation, corrupt cache (refetch or degrade to null),
+      429 `Retry-After`, server-error backoff, duplicate-request coalescing, and account switching.
+- [x] Headless/view-model tests cover the `unlocked / total`-or-`—` column semantics (including
+      `0 / total` and each `—` tooltip reason), cached progress, popup states, and post-session
+      refresh. `dotnet build`/`dotnet test` are green on macOS; the Windows run remains part of the
+      real-hardware acceptance below.
 - [ ] On real Windows, connect a test RA account and verify one supported game in DuckStation,
       PCSX2, and Dolphin: EmuShelf identifies it before launch, the emulator performs the
       unlock, and EmuShelf reflects the new progress after process exit without writing to the
@@ -355,15 +364,17 @@ RetroArch is a shortcut launcher with one necessary per-system choice: the defau
 Libretro core. It is not a core manager and EmuShelf will not edit RetroArch configuration,
 core options, overrides, playlists, or achievements settings.
 
-- [x] Configure one shared RetroArch executable plus one manually selected default core for
-      each of Mega Drive / Genesis, Nintendo DS, and Game Boy Advance. Keep the choice at
-      system scope, not a prompt at every launch and not a per-game setting.
+- [x] Configure one shared RetroArch executable plus one per-system default core selected from
+      a dropdown of installed core binaries beside that executable. Keep the choice at system
+      scope, not a prompt at every launch and not a per-game setting.
 - [x] Launch content through the explicit core-and-content argv form (`-L {CorePath}` plus
       `{GamePath}`), so several compatible installed cores cannot produce an ambiguous or
       different launch. Continue to use argument arrays, never a shell string.
-- [x] Show the configured core's file name and a clear replace/clear action in Settings;
+- [x] Show installed cores in a dropdown, retain the configured core's file name, and allow
+      clearing the selection in Settings;
       reject a missing core, unsupported selected content, or malformed template before
-      minimizing EmuShelf. Do not scan RetroArch's installation to infer or download cores.
+      minimizing EmuShelf. Scan only the adjacent `cores/` directory; never download or alter
+      RetroArch cores, configuration, overrides, playlists, or achievements settings.
 - [x] Prove a shared portable RetroArch installation can move with EmuShelf and the library;
       verify each platform's core is invoked, saved RetroArch overrides remain untouched, and
       EmuShelf restores after the process exits.
@@ -459,3 +470,66 @@ it must not create a second downloader, account flow, or background polling mech
       reader can locate and validate `PSP_GAME/PARAM.SFO`, preserve exact `DISC_ID` evidence,
       launch it with a verified PPSSPP release, and prove read-only source bytes/timestamps with
       ISO/CSO parity and malformed-container fixtures. Do not treat a CHD as an opaque PSP file.
+- [ ] Run the opt-in `chdman` CD-decode test on Windows CI/dev. `ChdSectorSourceTests`
+      `CompressedCd_CookedFrameBytes_AreNotOffsetAsRawHeaders_WhenChdmanAvailable` now skips
+      cleanly when `chdman` is absent (fixed 2026-07-19); provision a pinned `chdman` (from MAME
+      tools) so the CD framing path is actually exercised on Windows rather than only skipped.
+
+## M22 — Drag-and-drop library import (planned)
+
+- [ ] Accept dropped individual files and folders in the library view using the same read-only,
+      system-aware import path as Add Game and Add Folder. Support multi-item drops, recurse only
+      through explicitly dropped folders, and ignore unsupported files without changing them.
+- [ ] When a dropped file is compatible with multiple systems, preserve the existing explicit
+      system-selection flow instead of guessing from its extension. Surface accepted, skipped, and
+      failed items clearly; a cancelled selection must leave no partial library changes.
+- [ ] Exercise paths containing spaces, mixed valid/invalid drops, duplicate entries, unavailable
+      external-drive content, portable relocation, metadata consent, and cover-placeholder behavior
+      with focused view-model/import fixtures. Keep drag-and-drop wiring out of code-behind business
+      logic and never block the UI while scanning a folder.
+
+## M23 — Achievement view filtering and sorting (planned)
+
+- [ ] Add composable achievement filters for unlocked and locked state, including an explicit
+      unknown/unavailable state so games that have not been matched are never presented as locked.
+- [ ] Add accessible, consistent color coding for unlocked, locked, and unknown/unavailable
+      achievements, with text and icon/state cues that preserve the distinction in high-contrast,
+      dark, and light appearances rather than relying on color alone.
+- [ ] Add deterministic sorting by unlock date, unlock percentage, and the existing display order.
+      Define null/zero-total behavior and stable tie-breakers so cached, offline, and partial
+      achievement data remain predictable.
+- [ ] Keep filtering and sorting in the achievement view model over cached read-only data; do not
+      create background polling or mutate emulator, game, or RetroAchievements account data. Add
+      headless tests for combined filters, sort directions, state transitions, and empty results.
+
+## M24 — UI polish and product-quality pass (planned)
+
+- [ ] Establish a cohesive visual system for typography, spacing, color, elevation, controls,
+      platform shelves, and cover treatment. Apply it consistently to the library, game details,
+      Settings, metadata, and RetroAchievements views without importing OpenEmu branding or
+      unlicensed artwork.
+- [ ] Refine high-frequency flows so the first launch, empty library, scanning/import progress,
+      selection, search, filtering, unavailable games, metadata failures, and launch/preflight
+      errors feel deliberate and understandable rather than like developer states.
+- [ ] Improve layout responsiveness and accessibility: keyboard navigation and visible focus,
+      screen-reader labels, readable contrast in light/dark/follow-system modes, sensible scaling,
+      and polished grid/list virtualization at small and large window sizes.
+- [ ] Add focused UI/view-model coverage and visual regression/manual acceptance checks for every
+      refined state. Keep business behavior in view models and services; code-behind remains view
+      wiring only.
+
+## M25 — Multi-select and bulk library actions (planned)
+
+Surfaced during the Windows GUI pass (2026-07-19): the library is single-select only and
+Remove works one game at a time, so clearing or pruning a library is tedious.
+
+- [ ] Add multi-selection to both the cover grid and the list view: Ctrl/Cmd-click to toggle,
+      Shift-click to range-select, and Ctrl/Cmd+A to select every game in the current collection.
+      Keep the selection model in the view model over the existing `IsSelected`/`SelectedGame`
+      state; code-behind stays gesture wiring only.
+- [ ] Add a bulk "Remove selected" action (context menu + Delete key) with a single confirmation
+      that states the count. Removal touches only EmuShelf's database rows — never the game files
+      or covers — and leaves the selection empty and the view refreshed afterward.
+- [ ] Add headless view-model tests for toggle/range/select-all across grid and list, selection
+      surviving (or clearing on) collection reloads, and bulk remove of a mixed available/missing
+      selection. Keep `dotnet build`/`dotnet test` green on macOS and Windows.
