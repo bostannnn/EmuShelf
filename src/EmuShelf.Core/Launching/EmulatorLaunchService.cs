@@ -112,17 +112,19 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                     $"Cannot launch {game.Title}: the configured {emulator.Name} core was not found.");
             }
 
-            var launchArguments = configuration.LaunchArguments ?? emulator.DefaultLaunchArguments;
-            if (!ArgumentTemplate.ContainsPlaceholder(launchArguments, "CorePath"))
-            {
-                return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: the launch arguments for {emulator.Name} must include {{CorePath}}.");
-            }
         }
 
+        var launchArguments = configuration.LaunchArguments ?? emulator.DefaultLaunchArguments;
         try
         {
-            var launchArguments = configuration.LaunchArguments ?? emulator.DefaultLaunchArguments;
+            if (emulator.RequiresCorePath &&
+                !ArgumentTemplate.HasExplicitCoreAndContentForm(launchArguments))
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: the launch arguments for {emulator.Name} must use " +
+                    "-L {CorePath} followed by {GamePath}.");
+            }
+
             return new LaunchPreparation(
                 emulator.Name,
                 executablePath,

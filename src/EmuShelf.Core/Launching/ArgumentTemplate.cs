@@ -8,9 +8,36 @@ namespace EmuShelf.Core.Launching;
 /// </summary>
 public static class ArgumentTemplate
 {
-    /// <summary>Returns whether a template contains one documented placeholder.</summary>
-    public static bool ContainsPlaceholder(string template, string placeholder) =>
-        template.Contains($"{{{placeholder}}}", StringComparison.Ordinal);
+    /// <summary>
+    /// Returns whether a template uses the unambiguous Libretro core-and-content form. Additional
+    /// emulator options may appear before or after this three-argument sequence.
+    /// </summary>
+    public static bool HasExplicitCoreAndContentForm(string template)
+    {
+        var arguments = Tokenize(template);
+        var coreIndex = -1;
+        var coreCount = 0;
+        var gameCount = 0;
+        for (var index = 0; index < arguments.Count; index++)
+        {
+            if (arguments[index] == "{CorePath}")
+            {
+                coreIndex = index;
+                coreCount++;
+            }
+            else if (arguments[index] == "{GamePath}")
+            {
+                gameCount++;
+            }
+        }
+
+        return coreCount == 1 &&
+               gameCount == 1 &&
+               coreIndex > 0 &&
+               arguments[coreIndex - 1] == "-L" &&
+               coreIndex + 1 < arguments.Count &&
+               arguments[coreIndex + 1] == "{GamePath}";
+    }
 
     public static IReadOnlyList<string> Expand(
         string template,

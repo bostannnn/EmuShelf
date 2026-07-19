@@ -170,13 +170,18 @@ public class EmulatorLaunchServiceTests : IDisposable
         Assert.True(_frontend.WasRestored);
     }
 
-    [Fact]
-    public async Task LaunchAsync_RequiresCorePathPlaceholderBeforeMinimizing()
+    [Theory]
+    [InlineData("\"{GamePath}\"")]
+    [InlineData("-L \"{CorePath}\"")]
+    [InlineData("\"{CorePath}\" \"{GamePath}\"")]
+    [InlineData("-L \"{GamePath}\" \"{CorePath}\"")]
+    public async Task LaunchAsync_RequiresExplicitCoreAndContentTemplateBeforeMinimizing(
+        string launchArguments)
     {
         var game = CreateGameFile("game.gba", "core-system");
         var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
         var core = CreateGameFile("RetroArch/cores/mgba_libretro.dll", "core-system").Path;
-        _configurations.Configuration = new(game.SystemId, executable, "\"{GamePath}\"")
+        _configurations.Configuration = new(game.SystemId, executable, launchArguments)
         {
             CorePath = core,
         };
@@ -185,7 +190,7 @@ public class EmulatorLaunchServiceTests : IDisposable
         var result = await service.LaunchAsync(game);
 
         Assert.False(result.Succeeded);
-        Assert.Contains("must include {CorePath}", result.StatusText);
+        Assert.Contains("must use -L {CorePath} followed by {GamePath}", result.StatusText);
         Assert.False(_frontend.WasMinimized);
         Assert.False(_runner.WasRun);
     }

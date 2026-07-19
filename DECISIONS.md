@@ -803,3 +803,12 @@ M16–M18. The configured core is always explicit and per system, while the exec
 one shared portable installation. Settings presents the core file name plus Replace and Clear
 actions; it never scans the RetroArch installation or changes its configuration, overrides,
 playlists, achievements settings, or cores.
+
+## 2026-07-19 — M15 pins the RetroArch template's core-and-content sequence
+
+For a core-aware launcher, merely containing `{CorePath}` is not enough: a user template could
+otherwise start RetroArch without content or make the core path itself look like content. M15
+therefore accepts one `{CorePath}` only when its token is immediately preceded by `-L` and immediately
+followed by the one `{GamePath}` token. Other options may surround that three-token sequence, but
+cannot duplicate or substitute either path. Invalid, reordered, missing, or syntactically malformed
+templates fail before the frontend minimizes.

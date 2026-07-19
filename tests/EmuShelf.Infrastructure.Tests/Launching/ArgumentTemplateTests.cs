@@ -72,6 +72,20 @@ public class ArgumentTemplateTests : IDisposable
     }
 
     [Theory]
+    [InlineData("-L \"{CorePath}\" \"{GamePath}\"", true)]
+    [InlineData("--fullscreen -L \"{CorePath}\" \"{GamePath}\" --verbose", true)]
+    [InlineData("\"{CorePath}\" \"{GamePath}\"", false)]
+    [InlineData("-L \"{CorePath}\"", false)]
+    [InlineData("-L \"{GamePath}\" \"{CorePath}\"", false)]
+    [InlineData("-L \"{CorePath}\" \"{GamePath}\" \"{GamePath}\"", false)]
+    public void HasExplicitCoreAndContentForm_RequiresOneOrderedCoreAndContentPair(
+        string template,
+        bool expected)
+    {
+        Assert.Equal(expected, ArgumentTemplate.HasExplicitCoreAndContentForm(template));
+    }
+
+    [Theory]
     [InlineData("\"{GamePath}")]
     [InlineData("{Unknown}")]
     [InlineData("{GamePath")]
