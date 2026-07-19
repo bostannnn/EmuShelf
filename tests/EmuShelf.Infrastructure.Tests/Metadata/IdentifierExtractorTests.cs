@@ -3,6 +3,7 @@ using System.Text;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
 using EmuShelf.Integrations.Metadata;
+using EmuShelf.Infrastructure.Tests.Importing;
 
 namespace EmuShelf.Infrastructure.Tests.Metadata;
 
@@ -189,6 +190,64 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal("471EE01E97220D35105CC5E9FB2F03765623CD05", identifier.Value);
         Assert.Equal("Mega Drive normalized ROM", identifier.Source);
         Assert.True(identifier.IsPrimary);
+    }
+
+    [Fact]
+    public void NintendoDsProfile_UsesOnlyRawRomSha1ForCataloguesAndDefersArtwork()
+    {
+        var path = Path.Combine(BaseDirectory, "Misleading DS title.nds");
+        File.WriteAllBytes(path, NintendoDsRomReaderTests.CreateRomFixture("Header title", "ABCE"));
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "nds");
+
+        var identifiers = profile.IdentifierExtractor.Extract(NewGame("nds", path));
+
+        Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Empty(profile.ArtworkProviders);
+        Assert.Collection(
+            identifiers,
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
+                Assert.Equal("ABCE", identifier.Value);
+                Assert.False(identifier.IsPrimary);
+            },
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
+                Assert.True(identifier.IsPrimary);
+            });
+    }
+
+    [Fact]
+    public void GameBoyAdvanceProfile_UsesOnlyRawRomSha1ForCataloguesAndDefersArtwork()
+    {
+        var path = Path.Combine(BaseDirectory, "Misleading GBA title.gba");
+        File.WriteAllBytes(path, GameBoyAdvanceRomReaderTests.CreateRomFixture("Header title", "ABCE"));
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "gba");
+
+        var identifiers = profile.IdentifierExtractor.Extract(NewGame("gba", path));
+
+        Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Empty(profile.ArtworkProviders);
+        Assert.Collection(
+            identifiers,
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
+                Assert.Equal("ABCE", identifier.Value);
+                Assert.False(identifier.IsPrimary);
+            },
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
+                Assert.True(identifier.IsPrimary);
+            });
     }
 
     [Fact]

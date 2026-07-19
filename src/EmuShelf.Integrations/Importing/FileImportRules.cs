@@ -7,7 +7,8 @@ namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
 /// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
-/// Mega Drive / Genesis, GameCube, and Wii. PS3 remains directory-based and is intentionally absent.
+/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, GameCube, and Wii. PS3 remains
+/// directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
 {
@@ -15,6 +16,8 @@ public sealed class FileImportRules : IGameImportRules
     private const string PlayStation2Id = "playstation2";
     private const string PspId = "psp";
     private const string MegaDriveId = "megadrive";
+    private const string NintendoDsId = "nds";
+    private const string GameBoyAdvanceId = "gba";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
 
@@ -31,6 +34,10 @@ public sealed class FileImportRules : IGameImportRules
             // The extension is only a routing hint: the reader requires the Sega header and,
             // for .smd, the canonical 512-byte copier-header/interleaved layout.
             [MegaDriveId] = new(StringComparer.OrdinalIgnoreCase) { ".md", ".gen", ".bin", ".smd" },
+            // These are raw, header-validated cartridge images only. Archives and converted
+            // layouts need their own read-only normalization contracts before they can join.
+            [NintendoDsId] = new(StringComparer.OrdinalIgnoreCase) { ".nds" },
+            [GameBoyAdvanceId] = new(StringComparer.OrdinalIgnoreCase) { ".gba" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
@@ -65,6 +72,12 @@ public sealed class FileImportRules : IGameImportRules
             : null;
         var megaDriveLayout = ExtensionsBySystem[MegaDriveId].Contains(extension)
             ? MegaDriveRomReader.TryRecognize(path)
+            : null;
+        var nintendoDsHeader = ExtensionsBySystem[NintendoDsId].Contains(extension)
+            ? NintendoDsRomReader.TryRecognize(path)
+            : null;
+        var gameBoyAdvanceHeader = ExtensionsBySystem[GameBoyAdvanceId].Contains(extension)
+            ? GameBoyAdvanceRomReader.TryRecognize(path)
             : null;
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
@@ -101,6 +114,12 @@ public sealed class FileImportRules : IGameImportRules
             {
                 PspId => pspEvidence is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible,
                 MegaDriveId => megaDriveLayout is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                NintendoDsId => nintendoDsHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                GameBoyAdvanceId => gameBoyAdvanceHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
@@ -143,6 +162,10 @@ public sealed class FileImportRules : IGameImportRules
         var extension = Path.GetExtension(path);
         if (system.Id == MegaDriveId)
             return MegaDriveRomReader.TryRecognize(path) is not null;
+        if (system.Id == NintendoDsId)
+            return NintendoDsRomReader.TryRecognize(path) is not null;
+        if (system.Id == GameBoyAdvanceId)
+            return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
@@ -222,6 +245,22 @@ public sealed class FileImportRules : IGameImportRules
                     IsPrimary: true)]);
         }
 
+        if (system.Id == NintendoDsId && NintendoDsRomReader.TryRead(path) is { } nintendoDsEvidence)
+            return CreateCartridgeMetadata(
+                nintendoDsEvidence.Title,
+                nintendoDsEvidence.GameCode,
+                "Nintendo DS header",
+                nintendoDsEvidence.Sha1,
+                "Nintendo DS ROM");
+
+        if (system.Id == GameBoyAdvanceId && GameBoyAdvanceRomReader.TryRead(path) is { } gameBoyAdvanceEvidence)
+            return CreateCartridgeMetadata(
+                gameBoyAdvanceEvidence.Title,
+                gameBoyAdvanceEvidence.GameCode,
+                "Game Boy Advance header",
+                gameBoyAdvanceEvidence.Sha1,
+                "Game Boy Advance ROM");
+
         if (system.Id != PspId || PspGameMetadataReader.TryRead(path) is not { } evidence)
             return GameImportMetadata.Empty;
 
@@ -233,6 +272,29 @@ public sealed class FileImportRules : IGameImportRules
                 "PSP PARAM.SFO",
                 IsPrimary: true)];
         return new GameImportMetadata(evidence.Title, identifiers);
+    }
+
+    private static GameImportMetadata CreateCartridgeMetadata(
+        string? title,
+        string? gameCode,
+        string gameCodeSource,
+        string sha1,
+        string sha1Source)
+    {
+        var identifiers = new List<GameIdentifier>();
+        if (gameCode is not null)
+        {
+            identifiers.Add(new GameIdentifier(
+                GameIdentifierKind.TitleId,
+                gameCode,
+                gameCodeSource));
+        }
+        identifiers.Add(new GameIdentifier(
+            GameIdentifierKind.Sha1,
+            sha1,
+            sha1Source,
+            IsPrimary: true));
+        return new GameImportMetadata(title, identifiers);
     }
 
     private GameSystem? FindSystem(string id) =>

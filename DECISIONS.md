@@ -840,3 +840,23 @@ SHA-1 extraction path used for import metadata and later on-demand enrichment. A
 `.bin` is now a definitive mismatch for PlayStation systems rather than falling through the legacy
 explicit raw-BIN fallback; only unproven `.bin` files remain eligible for a user-confirmed
 PlayStation import.
+
+## 2026-07-19 — M17/M18 retain cartridge header evidence but match only exact raw ROM SHA-1
+
+Nintendo DS and Game Boy Advance import starts with one deliberately raw layout each: a DS `.nds`
+file no larger than 512 MiB, and a GBA `.gba` file no larger than the 32 MiB cartridge address
+space. The readers validate fixed headers and bounded structural fields before discovery accepts a
+file, then stream the unchanged raw bytes through SHA-1 only during evidence extraction. There is
+no archive, copier-header, byte-order, trimming, or converted-layout normalization path until it
+has dedicated fixture parity; a renamed unsupported layout is therefore rejected rather than
+guessed.
+
+For DS, the reader requires valid logo/header CRC-16 values, coherent ARM9/ARM7 ranges, and a
+standard or DSi-enhanced unit code. It accepts a structurally valid `####` homebrew header as a
+local library entry but deliberately withholds that shared placeholder code. DSi-exclusive input is
+outside the DS launch contract. For GBA, the raw header must have the standard boot branch/fixed
+byte and complement check. A printable title and commercial four-character game code may improve
+local presentation and remain non-primary `TitleId` evidence, but neither code selects catalogue
+metadata: the Libretro No-Intro nested ROM SHA-1 is the required exact key. This prevents revisions,
+regional variants, altered dumps, and homebrew from being title-guessed or colliding because of a
+reused header code. Artwork and RetroAchievements support remain separately gated by M19.

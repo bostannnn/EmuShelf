@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
@@ -36,6 +37,8 @@ public class MainViewModelTests : IDisposable
     private static readonly GameSystem Ps3 = KnownSystems.All.Single(s => s.Id == "playstation3");
     private static readonly GameSystem GameCube = KnownSystems.All.Single(s => s.Id == "gamecube");
     private static readonly GameSystem MegaDrive = KnownSystems.All.Single(s => s.Id == "megadrive");
+    private static readonly GameSystem NintendoDs = KnownSystems.All.Single(s => s.Id == "nds");
+    private static readonly GameSystem GameBoyAdvance = KnownSystems.All.Single(s => s.Id == "gba");
 
     public MainViewModelTests()
     {
@@ -95,6 +98,88 @@ public class MainViewModelTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "Beta.chd"), "x");
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "x"); // not a game
         return folder;
+    }
+
+    private async Task AssertCartridgeFolderFlowAsync(
+        GameSystem system,
+        string fileName,
+        byte[] bytes,
+        string expectedTitle,
+        string expectedGameCode)
+    {
+        var folder = Path.Combine(_baseDirectory, system.Id);
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, fileName);
+        File.WriteAllBytes(path, bytes);
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = system;
+        var vm = CreateViewModel(metadataStore: _metadataStore);
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        var game = Assert.Single(_library.GetGames(system.Id));
+        Assert.Equal(expectedTitle, game.Title);
+        Assert.Equal(GameTitleOrigin.Embedded, game.TitleOrigin);
+        Assert.True(game.IsAvailable);
+        var identifiers = _metadataStore.GetIdentifiers(game.Id);
+        var gameCode = Assert.Single(identifiers, identifier => identifier.Kind == GameIdentifierKind.TitleId);
+        Assert.Equal(expectedGameCode, gameCode.Value);
+        var sha1 = Assert.Single(identifiers, identifier => identifier.Kind == GameIdentifierKind.Sha1);
+        Assert.Equal(Convert.ToHexString(SHA1.HashData(bytes)), sha1.Value);
+        Assert.True(sha1.IsPrimary);
+
+        File.Delete(path);
+        await vm.RefreshAvailabilityAsync();
+        Assert.False(Assert.Single(_library.GetGames(system.Id)).IsAvailable);
+
+        File.WriteAllBytes(path, bytes);
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+        Assert.True(Assert.Single(_library.GetGames(system.Id)).IsAvailable);
+        Assert.Equal("Rescan complete — no new games", vm.StatusText);
+    }
+
+    private static byte[] CreateNintendoDsRom(string title, string gameCode)
+    {
+        var bytes = new byte[0x10000];
+        System.Text.Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0);
+        System.Text.Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0x0C);
+        "01"u8.CopyTo(bytes.AsSpan(0x10));
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x20, 4), 0x4000);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x2C, 4), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x30, 4), 0x5000);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x3C, 4), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x80, 4), (uint)bytes.Length);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x84, 4), 0x200);
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15C, 2), CalculateNintendoCrc16(bytes.AsSpan(0xC0, 156)));
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15E, 2), CalculateNintendoCrc16(bytes.AsSpan(0, 0x15E)));
+        return bytes;
+    }
+
+    private static byte[] CreateGameBoyAdvanceRom(string title, string gameCode)
+    {
+        var bytes = new byte[0x1000];
+        bytes[3] = 0xEA;
+        System.Text.Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0xA0);
+        System.Text.Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0xAC);
+        "01"u8.CopyTo(bytes.AsSpan(0xB0));
+        bytes[0xB2] = 0x96;
+        byte checksum = 0x19;
+        foreach (var value in bytes.AsSpan(0xA0, 0x1D))
+            checksum -= value;
+        bytes[0xBD] = checksum;
+        return bytes;
+    }
+
+    private static ushort CalculateNintendoCrc16(ReadOnlySpan<byte> bytes)
+    {
+        ushort crc = 0xFFFF;
+        foreach (var value in bytes)
+        {
+            crc ^= value;
+            for (var bit = 0; bit < 8; bit++)
+                crc = (crc & 1) != 0 ? (ushort)((crc >> 1) ^ 0xA001) : (ushort)(crc >> 1);
+        }
+        return crc;
     }
 
     [AvaloniaFact]
@@ -175,6 +260,24 @@ public class MainViewModelTests : IDisposable
         Assert.Empty(_library.GetGames(MegaDrive.Id));
         Assert.Contains("not recognized as Mega Drive / Genesis", vm.StatusText);
     }
+
+    [AvaloniaFact]
+    public Task NintendoDsFolderImport_RescanAndAvailabilityPersistHeaderAndExactEvidence() =>
+        AssertCartridgeFolderFlowAsync(
+            NintendoDs,
+            "Example DS.nds",
+            CreateNintendoDsRom("Example DS", "ABCE"),
+            "Example DS",
+            "ABCE");
+
+    [AvaloniaFact]
+    public Task GameBoyAdvanceFolderImport_RescanAndAvailabilityPersistHeaderAndExactEvidence() =>
+        AssertCartridgeFolderFlowAsync(
+            GameBoyAdvance,
+            "Example GBA.gba",
+            CreateGameBoyAdvanceRom("Example GBA", "ABCE"),
+            "Example GBA",
+            "ABCE");
 
     [AvaloniaFact]
     public async Task AddGames_PspEmbeddedEvidenceSetsTheTitleAndPersistsExactIdentifier()

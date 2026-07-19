@@ -10,6 +10,10 @@ public static class KnownMetadataProfiles
         new NintendoDiscIdentifierExtractor();
     private static readonly IGameIdentifierExtractor MegaDriveExtractor =
         new MegaDriveRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor NintendoDsExtractor =
+        new NintendoDsRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor GameBoyAdvanceExtractor =
+        new GameBoyAdvanceRomIdentifierExtractor();
 
     // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
     // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of
@@ -55,6 +59,18 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/no-intro/Sega%20-%20Mega%20Drive%20-%20Genesis.dat"),
             MegaDriveExtractor,
+            []),
+        new(
+            "nds",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat"),
+            NintendoDsExtractor,
+            []),
+        new(
+            "gba",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat"),
+            GameBoyAdvanceExtractor,
             []),
     ];
 

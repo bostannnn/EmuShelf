@@ -81,6 +81,21 @@ matching file from `EmuShelf/Logs/`.
       Move the complete portable folder, then repeat the three launches and confirm the shared
       executable and each core path still resolve relative to its new location.
 
+## Nintendo DS and Game Boy Advance import
+
+- [ ] Add a raw Nintendo DS `.nds` ROM with a valid header. Confirm its trustworthy header title
+      appears, its game code remains local evidence only, and a malformed, DSi-exclusive, archive,
+      or copier-header input is not imported. Add a valid `####` homebrew ROM and confirm it uses
+      its local title but has no guessed catalogue title.
+- [ ] Add a raw Game Boy Advance `.gba` ROM with a valid header. Confirm its trustworthy header
+      title appears and a headered/copier, archive, or malformed image is not imported. Import two
+      valid files with the same game code but different payloads and confirm they remain separate
+      entries with no title collision.
+- [ ] Compare the accepted ROMs before and after import, availability refresh, rescan, and launch:
+      their contents and timestamps must be unchanged. Repeat a DS and GBA launch using paths with
+      spaces, then verify the shared RetroArch configuration, overrides, playlists, and achievement
+      settings remain unchanged.
+
 ## PlayStation 3 / RPCS3 library
 
 - [ ] In Settings for PlayStation 3, choose the RPCS3 configuration folder that contains

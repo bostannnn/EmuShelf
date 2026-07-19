@@ -388,23 +388,29 @@ both names while the library keeps regions and revisions as separate game entrie
 
 ## M17 — Nintendo DS library (planned)
 
-- [ ] Add strict `.nds`-format discovery and explicit-file import, with no archive support in
+- [x] Add strict `.nds`-format discovery and explicit-file import, with no archive support in
       the first pass. Read the ROM header game code and title as local evidence without
       modifying the ROM.
-- [ ] Use a normalized ROM checksum as a required exact-match fallback where revisions share
+- [x] Use a normalized ROM checksum as a required exact-match fallback where revisions share
       a DS game code; malformed headers, homebrew, and unsupported containers remain visibly
       unmatched rather than being title-guessed.
-- [ ] Launch through the M15 RetroArch core mapping and add header/checksum, availability,
-      portable-path, placeholder-ratio, and real Windows launch coverage.
+- [x] Exercise the M15 RetroArch core mapping with Nintendo DS portable-path coverage, and add
+      header/checksum, availability, and cover-placeholder-ratio tests.
+- [ ] On real Windows, launch an accepted `.nds` ROM through a configured RetroArch core; verify
+      paths with spaces, minimize/restore, and that neither ROM nor RetroArch configuration,
+      overrides, playlists, or achievement settings are modified.
 
 ## M18 — Game Boy Advance library (planned)
 
-- [ ] Add strict `.gba`-format discovery and explicit-file import, deferring archives and
+- [x] Add strict `.gba`-format discovery and explicit-file import, deferring archives and
       headered/converted variants until their normalization has test vectors.
-- [ ] Read bounded header evidence for display but use a normalized ROM checksum for exact
+- [x] Read bounded header evidence for display but use a normalized ROM checksum for exact
       catalogue/achievement matching, so regional revisions and altered dumps cannot collide.
-- [ ] Launch through the M15 RetroArch core mapping and add checksum, availability,
-      portable-path, placeholder-ratio, and real Windows launch coverage.
+- [x] Exercise the M15 RetroArch core mapping with Game Boy Advance portable-path coverage, and
+      add checksum, availability, and cover-placeholder-ratio tests.
+- [ ] On real Windows, launch an accepted `.gba` ROM through a configured RetroArch core; verify
+      paths with spaces, minimize/restore, and that neither ROM nor RetroArch configuration,
+      overrides, playlists, or achievement settings are modified.
 
 ## M19 — Exact covers and RetroAchievements for the expansion systems (planned)
 

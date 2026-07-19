@@ -1,0 +1,158 @@
+using System.Security.Cryptography;
+using System.Text;
+using EmuShelf.Core.Importing;
+using EmuShelf.Core.Metadata;
+using EmuShelf.Integrations.Importing;
+using EmuShelf.Integrations.Systems;
+
+namespace EmuShelf.Infrastructure.Tests.Importing;
+
+public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
+{
+    private readonly FileImportRules _rules = new();
+
+    public GameBoyAdvanceRomReaderTests()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+    }
+
+    [Fact]
+    public void RawGbaRom_UsesBoundedHeaderAndExactReadOnlySha1Evidence()
+    {
+        var path = WriteRom("Example.gba", "Example GBA", "ABCE");
+        var beforeBytes = File.ReadAllBytes(path);
+        var beforeTimestamp = new DateTime(2026, 7, 19, 15, 1, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, beforeTimestamp);
+
+        var header = GameBoyAdvanceRomReader.TryRecognize(path);
+        var evidence = GameBoyAdvanceRomReader.TryRead(path);
+        var analysis = _rules.AnalyzeFile(path);
+        var metadata = _rules.ReadImportMetadata(path, System("gba"));
+
+        Assert.NotNull(header);
+        Assert.Equal("Example GBA", header.Title);
+        Assert.Equal("ABCE", header.GameCode);
+        Assert.False(header.IsHomebrew);
+        Assert.NotNull(evidence);
+        Assert.Equal(Convert.ToHexString(SHA1.HashData(beforeBytes)), evidence.Sha1);
+        Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("gba"));
+        Assert.Equal(["gba"], analysis.SuggestedSystems.Select(system => system.Id));
+        Assert.True(_rules.IsFolderCandidate(path, System("gba")));
+        Assert.Equal("Example GBA", metadata.EmbeddedTitle);
+        Assert.Collection(
+            metadata.Identifiers,
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
+                Assert.Equal("ABCE", identifier.Value);
+                Assert.Equal("Game Boy Advance header", identifier.Source);
+                Assert.False(identifier.IsPrimary);
+            },
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
+                Assert.Equal(evidence.Sha1, identifier.Value);
+                Assert.Equal("Game Boy Advance ROM", identifier.Source);
+                Assert.True(identifier.IsPrimary);
+            });
+        Assert.Equal(beforeBytes, File.ReadAllBytes(path));
+        Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void AlteredPayloadWithTheSameHeaderCodeGetsDifferentExactEvidence()
+    {
+        var original = WriteRom("Example.gba", "Example GBA", "ABCE");
+        var altered = WriteRom("Example altered.gba", "Example GBA", "ABCE", payloadValue: 0x99);
+
+        var originalEvidence = GameBoyAdvanceRomReader.TryRead(original);
+        var alteredEvidence = GameBoyAdvanceRomReader.TryRead(altered);
+
+        Assert.NotNull(originalEvidence);
+        Assert.NotNull(alteredEvidence);
+        Assert.Equal(originalEvidence.GameCode, alteredEvidence.GameCode);
+        Assert.NotEqual(originalEvidence.Sha1, alteredEvidence.Sha1);
+    }
+
+    [Fact]
+    public void Recognition_RejectsHeaderedImagesMalformedHeadersAndArchives()
+    {
+        var malformed = WriteRom("Malformed.gba", "Example GBA", "ABCE");
+        var malformedBytes = File.ReadAllBytes(malformed);
+        malformedBytes[0xBC] ^= 0x01; // Header complement is no longer valid.
+        File.WriteAllBytes(malformed, malformedBytes);
+
+        var archive = WriteRom("Example.zip", "Example GBA", "ABCE");
+        var headered = Path.Combine(BaseDirectory, "Copier header.gba");
+        File.WriteAllBytes(headered, [.. new byte[512], .. File.ReadAllBytes(WriteRom("Raw.gba", "Example GBA", "ABCE"))]);
+
+        Assert.Null(GameBoyAdvanceRomReader.TryRecognize(malformed));
+        Assert.Null(GameBoyAdvanceRomReader.TryRecognize(headered));
+        Assert.Equal(GameFileMatch.Incompatible, _rules.AnalyzeFile(malformed).MatchFor("gba"));
+        Assert.Equal(GameFileMatch.Incompatible, _rules.AnalyzeFile(headered).MatchFor("gba"));
+        Assert.Equal(GameFileMatch.Unsupported, _rules.AnalyzeFile(archive).MatchFor("gba"));
+        Assert.False(_rules.IsFolderCandidate(malformed, System("gba")));
+        Assert.False(_rules.IsFolderCandidate(headered, System("gba")));
+        Assert.False(_rules.IsFolderCandidate(archive, System("gba")));
+        Assert.Same(GameImportMetadata.Empty, _rules.ReadImportMetadata(malformed, System("gba")));
+    }
+
+    [Fact]
+    public void MalformedTitleDoesNotBecomePresentationEvidence()
+    {
+        var path = WriteRom("Filename fallback.gba", "Example GBA", "ABCE");
+        var bytes = File.ReadAllBytes(path);
+        bytes[0xA0] = 0x01;
+        bytes[0xBD] = CalculateHeaderChecksum(bytes);
+        File.WriteAllBytes(path, bytes);
+
+        var metadata = _rules.ReadImportMetadata(path, System("gba"));
+
+        Assert.Null(metadata.EmbeddedTitle);
+        Assert.Contains(metadata.Identifiers, identifier => identifier.Kind == GameIdentifierKind.Sha1);
+    }
+
+    [Fact]
+    public void Recognition_RejectsOversizedRomBeforeHashing()
+    {
+        var path = WriteRom("Oversized.gba", "Example GBA", "ABCE");
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None))
+            stream.SetLength(GameBoyAdvanceRomReader.MaximumRomBytes + 1);
+
+        Assert.Null(GameBoyAdvanceRomReader.TryRecognize(path));
+        Assert.Null(GameBoyAdvanceRomReader.TryRead(path));
+        Assert.False(_rules.IsFolderCandidate(path, System("gba")));
+    }
+
+    private string WriteRom(string name, string title, string gameCode, byte payloadValue = 0)
+    {
+        var bytes = CreateRomFixture(title, gameCode, payloadValue);
+        var path = Path.Combine(BaseDirectory, name);
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    internal static byte[] CreateRomFixture(string title, string gameCode, byte payloadValue = 0)
+    {
+        var bytes = new byte[0x1000];
+        bytes[3] = 0xEA;
+        Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0xA0);
+        Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0xAC);
+        "01"u8.CopyTo(bytes.AsSpan(0xB0));
+        bytes[0xB2] = 0x96;
+        bytes[0xC0] = payloadValue;
+        bytes[0xBD] = CalculateHeaderChecksum(bytes);
+        return bytes;
+    }
+
+    private static byte CalculateHeaderChecksum(ReadOnlySpan<byte> bytes)
+    {
+        byte checksum = 0x19;
+        foreach (var value in bytes.Slice(0xA0, 0x1D))
+            checksum -= value;
+        return checksum;
+    }
+
+    private static Core.Systems.GameSystem System(string id) =>
+        KnownSystems.All.Single(system => system.Id == id);
+}
