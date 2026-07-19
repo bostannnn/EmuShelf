@@ -682,7 +682,13 @@ public partial class MainViewModel : ViewModelBase
         if (IsBusy)
             return "Library work is already in progress.";
 
-        var configurationDirectory = await _dialogs.PickRpcs3ConfigurationDirectoryAsync();
+        // RPCS3 keeps games.yml in its configuration root, which on Windows sits beside the
+        // executable the user already configured. Reuse that folder and only prompt when the
+        // list is not found there, so a configured install does not ask for a folder twice.
+        var configurationDirectory = await Task.Run(() =>
+            Rpcs3LibrarySource.LocateConfigurationDirectory(
+                _emulatorConfigurations.Get("playstation3")?.ExecutablePath));
+        configurationDirectory ??= await _dialogs.PickRpcs3ConfigurationDirectoryAsync();
         if (configurationDirectory is null)
             return "RPCS3 library sync cancelled.";
 

@@ -36,6 +36,33 @@ public sealed class Rpcs3LibrarySource : IExternalLibrarySource
 
     public ExternalLibrarySource Source { get; }
 
+    /// <summary>
+    /// Returns the directory that holds RPCS3's <c>games.yml</c> for an already-configured RPCS3
+    /// executable, or null when the list is not found there. RPCS3 keeps the list in its portable
+    /// configuration root, which on Windows is the folder that contains <c>rpcs3.exe</c>, so the
+    /// Settings sync can reuse the folder the user effectively already chose instead of prompting.
+    /// </summary>
+    public static string? LocateConfigurationDirectory(string? executablePath)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+            return null;
+
+        string? executableDirectory;
+        try
+        {
+            executableDirectory = Path.GetDirectoryName(Path.GetFullPath(executablePath));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return null;
+        }
+
+        return executableDirectory is not null &&
+               File.Exists(Path.Combine(executableDirectory, GameListFileName))
+            ? executableDirectory
+            : null;
+    }
+
     public Task<IReadOnlyList<ExternalLibraryGameEntry>> ReadGamesAsync(
         CancellationToken cancellationToken = default) =>
         Task.Run(() => ReadGames(cancellationToken), cancellationToken);
