@@ -223,6 +223,7 @@ public sealed class FileImportRules : IGameImportRules
         bool pspEvidence) =>
         systemId switch
         {
+            GameCubeId or WiiId when pspEvidence => GameFileMatch.Incompatible,
             GameCubeId => MatchNintendoSystem(
                 detectedNintendoSystem,
                 NintendoDiscSystem.GameCube),

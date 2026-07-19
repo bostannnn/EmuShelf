@@ -29,23 +29,23 @@ public static partial class PspGameMetadataReader
     public static Evidence? TryRead(string path)
     {
         var extension = Path.GetExtension(path);
-        if (extension.Equals(".cso", StringComparison.OrdinalIgnoreCase))
-        {
-            using var compressed = CompressedIsoSectorSource.TryOpen(path);
-            return compressed is null ? null : TryRead(compressed);
-        }
-
-        if (!extension.Equals(".iso", StringComparison.OrdinalIgnoreCase))
-            return null;
-
         try
         {
+            if (extension.Equals(".cso", StringComparison.OrdinalIgnoreCase))
+            {
+                using var compressed = CompressedIsoSectorSource.TryOpen(path);
+                return compressed is null ? null : TryRead(compressed);
+            }
+
+            if (!extension.Equals(".iso", StringComparison.OrdinalIgnoreCase))
+                return null;
+
             using var disc = CdSectorReader.Open(path);
             return TryRead(disc);
         }
         catch (Exception ex) when (ex is InvalidDataException or UnsupportedDiscLayoutException or
                                    IOException or UnauthorizedAccessException or
-                                   NotSupportedException or ArgumentException)
+                                   NotSupportedException or ArgumentException or OverflowException)
         {
             return null;
         }

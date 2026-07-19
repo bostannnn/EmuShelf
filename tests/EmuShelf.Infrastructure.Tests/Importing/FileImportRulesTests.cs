@@ -194,9 +194,21 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
                 : GameFileMatch.Unsupported,
             analysis.MatchFor("playstation"));
         Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("playstation2"));
+        Assert.Equal(
+            extension.Equals(".iso", StringComparison.OrdinalIgnoreCase)
+                ? GameFileMatch.Incompatible
+                : GameFileMatch.Unsupported,
+            analysis.MatchFor("gamecube"));
+        Assert.Equal(
+            extension.Equals(".iso", StringComparison.OrdinalIgnoreCase)
+                ? GameFileMatch.Incompatible
+                : GameFileMatch.Unsupported,
+            analysis.MatchFor("wii"));
         Assert.True(_rules.IsFolderCandidate(path, system));
         Assert.False(_rules.IsFolderCandidate(path, System("playstation")));
         Assert.False(_rules.IsFolderCandidate(path, System("playstation2")));
+        Assert.False(_rules.IsFolderCandidate(path, System("gamecube")));
+        Assert.False(_rules.IsFolderCandidate(path, System("wii")));
         Assert.Equal("Lumines", metadata.EmbeddedTitle);
         var identifier = Assert.Single(metadata.Identifiers);
         Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
@@ -236,6 +248,24 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
         Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("psp"));
         Assert.Equal(beforeBytes, File.ReadAllBytes(path));
         Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void PspImage_MalformedCsoIsRejectedWithoutThrowing()
+    {
+        var path = Path.Combine(BaseDirectory, "Malformed image.cso");
+        var iso = PspIsoBuilder.Build();
+        // Point PARAM.SFO at a logical sector beyond the CSO's uncompressed image. The reader
+        // must turn this malformed descriptor into an incompatible PSP candidate, never an
+        // inspection failure that interrupts the import flow.
+        iso.AsSpan(21 * 2048 + 2, 3).Fill(0xFF);
+        File.WriteAllBytes(path, CompressedIsoBuilder.BuildCso(iso));
+
+        var exception = Record.Exception(() => _rules.AnalyzeFile(path));
+        var analysis = _rules.AnalyzeFile(path);
+
+        Assert.Null(exception);
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("psp"));
     }
 
     [Fact]
