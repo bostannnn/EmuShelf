@@ -767,3 +767,13 @@ no guessed identifier is stored. A valid `DISC_ID` is persisted as `GameIdentifi
 lookup. Library identity remains the file path, so regional and revision variants stay separate.
 All reads use sharing-compatible read handles and tests assert that source bytes and timestamps are
 unchanged.
+
+## 2026-07-19 — M14 retries embedded PSP evidence after a transient metadata-store failure
+
+The game-row import and identifier store are deliberately separate persistence interfaces, so an
+identifier write cannot be part of the library transaction without broadening the generic library
+contract. If that second write fails, the game row remains safely imported and the operation reports
+the failure. A later import of the same path revisits only entries whose new embedded evidence has
+identifiers and whose stored identifier set is still empty; it persists the evidence then. This
+recovers transient SQLite failures without overwriting catalog or extractor evidence from another
+source, and keeps the exact `PARAM.SFO` `DISC_ID` recoverable by an explicit retry.

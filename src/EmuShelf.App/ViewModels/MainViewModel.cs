@@ -807,28 +807,42 @@ public partial class MainViewModel : ViewModelBase
 
         var result = await Task.Run(() =>
             _library.ReconcileImport(system.Id, games, selection.SuppressedPaths));
-        if (_metadataStore is not null && result.AddedGameIds.Count > 0)
-        {
-            var metadataByPath = preparedEntries.ToDictionary(
+        await PersistImportEvidenceAsync(system.Id, preparedEntries);
+
+        return result;
+    }
+
+    private async Task PersistImportEvidenceAsync(
+        string systemId,
+        IReadOnlyList<PreparedImportEntry> preparedEntries)
+    {
+        if (_metadataStore is null)
+            return;
+
+        var metadataByPath = preparedEntries
+            .Where(entry => entry.Metadata.Identifiers.Count > 0)
+            .ToDictionary(
                 entry => entry.Path,
                 entry => entry.Metadata,
                 StringComparer.OrdinalIgnoreCase);
-            await Task.Run(() =>
-            {
-                foreach (var gameId in result.AddedGameIds)
-                {
-                    var imported = _metadataStore.GetGame(gameId);
-                    if (imported is not null &&
-                        metadataByPath.TryGetValue(imported.Path, out var metadata) &&
-                        metadata.Identifiers.Count > 0)
-                    {
-                        _metadataStore.ReplaceIdentifiers(gameId, metadata.Identifiers);
-                    }
-                }
-            });
-        }
+        if (metadataByPath.Count == 0)
+            return;
 
-        return result;
+        // Revisit matching existing rows too. The game insert and evidence write use separate
+        // persistence interfaces, so this makes a transient evidence-write failure recoverable
+        // the next time the same game is imported without overwriting other identifier sources.
+        var importedGames = await Task.Run(() => _library.GetGames(systemId));
+        await Task.Run(() =>
+        {
+            foreach (var game in importedGames)
+            {
+                if (metadataByPath.TryGetValue(game.Path, out var metadata) &&
+                    _metadataStore.GetIdentifiers(game.Id).Count == 0)
+                {
+                    _metadataStore.ReplaceIdentifiers(game.Id, metadata.Identifiers);
+                }
+            }
+        });
     }
 
     private sealed record PreparedImportEntry(string Path, GameImportMetadata Metadata);

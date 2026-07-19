@@ -149,6 +149,32 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AddGames_RetriesPspEvidenceForAnExistingEntryAfterMetadataWriteFailure()
+    {
+        var path = Path.Combine(_baseDirectory, "roms", "ULUS10002.iso");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "fixture");
+        _dialogs.FilesToReturn = [path];
+        var psp = KnownSystems.All.Single(system => system.Id == "psp");
+        _dialogs.SystemToReturn = psp;
+        var rules = new EmbeddedEvidenceImportRules(psp, "Lumines", "ULUS10002");
+        var metadataStore = new FailingOnceMetadataStore(_metadataStore);
+        var vm = CreateViewModel(rules, metadataStore: metadataStore);
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        var game = Assert.Single(_library.GetGames("psp"));
+        Assert.Empty(_metadataStore.GetIdentifiers(game.Id));
+        Assert.Contains("Import failed", vm.StatusText);
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        var identifier = Assert.Single(_metadataStore.GetIdentifiers(game.Id));
+        Assert.Equal("ULUS10002", identifier.Value);
+        Assert.Equal(2, metadataStore.ReplaceIdentifiersCallCount);
+    }
+
+    [AvaloniaFact]
     public async Task AddGames_InvalidPspImageIsSkippedEvenAfterPspConfirmation()
     {
         var path = Path.Combine(_baseDirectory, "roms", "not-a-psp.iso");
@@ -1136,6 +1162,44 @@ public class MainViewModelTests : IDisposable
                     title,
                     [new GameIdentifier(GameIdentifierKind.Serial, discId, "PSP PARAM.SFO", true)])
                 : GameImportMetadata.Empty;
+    }
+
+    private sealed class FailingOnceMetadataStore(IGameMetadataStore inner) : IGameMetadataStore
+    {
+        private bool _shouldFail = true;
+
+        public int ReplaceIdentifiersCallCount { get; private set; }
+
+        public Game? GetGame(long gameId) => inner.GetGame(gameId);
+
+        public IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null) =>
+            inner.GetGamesMissingMetadata(systemId);
+
+        public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId) => inner.GetIdentifiers(gameId);
+
+        public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers)
+        {
+            ReplaceIdentifiersCallCount++;
+            if (_shouldFail)
+            {
+                _shouldFail = false;
+                throw new IOException("Transient metadata-store failure.");
+            }
+
+            inner.ReplaceIdentifiers(gameId, identifiers);
+        }
+
+        public bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle) =>
+            inner.TryApplyCatalogTitle(gameId, canonicalTitle, filenameTitle);
+
+        public bool TryApplyDownloadedCover(
+            long gameId,
+            string coverPath,
+            string providerId,
+            string sourceUri) =>
+            inner.TryApplyDownloadedCover(gameId, coverPath, providerId, sourceUri);
+
+        public void RecordAttempt(GameMetadataAttempt attempt) => inner.RecordAttempt(attempt);
     }
 
     private sealed class RecordingLaunchService(GameLaunchResult result) : IEmulatorLaunchService
