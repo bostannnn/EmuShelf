@@ -71,26 +71,40 @@ public partial class App : Application
                 Timeout = TimeSpan.FromSeconds(30),
             };
             _retroAchievementsHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
-            var retroAchievementsClient = new RetroAchievementsWebClient(
+            var retroAchievementsWebClient = new RetroAchievementsWebClient(
                 _retroAchievementsHttpClient, Bootstrapper.Logger);
+            var retroAchievementsRequests = new RetroAchievementsRequestCoordinator(
+                retroAchievementsWebClient,
+                logger: Bootstrapper.Logger);
+            var automaticRetroAchievementsClient = retroAchievementsRequests.CreateClient(
+                RetroAchievementsRequestMode.Automatic);
+            var manualRetroAchievementsClient = retroAchievementsRequests.CreateClient(
+                RetroAchievementsRequestMode.Manual);
             var retroAchievementsAccount = new RetroAchievementsAccountService(
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings,
                 Bootstrapper.RetroAchievementsCredentialStore,
-                retroAchievementsClient,
+                manualRetroAchievementsClient,
                 Bootstrapper.Logger);
             var retroAchievementsCatalogue = new RetroAchievementsCatalogueCache(
-                Bootstrapper.Paths, retroAchievementsClient, Bootstrapper.Logger);
+                Bootstrapper.Paths, automaticRetroAchievementsClient, Bootstrapper.Logger);
             var retroAchievementsMatching = new RetroAchievementsMatchingService(
                 Bootstrapper.RetroAchievementsStore, retroAchievementsCatalogue, Bootstrapper.Logger);
             var retroAchievementsProgress = new RetroAchievementsProgressService(
                 Bootstrapper.RetroAchievementsProgressStore,
-                retroAchievementsClient,
+                automaticRetroAchievementsClient,
                 logger: Bootstrapper.Logger);
             var retroAchievementsDetails = new RetroAchievementsDetailsService(
                 Bootstrapper.RetroAchievementsDetailsStore,
                 Bootstrapper.RetroAchievementsProgressStore,
-                retroAchievementsClient,
+                automaticRetroAchievementsClient,
+                logger: Bootstrapper.Logger,
+                manualClient: manualRetroAchievementsClient);
+            var retroAchievementsRefresh = new RetroAchievementsRefreshService(
+                retroAchievementsAccount,
+                Bootstrapper.RetroAchievementsProgressStore,
+                retroAchievementsProgress,
+                retroAchievementsDetails,
                 logger: Bootstrapper.Logger);
             var retroAchievementsBadges = new RetroAchievementsBadgeCache(
                 Bootstrapper.Paths,
@@ -121,16 +135,19 @@ public partial class App : Application
                 retroAchievementsAccount,
                 retroAchievementsMatching,
                 retroAchievementsProgress,
-                retroAchievementsDetails);
+                retroAchievementsDetails,
+                retroAchievementsRefresh);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
 
             // Availability check runs after the UI paints — background, no discovery scan.
             desktop.MainWindow.Opened += (_, _) =>
-                Dispatcher.UIThread.Post(
-                    () => _ = viewModel.RefreshAvailabilityAsync(),
-                    DispatcherPriority.Background);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _ = viewModel.RefreshAvailabilityAsync();
+                    _ = viewModel.RefreshRetroAchievementsProgressAtStartupAsync();
+                }, DispatcherPriority.Background);
             desktop.Exit += (_, _) =>
             {
                 _metadataHttpClient?.Dispose();

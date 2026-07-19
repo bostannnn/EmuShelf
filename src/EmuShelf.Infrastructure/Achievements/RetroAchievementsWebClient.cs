@@ -131,6 +131,10 @@ public sealed class RetroAchievementsWebClient : IRetroAchievementsClient
             if (status != RetroAchievementsRequestStatus.Success)
             {
                 var retryAfter = response.Headers.RetryAfter?.Delta;
+                if (retryAfter is null && response.Headers.RetryAfter?.Date is { } retryDate)
+                    retryAfter = retryDate - DateTimeOffset.UtcNow;
+                if (retryAfter < TimeSpan.Zero)
+                    retryAfter = TimeSpan.Zero;
                 _logger.Information($"RetroAchievements {endpoint} → {(int)response.StatusCode} ({status}).");
                 return RetroAchievementsResponse<T>.Failure(status, retryAfter);
             }

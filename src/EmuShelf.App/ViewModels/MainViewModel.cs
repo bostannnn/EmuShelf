@@ -43,6 +43,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRetroAchievementsMatchingService? _retroMatching;
     private readonly IRetroAchievementsProgressService? _retroProgress;
     private readonly IRetroAchievementsDetailsService? _retroDetails;
+    private readonly IRetroAchievementsRefreshService? _retroRefresh;
     // Coordinates the full identify → match → progress sequence. Individual services also
     // serialize their own work, but this prevents an import finishing halfway through a connect
     // and leaving newly hashed games unmatched.
@@ -172,7 +173,8 @@ public partial class MainViewModel : ViewModelBase
         IRetroAchievementsAccountService? retroAccount = null,
         IRetroAchievementsMatchingService? retroMatching = null,
         IRetroAchievementsProgressService? retroProgress = null,
-        IRetroAchievementsDetailsService? retroDetails = null)
+        IRetroAchievementsDetailsService? retroDetails = null,
+        IRetroAchievementsRefreshService? retroRefresh = null)
     {
         _library = library;
         _scanner = scanner;
@@ -192,6 +194,7 @@ public partial class MainViewModel : ViewModelBase
         _retroMatching = retroMatching;
         _retroProgress = retroProgress;
         _retroDetails = retroDetails;
+        _retroRefresh = retroRefresh;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -740,6 +743,35 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Startup's only RetroAchievements refresh path. It shares the account pipeline with
+    /// connect/disconnect work and leaves the current library display untouched when the cached
+    /// summary is still within its fifteen-minute freshness window.
+    /// </summary>
+    public async Task RefreshRetroAchievementsProgressAtStartupAsync()
+    {
+        if (_retroRefresh is null)
+            return;
+
+        await _retroAchievementsPipeline.WaitAsync();
+        try
+        {
+            var refreshed = await _retroRefresh.RefreshSummaryAtStartupIfStaleAsync();
+            if (refreshed is not null)
+                await ReloadGamesAsync();
+        }
+        catch (Exception ex)
+        {
+            // Startup cache refresh is optional. Keep the library usable and let its existing
+            // display state explain any stale cached values.
+            _logger.Warning("RetroAchievements startup progress refresh failed.", ex);
+        }
+        finally
+        {
+            _retroAchievementsPipeline.Release();
+        }
+    }
+
     private Task<int> UpdateAvailabilityAsync() => Task.Run(() =>
     {
         var updates = new List<GameAvailabilityUpdate>();
@@ -774,6 +806,8 @@ public partial class MainViewModel : ViewModelBase
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             StatusText = result.StatusText;
+            if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
+                _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
         }
         catch (OperationCanceledException)
         {
@@ -788,6 +822,26 @@ public partial class MainViewModel : ViewModelBase
         {
             ResumeFrontendUiWork();
             IsBusy = false;
+        }
+    }
+
+    private async Task RefreshRetroAchievementsAfterTrackedExitAsync(int retroAchievementsGameId)
+    {
+        if (_retroRefresh is null)
+            return;
+
+        try
+        {
+            var response = await _retroRefresh.RefreshAfterTrackedExitAsync(retroAchievementsGameId);
+            if (response?.IsSuccess == true)
+                await ReloadGamesAsync();
+        }
+        catch (Exception ex)
+        {
+            // A game has already finished; this read-only follow-up must never change its launch
+            // result or surface as a launch failure. Cached progress remains visible.
+            _logger.Warning(
+                $"RetroAchievements post-exit refresh failed for game {retroAchievementsGameId}.", ex);
         }
     }
 

@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 6;
+    private const int CurrentSchemaVersion = 7;
 
     private readonly IAppPaths _appPaths;
 
@@ -71,8 +71,14 @@ public sealed class LibraryDatabase
             version = 5;
         }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 6)
+        {
             ApplyMigrationV6(connection);
+            version = 6;
+        }
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV7(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -283,6 +289,24 @@ public sealed class LibraryDatabase
                 ON RetroAchievementDetails (RetroAchievementsGameId, DisplayOrder, AchievementId);
 
             UPDATE SchemaVersion SET Version = 6;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV7(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE RetroAchievementProgressSync (
+                Id INTEGER PRIMARY KEY CHECK (Id = 1),
+                LastRefreshUnixMilliseconds INTEGER NOT NULL
+            );
+
+            UPDATE SchemaVersion SET Version = 7;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

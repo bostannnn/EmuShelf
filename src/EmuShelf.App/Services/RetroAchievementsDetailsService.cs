@@ -16,7 +16,11 @@ public interface IRetroAchievementsDetailsService
     Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
         RetroAchievementsCredentials credentials,
         int retroAchievementsGameId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        bool manual = false);
+
+    /// <summary>Raised after an account-current refresh updates the shared detail cache.</summary>
+    event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed;
 
     void Clear();
 }
@@ -25,7 +29,8 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
 {
     private readonly IRetroAchievementsDetailsStore _detailsStore;
     private readonly IRetroAchievementsProgressStore _progressStore;
-    private readonly IRetroAchievementsClient _client;
+    private readonly IRetroAchievementsClient _automaticClient;
+    private readonly IRetroAchievementsClient _manualClient;
     private readonly TimeProvider _timeProvider;
     private readonly IAppLogger _logger;
     private readonly object _cacheGate = new();
@@ -38,14 +43,18 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
         IRetroAchievementsProgressStore progressStore,
         IRetroAchievementsClient client,
         TimeProvider? timeProvider = null,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        IRetroAchievementsClient? manualClient = null)
     {
         _detailsStore = detailsStore;
         _progressStore = progressStore;
-        _client = client;
+        _automaticClient = client;
+        _manualClient = manualClient ?? client;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger ?? NullAppLogger.Instance;
     }
+
+    public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed;
 
     public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) =>
         _detailsStore.GetDetails(retroAchievementsGameId);
@@ -53,7 +62,8 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
     public async Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
         RetroAchievementsCredentials credentials,
         int retroAchievementsGameId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool manual = false)
     {
         if (retroAchievementsGameId <= 0)
             throw new ArgumentOutOfRangeException(nameof(retroAchievementsGameId));
@@ -63,7 +73,7 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
         // popup's usable cache refresh; each caller can still stop awaiting it.
         var request = _inFlight.GetOrAdd(
             retroAchievementsGameId,
-            id => RefreshCoreAsync(credentials, id));
+            id => RefreshCoreAsync(credentials, id, manual));
         try
         {
             return await request.WaitAsync(cancellationToken);
@@ -93,7 +103,8 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
 
     private async Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshCoreAsync(
         RetroAchievementsCredentials credentials,
-        int retroAchievementsGameId)
+        int retroAchievementsGameId,
+        bool manual)
     {
         try
         {
@@ -101,7 +112,8 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
             lock (_cacheGate)
                 requestGeneration = _cacheGeneration;
 
-            var response = await _client.GetGameDetailsAsync(credentials, retroAchievementsGameId);
+            var response = await (manual ? _manualClient : _automaticClient)
+                .GetGameDetailsAsync(credentials, retroAchievementsGameId);
             if (!response.IsSuccess)
                 return RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
                     response.Status,
@@ -110,6 +122,7 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
 
             var refreshedAt = _timeProvider.GetUtcNow();
             var details = response.Value!;
+            var saved = false;
             lock (_cacheGate)
             {
                 if (requestGeneration == _cacheGeneration)
@@ -125,10 +138,13 @@ public sealed class RetroAchievementsDetailsService : IRetroAchievementsDetailsS
                             details.UnlockedAchievements,
                             details.UnlockedHardcoreAchievements),
                         refreshedAt);
+                    saved = true;
                 }
             }
-            return RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Success(
-                new RetroAchievementsDetailsSnapshot(details, refreshedAt));
+            var snapshot = new RetroAchievementsDetailsSnapshot(details, refreshedAt);
+            if (saved)
+                DetailsRefreshed?.Invoke(snapshot);
+            return RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Success(snapshot);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

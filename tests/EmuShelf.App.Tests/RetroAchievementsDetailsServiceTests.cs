@@ -110,6 +110,8 @@ public class RetroAchievementsDetailsServiceTests
             Saved = progress;
             RefreshedAt = refreshedAt;
         }
+        public DateTimeOffset? GetLastSummaryRefreshAt() => null;
+        public void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt) { }
         public void ClearProgress() => Saved = null;
     }
 

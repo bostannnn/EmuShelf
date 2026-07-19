@@ -195,13 +195,13 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
 
 ### 6. Refresh and rate-limit policy
 
-- [ ] Use one request coordinator with one in-flight request and at least one second between
+- [x] Use one request coordinator with one in-flight request and at least one second between
       automatic calls. Coalesce duplicate work, honor `Retry-After`, back off with jitter after
       429/5xx responses, and never retry authentication failures automatically.
-- [ ] When the app starts, refresh summary progress only if the last successful summary sync is
+- [x] When the app starts, refresh summary progress only if the last successful summary sync is
       older than 15 minutes. Query only distinct RA game ids linked to the local library, in
       bounded batches through `API_GetUserProgress`; do not poll recent achievements.
-- [ ] After a tracked emulator exits, wait briefly for its submission to settle, then refresh
+- [x] After a tracked emulator exits, wait briefly for its submission to settle, then refresh
       that launched game's full progress once and update the open popup/library summary. Do no
       achievement polling while the emulator is running. Also provide an explicit manual
       refresh action.

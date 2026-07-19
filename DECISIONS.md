@@ -652,3 +652,26 @@ external 16-pixel horizontal margin. This preserves visible left and right card 
 keeping the fixed dock inside the viewport. The dark-theme headless test verifies all cards are
 inset, every reward dock has the same width and x-position, and a deliberately long description
 does not change either property.
+
+## 2026-07-19 — M10 §6 serializes API reads and refreshes only at bounded moments
+
+`RetroAchievementsRequestCoordinator` is the single wrapper around authenticated Web API reads.
+It permits one in-flight request across profile, catalogue, summary-progress, and game-detail
+endpoints; equal in-flight requests share their task. Automatic work is paced at least one second
+apart. A manual request may bypass that pacing, but never a server cooldown. `Retry-After` is a
+lower bound (with positive jitter added), while a 429 without that header and 5xx responses use a
+bounded exponential backoff with jitter. The coordinator does not retry any result itself, so an
+authentication failure cannot turn into automatic credential traffic. Public badge-image downloads
+remain under their separate bounded cache because they are unauthenticated image assets rather
+than Web API reads.
+
+Schema v7 adds a one-row, account-scoped `RetroAchievementProgressSync` marker. It is written
+only after all linked progress batches succeed and is cleared with progress at disconnect; this
+distinguishes a complete summary sync from partial per-game rows after a failed batch. Startup
+consults that marker and makes no progress call until it is more than fifteen minutes old.
+
+After a process has actually been tracked to exit, EmuShelf waits eight seconds for the external
+emulator's own submission to settle, then performs one automatic full-detail request for the
+launched RA game. That result updates the summary cache and notifies an open achievement window;
+there is no timer or gameplay polling. The existing popup Refresh button remains the explicit
+manual path.

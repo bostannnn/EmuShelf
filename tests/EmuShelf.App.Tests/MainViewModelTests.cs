@@ -53,7 +53,8 @@ public class MainViewModelTests : IDisposable
         IRetroAchievementsAccountService? retroAccount = null,
         IRetroAchievementsMatchingService? retroMatching = null,
         IRetroAchievementsProgressService? retroProgress = null,
-        IRetroAchievementsDetailsService? retroDetails = null)
+        IRetroAchievementsDetailsService? retroDetails = null,
+        IRetroAchievementsRefreshService? retroRefresh = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -73,7 +74,8 @@ public class MainViewModelTests : IDisposable
             retroAccount: retroAccount,
             retroMatching: retroMatching,
             retroProgress: retroProgress,
-            retroDetails: retroDetails);
+            retroDetails: retroDetails,
+            retroRefresh: retroRefresh);
     }
 
     private string MakeRomsFolder()
@@ -463,6 +465,28 @@ public class MainViewModelTests : IDisposable
         Assert.Equal("Alpha", launcher.Game?.Title);
         Assert.Equal("Alpha finished", vm.StatusText);
         Assert.False(vm.IsBusy);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_AfterTrackedExitSchedulesOneAchievementRefreshForThatGame()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var refresh = new RecordingRetroAchievementsRefreshService();
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(
+                new GameLaunchResult(true, "Alpha finished", ProcessExited: true)),
+            retroRefresh: refresh);
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        game.ApplyAchievementLink(1234);
+
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+        await refresh.Called.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1234, refresh.GameId);
+        Assert.Equal("Alpha finished", vm.StatusText);
     }
 
     [AvaloniaFact]
@@ -943,6 +967,32 @@ public class MainViewModelTests : IDisposable
         public void Complete() => _complete.TrySetResult();
     }
 
+    private sealed class RecordingRetroAchievementsRefreshService : IRetroAchievementsRefreshService
+    {
+        private readonly TaskCompletionSource _called =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Called => _called.Task;
+        public int? GameId { get; private set; }
+
+        public Task<RetroAchievementsProgressRefreshSummary?> RefreshSummaryAtStartupIfStaleAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<RetroAchievementsProgressRefreshSummary?>(null);
+
+        public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>?> RefreshAfterTrackedExitAsync(
+            int retroAchievementsGameId,
+            CancellationToken cancellationToken = default)
+        {
+            GameId = retroAchievementsGameId;
+            _called.TrySetResult();
+            return Task.FromResult<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>?>(
+                RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Success(
+                    new RetroAchievementsDetailsSnapshot(
+                        new RetroAchievementsGameDetails(retroAchievementsGameId, "Game", 0, 0, 0, []),
+                        DateTimeOffset.UtcNow)));
+        }
+    }
+
     private sealed class RecordingThemeService : IAppThemeService
     {
         public ThemePreference Current { get; private set; } = ThemePreference.System;
@@ -1139,13 +1189,19 @@ public class MainViewModelTests : IDisposable
     private sealed class RecordingRetroAchievementsDetailsService : IRetroAchievementsDetailsService
     {
         public bool Cleared { get; private set; }
+        public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed
+        {
+            add { }
+            remove { }
+        }
 
         public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => null;
 
         public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
             RetroAchievementsCredentials credentials,
             int retroAchievementsGameId,
-            CancellationToken cancellationToken = default) =>
+            CancellationToken cancellationToken = default,
+            bool manual = false) =>
             Task.FromResult(RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
                 RetroAchievementsRequestStatus.Offline));
 

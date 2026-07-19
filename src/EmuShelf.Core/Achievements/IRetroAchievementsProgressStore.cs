@@ -19,5 +19,15 @@ public interface IRetroAchievementsProgressStore
 
     void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt);
 
+    /// <summary>
+    /// Gets when every linked game's summary last completed successfully. This is separate from
+    /// each game's timestamp because a batched refresh can partially update before a later batch
+    /// fails.
+    /// </summary>
+    DateTimeOffset? GetLastSummaryRefreshAt();
+
+    /// <summary>Records a fully successful summary refresh of the linked game set.</summary>
+    void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt);
+
     void ClearProgress();
 }

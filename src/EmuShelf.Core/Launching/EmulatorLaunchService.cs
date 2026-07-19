@@ -51,9 +51,12 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                 preparation.WorkingDirectory!,
                 cancellationToken);
             if (exitCode == 0)
-                return new GameLaunchResult(true, $"{game.Title} finished");
+                return new GameLaunchResult(true, $"{game.Title} finished", ProcessExited: true);
 
-            var failure = Failure($"{preparation.EmulatorName} exited with code {exitCode}.");
+            var failure = new GameLaunchResult(
+                false,
+                $"{preparation.EmulatorName} exited with code {exitCode}.",
+                ProcessExited: true);
             _logger.Warning(failure.StatusText);
             return failure;
         }

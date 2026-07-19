@@ -21,6 +21,7 @@ public class RetroAchievementsProgressServiceTests
         Assert.Equal(1, summary.RequestedGames);
         Assert.Equal(1, summary.UpdatedGames);
         Assert.Equal(1234, Assert.Single(store.Saved).GameId);
+        Assert.NotNull(store.LastSummaryRefreshAt);
     }
 
     [Fact]
@@ -86,12 +87,19 @@ public class RetroAchievementsProgressServiceTests
         public List<int> LinkedIds { get; } = [];
         public List<RetroAchievementsGameProgress> Saved { get; } = [];
         public bool Cleared { get; private set; }
+        public DateTimeOffset? LastSummaryRefreshAt { get; private set; }
 
         public IReadOnlyList<int> GetLinkedRetroAchievementsGameIds() => LinkedIds;
         public RetroAchievementsProgressSnapshot? GetProgress(int retroAchievementsGameId) => null;
         public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt) =>
             Saved.Add(progress);
-        public void ClearProgress() => Cleared = true;
+        public DateTimeOffset? GetLastSummaryRefreshAt() => LastSummaryRefreshAt;
+        public void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt) => LastSummaryRefreshAt = refreshedAt;
+        public void ClearProgress()
+        {
+            Cleared = true;
+            LastSummaryRefreshAt = null;
+        }
     }
 
     private sealed class FakeClient : IRetroAchievementsClient

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
@@ -165,6 +166,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         _account = account;
         _badges = badges;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _details.DetailsRefreshed += HandleDetailsRefreshed;
 
         if (cached is not null)
             ApplySnapshot(cached);
@@ -211,7 +213,8 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
                 () => _details.RefreshAsync(
                     credentials,
                     _retroAchievementsGameId,
-                    _lifetime.Token),
+                    _lifetime.Token,
+                    manual),
                 _lifetime.Token);
             if (_lifetime.IsCancellationRequested)
                 return;
@@ -272,6 +275,20 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasAchievements));
     }
 
+    private void HandleDetailsRefreshed(RetroAchievementsDetailsSnapshot snapshot)
+    {
+        if (snapshot.Details.GameId != _retroAchievementsGameId || _lifetime.IsCancellationRequested)
+            return;
+
+        // A post-session refresh can complete independently of this window. Updating through
+        // the dispatcher keeps the active popup and its bound collection in sync safely.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!_lifetime.IsCancellationRequested)
+                ApplySnapshot(snapshot);
+        }, DispatcherPriority.Send);
+    }
+
     partial void OnUnlockedCountChanged(int value) => OnPropertyChanged(nameof(ProgressText));
     partial void OnTotalCountChanged(int value)
     {
@@ -287,6 +304,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
+        _details.DetailsRefreshed -= HandleDetailsRefreshed;
         _lifetime.Cancel();
         foreach (var row in Achievements)
             row.Dispose();

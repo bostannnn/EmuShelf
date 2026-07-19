@@ -31,7 +31,8 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
     private readonly IRetroAchievementsClient _client;
     private readonly TimeProvider _timeProvider;
     private readonly IAppLogger _logger;
-    private readonly SemaphoreSlim _worker = new(1, 1);
+    private readonly object _refreshGate = new();
+    private Task<RetroAchievementsProgressRefreshSummary>? _inFlightRefresh;
 
     public RetroAchievementsProgressService(
         IRetroAchievementsProgressStore store,
@@ -50,61 +51,97 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
         CancellationToken cancellationToken = default,
         IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
     {
-        await _worker.WaitAsync(cancellationToken);
+        Task<RetroAchievementsProgressRefreshSummary> refresh;
+        lock (_refreshGate)
+        {
+            // A startup check, an import, and a post-session follow-up can all discover the
+            // same current account. They share the existing cache refresh instead of queuing
+            // duplicate batches behind one another. Individual callers may still cancel only
+            // their wait; the shared cache operation completes for the other callers.
+            refresh = _inFlightRefresh is { IsCompleted: false }
+                ? _inFlightRefresh
+                : _inFlightRefresh = RefreshCoreAsync(credentials, progress);
+        }
+
         try
         {
-            var ids = _store.GetLinkedRetroAchievementsGameIds();
-            progress?.Report(new RetroAchievementsLibrarySyncProgress(
-                RetroAchievementsLibrarySyncPhase.RefreshingProgress,
-                Completed: 0,
-                Total: ids.Count));
-            if (ids.Count == 0)
-                return new RetroAchievementsProgressRefreshSummary(
-                    0, 0, RetroAchievementsRequestStatus.Success);
-
-            var refreshedAt = _timeProvider.GetUtcNow();
-            var updated = 0;
-            var completed = 0;
-            var status = RetroAchievementsRequestStatus.Success;
-
-            for (var offset = 0; offset < ids.Count; offset += RetroAchievementsApi.MaxUserProgressBatchSize)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var batch = ids
-                    .Skip(offset)
-                    .Take(RetroAchievementsApi.MaxUserProgressBatchSize)
-                    .ToArray();
-
-                var response = await _client.GetUserProgressAsync(credentials, batch, cancellationToken);
-                if (!response.IsSuccess)
-                {
-                    // Keep whatever is already cached; stop and report the reason.
-                    status = response.Status;
-                    break;
-                }
-
-                foreach (var gameProgress in response.Value!)
-                {
-                    _store.SaveProgress(gameProgress, refreshedAt);
-                    updated++;
-                }
-
-                completed += batch.Length;
-                progress?.Report(new RetroAchievementsLibrarySyncProgress(
-                    RetroAchievementsLibrarySyncPhase.RefreshingProgress,
-                    Completed: completed,
-                    Total: ids.Count));
-            }
-
-            _logger.Information(
-                $"RetroAchievements progress refresh: updated {updated} of {ids.Count} games ({status}).");
-            return new RetroAchievementsProgressRefreshSummary(ids.Count, updated, status);
+            return await refresh.WaitAsync(cancellationToken);
         }
         finally
         {
-            _worker.Release();
+            if (refresh.IsCompleted)
+            {
+                lock (_refreshGate)
+                {
+                    if (ReferenceEquals(_inFlightRefresh, refresh))
+                        _inFlightRefresh = null;
+                }
+            }
         }
     }
 
-    public void Clear() => _store.ClearProgress();
+    private async Task<RetroAchievementsProgressRefreshSummary> RefreshCoreAsync(
+        RetroAchievementsCredentials credentials,
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress)
+    {
+        // The underlying work is intentionally independent of one UI caller's cancellation;
+        // it is shared cache work and callers use WaitAsync above to stop awaiting it.
+        var sharedCancellation = CancellationToken.None;
+        var ids = _store.GetLinkedRetroAchievementsGameIds();
+        progress?.Report(new RetroAchievementsLibrarySyncProgress(
+            RetroAchievementsLibrarySyncPhase.RefreshingProgress,
+            Completed: 0,
+            Total: ids.Count));
+        if (ids.Count == 0)
+            return new RetroAchievementsProgressRefreshSummary(
+                0, 0, RetroAchievementsRequestStatus.Success);
+
+        var refreshedAt = _timeProvider.GetUtcNow();
+        var updated = 0;
+        var completed = 0;
+        var status = RetroAchievementsRequestStatus.Success;
+
+        for (var offset = 0; offset < ids.Count; offset += RetroAchievementsApi.MaxUserProgressBatchSize)
+        {
+            var batch = ids
+                .Skip(offset)
+                .Take(RetroAchievementsApi.MaxUserProgressBatchSize)
+                .ToArray();
+
+            var response = await _client.GetUserProgressAsync(
+                credentials, batch, sharedCancellation);
+            if (!response.IsSuccess)
+            {
+                // Keep whatever is already cached; stop and report the reason.
+                status = response.Status;
+                break;
+            }
+
+            foreach (var gameProgress in response.Value!)
+            {
+                _store.SaveProgress(gameProgress, refreshedAt);
+                updated++;
+            }
+
+            completed += batch.Length;
+            progress?.Report(new RetroAchievementsLibrarySyncProgress(
+                RetroAchievementsLibrarySyncPhase.RefreshingProgress,
+                Completed: completed,
+                Total: ids.Count));
+        }
+
+        if (status == RetroAchievementsRequestStatus.Success)
+            _store.SaveLastSummaryRefreshAt(_timeProvider.GetUtcNow());
+
+        _logger.Information(
+            $"RetroAchievements progress refresh: updated {updated} of {ids.Count} games ({status}).");
+        return new RetroAchievementsProgressRefreshSummary(ids.Count, updated, status);
+    }
+
+    public void Clear()
+    {
+        _store.ClearProgress();
+        lock (_refreshGate)
+            _inFlightRefresh = null;
+    }
 }

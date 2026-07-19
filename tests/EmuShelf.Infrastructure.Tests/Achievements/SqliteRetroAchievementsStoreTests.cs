@@ -145,6 +145,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
 
         var refreshedAt = new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero);
         _store.SaveProgress(new RetroAchievementsGameProgress(1234, 40, 12, 3), refreshedAt);
+        _store.SaveLastSummaryRefreshAt(refreshedAt);
 
         var snapshot = _store.GetProgress(1234);
         Assert.NotNull(snapshot);
@@ -152,6 +153,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Equal(12, snapshot.Progress.NumAwarded);
         Assert.Equal(3, snapshot.Progress.NumAwardedHardcore);
         Assert.Equal(refreshedAt, snapshot.LastRefreshedAt);
+        Assert.Equal(refreshedAt, _store.GetLastSummaryRefreshAt());
 
         // Re-saving overwrites, and clearing drops everything (account-scoped).
         _store.SaveProgress(new RetroAchievementsGameProgress(1234, 40, 20, 5), refreshedAt);
@@ -159,6 +161,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
 
         _store.ClearProgress();
         Assert.Null(_store.GetProgress(1234));
+        Assert.Null(_store.GetLastSummaryRefreshAt());
     }
 
     [Fact]

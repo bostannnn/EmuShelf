@@ -129,6 +129,34 @@ public class AchievementDetailsWindowTests
         viewModel.Dispose();
     }
 
+    [AvaloniaFact]
+    public async Task SharedDetailRefresh_UpdatesAnOpenPopup()
+    {
+        var refreshedAt = new DateTimeOffset(2026, 7, 19, 12, 0, 0, TimeSpan.Zero);
+        var details = new FakeDetailsService();
+        var viewModel = new AchievementDetailsViewModel(
+            "Game",
+            1234,
+            details,
+            new FakeAccount(),
+            cached: new RetroAchievementsDetailsSnapshot(
+                new RetroAchievementsGameDetails(
+                    1234, "Game", 1, 0, 0,
+                    [new RetroAchievementsAchievement(1, "Old", "", 5, "", 1, null, null)]),
+                refreshedAt));
+
+        details.Publish(new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                1234, "Game", 1, 1, 1,
+                [new RetroAchievementsAchievement(1, "New", "", 5, "", 1, refreshedAt, refreshedAt)]),
+            refreshedAt.AddMinutes(1)));
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+        Assert.Equal("New", Assert.Single(viewModel.Achievements).Title);
+        Assert.Equal(1, viewModel.UnlockedCount);
+        viewModel.Dispose();
+    }
+
     [Fact]
     public void EmptyState_ExplainsThatThisGamesDetailsHaveNotBeenCached()
     {
@@ -147,17 +175,24 @@ public class AchievementDetailsWindowTests
     {
         public RetroAchievementsDetailsSnapshot? Response { get; set; }
         public int RefreshCalls { get; private set; }
+        public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed;
         public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => Response;
         public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
             RetroAchievementsCredentials credentials,
             int retroAchievementsGameId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool manual = false)
         {
             RefreshCalls++;
             return Task.FromResult(Response is { } response
                 ? RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Success(response)
                 : RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
                     RetroAchievementsRequestStatus.Offline));
+        }
+        public void Publish(RetroAchievementsDetailsSnapshot snapshot)
+        {
+            Response = snapshot;
+            DetailsRefreshed?.Invoke(snapshot);
         }
         public void Clear() { }
     }

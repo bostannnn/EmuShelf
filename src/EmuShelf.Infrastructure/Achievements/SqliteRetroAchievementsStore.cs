@@ -200,11 +200,46 @@ public sealed class SqliteRetroAchievementsStore
         command.ExecuteNonQuery();
     }
 
+    public DateTimeOffset? GetLastSummaryRefreshAt()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT LastRefreshUnixMilliseconds
+            FROM RetroAchievementProgressSync
+            WHERE Id = 1;
+            """;
+        var value = command.ExecuteScalar();
+        return value is null
+            ? null
+            : DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(value));
+    }
+
+    public void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO RetroAchievementProgressSync (Id, LastRefreshUnixMilliseconds)
+            VALUES (1, $refreshed)
+            ON CONFLICT(Id) DO UPDATE SET
+                LastRefreshUnixMilliseconds = excluded.LastRefreshUnixMilliseconds;
+            """;
+        command.Parameters.AddWithValue("$refreshed", refreshedAt.ToUnixTimeMilliseconds());
+        command.ExecuteNonQuery();
+    }
+
     public void ClearProgress()
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM RetroAchievementProgress;";
+        command.CommandText =
+            """
+            DELETE FROM RetroAchievementProgress;
+            DELETE FROM RetroAchievementProgressSync;
+            """;
         command.ExecuteNonQuery();
     }
 
