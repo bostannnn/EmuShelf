@@ -18,7 +18,7 @@ public static class NintendoDsRomReader
     private const int CommercialArm9MinimumOffset = 0x4000;
     private const int HeaderCrcOffset = 0x15E;
     private const int NintendoLogoOffset = 0xC0;
-    private const int NintendoLogoBytes = 156;
+    private const ushort NintendoLogoCrc16 = 0xCF56;
     private const int NintendoLogoCrcOffset = 0x15C;
     private const int Arm9Offset = 0x20;
     private const int Arm9Size = 0x2C;
@@ -132,7 +132,8 @@ public static class NintendoDsRomReader
 
     private static bool HasValidChecksums(ReadOnlySpan<byte> bytes) =>
         BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(NintendoLogoCrcOffset, 2)) ==
-        CalculateCrc16(bytes.Slice(NintendoLogoOffset, NintendoLogoBytes)) &&
+        NintendoLogoCrc16 &&
+        NintendoLogoValidator.IsCanonical(bytes.Slice(NintendoLogoOffset, NintendoLogoValidator.LogoBytes)) &&
         BinaryPrimitives.ReadUInt16LittleEndian(bytes.Slice(HeaderCrcOffset, 2)) ==
         CalculateCrc16(bytes.Slice(0, HeaderCrcOffset));
 

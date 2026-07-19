@@ -171,7 +171,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void MegaDriveProfile_ExtractsOnlyTheNormalizedRomSha1AndDefersArtwork()
+    public void MegaDriveProfile_ExtractsOnlyTheNormalizedRomSha1AndUsesCanonicalArtwork()
     {
         var path = Path.Combine(BaseDirectory, "Misleading Filename.md");
         var bytes = new byte[0x4000];
@@ -185,7 +185,9 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.EndsWith(
             "/metadat/no-intro/Sega%20-%20Mega%20Drive%20-%20Genesis.dat",
             profile.CatalogUri.AbsolutePath);
-        Assert.Empty(profile.ArtworkProviders);
+        Assert.Collection(
+            profile.ArtworkProviders,
+            provider => Assert.Equal("libretro-thumbnails", provider.Id));
         Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
         Assert.Equal("471EE01E97220D35105CC5E9FB2F03765623CD05", identifier.Value);
         Assert.Equal("Mega Drive normalized ROM", identifier.Source);
@@ -193,7 +195,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void NintendoDsProfile_UsesOnlyRawRomSha1ForCataloguesAndDefersArtwork()
+    public void NintendoDsProfile_UsesOnlyRawRomSha1ForCataloguesAndUsesCanonicalArtwork()
     {
         var path = Path.Combine(BaseDirectory, "Misleading DS title.nds");
         File.WriteAllBytes(path, NintendoDsRomReaderTests.CreateRomFixture("Header title", "ABCE"));
@@ -205,7 +207,9 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.EndsWith(
             "/metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat",
             profile.CatalogUri.AbsolutePath);
-        Assert.Empty(profile.ArtworkProviders);
+        Assert.Collection(
+            profile.ArtworkProviders,
+            provider => Assert.Equal("libretro-thumbnails", provider.Id));
         Assert.Collection(
             identifiers,
             identifier =>
@@ -222,7 +226,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void GameBoyAdvanceProfile_UsesOnlyRawRomSha1ForCataloguesAndDefersArtwork()
+    public void GameBoyAdvanceProfile_UsesOnlyRawRomSha1ForCataloguesAndUsesCanonicalArtwork()
     {
         var path = Path.Combine(BaseDirectory, "Misleading GBA title.gba");
         File.WriteAllBytes(path, GameBoyAdvanceRomReaderTests.CreateRomFixture("Header title", "ABCE"));
@@ -234,7 +238,9 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.EndsWith(
             "/metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat",
             profile.CatalogUri.AbsolutePath);
-        Assert.Empty(profile.ArtworkProviders);
+        Assert.Collection(
+            profile.ArtworkProviders,
+            provider => Assert.Equal("libretro-thumbnails", provider.Id));
         Assert.Collection(
             identifiers,
             identifier =>
@@ -274,6 +280,82 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal("thumbnails.libretro.com", libretroUri.Host);
         Assert.Contains("PlayStation%202/Named_Boxarts/", libretroUri.AbsoluteUri);
         Assert.EndsWith(".png", libretroUri.AbsolutePath);
+    }
+
+    [Fact]
+    public void PspProfile_UsesParamSfoSerialAndCanonicalArtwork()
+    {
+        var path = Path.Combine(BaseDirectory, "Lumines.iso");
+        File.WriteAllBytes(path, PspIsoBuilder.Build("ULUS10002", "Lumines"));
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "psp");
+
+        var identifier = Assert.Single(profile.IdentifierExtractor.Extract(NewGame("psp", path)));
+
+        Assert.Equal(GameIdentifierKind.Serial, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/redump/Sony%20-%20PlayStation%20Portable.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
+        Assert.Equal("ULUS-10002", identifier.Value);
+        Assert.Equal("PSP PARAM.SFO", identifier.Source);
+        Assert.True(identifier.IsPrimary);
+        Assert.Equal(
+            "https://thumbnails.libretro.com/Sony%20-%20PlayStation%20Portable/Named_Boxarts/" +
+            "Lumines%20%28USA%29.png",
+            Assert.Single(profile.ArtworkProviders.Single().GetCandidates(
+                [identifier],
+                new GameCatalogMatch("libretro-database", "ULUS-10002", "Lumines (USA)", "USA")))
+                .SourceUri.AbsoluteUri);
+    }
+
+    [Fact]
+    public void PlayStation3Profile_UsesRpcs3TitleIdAndCanonicalArtwork()
+    {
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "playstation3");
+        var game = NewGame("playstation3", Path.Combine(BaseDirectory, "RPCS3", "Demon's Souls")) with
+        {
+            ExternalSourceId = "rpcs3-library",
+            ExternalSourceEntryId = "BLUS30443",
+        };
+
+        var identifier = Assert.Single(profile.IdentifierExtractor.Extract(game));
+
+        Assert.Equal(GameIdentifierKind.Serial, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/redump/Sony%20-%20PlayStation%203.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
+        Assert.Equal("BLUS-30443", identifier.Value);
+        Assert.Equal("RPCS3 title id", identifier.Source);
+        Assert.True(identifier.IsPrimary);
+        Assert.Equal(
+            "https://thumbnails.libretro.com/Sony%20-%20PlayStation%203/Named_Boxarts/" +
+            "Demon%27s%20Souls%20%28USA%29.png",
+            Assert.Single(profile.ArtworkProviders.Single().GetCandidates(
+                [identifier],
+                new GameCatalogMatch("libretro-database", "BLUS-30443", "Demon's Souls (USA)", "USA")))
+                .SourceUri.AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("megadrive", "Sonic The Hedgehog (USA, Europe)", "Sega%20-%20Mega%20Drive%20-%20Genesis")]
+    [InlineData("nds", "Mario Kart DS (USA, Australia) (En,Fr,De,Es,It)", "Nintendo%20-%20Nintendo%20DS")]
+    [InlineData("gba", "Pokemon - FireRed Version (USA, Europe)", "Nintendo%20-%20Game%20Boy%20Advance")]
+    public void ExpansionArtwork_UsesTitleOnlyAfterAnExactCatalogMatch(
+        string systemId,
+        string canonicalTitle,
+        string expectedPlaylist)
+    {
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == systemId);
+        var provider = Assert.Single(profile.ArtworkProviders);
+
+        Assert.Empty(provider.GetCandidates([], match: null));
+
+        var candidate = Assert.Single(provider.GetCandidates(
+            [],
+            new GameCatalogMatch("libretro-database", "exact-key", canonicalTitle, "USA")));
+        Assert.Contains(expectedPlaylist, candidate.SourceUri.AbsoluteUri);
+        Assert.EndsWith(".png", candidate.SourceUri.AbsolutePath);
     }
 
     [Theory]

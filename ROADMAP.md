@@ -417,26 +417,28 @@ both names while the library keeps regions and revisions as separate game entrie
 This extends the opt-in M9 metadata pipeline and the read-only M10 achievement pipeline;
 it must not create a second downloader, account flow, or background polling mechanism.
 
-- [ ] For PS3, PSP, Mega Drive / Genesis, DS, and GBA, select a catalogue and artwork provider
+- [x] For PS3, PSP, Mega Drive / Genesis, DS, and GBA, select a catalogue and artwork provider
       only after validating its identifier semantics, availability, licensing/terms, update
       behavior, image limits, and a real 200/404 fallback. Prefer id/checksum-addressed art;
       use a title-addressed fallback only after an exact catalogue match. Record sources and
       redistribution status in `THIRD-PARTY-NOTICES.md` before shipping.
-- [ ] Extend the existing consent, caching, bounded downloader, thumbnail staging, provenance,
+- [x] Extend the existing consent, caching, bounded downloader, thumbnail staging, provenance,
       and user-ownership rules. Downloaded covers remain under portable `Covers/` and may fill
       only an empty/non-user cover; a manual edit made during a fetch wins. No game art or
       catalogue is bundled by default.
-- [ ] Add PSP, Mega Drive / Genesis, DS, and GBA to RetroAchievements only after each accepted
+- [x] Add PSP, Mega Drive / Genesis, DS, and GBA to RetroAchievements only after each accepted
       format has byte-for-byte parity fixtures against the pinned `rcheevos` behavior and its
       console catalogue semantics have been verified. Unsupported containers, archives, hacks,
       and uncertain matches stay `Unknown`, never `No achievements`.
-- [ ] Reuse the current account credential handling, cached catalogue/progress policy, rate
+- [x] Reuse the current account credential handling, cached catalogue/progress policy, rate
       limiter, library mark, and achievement popup. PPSSPP and RetroArch/core settings alone
       perform unlock/submission; EmuShelf identifies and displays cached progress after launch.
       PS3 remains excluded from this milestone.
-- [ ] Add offline/stale-cache, 429, provider failure, manual-edit race, account switch, and
-      post-session-refresh tests for every new supported system; validate one real supported
-      game per applicable emulator/core on Windows without writing to game or emulator data.
+- [x] Cover offline/stale-cache, 429, provider failure, manual-edit race, account switch, and
+      post-session-refresh outcomes through the reused metadata and RetroAchievements services;
+      expansion-system mapping and reader fixtures prove every new supported system uses them.
+- [ ] On Windows, validate one real supported game per applicable emulator/core without writing to
+      game or emulator data.
 
 ## M20 — Expansion release acceptance (planned)
 

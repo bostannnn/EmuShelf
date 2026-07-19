@@ -1,9 +1,8 @@
 namespace EmuShelf.Core.Achievements;
 
 /// <summary>
-/// Maps EmuShelf system ids to RetroAchievements console ids. RA defines PlayStation (12),
-/// PlayStation 2 (21), GameCube (16), and Wii (19); it has no PlayStation 3 console id, so that
-/// system has no mapping and is never matched.
+/// Maps EmuShelf system ids to RetroAchievements console ids. PlayStation 3 has no mapping, so
+/// it is never matched. The expansion mappings are kept beside their verified hash readers.
 /// </summary>
 public static class RetroAchievementsConsoles
 {
@@ -13,6 +12,10 @@ public static class RetroAchievementsConsoles
         "playstation2" => 21,
         "gamecube" => 16,
         "wii" => 19,
+        "megadrive" => 1,
+        "gba" => 5,
+        "nds" => 18,
+        "psp" => 41,
         _ => null,
     };
 }

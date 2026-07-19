@@ -94,10 +94,15 @@ artwork are not included in EmuShelf packages. Downloaded files remain subject t
 the source project's terms and to the rights of their respective publishers.
 
 - [libretro-database](https://github.com/libretro/libretro-database) supplies the
-  cached title/identifier catalogs. The database repository declares
+  cached title/identifier catalogs. EmuShelf uses its Redump serial catalogs for PlayStation 3
+  and PSP, and its No-Intro SHA-1 catalogs for Mega Drive / Genesis, Nintendo DS, and Game Boy
+  Advance (as well as the existing profiles). The database repository declares
   [CC BY-SA 4.0](https://github.com/libretro/libretro-database/blob/master/LICENSE).
 - [libretro-thumbnails](https://github.com/libretro-thumbnails) supplies individual
-  named box-art files when an exact canonical title is available.
+  named box-art files when an exact canonical title is available, including the PlayStation 3,
+  PSP, Mega Drive / Genesis, Nintendo DS, and Game Boy Advance repositories. The thumbnail server
+  is updated periodically from those repositories. No thumbnail or catalog is bundled; downloaded
+  cover images remain subject to their respective publisher rights and source terms.
 - [xlenore/psx-covers](https://github.com/xlenore/psx-covers) and
   [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) supply individual
   PlayStation and PlayStation 2 covers addressed by product code.

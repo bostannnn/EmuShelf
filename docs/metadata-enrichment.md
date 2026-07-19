@@ -65,11 +65,13 @@ flight also wins the final database compare-and-set.
 | --- | --- | --- | --- |
 | PlayStation | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PSX by serial, then Libretro by canonical title |
 | PlayStation 2 | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PS2 by serial, then Libretro by canonical title |
+| PlayStation 3 | RPCS3's exact nine-character title id, normalized as its product serial | Libretro redump DAT, keyed by normalized serial | Libretro by canonical title after the exact serial match |
+| PSP | `DISC_ID` from `PSP_GAME/PARAM.SFO`, normalized as its product serial | Libretro redump DAT, keyed by normalized serial | Libretro by canonical title after the exact serial match |
 | GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
-| Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | No provider in M16; use the platform placeholder until M19 |
-| Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | No provider in M17; use the platform placeholder until M19 |
-| Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | No provider in M18; use the platform placeholder until M19 |
+| Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
+| Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
+| Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
 
 GameCube and Wii covers are addressed by the disc id through GameTDB — the disc id's fourth
 character selects a region/language folder (`US`, `JA`, `EN`, `DE`, …), with `EN` and `US` tried
@@ -91,23 +93,32 @@ The Mega Drive / Genesis reader accepts only a `SEGA` cartridge header at the st
 a bounded raw `.md`/`.gen`/`.bin` file, or a 512-byte copier header followed by complete 16 KiB
 SMD interleaving blocks which normalize to that header. It hashes the normalized stream with
 SHA-1 and never uses a filename as catalogue evidence. The No-Intro DAT's nested ROM `sha1` field
-is matched exactly for canonical titles; artwork and RetroAchievements are deliberately deferred
-to M19.
+is matched exactly for a canonical title. Only then may the Libretro thumbnail provider request its
+matching named box-art path; an absent image leaves the cover unchanged.
 
 The Nintendo DS reader accepts only a raw `.nds` file no larger than 512 MiB with coherent ARM9
-and ARM7 ranges, DS/DSi-enhanced unit code, bounded card/header declarations, and valid Nintendo
-logo/header CRC-16 values. It reads a printable header title and commercial game code without
+and ARM7 ranges, DS/DSi-enhanced unit code, bounded card/header declarations, the canonical
+Nintendo header logo, and valid logo/header CRC-16 values. It reads a printable header title and commercial game code without
 changing the source. A valid `####` homebrew header is importable for local use, but retains no
 shared game code; it can only be catalogue-matched by the raw-ROM SHA-1. DSi-exclusive files,
 malformed headers, archives, and headered layouts are not accepted. The verified raw bytes are the
 canonical first-pass layout, so the No-Intro nested `sha1` record is the sole catalogue key.
 
-The Game Boy Advance reader accepts only a raw `.gba` file no larger than 32 MiB whose boot branch,
-fixed header byte, main-unit/reserved fields, printable header evidence, and complement check are
+The Game Boy Advance reader accepts only a raw `.gba` file no larger than 32 MiB whose canonical
+Nintendo header logo, boot branch, fixed header byte, main-unit/reserved fields, printable header evidence, and complement check are
 valid. It retains a commercial game code only as local evidence and streams the raw bytes through
 SHA-1 for every catalogue match. Thus, regional revisions or altered payloads with the same code
 cannot collide. Copier/headered variants and archives stay unsupported until their normalization
-has deterministic fixtures; RetroAchievements parity remains an M19 decision.
+has deterministic fixtures.
+
+The expansion artwork route uses the same official Libretro thumbnail server as the existing
+title-addressed fallback. A title-path lookup is intentionally never made from a filename, header
+title, RPCS3 display title, or product code alone: it starts only from the canonical title produced
+by an exact Redump or No-Intro catalog match. The server and its per-console repositories are
+updated periodically; a `404`, non-image response, size-limit rejection, offline failure, or
+provider outage simply leaves the existing/placeholder cover in place. The bounded downloader,
+portable cache, provenance record, and manual-cover compare-and-set are shared with every other
+metadata profile.
 
 ## Code ownership
 

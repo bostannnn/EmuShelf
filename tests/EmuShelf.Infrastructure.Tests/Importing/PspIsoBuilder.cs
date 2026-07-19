@@ -8,7 +8,10 @@ internal static class PspIsoBuilder
 {
     private const int SectorSize = 2048;
 
-    public static byte[] Build(string? discId = "ULUS10041", string? title = "Lumines")
+    public static byte[] Build(
+        string? discId = "ULUS10041",
+        string? title = "Lumines",
+        byte[]? eboot = null)
     {
         var entries = new List<(string Key, string Value)>();
         if (discId is not null)
@@ -16,7 +19,8 @@ internal static class PspIsoBuilder
         if (title is not null)
             entries.Add(("TITLE", title));
         var sfo = BuildParamSfo(entries);
-        var image = new byte[24 * SectorSize];
+        var requiredEbootSectors = eboot is null ? 0 : (eboot.Length + SectorSize - 1) / SectorSize;
+        var image = new byte[(24 + requiredEbootSectors) * SectorSize];
 
         var descriptor = image.AsSpan(16 * SectorSize, SectorSize);
         descriptor[0] = 1;
@@ -29,6 +33,12 @@ internal static class PspIsoBuilder
         WriteDirectoryRecord(image.AsSpan(20 * SectorSize), "PSP_GAME", 21, SectorSize, isDirectory: true);
         WriteDirectoryRecord(image.AsSpan(21 * SectorSize), "PARAM.SFO", 22, (uint)sfo.Length, isDirectory: false);
         sfo.CopyTo(image.AsSpan(22 * SectorSize));
+        if (eboot is not null)
+        {
+            WriteDirectoryRecord(image.AsSpan(21 * SectorSize).Slice(42), "SYSDIR", 23, SectorSize, isDirectory: true);
+            WriteDirectoryRecord(image.AsSpan(23 * SectorSize), "EBOOT.BIN", 24, (uint)eboot.Length, isDirectory: false);
+            eboot.CopyTo(image.AsSpan(24 * SectorSize));
+        }
         return image;
     }
 

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
+using EmuShelf.Infrastructure.Tests.Importing;
 using EmuShelf.Infrastructure.Tests.Metadata;
 using EmuShelf.Integrations.Achievements;
 using ZstdSharp;
@@ -28,6 +29,178 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
         Assert.Equal(
             systemId != "wii",
             _hasher.IsAlgorithmVersionCompatible(game, "rcheevos-2ac45d3-disc-v2"));
+    }
+
+    [Theory]
+    [InlineData("psp", "rcheevos-2ac45d3-psp-v1", 41)]
+    [InlineData("megadrive", "rcheevos-2ac45d3-megadrive-v1", 1)]
+    [InlineData("nds", "rcheevos-2ac45d3-nds-v1", 18)]
+    [InlineData("gba", "rcheevos-2ac45d3-gba-v1", 5)]
+    public void ExpansionAlgorithmVersionsAndConsoleMappings_AreScopedToVerifiedReaders(
+        string systemId,
+        string expectedVersion,
+        int expectedConsoleId)
+    {
+        var game = Game(systemId, Path.Combine(BaseDirectory, "game.bin"));
+
+        Assert.Equal(expectedVersion, _hasher.GetAlgorithmVersion(game));
+        Assert.False(_hasher.IsAlgorithmVersionCompatible(game, "rcheevos-2ac45d3-disc-v2"));
+        Assert.Equal(expectedConsoleId, RetroAchievementsConsoles.ForSystem(systemId));
+    }
+
+    [Fact]
+    public void Identify_MegaDriveRawAndSmd_MatchPinnedWholeFileHashesWithoutWriting()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var raw = CreateMegaDriveRom();
+        var rawPaths = new[]
+        {
+            Path.Combine(BaseDirectory, "game.md"),
+            Path.Combine(BaseDirectory, "game.gen"),
+            Path.Combine(BaseDirectory, "game.bin"),
+        };
+        var smdPath = Path.Combine(BaseDirectory, "game.smd");
+        foreach (var rawPath in rawPaths)
+            File.WriteAllBytes(rawPath, raw);
+        File.WriteAllBytes(smdPath, CreateSmd(raw));
+        var timestamp = new DateTime(2026, 7, 19, 18, 0, 0, DateTimeKind.Utc);
+
+        foreach (var path in rawPaths.Append(smdPath))
+        {
+            File.SetLastWriteTimeUtc(path, timestamp);
+            var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+            var result = _hasher.Identify(Game("megadrive", path));
+
+            Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+            // rcheevos' Mega Drive reader is MD5 over the supplied content bytes. The raw and
+            // copier-interleaved forms intentionally differ; import normalization is not an RA hash.
+            Assert.Equal(
+                path == smdPath ? "11a10730e044b3e4b862ac8a879c7ee7" : "49729cba6655d04c7c412147e5743b4a",
+                result.CanonicalHash);
+            Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+            Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+        }
+    }
+
+    [Fact]
+    public void Identify_GameBoyAdvanceAndNintendoDs_MatchPinnedReadersWithoutWriting()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var gbaPath = Path.Combine(BaseDirectory, "game.gba");
+        var ndsPath = Path.Combine(BaseDirectory, "game.nds");
+        File.WriteAllBytes(gbaPath, GameBoyAdvanceRomReaderTests.CreateRomFixture("Example GBA", "ABCE"));
+        File.WriteAllBytes(ndsPath, NintendoDsRomReaderTests.CreateRomFixture("Example DS", "ABCE"));
+        var timestamp = new DateTime(2026, 7, 19, 18, 1, 0, DateTimeKind.Utc);
+
+        foreach (var (path, systemId, expectedHash) in new[]
+                 {
+                     (gbaPath, "gba", "74cdb526e30e8b28bf5362209a9c3ca6"),
+                     (ndsPath, "nds", "76a7f76f7bccd2ee9e85e4e575b451d1"),
+                 })
+        {
+            File.SetLastWriteTimeUtc(path, timestamp);
+            var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+            var result = _hasher.Identify(Game(systemId, path));
+
+            Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+            Assert.Equal(expectedHash, result.CanonicalHash);
+            Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+            Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+        }
+    }
+
+    [Fact]
+    public void Identify_NintendoDsCodeRangesOverRcheevosLimitRemainUnknown()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "oversized-code.nds");
+        File.WriteAllBytes(path, NintendoDsRomReaderTests.CreateRomFixture(
+            "Large code",
+            "ABCE",
+            romBytes: (16 * 1024 * 1024) + 0x4000,
+            arm9Size: (8 * 1024 * 1024) + 1,
+            arm7Size: 8 * 1024 * 1024));
+
+        var result = _hasher.Identify(Game("nds", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
+    }
+
+    [Theory]
+    [InlineData("nds", ".nds")]
+    [InlineData("gba", ".gba")]
+    public void Identify_CartridgeHomebrewRemainsUnknown(string systemId, string extension)
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "homebrew" + extension);
+        var bytes = systemId == "nds"
+            ? NintendoDsRomReaderTests.CreateRomFixture("Homebrew", "####", homebrew: true)
+            : GameBoyAdvanceRomReaderTests.CreateRomFixture("Homebrew", "####");
+        File.WriteAllBytes(path, bytes);
+
+        var result = _hasher.Identify(Game(systemId, path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
+    }
+
+    [Theory]
+    [InlineData(".iso")]
+    [InlineData(".cso")]
+    public void Identify_PspIsoAndCso_MatchPinnedDiscHashWithoutWriting(string extension)
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var eboot = Enumerable.Range(0, 7000).Select(index => (byte)((index * 29 + 7) & 0xFF)).ToArray();
+        var iso = PspIsoBuilder.Build("UCUS98653", "Example PSP", eboot);
+        var path = Path.Combine(BaseDirectory, "game" + extension);
+        File.WriteAllBytes(path, extension == ".cso" ? CompressedIsoBuilder.BuildCso(iso) : iso);
+        var timestamp = new DateTime(2026, 7, 19, 18, 2, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, timestamp);
+        var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+        var result = _hasher.Identify(Game("psp", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("69bf38176a62c7c8c5544663316ecf73", result.CanonicalHash);
+        Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+        Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void Identify_PspImageWithoutAProductSerialRemainsUnknown()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "homebrew.iso");
+        File.WriteAllBytes(path, PspIsoBuilder.Build(
+            discId: null,
+            title: "Homebrew",
+            eboot: [1, 2, 3, 4]));
+
+        var result = _hasher.Identify(Game("psp", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
+    }
+
+    [Fact]
+    public void Identify_PspImageWithATruncatedEbootSectorRemainsUnknown()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "truncated.iso");
+        var image = PspIsoBuilder.Build(
+            discId: "UCUS98653",
+            title: "Example PSP",
+            eboot: [0x42]);
+        Array.Resize(ref image, (24 * 2048) + 1);
+        File.WriteAllBytes(path, image);
+
+        var result = _hasher.Identify(Game("psp", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.InvalidMedia, result.Status);
+        Assert.Null(result.CanonicalHash);
     }
 
     [Theory]
@@ -420,6 +593,10 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("wii", ".rvz")]
     [InlineData("playstation3", "")]
     [InlineData("playstation", ".pbp")] // .pbp is cancelled for RA — never matched, always Unknown
+    [InlineData("psp", ".zip")]
+    [InlineData("megadrive", ".zip")]
+    [InlineData("nds", ".zip")]
+    [InlineData("gba", ".zip")]
     public void Identify_UnverifiedFormatsRemainUnsupported(
         string systemId,
         string extension)
@@ -462,6 +639,27 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
         Title = "Test",
         DateAdded = DateTimeOffset.UtcNow,
     };
+
+    private static byte[] CreateMegaDriveRom()
+    {
+        var bytes = new byte[0x4000];
+        for (var index = 0; index < bytes.Length; index++)
+            bytes[index] = (byte)((index * 17 + 3) & 0xFF);
+        "SEGA"u8.CopyTo(bytes.AsSpan(0x100));
+        return bytes;
+    }
+
+    private static byte[] CreateSmd(byte[] normalized)
+    {
+        var smd = new byte[512 + normalized.Length];
+        "SMD copier header"u8.CopyTo(smd);
+        for (var index = 0; index < normalized.Length / 2; index++)
+        {
+            smd[512 + index] = normalized[(index * 2) + 1];
+            smd[512 + (normalized.Length / 2) + index] = normalized[index * 2];
+        }
+        return smd;
+    }
 
     private static byte[] CreatePlayStationImage(
         string executableName,

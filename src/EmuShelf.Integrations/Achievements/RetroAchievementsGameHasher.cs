@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
+using EmuShelf.Integrations.Importing;
 
 namespace EmuShelf.Integrations.Achievements;
 
@@ -16,6 +17,10 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string PlayStation2Id = "playstation2";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
+    private const string PspId = "psp";
+    private const string MegaDriveId = "megadrive";
+    private const string NintendoDsId = "nds";
+    private const string GameBoyAdvanceId = "gba";
 
     // v2 was the first version that added verified logical-disc readers for GameCube/Wii CISO,
     // WBFS, and RVZ. It was persisted globally before per-system versions existed, so it remains
@@ -30,12 +35,20 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     // The Wii decrypted-partition reader was corrected to scale DOL segment sizes by wii_shift
     // (matching rcheevos); the bump recomputes any hash stored by the earlier, incorrect reader.
     private const string WiiAlgorithmV3 = "rcheevos-2ac45d3-wii-v3";
+    private const string PspAlgorithm = "rcheevos-2ac45d3-psp-v1";
+    private const string MegaDriveAlgorithm = "rcheevos-2ac45d3-megadrive-v1";
+    private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
+    private const string GameBoyAdvanceAlgorithm = "rcheevos-2ac45d3-gba-v1";
 
     public string GetAlgorithmVersion(Game game) => game.SystemId switch
     {
         PlayStationId or PlayStation2Id => PlayStationAlgorithmV3,
         GameCubeId => GameCubeAlgorithm,
         WiiId => WiiAlgorithmV3,
+        PspId => PspAlgorithm,
+        MegaDriveId => MegaDriveAlgorithm,
+        NintendoDsId => NintendoDsAlgorithm,
+        GameBoyAdvanceId => GameBoyAdvanceAlgorithm,
         _ => LegacyGlobalV2,
     };
 
@@ -45,7 +58,8 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
             return true;
         // The pre-per-system global version stays valid for readers unchanged since, but the Wii
         // decrypted-partition reader was corrected, so a Wii hash stored under it is recomputed.
-        return persistedVersion == LegacyGlobalV2 && game.SystemId != WiiId;
+        return persistedVersion == LegacyGlobalV2 && game.SystemId is
+            PlayStationId or PlayStation2Id or GameCubeId;
     }
 
     public RetroAchievementsSourceSnapshot Inspect(Game game) =>
@@ -89,6 +103,18 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                     inspected.SourcePath!,
                     cancellationToken),
                 WiiId => WiiDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                PspId => PspDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                MegaDriveId => HashMegaDrive(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                NintendoDsId => NintendoDsRomHasher.Hash(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                GameBoyAdvanceId => HashGameBoyAdvance(
                     inspected.SourcePath!,
                     cancellationToken),
                 _ => throw new UnsupportedDiscLayoutException(
@@ -181,6 +207,34 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified logical-disc reader.";
             }
+            else if (game.SystemId == PspId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".iso" or ".cso";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified PSP disc reader.";
+            }
+            else if (game.SystemId == MegaDriveId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".md" or ".gen" or ".bin" or ".smd";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified Mega Drive reader.";
+            }
+            else if (game.SystemId == NintendoDsId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension == ".nds";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified Nintendo DS reader.";
+            }
+            else if (game.SystemId == GameBoyAdvanceId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension == ".gba";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified Game Boy Advance reader.";
+            }
             else
             {
                 error = "RetroAchievements does not support this EmuShelf system.";
@@ -215,6 +269,31 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         return new InspectedSource(
             new RetroAchievementsSourceSnapshot(fingerprint, canHash, status, error),
             sourcePath);
+    }
+
+    private static string HashMegaDrive(string path, CancellationToken cancellationToken)
+    {
+        if (MegaDriveRomReader.TryRecognize(path) is null)
+        {
+            throw new UnsupportedDiscLayoutException(
+                "This Mega Drive image is not a supported cartridge layout.");
+        }
+
+        // rcheevos hashes the accepted file bytes for Mega Drive. This deliberately does not
+        // use the normalized SHA-1 import evidence: an SMD copier layout must match the bytes
+        // the RetroAchievements core itself receives.
+        return WholeFileRomHasher.Hash(path, cancellationToken);
+    }
+
+    private static string HashGameBoyAdvance(string path, CancellationToken cancellationToken)
+    {
+        if (GameBoyAdvanceRomReader.TryRecognize(path) is not { IsHomebrew: false })
+        {
+            throw new UnsupportedDiscLayoutException(
+                "This Game Boy Advance image is not a supported retail raw cartridge layout.");
+        }
+
+        return WholeFileRomHasher.Hash(path, cancellationToken);
     }
 
     private static string ResolveM3u(string path, ICollection<string> dependencies)

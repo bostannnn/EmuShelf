@@ -27,6 +27,8 @@ namespace EmuShelf.App.Tests;
 /// </summary>
 public class MainViewModelTests : IDisposable
 {
+    private const string NintendoLogoHex =
+        "24FFAE51699AA2213D84820A84E409AD11248B98C0817F21A352BE199309CE2010464A4AF82731EC58C7E83382E3CEBF85F4DF94CE4B09C194568AC01372A7FC9F844D73A3CA9A615897A327FC039876231DC7610304AE56BF38840040A70EFDFF52FE036F9530F197FBC08560D68025A963BE03014E38E2F9A234FFBB3E0344780090CB88113A9465C07C6387F03CAFD625E48B380AAC7221D4F807";
     private readonly string _baseDirectory =
         Path.Combine(Path.GetTempPath(), "EmuShelfAppTests", Guid.NewGuid().ToString("N"));
     private readonly GameLibrary _library;
@@ -141,6 +143,7 @@ public class MainViewModelTests : IDisposable
     private static byte[] CreateNintendoDsRom(string title, string gameCode)
     {
         var bytes = new byte[0x10000];
+        Convert.FromHexString(NintendoLogoHex).CopyTo(bytes, 0xC0);
         System.Text.Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0);
         System.Text.Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0x0C);
         "01"u8.CopyTo(bytes.AsSpan(0x10));
@@ -150,7 +153,7 @@ public class MainViewModelTests : IDisposable
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x3C, 4), 4);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x80, 4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x84, 4), 0x200);
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15C, 2), CalculateNintendoCrc16(bytes.AsSpan(0xC0, 156)));
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15C, 2), 0xCF56);
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15E, 2), CalculateNintendoCrc16(bytes.AsSpan(0, 0x15E)));
         return bytes;
     }
@@ -159,6 +162,7 @@ public class MainViewModelTests : IDisposable
     {
         var bytes = new byte[0x1000];
         bytes[3] = 0xEA;
+        Convert.FromHexString(NintendoLogoHex).CopyTo(bytes, 0x04);
         System.Text.Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0xA0);
         System.Text.Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0xAC);
         "01"u8.CopyTo(bytes.AsSpan(0xB0));

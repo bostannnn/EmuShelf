@@ -6,6 +6,10 @@ public static class KnownMetadataProfiles
 {
     private static readonly IGameIdentifierExtractor PlayStationExtractor =
         new PlayStationIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor PlayStation3Extractor =
+        new PlayStation3IdentifierExtractor();
+    private static readonly IGameIdentifierExtractor PspExtractor =
+        new PspIdentifierExtractor();
     private static readonly IGameIdentifierExtractor NintendoExtractor =
         new NintendoDiscIdentifierExtractor();
     private static readonly IGameIdentifierExtractor MegaDriveExtractor =
@@ -43,6 +47,18 @@ public static class KnownMetadataProfiles
                 new LibretroArtworkProvider("Sony - PlayStation 2"),
             ]),
         new(
+            "playstation3",
+            GameIdentifierKind.Serial,
+            RawCatalog("metadat/redump/Sony%20-%20PlayStation%203.dat"),
+            PlayStation3Extractor,
+            [new LibretroArtworkProvider("Sony - PlayStation 3")]),
+        new(
+            "psp",
+            GameIdentifierKind.Serial,
+            RawCatalog("metadat/redump/Sony%20-%20PlayStation%20Portable.dat"),
+            PspExtractor,
+            [new LibretroArtworkProvider("Sony - PlayStation Portable")]),
+        new(
             "gamecube",
             GameIdentifierKind.DiscId,
             RawCatalog("dat/Nintendo%20-%20GameCube.dat"),
@@ -59,19 +75,19 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/no-intro/Sega%20-%20Mega%20Drive%20-%20Genesis.dat"),
             MegaDriveExtractor,
-            []),
+            [new LibretroArtworkProvider("Sega - Mega Drive - Genesis")]),
         new(
             "nds",
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat"),
             NintendoDsExtractor,
-            []),
+            [new LibretroArtworkProvider("Nintendo - Nintendo DS")]),
         new(
             "gba",
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat"),
             GameBoyAdvanceExtractor,
-            []),
+            [new LibretroArtworkProvider("Nintendo - Game Boy Advance")]),
     ];
 
     private static Uri RawCatalog(string path) =>

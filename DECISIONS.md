@@ -860,3 +860,59 @@ local presentation and remain non-primary `TitleId` evidence, but neither code s
 metadata: the Libretro No-Intro nested ROM SHA-1 is the required exact key. This prevents revisions,
 regional variants, altered dumps, and homebrew from being title-guessed or colliding because of a
 reused header code. Artwork and RetroAchievements support remain separately gated by M19.
+
+## 2026-07-19 — Strict Nintendo cartridge recognition validates the canonical header logo
+
+The original M17/M18 header checks could accept a fabricated Nintendo DS logo when its recomputed
+CRC happened to agree, and a fabricated Game Boy Advance header with a valid complement check. Both
+systems now require the canonical 156-byte header-logo SHA-256 digest; DS additionally requires the
+format's fixed `0xCF56` logo-CRC field. Keeping a digest rather than logo bytes in production code
+rejects self-consistent synthetic headers without bundling the logo as an app asset. The test
+fixtures retain their format bytes solely to prove this compatibility gate and source files remain
+read-only.
+
+## 2026-07-19 — M19 uses exact Libretro catalog matches before named cover art
+
+The maintained Libretro database and thumbnail service are the one provider pair that covers PS3,
+PSP, Mega Drive / Genesis, Nintendo DS, and Game Boy Advance without an EmuShelf API credential or
+bundled artwork. The provider was checked against its current Redump/No-Intro identifier semantics,
+CC BY-SA database license, periodic thumbnail-server updates, bounded image behavior, and live
+`200` image responses for one canonical title on every expansion system plus a `404` miss.
+
+PS3 uses the already source-authoritative RPCS3 title id, normalized to the Redump product serial;
+PSP uses its read-only `PARAM.SFO` product serial; the three cartridge systems retain their existing
+exact SHA-1 catalog keys. No provider offers a reliable, complete shared id-to-cover mapping for all
+five systems, so named art is requested only after that exact catalog match yields a canonical title.
+The shared opt-in downloader handles 404, rate-limit, offline, malformed-image, and ownership-race
+outcomes; it never replaces a user cover or bundles game art.
+
+## 2026-07-19 — M19 RetroAchievements hashes preserve rcheevos' supplied-byte semantics
+
+The expansion readers remain pinned to rcheevos
+`2ac45d357bce2906bb0f1438f3eaf8ce6e78e3c4`: Mega Drive / Genesis and GBA use streamed whole-file
+MD5; DS hashes its 0x160-byte header, ARM9, ARM7, and 0xA00 icon/title ranges; PSP hashes
+`PSP_GAME/PARAM.SFO` followed by `PSP_GAME/SYSDIR/EBOOT.BIN` through the existing read-only ISO/CSO
+logical-disc layer. The M19 fixtures pin each accepted extension's expected MD5, including raw and
+SMD Mega Drive layouts and ISO/CSO PSP parity. SMD's normalized SHA-1 remains catalog evidence only;
+RetroAchievements must hash the original accepted file bytes, as rcheevos does.
+
+Every expansion reader gets a separate persisted version so earlier global hashes cannot be mistaken
+for a supported M19 result. RA console ids are PSP 41, Mega Drive 1, DS 18, and GBA 5. PS3 remains
+unmapped and explicitly unsupported. Archives, unrecognized/headered layouts, local `####`
+homebrew cartridges, PSP images without a trusted retail serial, and unsupported containers produce
+an unknown achievement state rather than a false no-achievements result.
+
+## 2026-07-19 — Nintendo DS achievement matching preserves rcheevos' code-size rejection
+
+The raw DS importer may retain a structurally valid cartridge with large ARM9/ARM7 ranges for local
+library use, but pinned rcheevos rejects an image when their combined code size exceeds 16 MiB.
+M19 therefore applies that same bound only to achievement hashing and returns `Unknown` rather than
+submitting a non-parity MD5 to the DS catalogue. The fixture exercises an import-valid image beyond
+the bound, keeping the local recognition and RA contracts deliberately separate.
+
+## 2026-07-19 — PSP achievement matching requires rcheevos' complete initial file sector
+
+Before it clamps `PARAM.SFO` or `EBOOT.BIN` to its declared ISO9660 size, pinned rcheevos requires
+the file's first 2048-byte logical sector to be complete. M19 does the same: a disk truncated within
+that sector is invalid media, not a candidate hash. Later short reads remain conservatively rejected
+as well, so malformed PSP images cannot produce a potentially non-parity catalogue lookup.

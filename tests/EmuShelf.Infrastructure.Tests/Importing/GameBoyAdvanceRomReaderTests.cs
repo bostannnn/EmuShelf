@@ -9,6 +9,8 @@ namespace EmuShelf.Infrastructure.Tests.Importing;
 
 public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
 {
+    private const string NintendoLogoHex =
+        "24FFAE51699AA2213D84820A84E409AD11248B98C0817F21A352BE199309CE2010464A4AF82731EC58C7E83382E3CEBF85F4DF94CE4B09C194568AC01372A7FC9F844D73A3CA9A615897A327FC039876231DC7610304AE56BF38840040A70EFDFF52FE036F9530F197FBC08560D68025A963BE03014E38E2F9A234FFBB3E0344780090CB88113A9465C07C6387F03CAFD625E48B380AAC7221D4F807";
     private readonly FileImportRules _rules = new();
 
     public GameBoyAdvanceRomReaderTests()
@@ -98,6 +100,18 @@ public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Recognition_RejectsAHeaderWithAChangedNintendoLogo()
+    {
+        var path = WriteRom("Forged logo.gba", "Example GBA", "ABCE");
+        var bytes = File.ReadAllBytes(path);
+        bytes[0x04] ^= 0x01;
+        File.WriteAllBytes(path, bytes);
+
+        Assert.Null(GameBoyAdvanceRomReader.TryRecognize(path));
+        Assert.False(_rules.IsFolderCandidate(path, System("gba")));
+    }
+
+    [Fact]
     public void MalformedTitleDoesNotBecomePresentationEvidence()
     {
         var path = WriteRom("Filename fallback.gba", "Example GBA", "ABCE");
@@ -136,6 +150,7 @@ public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
     {
         var bytes = new byte[0x1000];
         bytes[3] = 0xEA;
+        Convert.FromHexString(NintendoLogoHex).CopyTo(bytes, 0x04);
         Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0xA0);
         Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0xAC);
         "01"u8.CopyTo(bytes.AsSpan(0xB0));

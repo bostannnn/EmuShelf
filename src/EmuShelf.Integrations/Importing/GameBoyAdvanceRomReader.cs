@@ -14,6 +14,7 @@ public static class GameBoyAdvanceRomReader
     public const long MaximumRomBytes = 32L * 1024 * 1024;
 
     private const int HeaderBytes = 0xC0;
+    private const int NintendoLogoOffset = 0x04;
     private const int TitleOffset = 0xA0;
     private const int GameCodeOffset = 0xAC;
     private const int HeaderChecksumOffset = 0xBD;
@@ -76,7 +77,9 @@ public static class GameBoyAdvanceRomReader
         var bytes = new byte[HeaderBytes];
         stream.Position = 0;
         ReadExactly(stream, bytes);
-        if (bytes[3] != 0xEA ||
+        if (!NintendoLogoValidator.IsCanonical(
+                bytes.AsSpan(NintendoLogoOffset, NintendoLogoValidator.LogoBytes)) ||
+            bytes[3] != 0xEA ||
             bytes[0xB2] != 0x96 ||
             bytes[0xB3] != 0 ||
             bytes[0xBE] != 0 ||

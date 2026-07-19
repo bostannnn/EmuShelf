@@ -64,6 +64,26 @@ public class RetroAchievementsMatchingServiceTests
         Assert.Equal(0, catalogue.Calls);
     }
 
+    [Theory]
+    [InlineData("psp", 41)]
+    [InlineData("megadrive", 1)]
+    [InlineData("nds", 18)]
+    [InlineData("gba", 5)]
+    public async Task ExpansionSystem_UsesItsVerifiedConsoleCatalogue(
+        string systemId,
+        int expectedConsoleId)
+    {
+        var store = new FakeStore(Hashed(1, systemId, "abc"));
+        var catalogue = new FakeCatalogue(Fresh(("abc", 1234, 40)));
+        var service = new RetroAchievementsMatchingService(store, catalogue);
+
+        var summary = await service.MatchAsync(Credentials, forceRefreshCatalogues: false, Token);
+
+        Assert.Equal(1, summary.Matched);
+        Assert.Equal([expectedConsoleId], catalogue.ConsoleIds);
+        Assert.Equal((1L, (int?)1234, (bool?)true), Assert.Single(store.Matches));
+    }
+
     [Fact]
     public async Task NoCatalogueAvailable_LeavesUnresolved()
     {
@@ -115,6 +135,7 @@ public class RetroAchievementsMatchingServiceTests
         : IRetroAchievementsCatalogueCache
     {
         public int Calls { get; private set; }
+        public List<int> ConsoleIds { get; } = [];
 
         public Task<RetroAchievementsCatalogueLookup?> GetLookupAsync(
             int consoleId,
@@ -123,6 +144,7 @@ public class RetroAchievementsMatchingServiceTests
             CancellationToken cancellationToken = default)
         {
             Calls++;
+            ConsoleIds.Add(consoleId);
             return Task.FromResult(lookup);
         }
     }

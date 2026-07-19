@@ -10,6 +10,8 @@ namespace EmuShelf.Infrastructure.Tests.Importing;
 
 public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
 {
+    private const string NintendoLogoHex =
+        "24FFAE51699AA2213D84820A84E409AD11248B98C0817F21A352BE199309CE2010464A4AF82731EC58C7E83382E3CEBF85F4DF94CE4B09C194568AC01372A7FC9F844D73A3CA9A615897A327FC039876231DC7610304AE56BF38840040A70EFDFF52FE036F9530F197FBC08560D68025A963BE03014E38E2F9A234FFBB3E0344780090CB88113A9465C07C6387F03CAFD625E48B380AAC7221D4F807";
     private readonly FileImportRules _rules = new();
 
     public NintendoDsRomReaderTests()
@@ -105,6 +107,20 @@ public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Recognition_RejectsASelfConsistentButNonCanonicalNintendoLogo()
+    {
+        var path = WriteRom("Forged logo.nds", "Example DS", "ABCE");
+        var bytes = File.ReadAllBytes(path);
+        bytes[0xC0] ^= 0x01;
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15C, 2), CalculateCrc16(bytes.AsSpan(0xC0, 156)));
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15E, 2), CalculateCrc16(bytes.AsSpan(0, 0x15E)));
+        File.WriteAllBytes(path, bytes);
+
+        Assert.Null(NintendoDsRomReader.TryRecognize(path));
+        Assert.False(_rules.IsFolderCandidate(path, System("nds")));
+    }
+
+    [Fact]
     public void Recognition_RejectsOversizedRomBeforeHashing()
     {
         var path = WriteRom("Oversized.nds", "Example DS", "ABCE");
@@ -133,21 +149,25 @@ public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
         string title,
         string gameCode,
         bool homebrew = false,
-        byte unitCode = 0)
+        byte unitCode = 0,
+        int romBytes = 0x10000,
+        uint arm9Size = 4,
+        uint arm7Size = 4)
     {
-        var bytes = new byte[0x10000];
+        var bytes = new byte[romBytes];
+        Convert.FromHexString(NintendoLogoHex).CopyTo(bytes, 0xC0);
         Encoding.ASCII.GetBytes(title).CopyTo(bytes, 0);
         Encoding.ASCII.GetBytes(gameCode).CopyTo(bytes, 0x0C);
         "01"u8.CopyTo(bytes.AsSpan(0x10));
         bytes[0x12] = unitCode;
         bytes[0x14] = 0;
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x20, 4), homebrew ? 0x200u : 0x4000u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x2C, 4), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x2C, 4), arm9Size);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x30, 4), homebrew ? 0x300u : 0x5000u);
-        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x3C, 4), 4);
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x3C, 4), arm7Size);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x80, 4), (uint)bytes.Length);
         BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(0x84, 4), 0x200);
-        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15C, 2), CalculateCrc16(bytes.AsSpan(0xC0, 156)));
+        BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15C, 2), 0xCF56);
         BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(0x15E, 2), CalculateCrc16(bytes.AsSpan(0, 0x15E)));
         return bytes;
     }
