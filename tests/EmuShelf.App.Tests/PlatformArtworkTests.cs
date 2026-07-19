@@ -1,5 +1,6 @@
 using Avalonia.Headless.XUnit;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Integrations.Systems;
 
 namespace EmuShelf.App.Tests;
 
@@ -18,5 +19,15 @@ public class PlatformArtworkTests
         Assert.Contains("dreamcast", PlatformArtwork.SupportedSystemIds);
 
         Assert.Null(PlatformArtwork.ForSystem("not-a-platform"));
+    }
+
+    [AvaloniaFact]
+    public void ExpansionSystems_HaveStableNavigationIdsAndLicensedArtwork()
+    {
+        Assert.Equal(
+            ["psp", "megadrive", "nds", "gba"],
+            KnownSystems.All.Skip(5).Select(system => system.Id));
+        Assert.All(KnownSystems.All.Skip(5), system =>
+            Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
     }
 }

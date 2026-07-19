@@ -8,4 +8,5 @@ public sealed record LibraryMaintenanceActions(
     Func<string, Task<string>> RescanSystem,
     Func<Task<string>> RescanAll,
     Func<string, Task<string>>? FetchMetadataForSystem = null,
-    Func<Task<string>>? FetchAllMetadata = null);
+    Func<Task<string>>? FetchAllMetadata = null,
+    Func<Task<string>>? SyncRpcs3Library = null);

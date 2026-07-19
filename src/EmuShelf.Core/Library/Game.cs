@@ -14,6 +14,16 @@ public sealed record Game
     public GameTitleOrigin TitleOrigin { get; init; } = GameTitleOrigin.LegacyUnknown;
     public string? CoverPath { get; init; }
     public GameCoverOrigin CoverOrigin { get; init; } = GameCoverOrigin.None;
+    /// <summary>External emulator library that authoritatively discovered this entry, if any.</summary>
+    public string? ExternalSourceId { get; init; }
+    /// <summary>Stable entry id inside <see cref="ExternalSourceId"/>, if any.</summary>
+    public string? ExternalSourceEntryId { get; init; }
+    /// <summary>
+    /// Whether the external source listed this entry during its latest successful sync. This is
+    /// null for local entries so a missing source record remains distinct from an unavailable
+    /// listed path.
+    /// </summary>
+    public bool? IsPresentInExternalSource { get; init; }
     public bool IsAvailable { get; init; } = true;
     public DateTimeOffset DateAdded { get; init; }
 }

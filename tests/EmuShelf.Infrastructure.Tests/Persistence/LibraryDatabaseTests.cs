@@ -21,6 +21,8 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         Assert.Contains("Games", GetTableNames(database));
         Assert.Contains("LibraryFolders", GetTableNames(database));
         Assert.Contains("EmulatorConfigs", GetTableNames(database));
+        Assert.Contains("EmulatorInstallations", GetTableNames(database));
+        Assert.Contains("ExternalLibrarySources", GetTableNames(database));
         Assert.Contains("GameIdentifiers", GetTableNames(database));
         Assert.Contains("GameMetadata", GetTableNames(database));
         Assert.Contains("RetroAchievementGameLinks", GetTableNames(database));
@@ -44,7 +46,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
         command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(7L, (long)command.ExecuteScalar()!);
+        Assert.Equal(10L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]
@@ -168,7 +170,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         using var check = database.CreateConnection();
         using var version = check.CreateCommand();
         version.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(7L, (long)version.ExecuteScalar()!);
+        Assert.Equal(10L, (long)version.ExecuteScalar()!);
 
         using var origins = check.CreateCommand();
         origins.CommandText = "SELECT TitleOrigin, CoverOrigin FROM Games LIMIT 1;";
@@ -176,6 +178,51 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         Assert.True(reader.Read());
         Assert.Equal(0L, reader.GetInt64(0));
         Assert.Equal(2L, reader.GetInt64(1));
+    }
+
+    [Fact]
+    public void Initialize_FromVersion9_DistinguishesPriorSourceMissingStateFromLocalRows()
+    {
+        var database = new LibraryDatabase(AppPaths);
+        using (var connection = database.CreateConnection())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE SchemaVersion (Version INTEGER NOT NULL);
+                INSERT INTO SchemaVersion (Version) VALUES (9);
+                CREATE TABLE Games (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    SystemId TEXT NOT NULL,
+                    Path TEXT NOT NULL COLLATE NOCASE,
+                    Title TEXT NOT NULL,
+                    IsAvailable INTEGER NOT NULL,
+                    ExternalSourceId TEXT NULL,
+                    ExternalSourceEntryId TEXT NULL
+                );
+                INSERT INTO Games (
+                    SystemId, Path, Title, IsAvailable, ExternalSourceId, ExternalSourceEntryId)
+                VALUES
+                    ('playstation3', 'Games/current', 'Current', 1, 'rpcs3-library', 'BLES12345'),
+                    ('playstation3', 'Games/missing', 'Missing', 0, 'rpcs3-library', 'BLES12346'),
+                    ('playstation', 'Games/local', 'Local', 0, NULL, NULL);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        database.Initialize();
+
+        using var check = database.CreateConnection();
+        using var presenceCommand = check.CreateCommand();
+        presenceCommand.CommandText =
+            "SELECT ExternalSourcePresent FROM Games ORDER BY Id;";
+        using var reader = presenceCommand.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(1L, reader.GetInt64(0));
+        Assert.True(reader.Read());
+        Assert.Equal(0L, reader.GetInt64(0));
+        Assert.True(reader.Read());
+        Assert.True(reader.IsDBNull(0));
     }
 
     private static List<string> GetTableNames(LibraryDatabase database)

@@ -23,6 +23,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly IMetadataPreferencesService? _metadataPreferences;
     private readonly RetroAchievementsSettingsContext? _retroAchievements;
     private readonly IAppLogger _logger;
+    private bool _synchronizingSharedExecutable;
 
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
     public IReadOnlyList<SettingsSection> Sections { get; }
@@ -135,20 +136,40 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                     "Reconnect required: this platform keeps your Web API key only for the current session.";
             }
         }
-        Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(systems.Select((system, index) =>
+        var rows = systems.Select((system, index) =>
         {
             var emulator = emulators.First(candidate => candidate.Supports(system.Id));
             configured.TryGetValue(system.Id, out var configuration);
+            var installationId = configuration?.EmulatorInstallationId
+                ?? emulator.GetDefaultInstallationId(system.Id);
+            var isShared = systems.Count(otherSystem =>
+            {
+                var otherEmulator = emulators.First(candidate => candidate.Supports(otherSystem.Id));
+                configured.TryGetValue(otherSystem.Id, out var otherConfiguration);
+                return string.Equals(
+                    otherConfiguration?.EmulatorInstallationId
+                        ?? otherEmulator.GetDefaultInstallationId(otherSystem.Id),
+                    installationId,
+                    StringComparison.Ordinal);
+            }) > 1;
             return new EmulatorSettingsRowViewModel(
                 system,
                 emulator,
                 configuration,
                 dialogs,
-                maintenance is null ? null : RescanSystemAsync,
+                maintenance is null || system.Id == "playstation3" ? null : RescanSystemAsync,
                 maintenance?.FetchMetadataForSystem is null ? null : FetchSystemMetadataAsync,
+                system.Id == "playstation3" && maintenance?.SyncRpcs3Library is not null
+                    ? SyncRpcs3LibraryAsync
+                    : null,
                 isExpanded: index == 0,
+                emulatorInstallationId: installationId,
+                isExecutableShared: isShared,
                 logger: _logger);
-        }));
+        }).ToArray();
+        Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
+        foreach (var row in Rows)
+            row.ExecutablePathEdited += SynchronizeSharedExecutable;
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
     }
@@ -193,6 +214,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         "Fetching missing titles and covers…",
         message => row.MaintenanceStatusText = message);
 
+    private Task SyncRpcs3LibraryAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
+        _maintenance?.SyncRpcs3Library,
+        "Reading the RPCS3 game list…",
+        message => row.MaintenanceStatusText = message);
+
     private async Task RunMaintenanceAsync(
         Func<Task<string>>? action,
         string startingMessage,
@@ -222,6 +248,30 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     {
         foreach (var row in Rows)
             row.IsMaintenanceBlocked = IsWorking;
+    }
+
+    private void SynchronizeSharedExecutable(EmulatorSettingsRowViewModel source, string path)
+    {
+        if (_synchronizingSharedExecutable || !source.IsExecutableShared)
+            return;
+
+        _synchronizingSharedExecutable = true;
+        try
+        {
+            foreach (var row in Rows.Where(row =>
+                         row != source &&
+                         string.Equals(
+                             row.EmulatorInstallationId,
+                             source.EmulatorInstallationId,
+                             StringComparison.Ordinal)))
+            {
+                row.ExecutablePath = path;
+            }
+        }
+        finally
+        {
+            _synchronizingSharedExecutable = false;
+        }
     }
 
     [RelayCommand]

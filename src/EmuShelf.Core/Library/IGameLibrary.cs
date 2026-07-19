@@ -29,6 +29,14 @@ public interface IGameLibrary
         IEnumerable<Game> entries,
         IReadOnlyList<string> suppressedPaths);
 
+    /// <summary>
+    /// Reconciles entries from one explicit, emulator-owned external library. It never deletes
+    /// local game rows: source entries that disappear are instead retained as unavailable.
+    /// </summary>
+    ExternalLibraryImportResult ReconcileExternalLibrary(
+        ExternalLibrarySource source,
+        IReadOnlyList<ExternalLibraryGameEntry> entries);
+
     /// <summary>Updates the availability flag for a single game.</summary>
     void SetAvailability(long gameId, bool isAvailable);
 

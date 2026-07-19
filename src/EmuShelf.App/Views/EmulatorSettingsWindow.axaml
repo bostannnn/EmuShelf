@@ -40,7 +40,7 @@
                 <TextBlock Text="Configure emulator launching, metadata, and imported library folders."
                            TextWrapping="Wrap"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                <TextBlock Text="Placeholders: {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}"
+                <TextBlock Text="Placeholders: {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}, {CorePath}"
                            FontFamily="Monospace" FontSize="11"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
             </StackPanel>
@@ -182,7 +182,7 @@
                                                 Margin="16,0,16,16" Spacing="9">
                                         <Border Height="1" Background="{DynamicResource EmuBorderBrush}"
                                                 Margin="0,0,0,5" />
-                                        <TextBlock Text="EXECUTABLE" FontSize="10" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding ExecutableDescription}" FontSize="10" FontWeight="SemiBold"
                                                    LetterSpacing="0.7"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -206,17 +206,39 @@
                                                  Background="{DynamicResource EmuInputBrush}"
                                                  BorderBrush="{DynamicResource EmuBorderBrush}"
                                                  FontFamily="Monospace" />
-                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,5,0,0">
+                                        <StackPanel IsVisible="{Binding RequiresCorePath}" Spacing="5">
+                                            <TextBlock Text="RETROARCH CORE" FontSize="10" FontWeight="SemiBold"
+                                                       LetterSpacing="0.7"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                                <TextBox Grid.Column="0" Text="{Binding CorePath, Mode=TwoWay}"
+                                                         Background="{DynamicResource EmuInputBrush}"
+                                                         BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                         PlaceholderText="Select an installed core file" />
+                                                <Button Grid.Column="1" Content="Browse…"
+                                                        Command="{Binding BrowseCoreCommand}" />
+                                            </Grid>
+                                            <TextBlock Text="EmuShelf only uses the core you select; it never scans, downloads, or changes RetroArch cores or settings."
+                                                       FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="0,5,0,0">
                                             <TextBlock Grid.Column="0" Text="{Binding MaintenanceStatusText}"
                                                        IsVisible="{Binding HasMaintenanceStatus}"
                                                        FontSize="11" TextWrapping="Wrap"
                                                        VerticalAlignment="Center"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                            <Button Grid.Column="1" Content="Rescan library"
+                                            <Button Grid.Column="1" Content="Sync RPCS3 library"
+                                                    IsVisible="{Binding HasSyncLibrary}"
+                                                    Command="{Binding SyncLibraryCommand}"
+                                                    IsEnabled="{Binding CanSyncLibrary}"
+                                                    ToolTip.Tip="Read the explicitly selected RPCS3 games.yml without changing it" />
+                                            <Button Grid.Column="2" Content="Rescan library"
+                                                    IsVisible="{Binding HasRescanLibrary}"
                                                     Command="{Binding RescanLibraryCommand}"
                                                     IsEnabled="{Binding CanRescan}"
                                                     ToolTip.Tip="Recheck this console's remembered folders" />
-                                            <Button Grid.Column="2" Content="Fetch metadata"
+                                            <Button Grid.Column="3" Content="Fetch metadata"
                                                     Command="{Binding FetchMetadataCommand}"
                                                     IsEnabled="{Binding CanFetchMetadata}"
                                                     ToolTip.Tip="Fetch missing titles and covers for this console" />

@@ -3,15 +3,20 @@ using System.Text;
 namespace EmuShelf.Core.Launching;
 
 /// <summary>
-/// Expands the four documented placeholders into an argument array. This is deliberately
+/// Expands documented placeholders into an argument array. This is deliberately
 /// a small template language, not a command line or shell interpreter.
 /// </summary>
 public static class ArgumentTemplate
 {
+    /// <summary>Returns whether a template contains one documented placeholder.</summary>
+    public static bool ContainsPlaceholder(string template, string placeholder) =>
+        template.Contains($"{{{placeholder}}}", StringComparison.Ordinal);
+
     public static IReadOnlyList<string> Expand(
         string template,
         string gamePath,
-        string emulatorPath)
+        string emulatorPath,
+        string? corePath = null)
     {
         ArgumentNullException.ThrowIfNull(template);
         ArgumentException.ThrowIfNullOrWhiteSpace(gamePath);
@@ -32,6 +37,8 @@ public static class ArgumentTemplate
             ["GameFileName"] = Path.GetFileName(normalizedGamePath),
             ["EmulatorDirectory"] = emulatorDirectory,
         };
+        if (!string.IsNullOrWhiteSpace(corePath))
+            replacements["CorePath"] = corePath;
 
         return Tokenize(template)
             .Select(token => ExpandToken(token, replacements))

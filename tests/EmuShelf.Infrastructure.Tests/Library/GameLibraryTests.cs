@@ -1,3 +1,4 @@
+using EmuShelf.Core.Importing;
 using EmuShelf.Core.Library;
 using EmuShelf.Infrastructure.Library;
 using EmuShelf.Infrastructure.Persistence;
@@ -221,5 +222,186 @@ public class GameLibraryTests : TempAppDirectoryTestBase
 
         Assert.Single(_library.GetLibraryFolders("playstation"));
         Assert.Equal(2, _library.GetLibraryFolders().Count);
+    }
+
+    [Fact]
+    public void ReconcileExternalLibrary_RetainsProvenanceAndMarksAbsentSourceEntriesUnavailable()
+    {
+        var source = new ExternalLibrarySource(
+            "rpcs3-test-library",
+            "playstation3",
+            "RPCS3 test library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        var entry = new ExternalLibraryGameEntry(
+            "BLUS-12345",
+            Path.Combine(BaseDirectory, "Games", "Example Game"),
+            "Example Game");
+        _library.AddGames([NewGame("playstation", "/manual/keep.cue", "Keep me")]);
+
+        var first = _library.ReconcileExternalLibrary(source, [entry]);
+        var imported = _library.GetGames("playstation3").Single();
+
+        Assert.Equal(1, first.AddedCount);
+        Assert.Equal("rpcs3-test-library", imported.ExternalSourceId);
+        Assert.Equal("BLUS-12345", imported.ExternalSourceEntryId);
+        Assert.Equal(GameTitleOrigin.Embedded, imported.TitleOrigin);
+        Assert.True(imported.IsPresentInExternalSource);
+        Assert.True(imported.IsAvailable);
+
+        var refreshed = _library.ReconcileExternalLibrary(source, [entry]);
+
+        Assert.Equal(0, refreshed.MarkedSourceMissingCount);
+        Assert.True(_library.GetGames("playstation3").Single().IsAvailable);
+
+        var second = _library.ReconcileExternalLibrary(source, []);
+
+        Assert.Equal(1, second.MarkedSourceMissingCount);
+        Assert.False(_library.GetGames("playstation3").Single().IsPresentInExternalSource);
+        Assert.False(_library.GetGames("playstation3").Single().IsAvailable);
+        Assert.Single(_library.GetGames("playstation")); // source reconciliation never deletes manual rows
+
+        using var connection = new LibraryDatabase(AppPaths).CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT Location FROM ExternalLibrarySources WHERE SourceId = $id;";
+        command.Parameters.AddWithValue("$id", source.Id);
+        Assert.Equal("RPCS3", command.ExecuteScalar());
+    }
+
+    [Fact]
+    public void ReconcileExternalLibrary_PreservesManualTitleWhileRefreshingTheSourcePath()
+    {
+        var source = new ExternalLibrarySource(
+            "rpcs3-test-library",
+            "playstation3",
+            "RPCS3 test library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        var initial = new ExternalLibraryGameEntry(
+            "BLUS-12345",
+            Path.Combine(BaseDirectory, "Games", "Old"),
+            "Embedded title");
+        _library.ReconcileExternalLibrary(source, [initial]);
+        var imported = _library.GetGames("playstation3").Single();
+        _library.UpdateTitle(imported.Id, "My title");
+        var movedPath = Path.Combine(BaseDirectory, "Games", "Moved");
+
+        var result = _library.ReconcileExternalLibrary(source,
+        [
+            new ExternalLibraryGameEntry("BLUS-12345", movedPath, "Different embedded title"),
+        ]);
+
+        var refreshed = _library.GetGames("playstation3").Single();
+        Assert.Equal(1, result.UpdatedCount);
+        Assert.Equal(movedPath, refreshed.Path);
+        Assert.Equal("My title", refreshed.Title);
+        Assert.Equal(GameTitleOrigin.User, refreshed.TitleOrigin);
+    }
+
+    [Fact]
+    public void ReconcileExternalLibrary_RejectsAPathAlreadyOwnedByAnotherEntry()
+    {
+        var source = new ExternalLibrarySource(
+            "rpcs3-test-library",
+            "playstation3",
+            "RPCS3 test library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        var path = Path.Combine(BaseDirectory, "Games", "Shared path");
+        _library.AddGames([NewGame("playstation", path, "Manual game")]);
+
+        var exception = Assert.Throws<ExternalLibrarySourceConflictException>(() =>
+            _library.ReconcileExternalLibrary(source,
+            [
+                new ExternalLibraryGameEntry("BLUS12345", path, "RPCS3 game"),
+            ]));
+
+        Assert.Contains("already owned by a different EmuShelf game", exception.Message);
+        Assert.Single(_library.GetGames("playstation"));
+        Assert.Empty(_library.GetGames("playstation3"));
+    }
+
+    [Fact]
+    public void ReconcileExternalLibrary_RejectsAConflictingSourceMoveWithoutUpdatingTheOldEntry()
+    {
+        var source = new ExternalLibrarySource(
+            "rpcs3-test-library",
+            "playstation3",
+            "RPCS3 test library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        var oldPath = Path.Combine(BaseDirectory, "Games", "Old path");
+        var conflictingPath = Path.Combine(BaseDirectory, "Games", "Manual game");
+        _library.ReconcileExternalLibrary(source,
+        [
+            new ExternalLibraryGameEntry("BLUS12345", oldPath, "RPCS3 game"),
+        ]);
+        _library.AddGames([NewGame("playstation", conflictingPath, "Manual game")]);
+
+        Assert.Throws<ExternalLibrarySourceConflictException>(() =>
+            _library.ReconcileExternalLibrary(source,
+            [
+                new ExternalLibraryGameEntry("BLUS12345", conflictingPath, "Moved RPCS3 game"),
+            ]));
+
+        var retained = Assert.Single(_library.GetGames("playstation3"));
+        Assert.Equal(oldPath, retained.Path);
+        Assert.True(retained.IsPresentInExternalSource);
+        Assert.True(retained.IsAvailable);
+    }
+
+    [Fact]
+    public void ReconcileExternalLibrary_PreservesManualCoverWhileRefreshingSourceMetadata()
+    {
+        var source = new ExternalLibrarySource(
+            "rpcs3-test-library",
+            "playstation3",
+            "RPCS3 test library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        var initial = new ExternalLibraryGameEntry(
+            "BLUS-12345",
+            Path.Combine(BaseDirectory, "Games", "Example"),
+            "Embedded title");
+        _library.ReconcileExternalLibrary(source, [initial]);
+        var imported = _library.GetGames("playstation3").Single();
+        var cover = Path.Combine(AppPaths.CoversDirectory, "manual.png");
+        _library.UpdateCoverPath(imported.Id, cover);
+
+        _library.ReconcileExternalLibrary(source,
+        [
+            new ExternalLibraryGameEntry(
+                "BLUS-12345",
+                Path.Combine(BaseDirectory, "Games", "Moved"),
+                "Updated embedded title"),
+        ]);
+
+        var refreshed = _library.GetGames("playstation3").Single();
+        Assert.Equal(cover, refreshed.CoverPath);
+        Assert.Equal(GameCoverOrigin.User, refreshed.CoverOrigin);
+        Assert.Equal("Updated embedded title", refreshed.Title);
+    }
+
+    [Fact]
+    public async Task ExternalLibrarySync_CancelledReadLeavesTheDatabaseUntouched()
+    {
+        var source = new ExternalLibrarySource(
+            "rpcs3-test-library",
+            "playstation3",
+            "RPCS3 test library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        var synchronizer = new ExternalLibrarySyncService(_library);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(() => synchronizer.SyncAsync(
+            new CancelledSource(source),
+            cancellation.Token));
+
+        Assert.Empty(_library.GetGames("playstation3"));
+    }
+
+    private sealed class CancelledSource(ExternalLibrarySource source) : IExternalLibrarySource
+    {
+        public ExternalLibrarySource Source { get; } = source;
+
+        public Task<IReadOnlyList<ExternalLibraryGameEntry>> ReadGamesAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromCanceled<IReadOnlyList<ExternalLibraryGameEntry>>(cancellationToken);
     }
 }

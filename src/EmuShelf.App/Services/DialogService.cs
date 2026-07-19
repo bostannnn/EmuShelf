@@ -93,6 +93,36 @@ public sealed class DialogService : IDialogService
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
 
+    public async Task<string?> PickLibretroCoreAsync(string systemName)
+    {
+        var owner = PickerOwner;
+        if (owner is null)
+            return null;
+
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = $"Select {systemName} RetroArch core",
+            AllowMultiple = false,
+        });
+
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickRpcs3ConfigurationDirectoryAsync()
+    {
+        var owner = PickerOwner;
+        if (owner is null)
+            return null;
+
+        var folders = await owner.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Select RPCS3 configuration folder (contains games.yml)",
+            AllowMultiple = false,
+        });
+
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+    }
+
     public async Task<string?> PickCoverImageAsync(string gameTitle)
     {
         var owner = Owner;

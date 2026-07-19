@@ -21,5 +21,11 @@ public static class KnownSystems
         new("playstation3", "PlayStation 3", "PS3", "#2E3A87", 0.708),
         new("gamecube",     "GameCube",      "GC",  "#7B68C9", 0.708),
         new("wii",          "Wii",           "Wii", "#49B3C9", 0.708),
+        // These systems are present in navigation and launcher configuration before their
+        // strict, format-verified import milestones. Do not add import extensions here.
+        new("psp",          "PSP",           "PSP", "#596EBC", 0.708),
+        new("megadrive",    "Mega Drive / Genesis", "MD", "#3A6D74", 0.708),
+        new("nds",          "Nintendo DS",   "DS",  "#7580B9", 0.708),
+        new("gba",          "Game Boy Advance", "GBA", "#7065A7", 0.708),
     ];
 }

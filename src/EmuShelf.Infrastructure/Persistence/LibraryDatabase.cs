@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 7;
+    private const int CurrentSchemaVersion = 10;
 
     private readonly IAppPaths _appPaths;
 
@@ -77,8 +77,26 @@ public sealed class LibraryDatabase
             version = 6;
         }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 7)
+        {
             ApplyMigrationV7(connection);
+            version = 7;
+        }
+
+        if (version < 8)
+        {
+            ApplyMigrationV8(connection);
+            version = 8;
+        }
+
+        if (version < 9)
+        {
+            ApplyMigrationV9(connection);
+            version = 9;
+        }
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV10(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -310,5 +328,168 @@ public sealed class LibraryDatabase
             """;
         command.ExecuteNonQuery();
         transaction.Commit();
+    }
+
+    private static void ApplyMigrationV8(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        EnsureEmulatorConfigColumns(connection, transaction);
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS EmulatorInstallations (
+                InstallationId TEXT PRIMARY KEY,
+                EmulatorId TEXT NOT NULL,
+                ExecutablePath TEXT NULL
+            );
+
+            UPDATE EmulatorConfigs
+            SET EmulatorId = CASE SystemId
+                WHEN 'playstation' THEN 'duckstation'
+                WHEN 'playstation2' THEN 'pcsx2'
+                WHEN 'playstation3' THEN 'rpcs3'
+                WHEN 'gamecube' THEN 'dolphin'
+                WHEN 'wii' THEN 'dolphin'
+                WHEN 'psp' THEN 'ppsspp'
+                WHEN 'megadrive' THEN 'retroarch'
+                WHEN 'nds' THEN 'retroarch'
+                WHEN 'gba' THEN 'retroarch'
+                ELSE SystemId
+            END
+            WHERE EmulatorId IS NULL OR trim(EmulatorId) = '';
+
+            -- Existing configurations deliberately receive private installation ids. This keeps
+            -- a user who had configured different Dolphin paths for GameCube and Wii working
+            -- exactly as before; new compatible systems can intentionally choose one shared id.
+            UPDATE EmulatorConfigs
+            SET EmulatorInstallationId = 'legacy-' || SystemId
+            WHERE EmulatorInstallationId IS NULL OR trim(EmulatorInstallationId) = '';
+
+            INSERT OR IGNORE INTO EmulatorInstallations (
+                InstallationId, EmulatorId, ExecutablePath)
+            SELECT EmulatorInstallationId, EmulatorId, ExecutablePath
+            FROM EmulatorConfigs
+            WHERE EmulatorInstallationId IS NOT NULL;
+
+            UPDATE SchemaVersion SET Version = 8;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void EnsureEmulatorConfigColumns(
+        SqliteConnection connection,
+        SqliteTransaction transaction)
+    {
+        using (var create = connection.CreateCommand())
+        {
+            create.Transaction = transaction;
+            create.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS EmulatorConfigs (
+                    SystemId TEXT PRIMARY KEY,
+                    ExecutablePath TEXT NULL,
+                    LaunchArguments TEXT NULL
+                );
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        AddColumnIfMissing(connection, transaction, "EmulatorId", "TEXT NULL");
+        AddColumnIfMissing(connection, transaction, "EmulatorInstallationId", "TEXT NULL");
+        AddColumnIfMissing(connection, transaction, "CorePath", "TEXT NULL");
+    }
+
+    private static void AddColumnIfMissing(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string columnName,
+        string columnDefinition)
+    {
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('EmulatorConfigs') WHERE name = $columnName;";
+        check.Parameters.AddWithValue("$columnName", columnName);
+        if ((long)check.ExecuteScalar()! > 0)
+            return;
+
+        using var alter = connection.CreateCommand();
+        alter.Transaction = transaction;
+        alter.CommandText = $"ALTER TABLE EmulatorConfigs ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
+    }
+
+    private static void ApplyMigrationV9(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        AddGameColumnIfMissing(connection, transaction, "ExternalSourceId", "TEXT NULL");
+        AddGameColumnIfMissing(connection, transaction, "ExternalSourceEntryId", "TEXT NULL");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS ExternalLibrarySources (
+                SourceId TEXT PRIMARY KEY,
+                SystemId TEXT NOT NULL,
+                DisplayName TEXT NOT NULL,
+                Location TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_Games_ExternalSourceEntry
+                ON Games (ExternalSourceId, ExternalSourceEntryId)
+                WHERE ExternalSourceId IS NOT NULL AND ExternalSourceEntryId IS NOT NULL;
+
+            UPDATE SchemaVersion SET Version = 9;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV10(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        // The original schema always had IsAvailable. Retain the migration layer's existing
+        // interrupted-schema healing behaviour before deriving the new external-source state.
+        AddGameColumnIfMissing(connection, transaction, "IsAvailable", "INTEGER NOT NULL DEFAULT 1");
+        AddGameColumnIfMissing(connection, transaction, "ExternalSourcePresent", "INTEGER NULL");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            -- Schema v9 represented both an absent source record and an unavailable listed path
+            -- with IsAvailable. Preserve the established source-missing display for old rows;
+            -- future syncs record the two states independently.
+            UPDATE Games
+            SET ExternalSourcePresent = IsAvailable
+            WHERE ExternalSourceId IS NOT NULL AND ExternalSourcePresent IS NULL;
+
+            UPDATE SchemaVersion SET Version = 10;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void AddGameColumnIfMissing(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string columnName,
+        string columnDefinition)
+    {
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText =
+            "SELECT COUNT(*) FROM pragma_table_info('Games') WHERE name = $columnName;";
+        check.Parameters.AddWithValue("$columnName", columnName);
+        if ((long)check.ExecuteScalar()! > 0)
+            return;
+
+        using var alter = connection.CreateCommand();
+        alter.Transaction = transaction;
+        alter.CommandText = $"ALTER TABLE Games ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
     }
 }

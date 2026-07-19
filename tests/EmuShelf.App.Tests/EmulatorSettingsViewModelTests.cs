@@ -22,7 +22,7 @@ public class EmulatorSettingsViewModelTests
         bool? closeResult = null;
         viewModel.CloseRequested += saved => closeResult = saved;
 
-        Assert.Equal(5, viewModel.Rows.Count);
+        Assert.Equal(9, viewModel.Rows.Count);
         Assert.Equal("Dolphin", gameCube.EmulatorName);
         Assert.Equal("Dolphin", wii.EmulatorName);
         Assert.Equal(gameCube.DefaultLaunchArguments, wii.DefaultLaunchArguments);
@@ -39,6 +39,39 @@ public class EmulatorSettingsViewModelTests
         Assert.Equal(
             "-b -e \"{GamePath}\" --config=GC",
             _configurations.Saved["gamecube"].LaunchArguments);
+    }
+
+    [AvaloniaFact]
+    public async Task RetroArchRows_ShareTheExecutableButKeepIndependentCores()
+    {
+        _dialogs.LibretroCoreToReturn = "/portable/RetroArch/cores/melonds_libretro.dll";
+        var viewModel = CreateViewModel();
+        var megaDrive = viewModel.Rows.Single(row => row.SystemId == "megadrive");
+        var ds = viewModel.Rows.Single(row => row.SystemId == "nds");
+        var gba = viewModel.Rows.Single(row => row.SystemId == "gba");
+
+        Assert.True(megaDrive.IsExecutableShared);
+        Assert.True(ds.IsExecutableShared);
+        Assert.True(gba.IsExecutableShared);
+        Assert.True(ds.RequiresCorePath);
+        Assert.Equal("RetroArch", ds.EmulatorName);
+
+        megaDrive.ExecutablePath = "/portable/RetroArch/retroarch.exe";
+        megaDrive.CorePath = "/portable/RetroArch/cores/genesis_plus_gx_libretro.dll";
+        gba.CorePath = "/portable/RetroArch/cores/mgba_libretro.dll";
+        await ds.BrowseCoreCommand.ExecuteAsync(null);
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(megaDrive.ExecutablePath, ds.ExecutablePath);
+        Assert.Equal(megaDrive.ExecutablePath, gba.ExecutablePath);
+        Assert.Equal(megaDrive.ExecutablePath, _configurations.Saved["megadrive"].ExecutablePath);
+        Assert.Equal(megaDrive.ExecutablePath, _configurations.Saved["nds"].ExecutablePath);
+        Assert.Equal("/portable/RetroArch/cores/genesis_plus_gx_libretro.dll",
+            _configurations.Saved["megadrive"].CorePath);
+        Assert.Equal("/portable/RetroArch/cores/melonds_libretro.dll",
+            _configurations.Saved["nds"].CorePath);
+        Assert.Equal("/portable/RetroArch/cores/mgba_libretro.dll",
+            _configurations.Saved["gba"].CorePath);
     }
 
     [AvaloniaFact]
@@ -84,6 +117,33 @@ public class EmulatorSettingsViewModelTests
         await viewModel.RescanAllCommand.ExecuteAsync(null);
         Assert.Equal(1, allCalls);
         Assert.Equal("All console folders rescanned", viewModel.MaintenanceStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task PlayStation3Row_ExposesTheExplicitRpcs3LibrarySyncOnly()
+    {
+        var calls = 0;
+        var maintenance = new LibraryMaintenanceActions(
+            _ => Task.FromResult("unused"),
+            () => Task.FromResult("unused"),
+            SyncRpcs3Library: () =>
+            {
+                calls++;
+                return Task.FromResult("RPCS3 library sync complete — 1 added");
+            });
+        var viewModel = CreateViewModel(maintenance);
+        var playStation3 = viewModel.Rows.Single(row => row.SystemId == "playstation3");
+        var playStation2 = viewModel.Rows.Single(row => row.SystemId == "playstation2");
+
+        Assert.True(playStation3.HasSyncLibrary);
+        Assert.True(playStation3.CanSyncLibrary);
+        Assert.False(playStation3.HasRescanLibrary);
+        Assert.False(playStation2.HasSyncLibrary);
+
+        await playStation3.SyncLibraryCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, calls);
+        Assert.Equal("RPCS3 library sync complete — 1 added", playStation3.MaintenanceStatusText);
     }
 
     [AvaloniaFact]

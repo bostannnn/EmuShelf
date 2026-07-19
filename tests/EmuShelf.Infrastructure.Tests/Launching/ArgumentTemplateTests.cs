@@ -56,6 +56,21 @@ public class ArgumentTemplateTests : IDisposable
         arguments);
     }
 
+    [Fact]
+    public void Expand_CorePathStaysOneExplicitArgument()
+    {
+        var gamePath = Path.Combine(_directory, "Game Folder", "game.gba");
+        var corePath = Path.Combine(_directory, "RetroArch", "cores", "mGBA core.dll");
+
+        var arguments = ArgumentTemplate.Expand(
+            "-L \"{CorePath}\" \"{GamePath}\"",
+            gamePath,
+            Path.Combine(_directory, "RetroArch", "retroarch.exe"),
+            corePath);
+
+        Assert.Equal(["-L", corePath, gamePath], arguments);
+    }
+
     [Theory]
     [InlineData("\"{GamePath}")]
     [InlineData("{Unknown}")]

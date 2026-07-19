@@ -17,6 +17,10 @@ public interface IDialogService
 
     /// <summary>Absolute path of a manually selected emulator executable, or null if cancelled.</summary>
     Task<string?> PickEmulatorExecutableAsync(string emulatorName);
+    Task<string?> PickLibretroCoreAsync(string systemName);
+
+    /// <summary>Absolute path of the user-selected RPCS3 configuration folder, or null if cancelled.</summary>
+    Task<string?> PickRpcs3ConfigurationDirectoryAsync();
 
     /// <summary>Absolute path of a manually selected cover image, or null if cancelled.</summary>
     Task<string?> PickCoverImageAsync(string gameTitle);

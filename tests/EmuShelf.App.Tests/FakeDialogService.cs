@@ -11,6 +11,7 @@ internal sealed class FakeDialogService : IDialogService
     public string? FolderToReturn { get; set; }
     public GameSystem? SystemToReturn { get; set; }
     public string? EmulatorExecutableToReturn { get; set; }
+    public string? Rpcs3ConfigurationDirectoryToReturn { get; set; }
     public string? CoverImageToReturn { get; set; }
     public bool ConfirmRemoveToReturn { get; set; }
     public MetadataConsentChoice MetadataConsentToReturn { get; set; } =
@@ -27,6 +28,13 @@ internal sealed class FakeDialogService : IDialogService
     public Task<string?> PickFolderAsync() => Task.FromResult(FolderToReturn);
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName) =>
         Task.FromResult(EmulatorExecutableToReturn);
+
+    public string? LibretroCoreToReturn { get; set; }
+
+    public Task<string?> PickLibretroCoreAsync(string systemName) =>
+        Task.FromResult(LibretroCoreToReturn);
+    public Task<string?> PickRpcs3ConfigurationDirectoryAsync() =>
+        Task.FromResult(Rpcs3ConfigurationDirectoryToReturn);
     public Task<string?> PickCoverImageAsync(string gameTitle)
     {
         LastCoverGameTitle = gameTitle;

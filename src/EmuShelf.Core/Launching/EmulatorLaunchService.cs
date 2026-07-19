@@ -92,16 +92,40 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: the configured {emulator.Name} executable was not found.");
 
+        if (emulator.RequiresCorePath)
+        {
+            if (string.IsNullOrWhiteSpace(configuration.CorePath))
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: select an installed {emulator.Name} core in Settings first.");
+            }
+
+            if (!File.Exists(configuration.CorePath))
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: the configured {emulator.Name} core was not found.");
+            }
+
+            var launchArguments = configuration.LaunchArguments ?? emulator.DefaultLaunchArguments;
+            if (!ArgumentTemplate.ContainsPlaceholder(launchArguments, "CorePath"))
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: the launch arguments for {emulator.Name} must include {{CorePath}}.");
+            }
+        }
+
         try
         {
+            var launchArguments = configuration.LaunchArguments ?? emulator.DefaultLaunchArguments;
             return new LaunchPreparation(
                 emulator.Name,
                 executablePath,
                 Path.GetDirectoryName(executablePath)!,
                 ArgumentTemplate.Expand(
-                    configuration.LaunchArguments ?? emulator.DefaultLaunchArguments,
+                    launchArguments,
                     game.Path,
-                    executablePath),
+                    executablePath,
+                    configuration.CorePath),
                 null);
         }
         catch (FormatException ex)

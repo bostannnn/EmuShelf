@@ -284,23 +284,23 @@ This is the common work required before adding the requested platforms. It keeps
 current per-system launch experience while allowing one RetroArch installation to serve
 several systems and one external emulator to own a game catalogue.
 
-- [ ] Introduce a backwards-compatible launcher mapping: an emulator executable may be
+- [x] Introduce a backwards-compatible launcher mapping: an emulator executable may be
       shared by several systems, while each system retains its own editable launch template
       and settings. Migrate existing per-system executable paths and arguments without
       losing portable relative paths or changing current DuckStation/PCSX2/Dolphin behavior.
-- [ ] Add a controlled per-system `CorePath` launch setting for RetroArch systems and one
+- [x] Add a controlled per-system `CorePath` launch setting for RetroArch systems and one
       additional template placeholder. The Settings UI selects an already installed core
       file; it does not download, update, enumerate, configure, or switch cores per game.
       A missing core is a preflight error, not a reason to start RetroArch without content.
-- [ ] Register PSP, Mega Drive / Genesis, Nintendo DS, and Game Boy Advance as stable,
+- [x] Register PSP, Mega Drive / Genesis, Nintendo DS, and Game Boy Advance as stable,
       separately filterable systems. Reuse licensed platform art where available; choose
       each platform's canonical cover ratio from representative licensed/sample artwork
       before finalizing the grid shelf.
-- [ ] Add a read-only external-library-source contract alongside the existing folder
+- [x] Add a read-only external-library-source contract alongside the existing folder
       scanner. Source imports must retain their source provenance, run only on an explicit
       user action or rescan, reconcile without deleting user library rows, and preserve the
       no-full-library-scan-at-startup rule.
-- [ ] Cover migrations, missing executable/core failures, source-refresh cancellation,
+- [x] Cover migrations, missing executable/core failures, source-refresh cancellation,
       and portable relocation with a shared emulator/core must have deterministic tests on
       macOS and Windows.
 

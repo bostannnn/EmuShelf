@@ -21,6 +21,9 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public GameImportResult ReconcileImport(
         string systemId, IEnumerable<Game> entries, IReadOnlyList<string> suppressedPaths) =>
         GameImportResult.Empty;
+    public ExternalLibraryImportResult ReconcileExternalLibrary(
+        ExternalLibrarySource source,
+        IReadOnlyList<ExternalLibraryGameEntry> entries) => new([], 0, 0);
     public void SetAvailability(long gameId, bool isAvailable) { }
     public void SetAvailabilities(IReadOnlyList<GameAvailabilityUpdate> updates) { }
     public void UpdateTitle(long gameId, string title) { }
@@ -90,6 +93,9 @@ internal sealed class NullDialogService : IDialogService
     public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName) =>
         Task.FromResult<string?>(null);
+
+    public Task<string?> PickLibretroCoreAsync(string systemName) => Task.FromResult<string?>(null);
+    public Task<string?> PickRpcs3ConfigurationDirectoryAsync() => Task.FromResult<string?>(null);
     public Task<string?> PickCoverImageAsync(string gameTitle) =>
         Task.FromResult<string?>(null);
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle) =>

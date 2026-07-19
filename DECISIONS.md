@@ -675,3 +675,41 @@ emulator's own submission to settle, then performs one automatic full-detail req
 launched RA game. That result updates the summary cache and notifies an open achievement window;
 there is no timer or gameplay polling. The existing popup Refresh button remains the explicit
 manual path.
+
+## 2026-07-19 — M12 separates executable installations from per-system launch settings
+
+An emulator installation is now a portable, named record containing one executable path; every
+system still owns its launch template and, for RetroArch systems, a manually selected core path.
+This lets Mega Drive / Genesis, Nintendo DS, and Game Boy Advance share exactly one RetroArch
+executable while invoking an explicit different core for each system. The `{CorePath}` template
+placeholder is expanded into the same argv array as `{GamePath}`, and both a missing core setting
+and a missing core file fail before EmuShelf minimizes. The settings picker selects one existing
+file only; EmuShelf never discovers, downloads, updates, or alters RetroArch cores or settings.
+
+Schema-v8 migrates every pre-existing system configuration into a private named installation,
+including GameCube and Wii's old separate Dolphin paths. That preserves prior behavior exactly;
+only deliberately shared mappings (the new RetroArch default) use a common installation id. All
+installation and core paths use the existing relative-path resolver, so an EmuShelf/RetroArch/core
+bundle can move together on a portable drive.
+
+PSP, Mega Drive / Genesis, Nintendo DS, and Game Boy Advance are now stable navigation and
+configuration systems with the existing licensed platform icons and portrait cover frames. Their
+file discovery remains disabled until M14/M16/M17/M18 establishes each format's exact read-only
+import and identity contract; merely displaying a platform never turns an arbitrary file into a
+game entry.
+
+## 2026-07-19 — M12 external library sources reconcile by source entry, never deletion
+
+The generic `IExternalLibrarySource` contract reads a user-selected emulator catalogue only on an
+explicit sync. Its reader must return the source's own stable entry id, path, title, and
+availability; it has no folder-walk API and no write operation. SQLite schema-v9 stores the source
+definition and a source-id/source-entry-id provenance pair on imported games. A refresh first
+marks that source's existing entries unavailable, then reactivates or updates only entries returned
+by the source. No row is deleted, and local/manual rows are outside that reconciliation.
+
+An external title is treated as embedded metadata: it can replace filename, legacy, or previous
+embedded presentation, but not a user-edited title. A source move retains the same game row through
+the stable external entry id; a path collision with an unrelated local row fails closed rather than
+silently claiming the local row. The read completes before the database transaction begins, so a
+cancelled or unsupported adapter imports nothing. M13 will supply the RPCS3-specific, versioned
+read-only adapter and its explicit Sync action on top of this contract.
