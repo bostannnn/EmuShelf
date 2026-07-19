@@ -705,6 +705,14 @@ public partial class MainViewModel : ViewModelBase
             StatusText = $"RPCS3 library sync failed: {ex.Message}";
             return StatusText;
         }
+        catch (ExternalLibrarySourceConflictException ex)
+        {
+            // Expected, recoverable condition: an entry collides with another game's path. The
+            // reconciliation left the library unchanged, so surface the actionable message plainly.
+            _logger.Warning($"RPCS3 library sync stopped on a path conflict: {ex.Message}");
+            StatusText = $"RPCS3 library sync stopped: {ex.Message}";
+            return StatusText;
+        }
         catch (Exception ex)
         {
             _logger.Error("RPCS3 library sync failed.", ex);
