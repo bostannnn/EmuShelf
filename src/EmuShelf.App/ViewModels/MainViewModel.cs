@@ -14,6 +14,7 @@ using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Integrations.Systems;
@@ -37,6 +38,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IGameCoverService _covers;
     private readonly IAppThemeService _themeService;
     private readonly IGameMetadataService _metadataService;
+    private readonly IGameMetadataStore? _metadataStore;
     private readonly IMetadataPreferencesService _metadataPreferences;
     private readonly IRetroAchievementsIdentificationService? _retroAchievements;
     private readonly IRetroAchievementsReadStore? _retroAchievementsRead;
@@ -177,7 +179,8 @@ public partial class MainViewModel : ViewModelBase
         IRetroAchievementsMatchingService? retroMatching = null,
         IRetroAchievementsProgressService? retroProgress = null,
         IRetroAchievementsDetailsService? retroDetails = null,
-        IRetroAchievementsRefreshService? retroRefresh = null)
+        IRetroAchievementsRefreshService? retroRefresh = null,
+        IGameMetadataStore? metadataStore = null)
     {
         _library = library;
         _scanner = scanner;
@@ -190,6 +193,7 @@ public partial class MainViewModel : ViewModelBase
         _covers = covers ?? new NullGameCoverService();
         _themeService = themeService ?? new NullAppThemeService();
         _metadataService = metadataService ?? new NullGameMetadataService();
+        _metadataStore = metadataStore;
         _metadataPreferences = metadataPreferences ?? new NullMetadataPreferencesService();
         _retroAchievements = retroAchievements;
         _retroAchievementsRead = retroAchievementsRead;
@@ -783,20 +787,51 @@ public partial class MainViewModel : ViewModelBase
         if (selection.EntryPaths.Count == 0 && selection.SuppressedPaths.Count == 0)
             return GameImportResult.Empty;
 
+        var preparedEntries = await Task.Run(() => selection.EntryPaths
+            .Select(path => new PreparedImportEntry(
+                path,
+                _importRules.ReadImportMetadata(path, system)))
+            .ToArray());
         var now = DateTimeOffset.Now;
-        var games = selection.EntryPaths.Select(path => new Game
+        var games = preparedEntries.Select(entry => new Game
         {
             SystemId = system.Id,
-            Path = path,
-            Title = System.IO.Path.GetFileNameWithoutExtension(path),
-            TitleOrigin = GameTitleOrigin.Filename,
+            Path = entry.Path,
+            Title = entry.Metadata.EmbeddedTitle ?? System.IO.Path.GetFileNameWithoutExtension(entry.Path),
+            TitleOrigin = entry.Metadata.EmbeddedTitle is null
+                ? GameTitleOrigin.Filename
+                : GameTitleOrigin.Embedded,
             IsAvailable = true,
             DateAdded = now,
-        });
+        }).ToArray();
 
-        return await Task.Run(() =>
+        var result = await Task.Run(() =>
             _library.ReconcileImport(system.Id, games, selection.SuppressedPaths));
+        if (_metadataStore is not null && result.AddedGameIds.Count > 0)
+        {
+            var metadataByPath = preparedEntries.ToDictionary(
+                entry => entry.Path,
+                entry => entry.Metadata,
+                StringComparer.OrdinalIgnoreCase);
+            await Task.Run(() =>
+            {
+                foreach (var gameId in result.AddedGameIds)
+                {
+                    var imported = _metadataStore.GetGame(gameId);
+                    if (imported is not null &&
+                        metadataByPath.TryGetValue(imported.Path, out var metadata) &&
+                        metadata.Identifiers.Count > 0)
+                    {
+                        _metadataStore.ReplaceIdentifiers(gameId, metadata.Identifiers);
+                    }
+                }
+            });
+        }
+
+        return result;
     }
+
+    private sealed record PreparedImportEntry(string Path, GameImportMetadata Metadata);
 
     private async Task ShowSystemAsync(GameSystem system)
     {

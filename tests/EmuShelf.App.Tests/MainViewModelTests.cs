@@ -6,10 +6,12 @@ using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
 using EmuShelf.Infrastructure.Library;
+using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
@@ -27,6 +29,7 @@ public class MainViewModelTests : IDisposable
     private readonly string _baseDirectory =
         Path.Combine(Path.GetTempPath(), "EmuShelfAppTests", Guid.NewGuid().ToString("N"));
     private readonly GameLibrary _library;
+    private readonly SqliteGameMetadataStore _metadataStore;
     private readonly LibraryDatabase _database;
     private readonly FakeDialogService _dialogs = new();
     private static readonly GameSystem Ps1 = KnownSystems.All.Single(s => s.Id == "playstation");
@@ -39,7 +42,9 @@ public class MainViewModelTests : IDisposable
         appPaths.EnsureDirectoriesExist();
         _database = new LibraryDatabase(appPaths);
         _database.Initialize();
-        _library = new GameLibrary(_database, new RelativePathResolver(appPaths));
+        var pathResolver = new RelativePathResolver(appPaths);
+        _library = new GameLibrary(_database, pathResolver);
+        _metadataStore = new SqliteGameMetadataStore(_database, pathResolver);
     }
 
     private MainViewModel CreateViewModel(
@@ -55,7 +60,8 @@ public class MainViewModelTests : IDisposable
         IRetroAchievementsMatchingService? retroMatching = null,
         IRetroAchievementsProgressService? retroProgress = null,
         IRetroAchievementsDetailsService? retroDetails = null,
-        IRetroAchievementsRefreshService? retroRefresh = null)
+        IRetroAchievementsRefreshService? retroRefresh = null,
+        IGameMetadataStore? metadataStore = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -76,7 +82,8 @@ public class MainViewModelTests : IDisposable
             retroMatching: retroMatching,
             retroProgress: retroProgress,
             retroDetails: retroDetails,
-            retroRefresh: retroRefresh);
+            retroRefresh: retroRefresh,
+            metadataStore: metadataStore);
     }
 
     private string MakeRomsFolder()
@@ -116,6 +123,45 @@ public class MainViewModelTests : IDisposable
         Assert.Empty(_library.GetGames(Ps3.Id));
         Assert.Empty(_library.GetLibraryFolders(Ps3.Id));
         Assert.Contains("imported only from RPCS3", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task AddGames_PspEmbeddedEvidenceSetsTheTitleAndPersistsExactIdentifier()
+    {
+        var path = Path.Combine(_baseDirectory, "roms", "ULUS10002.iso");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "fixture");
+        _dialogs.FilesToReturn = [path];
+        var psp = KnownSystems.All.Single(system => system.Id == "psp");
+        _dialogs.SystemToReturn = psp;
+        var rules = new EmbeddedEvidenceImportRules(psp, "Lumines", "ULUS10002");
+        var vm = CreateViewModel(rules, metadataStore: _metadataStore);
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        var game = Assert.Single(_library.GetGames("psp"));
+        Assert.Equal("Lumines", game.Title);
+        Assert.Equal(GameTitleOrigin.Embedded, game.TitleOrigin);
+        var identifier = Assert.Single(_metadataStore.GetIdentifiers(game.Id));
+        Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
+        Assert.Equal("ULUS10002", identifier.Value);
+        Assert.Equal("PSP PARAM.SFO", identifier.Source);
+    }
+
+    [AvaloniaFact]
+    public async Task AddGames_InvalidPspImageIsSkippedEvenAfterPspConfirmation()
+    {
+        var path = Path.Combine(_baseDirectory, "roms", "not-a-psp.iso");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "not an ISO9660 image");
+        _dialogs.FilesToReturn = [path];
+        _dialogs.SystemToReturn = KnownSystems.All.Single(system => system.Id == "psp");
+        var vm = CreateViewModel();
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        Assert.Empty(_library.GetGames("psp"));
+        Assert.Contains("not recognized as PSP", vm.StatusText);
     }
 
     [AvaloniaFact]
@@ -1065,6 +1111,31 @@ public class MainViewModelTests : IDisposable
             SelectionThreadId = Environment.CurrentManagedThreadId;
             return new(candidates, []);
         }
+    }
+
+    private sealed class EmbeddedEvidenceImportRules(
+        GameSystem system,
+        string title,
+        string discId) : IGameImportRules
+    {
+        public GameFileAnalysis AnalyzeFile(string path) => new(
+            path,
+            [system],
+            new Dictionary<string, GameFileMatch> { [system.Id] = GameFileMatch.Compatible });
+
+        public bool IsFolderCandidate(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id;
+
+        public GameEntrySelection SelectGameEntries(
+            IReadOnlyList<string> candidates,
+            GameSystem candidateSystem) => new(candidates, []);
+
+        public GameImportMetadata ReadImportMetadata(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id
+                ? new GameImportMetadata(
+                    title,
+                    [new GameIdentifier(GameIdentifierKind.Serial, discId, "PSP PARAM.SFO", true)])
+                : GameImportMetadata.Empty;
     }
 
     private sealed class RecordingLaunchService(GameLaunchResult result) : IEmulatorLaunchService

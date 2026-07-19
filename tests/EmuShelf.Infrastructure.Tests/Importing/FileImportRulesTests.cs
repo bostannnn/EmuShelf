@@ -1,8 +1,10 @@
 using System.Buffers.Binary;
 using System.Text;
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Systems;
+using EmuShelf.Infrastructure.Tests.Metadata;
 
 namespace EmuShelf.Infrastructure.Tests.Importing;
 
@@ -164,6 +166,89 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
         var analysis = _rules.AnalyzeFile($"/games/game{extension}");
 
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor(systemId));
+    }
+
+    [Theory]
+    [InlineData(".iso")]
+    [InlineData(".cso")]
+    [InlineData(".CSO")]
+    public void PspImage_RecognizesReadOnlyParamSfoAndExposesTrustedEvidence(string extension)
+    {
+        var path = Path.Combine(BaseDirectory, $"Lumines{extension}");
+        var iso = PspIsoBuilder.Build("ULUS10002", "Lumines");
+        File.WriteAllBytes(path, extension.Equals(".cso", StringComparison.OrdinalIgnoreCase)
+            ? CompressedIsoBuilder.BuildCso(iso)
+            : iso);
+        var beforeBytes = File.ReadAllBytes(path);
+        var beforeTimestamp = File.GetLastWriteTimeUtc(path);
+
+        var analysis = _rules.AnalyzeFile(path);
+        var system = System("psp");
+        var metadata = _rules.ReadImportMetadata(path, system);
+
+        Assert.Equal("psp", analysis.SuggestedSystems[0].Id);
+        Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("psp"));
+        Assert.Equal(
+            extension.Equals(".iso", StringComparison.OrdinalIgnoreCase)
+                ? GameFileMatch.Incompatible
+                : GameFileMatch.Unsupported,
+            analysis.MatchFor("playstation"));
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("playstation2"));
+        Assert.True(_rules.IsFolderCandidate(path, system));
+        Assert.False(_rules.IsFolderCandidate(path, System("playstation")));
+        Assert.False(_rules.IsFolderCandidate(path, System("playstation2")));
+        Assert.Equal("Lumines", metadata.EmbeddedTitle);
+        var identifier = Assert.Single(metadata.Identifiers);
+        Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
+        Assert.Equal("ULUS10002", identifier.Value);
+        Assert.Equal("PSP PARAM.SFO", identifier.Source);
+        Assert.Equal(beforeBytes, File.ReadAllBytes(path));
+        Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void PspImage_MissingOrMalformedSfoIsNotRecognizedAndCannotBeFolderImported()
+    {
+        var path = Path.Combine(BaseDirectory, "Not a PSP.iso");
+        File.WriteAllBytes(path, new byte[24 * 2048]);
+
+        var analysis = _rules.AnalyzeFile(path);
+
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("psp"));
+        Assert.False(_rules.IsFolderCandidate(path, System("psp")));
+        Assert.Same(GameImportMetadata.Empty, _rules.ReadImportMetadata(path, System("psp")));
+    }
+
+    [Fact]
+    public void PspImage_MalformedSfoDataRangeIsRejectedWithoutChangingTheImage()
+    {
+        var path = Path.Combine(BaseDirectory, "Malformed PARAM.SFO.iso");
+        var image = PspIsoBuilder.Build();
+        // PARAM.SFO begins at sector 22. Its first index entry's data-max field is at 0x1C;
+        // making it smaller than data-len must fail the bounds check instead of guessing.
+        BinaryPrimitives.WriteUInt32LittleEndian(image.AsSpan(22 * 2048 + 0x1C, 4), 0);
+        File.WriteAllBytes(path, image);
+        var beforeBytes = File.ReadAllBytes(path);
+        var beforeTimestamp = File.GetLastWriteTimeUtc(path);
+
+        var analysis = _rules.AnalyzeFile(path);
+
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("psp"));
+        Assert.Equal(beforeBytes, File.ReadAllBytes(path));
+        Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void PspImage_UsesFilenameWhenSfoEvidenceIsUnavailable()
+    {
+        var path = Path.Combine(BaseDirectory, "Homebrew.iso");
+        File.WriteAllBytes(path, PspIsoBuilder.Build(discId: "not-an-id", title: "bad\u0001title"));
+
+        var metadata = _rules.ReadImportMetadata(path, System("psp"));
+
+        Assert.Null(metadata.EmbeddedTitle);
+        Assert.Empty(metadata.Identifiers);
+        Assert.True(_rules.IsFolderCandidate(path, System("psp")));
     }
 
     [Fact]

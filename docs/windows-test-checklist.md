@@ -51,6 +51,21 @@ matching file from `EmuShelf/Logs/`.
 - [ ] A non-zero emulator exit and an intentional scan/configuration failure appear
       in both contextual UI feedback and the portable daily log.
 
+## PSP / PPSSPP
+
+- [ ] Record the PPSSPP release used (M14 validates 1.20.4), select its executable in the PSP
+      Settings section, and confirm the default launch template is exactly one game-path argument.
+- [ ] Add one standalone PSP `.iso` and one `.cso` containing `PSP_GAME/PARAM.SFO`. Confirm the
+      embedded trustworthy title appears, the exact `DISC_ID` is retained for later metadata, and
+      an image with an invalid/missing SFO is not imported as PSP even when manually confirmed.
+- [ ] Confirm archives, CHD, PBP, and other compressed variants are not imported as PSP entries.
+- [ ] Launch an ISO/CSO whose game and PPSSPP paths contain spaces. Confirm PPSSPP gets one intact
+      content argument, EmuShelf minimizes, restores after a normal exit, reports a non-zero exit,
+      and fails before minimizing when the selected executable is missing.
+- [ ] Compare the game files and PPSSPP settings directory before and after import/launch; EmuShelf
+      must not write either. Temporarily remove an imported image, refresh availability, and confirm
+      it is visibly unavailable and blocked from launch.
+
 ## PlayStation 3 / RPCS3 library
 
 - [ ] In Settings for PlayStation 3, choose the RPCS3 configuration folder that contains

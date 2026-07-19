@@ -330,20 +330,21 @@ an individual PS3-folder import.
 
 ## M14 — PSP and PPSSPP (planned)
 
-- [ ] Add a PSP file-import profile after a format feasibility pass against the chosen PPSSPP
-      release. Start only with individually launchable formats whose import, metadata, and
-      launch behavior are verified; archive support waits for an exact content/identity
-      design rather than treating a ZIP as an opaque game file.
-- [ ] Read the small PSP `PARAM.SFO` evidence (`DISC_ID`, title where trustworthy) from each
-      accepted format without modifying it. Use it for later exact metadata lookup, retain
-      distinct regions/revisions as distinct paths, and fall back to the filename only for
-      display when evidence is invalid or unavailable.
-- [ ] Add PPSSPP executable selection and an argv-safe default game-path launch template;
-      prove the contract with paths containing spaces, failed launch preflight, and tracked
-      process exit on Windows. PPSSPP remains responsible for emulator settings and actual
-      achievement unlocking.
-- [ ] Add file-recognition, SFO/container, availability, and launch fixtures; every reader
-      must prove that source bytes and timestamps remain unchanged.
+- [x] Add a PSP file-import profile after a format feasibility pass against PPSSPP 1.20.4.
+      The verified initial set is standalone `.iso` and `.cso` images containing a parseable
+      `PSP_GAME/PARAM.SFO`; archive, CHD, PBP, and other compressed variants wait for an exact
+      content/identity design rather than treating a container as an opaque game file.
+- [x] Read small PSP `PARAM.SFO` evidence (`DISC_ID`, title where trustworthy) from every
+      accepted image without modifying it. Store a valid exact disc id for later metadata lookup,
+      retain distinct regions/revisions as distinct paths, and fall back to the filename only for
+      display when the title evidence is invalid or unavailable.
+- [x] Activate PPSSPP executable selection and its argv-safe default game-path launch template.
+      PPSSPP remains responsible for emulator settings and actual achievement unlocking.
+- [x] Add file-recognition, SFO/container, availability, and launch fixtures; every reader proves
+      source bytes and timestamps remain unchanged.
+- [ ] On real Windows with PPSSPP 1.20.4, verify ISO and CSO import/metadata, a path containing
+      spaces, missing-executable preflight, minimize/restore after tracked zero and non-zero exits,
+      and no writes to the game image or PPSSPP settings.
 
 ## M15 — RetroArch as a core-aware launcher (planned)
 

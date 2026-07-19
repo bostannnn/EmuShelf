@@ -1,17 +1,19 @@
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Systems;
 using EmuShelf.Integrations.Systems;
 
 namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
-/// Authoritative file-based import rules for PlayStation, PlayStation 2,
+/// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
 /// GameCube, and Wii. PS3 remains directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
 {
     private const string PlayStationId = "playstation";
     private const string PlayStation2Id = "playstation2";
+    private const string PspId = "psp";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
 
@@ -22,6 +24,9 @@ public sealed class FileImportRules : IGameImportRules
                 { ".cue", ".chd", ".m3u", ".pbp", ".iso" },
             [PlayStation2Id] = new(StringComparer.OrdinalIgnoreCase)
                 { ".cue", ".iso", ".chd", ".cso", ".m3u" },
+            // PPSSPP's documented desktop load path. A candidate must also contain a valid
+            // PSP_GAME/PARAM.SFO, so a generic ISO/CSO is never auto-imported as a PSP game.
+            [PspId] = new(StringComparer.OrdinalIgnoreCase) { ".iso", ".cso" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
@@ -51,6 +56,15 @@ public sealed class FileImportRules : IGameImportRules
         var suggestions = new List<GameSystem>();
         var matches = new Dictionary<string, GameFileMatch>();
         var detectedNintendoSystem = NintendoDiscSystem.Unknown;
+        var pspEvidence = ExtensionsBySystem[PspId].Contains(extension)
+            ? PspGameMetadataReader.TryRead(path)
+            : null;
+
+        // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
+        // extensions. Put it first so the system picker defaults to PSP, and never let an
+        // explicitly confirmed PS1/PS2 import misclassify a validated PSP image.
+        if (pspEvidence is not null && FindSystem(PspId) is { } pspSystem)
+            suggestions.Add(pspSystem);
 
         // A valid Nintendo header is definitive, so put that match ahead of the
         // extension-only suggestions for shared formats such as .iso.
@@ -76,13 +90,16 @@ public sealed class FileImportRules : IGameImportRules
                 continue;
             }
 
-            var match = MatchSystem(extension, system.Id, detectedNintendoSystem);
+            var match = system.Id == PspId
+                ? pspEvidence is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible
+                : MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null);
 
             matches[system.Id] = match;
             if ((match == GameFileMatch.Compatible && system.Id is not (GameCubeId or WiiId)) ||
                 match == GameFileMatch.Unrecognized)
             {
-                suggestions.Add(system);
+                if (!suggestions.Any(candidate => candidate.Id == system.Id))
+                    suggestions.Add(system);
             }
         }
 
@@ -113,10 +130,17 @@ public sealed class FileImportRules : IGameImportRules
             return false;
         }
 
+        var pspEvidence = ExtensionsBySystem[PspId].Contains(extension)
+            ? PspGameMetadataReader.TryRead(path)
+            : null;
+        if (system.Id == PspId)
+            return pspEvidence is not null;
+
         var detectedNintendoSystem = NintendoExtensions.Contains(extension)
             ? NintendoDiscDetector.Detect(path)
             : NintendoDiscSystem.Unknown;
-        return MatchSystem(extension, system.Id, detectedNintendoSystem) == GameFileMatch.Compatible;
+        return MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null) ==
+               GameFileMatch.Compatible;
     }
 
     public GameEntrySelection SelectGameEntries(
@@ -164,6 +188,21 @@ public sealed class FileImportRules : IGameImportRules
         return new GameEntrySelection(entryPaths, suppressedPaths);
     }
 
+    public GameImportMetadata ReadImportMetadata(string path, GameSystem system)
+    {
+        if (system.Id != PspId || PspGameMetadataReader.TryRead(path) is not { } evidence)
+            return GameImportMetadata.Empty;
+
+        IReadOnlyList<GameIdentifier> identifiers = evidence.DiscId is null
+            ? []
+            : [new GameIdentifier(
+                GameIdentifierKind.Serial,
+                evidence.DiscId,
+                "PSP PARAM.SFO",
+                IsPrimary: true)];
+        return new GameImportMetadata(evidence.Title, identifiers);
+    }
+
     private GameSystem? FindSystem(string id) =>
         _systems.FirstOrDefault(system => system.Id == id);
 
@@ -180,7 +219,8 @@ public sealed class FileImportRules : IGameImportRules
     private static GameFileMatch MatchSystem(
         string extension,
         string systemId,
-        NintendoDiscSystem detectedNintendoSystem) =>
+        NintendoDiscSystem detectedNintendoSystem,
+        bool pspEvidence) =>
         systemId switch
         {
             GameCubeId => MatchNintendoSystem(
@@ -192,6 +232,11 @@ public sealed class FileImportRules : IGameImportRules
             PlayStationId or PlayStation2Id
                 when extension.Equals(".iso", StringComparison.OrdinalIgnoreCase) &&
                      detectedNintendoSystem != NintendoDiscSystem.Unknown =>
+                GameFileMatch.Incompatible,
+            PlayStationId or PlayStation2Id
+                when pspEvidence &&
+                     (extension.Equals(".iso", StringComparison.OrdinalIgnoreCase) ||
+                      extension.Equals(".cso", StringComparison.OrdinalIgnoreCase)) =>
                 GameFileMatch.Incompatible,
             _ => GameFileMatch.Compatible,
         };

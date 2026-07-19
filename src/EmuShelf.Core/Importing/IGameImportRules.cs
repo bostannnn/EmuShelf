@@ -31,4 +31,13 @@ public interface IGameImportRules
     GameEntrySelection SelectGameEntries(
         IReadOnlyList<string> candidates,
         GameSystem system);
+
+    /// <summary>
+    /// Reads small, format-specific embedded evidence for an accepted entry. Implementations
+    /// must be read-only and return <see cref="GameImportMetadata.Empty"/> when no trustworthy
+    /// evidence is available. The default keeps existing systems independent of this optional
+    /// import-time enrichment path.
+    /// </summary>
+    GameImportMetadata ReadImportMetadata(string path, GameSystem system) =>
+        GameImportMetadata.Empty;
 }

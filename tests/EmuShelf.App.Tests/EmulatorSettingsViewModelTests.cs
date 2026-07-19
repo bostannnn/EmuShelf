@@ -90,6 +90,17 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void PspRow_UsesPpssppAndTheSingleGamePathArgumentTemplate()
+    {
+        var viewModel = CreateViewModel();
+        var psp = viewModel.Rows.Single(row => row.SystemId == "psp");
+
+        Assert.Equal("PPSSPP", psp.EmulatorName);
+        Assert.Equal("\"{GamePath}\"", psp.DefaultLaunchArguments);
+        Assert.False(psp.RequiresCorePath);
+    }
+
+    [AvaloniaFact]
     public async Task LibraryMaintenance_RunsInsideSettingsAndReportsResult()
     {
         var rescannedSystems = new List<string>();

@@ -748,3 +748,22 @@ untouched; silently retaining an old source path would make an outdated game app
 Finally, a blank `games.yml` is a valid empty RPCS3 library (as upstream accepts it), not an
 unsupported format. It reconciles as an empty source list while all non-empty unsupported shapes
 continue to fail closed.
+
+## 2026-07-19 — M14 accepts only SFO-validated PSP ISO and CSO images
+
+M14 uses PPSSPP 1.20.4 as its compatibility floor. PPSSPP's desktop documentation explicitly
+describes loading standalone ISO and CSO images, so EmuShelf accepts only those two extensions in
+this first PSP profile. A candidate must also contain a parseable `PSP_GAME/PARAM.SFO` found through
+the ISO9660 filesystem (with the existing read-only CSO logical-sector adapter); a generic ISO/CSO
+cannot become a PSP game merely because the user selected the PSP system. ZIP/7z archives, CHD,
+PBP, and other compressed-image variants stay unsupported: each needs a separately verified content
+boundary and identity reader instead of being treated as opaque launchable files.
+
+The reader is deliberately bounded to the small PARAM.SFO file and validates SFO table offsets,
+UTF-8 text, a nine-character PSP `DISC_ID`, and a display-safe title. A valid SFO with an absent or
+untrustworthy field is still a PSP container, but title presentation falls back to the filename and
+no guessed identifier is stored. A valid `DISC_ID` is persisted as `GameIdentifierKind.Serial` with
+`PSP PARAM.SFO` provenance for M19's future exact metadata route; there is no title-similarity
+lookup. Library identity remains the file path, so regional and revision variants stay separate.
+All reads use sharing-compatible read handles and tests assert that source bytes and timestamps are
+unchanged.

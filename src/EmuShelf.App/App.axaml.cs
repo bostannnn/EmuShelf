@@ -136,7 +136,8 @@ public partial class App : Application
                 retroAchievementsMatching,
                 retroAchievementsProgress,
                 retroAchievementsDetails,
-                retroAchievementsRefresh);
+                retroAchievementsRefresh,
+                Bootstrapper.MetadataStore);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

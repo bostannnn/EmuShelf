@@ -7,9 +7,9 @@ public class FileAvailabilityCheckerTests : TempAppDirectoryTestBase
 {
     private readonly FileAvailabilityChecker _checker = new();
 
-    private static Game GameAt(string path) => new()
+    private static Game GameAt(string path, string systemId = "playstation") => new()
     {
-        SystemId = "playstation",
+        SystemId = systemId,
         Path = path,
         Title = "x",
         DateAdded = DateTimeOffset.Now,
@@ -29,6 +29,14 @@ public class FileAvailabilityCheckerTests : TempAppDirectoryTestBase
     public void IsAvailable_MissingPath_False()
     {
         Assert.False(_checker.IsAvailable(GameAt(Path.Combine(BaseDirectory, "nope.cue"))));
+    }
+
+    [Fact]
+    public void IsAvailable_MissingPspImage_False()
+    {
+        Assert.False(_checker.IsAvailable(GameAt(
+            Path.Combine(BaseDirectory, "Lumines.cso"),
+            systemId: "psp")));
     }
 
     [Fact]
