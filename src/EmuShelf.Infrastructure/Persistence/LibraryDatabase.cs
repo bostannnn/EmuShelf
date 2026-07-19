@@ -26,6 +26,13 @@ public sealed class LibraryDatabase
         var connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = _appPaths.DatabaseFilePath,
+            // Disable connection pooling so closing a connection releases the OS handle on
+            // library.db immediately. EmuShelf is portable: the Data/ folder must be safe to
+            // move, back up, or sync while the app is idle, and a pooled handle would keep the
+            // file open between operations (harmless on macOS/Linux, but on Windows it blocks
+            // moving or deleting the folder). Pooling saves only microseconds for this
+            // occasional-write desktop workload.
+            Pooling = false,
         }.ToString();
         var connection = new SqliteConnection(connectionString);
         connection.Open();

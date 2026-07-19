@@ -134,11 +134,40 @@ public class ChdSectorSourceTests
         foreach (var candidate in new[]
                  {
                      "/opt/homebrew/bin/chdman", "/usr/local/bin/chdman",
-                     "/usr/bin/chdman", "chdman",
+                     "/usr/bin/chdman",
                  })
         {
-            if (candidate == "chdman" || File.Exists(candidate))
+            if (File.Exists(candidate))
                 return candidate;
+        }
+
+        // Fall back to a real PATH lookup (covers Windows chdman.exe and custom installs).
+        // Returning the bare command name unconditionally would make Process.Start throw on
+        // machines without chdman instead of letting the caller skip; only return a path that
+        // actually resolves to an executable.
+        return ResolveOnPath("chdman");
+    }
+
+    private static string? ResolveOnPath(string command)
+    {
+        var pathVariable = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrEmpty(pathVariable))
+            return null;
+
+        var extensions = OperatingSystem.IsWindows()
+            ? (Environment.GetEnvironmentVariable("PATHEXT") ?? ".EXE;.CMD;.BAT")
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            : [string.Empty];
+
+        foreach (var directory in pathVariable.Split(
+                     Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            foreach (var extension in extensions)
+            {
+                var candidate = Path.Combine(directory, command + extension);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
         }
 
         return null;

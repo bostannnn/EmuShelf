@@ -698,6 +698,27 @@ file discovery remains disabled until M14/M16/M17/M18 establishes each format's 
 import and identity contract; merely displaying a platform never turns an arbitrary file into a
 game entry.
 
+## 2026-07-19 — library.db opens without connection pooling
+
+`LibraryDatabase.CreateConnection` sets `Pooling = false` on the Microsoft.Data.Sqlite
+connection string. EmuShelf is portable: the `Data/` folder must be safe to move, back up, or
+sync while the app is idle, but the default connection pool keeps the OS handle on `library.db`
+open between operations. That is harmless on macOS/Linux (open files can still be unlinked) but
+on Windows it blocks moving or deleting the folder — the portable-relocation behavior the app
+promises. Pooling saves only microseconds for this occasional-write desktop workload, so
+disabling it to release the handle deterministically is the right trade. This also let the full
+`dotnet test` suite run green on Windows (the file-locked teardown/relocation failures were the
+first thing the macOS→Windows source copy surfaced).
+
+Test-harness portability was hardened at the same time, all test-only: `ChdSectorSourceTests`
+now resolves `chdman` through a real PATH lookup instead of returning the bare command name, so a
+machine without chdman skips the opt-in test cleanly rather than failing `Process.Start`;
+`TrackedProcessRunnerTests` launches a shell `exit 0` instead of `Environment.ProcessPath
+--version`, which is not a launchable dotnet muxer under the Windows `testhost.exe` apphost; and
+`MainViewModelTests.Dispose` retries the temp-tree delete, because the view model's constructor
+starts a fire-and-forget `ReloadGamesAsync` whose background `library.db` read can outlive a very
+fast test.
+
 ## 2026-07-19 — M12 external library sources reconcile by source entry, never deletion
 
 The generic `IExternalLibrarySource` contract reads a user-selected emulator catalogue only on an

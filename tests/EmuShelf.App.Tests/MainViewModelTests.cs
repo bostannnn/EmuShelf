@@ -1884,7 +1884,25 @@ public class MainViewModelTests : IDisposable
 
     public void Dispose()
     {
-        if (Directory.Exists(_baseDirectory))
-            Directory.Delete(_baseDirectory, recursive: true);
+        if (!Directory.Exists(_baseDirectory))
+            return;
+
+        // MainViewModel starts a background library load in its constructor (SelectedSystem ->
+        // ReloadGamesAsync reads library.db on a Task.Run thread), so a just-finished fast test
+        // can still have that read holding the file open. On Windows an open handle blocks
+        // Directory.Delete, so retry briefly to let the in-flight read (or a transient AV/indexer
+        // scan) release the file before giving up.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Directory.Delete(_baseDirectory, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException && attempt < 40)
+            {
+                Thread.Sleep(50);
+            }
+        }
     }
 }

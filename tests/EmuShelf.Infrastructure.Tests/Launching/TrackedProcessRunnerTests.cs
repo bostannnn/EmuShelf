@@ -17,8 +17,15 @@ public class TrackedProcessRunnerTests
             startThreadId = Environment.CurrentManagedThreadId;
             return Process.Start(startInfo);
         });
-        var dotnetPath = Environment.ProcessPath
-            ?? throw new InvalidOperationException("The current .NET host path is unavailable.");
+        // A process guaranteed to start and exit 0 on every host, without depending on the
+        // .NET host layout. Environment.ProcessPath is not portable here: under `dotnet test`
+        // the Windows testhost runs the test inside testhost.exe, so ProcessPath points at an
+        // apphost that cannot self-launch (it has no runtimeconfig beside it) and
+        // `<apphost> --version` returns a host error instead of 0.
+        var shell = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh";
+        string[] shellArguments = OperatingSystem.IsWindows()
+            ? ["/c", "exit", "0"]
+            : ["-c", "exit 0"];
 
         var callingThread = new Thread(() =>
         {
@@ -26,8 +33,8 @@ public class TrackedProcessRunnerTests
             try
             {
                 exitCode = runner.RunAsync(
-                        dotnetPath,
-                        ["--version"],
+                        shell,
+                        shellArguments,
                         Directory.GetCurrentDirectory())
                     .GetAwaiter()
                     .GetResult();
