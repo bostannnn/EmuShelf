@@ -14,5 +14,6 @@ public static class RetroArchDefinition
         ["megadrive", "nds", "gba"],
         "-L \"{CorePath}\" \"{GamePath}\"",
         RequiresCorePath: true,
-        SharesDefaultInstallation: true);
+        SharesDefaultInstallation: true,
+        RequiresContentFile: true);
 }

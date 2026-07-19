@@ -22,7 +22,8 @@ public class EmulatorLaunchServiceTests : IDisposable
         "Test RetroArch",
         ["core-system"],
         "-L \"{CorePath}\" \"{GamePath}\"",
-        RequiresCorePath: true);
+        RequiresCorePath: true,
+        RequiresContentFile: true);
 
     public EmulatorLaunchServiceTests()
     {
@@ -109,6 +110,47 @@ public class EmulatorLaunchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LaunchAsync_RejectsFolderContentForCoreLauncherBeforeMinimizing()
+    {
+        var contentFolder = Path.Combine(_directory, "content-folder");
+        Directory.CreateDirectory(contentFolder);
+        var game = GameAt(contentFolder, "core-system");
+        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var core = CreateGameFile("RetroArch/cores/mgba_libretro.dll", "core-system").Path;
+        _configurations.Configuration = new(game.SystemId, executable, null)
+        {
+            CorePath = core,
+        };
+        var service = CreateCoreService();
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("requires a game content file, not a folder", result.StatusText);
+        Assert.False(_frontend.WasMinimized);
+        Assert.False(_runner.WasRun);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_RequiresExistingCoreBeforeMinimizing()
+    {
+        var game = CreateGameFile("game.gba", "core-system");
+        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        _configurations.Configuration = new(game.SystemId, executable, null)
+        {
+            CorePath = Path.Combine(_directory, "RetroArch", "cores", "missing.dll"),
+        };
+        var service = CreateCoreService();
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("configured Test RetroArch core was not found", result.StatusText);
+        Assert.False(_frontend.WasMinimized);
+        Assert.False(_runner.WasRun);
+    }
+
+    [Fact]
     public async Task LaunchAsync_PassesConfiguredCoreAsAnArgument()
     {
         var game = CreateGameFile("Game With Spaces.gba", "core-system");
@@ -144,6 +186,26 @@ public class EmulatorLaunchServiceTests : IDisposable
 
         Assert.False(result.Succeeded);
         Assert.Contains("must include {CorePath}", result.StatusText);
+        Assert.False(_frontend.WasMinimized);
+        Assert.False(_runner.WasRun);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_RejectsMalformedCoreTemplateBeforeMinimizing()
+    {
+        var game = CreateGameFile("game.gba", "core-system");
+        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var core = CreateGameFile("RetroArch/cores/mgba_libretro.dll", "core-system").Path;
+        _configurations.Configuration = new(game.SystemId, executable, "-L \"{CorePath}\" \"{GamePath}")
+        {
+            CorePath = core,
+        };
+        var service = CreateCoreService();
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("unmatched double quote", result.StatusText);
         Assert.False(_frontend.WasMinimized);
         Assert.False(_runner.WasRun);
     }

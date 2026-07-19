@@ -777,3 +777,13 @@ the failure. A later import of the same path revisits only entries whose new emb
 identifiers and whose stored identifier set is still empty; it persists the evidence then. This
 recovers transient SQLite failures without overwriting catalog or extractor evidence from another
 source, and keeps the exact `PARAM.SFO` `DISC_ID` recoverable by an explicit retry.
+
+## 2026-07-19 — M15 validates RetroArch content as a file, not a guessed format
+
+RetroArch's core-and-content launch form requires a content file, so M15 rejects a directory before
+minimizing the frontend. It deliberately does not add a launch-time extension allow-list: the exact
+read-only format contracts for Mega Drive / Genesis, Nintendo DS, and Game Boy Advance belong to
+M16–M18. The configured core is always explicit and per system, while the executable remains the
+one shared portable installation. Settings presents the core file name plus Replace and Clear
+actions; it never scans the RetroArch installation or changes its configuration, overrides,
+playlists, achievements settings, or cores.

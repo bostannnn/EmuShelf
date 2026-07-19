@@ -75,6 +75,31 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task RetroArchCoreRow_ShowsTheFileNameAndCanClearOrReplaceTheCore()
+    {
+        _dialogs.LibretroCoreToReturn = "/portable/RetroArch/cores/melonds_libretro.dll";
+        var viewModel = CreateViewModel();
+        var row = viewModel.Rows.Single(candidate => candidate.SystemId == "nds");
+
+        row.CorePath = "/portable/RetroArch/cores/old_core.dll";
+
+        Assert.True(row.HasCorePath);
+        Assert.Equal("old_core.dll", row.CoreFileName);
+        Assert.True(row.ClearCoreCommand.CanExecute(null));
+
+        row.ClearCoreCommand.Execute(null);
+
+        Assert.False(row.HasCorePath);
+        Assert.Equal("No core selected", row.CoreFileName);
+        Assert.False(row.ClearCoreCommand.CanExecute(null));
+
+        await row.BrowseCoreCommand.ExecuteAsync(null);
+
+        Assert.Equal(_dialogs.LibretroCoreToReturn, row.CorePath);
+        Assert.Equal("melonds_libretro.dll", row.CoreFileName);
+    }
+
+    [AvaloniaFact]
     public async Task BrowseAndResetCommands_UpdateTheEditableRow()
     {
         _dialogs.EmulatorExecutableToReturn = "/portable/duckstation.exe";

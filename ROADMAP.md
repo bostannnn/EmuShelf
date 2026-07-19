@@ -352,16 +352,16 @@ RetroArch is a shortcut launcher with one necessary per-system choice: the defau
 Libretro core. It is not a core manager and EmuShelf will not edit RetroArch configuration,
 core options, overrides, playlists, or achievements settings.
 
-- [ ] Configure one shared RetroArch executable plus one manually selected default core for
+- [x] Configure one shared RetroArch executable plus one manually selected default core for
       each of Mega Drive / Genesis, Nintendo DS, and Game Boy Advance. Keep the choice at
       system scope, not a prompt at every launch and not a per-game setting.
-- [ ] Launch content through the explicit core-and-content argv form (`-L {CorePath}` plus
+- [x] Launch content through the explicit core-and-content argv form (`-L {CorePath}` plus
       `{GamePath}`), so several compatible installed cores cannot produce an ambiguous or
       different launch. Continue to use argument arrays, never a shell string.
-- [ ] Show the configured core's file name and a clear replace/clear action in Settings;
+- [x] Show the configured core's file name and a clear replace/clear action in Settings;
       reject a missing core, unsupported selected content, or malformed template before
       minimizing EmuShelf. Do not scan RetroArch's installation to infer or download cores.
-- [ ] Prove a shared portable RetroArch installation can move with EmuShelf and the library;
+- [x] Prove a shared portable RetroArch installation can move with EmuShelf and the library;
       verify each platform's core is invoked, saved RetroArch overrides remain untouched, and
       EmuShelf restores after the process exits.
 

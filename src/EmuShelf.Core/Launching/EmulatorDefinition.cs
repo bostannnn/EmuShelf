@@ -11,7 +11,8 @@ public sealed record EmulatorDefinition(
     IReadOnlyList<string> SupportedSystemIds,
     string DefaultLaunchArguments,
     bool RequiresCorePath = false,
-    bool SharesDefaultInstallation = false)
+    bool SharesDefaultInstallation = false,
+    bool RequiresContentFile = false)
 {
     public bool Supports(string systemId) =>
         SupportedSystemIds.Contains(systemId, StringComparer.Ordinal);

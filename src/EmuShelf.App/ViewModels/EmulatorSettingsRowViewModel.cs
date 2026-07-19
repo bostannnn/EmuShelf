@@ -28,6 +28,10 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public string ExecutableDescription => IsExecutableShared
         ? "Shared executable"
         : "Executable";
+    public bool HasCorePath => !string.IsNullOrWhiteSpace(CorePath);
+    public string CoreFileName => HasCorePath
+        ? Path.GetFileName(CorePath.Trim())
+        : "No core selected";
 
     internal event Action<EmulatorSettingsRowViewModel, string>? ExecutablePathEdited;
 
@@ -38,6 +42,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public partial string LaunchArguments { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCorePath))]
+    [NotifyPropertyChangedFor(nameof(CoreFileName))]
+    [NotifyCanExecuteChangedFor(nameof(ClearCoreCommand))]
     public partial string CorePath { get; set; }
 
     [ObservableProperty]
@@ -135,6 +142,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             MaintenanceStatusText = $"Could not open the core picker: {ex.Message}";
         }
     }
+
+    [RelayCommand(CanExecute = nameof(HasCorePath))]
+    private void ClearCore() => CorePath = string.Empty;
 
     [RelayCommand]
     private void ResetArguments() => LaunchArguments = DefaultLaunchArguments;

@@ -82,6 +82,12 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: no emulator supports this system.");
 
+        if (emulator.RequiresContentFile && !File.Exists(game.Path))
+        {
+            return LaunchPreparation.Failed(
+                $"Cannot launch {game.Title}: {emulator.Name} requires a game content file, not a folder.");
+        }
+
         var configuration = _configurations.Get(game.SystemId);
         if (string.IsNullOrWhiteSpace(configuration?.ExecutablePath))
             return LaunchPreparation.Failed(

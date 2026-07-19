@@ -66,6 +66,21 @@ matching file from `EmuShelf/Logs/`.
       must not write either. Temporarily remove an imported image, refresh availability, and confirm
       it is visibly unavailable and blocked from launch.
 
+## RetroArch core launcher
+
+- [ ] In the Mega Drive / Genesis, Nintendo DS, and Game Boy Advance Settings sections, select one
+      shared RetroArch executable and a distinct installed core for each system. Confirm Settings
+      shows each core's file name, **Replace** changes only that system's core, and **Clear** removes
+      only that system's core; EmuShelf must not scan, download, or edit any core.
+- [ ] With a valid content file for each platform, launch through each configured core. Confirm
+      RetroArch receives `-L`, the selected core path, and the game path as three separate argv
+      entries; content and executable paths containing spaces must remain intact. A missing core,
+      a folder selected as content, or malformed launch arguments must fail before EmuShelf minimizes.
+- [ ] Compare RetroArch's configuration, override, playlist, and achievements-settings files before
+      and after Settings use and tracked launches; their contents and timestamps must be unchanged.
+      Move the complete portable folder, then repeat the three launches and confirm the shared
+      executable and each core path still resolve relative to its new location.
+
 ## PlayStation 3 / RPCS3 library
 
 - [ ] In Settings for PlayStation 3, choose the RPCS3 configuration folder that contains
