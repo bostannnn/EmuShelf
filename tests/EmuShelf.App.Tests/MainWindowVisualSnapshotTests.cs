@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
+using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Integrations.Emulators;
@@ -260,6 +261,46 @@ public class MainWindowVisualSnapshotTests
         {
             window.Close();
             Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task ConnectedRetroAchievementsSettings_ShowTheMatchRefreshAction()
+    {
+        var context = new RetroAchievementsSettingsContext(
+            new RetroAchievementsAccount("Player", "ULID-9"),
+            IsConnected: true,
+            ConnectAsync: (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.Connected)),
+            DisconnectAsync: _ => Task.CompletedTask,
+            RefreshMatchesAsync: (_, _) => Task.FromResult<RetroAchievementsLibrarySyncSummary?>(null));
+        var viewModel = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(
+                system => system.Id,
+                _ => (EmulatorConfiguration?)null,
+                StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            retroAchievements: context)
+        {
+            SelectedSection = SettingsSection.RetroAchievements,
+        };
+        var window = new EmulatorSettingsWindow { DataContext = viewModel };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var refresh = window.FindControl<Button>("RefreshRetroAchievementsMatchesButton");
+            Assert.NotNull(refresh);
+            Assert.True(refresh.IsVisible);
+            Assert.True(refresh.IsEnabled);
+        }
+        finally
+        {
+            window.Close();
         }
     }
 

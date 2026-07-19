@@ -341,6 +341,40 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task RetroAchievements_RefreshMatches_RunsTheDedicatedMaintenanceAction()
+    {
+        var refreshes = 0;
+        var context = new RetroAchievementsSettingsContext(
+            new RetroAchievementsAccount("Player", "ULID-9"),
+            IsConnected: true,
+            ConnectAsync: (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.Connected)),
+            DisconnectAsync: _ => Task.CompletedTask,
+            RefreshMatchesAsync: (_, _) =>
+            {
+                refreshes++;
+                return Task.FromResult<RetroAchievementsLibrarySyncSummary?>(
+                    new RetroAchievementsLibrarySyncSummary(
+                        new RetroAchievementsIdentificationSummary(3, 2, 0, 0, 0),
+                        new RetroAchievementsMatchSummary(3, 2, 1, 0, 0),
+                        new RetroAchievementsProgressRefreshSummary(
+                            2,
+                            2,
+                            RetroAchievementsRequestStatus.Success)));
+            });
+        var viewModel = CreateViewModel(retroAchievements: context);
+
+        Assert.True(viewModel.CanRefreshRetroAchievementsMatches);
+        await viewModel.RefreshRetroAchievementsMatchesCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, refreshes);
+        Assert.Equal(
+            "Achievement matches refreshed. 2 cached results reused; 2 matched, 1 without achievements, " +
+            "0 unresolved; 2 progress summaries refreshed.",
+            viewModel.RetroAchievementsStatusText);
+    }
+
+    [AvaloniaFact]
     public void Sections_WithoutRetroAchievementsContext_OmitThatSection()
     {
         var viewModel = CreateViewModel();

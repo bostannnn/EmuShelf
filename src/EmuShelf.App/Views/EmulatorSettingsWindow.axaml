@@ -273,14 +273,21 @@
                                 </StackPanel>
 
                                 <Grid IsVisible="{Binding IsRetroAchievementsConnected}"
-                                      ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                      ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                                     <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                         <TextBlock Text="Connected" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                         <TextBlock Text="{Binding ConnectedAccountName}"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     </StackPanel>
-                                    <Button Grid.Column="1" Content="Disconnect" VerticalAlignment="Center"
+                                    <Button x:Name="RefreshRetroAchievementsMatchesButton"
+                                            Grid.Column="1" Content="Refresh matches"
+                                            IsVisible="{Binding HasRetroAchievementsMatchRefresh}"
+                                            VerticalAlignment="Center"
+                                            Command="{Binding RefreshRetroAchievementsMatchesCommand}"
+                                            IsEnabled="{Binding CanRefreshRetroAchievementsMatches}"
+                                            ToolTip.Tip="Refresh RetroAchievements catalogues and retry every known game match. Unchanged ROMs are not rehashed." />
+                                    <Button Grid.Column="2" Content="Disconnect" VerticalAlignment="Center"
                                             Command="{Binding DisconnectRetroAchievementsCommand}"
                                             IsEnabled="{Binding !IsRetroAchievementsBusy}" />
                                 </Grid>

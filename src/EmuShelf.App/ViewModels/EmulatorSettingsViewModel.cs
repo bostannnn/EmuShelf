@@ -49,6 +49,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsConnected))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsDisconnected))]
+    [NotifyPropertyChangedFor(nameof(CanRefreshRetroAchievementsMatches))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshRetroAchievementsMatchesCommand))]
     public partial string? ConnectedAccountName { get; set; }
 
     [ObservableProperty]
@@ -57,6 +59,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRetroAchievementsProgress))]
+    [NotifyPropertyChangedFor(nameof(CanRefreshRetroAchievementsMatches))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshRetroAchievementsMatchesCommand))]
     public partial bool IsRetroAchievementsBusy { get; set; }
 
     [ObservableProperty]
@@ -72,6 +76,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     public bool IsRetroAchievementsConnected => !string.IsNullOrEmpty(ConnectedAccountName);
     public bool IsRetroAchievementsDisconnected => !IsRetroAchievementsConnected;
+    public bool HasRetroAchievementsMatchRefresh => _retroAchievements?.RefreshMatchesAsync is not null;
+    public bool CanRefreshRetroAchievementsMatches =>
+        IsRetroAchievementsConnected && !IsRetroAchievementsBusy && HasRetroAchievementsMatchRefresh;
     public bool HasRetroAchievementsStatus => !string.IsNullOrWhiteSpace(RetroAchievementsStatusText);
     public bool HasRetroAchievementsProgress =>
         IsRetroAchievementsBusy && RetroAchievementsProgressTotal > 0;
@@ -387,6 +394,37 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanRefreshRetroAchievementsMatches))]
+    private async Task RefreshRetroAchievementsMatchesAsync()
+    {
+        if (_retroAchievements?.RefreshMatchesAsync is null || !CanRefreshRetroAchievementsMatches)
+            return;
+
+        IsRetroAchievementsBusy = true;
+        RetroAchievementsStatusText = "Refreshing achievement matches…";
+        RetroAchievementsProgressCompleted = 0;
+        RetroAchievementsProgressTotal = 0;
+        RetroAchievementsProgressText = string.Empty;
+        try
+        {
+            var sync = await _retroAchievements.RefreshMatchesAsync(
+                new Progress<RetroAchievementsLibrarySyncProgress>(ApplyRetroAchievementsProgress),
+                CancellationToken.None);
+            RetroAchievementsStatusText = sync is null
+                ? "Reconnect to RetroAchievements to refresh game matches."
+                : BuildRefreshStatus(sync);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("RetroAchievements match refresh failed from Settings.", ex);
+            RetroAchievementsStatusText = "Couldn't refresh achievement matches. Try again.";
+        }
+        finally
+        {
+            IsRetroAchievementsBusy = false;
+        }
+    }
+
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke(false);
 
@@ -448,4 +486,27 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 : $"progress refresh {sync.Progress.Status.ToString().ToLowerInvariant()}";
         return $"Connected. {identificationText}; {matchingText}; {progressText}.";
     }
+
+    private static string BuildRefreshStatus(RetroAchievementsLibrarySyncSummary sync)
+    {
+        var identification = sync.Identification;
+        var identificationText = identification.Hashed > 0
+            ? $"{identification.Hashed} new {Pluralize(identification.Hashed, "hash", "hashes")} calculated"
+            : identification.Reused > 0
+                ? $"{identification.Reused} cached {Pluralize(identification.Reused, "result", "results")} reused"
+                : "no games required identification";
+        var matchingText = sync.Matching is null
+            ? "matching unavailable"
+            : $"{sync.Matching.Matched} matched, {sync.Matching.NoAchievements} without achievements, " +
+              $"{sync.Matching.Unresolved} unresolved";
+        var progressText = sync.Progress is { Status: RetroAchievementsRequestStatus.Success } progress
+            ? $"{progress.UpdatedGames} progress summaries refreshed"
+            : sync.Progress is null
+                ? "progress refresh unavailable"
+                : $"progress refresh {sync.Progress.Status.ToString().ToLowerInvariant()}";
+        return $"Achievement matches refreshed. {identificationText}; {matchingText}; {progressText}.";
+    }
+
+    private static string Pluralize(int count, string singular, string plural) =>
+        count == 1 ? singular : plural;
 }

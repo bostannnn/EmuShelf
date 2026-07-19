@@ -174,11 +174,14 @@ but it never modifies game files, emulator configuration, or RetroAchievements s
       §2 account service; on connect it performs an explicit, cached backfill identification of
       the existing library, then matches hashes, refreshes progress, and reloads the library so
       marks appear. Settings shows the active phase, a real progress bar, and the game currently
-      being identified/matched; later imports join the same serialized pipeline. Disconnect clears
-      the account and account-scoped progress cache only after in-flight sync work finishes, while
-      macOS session-only credentials show a reconnect-required state after restart. Tests cover
-      the existing-library pipeline, post-import identification, progress presentation, auth
-      failures, disconnect/import overlap, and sections.
+      being identified/matched; later imports, including newly discovered games from remembered-
+      folder rescans, join the same serialized pipeline. A connected user can explicitly refresh
+      RA catalogues and rematch cached hashes, so a previous no-set result can be retried without
+      reopening unchanged ROMs. Disconnect clears the account and account-scoped progress cache
+      only after in-flight sync work finishes, while macOS session-only credentials show a
+      reconnect-required state after restart. Tests cover the existing-library pipeline,
+      post-import/rescan identification, manual retry, progress presentation, auth failures,
+      disconnect/import overlap, and sections.
 
 ### 5. Steam-like achievements popup
 

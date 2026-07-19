@@ -401,6 +401,69 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task SettingsRescan_QueuesOnlyNewGamesForRetroAchievementsWhenConnected()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var identification = new RecordingRetroAchievementsIdentificationService();
+        var account = new RecordingRetroAchievementsAccountService(isConnected: false);
+        var matching = new RecordingRetroAchievementsMatchingService();
+        var vm = CreateViewModel(
+            retroAchievements: identification,
+            retroAccount: account,
+            retroMatching: matching,
+            retroProgress: new RecordingRetroAchievementsProgressService());
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        await account.ConnectAsync("Player", "key", TestContext.Current.CancellationToken);
+        File.WriteAllText(Path.Combine(folder, "Gamma.chd"), "x");
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+
+        await _dialogs.MaintenanceActions!.RescanAll();
+        await identification.Called.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var gammaId = _library.GetGames().Single(game => game.Title == "Gamma").Id;
+        Assert.Equal([gammaId], identification.GameIds);
+        Assert.Equal([false], matching.ForceRefreshCatalogues);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsRetroAchievementsRefresh_ForcesCatalogueRematchWithoutRehashingKnownGames()
+    {
+        var path = Path.Combine(_baseDirectory, "Existing.cue");
+        File.WriteAllText(path, "FILE \"Existing.bin\" BINARY");
+        _library.AddGames([
+            new Game
+            {
+                SystemId = Ps1.Id,
+                Path = path,
+                Title = "Existing game",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var identification = new RecordingRetroAchievementsIdentificationService();
+        var matching = new RecordingRetroAchievementsMatchingService();
+        var vm = CreateViewModel(
+            retroAchievements: identification,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroMatching: matching,
+            retroProgress: new RecordingRetroAchievementsProgressService());
+
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        var sync = await _dialogs.RetroAchievementsContext!.RefreshMatchesAsync!(
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.NotNull(sync);
+        Assert.Equal([gameId], identification.GameIds);
+        Assert.Equal([true], matching.ForceRefreshCatalogues);
+        Assert.Equal(1, sync.Progress?.UpdatedGames);
+    }
+
+    [AvaloniaFact]
     public async Task Connect_BackfillsExistingLibraryBeforeMatchingAndRefreshingProgress()
     {
         var path = Path.Combine(_baseDirectory, "Existing.cue");
@@ -1383,6 +1446,7 @@ public class MainViewModelTests : IDisposable
     private sealed class RecordingRetroAchievementsMatchingService : IRetroAchievementsMatchingService
     {
         public int Calls { get; private set; }
+        public List<bool> ForceRefreshCatalogues { get; } = [];
 
         public Task<RetroAchievementsMatchSummary> MatchAsync(
             RetroAchievementsCredentials? credentials,
@@ -1391,6 +1455,7 @@ public class MainViewModelTests : IDisposable
             IProgress<RetroAchievementsLibrarySyncProgress>? progress = null)
         {
             Calls++;
+            ForceRefreshCatalogues.Add(forceRefreshCatalogues);
             progress?.Report(new RetroAchievementsLibrarySyncProgress(
                 RetroAchievementsLibrarySyncPhase.Matching,
                 0,

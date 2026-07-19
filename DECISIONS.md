@@ -778,6 +778,22 @@ identifiers and whose stored identifier set is still empty; it persists the evid
 recovers transient SQLite failures without overwriting catalog or extractor evidence from another
 source, and keeps the exact `PARAM.SFO` `DISC_ID` recoverable by an explicit retry.
 
+## 2026-07-19 — RetroAchievements retries rematch hashes, rather than rescanning ROMs
+
+A remembered-folder rescan is an import path, so only its newly created library rows join the
+existing connected-account identification → matching → progress pipeline. It preserves the
+existing independent metadata preference: an automatic cover/title fetch may run if the user
+enabled it, but a rescan does not introduce a new metadata-consent prompt.
+
+The connected RetroAchievements Settings card also exposes **Refresh matches**. It explicitly
+refreshes the relevant per-console catalogues and rematches every locally hashed game, including a
+previous fresh-catalogue `No achievements` result. Identification still first compares the stored
+source fingerprint and reader version, so unchanged ROMs are reused rather than read or hashed
+again. This means a newly published RA set can be found without turning the seven-day catalogue
+TTL into background traffic or treating ordinary rescans as a full disc-I/O pass. The manual path
+remains serialized with connection/import work and uses only existing read-only API operations;
+it cannot alter ROMs, emulator configuration, or RA account state.
+
 ## 2026-07-19 — M15 validates RetroArch content as a file, not a guessed format
 
 RetroArch's core-and-content launch form requires a content file, so M15 rejects a directory before

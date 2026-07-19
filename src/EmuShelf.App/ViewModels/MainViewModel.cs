@@ -766,8 +766,19 @@ public partial class MainViewModel : ViewModelBase
             else
                 await ReloadGamesAsync();
             StatusText = total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)";
-            if (addedIds.Count > 0 && _metadataPreferences.AutomaticallyFetchAfterImport)
-                _ = EnrichImportedGamesAsync(addedIds);
+            if (addedIds.Count > 0)
+            {
+                // A remembered-folder rescan is another import path. Only its newly discovered
+                // rows join the existing account-gated pipeline; unchanged ROMs keep their
+                // fingerprinted identification result and are not opened again.
+                if (_retroAchievements is not null && _retroAccount?.IsConnected == true)
+                    _ = SynchronizeImportedRetroAchievementsAsync(addedIds);
+
+                // Preserve rescan's existing metadata behavior: cover/title fetching remains an
+                // independent automatic preference and does not show the first-import prompt.
+                if (_metadataPreferences.AutomaticallyFetchAfterImport)
+                    _ = EnrichImportedGamesAsync(addedIds);
+            }
         }
         catch (Exception ex)
         {
@@ -1219,7 +1230,8 @@ public partial class MainViewModel : ViewModelBase
                         _retroAccount.Account,
                         _retroAccount.IsConnected,
                         ConnectRetroAchievementsAsync,
-                        DisconnectRetroAchievementsAsync));
+                        DisconnectRetroAchievementsAsync,
+                        RefreshRetroAchievementsMatchesAsync));
         }
         catch (Exception ex)
         {
@@ -1274,6 +1286,28 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Explicit Settings maintenance for games which were previously unmatched or had no set.
+    /// Identification still uses the fingerprint cache; only the remote console catalogues are
+    /// forced to refresh before every cached hash is matched again.
+    /// </summary>
+    internal async Task<RetroAchievementsLibrarySyncSummary?> RefreshRetroAchievementsMatchesAsync(
+        IProgress<RetroAchievementsLibrarySyncProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (_retroAchievements is null || _retroAccount?.IsConnected != true)
+            return null;
+
+        var gameIds = await Task.Run(
+            () => _library.GetGames().Select(game => game.Id).ToArray(),
+            cancellationToken);
+        return await SynchronizeRetroAchievementsAsync(
+            gameIds,
+            progress,
+            cancellationToken,
+            forceRefreshCatalogues: true);
+    }
+
     private async Task MaybeStartMetadataForImportAsync(IReadOnlyList<long> addedGameIds)
     {
         if (addedGameIds.Count == 0)
@@ -1325,7 +1359,8 @@ public partial class MainViewModel : ViewModelBase
     private async Task<RetroAchievementsLibrarySyncSummary?> SynchronizeRetroAchievementsAsync(
         IReadOnlyList<long> gameIds,
         IProgress<RetroAchievementsLibrarySyncProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool forceRefreshCatalogues = false)
     {
         if (_retroAchievements is null)
             return null;
@@ -1354,7 +1389,7 @@ public partial class MainViewModel : ViewModelBase
                 {
                     matching = await _retroMatching.MatchAsync(
                         credentials,
-                        forceRefreshCatalogues: false,
+                        forceRefreshCatalogues,
                         cancellationToken,
                         progress);
                 }
