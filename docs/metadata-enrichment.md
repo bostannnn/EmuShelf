@@ -67,6 +67,7 @@ flight also wins the final database compare-and-set.
 | PlayStation 2 | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PS2 by serial, then Libretro by canonical title |
 | GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
+| Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | No provider in M16; use the platform placeholder until M19 |
 
 GameCube and Wii covers are addressed by the disc id through GameTDB — the disc id's fourth
 character selects a region/language folder (`US`, `JA`, `EN`, `DE`, …), with `EN` and `US` tried
@@ -83,6 +84,13 @@ scans at most the first 16 MiB and stops at the first product code. For an unsup
 uses a product code only when one is explicitly present in the filename, such as
 `Game Name [SLUS-12345].chd`; otherwise the game remains unmatched. This is a safe fallback, not
 fuzzy matching.
+
+The Mega Drive / Genesis reader accepts only a `SEGA` cartridge header at the standard offset in
+a bounded raw `.md`/`.gen`/`.bin` file, or a 512-byte copier header followed by complete 16 KiB
+SMD interleaving blocks which normalize to that header. It hashes the normalized stream with
+SHA-1 and never uses a filename as catalogue evidence. The No-Intro DAT's nested ROM `sha1` field
+is matched exactly for canonical titles; artwork and RetroAchievements are deliberately deferred
+to M19.
 
 ## Code ownership
 

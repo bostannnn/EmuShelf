@@ -373,14 +373,18 @@ core options, overrides, playlists, or achievements settings.
 Mega Drive and Genesis are one system, not duplicate regional sidebars: the label recognizes
 both names while the library keeps regions and revisions as separate game entries.
 
-- [ ] Add strict folder and explicit-file recognition for the agreed single-ROM Mega Drive
-      formats. Normalize known copier/interleaved layouts only where fixtures prove the
-      result; exclude ambiguous archives and unsupported dumps from automatic discovery.
-- [ ] Extract a bounded normalized-ROM checksum for exact catalogue/achievement matching,
+- [x] Add strict folder and explicit-file recognition for header-proven raw `.md`, `.gen`, and
+      `.bin` ROMs plus canonical copier-header/interleaved `.smd` ROMs. Normalization has
+      raw/SMD parity fixtures; archives, raw `.smd` files, oversized inputs, and unsupported
+      dumps are excluded from automatic discovery.
+- [x] Extract a bounded normalized-ROM SHA-1 for exact catalogue and future achievement matching,
       including copier-header and interleaving fixtures. A filename is presentation fallback,
       never automatic metadata evidence.
-- [ ] Launch through the M15 RetroArch core mapping and verify scan, rescan, availability,
-      portable paths, cover placeholder ratio, and real Windows launch.
+- [x] Exercise the M15 RetroArch core mapping with Mega Drive portable-path coverage, and add
+      scan/rescan, availability, and cover-placeholder-ratio tests.
+- [ ] On real Windows, launch an accepted raw ROM and an accepted `.smd` through a configured
+      RetroArch core; verify paths with spaces, minimize/restore, and that neither ROM nor
+      RetroArch configuration/overrides/playlists/achievement settings are modified.
 
 ## M17 — Nintendo DS library (planned)
 

@@ -129,7 +129,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         var depth = 0;
         string? name = null;
         string? region = null;
-        string? serial = null;
+        string? key = null;
 
         while (reader.ReadLine() is { } line)
         {
@@ -141,7 +141,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                     depth = 1;
                     name = null;
                     region = null;
-                    serial = null;
+                    key = null;
                 }
                 continue;
             }
@@ -155,12 +155,25 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
             if (value.Equals(")", StringComparison.Ordinal))
             {
                 depth--;
-                if (depth == 0 && name is not null && serial is not null)
+                if (depth == 0 && name is not null && key is not null)
                 {
-                    var key = NormalizeKey(keyKind, serial);
-                    AddPreferred(entries, key, new CatalogEntry(name, region));
+                    var normalizedKey = NormalizeKey(keyKind, key);
+                    AddPreferred(entries, normalizedKey, new CatalogEntry(name, region));
                 }
                 continue;
+            }
+
+            // A clrmamepro ROM record may keep its checksum on the `rom (` line or on a
+            // nested line. SHA-1/CRC are ROM-content keys, unlike the top-level disc serial.
+            if (keyKind == GameIdentifierKind.Sha1 &&
+                TryReadTokenField(value, "sha1", out var parsedSha1))
+            {
+                key ??= parsedSha1;
+            }
+            else if (keyKind == GameIdentifierKind.Crc32 &&
+                     TryReadTokenField(value, "crc", out var parsedCrc))
+            {
+                key ??= parsedCrc;
             }
 
             if (depth != 1)
@@ -170,8 +183,9 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                 name = parsedName;
             else if (TryReadQuotedField(value, "region", out var parsedRegion))
                 region = parsedRegion;
-            else if (TryReadQuotedField(value, "serial", out var parsedSerial))
-                serial ??= parsedSerial;
+            else if (keyKind != GameIdentifierKind.Sha1 &&
+                     TryReadQuotedField(value, "serial", out var parsedSerial))
+                key ??= parsedSerial;
         }
 
         return new CatalogIndex(entries);
@@ -206,6 +220,22 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         value = line[(firstQuote + 1)..lastQuote]
             .Replace("\\\"", "\"", StringComparison.Ordinal)
             .Replace("\\\\", "\\", StringComparison.Ordinal);
+        return true;
+    }
+
+    private static bool TryReadTokenField(string line, string field, out string value)
+    {
+        var match = Regex.Match(
+            line,
+            $@"(?:^|\s){Regex.Escape(field)}\s+([^\s\)]+)",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        value = match.Groups[1].Value;
         return true;
     }
 

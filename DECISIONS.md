@@ -812,3 +812,20 @@ therefore accepts one `{CorePath}` only when its token is immediately preceded b
 followed by the one `{GamePath}` token. Other options may surround that three-token sequence, but
 cannot duplicate or substitute either path. Invalid, reordered, missing, or syntactically malformed
 templates fail before the frontend minimizes.
+
+## 2026-07-19 — M16 uses a bounded, normalized Mega Drive cartridge SHA-1
+
+M16 accepts only individual `.md`, `.gen`, and `.bin` files whose normalized bytes contain the
+standard `SEGA` cartridge header at `0x100`, are word-aligned, and are no larger than 10 MiB — the
+same cartridge ceiling used by the supported Genesis Plus GX core. A `.smd` file is accepted only
+when it has a 512-byte copier header followed by complete 16 KiB interleaved blocks; each block is
+deinterleaved using Genesis Plus GX's byte-lane order and the resulting first block must contain
+that same header. Byte-swapped, raw-but-renamed `.smd`, archive, headerless, oversized, and other
+ambiguous dumps are deliberately unsupported rather than guessed.
+
+The reader streams only that bounded normalized cartridge payload through SHA-1, never writes the
+source, and persists the uppercase digest as `GameIdentifierKind.Sha1` with `Mega Drive normalized
+ROM` provenance. This is exact evidence for the Libretro No-Intro cartridge DAT, whose hashes live
+inside nested `rom` records, so the catalog parser indexes nested SHA-1 fields for SHA-1 profiles.
+Filenames remain presentation-only fallback titles; M19 will separately decide cover and
+RetroAchievements semantics after its required parity and provider checks.

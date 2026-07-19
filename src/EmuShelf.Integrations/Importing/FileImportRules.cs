@@ -7,13 +7,14 @@ namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
 /// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
-/// GameCube, and Wii. PS3 remains directory-based and is intentionally absent.
+/// Mega Drive / Genesis, GameCube, and Wii. PS3 remains directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
 {
     private const string PlayStationId = "playstation";
     private const string PlayStation2Id = "playstation2";
     private const string PspId = "psp";
+    private const string MegaDriveId = "megadrive";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
 
@@ -27,6 +28,9 @@ public sealed class FileImportRules : IGameImportRules
             // PPSSPP's documented desktop load path. A candidate must also contain a valid
             // PSP_GAME/PARAM.SFO, so a generic ISO/CSO is never auto-imported as a PSP game.
             [PspId] = new(StringComparer.OrdinalIgnoreCase) { ".iso", ".cso" },
+            // The extension is only a routing hint: the reader requires the Sega header and,
+            // for .smd, the canonical 512-byte copier-header/interleaved layout.
+            [MegaDriveId] = new(StringComparer.OrdinalIgnoreCase) { ".md", ".gen", ".bin", ".smd" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
@@ -59,6 +63,9 @@ public sealed class FileImportRules : IGameImportRules
         var pspEvidence = ExtensionsBySystem[PspId].Contains(extension)
             ? PspGameMetadataReader.TryRead(path)
             : null;
+        var megaDriveEvidence = ExtensionsBySystem[MegaDriveId].Contains(extension)
+            ? MegaDriveRomReader.TryRead(path)
+            : null;
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
         // extensions. Put it first so the system picker defaults to PSP, and never let an
@@ -90,9 +97,14 @@ public sealed class FileImportRules : IGameImportRules
                 continue;
             }
 
-            var match = system.Id == PspId
-                ? pspEvidence is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible
-                : MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null);
+            var match = system.Id switch
+            {
+                PspId => pspEvidence is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible,
+                MegaDriveId => megaDriveEvidence is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
+            };
 
             matches[system.Id] = match;
             if ((match == GameFileMatch.Compatible && system.Id is not (GameCubeId or WiiId)) ||
@@ -123,6 +135,9 @@ public sealed class FileImportRules : IGameImportRules
     public bool IsFolderCandidate(string path, GameSystem system)
     {
         var extension = Path.GetExtension(path);
+        if (system.Id == MegaDriveId)
+            return MegaDriveRomReader.TryRead(path) is not null;
+
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
             !extensions.Contains(extension))
@@ -190,6 +205,17 @@ public sealed class FileImportRules : IGameImportRules
 
     public GameImportMetadata ReadImportMetadata(string path, GameSystem system)
     {
+        if (system.Id == MegaDriveId && MegaDriveRomReader.TryRead(path) is { } megaDriveEvidence)
+        {
+            return new GameImportMetadata(
+                null,
+                [new GameIdentifier(
+                    GameIdentifierKind.Sha1,
+                    megaDriveEvidence.Sha1,
+                    "Mega Drive normalized ROM",
+                    IsPrimary: true)]);
+        }
+
         if (system.Id != PspId || PspGameMetadataReader.TryRead(path) is not { } evidence)
             return GameImportMetadata.Empty;
 

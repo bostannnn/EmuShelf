@@ -29,5 +29,8 @@ public class PlatformArtworkTests
             KnownSystems.All.Skip(5).Select(system => system.Id));
         Assert.All(KnownSystems.All.Skip(5), system =>
             Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
+        Assert.Equal(
+            0.708,
+            KnownSystems.All.Single(system => system.Id == "megadrive").CoverAspectRatio);
     }
 }

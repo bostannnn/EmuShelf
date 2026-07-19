@@ -8,6 +8,8 @@ public static class KnownMetadataProfiles
         new PlayStationIdentifierExtractor();
     private static readonly IGameIdentifierExtractor NintendoExtractor =
         new NintendoDiscIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor MegaDriveExtractor =
+        new MegaDriveRomIdentifierExtractor();
 
     // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
     // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of
@@ -48,6 +50,12 @@ public static class KnownMetadataProfiles
             RawCatalog("dat/Nintendo%20-%20Wii.dat"),
             NintendoExtractor,
             [new GameTdbArtworkProvider(), new LibretroArtworkProvider("Nintendo - Wii")]),
+        new(
+            "megadrive",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/no-intro/Sega%20-%20Mega%20Drive%20-%20Genesis.dat"),
+            MegaDriveExtractor,
+            []),
     ];
 
     private static Uri RawCatalog(string path) =>

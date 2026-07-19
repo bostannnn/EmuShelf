@@ -170,6 +170,28 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void MegaDriveProfile_ExtractsOnlyTheNormalizedRomSha1AndDefersArtwork()
+    {
+        var path = Path.Combine(BaseDirectory, "Misleading Filename.md");
+        var bytes = new byte[0x4000];
+        "SEGA"u8.CopyTo(bytes.AsSpan(0x100));
+        File.WriteAllBytes(path, bytes);
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "megadrive");
+
+        var identifier = Assert.Single(profile.IdentifierExtractor.Extract(NewGame("megadrive", path)));
+
+        Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/no-intro/Sega%20-%20Mega%20Drive%20-%20Genesis.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Empty(profile.ArtworkProviders);
+        Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
+        Assert.Equal("471EE01E97220D35105CC5E9FB2F03765623CD05", identifier.Value);
+        Assert.Equal("Mega Drive normalized ROM", identifier.Source);
+        Assert.True(identifier.IsPrimary);
+    }
+
+    [Fact]
     public void ArtworkProviders_UseSerialThenCanonicalLibretroTitle()
     {
         var identifiers = new[]

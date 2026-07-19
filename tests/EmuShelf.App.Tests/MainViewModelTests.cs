@@ -35,6 +35,7 @@ public class MainViewModelTests : IDisposable
     private static readonly GameSystem Ps1 = KnownSystems.All.Single(s => s.Id == "playstation");
     private static readonly GameSystem Ps3 = KnownSystems.All.Single(s => s.Id == "playstation3");
     private static readonly GameSystem GameCube = KnownSystems.All.Single(s => s.Id == "gamecube");
+    private static readonly GameSystem MegaDrive = KnownSystems.All.Single(s => s.Id == "megadrive");
 
     public MainViewModelTests()
     {
@@ -123,6 +124,56 @@ public class MainViewModelTests : IDisposable
         Assert.Empty(_library.GetGames(Ps3.Id));
         Assert.Empty(_library.GetLibraryFolders(Ps3.Id));
         Assert.Contains("imported only from RPCS3", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task MegaDriveFolderImport_RescanAndAvailabilityUseTheStrictRomPathAndPersistSha1()
+    {
+        var folder = Path.Combine(_baseDirectory, "Mega Drive ROMs");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "Ristar (USA).md");
+        var bytes = new byte[0x4000];
+        "SEGA"u8.CopyTo(bytes.AsSpan(0x100));
+        File.WriteAllBytes(path, bytes);
+        File.WriteAllText(Path.Combine(folder, "Archive.zip"), "not a ROM");
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = MegaDrive;
+        var vm = CreateViewModel(metadataStore: _metadataStore);
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        var game = Assert.Single(_library.GetGames(MegaDrive.Id));
+        Assert.Equal("Ristar (USA)", game.Title);
+        Assert.Equal(GameTitleOrigin.Filename, game.TitleOrigin);
+        Assert.True(game.IsAvailable);
+        var identifier = Assert.Single(_metadataStore.GetIdentifiers(game.Id));
+        Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
+        Assert.Equal("471EE01E97220D35105CC5E9FB2F03765623CD05", identifier.Value);
+
+        File.Delete(path);
+        await vm.RefreshAvailabilityAsync();
+        Assert.False(Assert.Single(_library.GetGames(MegaDrive.Id)).IsAvailable);
+
+        File.WriteAllBytes(path, bytes);
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+        Assert.True(Assert.Single(_library.GetGames(MegaDrive.Id)).IsAvailable);
+        Assert.Equal("Rescan complete — no new games", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task AddGames_HeaderlessMegaDriveFileIsSkippedAfterConfirmation()
+    {
+        var path = Path.Combine(_baseDirectory, "roms", "Not a Mega Drive ROM.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, new byte[0x4000]);
+        _dialogs.FilesToReturn = [path];
+        _dialogs.SystemToReturn = MegaDrive;
+        var vm = CreateViewModel();
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        Assert.Empty(_library.GetGames(MegaDrive.Id));
+        Assert.Contains("not recognized as Mega Drive / Genesis", vm.StatusText);
     }
 
     [AvaloniaFact]
