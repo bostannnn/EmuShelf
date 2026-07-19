@@ -829,3 +829,14 @@ ROM` provenance. This is exact evidence for the Libretro No-Intro cartridge DAT,
 inside nested `rom` records, so the catalog parser indexes nested SHA-1 fields for SHA-1 profiles.
 Filenames remain presentation-only fallback titles; M19 will separately decide cover and
 RetroAchievements semantics after its required parity and provider checks.
+
+## 2026-07-19 — M16 separates Mega Drive layout recognition from checksum extraction
+
+Folder discovery and explicit-file system suggestions need only prove the bounded extension/layout
+and normalized `SEGA` header; calculating the SHA-1 there would read every accepted ROM in full
+before the import stage reads it again to persist evidence. `TryRecognize` therefore reads at most
+the raw header or first normalized SMD block, while `TryRead` remains the single full, bounded
+SHA-1 extraction path used for import metadata and later on-demand enrichment. A proven Mega Drive
+`.bin` is now a definitive mismatch for PlayStation systems rather than falling through the legacy
+explicit raw-BIN fallback; only unproven `.bin` files remain eligible for a user-confirmed
+PlayStation import.

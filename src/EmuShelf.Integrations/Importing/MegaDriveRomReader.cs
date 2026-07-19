@@ -22,7 +22,24 @@ public static class MegaDriveRomReader
     private static readonly HashSet<string> RawExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".md", ".gen", ".bin" };
 
-    /// <summary>True only for the extension/layout combinations supported by M16.</summary>
+    /// <summary>
+    /// Validates only the extension, bounded layout, and normalized Sega header. Folder scans and
+    /// the explicit-file picker use this fast path; checksum extraction happens once an accepted
+    /// entry is being reconciled.
+    /// </summary>
+    public static MegaDriveRomLayout? TryRecognize(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (RawExtensions.Contains(extension))
+            return TryRecognizeRaw(path) ? MegaDriveRomLayout.Raw : null;
+
+        return extension.Equals(".smd", StringComparison.OrdinalIgnoreCase) &&
+               TryRecognizeInterleavedSmd(path)
+            ? MegaDriveRomLayout.CopierInterleaved
+            : null;
+    }
+
+    /// <summary>Returns exact SHA-1 evidence only for a supported layout.</summary>
     public static MegaDriveRomEvidence? TryRead(string path)
     {
         var extension = Path.GetExtension(path);
@@ -53,6 +70,20 @@ public static class MegaDriveRomReader
                                    ArgumentException or NotSupportedException)
         {
             return null;
+        }
+    }
+
+    private static bool TryRecognizeRaw(string path)
+    {
+        try
+        {
+            using var stream = OpenRead(path);
+            return IsValidNormalizedLength(stream.Length) && HasSegaHeader(stream);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   ArgumentException or NotSupportedException)
+        {
+            return false;
         }
     }
 
@@ -93,6 +124,32 @@ public static class MegaDriveRomReader
                                    ArgumentException or NotSupportedException)
         {
             return null;
+        }
+    }
+
+    private static bool TryRecognizeInterleavedSmd(string path)
+    {
+        try
+        {
+            using var stream = OpenRead(path);
+            var normalizedLength = stream.Length - CopierHeaderBytes;
+            if (normalizedLength <= 0 ||
+                normalizedLength > MaximumNormalizedRomBytes ||
+                normalizedLength % InterleavedBlockBytes != 0)
+            {
+                return false;
+            }
+
+            stream.Position = CopierHeaderBytes;
+            var block = new byte[InterleavedBlockBytes];
+            ReadExactly(stream, block);
+            DeinterleaveBlock(block);
+            return HasSegaHeader(block);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+                                   ArgumentException or NotSupportedException)
+        {
+            return false;
         }
     }
 

@@ -725,6 +725,24 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task AddGames_ProvenMegaDriveBinCannotBeImportedAsPlayStation()
+    {
+        var folder = MakeRomsFolder();
+        var path = Path.Combine(folder, "Ristar.bin");
+        var bytes = new byte[0x4000];
+        "SEGA"u8.CopyTo(bytes.AsSpan(0x100));
+        File.WriteAllBytes(path, bytes);
+        _dialogs.FilesToReturn = [path];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        Assert.Empty(_library.GetGames(Ps1.Id));
+        Assert.Contains("not recognized as PlayStation", vm.StatusText);
+    }
+
+    [AvaloniaFact]
     public async Task Rescan_PlaylistAddedLater_SuppressesPersistedDiscsWithoutDeletingFiles()
     {
         var folder = Path.Combine(_baseDirectory, "multi-disc");

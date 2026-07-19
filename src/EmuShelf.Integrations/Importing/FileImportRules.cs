@@ -63,8 +63,8 @@ public sealed class FileImportRules : IGameImportRules
         var pspEvidence = ExtensionsBySystem[PspId].Contains(extension)
             ? PspGameMetadataReader.TryRead(path)
             : null;
-        var megaDriveEvidence = ExtensionsBySystem[MegaDriveId].Contains(extension)
-            ? MegaDriveRomReader.TryRead(path)
+        var megaDriveLayout = ExtensionsBySystem[MegaDriveId].Contains(extension)
+            ? MegaDriveRomReader.TryRecognize(path)
             : null;
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
@@ -100,7 +100,7 @@ public sealed class FileImportRules : IGameImportRules
             var match = system.Id switch
             {
                 PspId => pspEvidence is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible,
-                MegaDriveId => megaDriveEvidence is null
+                MegaDriveId => megaDriveLayout is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
@@ -124,8 +124,14 @@ public sealed class FileImportRules : IGameImportRules
                 if (FindSystem(systemId) is not { } system)
                     continue;
 
-                matches[systemId] = GameFileMatch.Compatible;
-                suggestions.Add(system);
+                // A validated cartridge header is decisive evidence for the otherwise generic
+                // .bin extension. Preserve the explicit PS raw-BIN fallback only when the file
+                // did not prove itself to be a Mega Drive ROM.
+                matches[systemId] = megaDriveLayout is null
+                    ? GameFileMatch.Compatible
+                    : GameFileMatch.Incompatible;
+                if (megaDriveLayout is null)
+                    suggestions.Add(system);
             }
         }
 
@@ -136,7 +142,7 @@ public sealed class FileImportRules : IGameImportRules
     {
         var extension = Path.GetExtension(path);
         if (system.Id == MegaDriveId)
-            return MegaDriveRomReader.TryRead(path) is not null;
+            return MegaDriveRomReader.TryRecognize(path) is not null;
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||

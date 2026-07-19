@@ -27,15 +27,24 @@ public sealed class MegaDriveRomReaderTests : TempAppDirectoryTestBase
         File.SetLastWriteTimeUtc(path, beforeTimestamp);
 
         var evidence = MegaDriveRomReader.TryRead(path);
+        var recognition = MegaDriveRomReader.TryRecognize(path);
         var analysis = _rules.AnalyzeFile(path);
         var metadata = _rules.ReadImportMetadata(path, System("megadrive"));
 
         Assert.NotNull(evidence);
+        Assert.Equal(MegaDriveRomLayout.Raw, recognition);
         Assert.Equal(FixtureSha1, evidence.Sha1);
         Assert.Equal(MegaDriveRomLayout.Raw, evidence.Layout);
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("megadrive"));
         Assert.Contains(analysis.SuggestedSystems, system => system.Id == "megadrive");
         Assert.True(_rules.IsFolderCandidate(path, System("megadrive")));
+        if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("playstation"));
+            Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("playstation2"));
+            Assert.DoesNotContain(analysis.SuggestedSystems, system => system.Id == "playstation");
+            Assert.DoesNotContain(analysis.SuggestedSystems, system => system.Id == "playstation2");
+        }
         Assert.Null(metadata.EmbeddedTitle);
         var identifier = Assert.Single(metadata.Identifiers);
         Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
@@ -55,9 +64,11 @@ public sealed class MegaDriveRomReaderTests : TempAppDirectoryTestBase
         File.SetLastWriteTimeUtc(path, beforeTimestamp);
 
         var evidence = MegaDriveRomReader.TryRead(path);
+        var recognition = MegaDriveRomReader.TryRecognize(path);
         var analysis = _rules.AnalyzeFile(path);
 
         Assert.NotNull(evidence);
+        Assert.Equal(MegaDriveRomLayout.CopierInterleaved, recognition);
         Assert.Equal(FixtureSha1, evidence.Sha1);
         Assert.Equal(MegaDriveRomLayout.CopierInterleaved, evidence.Layout);
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("megadrive"));
@@ -111,6 +122,7 @@ public sealed class MegaDriveRomReaderTests : TempAppDirectoryTestBase
         }
 
         Assert.Null(MegaDriveRomReader.TryRead(path));
+        Assert.Null(MegaDriveRomReader.TryRecognize(path));
         Assert.False(_rules.IsFolderCandidate(path, System("megadrive")));
     }
 
