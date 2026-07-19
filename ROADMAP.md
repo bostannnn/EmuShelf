@@ -436,3 +436,11 @@ it must not create a second downloader, account flow, or background polling mech
 - [ ] On a real Windows machine, verify RetroAchievements end to end for one validated PSP and
       one validated RetroArch-platform game: EmuShelf shows only read-only progress after the
       emulator/core unlocks and submits it. Verify PS3 stays explicitly unsupported.
+
+## M21 — Miscellaneous backlog (planned)
+
+- [ ] Add PSP CHD feasibility and import support. CHD already serves the existing PlayStation
+      profile, but it can also contain a PSP UMD image; support it only after the logical-disc
+      reader can locate and validate `PSP_GAME/PARAM.SFO`, preserve exact `DISC_ID` evidence,
+      launch it with a verified PPSSPP release, and prove read-only source bytes/timestamps with
+      ISO/CSO parity and malformed-container fixtures. Do not treat a CHD as an opaque PSP file.
