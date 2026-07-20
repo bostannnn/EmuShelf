@@ -134,12 +134,27 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasCoverImage => CoverImage is not null;
 
+    /// <summary>Sort key for the Achievements column: -1 when the game has no set, 0 when a set
+    /// exists but progress hasn't loaded, otherwise the number of unlocked achievements.</summary>
+    public int AchievementSortKey { get; private set; } = -1;
+
     /// <summary>Applies a resolved achievement presentation from the display state machine.</summary>
     public void ApplyAchievementsDisplay(RetroAchievementsDisplay display)
     {
         ShowAchievementMark = display.ShowMark;
         AchievementsColumnText = display.ColumnText;
         AchievementsTooltip = display.Tooltip;
+        AchievementSortKey = ComputeAchievementSortKey(display);
+    }
+
+    private static int ComputeAchievementSortKey(RetroAchievementsDisplay display)
+    {
+        if (!display.ShowMark)
+            return -1;
+        var slash = display.ColumnText.IndexOf('/');
+        return slash > 0 && int.TryParse(display.ColumnText.AsSpan(0, slash), out var awarded)
+            ? awarded
+            : 0;
     }
 
     /// <summary>Only confirmed achievement-bearing catalogue links can open the detail popup.</summary>

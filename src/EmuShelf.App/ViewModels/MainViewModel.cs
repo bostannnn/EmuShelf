@@ -81,6 +81,34 @@ public partial class MainViewModel : ViewModelBase
     public partial bool IsGridView { get; set; } = true;
 
     [ObservableProperty]
+    public partial LibrarySortColumn SortColumn { get; set; } = LibrarySortColumn.Title;
+
+    [ObservableProperty]
+    public partial bool SortDescending { get; set; }
+
+    // Per-column arrow shown in the list header (empty unless that column is the active sort).
+    public string TitleSortGlyph => SortGlyph(LibrarySortColumn.Title);
+    public string ConsoleSortGlyph => SortGlyph(LibrarySortColumn.Console);
+    public string FormatSortGlyph => SortGlyph(LibrarySortColumn.Format);
+    public string AchievementsSortGlyph => SortGlyph(LibrarySortColumn.Achievements);
+    public string StatusSortGlyph => SortGlyph(LibrarySortColumn.Status);
+
+    private string SortGlyph(LibrarySortColumn column) =>
+        SortColumn == column ? (SortDescending ? "▼" : "▲") : string.Empty;
+
+    partial void OnSortColumnChanged(LibrarySortColumn value) => NotifySortGlyphs();
+    partial void OnSortDescendingChanged(bool value) => NotifySortGlyphs();
+
+    private void NotifySortGlyphs()
+    {
+        OnPropertyChanged(nameof(TitleSortGlyph));
+        OnPropertyChanged(nameof(ConsoleSortGlyph));
+        OnPropertyChanged(nameof(FormatSortGlyph));
+        OnPropertyChanged(nameof(AchievementsSortGlyph));
+        OnPropertyChanged(nameof(StatusSortGlyph));
+    }
+
+    [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -532,6 +560,39 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // Sets the sort column, toggling ascending/descending when the same column is chosen again.
+    [RelayCommand]
+    private void SortBy(LibrarySortColumn column)
+    {
+        if (SortColumn == column)
+            SortDescending = !SortDescending;
+        else
+        {
+            SortColumn = column;
+            SortDescending = false;
+        }
+        ApplyFilter();
+    }
+
+    private IEnumerable<GameViewModel> SortGames(IEnumerable<GameViewModel> games)
+    {
+        var text = StringComparer.OrdinalIgnoreCase;
+        IOrderedEnumerable<GameViewModel> By<TKey>(
+            Func<GameViewModel, TKey> key, IComparer<TKey>? comparer = null) =>
+            SortDescending ? games.OrderByDescending(key, comparer) : games.OrderBy(key, comparer);
+
+        var ordered = SortColumn switch
+        {
+            LibrarySortColumn.Console => By(g => g.SystemName, text),
+            LibrarySortColumn.Format => By(g => g.FormatLabel, text),
+            LibrarySortColumn.Achievements => By(g => g.AchievementSortKey),
+            LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
+            _ => By(g => g.Title, text),
+        };
+        // Title is the stable secondary key so equal rows keep a deterministic order.
+        return ordered.ThenBy(g => g.Title, text);
+    }
+
     internal void ApplyFilter()
     {
         var query = SearchText.Trim();
@@ -541,7 +602,7 @@ public partial class MainViewModel : ViewModelBase
             filtered = _systemGames.Where(g =>
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
-        Games.ReplaceAll(filtered);
+        Games.ReplaceAll(SortGames(filtered));
 
         HasGames = Games.Count > 0;
         IsLibraryEmpty = _systemGames.Count == 0;

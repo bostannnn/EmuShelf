@@ -12,6 +12,7 @@ using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
 using EmuShelf.Infrastructure.Library;
+using EmuShelf.Infrastructure.Launching;
 using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Storage;
@@ -67,7 +68,8 @@ public class MainViewModelTests : IDisposable
         IRetroAchievementsProgressService? retroProgress = null,
         IRetroAchievementsDetailsService? retroDetails = null,
         IRetroAchievementsRefreshService? retroRefresh = null,
-        IGameMetadataStore? metadataStore = null)
+        IGameMetadataStore? metadataStore = null,
+        IEmulatorConfigurationStore? emulatorConfigurations = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -78,6 +80,7 @@ public class MainViewModelTests : IDisposable
             _dialogs,
             KnownSystems.All,
             launchService,
+            emulatorConfigurations: emulatorConfigurations,
             covers: covers,
             themeService: themes,
             metadataService: metadata,
@@ -383,6 +386,30 @@ public class MainViewModelTests : IDisposable
         Assert.Equal("Source missing", sourceMissingView.AvailabilityText);
         Assert.Equal("SOURCE MISSING", sourceMissingView.UnavailableBadgeText);
         Assert.Contains("external emulator library", sourceMissingView.UnavailableLaunchStatus);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsSyncRpcs3Library_UsesTheConfiguredExecutablesConfigGameListWithoutPrompting()
+    {
+        var installation = Path.Combine(_baseDirectory, "rpcs3");
+        var configuration = Path.Combine(installation, "config");
+        var game = Path.Combine(_baseDirectory, "rpcs3", "games", "Example Game");
+        Directory.CreateDirectory(configuration);
+        Directory.CreateDirectory(game);
+        var executable = Path.Combine(installation, "rpcs3.exe");
+        File.WriteAllText(executable, string.Empty);
+        File.WriteAllText(Path.Combine(configuration, "games.yml"), $"BLES12345: '{game}'\n");
+        var configurations = new SqliteEmulatorConfigurationStore(
+            _database,
+            new RelativePathResolver(new AppPaths(_baseDirectory)));
+        configurations.Save(new EmulatorConfiguration("playstation3", executable, "--no-gui \"{GamePath}\""));
+        var viewModel = CreateViewModel(emulatorConfigurations: configurations);
+
+        await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.SyncRpcs3Library!();
+
+        Assert.Equal("RPCS3 library sync complete — 1 added", viewModel.StatusText);
+        Assert.Equal("Example Game", Assert.Single(_library.GetGames("playstation3")).Title);
     }
 
     [AvaloniaFact]
@@ -1070,6 +1097,41 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(
             ["Newest GameCube Game", "Older PlayStation Game"],
             vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task SortBy_OrdersLibraryByColumnAndTogglesDirection()
+    {
+        var now = DateTimeOffset.UtcNow;
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = Path.Combine(_baseDirectory, "Yoshi.iso"), Title = "Yoshi", DateAdded = now },
+            new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Alpha.chd"), Title = "Alpha", DateAdded = now },
+            new Game { SystemId = GameCube.Id, Path = Path.Combine(_baseDirectory, "Mario.cue"), Title = "Mario", DateAdded = now },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+
+        // Default sort: title ascending.
+        Assert.Equal(["Alpha", "Mario", "Yoshi"], vm.Games.Select(g => g.Title));
+
+        // Clicking the active column toggles to descending and shows the down glyph.
+        vm.SortByCommand.Execute(LibrarySortColumn.Title);
+        Assert.True(vm.SortDescending);
+        Assert.Equal("▼", vm.TitleSortGlyph);
+        Assert.Equal(["Yoshi", "Mario", "Alpha"], vm.Games.Select(g => g.Title));
+
+        // Switching column resets to ascending; ties break by title (GameCube before PlayStation).
+        vm.SortByCommand.Execute(LibrarySortColumn.Console);
+        Assert.False(vm.SortDescending);
+        Assert.Equal(LibrarySortColumn.Console, vm.SortColumn);
+        Assert.Equal("▲", vm.ConsoleSortGlyph);
+        Assert.Equal(string.Empty, vm.TitleSortGlyph);
+        Assert.Equal(["Mario", "Yoshi", "Alpha"], vm.Games.Select(g => g.Title));
+
+        // Format ascending orders by the file extension: CHD, CUE, ISO.
+        vm.SortByCommand.Execute(LibrarySortColumn.Format);
+        Assert.Equal(["Alpha", "Mario", "Yoshi"], vm.Games.Select(g => g.Title));
     }
 
     [AvaloniaFact]

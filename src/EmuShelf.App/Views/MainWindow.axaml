@@ -149,6 +149,23 @@
             <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
+        <!-- Clickable list-view column headers: no chrome, so they read as the header labels
+             but sort the library on click (with a ▲/▼ direction glyph on the active column). -->
+        <Style Selector="Button.sort-header">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.sort-header /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.sort-header:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="68,*" ColumnDefinitions="Auto,*">
@@ -546,11 +563,46 @@
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
                     <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,96,100">
-                        <TextBlock Grid.Column="1" Text="TITLE" />
-                        <TextBlock Grid.Column="2" Text="CONSOLE" />
-                        <TextBlock Grid.Column="3" Text="FORMAT" />
-                        <TextBlock Grid.Column="4" Text="ACHIEVEMENTS" />
-                        <TextBlock Grid.Column="5" Text="STATUS" />
+                        <Button Grid.Column="1" Classes="sort-header"
+                                Command="{Binding SortByCommand}"
+                                CommandParameter="{x:Static vm:LibrarySortColumn.Title}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="TITLE" />
+                                <TextBlock Text="{Binding TitleSortGlyph}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="2" Classes="sort-header"
+                                Command="{Binding SortByCommand}"
+                                CommandParameter="{x:Static vm:LibrarySortColumn.Console}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="CONSOLE" />
+                                <TextBlock Text="{Binding ConsoleSortGlyph}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="3" Classes="sort-header"
+                                Command="{Binding SortByCommand}"
+                                CommandParameter="{x:Static vm:LibrarySortColumn.Format}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="FORMAT" />
+                                <TextBlock Text="{Binding FormatSortGlyph}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="4" Classes="sort-header"
+                                Command="{Binding SortByCommand}"
+                                CommandParameter="{x:Static vm:LibrarySortColumn.Achievements}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="ACHIEVEMENTS" />
+                                <TextBlock Text="{Binding AchievementsSortGlyph}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="5" Classes="sort-header"
+                                Command="{Binding SortByCommand}"
+                                CommandParameter="{x:Static vm:LibrarySortColumn.Status}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="STATUS" />
+                                <TextBlock Text="{Binding StatusSortGlyph}" />
+                            </StackPanel>
+                        </Button>
                     </Grid>
                 </Border>
                 <ListBox Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
