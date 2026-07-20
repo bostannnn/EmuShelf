@@ -28,6 +28,9 @@ public interface IDialogService
     /// <summary>Confirms removing a game from the library without touching its files.</summary>
     Task<bool> ConfirmRemoveGameAsync(string gameTitle);
 
+    /// <summary>Confirms removing several library records without touching their files or covers.</summary>
+    Task<bool> ConfirmRemoveGamesAsync(int gameCount);
+
     /// <summary>Asks once whether newly imported games may use network metadata providers.</summary>
     Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount);
 

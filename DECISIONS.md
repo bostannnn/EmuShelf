@@ -1001,3 +1001,31 @@ downloaded during Windows acceptance measured a `0.581` median ratio, so PSP use
 frame rather than the `0.708` DVD-case default. This is presentation-only; the shared metadata
 pipeline continues to rely on exact serial matches before attempting canonical and filename
 thumbnail titles.
+
+## 2026-07-20 — M25 selection is view-model-owned and bulk removal is transactional
+
+The grid and list report only pointer modifiers to `MainViewModel`; the view model owns the shared
+selection set and range anchor through the existing `GameViewModel.IsSelected` and `SelectedGame`
+state. This keeps selection identical when switching library layouts and leaves code-behind as
+gesture wiring. Ctrl+A selects only the games currently shown by the active collection and search
+filter, while text fields retain their native select-all behavior.
+
+Bulk removal uses one SQLite transaction over the selected row ids and confirms the count once.
+It deletes only EmuShelf database rows: source games, cover assets, and missing-file state remain
+untouched. Reloading the library deliberately clears selection so no stale view models or hidden
+rows can be removed by a later Delete keypress.
+
+## 2026-07-20 — User-supplied console illustrations supplement platform artwork
+
+The supplied PS2, PS3, Wii, and PSP pixel-art console illustrations are adapted into
+transparent, tightly framed UI assets and map only to their matching system ids. They
+replace the generic platform artwork in shared navigation, settings, and missing-cover
+presentation while the licensed OpenEmu platform assets continue to cover every other
+system. This keeps the visual treatment consistent without importing new third-party
+game art or changing any game-cover source.
+
+## 2026-07-20 — Regenerated compact sprites favor sidebar legibility
+
+The first PS2, PS3, and PSP illustration imports lost too much detail at the 18px
+navigation size and did not match the existing pixel-art icon language. They are
+replaced with custom, console-specific pixel-art sprites: an angular blue-accented

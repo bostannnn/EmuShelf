@@ -14,11 +14,13 @@ internal sealed class FakeDialogService : IDialogService
     public string? Rpcs3ConfigurationDirectoryToReturn { get; set; }
     public string? CoverImageToReturn { get; set; }
     public bool ConfirmRemoveToReturn { get; set; }
+    public bool ConfirmRemoveGamesToReturn { get; set; }
     public MetadataConsentChoice MetadataConsentToReturn { get; set; } =
         MetadataConsentChoice.NotNow;
     public int MetadataConsentPrompts { get; private set; }
     public string? LastCoverGameTitle { get; private set; }
     public string? LastRemoveGameTitle { get; private set; }
+    public int? LastRemoveGameCount { get; private set; }
     public Exception? SettingsException { get; set; }
     public int SettingsShown { get; private set; }
     public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
@@ -44,6 +46,11 @@ internal sealed class FakeDialogService : IDialogService
     {
         LastRemoveGameTitle = gameTitle;
         return Task.FromResult(ConfirmRemoveToReturn);
+    }
+    public Task<bool> ConfirmRemoveGamesAsync(int gameCount)
+    {
+        LastRemoveGameCount = gameCount;
+        return Task.FromResult(ConfirmRemoveGamesToReturn);
     }
     public Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested) =>
         Task.FromResult(SystemToReturn);

@@ -14,6 +14,17 @@ public static class PlatformArtwork
 {
     private const string AssetRoot =
         "avares://EmuShelf/Assets/ThirdParty/OpenEmu/PlatformIcons/";
+    private const string ConsoleAssetRoot =
+        "avares://EmuShelf/Assets/PlatformConsoleArt/";
+
+    private static readonly IReadOnlyDictionary<string, string> ConsoleAssets =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["playstation2"] = "playstation2.png",
+            ["playstation3"] = "playstation3.png",
+            ["wii"] = "wii.png",
+            ["psp"] = "psp.png",
+        };
 
     private static readonly IReadOnlyDictionary<string, string> Assets =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -80,8 +91,16 @@ public static class PlatformArtwork
 
     public static IImage? ForSystem(string? systemId)
     {
-        if (systemId is null || !Assets.TryGetValue(systemId, out var relativePath))
+        if (systemId is null)
             return null;
+
+        var assetRoot = ConsoleAssetRoot;
+        if (!ConsoleAssets.TryGetValue(systemId, out var relativePath))
+        {
+            if (!Assets.TryGetValue(systemId, out relativePath))
+                return null;
+            assetRoot = AssetRoot;
+        }
 
         lock (Cache)
         {
@@ -91,7 +110,8 @@ public static class PlatformArtwork
             var escapedPath = string.Join(
                 '/',
                 relativePath.Split('/').Select(Uri.EscapeDataString));
-            using var stream = AssetLoader.Open(new Uri(AssetRoot + escapedPath));
+            using var stream = AssetLoader.Open(new Uri(
+                assetRoot + escapedPath));
             var bitmap = new Bitmap(stream);
             Cache[systemId] = bitmap;
             return bitmap;
@@ -100,19 +120,4 @@ public static class PlatformArtwork
 
     public static readonly IValueConverter Converter =
         new FuncValueConverter<string?, IImage?>(ForSystem);
-
-    private static string? GenerationBadgeForSystem(string? systemId) => systemId switch
-    {
-        "playstation2" => "2",
-        "playstation3" => "3",
-        "playstation4" => "4",
-        _ => null,
-    };
-
-    public static readonly IValueConverter GenerationBadgeConverter =
-        new FuncValueConverter<string?, string?>(GenerationBadgeForSystem);
-
-    public static readonly IValueConverter HasGenerationBadgeConverter =
-        new FuncValueConverter<string?, bool>(systemId =>
-            GenerationBadgeForSystem(systemId) is not null);
 }

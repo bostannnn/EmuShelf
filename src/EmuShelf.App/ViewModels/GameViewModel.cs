@@ -16,6 +16,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
 {
     private static readonly IAsyncRelayCommand<GameViewModel?> NoGameCommand =
         new AsyncRelayCommand<GameViewModel?>(_ => Task.CompletedTask);
+    private static readonly IAsyncRelayCommand NoCommand =
+        new AsyncRelayCommand(() => Task.CompletedTask);
 
     /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
     private const double CoverFrameWidth = 188;
@@ -78,6 +80,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> RemoveCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
+    public IAsyncRelayCommand RemoveSelectedCommand { get; }
     public string? CoverPath { get; private set; }
     public int? RetroAchievementsGameId { get; private set; }
     public bool IsCoverLoading { get; set; }
@@ -176,7 +179,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
         IAsyncRelayCommand<GameViewModel?>? loadCoverCommand = null,
         IImage? platformArtwork = null,
         double coverAspectRatio = DefaultCoverAspectRatio,
-        IAsyncRelayCommand<GameViewModel?>? openAchievementsCommand = null)
+        IAsyncRelayCommand<GameViewModel?>? openAchievementsCommand = null,
+        IAsyncRelayCommand? removeSelectedCommand = null)
     {
         Model = game;
         Id = game.Id;
@@ -209,6 +213,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         RemoveCommand = removeCommand ?? NoGameCommand;
         LoadCoverCommand = loadCoverCommand ?? NoGameCommand;
         OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
+        RemoveSelectedCommand = removeSelectedCommand ?? NoCommand;
     }
 
     partial void OnTitleChanged(string value)

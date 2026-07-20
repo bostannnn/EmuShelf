@@ -29,6 +29,7 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public void UpdateTitle(long gameId, string title) { }
     public void UpdateCoverPath(long gameId, string? coverPath) { }
     public void RemoveGame(long gameId) { }
+    public void RemoveGames(IReadOnlyList<long> gameIds) { }
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null) => [];
     public void AddLibraryFolder(string systemId, string folderPath) { }
 }
@@ -99,6 +100,8 @@ internal sealed class NullDialogService : IDialogService
     public Task<string?> PickCoverImageAsync(string gameTitle) =>
         Task.FromResult<string?>(null);
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle) =>
+        Task.FromResult(false);
+    public Task<bool> ConfirmRemoveGamesAsync(int gameCount) =>
         Task.FromResult(false);
     public Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount) =>
         Task.FromResult(MetadataConsentChoice.NotNow);

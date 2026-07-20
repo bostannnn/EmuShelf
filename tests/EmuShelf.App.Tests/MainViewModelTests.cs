@@ -1414,6 +1414,62 @@ public class MainViewModelTests : IDisposable
         Assert.Contains("game files were not touched", vm.StatusText);
     }
 
+    [AvaloniaFact]
+    public async Task LibrarySelection_TogglesRangesAndSelectsAllInTheCurrentView()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Gamma.cue", Title = "Gamma" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+
+        vm.SelectGame(vm.Games[0]);
+        vm.SelectGame(vm.Games[2], toggle: true);
+        Assert.Equal(2, vm.SelectedGameCount);
+
+        vm.IsGridView = false;
+        vm.SelectGame(vm.Games[1], selectRange: true);
+        Assert.Equal(["Beta", "Gamma"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        vm.SelectAllGamesCommand.Execute(null);
+        Assert.Equal(3, vm.SelectedGameCount);
+        Assert.True(vm.HasSelectedGames);
+
+        await vm.ReloadGamesAsync();
+        Assert.Equal(0, vm.SelectedGameCount);
+        Assert.False(vm.HasSelectedGames);
+    }
+
+    [AvaloniaFact]
+    public async Task RemoveSelectedGames_ConfirmsOnceAndKeepsGameFilesAndCoversUntouched()
+    {
+        var folder = MakeRomsFolder();
+        var availablePath = Path.Combine(folder, "Available.cue");
+        var missingPath = Path.Combine(folder, "Missing.cue");
+        File.WriteAllText(availablePath, "source");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = availablePath, Title = "Available", IsAvailable = true },
+            new Game { SystemId = Ps1.Id, Path = missingPath, Title = "Missing", IsAvailable = false },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+        vm.SelectAllGamesCommand.Execute(null);
+
+        _dialogs.ConfirmRemoveGamesToReturn = true;
+        await vm.RemoveSelectedGamesCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, _dialogs.LastRemoveGameCount);
+        Assert.Empty(_library.GetGames(Ps1.Id));
+        Assert.True(File.Exists(availablePath));
+        Assert.False(File.Exists(missingPath));
+        Assert.Equal(0, vm.SelectedGameCount);
+        Assert.Contains("game files and covers were not touched", vm.StatusText);
+    }
+
     private sealed class RecordingImportRules(GameSystem system) : IGameImportRules
     {
         public int AnalysisCalls { get; private set; }

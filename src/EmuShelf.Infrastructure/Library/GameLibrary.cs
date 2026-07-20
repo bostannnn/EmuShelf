@@ -504,11 +504,27 @@ public sealed class GameLibrary : IGameLibrary
 
     public void RemoveGame(long gameId)
     {
+        RemoveGames([gameId]);
+    }
+
+    public void RemoveGames(IReadOnlyList<long> gameIds)
+    {
+        if (gameIds.Count == 0)
+            return;
+
         using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = "DELETE FROM Games WHERE Id = $id;";
-        command.Parameters.AddWithValue("$id", gameId);
-        command.ExecuteNonQuery();
+        var id = command.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Integer);
+        foreach (var gameId in gameIds.Distinct())
+        {
+            id.Value = gameId;
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
     }
 
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null)

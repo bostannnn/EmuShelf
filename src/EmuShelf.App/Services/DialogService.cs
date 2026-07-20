@@ -159,6 +159,18 @@ public sealed class DialogService : IDialogService
         return await dialog.ShowDialog<bool>(owner);
     }
 
+    public async Task<bool> ConfirmRemoveGamesAsync(int gameCount)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return false;
+
+        var viewModel = new RemoveGameViewModel(gameCount);
+        var dialog = new RemoveGameWindow { DataContext = viewModel };
+        viewModel.CloseRequested += confirmed => dialog.Close(confirmed);
+        return await dialog.ShowDialog<bool>(owner);
+    }
+
     public async Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount)
     {
         var owner = Owner;

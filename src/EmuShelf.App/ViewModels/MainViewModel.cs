@@ -57,6 +57,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _searchDebounce;
     private readonly List<GameViewModel> _systemGames = [];
     private readonly HashSet<long> _deferredCoverLoads = [];
+    private GameViewModel? _selectionAnchor;
     private bool _isFrontendSuspended;
     private string _appliedSearchText = string.Empty;
 
@@ -178,6 +179,8 @@ public partial class MainViewModel : ViewModelBase
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
+    public int SelectedGameCount => Games.Count(game => game.IsSelected);
+    public bool HasSelectedGames => SelectedGameCount > 0;
     public string LibraryTitle => CurrentLibraryScope switch
     {
         LibraryScope.AllGames => "All Games",
@@ -358,10 +361,70 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
     {
-        if (oldValue is not null)
-            oldValue.IsSelected = false;
-        if (newValue is not null)
-            newValue.IsSelected = true;
+    }
+
+    /// <summary>
+    /// Applies a library item gesture. The view only reports modifier keys; selection state and
+    /// its range anchor remain shared between the grid and list representations.
+    /// </summary>
+    public void SelectGame(GameViewModel game, bool toggle = false, bool selectRange = false)
+    {
+        if (IsBusy || !Games.Contains(game))
+            return;
+
+        if (selectRange && _selectionAnchor is not null && Games.Contains(_selectionAnchor))
+        {
+            var start = Games.IndexOf(_selectionAnchor);
+            var end = Games.IndexOf(game);
+            foreach (var candidate in Games)
+                candidate.IsSelected = false;
+            for (var index = Math.Min(start, end); index <= Math.Max(start, end); index++)
+                Games[index].IsSelected = true;
+        }
+        else if (toggle)
+        {
+            game.IsSelected = !game.IsSelected;
+        }
+        else
+        {
+            foreach (var candidate in Games)
+                candidate.IsSelected = ReferenceEquals(candidate, game);
+        }
+
+        _selectionAnchor = game.IsSelected ? game : Games.FirstOrDefault(candidate => candidate.IsSelected);
+        SelectedGame = _selectionAnchor;
+        NotifySelectionChanged();
+    }
+
+    [RelayCommand]
+    private void SelectAllGames()
+    {
+        if (IsBusy)
+            return;
+
+        foreach (var game in Games)
+            game.IsSelected = true;
+
+        _selectionAnchor = Games.FirstOrDefault();
+        SelectedGame = _selectionAnchor;
+        NotifySelectionChanged();
+    }
+
+    private void ClearSelection()
+    {
+        foreach (var game in _systemGames)
+            game.IsSelected = false;
+
+        _selectionAnchor = null;
+        SelectedGame = null;
+        NotifySelectionChanged();
+    }
+
+    private void NotifySelectionChanged()
+    {
+        OnPropertyChanged(nameof(SelectedGameCount));
+        OnPropertyChanged(nameof(HasSelectedGames));
+        RemoveSelectedGamesCommand.NotifyCanExecuteChanged();
     }
 
     // Recompute the cover width for the current viewport so a whole number of columns fills the
@@ -437,7 +500,8 @@ public partial class MainViewModel : ViewModelBase
                         LoadGameCoverCommand,
                         artwork,
                         gameSystem.CoverAspectRatio,
-                        OpenAchievementDetailsCommand));
+                        OpenAchievementDetailsCommand,
+                        RemoveSelectedGamesCommand));
                 }
 
                 ApplyAchievementDisplays(viewModels);
@@ -453,7 +517,7 @@ public partial class MainViewModel : ViewModelBase
                 return;
             }
 
-            SelectedGame = null;
+            ClearSelection();
             foreach (var existingGame in _systemGames)
                 existingGame.Dispose();
             _systemGames.Clear();
@@ -810,9 +874,8 @@ public partial class MainViewModel : ViewModelBase
         if (IsBusy)
             return "Library work is already in progress.";
 
-        // RPCS3 keeps games.yml in its configuration root, which on Windows sits beside the
-        // executable the user already configured. Reuse that folder and only prompt when the
-        // list is not found there, so a configured install does not ask for a folder twice.
+        // RPCS3 keeps games.yml in its configuration root beside or under the configured
+        // executable. Reuse that folder and only prompt when the list is not found there.
         var configurationDirectory = await Task.Run(() =>
             Rpcs3LibrarySource.LocateConfigurationDirectory(
                 _emulatorConfigurations.Get("playstation3")?.ExecutablePath));
@@ -1343,6 +1406,37 @@ public partial class MainViewModel : ViewModelBase
         {
             _logger.Error($"Could not remove game id {game.Id} from the library.", ex);
             StatusText = $"Could not remove {game.Title}: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSelectedGames))]
+    private async Task RemoveSelectedGamesAsync()
+    {
+        if (IsBusy)
+            return;
+
+        var selectedGames = Games.Where(game => game.IsSelected).ToArray();
+        if (selectedGames.Length == 0 ||
+            !await _dialogs.ConfirmRemoveGamesAsync(selectedGames.Length))
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            await Task.Run(() => _library.RemoveGames(selectedGames.Select(game => game.Id).ToArray()));
+            await ReloadGamesAsync();
+            StatusText = $"Removed {selectedGames.Length} {(selectedGames.Length == 1 ? "game" : "games")} from the library — game files and covers were not touched";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not remove {selectedGames.Length} selected games from the library.", ex);
+            StatusText = $"Could not remove the selected games: {ex.Message}";
         }
         finally
         {

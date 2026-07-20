@@ -42,6 +42,25 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel || e.Source is TextBox)
+            return;
+
+        var isSelectionModifier = e.KeyModifiers.HasFlag(KeyModifiers.Control) ||
+                                  e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        if (e.Key == Key.A && isSelectionModifier && viewModel.SelectAllGamesCommand.CanExecute(null))
+        {
+            viewModel.SelectAllGamesCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Delete && viewModel.RemoveSelectedGamesCommand.CanExecute(null))
+        {
+            viewModel.RemoveSelectedGamesCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     private void CloseSearch()
     {
         if (DataContext is not MainViewModel viewModel)
@@ -68,7 +87,10 @@ public partial class MainWindow : Window
         if (sender is Control { DataContext: GameViewModel game } &&
             DataContext is MainViewModel viewModel)
         {
-            viewModel.SelectedGame = game;
+            viewModel.SelectGame(
+                game,
+                e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta),
+                e.KeyModifiers.HasFlag(KeyModifiers.Shift));
         }
     }
 

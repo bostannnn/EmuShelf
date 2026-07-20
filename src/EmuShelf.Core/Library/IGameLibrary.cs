@@ -52,6 +52,9 @@ public interface IGameLibrary
     /// <summary>Removes only the library record. Game and cover files are never touched.</summary>
     void RemoveGame(long gameId);
 
+    /// <summary>Removes only the specified library records in one transaction. Game and cover files are never touched.</summary>
+    void RemoveGames(IReadOnlyList<long> gameIds);
+
     /// <summary>Folders remembered for rescanning, optionally filtered to one system.</summary>
     IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null);
 

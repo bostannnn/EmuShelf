@@ -518,18 +518,18 @@ it must not create a second downloader, account flow, or background polling mech
       refined state. Keep business behavior in view models and services; code-behind remains view
       wiring only.
 
-## M25 — Multi-select and bulk library actions (planned)
+## M25 — Multi-select and bulk library actions ✅ (2026-07-20)
 
 Surfaced during the Windows GUI pass (2026-07-19): the library is single-select only and
 Remove works one game at a time, so clearing or pruning a library is tedious.
 
-- [ ] Add multi-selection to both the cover grid and the list view: Ctrl/Cmd-click to toggle,
+- [x] Add multi-selection to both the cover grid and the list view: Ctrl/Cmd-click to toggle,
       Shift-click to range-select, and Ctrl/Cmd+A to select every game in the current collection.
       Keep the selection model in the view model over the existing `IsSelected`/`SelectedGame`
       state; code-behind stays gesture wiring only.
-- [ ] Add a bulk "Remove selected" action (context menu + Delete key) with a single confirmation
+- [x] Add a bulk "Remove selected" action (context menu + Delete key) with a single confirmation
       that states the count. Removal touches only EmuShelf's database rows — never the game files
       or covers — and leaves the selection empty and the view refreshed afterward.
-- [ ] Add headless view-model tests for toggle/range/select-all across grid and list, selection
+- [x] Add headless view-model tests for toggle/range/select-all across grid and list, selection
       surviving (or clearing on) collection reloads, and bulk remove of a mixed available/missing
       selection. Keep `dotnet build`/`dotnet test` green on macOS and Windows.

@@ -12,7 +12,8 @@
         Width="1240" Height="800"
         MinWidth="900" MinHeight="560"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        KeyDown="OnWindowKeyDown">
 
     <Design.DataContext>
         <vm:MainViewModel />
@@ -137,6 +138,9 @@
         <Style Selector="StackPanel.game-tile.selected Border.cover-card">
             <Setter Property="BoxShadow" Value="0 12 30 0 #66000000" />
         </Style>
+        <Style Selector="Grid.game-row.selected">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+        </Style>
         <Style Selector="ListBox.game-list ListBoxItem">
             <Setter Property="Padding" Value="12,8" />
             <Setter Property="CornerRadius" Value="7" />
@@ -224,16 +228,6 @@
                                     <Image Width="18" Height="18"
                                            Source="{Binding Id, Converter={x:Static vm:PlatformArtwork.Converter}}"
                                            RenderOptions.BitmapInterpolationMode="None" />
-                                    <Border Width="12" Height="12" CornerRadius="6"
-                                            IsVisible="{Binding Id, Converter={x:Static vm:PlatformArtwork.HasGenerationBadgeConverter}}"
-                                            Background="{DynamicResource EmuAccentBrush}"
-                                            BorderBrush="{DynamicResource EmuSidebarBrush}"
-                                            BorderThickness="1"
-                                            HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                                        <TextBlock Text="{Binding Id, Converter={x:Static vm:PlatformArtwork.GenerationBadgeConverter}}"
-                                                   FontSize="7" FontWeight="Bold" Foreground="White"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Border>
                                 </Grid>
                                 <TextBlock Grid.Column="1" Text="{Binding Name}"
                                            FontSize="13.5" FontWeight="Medium"
@@ -431,6 +425,9 @@
                                         <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
                                                   CommandParameter="{Binding}" />
                                         <Separator />
+                                        <MenuItem Header="Remove selected"
+                                                  Command="{Binding RemoveSelectedCommand}" />
+                                        <Separator />
                                         <MenuItem Header="Remove from library…"
                                                   Command="{Binding RemoveCommand}"
                                                   CommandParameter="{Binding}" />
@@ -606,12 +603,13 @@
                     </Grid>
                 </Border>
                 <ListBox Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
-                         SelectedItem="{Binding SelectedGame, Mode=TwoWay}"
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
                             <Grid ColumnDefinitions="66,*,150,90,96,100" Classes="game-row"
+                                  Classes.selected="{Binding IsSelected}"
                                   Classes.unavailable="{Binding !IsAvailable}"
+                                  Tapped="OnGameTapped"
                                   DoubleTapped="OnGameDoubleTapped">
                                 <Grid.ContextMenu>
                                     <ContextMenu>
@@ -626,6 +624,9 @@
                                                   Command="{Binding BeginEditTitleCommand}" />
                                         <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <Separator />
+                                        <MenuItem Header="Remove selected"
+                                                  Command="{Binding RemoveSelectedCommand}" />
                                         <Separator />
                                         <MenuItem Header="Remove from library…"
                                                   Command="{Binding RemoveCommand}"
