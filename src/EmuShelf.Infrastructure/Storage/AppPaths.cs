@@ -13,7 +13,7 @@ public sealed class AppPaths : IAppPaths
     public string DatabaseFilePath { get; }
     public string SettingsFilePath { get; }
 
-    public AppPaths() : this(AppContext.BaseDirectory)
+    public AppPaths() : this(ResolvePortableBaseDirectory())
     {
     }
 
@@ -36,5 +36,20 @@ public sealed class AppPaths : IAppPaths
         Directory.CreateDirectory(CacheDirectory);
         Directory.CreateDirectory(LogsDirectory);
         Directory.CreateDirectory(SettingsDirectory);
+    }
+
+    internal static string ResolvePortableBaseDirectory()
+    {
+        // AppImage mounts $APPDIR read-only. Its launcher path, $APPIMAGE, is the only
+        // stable writable anchor for a portable install; keep data beside that file.
+        var appImagePath = Environment.GetEnvironmentVariable("APPIMAGE");
+        if (!string.IsNullOrWhiteSpace(appImagePath))
+        {
+            var parent = Path.GetDirectoryName(Path.GetFullPath(appImagePath));
+            if (!string.IsNullOrWhiteSpace(parent))
+                return parent;
+        }
+
+        return AppContext.BaseDirectory;
     }
 }

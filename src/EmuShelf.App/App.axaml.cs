@@ -39,12 +39,19 @@ public partial class App : Application
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings);
             var mainWindow = new MainWindow();
+            var interfaceModeService = new WindowInterfaceModeService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                mainWindow,
+                AppLaunchOptions.GamepadUiRequested);
             var launchService = new EmulatorLaunchService(
                 Bootstrapper.EmulatorConfigurations,
                 Bootstrapper.ProcessRunner,
-                new WindowFrontendController(mainWindow),
+                new WindowFrontendController(mainWindow, interfaceModeService),
                 Bootstrapper.Emulators,
-                Bootstrapper.Logger);
+                Bootstrapper.Logger,
+                Bootstrapper.LaunchTargetInspector,
+                Bootstrapper.GameLaunchDependencies);
             var coverService = new GameCoverService(Bootstrapper.Paths);
             // A pooled handler with a raised per-server connection limit lets the download
             // stage fetch many small covers from one host concurrently.
@@ -140,7 +147,9 @@ public partial class App : Application
                 retroAchievementsProgress,
                 retroAchievementsDetails,
                 retroAchievementsRefresh,
-                Bootstrapper.MetadataStore);
+                Bootstrapper.MetadataStore,
+                interfaceModeService,
+                retroAchievementsBadges);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

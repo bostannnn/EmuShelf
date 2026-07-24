@@ -21,14 +21,15 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string MegaDriveId = "megadrive";
     private const string NintendoDsId = "nds";
     private const string GameBoyAdvanceId = "gba";
+    private const string SuperNintendoId = "snes";
 
     // v2 was the first version that added verified logical-disc readers for GameCube/Wii CISO,
     // WBFS, and RVZ. It was persisted globally before per-system versions existed, so it remains
     // compatible with both current readers. Future reader changes can now invalidate only the
     // affected system.
     private const string LegacyGlobalV2 = "rcheevos-2ac45d3-disc-v2";
-    // v3 adds cooked CD-CHD and cdfl support. It advances only the affected reader.
-    private const string PlayStationAlgorithmV3 = "rcheevos-2ac45d3-playstation-v3";
+    // v4 recognizes sync-stripped Mode 2 CHD frames. It advances only the affected reader.
+    private const string PlayStationAlgorithmV4 = "rcheevos-2ac45d3-playstation-v4";
     // GameCube's reader is unchanged, so it keeps the original combined-Nintendo version string;
     // persisted GameCube hashes stay valid and are not needlessly recomputed.
     private const string GameCubeAlgorithm = "rcheevos-2ac45d3-nintendo-v2";
@@ -39,16 +40,18 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string MegaDriveAlgorithm = "rcheevos-2ac45d3-megadrive-v1";
     private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
     private const string GameBoyAdvanceAlgorithm = "rcheevos-2ac45d3-gba-v1";
+    private const string SuperNintendoAlgorithm = "rcheevos-2ac45d3-snes-v1";
 
     public string GetAlgorithmVersion(Game game) => game.SystemId switch
     {
-        PlayStationId or PlayStation2Id => PlayStationAlgorithmV3,
+        PlayStationId or PlayStation2Id => PlayStationAlgorithmV4,
         GameCubeId => GameCubeAlgorithm,
         WiiId => WiiAlgorithmV3,
         PspId => PspAlgorithm,
         MegaDriveId => MegaDriveAlgorithm,
         NintendoDsId => NintendoDsAlgorithm,
         GameBoyAdvanceId => GameBoyAdvanceAlgorithm,
+        SuperNintendoId => SuperNintendoAlgorithm,
         _ => LegacyGlobalV2,
     };
 
@@ -115,6 +118,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                     inspected.SourcePath!,
                     cancellationToken),
                 GameBoyAdvanceId => HashGameBoyAdvance(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                SuperNintendoId => HashSuperNintendo(
                     inspected.SourcePath!,
                     cancellationToken),
                 _ => throw new UnsupportedDiscLayoutException(
@@ -235,6 +241,13 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified Game Boy Advance reader.";
             }
+            else if (game.SystemId == SuperNintendoId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".sfc" or ".smc";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified Super Nintendo reader.";
+            }
             else
             {
                 error = "RetroAchievements does not support this EmuShelf system.";
@@ -294,6 +307,19 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         }
 
         return WholeFileRomHasher.Hash(path, cancellationToken);
+    }
+
+    private static string HashSuperNintendo(string path, CancellationToken cancellationToken)
+    {
+        if (SuperNintendoRomReader.TryRecognize(path) is null)
+        {
+            throw new UnsupportedDiscLayoutException(
+                "This Super Nintendo image is not a supported raw cartridge layout.");
+        }
+
+        // rcheevos strips only the optional 512-byte copier header and MD5-hashes the rest, which
+        // is not the whole-file cartridge hash used for Mega Drive / GBA.
+        return SuperNintendoRomHasher.Hash(path, cancellationToken);
     }
 
     private static string ResolveM3u(string path, ICollection<string> dependencies)

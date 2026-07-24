@@ -223,6 +223,7 @@ public sealed class GameMetadataService : IGameMetadataService
                     .SelectMany(provider => provider.GetCandidates(identifiers, match))
                     .Concat(profile.ArtworkProviders.SelectMany(provider =>
                         provider.GetCandidates(identifiers, filenameMatch)))
+                    .Concat(GetLocalArtworkCandidates(current))
                     .DistinctBy(candidate => candidate.SourceUri)
                     .ToArray();
 
@@ -333,6 +334,24 @@ public sealed class GameMetadataService : IGameMetadataService
                 }
             }
         }
+    }
+
+    private static IEnumerable<ArtworkCandidate> GetLocalArtworkCandidates(Game game)
+    {
+        var gamePath = game.Path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var libraryDirectory = Path.GetDirectoryName(gamePath);
+        var filename = Path.GetFileNameWithoutExtension(gamePath);
+        if (string.IsNullOrWhiteSpace(libraryDirectory) || string.IsNullOrWhiteSpace(filename))
+            return [];
+
+        var imagesDirectory = Path.Combine(libraryDirectory, "images");
+        return new[] { ".png", ".jpg", ".jpeg", ".webp" }
+            .Select(extension => Path.Combine(imagesDirectory, filename + "-thumb" + extension))
+            .Where(File.Exists)
+            .Select(path => new ArtworkCandidate(
+                "local-sidecar-artwork",
+                new Uri(path),
+                Path.GetExtension(path)));
     }
 
     private sealed record GameEnrichmentResult(

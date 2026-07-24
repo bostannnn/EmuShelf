@@ -18,6 +18,8 @@ public static class KnownMetadataProfiles
         new NintendoDsRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor GameBoyAdvanceExtractor =
         new GameBoyAdvanceRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor SuperNintendoExtractor =
+        new SuperNintendoRomIdentifierExtractor();
 
     // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
     // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of
@@ -51,7 +53,10 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.Serial,
             RawCatalog("metadat/redump/Sony%20-%20PlayStation%203.dat"),
             PlayStation3Extractor,
-            [new LibretroArtworkProvider("Sony - PlayStation 3")]),
+            [
+                new GameTdbPlayStation3ArtworkProvider(),
+                new LibretroArtworkProvider("Sony - PlayStation 3"),
+            ]),
         new(
             "psp",
             GameIdentifierKind.Serial,
@@ -88,6 +93,12 @@ public static class KnownMetadataProfiles
             RawCatalog("metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat"),
             GameBoyAdvanceExtractor,
             [new LibretroArtworkProvider("Nintendo - Game Boy Advance")]),
+        new(
+            "snes",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/no-intro/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System.dat"),
+            SuperNintendoExtractor,
+            [new LibretroArtworkProvider("Nintendo - Super Nintendo Entertainment System")]),
     ];
 
     private static Uri RawCatalog(string path) =>

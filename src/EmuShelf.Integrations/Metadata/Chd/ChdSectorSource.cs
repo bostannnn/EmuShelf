@@ -144,17 +144,37 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
             return 0;
 
         var frame = cdHunk.AsSpan(frameByte, CdSectorData);
-        var start = frameByte;
-        if (frame[..RawCdSyncPattern.Length].SequenceEqual(RawCdSyncPattern))
-        {
-            var headerSize = frame[15] == 2 ? 24 : 16; // Mode 2 Form 1 vs Mode 1
-            start += headerSize;
-        }
+        var start = frameByte + GetCdUserDataOffset(frame);
         if (start + destination.Length > cdHunk.Length)
             return 0;
         cdHunk.AsSpan(start, destination.Length).CopyTo(destination);
         return destination.Length;
     }
+
+    internal static int GetCdUserDataOffset(ReadOnlySpan<byte> frame)
+    {
+        if (frame.Length < 24)
+            return 0;
+
+        if (frame[..RawCdSyncPattern.Length].SequenceEqual(RawCdSyncPattern))
+            return frame[15] == 2 ? 24 : 16;
+
+        if (!frame[..12].SequenceEqual(stackalloc byte[12]) ||
+            frame[15] != 2 ||
+            !IsBcd(frame[12], 99) ||
+            !IsBcd(frame[13], 59) ||
+            !IsBcd(frame[14], 74) ||
+            !frame.Slice(16, 4).SequenceEqual(frame.Slice(20, 4)))
+        {
+            return 0;
+        }
+
+        return 24;
+    }
+
+    private static bool IsBcd(byte value, int maximum) =>
+        (value >> 4) <= 9 && (value & 0x0F) <= 9 &&
+        ((value >> 4) * 10 + (value & 0x0F)) <= maximum;
 
     private byte[]? ReadHunk(int hunkIndex, int depth)
     {

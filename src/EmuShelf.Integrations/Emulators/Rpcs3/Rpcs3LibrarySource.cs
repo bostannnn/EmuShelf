@@ -38,9 +38,8 @@ public sealed class Rpcs3LibrarySource : IExternalLibrarySource
 
     /// <summary>
     /// Returns the directory that holds RPCS3's <c>games.yml</c> for an already-configured RPCS3
-    /// executable, or null when the list is not found there. RPCS3 keeps the list in its portable
-    /// configuration root, which on Windows is the folder that contains <c>rpcs3.exe</c>, so the
-    /// Settings sync can reuse the folder the user effectively already chose instead of prompting.
+    /// executable, or null when the list is not found there. Recent portable RPCS3 builds keep
+    /// the list under <c>config</c>; older portable layouts keep it beside <c>rpcs3.exe</c>.
     /// </summary>
     public static string? LocateConfigurationDirectory(string? executablePath)
     {
@@ -57,8 +56,14 @@ public sealed class Rpcs3LibrarySource : IExternalLibrarySource
             return null;
         }
 
-        return executableDirectory is not null &&
-               File.Exists(Path.Combine(executableDirectory, GameListFileName))
+        if (executableDirectory is null)
+            return null;
+
+        var configurationDirectory = Path.Combine(executableDirectory, "config");
+        if (File.Exists(Path.Combine(configurationDirectory, GameListFileName)))
+            return configurationDirectory;
+
+        return File.Exists(Path.Combine(executableDirectory, GameListFileName))
             ? executableDirectory
             : null;
     }

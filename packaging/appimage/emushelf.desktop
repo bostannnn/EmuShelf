@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=EmuShelf
+Comment=Portable game library frontend
+Exec=EmuShelf
+Icon=emushelf
+Categories=Game;Emulator;
+Terminal=false

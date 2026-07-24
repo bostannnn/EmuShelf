@@ -13,6 +13,7 @@ public static class RetroAchievementsConsoles
         "gamecube" => 16,
         "wii" => 19,
         "megadrive" => 1,
+        "snes" => 3,
         "gba" => 5,
         "nds" => 18,
         "psp" => 41,

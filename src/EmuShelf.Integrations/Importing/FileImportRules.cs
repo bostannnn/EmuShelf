@@ -18,6 +18,7 @@ public sealed class FileImportRules : IGameImportRules
     private const string MegaDriveId = "megadrive";
     private const string NintendoDsId = "nds";
     private const string GameBoyAdvanceId = "gba";
+    private const string SuperNintendoId = "snes";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
 
@@ -38,6 +39,9 @@ public sealed class FileImportRules : IGameImportRules
             // layouts need their own read-only normalization contracts before they can join.
             [NintendoDsId] = new(StringComparer.OrdinalIgnoreCase) { ".nds" },
             [GameBoyAdvanceId] = new(StringComparer.OrdinalIgnoreCase) { ".gba" },
+            // The extension is a routing hint only: the reader requires a valid internal LoROM or
+            // HiROM header. Copier formats (.fig/.swc) wait for their own normalization contract.
+            [SuperNintendoId] = new(StringComparer.OrdinalIgnoreCase) { ".sfc", ".smc" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
@@ -78,6 +82,9 @@ public sealed class FileImportRules : IGameImportRules
             : null;
         var gameBoyAdvanceHeader = ExtensionsBySystem[GameBoyAdvanceId].Contains(extension)
             ? GameBoyAdvanceRomReader.TryRecognize(path)
+            : null;
+        var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
+            ? SuperNintendoRomReader.TryRecognize(path)
             : null;
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
@@ -120,6 +127,9 @@ public sealed class FileImportRules : IGameImportRules
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 GameBoyAdvanceId => gameBoyAdvanceHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                SuperNintendoId => superNintendoHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
@@ -166,6 +176,8 @@ public sealed class FileImportRules : IGameImportRules
             return NintendoDsRomReader.TryRecognize(path) is not null;
         if (system.Id == GameBoyAdvanceId)
             return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
+        if (system.Id == SuperNintendoId)
+            return SuperNintendoRomReader.TryRecognize(path) is not null;
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
@@ -258,6 +270,15 @@ public sealed class FileImportRules : IGameImportRules
                 "Game Boy Advance header",
                 gameBoyAdvanceEvidence.Sha1,
                 "Game Boy Advance ROM");
+
+        // The SNES header has no reliable commercial game code, so only the headerless SHA-1 is
+        // used as catalogue evidence; the Shift-JIS header title stays out of the display fields.
+        if (system.Id == SuperNintendoId && SuperNintendoRomReader.TryRead(path) is { } superNintendoEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "Super Nintendo header",
+                superNintendoEvidence.Sha1,
+                "Super Nintendo ROM");
 
         if (system.Id != PspId || PspGameMetadataReader.TryRead(path) is not { } evidence)
             return GameImportMetadata.Empty;

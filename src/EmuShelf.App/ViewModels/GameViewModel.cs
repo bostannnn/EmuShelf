@@ -52,6 +52,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public double ListCoverWidth { get; }
     public double ListCoverHeight { get; }
+    /// <summary>Shared Gamepad artwork well height keeps mixed-system All Games rows stable.</summary>
+    public double GamepadCoverFrameHeight { get; } = 280;
 
     /// <summary>Platform cover aspect ratio (width:height); the library uses it to choose the
     /// shelf height for a mixed view.</summary>
@@ -114,6 +116,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial bool IsEditingTitle { get; set; }
+
+    /// <summary>Controller focus is intentionally independent from desktop multi-selection.</summary>
+    [ObservableProperty]
+    public partial bool IsFocused { get; set; }
 
     [ObservableProperty]
     public partial string DraftTitle { get; set; } = string.Empty;

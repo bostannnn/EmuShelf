@@ -10,7 +10,8 @@ namespace EmuShelf.Infrastructure.Metadata;
 public sealed class SqliteGameMetadataStore : IGameMetadataStore
 {
     private const string GameColumns =
-        "Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin, IsAvailable, DateAdded";
+        "Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin, IsAvailable, DateAdded, " +
+        "ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent";
 
     private readonly LibraryDatabase _database;
     private readonly IRelativePathResolver _pathResolver;
@@ -44,6 +45,7 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
             WHERE ($systemId IS NULL OR SystemId = $systemId)
               AND (
                   CoverPath IS NULL
+                  OR (SystemId = 'playstation3' AND CoverOrigin = $downloaded)
                   OR TitleOrigin IN ($legacy, $filename)
                   OR (
                       TitleOrigin = $embedded
@@ -61,6 +63,7 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
         command.Parameters.AddWithValue("$legacy", (int)GameTitleOrigin.LegacyUnknown);
         command.Parameters.AddWithValue("$filename", (int)GameTitleOrigin.Filename);
         command.Parameters.AddWithValue("$embedded", (int)GameTitleOrigin.Embedded);
+        command.Parameters.AddWithValue("$downloaded", (int)GameCoverOrigin.Downloaded);
 
         var games = new List<Game>();
         using var reader = command.ExecuteReader();
@@ -169,7 +172,7 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
             """
             UPDATE Games
             SET CoverPath = $coverPath, CoverOrigin = $downloaded
-            WHERE Id = $id AND CoverPath IS NULL AND CoverOrigin = $none;
+            WHERE Id = $id AND (CoverPath IS NULL AND CoverOrigin = $none OR CoverOrigin = $downloaded);
             """;
         updateGame.Parameters.AddWithValue(
             "$coverPath",
@@ -251,6 +254,9 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
             reader.GetString(8),
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind),
+        ExternalSourceId = reader.IsDBNull(9) ? null : reader.GetString(9),
+        ExternalSourceEntryId = reader.IsDBNull(10) ? null : reader.GetString(10),
+        IsPresentInExternalSource = reader.IsDBNull(11) || reader.GetInt64(11) != 0,
     };
 
     private static object DbValue(string? value) => value is null ? DBNull.Value : value;

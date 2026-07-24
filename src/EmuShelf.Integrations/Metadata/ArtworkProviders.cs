@@ -73,6 +73,41 @@ public sealed class GameTdbArtworkProvider : IGameArtworkProvider
     }
 }
 
+public sealed class GameTdbPlayStation3ArtworkProvider : IGameArtworkProvider
+{
+    private const string BaseUri = "https://art.gametdb.com/ps3/coverHQ";
+
+    public string Id => "gametdb-ps3";
+
+    public IReadOnlyList<ArtworkCandidate> GetCandidates(
+        IReadOnlyList<GameIdentifier> identifiers,
+        GameCatalogMatch? match) => identifiers
+        .Where(identifier => identifier.Kind == GameIdentifierKind.Serial)
+        .Select(identifier => identifier.Value.Replace("-", string.Empty, StringComparison.Ordinal).ToUpperInvariant())
+        .Where(serial => serial.Length == 9)
+        .Distinct(StringComparer.Ordinal)
+        .SelectMany(serial => RegionFolders(serial)
+            .Select(region => new ArtworkCandidate(
+                Id,
+                new Uri($"{BaseUri}/{region}/{Uri.EscapeDataString(serial)}.jpg"),
+                ".jpg")))
+        .ToArray();
+
+    private static IEnumerable<string> RegionFolders(string serial)
+    {
+        var primary = serial[..4] switch
+        {
+            "BLUS" or "BCUS" or "NPUB" => "US",
+            "BLES" or "BCES" or "NPEB" => "EN",
+            "BCJS" or "BLJM" or "BLJS" or "NPJB" => "JA",
+            "BCAS" or "BLAS" => "AS",
+            _ => "EN",
+        };
+        return new[] { primary, "EN", "US", "JA" }
+            .Distinct(StringComparer.Ordinal);
+    }
+}
+
 public sealed class LibretroArtworkProvider : IGameArtworkProvider
 {
     private readonly string _playlistName;

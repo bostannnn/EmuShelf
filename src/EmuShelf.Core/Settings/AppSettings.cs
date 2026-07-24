@@ -5,6 +5,9 @@ public sealed record AppSettings
 {
     public ThemePreference Theme { get; init; } = ThemePreference.System;
 
+    /// <summary>Persisted library layout. Steam Input maps controller actions to keyboard input.</summary>
+    public InterfaceMode InterfaceMode { get; init; } = InterfaceMode.Desktop;
+
     /// <summary>Network metadata work is disabled until the user explicitly opts in.</summary>
     public bool AutomaticallyFetchMetadataAfterImport { get; init; }
 

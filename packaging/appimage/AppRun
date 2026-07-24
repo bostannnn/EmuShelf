@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+# Prefer the AppImage runtime's $APPDIR; fall back to this script's resolved directory so the
+# payload is still found when AppRun is invoked through a symlink or a relative path.
+root="${APPDIR:-$(cd "$(dirname "$(readlink -f "$0")")" && pwd)}"
+export LD_LIBRARY_PATH="$root/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$root/usr/bin/EmuShelf" "$@"

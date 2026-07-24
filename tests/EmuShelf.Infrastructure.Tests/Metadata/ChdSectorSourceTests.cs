@@ -15,6 +15,24 @@ public class ChdSectorSourceTests
     private static string Fixture(string name) =>
         Path.Combine(AppContext.BaseDirectory, "Fixtures", "Chd", name);
 
+    [Fact]
+    public void SyncStrippedMode2Frame_UsesTheUserDataOffset()
+    {
+        var frame = new byte[2352];
+        frame[12] = 0x00;
+        frame[13] = 0x02;
+        frame[14] = 0x16;
+        frame[15] = 2;
+        frame[16] = 0x00;
+        frame[17] = 0x00;
+        frame[18] = 0x08;
+        frame[19] = 0x00;
+        frame.AsSpan(16, 4).CopyTo(frame.AsSpan(20, 4));
+        "\u0001CD001"u8.CopyTo(frame.AsSpan(24));
+
+        Assert.Equal(24, ChdSectorSource.GetCdUserDataOffset(frame));
+    }
+
     // Pure zlib and LZMA DVD images decode byte-for-byte against the source ISO.
     [Theory]
     [InlineData("dvd_zlib.chd")]

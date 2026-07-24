@@ -21,7 +21,7 @@ public sealed class PpssppLaunchTests : IDisposable
     public async Task LaunchAsync_PassesSpacedPspPathAsOneArgumentAndTracksExit()
     {
         var game = CreateFile("PSP Games/Lumines With Spaces.cso");
-        var executable = CreateFile("PPSSPP Portable/PPSSPPWindows.exe").Path;
+        var executable = CreateExecutableFile("PPSSPP Portable/PPSSPPWindows.exe");
         _configurations.Configuration = new("psp", executable, null)
         {
             EmulatorId = "ppsspp",
@@ -56,7 +56,7 @@ public sealed class PpssppLaunchTests : IDisposable
     public async Task LaunchAsync_PpssppNonZeroExitRestoresFrontendAndReportsFailure()
     {
         var game = CreateFile("game.iso");
-        var executable = CreateFile("PPSSPPWindows.exe").Path;
+        var executable = CreateExecutableFile("PPSSPPWindows.exe");
         _configurations.Configuration = new("psp", executable, null);
         _runner.ExitCode = 7;
 
@@ -87,6 +87,21 @@ public sealed class PpssppLaunchTests : IDisposable
             Title = "Lumines",
             DateAdded = DateTimeOffset.UtcNow,
         };
+    }
+
+    private string CreateExecutableFile(string relativePath)
+    {
+        var path = CreateFile(relativePath).Path;
+        if (!OperatingSystem.IsWindows())
+        {
+            var mode = File.GetUnixFileMode(path);
+            File.SetUnixFileMode(path, mode |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherExecute);
+        }
+
+        return path;
     }
 
     public void Dispose()

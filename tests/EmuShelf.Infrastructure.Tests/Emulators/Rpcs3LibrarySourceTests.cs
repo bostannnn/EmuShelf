@@ -139,6 +139,18 @@ public sealed class Rpcs3LibrarySourceTests : IDisposable
     }
 
     [Fact]
+    public void LocateConfigurationDirectory_FindsGameListInTheConfiguredExecutablesConfigDirectory()
+    {
+        var installation = CreateDirectory("Emulators", "RPCS3");
+        var configuration = CreateDirectory("Emulators", "RPCS3", "config");
+        WriteGameList(configuration, "BLES12345: '/games/Listed'");
+        var executable = Path.Combine(installation, "rpcs3.exe");
+        File.WriteAllText(executable, string.Empty);
+
+        Assert.Equal(configuration, Rpcs3LibrarySource.LocateConfigurationDirectory(executable));
+    }
+
+    [Fact]
     public void LocateConfigurationDirectory_ReturnsNullWhenNoGameListSitsBesideTheExecutable()
     {
         var installation = CreateDirectory("Emulators", "RPCS3");

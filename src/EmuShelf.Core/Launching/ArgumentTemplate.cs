@@ -39,6 +39,9 @@ public static class ArgumentTemplate
                arguments[coreIndex + 1] == "{GamePath}";
     }
 
+    public static bool ContainsPlaceholder(string template, string placeholder) =>
+        Tokenize(template).Any(token => token.Contains("{" + placeholder + "}", StringComparison.Ordinal));
+
     public static IReadOnlyList<string> Expand(
         string template,
         string gamePath,

@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 10;
+    private const int CurrentSchemaVersion = 11;
 
     private readonly IAppPaths _appPaths;
 
@@ -102,8 +102,11 @@ public sealed class LibraryDatabase
             version = 9;
         }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 10)
             ApplyMigrationV10(connection);
+
+        if (version < CurrentSchemaVersion)
+            ApplyMigrationV11(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -363,6 +366,7 @@ public sealed class LibraryDatabase
                 WHEN 'megadrive' THEN 'retroarch'
                 WHEN 'nds' THEN 'retroarch'
                 WHEN 'gba' THEN 'retroarch'
+                WHEN 'snes' THEN 'retroarch'
                 ELSE SystemId
             END
             WHERE EmulatorId IS NULL OR trim(EmulatorId) = '';
@@ -480,6 +484,44 @@ public sealed class LibraryDatabase
         transaction.Commit();
     }
 
+    private static void ApplyMigrationV11(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using (var create = connection.CreateCommand())
+        {
+            create.Transaction = transaction;
+            create.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS EmulatorInstallations (
+                    InstallationId TEXT PRIMARY KEY,
+                    EmulatorId TEXT NOT NULL,
+                    ExecutablePath TEXT NULL
+                );
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        AddTableColumnIfMissing(connection, transaction, "EmulatorInstallations", "TargetKind", "TEXT NULL");
+        AddTableColumnIfMissing(connection, transaction, "EmulatorInstallations", "TargetValue", "TEXT NULL");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            -- v8 made installations shareable; v11 makes their target typed and authoritative.
+            -- Existing executable paths are direct targets. The legacy config column remains
+            -- readable only for databases that were interrupted before this migration finished.
+            UPDATE EmulatorInstallations
+            SET TargetKind = 'direct', TargetValue = ExecutablePath
+            WHERE (TargetKind IS NULL OR trim(TargetKind) = '')
+              AND ExecutablePath IS NOT NULL AND trim(ExecutablePath) <> '';
+
+            UPDATE SchemaVersion SET Version = 11;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
     private static void AddGameColumnIfMissing(
         SqliteConnection connection,
         SqliteTransaction transaction,
@@ -497,6 +539,26 @@ public sealed class LibraryDatabase
         using var alter = connection.CreateCommand();
         alter.Transaction = transaction;
         alter.CommandText = $"ALTER TABLE Games ADD COLUMN {columnName} {columnDefinition};";
+        alter.ExecuteNonQuery();
+    }
+
+    private static void AddTableColumnIfMissing(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string tableName,
+        string columnName,
+        string columnDefinition)
+    {
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{tableName}') WHERE name = $columnName;";
+        check.Parameters.AddWithValue("$columnName", columnName);
+        if ((long)check.ExecuteScalar()! > 0)
+            return;
+
+        using var alter = connection.CreateCommand();
+        alter.Transaction = transaction;
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition};";
         alter.ExecuteNonQuery();
     }
 }

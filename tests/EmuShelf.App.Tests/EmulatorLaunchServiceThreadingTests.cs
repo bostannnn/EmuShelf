@@ -20,6 +20,14 @@ public class EmulatorLaunchServiceThreadingTests
             var executablePath = Path.Combine(directory, "emulator.exe");
             File.WriteAllText(gamePath, "game");
             File.WriteAllText(executablePath, "emulator");
+            if (!OperatingSystem.IsWindows())
+            {
+                var mode = File.GetUnixFileMode(executablePath);
+                File.SetUnixFileMode(executablePath, mode |
+                    UnixFileMode.UserExecute |
+                    UnixFileMode.GroupExecute |
+                    UnixFileMode.OtherExecute);
+            }
             var uiThreadId = Environment.CurrentManagedThreadId;
             var configurations = new ThreadRecordingConfigurationStore(
                 new EmulatorConfiguration("test-system", executablePath, null));

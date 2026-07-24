@@ -25,6 +25,10 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial Bitmap? Badge { get; set; }
 
+    /// <summary>Gamepad-only logical row focus; independent from Avalonia keyboard focus.</summary>
+    [ObservableProperty]
+    public partial bool IsFocused { get; set; }
+
     public bool HasBadge => Badge is not null;
 
     public AchievementRowViewModel(
@@ -139,6 +143,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     public int ProgressMaximum => Math.Max(TotalCount, 1);
     public string ProgressText => $"{UnlockedCount} / {TotalCount} unlocked";
     public string PointsText => $"{EarnedPoints} / {TotalPoints} points";
+    public string ProgressAndPointsText => $"{ProgressText} · {PointsText}";
     public string LastRefreshText => LastRefreshedAt is { } refreshed
         ? $"Last refreshed {refreshed.ToLocalTime():g}"
         : "Not refreshed yet";
@@ -289,14 +294,27 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         }, DispatcherPriority.Send);
     }
 
-    partial void OnUnlockedCountChanged(int value) => OnPropertyChanged(nameof(ProgressText));
+    partial void OnUnlockedCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(ProgressAndPointsText));
+    }
     partial void OnTotalCountChanged(int value)
     {
         OnPropertyChanged(nameof(ProgressMaximum));
         OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(ProgressAndPointsText));
     }
-    partial void OnEarnedPointsChanged(int value) => OnPropertyChanged(nameof(PointsText));
-    partial void OnTotalPointsChanged(int value) => OnPropertyChanged(nameof(PointsText));
+    partial void OnEarnedPointsChanged(int value)
+    {
+        OnPropertyChanged(nameof(PointsText));
+        OnPropertyChanged(nameof(ProgressAndPointsText));
+    }
+    partial void OnTotalPointsChanged(int value)
+    {
+        OnPropertyChanged(nameof(PointsText));
+        OnPropertyChanged(nameof(ProgressAndPointsText));
+    }
     partial void OnLastRefreshedAtChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(LastRefreshText));
     partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(HasStatus));
 

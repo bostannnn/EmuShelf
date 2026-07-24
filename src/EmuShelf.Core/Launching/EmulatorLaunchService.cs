@@ -11,19 +11,25 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
     private readonly IFrontendController _frontend;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IAppLogger _logger;
+    private readonly ILaunchTargetInspector _targetInspector;
+    private readonly IGameLaunchDependencyResolver _dependencyResolver;
 
     public EmulatorLaunchService(
         IEmulatorConfigurationStore configurations,
         ITrackedProcessRunner processRunner,
         IFrontendController frontend,
         IReadOnlyList<EmulatorDefinition> emulators,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        ILaunchTargetInspector? targetInspector = null,
+        IGameLaunchDependencyResolver? dependencyResolver = null)
     {
         _configurations = configurations;
         _processRunner = processRunner;
         _frontend = frontend;
         _emulators = emulators;
         _logger = logger ?? NullAppLogger.Instance;
+        _targetInspector = targetInspector ?? new DefaultLaunchTargetInspector();
+        _dependencyResolver = dependencyResolver ?? new DefaultGameLaunchDependencyResolver();
     }
 
     public async Task<GameLaunchResult> LaunchAsync(
@@ -43,14 +49,10 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         }
 
         _logger.Information($"Launching {preparation.EmulatorName} for {game.Title}.");
-        _frontend.Minimize();
+        _frontend.SuspendForGame();
         try
         {
-            var exitCode = await _processRunner.RunAsync(
-                preparation.ExecutablePath!,
-                preparation.Arguments!,
-                preparation.WorkingDirectory!,
-                cancellationToken);
+            var exitCode = await _processRunner.RunAsync(preparation.StartSpec!, cancellationToken);
             _logger.Information($"{preparation.EmulatorName} exited with code {exitCode}.");
             if (exitCode == 0)
                 return new GameLaunchResult(true, $"{game.Title} finished", ProcessExited: true);
@@ -69,7 +71,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         }
         finally
         {
-            _frontend.Restore();
+            _frontend.ResumeAfterGame();
             _logger.Information($"Restored EmuShelf after {preparation.EmulatorName} exited.");
         }
     }
@@ -92,18 +94,25 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         }
 
         var configuration = _configurations.Get(game.SystemId);
-        if (string.IsNullOrWhiteSpace(configuration?.ExecutablePath))
+        var target = configuration?.LaunchTarget ??
+            (string.IsNullOrWhiteSpace(configuration?.ExecutablePath)
+                ? null
+                : new DirectExecutableTarget(configuration.ExecutablePath));
+        if (target is null)
             return LaunchPreparation.Failed(
                 $"Configure {emulator.Name} for this system in Settings before launching.");
 
-        var executablePath = configuration.ExecutablePath;
-        if (!File.Exists(executablePath))
+        if (target is FlatpakApplicationTarget && emulator.RequiresCorePath)
+            return LaunchPreparation.Failed(
+                $"Cannot launch {game.Title}: Flatpak RetroArch is not supported; configure a direct or AppImage installation.");
+
+        if (target is DirectExecutableTarget directTarget && !File.Exists(directTarget.Path))
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: the configured {emulator.Name} executable was not found.");
 
         if (emulator.RequiresCorePath)
         {
-            if (string.IsNullOrWhiteSpace(configuration.CorePath))
+            if (string.IsNullOrWhiteSpace(configuration!.CorePath))
             {
                 return LaunchPreparation.Failed(
                     $"Cannot launch {game.Title}: select an installed {emulator.Name} core in Settings first.");
@@ -117,9 +126,16 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
 
         }
 
-        var launchArguments = configuration.LaunchArguments ?? emulator.DefaultLaunchArguments;
+        var launchArguments = configuration!.LaunchArguments ?? emulator.DefaultLaunchArguments;
         try
         {
+            if (target is FlatpakApplicationTarget &&
+                ArgumentTemplate.ContainsPlaceholder(launchArguments, "EmulatorDirectory"))
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: Flatpak launch arguments cannot use {{EmulatorDirectory}}.");
+            }
+
             if (emulator.RequiresCorePath &&
                 !ArgumentTemplate.HasExplicitCoreAndContentForm(launchArguments))
             {
@@ -128,16 +144,49 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                     "-L {CorePath} followed by {GamePath}.");
             }
 
-            return new LaunchPreparation(
-                emulator.Name,
-                executablePath,
-                Path.GetDirectoryName(executablePath)!,
-                ArgumentTemplate.Expand(
-                    launchArguments,
-                    game.Path,
-                    executablePath,
-                    configuration.CorePath),
-                null);
+            var dependencies = target is FlatpakApplicationTarget
+                ? _dependencyResolver.Resolve(game)
+                : new GameLaunchDependencies(true, [game.Path]);
+            if (!dependencies.IsComplete)
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: {dependencies.FailureMessage ?? "all descriptor dependencies could not be resolved."}");
+            }
+
+            var inspection = _targetInspector.Inspect(target, dependencies.Paths);
+            if (!inspection.CanLaunch)
+            {
+                return LaunchPreparation.Failed(
+                    $"Cannot launch {game.Title}: {inspection.FailureMessage}");
+            }
+
+            var templateExecutablePath = target switch
+            {
+                DirectExecutableTarget direct => direct.Path,
+                FlatpakApplicationTarget => "flatpak",
+                _ => throw new InvalidOperationException("Unsupported launch target."),
+            };
+            var arguments = ArgumentTemplate.Expand(
+                launchArguments,
+                game.Path,
+                templateExecutablePath,
+                configuration.CorePath);
+            var startSpec = target switch
+            {
+                DirectExecutableTarget direct => new ProcessStartSpec(
+                    direct.Path,
+                    arguments,
+                    Path.GetDirectoryName(direct.Path) ?? Environment.CurrentDirectory),
+                FlatpakApplicationTarget flatpak => new ProcessStartSpec(
+                    "flatpak",
+                    ["run", flatpak.AppId, .. arguments],
+                    Path.GetDirectoryName(game.Path) ?? Environment.CurrentDirectory),
+                _ => throw new InvalidOperationException("Unsupported launch target."),
+            };
+            if (!string.IsNullOrWhiteSpace(inspection.WarningMessage))
+                _logger.Warning(inspection.WarningMessage);
+
+            return new LaunchPreparation(emulator.Name, startSpec, null);
         }
         catch (FormatException ex)
         {
@@ -149,12 +198,10 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
 
     private sealed record LaunchPreparation(
         string? EmulatorName,
-        string? ExecutablePath,
-        string? WorkingDirectory,
-        IReadOnlyList<string>? Arguments,
+        ProcessStartSpec? StartSpec,
         GameLaunchResult? Failure)
     {
         public static LaunchPreparation Failed(string status) =>
-            new(null, null, null, null, EmulatorLaunchService.Failure(status));
+            new(null, null, EmulatorLaunchService.Failure(status));
     }
 }

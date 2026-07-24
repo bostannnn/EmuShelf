@@ -27,8 +27,18 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             SELECT CASE
                        WHEN configurations.EmulatorInstallationId IS NULL OR
                             trim(configurations.EmulatorInstallationId) = ''
+                           THEN 'direct'
+                       WHEN installations.TargetKind IS NULL OR trim(installations.TargetKind) = ''
+                           THEN 'direct'
+                       ELSE installations.TargetKind
+                   END,
+                   CASE
+                       WHEN configurations.EmulatorInstallationId IS NULL OR
+                            trim(configurations.EmulatorInstallationId) = ''
                            THEN configurations.ExecutablePath
-                       ELSE installations.ExecutablePath
+                       WHEN installations.TargetValue IS NULL OR trim(installations.TargetValue) = ''
+                           THEN installations.ExecutablePath
+                       ELSE installations.TargetValue
                    END,
                    configurations.LaunchArguments,
                    configurations.EmulatorId,
@@ -45,17 +55,21 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
         if (!reader.Read())
             return null;
 
-        var storedExecutable = reader.IsDBNull(0) ? null : reader.GetString(0);
+        var targetKind = reader.IsDBNull(0) ? null : reader.GetString(0);
+        var targetValue = reader.IsDBNull(1) ? null : reader.GetString(1);
+        var target = CreateTarget(targetKind, targetValue);
+        var executablePath = target is DirectExecutableTarget direct ? direct.Path : null;
         return new EmulatorConfiguration(
             systemId,
-            storedExecutable is null ? null : _pathResolver.ToAbsolutePath(storedExecutable),
-            reader.IsDBNull(1) ? null : reader.GetString(1))
+            executablePath,
+            reader.IsDBNull(2) ? null : reader.GetString(2))
         {
-            EmulatorId = reader.IsDBNull(2) ? null : reader.GetString(2),
-            EmulatorInstallationId = reader.IsDBNull(3) ? null : reader.GetString(3),
-            CorePath = reader.IsDBNull(4)
+            LaunchTarget = target,
+            EmulatorId = reader.IsDBNull(3) ? null : reader.GetString(3),
+            EmulatorInstallationId = reader.IsDBNull(4) ? null : reader.GetString(4),
+            CorePath = reader.IsDBNull(5)
                 ? null
-                : _pathResolver.ToAbsolutePath(reader.GetString(4)),
+                : _pathResolver.ToAbsolutePath(reader.GetString(5)),
         };
     }
 
@@ -78,23 +92,29 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             installationCommand.Transaction = transaction;
             installationCommand.CommandText =
                 """
-                INSERT INTO EmulatorInstallations (InstallationId, EmulatorId, ExecutablePath)
-                VALUES ($installationId, $emulatorId, $executablePath)
+                INSERT INTO EmulatorInstallations (InstallationId, EmulatorId, ExecutablePath, TargetKind, TargetValue)
+                VALUES ($installationId, $emulatorId, $executablePath, $targetKind, $targetValue)
                 ON CONFLICT(InstallationId) DO UPDATE SET
                     EmulatorId = excluded.EmulatorId,
-                    ExecutablePath = excluded.ExecutablePath;
+                    ExecutablePath = excluded.ExecutablePath,
+                    TargetKind = excluded.TargetKind,
+                    TargetValue = excluded.TargetValue;
                 """;
             var installationId = installationCommand.Parameters.Add("$installationId", SqliteType.Text);
             var emulatorId = installationCommand.Parameters.Add("$emulatorId", SqliteType.Text);
             var installationPath = installationCommand.Parameters.Add("$executablePath", SqliteType.Text);
+            var targetKind = installationCommand.Parameters.Add("$targetKind", SqliteType.Text);
+            var targetValue = installationCommand.Parameters.Add("$targetValue", SqliteType.Text);
 
             foreach (var installation in installations)
             {
                 installationId.Value = installation.Id;
                 emulatorId.Value = installation.EmulatorId;
-                installationPath.Value = installation.ExecutablePath is null
-                    ? DBNull.Value
-                    : _pathResolver.ToStorablePath(installation.ExecutablePath);
+                installationPath.Value = installation.Target is DirectExecutableTarget direct
+                    ? _pathResolver.ToStorablePath(direct.Path)
+                    : DBNull.Value;
+                targetKind.Value = ToKind(installation.Target);
+                targetValue.Value = ToStorableTargetValue(installation.Target);
                 installationCommand.ExecuteNonQuery();
             }
         }
@@ -127,9 +147,9 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             foreach (var configuration in normalized)
             {
                 systemId.Value = configuration.SystemId;
-                executablePath.Value = string.IsNullOrWhiteSpace(configuration.ExecutablePath)
-                    ? DBNull.Value
-                    : _pathResolver.ToStorablePath(configuration.ExecutablePath);
+                // Target ownership lives exclusively in EmulatorInstallations. This legacy
+                // field remains readable for an interrupted pre-v11 migration only.
+                executablePath.Value = DBNull.Value;
                 launchArguments.Value = configuration.LaunchArguments is null
                     ? DBNull.Value
                     : configuration.LaunchArguments;
@@ -156,12 +176,30 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
         var installationId = string.IsNullOrWhiteSpace(configuration.EmulatorInstallationId)
             ? emulatorId + "-" + configuration.SystemId
             : configuration.EmulatorInstallationId.Trim();
+        var target = configuration.LaunchTarget ??
+            (string.IsNullOrWhiteSpace(configuration.ExecutablePath)
+                ? null
+                : new DirectExecutableTarget(configuration.ExecutablePath));
+        if (target is FlatpakApplicationTarget flatpak && !IsValidFlatpakApplicationId(flatpak.AppId))
+        {
+            throw new ArgumentException(
+                "A Flatpak application id must contain at least three dot-separated identifier segments.",
+                nameof(configuration));
+        }
+
         return configuration with
         {
             EmulatorId = emulatorId,
             EmulatorInstallationId = installationId,
+            LaunchTarget = target,
         };
     }
+
+    private static bool IsValidFlatpakApplicationId(string? appId) =>
+        !string.IsNullOrWhiteSpace(appId) &&
+        appId.Split('.').Length >= 3 &&
+        appId.Split('.').All(segment => segment.Length > 0 &&
+            segment.All(character => char.IsLetterOrDigit(character) || character is '_' or '-'));
 
     private static EmulatorInstallation CreateInstallation(
         IGrouping<string, EmulatorConfiguration> configurations)
@@ -176,25 +214,74 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                 $"The shared installation '{configurations.Key}' maps to more than one emulator.");
         }
 
-        var executablePaths = configurations
-            .Select(configuration => configuration.ExecutablePath?.Trim())
-            .Where(path => !string.IsNullOrEmpty(path))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var targets = configurations
+            .Select(configuration => configuration.LaunchTarget)
+            .Where(target => target is not null)
+            .Distinct(EmulatorLaunchTargetComparer.Instance)
             .ToArray();
-        if (executablePaths.Length > 1)
+        if (targets.Length > 1)
         {
             throw new ArgumentException(
-                $"The shared installation '{configurations.Key}' has more than one executable path.");
+                $"The shared installation '{configurations.Key}' has more than one launcher target.");
         }
 
         return new EmulatorInstallation(
             configurations.Key,
             emulatorIds[0],
-            executablePaths.SingleOrDefault());
+            targets.SingleOrDefault());
     }
+
+    private EmulatorLaunchTarget? CreateTarget(string? kind, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return kind?.Trim().ToLowerInvariant() switch
+        {
+            "flatpak" => new FlatpakApplicationTarget(value.Trim()),
+            _ => new DirectExecutableTarget(_pathResolver.ToAbsolutePath(value)),
+        };
+    }
+
+    private static string ToKind(EmulatorLaunchTarget? target) => target switch
+    {
+        FlatpakApplicationTarget => "flatpak",
+        _ => "direct",
+    };
+
+    private object ToStorableTargetValue(EmulatorLaunchTarget? target) => target switch
+    {
+        DirectExecutableTarget direct => _pathResolver.ToStorablePath(direct.Path),
+        FlatpakApplicationTarget flatpak => flatpak.AppId,
+        _ => DBNull.Value,
+    };
 
     private sealed record EmulatorInstallation(
         string Id,
         string EmulatorId,
-        string? ExecutablePath);
+        EmulatorLaunchTarget? Target);
+
+    private sealed class EmulatorLaunchTargetComparer : IEqualityComparer<EmulatorLaunchTarget?>
+    {
+        public static EmulatorLaunchTargetComparer Instance { get; } = new();
+
+        public bool Equals(EmulatorLaunchTarget? left, EmulatorLaunchTarget? right) =>
+            (left, right) switch
+            {
+                (null, null) => true,
+                (DirectExecutableTarget a, DirectExecutableTarget b) =>
+                    string.Equals(a.Path, b.Path, StringComparison.OrdinalIgnoreCase),
+                (FlatpakApplicationTarget a, FlatpakApplicationTarget b) =>
+                    string.Equals(a.AppId, b.AppId, StringComparison.Ordinal),
+                _ => false,
+            };
+
+        public int GetHashCode(EmulatorLaunchTarget? target) => target switch
+        {
+            null => 0,
+            DirectExecutableTarget direct => StringComparer.OrdinalIgnoreCase.GetHashCode(direct.Path),
+            FlatpakApplicationTarget flatpak => StringComparer.Ordinal.GetHashCode(flatpak.AppId),
+            _ => 0,
+        };
+    }
 }

@@ -169,6 +169,27 @@ public class RemoteArtworkDownloaderTests : TempAppDirectoryTestBase
         File.Delete(downloaded.TemporaryPath);
     }
 
+    [Fact]
+    public async Task DownloadFirstAsync_CopiesLocalArtworkWithoutAnHttpRequest()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var source = Path.Combine(BaseDirectory, "cover.png");
+        await File.WriteAllBytesAsync(source, PngSignature);
+        using var httpClient = new HttpClient(new DelegateHandler(_ =>
+            throw new Xunit.Sdk.XunitException("HTTP must not be used for local artwork.")));
+        var downloader = new RemoteArtworkDownloader(AppPaths, httpClient);
+
+        var downloaded = await downloader.DownloadFirstAsync(
+        [
+            new ArtworkCandidate("local", new Uri(source), ".png"),
+        ]);
+
+        Assert.NotNull(downloaded);
+        Assert.Equal("local", downloaded.Candidate.ProviderId);
+        Assert.Equal(PngSignature, await File.ReadAllBytesAsync(downloaded.TemporaryPath));
+        File.Delete(downloaded.TemporaryPath);
+    }
+
     private sealed class DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> response) :
         HttpMessageHandler
     {

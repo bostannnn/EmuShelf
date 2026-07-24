@@ -25,7 +25,7 @@ public class PlatformArtworkTests
     public void ExpansionSystems_HaveStableNavigationIdsAndLicensedArtwork()
     {
         Assert.Equal(
-            ["psp", "megadrive", "nds", "gba"],
+            ["psp", "megadrive", "nds", "gba", "snes"],
             KnownSystems.All.Skip(5).Select(system => system.Id));
         Assert.All(KnownSystems.All.Skip(5), system =>
             Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
@@ -41,5 +41,9 @@ public class PlatformArtworkTests
         Assert.Equal(
             1.0,
             KnownSystems.All.Single(system => system.Id == "gba").CoverAspectRatio);
+        // SNES box art is the wide North-American box (Libretro scans cluster at 512×357).
+        Assert.Equal(
+            1.434,
+            KnownSystems.All.Single(system => system.Id == "snes").CoverAspectRatio);
     }
 }

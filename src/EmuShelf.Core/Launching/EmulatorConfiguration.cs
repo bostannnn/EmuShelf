@@ -10,6 +10,12 @@ public sealed record EmulatorConfiguration(
     string? ExecutablePath,
     string? LaunchArguments)
 {
+    /// <summary>
+    /// The selected shared installation target. <see cref="ExecutablePath"/> remains as a
+    /// backwards-compatible direct-target projection while old settings are migrated.
+    /// </summary>
+    public EmulatorLaunchTarget? LaunchTarget { get; init; }
+
     /// <summary>Stable integration id of the selected emulator.</summary>
     public string? EmulatorId { get; init; }
 

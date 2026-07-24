@@ -26,7 +26,7 @@ public sealed class RetroArchLaunchTests : IDisposable
             originalDatabase,
             originalResolver);
         var originalLibrary = new GameLibrary(originalDatabase, originalResolver);
-        var executable = WriteFile(originalBase, "Emulators/RetroArch/retroarch");
+        var executable = WriteFile(originalBase, "Emulators/RetroArch/retroarch", executable: true);
         var overrides = WriteFile(originalBase, "Emulators/RetroArch/config/overrides.cfg", "unchanged");
         var overridesBefore = File.ReadAllBytes(overrides);
         var overridesTimeBefore = new DateTime(2026, 7, 19, 12, 0, 0, DateTimeKind.Utc);
@@ -99,11 +99,23 @@ public sealed class RetroArchLaunchTests : IDisposable
             Directory.Delete(_directory, recursive: true);
     }
 
-    private static string WriteFile(string baseDirectory, string relativePath, string contents = "fixture")
+    private static string WriteFile(
+        string baseDirectory,
+        string relativePath,
+        string contents = "fixture",
+        bool executable = false)
     {
         var path = Path.Combine(baseDirectory, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, contents);
+        if (executable && !OperatingSystem.IsWindows())
+        {
+            var mode = File.GetUnixFileMode(path);
+            File.SetUnixFileMode(path, mode |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherExecute);
+        }
         return path;
     }
 

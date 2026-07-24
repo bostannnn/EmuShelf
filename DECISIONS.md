@@ -1002,6 +1002,36 @@ frame rather than the `0.708` DVD-case default. This is presentation-only; the s
 pipeline continues to rely on exact serial matches before attempting canonical and filename
 thumbnail titles.
 
+## 2026-07-19 — Super Nintendo joins as a cartridge system (missed in the expansion pass)
+
+SNES was omitted when the M16–M18 cartridge platforms were added; it is registered now on the same
+seams (`FileImportRules`, RetroArch launcher, No-Intro/Libretro metadata, and the read-only
+RetroAchievements identification). Four SNES-specific choices were made:
+
+- **Cover ratio is landscape `1.434`, not portrait.** Unlike every prior disc/cartridge system, the
+  Libretro SNES named boxarts are the wide North-American cardboard box: ten representative scans
+  measured 512×357 (1.434) with a few 512×364, mean 1.425. The frame therefore uses `1.434`, a
+  short-and-wide cover that bottom-aligns on the existing 266px shelf (like the DS `1.115` frame),
+  so no shelf-height change is needed. This is the counterintuitive but measured value.
+- **Recognition is structural, since the SNES has no magic bytes.** `SuperNintendoRomReader` accepts
+  `.sfc`/`.smc` between 32 KiB and 8 MiB and validates the internal LoROM (`0x7FC0`) or HiROM
+  (`0xFFC0`) header by its checksum/complement consistency (`XOR == 0xFFFF`), an emulation reset
+  vector inside `$8000-$FFFF`, and a plausible map-mode byte. The header title is Shift-JIS on
+  Japanese carts, so it is read best-effort for display only and never gates recognition — an
+  ASCII-title gate would wrongly reject Japanese ROMs. `.fig`/`.swc` copier formats are deferred
+  until their normalization has fixtures.
+- **The optional 512-byte copier header is normalized away** (present when `size % 0x2000 == 512`),
+  matching both the No-Intro sets and the pinned rcheevos algorithm, so a headered `.smc` and a
+  headerless `.sfc` of one cartridge share a single SHA-1 (catalogue) and MD5 (RetroAchievements).
+- **RetroAchievements console id 3 needs its own hasher.** SNES hashing is *not* the whole-file
+  cartridge MD5 used for Mega Drive / GBA: `SuperNintendoRomHasher` strips the copier header first,
+  then MD5s the rest (`rcheevos-2ac45d3-snes-v1`). The SNES header carries no reliable commercial
+  game code, so SHA-1 is the sole exact identifier; there is no title-id evidence.
+
+This is the first cartridge system whose OpenEmu library icon was already bundled (`snes`), so no
+new artwork was added. OpenVGDB is still deferred — the existing No-Intro SHA-1 + Libretro title
+route is the same one the other cartridge systems use.
+
 ## 2026-07-20 — M25 selection is view-model-owned and bulk removal is transactional
 
 The grid and list report only pointer modifiers to `MainViewModel`; the view model owns the shared
@@ -1029,3 +1059,48 @@ game art or changing any game-cover source.
 The first PS2, PS3, and PSP illustration imports lost too much detail at the 18px
 navigation size and did not match the existing pixel-art icon language. They are
 replaced with custom, console-specific pixel-art sprites: an angular blue-accented
+PS2 tower, a rounded silver-trim PS3 tower, and a cyan-screen PSP handheld. Wii
+continues to use the supplied illustration because it remains legible at that size.
+
+## 2026-07-21 — Typed launcher targets retain portable ownership boundaries
+
+Schema v11 makes the shared `EmulatorInstallations` record the sole owner of a launch target:
+either a direct path (native binary or AppImage) or a Flatpak application id. Existing executable
+paths migrate as direct targets, while the old per-system field is read only as an interrupted-
+migration fallback. This prevents compatible systems from silently disagreeing about their shared
+emulator target and keeps process invocation shell-free.
+
+Flatpak permission inspection is strictly advisory except for a confirmed `none` access result:
+EmuShelf never changes permissions. A resolved descriptor tree is required before a Flatpak launch,
+because a sandbox cannot be expected to infer inaccessible CUE/M3U dependencies. Flatpak RetroArch
+is deliberately deferred: its private core directory is neither inspected nor assumed; direct or
+AppImage RetroArch continues to use adjacent core discovery.
+
+## 2026-07-21 — AppImage is portable SteamOS distribution; Steam Input owns controller mapping
+
+EmuShelf's first SteamOS package is a self-contained AppImage, not an EmuShelf Flatpak. During an
+AppImage run, `$APPDIR` is read-only, so portable Data, Covers, Cache, Logs, and Settings use the
+writable parent of `$APPIMAGE`. The package keeps ICU enabled and validates the documented
+`--appimage-extract-and-run` fallback.
+
+Gamepad mode is a fullscreen interface mode rather than a native controller stack. It relies on a
+documented Steam Input keyboard contract, keeping ordinary non-Steam Gamepad mode usable by
+keyboard/mouse without claiming physical-controller support. Focus is separate from desktop
+multi-selection so launching and returning from a game cannot alter desktop bulk actions.
+
+## 2026-07-23 — Gamepad cover selection hands off explicitly to Desktop mode
+
+The host platform file picker is not a reliable controller-owned surface in Steam Game Mode.
+Choosing **Set cover** in Gamepad mode therefore opens an in-window explanation and an explicit
+**Switch to Desktop mode** action; it never opens a native picker behind the fullscreen library.
+Desktop mode retains the existing picker and cover-import behavior. All other Gamepad secondary
+workflows use the main-window overlay host so they have one scrim, one focus owner, and no child
+window chrome.
+
+## 2026-07-23 — Gamepad All Games uses a normalized artwork well
+
+Desktop library views retain each platform's measured cover frame. Gamepad **All Games** instead
+places every cover inside one fixed-height artwork well using `Uniform` scaling: no cover is
+cropped or distorted, while mixed portrait, handheld, and wide cartridge artwork no longer creates
+an irregular shelf grid. This is Gamepad-only presentation and does not change stored artwork or
+the desktop library layout.

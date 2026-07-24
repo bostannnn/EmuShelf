@@ -69,6 +69,54 @@
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
+        <Style Selector="Button.gamepad-game">
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.gamepad-game.focused">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.gamepad-platform">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-platform:pointerover, Button.gamepad-platform:focus">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-platform.selected">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-platform.focused">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-modal-option">
+            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="18,12" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Button.gamepad-modal-option.focused, Button.gamepad-modal-option:focus">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Border.gamepad-achievement.focused">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+        </Style>
         <Style Selector="ToggleButton.view-toggle">
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="28" />
@@ -172,7 +220,8 @@
         </Style>
     </Window.Styles>
 
-    <Grid RowDefinitions="68,*" ColumnDefinitions="Auto,*">
+    <Grid>
+    <Grid IsVisible="{Binding !IsGamepadMode}" RowDefinitions="68,*" ColumnDefinitions="Auto,*">
         <!-- OpenEmu-inspired navigation rail, rebuilt for EmuShelf rather than copied.
              Collapses to a narrow icon rail (NavigationWidth) so the library grid reclaims
              the freed width. -->
@@ -356,6 +405,12 @@
                 </Panel>
 
                 <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+                    <Button Classes="toolbar-button" ToolTip.Tip="Switch to Gamepad mode"
+                            Command="{Binding SetInterfaceModeCommand}"
+                            CommandParameter="{x:Static settings:InterfaceMode.Gamepad}">
+                        <PathIcon Width="17" Height="17"
+                                  Data="M4,6 H16 A3,3 0 0 1 19,9 V14 A3,3 0 0 1 16,17 H4 A3,3 0 0 1 1,14 V9 A3,3 0 0 1 4,6 Z M5,11 H9 M7,9 V13 M14,10 A1,1 0 1 0 14,12 A1,1 0 1 0 14,10 M17,12 A1,1 0 1 0 17,14 A1,1 0 1 0 17,12" />
+                    </Button>
                     <Button Classes="toolbar-button" ToolTip.Tip="{Binding ThemeDescription}">
                         <PathIcon Width="17" Height="17"
                                   Data="M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 M10,3 V17 A7,7 0 0 0 10,3" />
@@ -761,5 +816,210 @@
                 </Grid>
             </Border>
         </Panel>
+    </Grid>
+
+    <!-- Steam Input's keyboard contract drives this deliberately separate, large-target view.
+         It does not replace the desktop selection model or list view. -->
+    <Grid IsVisible="{Binding IsGamepadMode}" RowDefinitions="112,Auto,*"
+          Background="{DynamicResource EmuLibraryBrush}">
+        <Border Grid.Row="0" Padding="42,25,42,16" Background="{DynamicResource EmuToolbarBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="22">
+                <TextBlock Text="L1" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <ScrollViewer x:Name="GamepadRailScroller" Grid.Column="1" HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                        <Button x:Name="GamepadAllGamesTab" Classes="gamepad-platform" Command="{Binding ShowAllGamesCommand}"
+                                Classes.selected="{Binding IsAllGamesSelected}" Classes.focused="{Binding IsGamepadAllGamesRailFocused}"
+                                MinHeight="54" Padding="22,10">
+                            <TextBlock Text="All Games" VerticalAlignment="Center" />
+                        </Button>
+                        <Button x:Name="GamepadCollectionsTab" Classes="gamepad-platform" Classes.focused="{Binding IsGamepadCollectionsRailFocused}"
+                                MinHeight="54" Padding="22,10"
+                                Command="{Binding OpenGamepadCollectionsCommand}">
+                            <TextBlock Text="Collections" VerticalAlignment="Center" />
+                        </Button>
+                        <ItemsControl ItemsSource="{Binding GamepadPlatforms}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="10" /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:GamepadPlatformTabViewModel">
+                                    <Button Classes="gamepad-platform" Classes.selected="{Binding IsActive}" Classes.focused="{Binding IsRailFocused}" MinHeight="54" Padding="18,10"
+                                            Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).SelectPlatformCommand}"
+                                            CommandParameter="{Binding System}">
+                                        <Grid ColumnDefinitions="26,*" ColumnSpacing="9">
+                                            <Image Grid.Column="0" Width="26" Height="26" Source="{Binding Artwork}"
+                                                   RenderOptions.BitmapInterpolationMode="None" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+                <TextBlock Grid.Column="2" Text="R1" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </Grid>
+        </Border>
+        <Grid x:Name="GamepadRoot" Grid.Row="1" Margin="52,21,52,12" ColumnDefinitions="*,Auto">
+            <StackPanel>
+                <TextBlock Text="{Binding LibraryTitle}" FontSize="30" FontWeight="Bold" />
+                <TextBlock Text="{Binding LibraryCountText}" FontSize="14"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Classes="gamepad-platform" Content="Launch (A)"
+                        Command="{Binding LaunchFocusedGameCommand}" />
+                <Button Classes="gamepad-platform" Content="Actions (Y)"
+                        Command="{Binding OpenFocusedGameActionsCommand}" />
+                <TextBlock Text="X Search" VerticalAlignment="Center" Margin="8,0,0,0"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <Button Classes="gamepad-platform" Content="Exit (Esc)"
+                        Command="{Binding SetInterfaceModeCommand}"
+                        CommandParameter="{x:Static settings:InterfaceMode.Desktop}" />
+            </StackPanel>
+        </Grid>
+        <ScrollViewer Grid.Row="2" Margin="52,8,52,36" SizeChanged="OnGamepadLibrarySizeChanged"
+                      IsHitTestVisible="{Binding !HasGamepadOverlay}">
+            <ItemsRepeater x:Name="GamepadRepeater" ItemsSource="{Binding Games}">
+                <ItemsRepeater.Layout>
+                    <UniformGridLayout MinItemWidth="188" MinColumnSpacing="28" MinRowSpacing="28" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GameViewModel">
+                        <Button Classes="gamepad-game" Classes.focused="{Binding IsFocused}"
+                                Width="{Binding CoverWidth}" Padding="0" Margin="0" Background="Transparent" BorderThickness="2"
+                                Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).FocusGameCommand}"
+                                CommandParameter="{Binding}"
+                                DoubleTapped="OnGameDoubleTapped">
+                            <StackPanel Width="{Binding CoverWidth}" Spacing="10">
+                                <!-- Gamepad All Games uses one stable artwork well. Art keeps its native
+                                     ratio via Uniform, avoiding the mixed-height shelves seen across systems. -->
+                                <Grid Width="{Binding CoverWidth}" Height="{Binding GamepadCoverFrameHeight}">
+                                    <Border CornerRadius="9" Background="{DynamicResource EmuCoverWellBrush}"
+                                            BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1" ClipToBounds="True"
+                                            AttachedToVisualTree="OnGameCoverAttached"
+                                            DataContextChanged="OnGameCoverDataContextChanged">
+                                        <Panel>
+                                            <Grid IsVisible="{Binding !HasCoverImage}" RowDefinitions="5,*"
+                                                  Background="{DynamicResource EmuCoverWellBrush}">
+                                                <Border Grid.Row="0" Background="{Binding AccentColor}" />
+                                                <StackPanel Grid.Row="1" HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center" Spacing="12">
+                                                    <Border Width="88" Height="88" CornerRadius="44"
+                                                            Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                                                        <Image Width="62" Height="62" Source="{Binding PlatformArtwork}"
+                                                               RenderOptions.BitmapInterpolationMode="None" />
+                                                    </Border>
+                                                    <TextBlock Text="ARTWORK MISSING" FontSize="8" FontWeight="Bold"
+                                                               LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Image Source="{Binding CoverImage}" IsVisible="{Binding HasCoverImage}"
+                                                   Stretch="Uniform" />
+                                        </Panel>
+                                    </Border>
+                                    <Border IsVisible="{Binding IsFocused}" IsHitTestVisible="False"
+                                            CornerRadius="9" BorderBrush="{DynamicResource EmuAccentBrush}"
+                                            BorderThickness="3" />
+                                </Grid>
+                                <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" MaxWidth="{Binding CoverWidth}" />
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+        </ScrollViewer>
+        <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window. -->
+        <Grid Grid.RowSpan="3" IsVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="620" MaxHeight="690"
+                    Padding="28" CornerRadius="16" Background="{DynamicResource EmuPopoverBrush}"
+                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="2">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
+                    <StackPanel Spacing="5">
+                        <TextBlock IsVisible="{Binding IsGamepadAchievementsOpen}" Text="{Binding GamepadAchievementDetails.GameTitle}"
+                                   FontSize="26" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock IsVisible="{Binding IsGamepadAchievementsOpen}" Text="{Binding GamepadAchievementDetails.ProgressAndPointsText}"
+                                   FontSize="16" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <TextBlock IsVisible="{Binding IsGamepadAchievementsOpen}" Text="{Binding GamepadAchievementDetails.LastRefreshText}"
+                                   FontSize="13" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <TextBlock IsVisible="{Binding !IsGamepadAchievementsOpen}" Text="{Binding GamepadOverlayTitle}"
+                                   FontSize="24" FontWeight="Bold" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" x:Name="GamepadAchievementsScroller"
+                                  IsVisible="{Binding IsGamepadAchievementsOpen}" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding GamepadAchievementDetails.Achievements}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                                    <Border Classes="gamepad-achievement" Classes.focused="{Binding IsFocused}"
+                                            Margin="0,0,0,10" Padding="14" CornerRadius="10" BorderThickness="2"
+                                            BorderBrush="{DynamicResource EmuBorderBrush}">
+                                        <Grid ColumnDefinitions="64,*" ColumnSpacing="14">
+                                            <Border Width="58" Height="58" CornerRadius="8" Background="{DynamicResource EmuCoverWellBrush}">
+                                                <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill" />
+                                            </Border>
+                                            <StackPanel Grid.Column="1" Spacing="3">
+                                                <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding PointsText}" Foreground="{DynamicResource EmuTextSecondaryBrush}" /></Grid>
+                                                <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                <TextBlock Text="{Binding UnlockStateText}" FontSize="13" FontWeight="Bold" />
+                                                <TextBlock Text="{Binding EarnedText}" FontSize="13" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="1" IsVisible="{Binding IsGamepadSearchOpen}" Spacing="14">
+                        <TextBlock Text="Search your library" FontSize="17" />
+                        <TextBox x:Name="GamepadSearchBox" Text="{Binding SearchText, Mode=TwoWay}" FontSize="24"
+                                 PlaceholderText="Steam + X opens the on-screen keyboard" KeyDown="OnGamepadTextInputKeyDown" />
+                        <TextBlock Text="{Binding LibraryCountText}" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" IsVisible="{Binding IsGamepadRenameOpen}" Spacing="14">
+                        <TextBlock Text="Enter a new title" FontSize="17" />
+                        <TextBlock Text="{Binding FocusedGame.Title}" FontSize="16" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <TextBox x:Name="GamepadRenameBox" Text="{Binding FocusedGame.DraftTitle, Mode=TwoWay}" FontSize="24"
+                                 PlaceholderText="Steam + X opens the on-screen keyboard" KeyDown="OnGamepadTextInputKeyDown" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" IsVisible="{Binding IsGamepadRemoveOpen}" Spacing="12">
+                        <TextBlock Text="Remove this game from your library?" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding FocusedGame.Title}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="This removes only EmuShelf’s library record. Your game files and cover files are not deleted."
+                                   TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="1" IsVisible="{Binding IsGamepadCoverHandoffOpen}" Spacing="12">
+                        <TextBlock Text="Set cover in Desktop mode" FontSize="20" FontWeight="Bold" />
+                        <TextBlock Text="Choosing an image needs the platform file picker, which is not controller-safe in Gamepad mode. Switch to Desktop mode to select a cover."
+                                   TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
+                    </StackPanel>
+                    <ItemsControl Grid.Row="1" VerticalAlignment="Bottom" IsVisible="{Binding !IsGamepadAchievementsOpen}" ItemsSource="{Binding GamepadOverlayOptions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
+                                <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsFocused}" Content="{Binding Label}" Command="{Binding Command}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto">
+                        <TextBlock IsVisible="{Binding IsGamepadAchievementsOpen}" Text="↑↓ Browse   X Refresh   B Back"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <TextBlock IsVisible="{Binding !IsGamepadAchievementsOpen}" Text="↑↓ Choose   A Select   B Back"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="B / Esc Back" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
     </Grid>
 </Window>

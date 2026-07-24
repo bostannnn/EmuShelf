@@ -533,3 +533,50 @@ Remove works one game at a time, so clearing or pruning a library is tedious.
 - [x] Add headless view-model tests for toggle/range/select-all across grid and list, selection
       surviving (or clearing on) collection reloads, and bulk remove of a mixed available/missing
       selection. Keep `dotnet build`/`dotnet test` green on macOS and Windows.
+
+## M26 — Super Nintendo library (planned)
+
+Surfaced 2026-07-19: SNES was missed when the M16–M18 cartridge platforms were added. It reuses the
+same RetroArch launcher, opt-in metadata pipeline, and read-only RetroAchievements identification.
+
+- [x] Add strict `.sfc`/`.smc` recognition. The SNES has no magic bytes, so `SuperNintendoRomReader`
+      validates the internal LoROM/HiROM header (checksum/complement consistency, reset vector in
+      the ROM window, plausible map-mode) and normalizes the optional 512-byte copier header away.
+      The Shift-JIS-capable header title is display-only and never gates recognition; `.fig`/`.swc`
+      copier formats and archives are excluded until their normalization has fixtures.
+- [x] Use the headerless-ROM SHA-1 as the sole exact catalogue key (No-Intro DAT); the header has no
+      reliable game code, so no title-id evidence is produced and a filename is presentation fallback.
+- [x] Register `snes` as a stable, separately filterable system on the RetroArch core mapping, using
+      the already-bundled licensed OpenEmu `snes` icon and a landscape `1.434` cover frame measured
+      from representative Libretro box art.
+- [x] Add Super Nintendo to RetroAchievements (console id 3) behind `SuperNintendoRomHasher`, which
+      strips the copier header then MD5s the rest (`rcheevos-2ac45d3-snes-v1`) — distinct from the
+      whole-file cartridge hash. Add reader/hasher/extractor fixtures (LoROM/HiROM, `.smc` copier
+      normalization, checksum/reset/size rejection, copier-strip MD5 parity) proving source bytes and
+      timestamps stay unchanged.
+- [ ] On real Windows, launch an accepted `.sfc` and a `.smc` through a configured RetroArch core;
+      verify paths with spaces, minimize/restore, and that neither ROM nor RetroArch configuration,
+      overrides, playlists, or achievement settings are modified.
+
+## M27 — SteamOS launcher targets and AppImage
+
+- [x] Store direct executable/AppImage and Flatpak application targets only on shared emulator
+      installations; schema v11 migrates legacy executable configurations to direct targets.
+- [x] Launch direct targets and Flatpaks through shell-free argv, read-only target preflight,
+      descriptor dependency resolution, and Flatpak file-access checks. Flatpak RetroArch remains
+      deliberately unsupported; direct/AppImage RetroArch continues adjacent-core discovery.
+- [x] Add a self-contained linux-x64 AppImage build path with ICU, desktop metadata, checksum,
+      extraction-run validation, and portable data rooted beside `$APPIMAGE`.
+- [ ] On Linux/SteamOS hardware, verify every supported standalone Flatpak candidate, direct
+      AppImage emulator launch, permission denial/warning states, and no emulator/game mutation.
+
+## M28 — Steam Input Gamepad mode
+
+- [x] Persist Desktop/Gamepad interface mode; `--gamepad-ui` forces a one-run fullscreen Gamepad
+      layout with upper platform rail, LB/RB boundaries, controller focus, and no list view.
+- [x] Add Steam Input keyboard command wiring, controller-safe game actions, game-session window
+      restoration, and post-exit RetroAchievements refresh preservation.
+- [x] Capture 1280×800 visual snapshots and implement controller-owned modal workflows for actions,
+      achievements, search, collections, rename, remove, and the reviewed cover handoff.
+- [ ] Perform Deck Gaming Mode acceptance: rail reveal,
+      Steam + X search keyboard, gamescope restore, AppImage fallback, and Flatpak path errors.

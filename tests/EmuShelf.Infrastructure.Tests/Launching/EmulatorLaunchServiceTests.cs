@@ -63,7 +63,7 @@ public class EmulatorLaunchServiceTests : IDisposable
     public async Task LaunchAsync_PassesArgumentArrayTracksExitAndRestoresFrontend()
     {
         var game = CreateGameFile("Game With Spaces.cue");
-        var executable = CreateGameFile("Emulator Folder/test-emulator.exe").Path;
+        var executable = CreateExecutableFile("Emulator Folder/test-emulator.exe");
         _configurations.Configuration = new(
             game.SystemId,
             executable,
@@ -90,7 +90,7 @@ public class EmulatorLaunchServiceTests : IDisposable
     public async Task LaunchAsync_ProcessStartFailureRestoresFrontendAndReturnsFeedback()
     {
         var game = CreateGameFile();
-        var executable = CreateGameFile("emulator.exe").Path;
+        var executable = CreateExecutableFile("emulator.exe");
         _configurations.Configuration = new(game.SystemId, executable, null);
         _runner.Exception = new InvalidOperationException("start failed");
         var service = CreateService();
@@ -103,10 +103,59 @@ public class EmulatorLaunchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LaunchAsync_FlatpakTarget_UsesShellFreeFlatpakArgumentArray()
+    {
+        var game = CreateGameFile("Game With Spaces.iso");
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, null, "--batch \"{GamePath}\"")
+        {
+            LaunchTarget = new FlatpakApplicationTarget("net.example.Emulator"),
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_emulator],
+            _logger,
+            new PassingTargetInspector(),
+            new FixedDependencyResolver(game.Path));
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("flatpak", _runner.StartSpec!.FileName);
+        Assert.Equal(["run", "net.example.Emulator", "--batch", game.Path], _runner.StartSpec.Arguments);
+        Assert.DoesNotContain("\"", string.Join(' ', _runner.StartSpec.Arguments));
+    }
+
+    [Fact]
+    public async Task LaunchAsync_FlatpakTarget_RejectsEmulatorDirectoryPlaceholder()
+    {
+        var game = CreateGameFile();
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, null, "--from {EmulatorDirectory}")
+        {
+            LaunchTarget = new FlatpakApplicationTarget("net.example.Emulator"),
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_emulator],
+            _logger,
+            new PassingTargetInspector(),
+            new FixedDependencyResolver(game.Path));
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("cannot use {EmulatorDirectory}", result.StatusText);
+        Assert.False(_runner.WasRun);
+    }
+
+    [Fact]
     public async Task LaunchAsync_RequiresConfiguredCoreBeforeMinimizing()
     {
         var game = CreateGameFile("game.gba", "core-system");
-        var executable = CreateGameFile("retroarch.exe", "core-system").Path;
+        var executable = CreateExecutableFile("retroarch.exe", "core-system");
         _configurations.Configuration = new(game.SystemId, executable, null);
         var service = CreateCoreService();
 
@@ -124,7 +173,7 @@ public class EmulatorLaunchServiceTests : IDisposable
         var contentFolder = Path.Combine(_directory, "content-folder");
         Directory.CreateDirectory(contentFolder);
         var game = GameAt(contentFolder, "core-system");
-        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var executable = CreateExecutableFile("RetroArch/retroarch.exe", "core-system");
         var core = CreateGameFile("RetroArch/cores/mgba_libretro.dll", "core-system").Path;
         _configurations.Configuration = new(game.SystemId, executable, null)
         {
@@ -144,7 +193,7 @@ public class EmulatorLaunchServiceTests : IDisposable
     public async Task LaunchAsync_RequiresExistingCoreBeforeMinimizing()
     {
         var game = CreateGameFile("game.gba", "core-system");
-        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var executable = CreateExecutableFile("RetroArch/retroarch.exe", "core-system");
         _configurations.Configuration = new(game.SystemId, executable, null)
         {
             CorePath = Path.Combine(_directory, "RetroArch", "cores", "missing.dll"),
@@ -163,7 +212,7 @@ public class EmulatorLaunchServiceTests : IDisposable
     public async Task LaunchAsync_PassesConfiguredCoreAsAnArgument()
     {
         var game = CreateGameFile("Game With Spaces.gba", "core-system");
-        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var executable = CreateExecutableFile("RetroArch/retroarch.exe", "core-system");
         var core = CreateGameFile("RetroArch/cores/mgba core.dll", "core-system").Path;
         _configurations.Configuration = new(game.SystemId, executable, null)
         {
@@ -188,7 +237,7 @@ public class EmulatorLaunchServiceTests : IDisposable
         string launchArguments)
     {
         var game = CreateGameFile("game.gba", "core-system");
-        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var executable = CreateExecutableFile("RetroArch/retroarch.exe", "core-system");
         var core = CreateGameFile("RetroArch/cores/mgba_libretro.dll", "core-system").Path;
         _configurations.Configuration = new(game.SystemId, executable, launchArguments)
         {
@@ -208,7 +257,7 @@ public class EmulatorLaunchServiceTests : IDisposable
     public async Task LaunchAsync_RejectsMalformedCoreTemplateBeforeMinimizing()
     {
         var game = CreateGameFile("game.gba", "core-system");
-        var executable = CreateGameFile("RetroArch/retroarch.exe", "core-system").Path;
+        var executable = CreateExecutableFile("RetroArch/retroarch.exe", "core-system");
         var core = CreateGameFile("RetroArch/cores/mgba_libretro.dll", "core-system").Path;
         _configurations.Configuration = new(game.SystemId, executable, "-L \"{CorePath}\" \"{GamePath}")
         {
@@ -246,6 +295,21 @@ public class EmulatorLaunchServiceTests : IDisposable
         return GameAt(path, systemId);
     }
 
+    private string CreateExecutableFile(string relativePath, string systemId = "test-system")
+    {
+        var path = CreateGameFile(relativePath, systemId).Path;
+        if (!OperatingSystem.IsWindows())
+        {
+            var mode = File.GetUnixFileMode(path);
+            File.SetUnixFileMode(path, mode |
+                UnixFileMode.UserExecute |
+                UnixFileMode.GroupExecute |
+                UnixFileMode.OtherExecute);
+        }
+
+        return path;
+    }
+
     private static Game GameAt(string path, string systemId = "test-system") => new()
     {
         Id = 1,
@@ -275,6 +339,7 @@ public class EmulatorLaunchServiceTests : IDisposable
         public bool WasRun { get; private set; }
         public IReadOnlyList<string> Arguments { get; private set; } = [];
         public string? WorkingDirectory { get; private set; }
+        public ProcessStartSpec? StartSpec { get; private set; }
         public Exception? Exception { get; set; }
 
         public Task<int> RunAsync(
@@ -289,6 +354,12 @@ public class EmulatorLaunchServiceTests : IDisposable
             if (Exception is not null)
                 throw Exception;
             return Task.FromResult(0);
+        }
+
+        public Task<int> RunAsync(ProcessStartSpec startSpec, CancellationToken cancellationToken = default)
+        {
+            StartSpec = startSpec;
+            return RunAsync(startSpec.FileName, startSpec.Arguments, startSpec.WorkingDirectory, cancellationToken);
         }
     }
 
@@ -307,5 +378,16 @@ public class EmulatorLaunchServiceTests : IDisposable
         public void Information(string message) => InformationMessages.Add(message);
         public void Warning(string message, Exception? exception = null) { }
         public void Error(string message, Exception? exception = null) { }
+    }
+
+    private sealed class PassingTargetInspector : ILaunchTargetInspector
+    {
+        public LaunchTargetInspection Inspect(EmulatorLaunchTarget target, IReadOnlyList<string> requiredPaths) =>
+            LaunchTargetInspection.Passed();
+    }
+
+    private sealed class FixedDependencyResolver(params string[] paths) : IGameLaunchDependencyResolver
+    {
+        public GameLaunchDependencies Resolve(Game game) => new(true, paths);
     }
 }

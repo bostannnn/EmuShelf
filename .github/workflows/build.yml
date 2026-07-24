@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest]
+        os: [windows-latest, macos-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +64,39 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: EmuShelf-win-x64
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  package-appimage:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install AppImage bundling dependencies
+        # build-appimage.sh copies the resolved libICE/libSM (and libicu) from the runner via
+        # ldconfig, so they must be installed here for the bundle step to find them.
+        run: sudo apt-get update && sudo apt-get install -y libice6 libsm6
+      - name: Publish self-contained Linux build
+        run: >-
+          dotnet publish src/EmuShelf.App -c Release -r linux-x64 --self-contained true
+          -p:InvariantGlobalization=false -o publish/EmuShelf
+      - name: Build and validate AppImage
+        run: |
+          curl -L -o /tmp/appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /tmp/appimagetool.AppImage packaging/appimage/build-appimage.sh
+          sudo ln -s /tmp/appimagetool.AppImage /usr/local/bin/appimagetool
+          mkdir -p artifacts
+          packaging/appimage/build-appimage.sh publish/EmuShelf artifacts/EmuShelf-linux-x64.AppImage
+          chmod +x artifacts/EmuShelf-linux-x64.AppImage
+          artifacts/EmuShelf-linux-x64.AppImage --appimage-extract-and-run --version
+          sha256sum artifacts/EmuShelf-linux-x64.AppImage > artifacts/EmuShelf-linux-x64.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmuShelf-linux-x64
           path: artifacts/
           if-no-files-found: error
           retention-days: 14

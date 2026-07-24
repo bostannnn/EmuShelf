@@ -3,6 +3,25 @@ namespace EmuShelf.Infrastructure.Tests.Storage;
 public class AppPathsTests : TempAppDirectoryTestBase
 {
     [Fact]
+    public void ResolvePortableBaseDirectory_UsesAppImageParent()
+    {
+        var previous = Environment.GetEnvironmentVariable("APPIMAGE");
+        try
+        {
+            var image = Path.Combine(AppPaths.BaseDirectory, "EmuShelf.AppImage");
+            Environment.SetEnvironmentVariable("APPIMAGE", image);
+
+            Assert.Equal(
+                AppPaths.BaseDirectory,
+                EmuShelf.Infrastructure.Storage.AppPaths.ResolvePortableBaseDirectory());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APPIMAGE", previous);
+        }
+    }
+
+    [Fact]
     public void EnsureDirectoriesExist_CreatesAllPortableFolders()
     {
         AppPaths.EnsureDirectoriesExist();

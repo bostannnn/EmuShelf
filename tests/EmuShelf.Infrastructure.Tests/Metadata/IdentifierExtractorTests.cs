@@ -257,6 +257,28 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void SuperNintendoProfile_UsesOnlyHeaderlessRomSha1AndCanonicalArtwork()
+    {
+        var path = Path.Combine(BaseDirectory, "Misleading SNES title.sfc");
+        File.WriteAllBytes(path, SuperNintendoRomReaderTests.CreateRomFixture("HEADER TITLE"));
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "snes");
+
+        var identifier = Assert.Single(profile.IdentifierExtractor.Extract(NewGame("snes", path)));
+
+        Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/no-intro/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Collection(
+            profile.ArtworkProviders,
+            provider => Assert.Equal("libretro-thumbnails", provider.Id));
+        // The SNES header has no reliable game code, so SHA-1 is the sole (primary) identifier.
+        Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
+        Assert.Equal("Super Nintendo ROM", identifier.Source);
+        Assert.True(identifier.IsPrimary);
+    }
+
+    [Fact]
     public void ArtworkProviders_UseSerialThenCanonicalLibretroTitle()
     {
         var identifiers = new[]
@@ -331,16 +353,21 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(
             "https://thumbnails.libretro.com/Sony%20-%20PlayStation%203/Named_Boxarts/" +
             "Demon%27s%20Souls%20%28USA%29.png",
-            Assert.Single(profile.ArtworkProviders.Single().GetCandidates(
+            Assert.Single(profile.ArtworkProviders.Last().GetCandidates(
                 [identifier],
                 new GameCatalogMatch("libretro-database", "BLUS-30443", "Demon's Souls (USA)", "USA")))
                 .SourceUri.AbsoluteUri);
+
+        Assert.Equal(
+            "https://art.gametdb.com/ps3/coverHQ/US/BLUS30443.jpg",
+            profile.ArtworkProviders.First().GetCandidates([identifier], null).First().SourceUri.AbsoluteUri);
     }
 
     [Theory]
     [InlineData("megadrive", "Sonic The Hedgehog (USA, Europe)", "Sega%20-%20Mega%20Drive%20-%20Genesis")]
     [InlineData("nds", "Mario Kart DS (USA, Australia) (En,Fr,De,Es,It)", "Nintendo%20-%20Nintendo%20DS")]
     [InlineData("gba", "Pokemon - FireRed Version (USA, Europe)", "Nintendo%20-%20Game%20Boy%20Advance")]
+    [InlineData("snes", "Super Mario World (USA)", "Nintendo%20-%20Super%20Nintendo%20Entertainment%20System")]
     public void ExpansionArtwork_UsesTitleOnlyAfterAnExactCatalogMatch(
         string systemId,
         string canonicalTitle,

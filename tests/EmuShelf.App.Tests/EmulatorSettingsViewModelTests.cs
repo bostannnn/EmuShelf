@@ -22,7 +22,7 @@ public class EmulatorSettingsViewModelTests
         bool? closeResult = null;
         viewModel.CloseRequested += saved => closeResult = saved;
 
-        Assert.Equal(9, viewModel.Rows.Count);
+        Assert.Equal(10, viewModel.Rows.Count);
         Assert.Equal("Dolphin", gameCube.EmulatorName);
         Assert.Equal("Dolphin", wii.EmulatorName);
         Assert.Equal(gameCube.DefaultLaunchArguments, wii.DefaultLaunchArguments);
@@ -116,6 +116,38 @@ public class EmulatorSettingsViewModelTests
         Assert.Equal("vba_next_libretro.dll", row.FilteredCores[0].Name);
         Assert.Same(selected, row.SelectedCore);
         Assert.Equal(selected.Path, row.CorePath);
+    }
+
+    [AvaloniaFact]
+    public void RetroArchCores_AreDiscoveredFromTheUserRetroArchConfigDirectoryOffWindows()
+    {
+        // A Linux/SteamOS RetroArch (native or AppImage) keeps cores under the user's config
+        // directory, not beside the executable, so the adjacent-only scan would leave the picker
+        // empty. Windows keeps only the adjacent scan.
+        var root = Path.Combine(Path.GetTempPath(), "EmuShelfCoreDiscovery", Guid.NewGuid().ToString("N"));
+        var emulatorDirectory = Path.Combine(root, "emulator");
+        var configHome = Path.Combine(root, "config");
+        var coresDirectory = Path.Combine(configHome, "retroarch", "cores");
+        Directory.CreateDirectory(emulatorDirectory);
+        Directory.CreateDirectory(coresDirectory);
+        File.WriteAllText(Path.Combine(coresDirectory, "genesis_plus_gx_libretro.so"), "core");
+
+        var previousConfigHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", configHome);
+        try
+        {
+            var viewModel = CreateViewModel();
+            var megaDrive = viewModel.Rows.Single(row => row.SystemId == "megadrive");
+            megaDrive.ExecutablePath = Path.Combine(emulatorDirectory, "retroarch");
+
+            var discovered = megaDrive.AvailableCores.Any(core => core.Name == "genesis_plus_gx_libretro.so");
+            Assert.Equal(!OperatingSystem.IsWindows(), discovered);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
     }
 
     [AvaloniaFact]

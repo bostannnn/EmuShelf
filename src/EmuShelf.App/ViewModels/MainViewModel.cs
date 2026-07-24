@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -37,6 +38,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IGameCoverService _covers;
     private readonly IAppThemeService _themeService;
+    private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
     private readonly IMetadataPreferencesService _metadataPreferences;
@@ -47,6 +49,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRetroAchievementsProgressService? _retroProgress;
     private readonly IRetroAchievementsDetailsService? _retroDetails;
     private readonly IRetroAchievementsRefreshService? _retroRefresh;
+    private readonly IRetroAchievementsBadgeCache? _retroBadges;
     // Coordinates the full identify → match → progress sequence. Individual services also
     // serialize their own work, but this prevents an import finishing halfway through a connect
     // and leaving newly hashed games unmatched.
@@ -60,6 +63,7 @@ public partial class MainViewModel : ViewModelBase
     private GameViewModel? _selectionAnchor;
     private bool _isFrontendSuspended;
     private string _appliedSearchText = string.Empty;
+    private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
@@ -67,7 +71,9 @@ public partial class MainViewModel : ViewModelBase
     private Task _selectedSystemLoad = Task.CompletedTask;
 
     public ObservableCollection<GameSystem> Systems { get; }
+    public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
+    public ObservableCollection<GamepadOverlayOptionViewModel> GamepadOverlayOptions { get; } = [];
 
     [ObservableProperty]
     public partial GameSystem? SelectedSystem { get; set; }
@@ -140,6 +146,60 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsNavigationCollapsed { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsGamepadMode { get; set; }
+
+    [ObservableProperty]
+    public partial GameViewModel? FocusedGame { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsGameActionsOpen { get; set; }
+
+    [ObservableProperty]
+    public partial GamepadOverlayKind GamepadOverlay { get; set; }
+
+    [ObservableProperty]
+    public partial int GamepadOverlaySelectionIndex { get; set; }
+
+    [ObservableProperty]
+    public partial AchievementDetailsViewModel? GamepadAchievementDetails { get; set; }
+
+    [ObservableProperty]
+    public partial AchievementRowViewModel? FocusedGamepadAchievement { get; set; }
+
+    public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
+    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename;
+    public bool IsGamepadAchievementsOpen => GamepadOverlay == GamepadOverlayKind.Achievements;
+    public bool IsGamepadSearchOpen => GamepadOverlay == GamepadOverlayKind.Search;
+    public bool IsGamepadCollectionsOpen => GamepadOverlay == GamepadOverlayKind.Collections;
+    public bool IsGamepadRenameOpen => GamepadOverlay == GamepadOverlayKind.Rename;
+    public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
+    public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
+    public bool IsGamepadAllGamesRailFocused => IsGamepadRailFocused && GamepadRailIndex == 0;
+    public bool IsGamepadCollectionsRailFocused => IsGamepadRailFocused && GamepadRailIndex == 1;
+    public string GamepadOverlayTitle => GamepadOverlay switch
+    {
+        GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
+        GamepadOverlayKind.Search => "Search",
+        GamepadOverlayKind.Collections => "Collections",
+        GamepadOverlayKind.Rename => "Rename game",
+        GamepadOverlayKind.RemoveConfirmation => "Remove game",
+        GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
+        _ => string.Empty,
+    };
+
+    [ObservableProperty]
+    public partial bool IsGamepadRailFocused { get; set; }
+
+    /// <summary>Logical rail cursor: All Games, Collections, then each platform tab.</summary>
+    [ObservableProperty]
+    public partial int GamepadRailIndex { get; set; }
+
+    [ObservableProperty]
+    public partial double GamepadViewportWidth { get; set; }
+
+    public int GamepadColumnCount { get; private set; } = 1;
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
@@ -246,7 +306,9 @@ public partial class MainViewModel : ViewModelBase
         IRetroAchievementsProgressService? retroProgress = null,
         IRetroAchievementsDetailsService? retroDetails = null,
         IRetroAchievementsRefreshService? retroRefresh = null,
-        IGameMetadataStore? metadataStore = null)
+        IGameMetadataStore? metadataStore = null,
+        IInterfaceModeService? interfaceModeService = null,
+        IRetroAchievementsBadgeCache? retroBadges = null)
     {
         _library = library;
         _scanner = scanner;
@@ -258,6 +320,17 @@ public partial class MainViewModel : ViewModelBase
         _emulators = emulators ?? KnownEmulators.All;
         _covers = covers ?? new NullGameCoverService();
         _themeService = themeService ?? new NullAppThemeService();
+        _interfaceModeService = interfaceModeService;
+        IsGamepadMode = interfaceModeService?.Current == InterfaceMode.Gamepad;
+        if (_interfaceModeService is not null)
+        {
+            _interfaceModeService.ModeChanged += (_, mode) =>
+            {
+                IsGamepadMode = mode == InterfaceMode.Gamepad;
+                if (IsGamepadMode)
+                    IsGridView = true;
+            };
+        }
         _metadataService = metadataService ?? new NullGameMetadataService();
         _metadataStore = metadataStore;
         _metadataPreferences = metadataPreferences ?? new NullMetadataPreferencesService();
@@ -268,10 +341,13 @@ public partial class MainViewModel : ViewModelBase
         _retroProgress = retroProgress;
         _retroDetails = retroDetails;
         _retroRefresh = retroRefresh;
+        _retroBadges = retroBadges;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
         Systems = new ObservableCollection<GameSystem>(systems);
+        GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
+            systems.Select(system => new GamepadPlatformTabViewModel(system)));
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
 
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchDebounceMs) };
@@ -289,6 +365,7 @@ public partial class MainViewModel : ViewModelBase
         if (value is not null)
             CurrentLibraryScope = LibraryScope.System;
         NotifyLibraryPresentationChanged();
+        UpdateGamepadPlatformState();
         _selectedSystemLoad = ReloadGamesAsync();
     }
 
@@ -297,6 +374,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsAllGamesSelected));
         OnPropertyChanged(nameof(IsRecentlyAddedSelected));
         NotifyLibraryPresentationChanged();
+        UpdateGamepadPlatformState();
     }
 
     partial void OnSearchTextChanged(string value)
@@ -328,6 +406,330 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task ShowRecentlyAddedAsync() => ShowCollectionAsync(LibraryScope.RecentlyAdded);
 
+    [RelayCommand]
+    private async Task PreviousPlatformAsync() => await MovePlatformAsync(-1);
+
+    [RelayCommand]
+    private async Task NextPlatformAsync() => await MovePlatformAsync(1);
+
+    [RelayCommand]
+    private void SelectPlatform(GameSystem? system)
+    {
+        if (system is not null)
+            SelectedSystem = system;
+    }
+
+    private async Task MovePlatformAsync(int direction)
+    {
+        var current = CurrentLibraryScope == LibraryScope.AllGames
+            ? 0
+            : SelectedSystem is null ? 0 : Systems.IndexOf(SelectedSystem) + 1;
+        var target = current + direction;
+        if (target < 0 || target > Systems.Count)
+            return;
+
+        if (target == 0)
+            await ShowCollectionAsync(LibraryScope.AllGames);
+        else
+            SelectedSystem = Systems[target - 1];
+    }
+
+    [RelayCommand]
+    private void FocusNextGame() => MoveFocusedGame(1);
+
+    [RelayCommand]
+    private void FocusPreviousGame() => MoveFocusedGame(-1);
+
+    [RelayCommand]
+    private void FocusGame(GameViewModel? game)
+    {
+        if (IsGamepadMode && game is not null && Games.Contains(game))
+            FocusedGame = game;
+    }
+
+    [RelayCommand]
+    private Task LaunchFocusedGameAsync() => LaunchGameAsync(FocusedGame);
+
+    [RelayCommand]
+    private Task OpenFocusedAchievementsAsync() => OpenAchievementDetailsAsync(FocusedGame);
+
+    [RelayCommand]
+    private void EditFocusedTitle()
+    {
+        if (FocusedGame is not null)
+        {
+            FocusedGame.DraftTitle = FocusedGame.Title;
+            if (IsGamepadMode)
+            {
+                // Retain the existing edit lifecycle; the desktop popup is hidden with its tree.
+                FocusedGame.IsEditingTitle = true;
+                OpenGamepadOverlay(GamepadOverlayKind.Rename);
+            }
+            else
+                FocusedGame.IsEditingTitle = true;
+        }
+    }
+
+    [RelayCommand]
+    private Task SetFocusedCoverAsync()
+    {
+        if (IsGamepadMode)
+        {
+            OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff);
+            return Task.CompletedTask;
+        }
+
+        return SetGameCoverAsync(FocusedGame);
+    }
+
+    [RelayCommand]
+    private Task RemoveFocusedGameAsync()
+    {
+        if (IsGamepadMode && FocusedGame is not null)
+        {
+            OpenGamepadOverlay(GamepadOverlayKind.RemoveConfirmation);
+            return Task.CompletedTask;
+        }
+
+        return RemoveGameAsync(FocusedGame);
+    }
+
+    [RelayCommand]
+    private void OpenFocusedGameActions()
+    {
+        if (FocusedGame is not null)
+            OpenGamepadOverlay(GamepadOverlayKind.Actions);
+    }
+
+    [RelayCommand]
+    private void CloseFocusedGameActions() => CloseGamepadOverlay();
+
+    [RelayCommand]
+    private void OpenGamepadSearch() => OpenGamepadOverlay(GamepadOverlayKind.Search);
+
+    [RelayCommand]
+    private void OpenGamepadCollections() => OpenGamepadOverlay(GamepadOverlayKind.Collections);
+
+    [RelayCommand]
+    private void MoveGamepadOverlayUp()
+    {
+        if (IsGamepadAchievementsOpen)
+        {
+            MoveFocusedAchievement(-1);
+            return;
+        }
+
+        MoveGamepadOverlaySelection(-1);
+    }
+
+    [RelayCommand]
+    private void MoveGamepadOverlayDown()
+    {
+        if (IsGamepadAchievementsOpen)
+        {
+            MoveFocusedAchievement(1);
+            return;
+        }
+
+        MoveGamepadOverlaySelection(1);
+    }
+
+    [RelayCommand]
+    private void ActivateGamepadOverlay()
+    {
+        if (GamepadOverlayOptions.Count == 0)
+            return;
+        GamepadOverlayOptions[GamepadOverlaySelectionIndex].Command.Execute(null);
+    }
+
+    [RelayCommand]
+    private void CloseGamepadOverlay()
+    {
+        var closingOverlay = GamepadOverlay;
+        if (closingOverlay == GamepadOverlayKind.Rename && FocusedGame is not null)
+        {
+            FocusedGame.DraftTitle = FocusedGame.Title;
+            FocusedGame.IsEditingTitle = false;
+        }
+        if (GamepadAchievementDetails is not null)
+            GamepadAchievementDetails.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
+        if (GamepadAchievementDetails is not null)
+            GamepadAchievementDetails.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
+        GamepadAchievementDetails?.Dispose();
+        GamepadAchievementDetails = null;
+        FocusedGamepadAchievement = null;
+        GamepadOverlayOptions.Clear();
+        GamepadOverlay = GamepadOverlayKind.None;
+        IsGameActionsOpen = false;
+        RestoreFocusedGame();
+    }
+
+    [RelayCommand]
+    private async Task SaveGamepadTitleAsync()
+    {
+        var game = FocusedGame;
+        await SaveGameTitleAsync(game);
+        if (game is null || !game.IsEditingTitle)
+            CloseGamepadOverlay();
+    }
+
+    [RelayCommand]
+    private async Task ConfirmGamepadRemoveAsync()
+    {
+        if (FocusedGame is not { } game)
+            return;
+
+        await RemoveGameCoreAsync(game);
+        CloseGamepadOverlay();
+    }
+
+    [RelayCommand]
+    private async Task SwitchToDesktopForCoverAsync()
+    {
+        CloseGamepadOverlay();
+        await SetInterfaceModeAsync(InterfaceMode.Desktop);
+        StatusText = "Cover selection is available in Desktop mode.";
+    }
+
+    [RelayCommand]
+    private async Task SetInterfaceModeAsync(InterfaceMode mode)
+    {
+        if (_interfaceModeService is not null)
+            await _interfaceModeService.SetModeAsync(mode);
+    }
+
+    private void OpenGamepadOverlay(GamepadOverlayKind overlay)
+    {
+        if (!IsGamepadMode)
+            return;
+
+        GamepadAchievementDetails?.Dispose();
+        GamepadAchievementDetails = null;
+        FocusedGamepadAchievement = null;
+        GamepadOverlayOptions.Clear();
+        GamepadOverlay = overlay;
+        IsGameActionsOpen = overlay == GamepadOverlayKind.Actions; // compatibility for existing bindings/tests
+
+        switch (overlay)
+        {
+            case GamepadOverlayKind.Actions:
+                AddGameActions();
+                break;
+            case GamepadOverlayKind.Search:
+                AddOption("Clear search", ClearSearchCommand);
+                AddOption("Back", CloseGamepadOverlayCommand);
+                break;
+            case GamepadOverlayKind.Collections:
+                AddOption("Recently Added", ShowGamepadRecentlyAddedCommand);
+                AddOption("Back", CloseGamepadOverlayCommand);
+                break;
+            case GamepadOverlayKind.Rename:
+                AddOption("Save", SaveGamepadTitleCommand);
+                AddOption("Cancel", CloseGamepadOverlayCommand);
+                break;
+            case GamepadOverlayKind.RemoveConfirmation:
+                AddOption("Remove from library", ConfirmGamepadRemoveCommand);
+                AddOption("Cancel", CloseGamepadOverlayCommand);
+                break;
+            case GamepadOverlayKind.CoverDesktopHandoff:
+                AddOption("Switch to Desktop mode", SwitchToDesktopForCoverCommand);
+                AddOption("Back", CloseGamepadOverlayCommand);
+                break;
+            case GamepadOverlayKind.Achievements:
+                FocusFirstAchievement();
+                break;
+        }
+
+        GamepadOverlaySelectionIndex = 0;
+        UpdateGamepadOverlayOptionFocus();
+        NotifyGamepadOverlayState();
+    }
+
+    private void AddGameActions()
+    {
+        AddOption("Launch", LaunchFromGamepadOverlayCommand);
+        if (FocusedGame?.CanOpenAchievementDetails == true)
+            AddOption("Achievements", OpenFocusedAchievementsCommand);
+        AddOption("Edit title", EditFocusedTitleCommand);
+        AddOption("Set cover", SetFocusedCoverCommand);
+        AddOption("Remove", RemoveFocusedGameCommand);
+        AddOption("Back", CloseGamepadOverlayCommand);
+        AddOption("Desktop mode", SwitchToDesktopModeCommand);
+    }
+
+    private void AddOption(string label, IRelayCommand command) =>
+        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command));
+
+    private void MoveGamepadOverlaySelection(int delta)
+    {
+        if (GamepadOverlayOptions.Count == 0)
+            return;
+        GamepadOverlaySelectionIndex = Math.Clamp(
+            GamepadOverlaySelectionIndex + delta,
+            0,
+            GamepadOverlayOptions.Count - 1);
+    }
+
+    private void UpdateGamepadOverlayOptionFocus()
+    {
+        for (var index = 0; index < GamepadOverlayOptions.Count; index++)
+            GamepadOverlayOptions[index].IsFocused = index == GamepadOverlaySelectionIndex;
+    }
+
+    private void FocusFirstAchievement()
+    {
+        FocusedGamepadAchievement = GamepadAchievementDetails?.Achievements.FirstOrDefault();
+    }
+
+    private void MoveFocusedAchievement(int delta)
+    {
+        var rows = GamepadAchievementDetails?.Achievements;
+        if (rows is not { Count: > 0 })
+            return;
+        var index = FocusedGamepadAchievement is null ? 0 : rows.IndexOf(FocusedGamepadAchievement);
+        FocusedGamepadAchievement = rows[Math.Clamp(index + delta, 0, rows.Count - 1)];
+    }
+
+    private void HandleGamepadAchievementsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (IsGamepadAchievementsOpen && FocusedGamepadAchievement is null)
+            FocusFirstAchievement();
+    }
+
+    private void NotifyGamepadOverlayState()
+    {
+        OnPropertyChanged(nameof(HasGamepadOverlay));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+        OnPropertyChanged(nameof(IsGamepadAchievementsOpen));
+        OnPropertyChanged(nameof(IsGamepadSearchOpen));
+        OnPropertyChanged(nameof(IsGamepadCollectionsOpen));
+        OnPropertyChanged(nameof(IsGamepadRenameOpen));
+        OnPropertyChanged(nameof(IsGamepadRemoveOpen));
+        OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
+        OnPropertyChanged(nameof(GamepadOverlayTitle));
+    }
+
+    [RelayCommand]
+    private async Task LaunchFromGamepadOverlayAsync()
+    {
+        CloseGamepadOverlay();
+        await LaunchFocusedGameAsync();
+    }
+
+    [RelayCommand]
+    private async Task SwitchToDesktopModeAsync()
+    {
+        CloseGamepadOverlay();
+        await SetInterfaceModeAsync(InterfaceMode.Desktop);
+    }
+
+    [RelayCommand]
+    private async Task ShowGamepadRecentlyAddedAsync()
+    {
+        await ShowRecentlyAddedAsync();
+        CloseGamepadOverlay();
+    }
+
     private async Task ShowCollectionAsync(LibraryScope scope)
     {
         CurrentLibraryScope = scope;
@@ -351,6 +753,132 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(EmptyLibraryDescription));
     }
 
+    private void MoveFocusedGame(int delta)
+    {
+        if (!IsGamepadMode || Games.Count == 0)
+            return;
+        var index = FocusedGame is null ? 0 : Games.IndexOf(FocusedGame);
+        if (index < 0)
+            index = 0;
+        FocusedGame = Games[Math.Clamp(index + delta, 0, Games.Count - 1)];
+        IsGamepadRailFocused = false;
+    }
+
+    [RelayCommand]
+    private void MoveGamepadFocusLeft()
+    {
+        if (IsGamepadRailFocused)
+            GamepadRailIndex = Math.Max(0, GamepadRailIndex - 1);
+        else
+            MoveFocusedGame(-1);
+    }
+
+    [RelayCommand]
+    private void MoveGamepadFocusRight()
+    {
+        if (IsGamepadRailFocused)
+            GamepadRailIndex = Math.Min(Systems.Count + 1, GamepadRailIndex + 1);
+        else
+            MoveFocusedGame(1);
+    }
+
+    [RelayCommand]
+    private void MoveGamepadFocusUp()
+    {
+        if (!IsGamepadMode || Games.Count == 0)
+            return;
+
+        var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
+        if (index < GamepadColumnCount)
+        {
+            GamepadRailIndex = CurrentLibraryScope == LibraryScope.AllGames
+                ? 0
+                : CurrentLibraryScope == LibraryScope.RecentlyAdded
+                    ? 1
+                    : SelectedSystem is null ? 2 : Math.Max(2, Systems.IndexOf(SelectedSystem) + 2);
+            IsGamepadRailFocused = true;
+            return;
+        }
+
+        FocusedGame = Games[index - GamepadColumnCount];
+    }
+
+    [RelayCommand]
+    private void MoveGamepadFocusDown()
+    {
+        if (!IsGamepadMode || Games.Count == 0)
+            return;
+
+        if (IsGamepadRailFocused)
+        {
+            IsGamepadRailFocused = false;
+            RestoreFocusedGame();
+            return;
+        }
+
+        var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
+        FocusedGame = Games[Math.Min(index + GamepadColumnCount, Games.Count - 1)];
+    }
+
+    [RelayCommand]
+    private async Task ActivateGamepadRailAsync()
+    {
+        if (!IsGamepadRailFocused)
+            return;
+
+        if (GamepadRailIndex == 0)
+            await ShowAllGamesAsync();
+        else if (GamepadRailIndex == 1)
+            OpenGamepadOverlay(GamepadOverlayKind.Collections);
+        else if (GamepadRailIndex - 2 is var systemIndex && systemIndex >= 0 && systemIndex < Systems.Count)
+            SelectedSystem = Systems[systemIndex];
+
+        IsGamepadRailFocused = false;
+    }
+
+    private string FocusScopeKey() => CurrentLibraryScope switch
+    {
+        LibraryScope.AllGames => "all",
+        LibraryScope.RecentlyAdded => "recent",
+        _ => "system:" + (SelectedSystem?.Id ?? string.Empty),
+    };
+
+    private void RestoreFocusedGame()
+    {
+        if (!IsGamepadMode)
+            return;
+        var restored = _focusedGameByScope.TryGetValue(FocusScopeKey(), out var id)
+            ? Games.FirstOrDefault(game => game.Id == id)
+            : null;
+        FocusedGame = restored ?? Games.FirstOrDefault();
+    }
+
+    partial void OnGamepadViewportWidthChanged(double value)
+    {
+        if (value <= 0)
+            return;
+
+        LibraryViewportWidth = value;
+        GamepadColumnCount = Math.Max(1, (int)((Math.Max(0, value - GridHorizontalPadding) + CoverColumnSpacing) /
+                                               (GridCoverWidth + CoverColumnSpacing)));
+    }
+
+    private void UpdateGamepadPlatformState()
+    {
+        foreach (var platform in GamepadPlatforms)
+            platform.IsActive = CurrentLibraryScope == LibraryScope.System &&
+                                string.Equals(platform.System.Id, SelectedSystem?.Id, StringComparison.Ordinal);
+        UpdateGamepadRailFocus();
+    }
+
+    private void UpdateGamepadRailFocus()
+    {
+        OnPropertyChanged(nameof(IsGamepadAllGamesRailFocused));
+        OnPropertyChanged(nameof(IsGamepadCollectionsRailFocused));
+        for (var index = 0; index < GamepadPlatforms.Count; index++)
+            GamepadPlatforms[index].IsRailFocused = IsGamepadRailFocused && index + 2 == GamepadRailIndex;
+    }
+
     partial void OnCurrentThemeChanged(ThemePreference value)
     {
         OnPropertyChanged(nameof(IsSystemTheme));
@@ -361,6 +889,48 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
     {
+    }
+
+    partial void OnFocusedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.IsFocused = false;
+        if (newValue is not null)
+        {
+            newValue.IsFocused = true;
+            _focusedGameByScope[FocusScopeKey()] = newValue.Id;
+        }
+    }
+
+    partial void OnGamepadOverlayChanged(GamepadOverlayKind value) => NotifyGamepadOverlayState();
+
+    partial void OnGamepadOverlaySelectionIndexChanged(int value) => UpdateGamepadOverlayOptionFocus();
+
+    partial void OnGamepadRailIndexChanged(int value) => UpdateGamepadRailFocus();
+
+    partial void OnIsGamepadRailFocusedChanged(bool value) => UpdateGamepadRailFocus();
+
+    partial void OnFocusedGamepadAchievementChanged(
+        AchievementRowViewModel? oldValue,
+        AchievementRowViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.IsFocused = false;
+        if (newValue is not null)
+            newValue.IsFocused = true;
+    }
+
+    partial void OnIsGamepadModeChanged(bool value)
+    {
+        if (value)
+        {
+            IsGridView = true;
+            RestoreFocusedGame();
+        }
+        else
+        {
+            CloseGamepadOverlay();
+        }
     }
 
     /// <summary>
@@ -673,6 +1243,7 @@ public partial class MainViewModel : ViewModelBase
         IsSearchEmpty = _systemGames.Count > 0 && Games.Count == 0;
         LibraryCountText = _systemGames.Count == 1 ? "1 game" : $"{_systemGames.Count} games";
         NotifyLibraryPresentationChanged();
+        RestoreFocusedGame();
     }
 
     [RelayCommand]
@@ -1209,6 +1780,40 @@ public partial class MainViewModel : ViewModelBase
         if (game?.RetroAchievementsGameId is not { } retroAchievementsGameId)
             return;
 
+        if (IsGamepadMode)
+        {
+            if (_retroDetails is null || _retroAccount is null)
+            {
+                StatusText = "Achievement details are unavailable right now.";
+                return;
+            }
+
+            try
+            {
+                // The cache read is small but remains off the UI thread, matching the desktop host.
+                var cached = await Task.Run(() => _retroDetails.GetCached(retroAchievementsGameId));
+                var details = new AchievementDetailsViewModel(
+                    game.Title,
+                    retroAchievementsGameId,
+                    _retroDetails,
+                    _retroAccount,
+                    _retroBadges,
+                    cached);
+                OpenGamepadOverlay(GamepadOverlayKind.Achievements);
+                GamepadAchievementDetails = details;
+                details.Achievements.CollectionChanged += HandleGamepadAchievementsChanged;
+                FocusFirstAchievement();
+                _ = details.RefreshIfStaleAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Could not open Gamepad achievements for game id {game.Id}.", ex);
+                StatusText = $"Could not open achievements for {game.Title}: {ex.Message}";
+                return;
+            }
+        }
+
         try
         {
             await _dialogs.ShowAchievementDetailsAsync(game.Title, retroAchievementsGameId);
@@ -1394,6 +1999,14 @@ public partial class MainViewModel : ViewModelBase
         {
             return;
         }
+
+        await RemoveGameCoreAsync(game);
+    }
+
+    private async Task RemoveGameCoreAsync(GameViewModel game)
+    {
+        if (IsBusy)
+            return;
 
         IsBusy = true;
         try

@@ -15,8 +15,8 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     private readonly RetroAchievementsGameHasher _hasher = new();
 
     [Theory]
-    [InlineData("playstation", "rcheevos-2ac45d3-playstation-v3")]
-    [InlineData("playstation2", "rcheevos-2ac45d3-playstation-v3")]
+    [InlineData("playstation", "rcheevos-2ac45d3-playstation-v4")]
+    [InlineData("playstation2", "rcheevos-2ac45d3-playstation-v4")]
     [InlineData("gamecube", "rcheevos-2ac45d3-nintendo-v2")]
     [InlineData("wii", "rcheevos-2ac45d3-wii-v3")]
     public void AlgorithmVersion_IsScopedByHashReader(string systemId, string expectedVersion)
@@ -36,6 +36,7 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("megadrive", "rcheevos-2ac45d3-megadrive-v1", 1)]
     [InlineData("nds", "rcheevos-2ac45d3-nds-v1", 18)]
     [InlineData("gba", "rcheevos-2ac45d3-gba-v1", 5)]
+    [InlineData("snes", "rcheevos-2ac45d3-snes-v1", 3)]
     public void ExpansionAlgorithmVersionsAndConsoleMappings_AreScopedToVerifiedReaders(
         string systemId,
         string expectedVersion,
@@ -109,6 +110,48 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
             Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
             Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
         }
+    }
+
+    [Fact]
+    public void Identify_SuperNintendoSfcAndSmc_StripCopierHeaderToOneMd5WithoutWriting()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var headerless = SuperNintendoRomReaderTests.CreateRomFixture("SUPER EMUSHELF");
+        var sfcPath = Path.Combine(BaseDirectory, "game.sfc");
+        var smcPath = Path.Combine(BaseDirectory, "game.smc");
+        File.WriteAllBytes(sfcPath, headerless);
+        File.WriteAllBytes(smcPath, SuperNintendoRomReaderTests.AddCopierHeader(headerless));
+        var timestamp = new DateTime(2026, 7, 19, 19, 0, 0, DateTimeKind.Utc);
+
+        // rcheevos ignores the optional 512-byte copier header and MD5-hashes the rest, so a
+        // headered .smc and a headerless .sfc of the same cartridge resolve to one hash.
+        var expected = Convert.ToHexString(MD5.HashData(headerless)).ToLowerInvariant();
+
+        foreach (var path in new[] { sfcPath, smcPath })
+        {
+            File.SetLastWriteTimeUtc(path, timestamp);
+            var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+            var result = _hasher.Identify(Game("snes", path));
+
+            Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+            Assert.Equal(expected, result.CanonicalHash);
+            Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+            Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+        }
+    }
+
+    [Fact]
+    public void Identify_SuperNintendoUnrecognizedImage_RemainsUnsupported()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "not-a-cartridge.sfc");
+        File.WriteAllBytes(path, new byte[0x8000]);
+
+        var result = _hasher.Identify(Game("snes", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
     }
 
     [Fact]

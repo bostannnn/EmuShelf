@@ -762,6 +762,63 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadAchievements_StayInTheMainOverlayAndNeverRequestDesktopDialog()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadAchievements.cue");
+        File.WriteAllText(path, "FILE \"GamepadAchievements.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Gamepad achievements", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var vm = CreateViewModel(
+            retroAchievementsRead: new StaticRetroAchievementsReadStore(gameId, 4321),
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: new RecordingRetroAchievementsDetailsService());
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.Achievements, vm.GamepadOverlay);
+        Assert.Null(_dialogs.AchievementDetailsRequest);
+        vm.CloseGamepadOverlayCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Same(vm.FocusedGame, Assert.Single(vm.Games));
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadActions_UseModalNavigationAndCoverHandsOffToDesktopInsteadOfPicker()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadActions.cue");
+        File.WriteAllText(path, "FILE \"GamepadActions.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Gamepad actions", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        vm.OpenFocusedGameActionsCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.Actions, vm.GamepadOverlay);
+        Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
+        vm.MoveGamepadOverlayDownCommand.Execute(null);
+        Assert.Equal(1, vm.GamepadOverlaySelectionIndex);
+
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+        Assert.Null(_dialogs.LastCoverGameTitle);
+
+        vm.EditFocusedTitleCommand.Execute(null);
+        vm.FocusedGame!.DraftTitle = "Unsaved controller title";
+        vm.CloseGamepadOverlayCommand.Execute(null);
+        Assert.False(vm.FocusedGame.IsEditingTitle);
+        Assert.Equal("Gamepad actions", vm.FocusedGame.DraftTitle);
+
+        vm.MoveGamepadFocusUpCommand.Execute(null);
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Equal(3, vm.GamepadRailIndex);
+        Assert.True(vm.GamepadPlatforms[1].IsRailFocused);
+    }
+
+    [AvaloniaFact]
     public async Task AddGames_M3uHidesSelectedReferencedDiscs()
     {
         var folder = MakeRomsFolder();

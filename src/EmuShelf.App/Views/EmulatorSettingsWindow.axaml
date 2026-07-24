@@ -179,17 +179,33 @@
                                                 Margin="16,0,16,16" Spacing="9">
                                         <Border Height="1" Background="{DynamicResource EmuBorderBrush}"
                                                 Margin="0,0,0,5" />
-                                        <TextBlock Text="{Binding ExecutableDescription}" FontSize="10" FontWeight="SemiBold"
+                                        <TextBlock Text="LAUNCH TARGET" FontSize="10" FontWeight="SemiBold"
                                                    LetterSpacing="0.7"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <ComboBox SelectedItem="{Binding TargetKind, Mode=TwoWay}" SelectedIndex="0">
+                                            <x:String>Direct</x:String>
+                                            <x:String>Flatpak</x:String>
+                                        </ComboBox>
+                                        <TextBlock Text="{Binding ExecutableDescription}" FontSize="10" FontWeight="SemiBold"
+                                                   LetterSpacing="0.7" IsVisible="{Binding IsDirectTarget}"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                             <TextBox Grid.Column="0" Text="{Binding ExecutablePath, Mode=TwoWay}"
+                                                     IsVisible="{Binding IsDirectTarget}"
                                                      Background="{DynamicResource EmuInputBrush}"
                                                      BorderBrush="{DynamicResource EmuBorderBrush}"
                                                      PlaceholderText="Not configured" />
                                             <Button Grid.Column="1" Content="Browse…"
+                                                    IsVisible="{Binding IsDirectTarget}"
                                                     Command="{Binding BrowseCommand}" />
                                         </Grid>
+                                        <ComboBox ItemsSource="{Binding AvailableFlatpakApplicationIds}"
+                                                  SelectedItem="{Binding FlatpakAppId, Mode=TwoWay}"
+                                                  IsEditable="True"
+                                                 IsVisible="{Binding IsFlatpakTarget}"
+                                                 Background="{DynamicResource EmuInputBrush}"
+                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                 PlaceholderText="Installed Flatpak or manual app id" />
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,4,0,0">
                                             <TextBlock Grid.Column="0" Text="LAUNCH ARGUMENTS" FontSize="10"
                                                        FontWeight="SemiBold" LetterSpacing="0.7"

@@ -29,6 +29,14 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
     {
         foreach (var candidate in candidates)
         {
+            if (candidate.SourceUri.IsFile)
+            {
+                var localArtwork = await CopyLocalArtworkAsync(candidate, cancellationToken);
+                if (localArtwork is not null)
+                    return localArtwork;
+                continue;
+            }
+
             HttpResponseMessage response;
             try
             {
@@ -118,6 +126,49 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
             }
         }
         return null;
+    }
+
+    private async Task<DownloadedArtwork?> CopyLocalArtworkAsync(
+        ArtworkCandidate candidate,
+        CancellationToken cancellationToken)
+    {
+        var path = Path.Combine(_downloadDirectory, $"{Guid.NewGuid():N}{candidate.FileExtension}");
+        try
+        {
+            await using var source = new FileStream(
+                candidate.SourceUri.LocalPath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read);
+            await using (var destination = new FileStream(
+                path,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                81920,
+                FileOptions.Asynchronous))
+            {
+                await CopyWithLimitAsync(source, destination, cancellationToken);
+            }
+            if (!HasSupportedImageSignature(path))
+            {
+                File.Delete(path);
+                LogCandidateFailure(candidate, "local file was not a supported image");
+                return null;
+            }
+            return new DownloadedArtwork(candidate, path);
+        }
+        catch (OperationCanceledException)
+        {
+            File.Delete(path);
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            File.Delete(path);
+            LogCandidateFailure(candidate, "local file could not be copied", ex);
+            return null;
+        }
     }
 
     // Cover hosts (GitHub raw, CDNs) rate-limit bulk fetches with HTTP 429/503. A whole

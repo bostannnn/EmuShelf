@@ -1,5 +1,6 @@
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.Importing;
 using EmuShelf.Infrastructure.Library;
 using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Persistence;
@@ -157,6 +158,35 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
 
         Assert.True(_metadata.TryApplyCatalogTitle(game.Id, "Catalog Title", "InternalId"));
         Assert.Empty(_metadata.GetGamesMissingMetadata());
+    }
+
+    [Fact]
+    public void MetadataReads_PreserveExternalLibraryEvidence()
+    {
+        var path = Path.Combine(BaseDirectory, "Games", "Demon's Souls");
+        var source = new ExternalLibrarySource(
+            "rpcs3-library",
+            "playstation3",
+            "RPCS3 library",
+            Path.Combine(BaseDirectory, "RPCS3"));
+        _library.ReconcileExternalLibrary(
+            source,
+        [
+            new ExternalLibraryGameEntry(
+                "BLUS30443",
+                path,
+                "Demon's Souls",
+                IsAvailable: true,
+                GameTitleOrigin.Embedded),
+        ]);
+        var game = _library.GetGames("playstation3").Single();
+
+        var metadataGame = _metadata.GetGame(game.Id);
+
+        Assert.NotNull(metadataGame);
+        Assert.Equal("rpcs3-library", metadataGame.ExternalSourceId);
+        Assert.Equal("BLUS30443", metadataGame.ExternalSourceEntryId);
+        Assert.True(metadataGame.IsPresentInExternalSource);
     }
 
     private Game AddGame(string filename, GameTitleOrigin origin)

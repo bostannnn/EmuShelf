@@ -21,7 +21,13 @@ dotnet build
 dotnet run --project src/EmuShelf.App
 ```
 
-Version 1 targets Windows (portable zip). The codebase builds and runs on macOS throughout development; a packaged macOS release is planned for later.
+The release workflow also publishes a self-contained `EmuShelf-linux-x64.AppImage` for
+SteamOS and other x64 Linux desktops. Extract/download it into a writable folder, mark it
+executable, then add it to Steam as a non-Steam game and start it with `--gamepad-ui` for
+Gaming Mode. If FUSE is unavailable, run `./EmuShelf-linux-x64.AppImage --appimage-extract-and-run`.
+Use Steam Input's keyboard mapping: D-pad/stick arrows, A Enter, B Escape, LB/RB Ctrl+PageUp/
+Ctrl+PageDown, X Search, and Y Actions; use Steam + X for the on-screen keyboard. Configure
+standalone emulator Flatpaks by their explicit app id; EmuShelf never changes Flatpak permissions.
 
 The Build workflow publishes a self-contained `EmuShelf-win-x64.zip` artifact. Extract
 the zip to a writable folder before launching `EmuShelf.exe`. Runtime data and daily

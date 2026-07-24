@@ -72,6 +72,7 @@ flight also wins the final database compare-and-set.
 | Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
 | Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
 | Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
+| Super Nintendo | SHA-1 of the headerless ROM (optional 512-byte copier header normalized away); header title is display-only | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
 
 GameCube and Wii covers are addressed by the disc id through GameTDB — the disc id's fourth
 character selects a region/language folder (`US`, `JA`, `EN`, `DE`, …), with `EN` and `US` tried
@@ -110,6 +111,16 @@ valid. It retains a commercial game code only as local evidence and streams the 
 SHA-1 for every catalogue match. Thus, regional revisions or altered payloads with the same code
 cannot collide. Copier/headered variants and archives stay unsupported until their normalization
 has deterministic fixtures.
+
+The Super Nintendo reader accepts a raw `.sfc` or `.smc` file between 32 KiB and 8 MiB. The SNES
+has no magic bytes, so recognition is structural: the internal LoROM (`0x7FC0`) or HiROM (`0xFFC0`)
+header must carry a consistent checksum/complement pair (`checksum XOR complement == 0xFFFF`), an
+emulation reset vector pointing into the `$8000-$FFFF` ROM window, and a plausible map-mode byte.
+The header title is Shift-JIS on Japanese cartridges, so it is read best-effort for display only
+and never gates recognition. An optional 512-byte copier header (present when `size % 0x2000 == 512`)
+is normalized away before hashing, matching both the No-Intro sets and the rcheevos algorithm, so a
+headered `.smc` and a headerless `.sfc` of the same cartridge resolve to one SHA-1. `.fig`/`.swc`
+copier formats stay unsupported until their normalization has deterministic fixtures.
 
 The expansion artwork route uses the same official Libretro thumbnail server as the existing
 title-addressed fallback. A title-path lookup is intentionally never made from a filename, header

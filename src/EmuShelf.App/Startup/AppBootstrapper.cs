@@ -23,6 +23,7 @@ using EmuShelf.Integrations.Achievements;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Metadata;
+using EmuShelf.Integrations.Launching;
 
 namespace EmuShelf.App.Startup;
 
@@ -54,6 +55,8 @@ public sealed class AppBootstrapper
     public IReadOnlyList<EmulatorDefinition> Emulators { get; }
     public IEmulatorConfigurationStore EmulatorConfigurations { get; }
     public ITrackedProcessRunner ProcessRunner { get; }
+    public ILaunchTargetInspector LaunchTargetInspector { get; }
+    public IGameLaunchDependencyResolver GameLaunchDependencies { get; }
 
     public AppBootstrapper()
     {
@@ -110,6 +113,8 @@ public sealed class AppBootstrapper
         MetadataProfiles = KnownMetadataProfiles.All;
         EmulatorConfigurations = new SqliteEmulatorConfigurationStore(database, PathResolver);
         ProcessRunner = new TrackedProcessRunner();
+        LaunchTargetInspector = new FlatpakLaunchTargetInspector();
+        GameLaunchDependencies = new GameLaunchDependencyResolver();
         ImportRules = new FileImportRules(Systems);
         FolderScanner = new FolderScanner(ImportRules);
         AvailabilityChecker = new FileAvailabilityChecker();

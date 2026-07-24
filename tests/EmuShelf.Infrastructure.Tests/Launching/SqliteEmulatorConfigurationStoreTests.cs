@@ -9,6 +9,50 @@ namespace EmuShelf.Infrastructure.Tests.Launching;
 public class SqliteEmulatorConfigurationStoreTests : TempAppDirectoryTestBase
 {
     [Fact]
+    public void Save_FlatpakTarget_RoundTripsFromSharedInstallationOnly()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        store.Save(new EmulatorConfiguration("playstation2", null, "{GamePath}")
+        {
+            EmulatorId = "pcsx2",
+            EmulatorInstallationId = "pcsx2-flatpak",
+            LaunchTarget = new FlatpakApplicationTarget("net.pcsx2.PCSX2"),
+        });
+
+        var loaded = store.Get("playstation2");
+        Assert.Null(loaded!.ExecutablePath);
+        Assert.Equal(new FlatpakApplicationTarget("net.pcsx2.PCSX2"), loaded.LaunchTarget);
+
+        using var connection = database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT TargetKind || ':' || TargetValue FROM EmulatorInstallations WHERE InstallationId = 'pcsx2-flatpak';";
+        Assert.Equal("flatpak:net.pcsx2.PCSX2", command.ExecuteScalar());
+    }
+
+    [Fact]
+    public void Save_InvalidFlatpakApplicationId_IsRejected()
+    {
+        var database = new LibraryDatabase(AppPaths);
+        AppPaths.EnsureDirectoriesExist();
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(AppPaths));
+
+        var exception = Assert.Throws<ArgumentException>(() => store.Save(
+            new EmulatorConfiguration("playstation2", null, "{GamePath}")
+            {
+                LaunchTarget = new FlatpakApplicationTarget("not-an-app-id"),
+            }));
+
+        Assert.Contains("Flatpak application id", exception.Message);
+    }
+
+    [Fact]
     public void Save_RoundTripsPortableExecutableAndArguments()
     {
         var paths = AppPaths;
@@ -31,13 +75,14 @@ public class SqliteEmulatorConfigurationStoreTests : TempAppDirectoryTestBase
             {
                 EmulatorId = "dolphin",
                 EmulatorInstallationId = "dolphin-gamecube",
+                LaunchTarget = new DirectExecutableTarget(executable),
             },
             store.Get("gamecube"));
 
         using var connection = database.CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT ExecutablePath FROM EmulatorConfigs WHERE SystemId = 'gamecube';";
-        Assert.Equal("Emulators/Dolphin/Dolphin.exe", command.ExecuteScalar());
+        Assert.IsType<DBNull>(command.ExecuteScalar());
     }
 
     [Fact]
