@@ -819,6 +819,67 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ShoulderButtons_StepThroughCollectionsInRailOrderWithoutWrapping()
+    {
+        // Regression: LB/RB walked All Games -> systems and stepped over the Collections tab.
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        Assert.True(vm.IsAllGamesSelected);
+
+        // Forward: All Games -> Collections -> first system.
+        await vm.NextPlatformCommand.ExecuteAsync(null);
+        Assert.True(vm.IsRecentlyAddedSelected);
+        Assert.Null(vm.SelectedSystem);
+
+        await vm.NextPlatformCommand.ExecuteAsync(null);
+        Assert.Same(vm.Systems[0], vm.SelectedSystem);
+
+        // Backward returns through Collections rather than jumping to All Games.
+        await vm.PreviousPlatformCommand.ExecuteAsync(null);
+        Assert.True(vm.IsRecentlyAddedSelected);
+
+        await vm.PreviousPlatformCommand.ExecuteAsync(null);
+        Assert.True(vm.IsAllGamesSelected);
+
+        // No wrap at the start.
+        await vm.PreviousPlatformCommand.ExecuteAsync(null);
+        Assert.True(vm.IsAllGamesSelected);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadCovers_UsePlatformAspectRatioOnASharedShelf()
+    {
+        // Mixed-platform view: each tile keeps its own platform's cover height, while every tile
+        // shares one shelf height so rows stay aligned.
+        // PS1 art is square (1.0) and GameCube is portrait (0.708), so the two tiles must differ.
+        var ps1Path = Path.Combine(_baseDirectory, "AspectPs1.cue");
+        File.WriteAllText(ps1Path, "FILE \"AspectPs1.bin\" BINARY");
+        var cubePath = Path.Combine(_baseDirectory, "AspectCube.iso");
+        File.WriteAllText(cubePath, "x");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = ps1Path, Title = "Aspect PS1", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = cubePath, Title = "Aspect GC", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        var ps1 = vm.Games.Single(game => game.Title == "Aspect PS1");
+        var cube = vm.Games.Single(game => game.Title == "Aspect GC");
+
+        Assert.NotEqual(ps1.CoverAspectRatio, cube.CoverAspectRatio);
+        Assert.NotEqual(ps1.CoverHeight, cube.CoverHeight);
+        Assert.Equal(Math.Round(ps1.CoverWidth / ps1.CoverAspectRatio), ps1.CoverHeight);
+        Assert.Equal(Math.Round(cube.CoverWidth / cube.CoverAspectRatio), cube.CoverHeight);
+        // One shared shelf, tall enough for the tallest cover, keeps the grid rows aligned.
+        Assert.Equal(ps1.ShelfCoverHeight, cube.ShelfCoverHeight);
+        Assert.Equal(Math.Max(ps1.CoverHeight, cube.CoverHeight), ps1.ShelfCoverHeight);
+    }
+
+    [AvaloniaFact]
     public void DispatchGamepadAction_OutsideGamepadMode_IsIgnored()
     {
         var vm = CreateViewModel();

@@ -835,7 +835,9 @@
                                 MinHeight="54" Padding="22,10">
                             <TextBlock Text="All Games" VerticalAlignment="Center" />
                         </Button>
-                        <Button x:Name="GamepadCollectionsTab" Classes="gamepad-platform" Classes.focused="{Binding IsGamepadCollectionsRailFocused}"
+                        <Button x:Name="GamepadCollectionsTab" Classes="gamepad-platform"
+                                Classes.selected="{Binding IsRecentlyAddedSelected}"
+                                Classes.focused="{Binding IsGamepadCollectionsRailFocused}"
                                 MinHeight="54" Padding="22,10"
                                 Command="{Binding OpenGamepadCollectionsCommand}">
                             <TextBlock Text="Collections" VerticalAlignment="Center" />
@@ -882,7 +884,8 @@
                         CommandParameter="{x:Static settings:InterfaceMode.Desktop}" />
             </StackPanel>
         </Grid>
-        <ScrollViewer Grid.Row="2" Margin="52,8,52,36" SizeChanged="OnGamepadLibrarySizeChanged"
+        <ScrollViewer x:Name="GamepadLibraryScroller" Grid.Row="2" Margin="52,8,52,36"
+                      SizeChanged="OnGamepadLibrarySizeChanged"
                       IsHitTestVisible="{Binding !HasGamepadOverlay}">
             <ItemsRepeater x:Name="GamepadRepeater" ItemsSource="{Binding Games}">
                 <ItemsRepeater.Layout>
@@ -896,9 +899,14 @@
                                 CommandParameter="{Binding}"
                                 DoubleTapped="OnGameDoubleTapped">
                             <StackPanel Width="{Binding CoverWidth}" Spacing="10">
-                                <!-- Gamepad All Games uses one stable artwork well. Art keeps its native
-                                     ratio via Uniform, avoiding the mixed-height shelves seen across systems. -->
-                                <Grid Width="{Binding CoverWidth}" Height="{Binding GamepadCoverFrameHeight}">
+                                <!-- Each tile uses its platform's true cover frame (CoverHeight from
+                                     GameSystem.CoverAspectRatio), matching the desktop grid. Frames
+                                     bottom-align on a shared shelf sized to the tallest cover in the
+                                     view, so mixed-platform All Games keeps one baseline and the
+                                     titles still line up. -->
+                                <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
+                                  <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
+                                         VerticalAlignment="Bottom">
                                     <Border CornerRadius="9" Background="{DynamicResource EmuCoverWellBrush}"
                                             BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1" ClipToBounds="True"
                                             AttachedToVisualTree="OnGameCoverAttached"
@@ -918,13 +926,16 @@
                                                                LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
                                             </Grid>
+                                            <!-- The frame is the platform's true scan ratio, so filling it
+                                                 bleeds a hair rather than letterboxing. -->
                                             <Image Source="{Binding CoverImage}" IsVisible="{Binding HasCoverImage}"
-                                                   Stretch="Uniform" />
+                                                   Stretch="UniformToFill" />
                                         </Panel>
                                     </Border>
                                     <Border IsVisible="{Binding IsFocused}" IsHitTestVisible="False"
                                             CornerRadius="9" BorderBrush="{DynamicResource EmuAccentBrush}"
                                             BorderThickness="3" />
+                                  </Panel>
                                 </Grid>
                                 <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
                                            TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"

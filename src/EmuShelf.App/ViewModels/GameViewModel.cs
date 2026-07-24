@@ -52,8 +52,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public double ListCoverWidth { get; }
     public double ListCoverHeight { get; }
-    /// <summary>Shared Gamepad artwork well height keeps mixed-system All Games rows stable.</summary>
-    public double GamepadCoverFrameHeight { get; } = 280;
 
     /// <summary>Platform cover aspect ratio (width:height); the library uses it to choose the
     /// shelf height for a mixed view.</summary>

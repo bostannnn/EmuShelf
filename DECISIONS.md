@@ -1104,3 +1104,78 @@ places every cover inside one fixed-height artwork well using `Uniform` scaling:
 cropped or distorted, while mixed portrait, handheld, and wide cartridge artwork no longer creates
 an irregular shelf grid. This is Gamepad-only presentation and does not change stored artwork or
 the desktop library layout.
+
+## 2026-07-24 — Flatpak launches get ephemeral, per-launch read-only ROM access
+
+This supersedes the earlier stance (2026-07-21) that EmuShelf never grants a Flatpak emulator
+access and leaves it to the user. A Flatpak emulator (e.g. `net.pcsx2.PCSX2`, whose default
+manifest exposes no user-file access at all) runs sandboxed and cannot see ROMs under `~/Documents`,
+so a launch that passes EmuShelf's own `File.Exists` check still fails *inside* the emulator with a
+bare "requested filename does not exist". EmuShelf now injects `--filesystem=<dir>:ro` into the
+`flatpak run` invocation for exactly the directories the launch needs — the game plus any resolved
+CUE/M3U dependencies, deduplicated — reusing the dependency set already computed for the launch.
+
+The grant is deliberately **ephemeral**: it applies to that single `flatpak run` process and
+vanishes on exit, so EmuShelf never edits the emulator's stored overrides (`flatpak override`) and
+never persistently widens its sandbox. It is **read-only**, honoring the never-modify-game-files
+rule; the emulator's own memory cards/BIOS/save-states live in its private data dir, which it
+already owns. Multi-file sets work because the emulator still opens the original paths — file
+forwarding via the document portal was rejected as the default since it rewrites paths and breaks
+CUE/M3U sibling references.
+
+Consequently the old `flatpak info --file-access` preflight is removed. It was also **buggy**: it
+compared against `none`/`read`/`read-write`, but real flatpak prints `hidden`/`read-only`/
+`read-write`, so a no-access path (`hidden`) fell through the "unknown state → warn and proceed"
+branch instead of blocking — the exact reason the PCSX2 failure surfaced as the emulator's own
+cryptic error rather than a clear EmuShelf message. With access now granted proactively, the
+inspector only needs to confirm the app is installed.
+
+## 2026-07-24 — Native SDL2 controller input augments Steam Input, never replaces keyboard
+
+Gamepad mode previously relied solely on Steam Input mapping controller buttons to keyboard keys
+(2026-07-21). That is fragile: a default non-Steam controller layout emits a virtual gamepad, not
+keystrokes, so nothing happens until the user hand-configures a keyboard layout. EmuShelf now reads
+the physical controller directly through SDL2's GameController API (`SdlGamepadReader`), which
+normalizes any recognized pad to the standard layout and honors SDL's controller database.
+
+Input is unified behind a single `MainViewModel.DispatchGamepadAction` entry point that both the
+native poll loop and the Steam-Input keyboard handler feed, so the two paths cannot diverge; the
+button→action contract is identical (A confirm, B back, X search, Y actions, LB/RB platform, d-pad/
+left-stick navigate with menu-style auto-repeat). Polling runs only in Gamepad mode.
+
+The native layer is strictly additive and fully defensive: SDL is loaded lazily through a
+multi-name `DllImportResolver`, every native call is guarded, and any load/init failure sets
+`IsAvailable=false` and returns a disconnected reading forever — so keyboard/Steam Input remains the
+universal fallback everywhere.
+
+For genuine Linux/Windows/macOS parity the native SDL2 binary is **bundled**, not assumed present.
+It comes from the `ppy.SDL2-CS` package with `ExcludeAssets="compile;runtime"` so only the native
+libraries ship (win-x64, win-arm64, linux-x64, osx-x64, osx-arm64) — the managed SDL2-CS binding is
+not used or redistributed; EmuShelf keeps its own P/Invoke. A self-contained per-RID publish flattens
+the native beside the executable, so `NativeLibrary.TryLoad` finds it in the app directory; the
+resolver tries the bundled filename first and only then a system soname, so SteamOS still works if
+the bundle is ever absent. SDL2 is zlib-licensed and credited in THIRD-PARTY-NOTICES. Chosen over
+SDL3 to match the SDL2 that SteamOS itself ships.
+
+## 2026-07-24 — Gamepad covers use each platform's true frame on a shared shelf
+
+This supersedes the 2026-07-23 "Gamepad All Games uses a normalized artwork well" decision. The
+fixed 280px well letterboxed every cover into one generic box, so a square PS1 cover and a portrait
+GameCube cover rendered at the same size and neither matched its real artwork. Gamepad tiles now use
+the same model the desktop grid already had: the frame is the platform's true `CoverAspectRatio`
+(`CoverHeight`), and frames bottom-align inside a shared `ShelfCoverHeight` sized to the tallest
+cover in the current view.
+
+That keeps the property the well was introduced to protect — mixed-platform All Games rows stay
+baseline-aligned and titles line up, because every tile shares one shelf height — while each cover
+finally shows at its own shape. Art fills the frame with `UniformToFill`; since the frame is the
+platform's real scan ratio this bleeds a hair rather than letterboxing. `GamepadCoverFrameHeight`
+is removed rather than left unused.
+
+## 2026-07-24 — Shoulder buttons walk the rail's real order
+
+LB/RB stepped All Games -> systems while the rail renders All Games, Collections, then systems, so
+the shoulder buttons silently skipped Collections. Platform cycling now uses the rail's own index
+space (0 All Games, 1 Collections, 2+ systems) and still refuses to wrap at either end. The
+Collections tab also gains the `selected` styling the other tabs already had, so it looks active
+when reached.

@@ -419,19 +419,26 @@ public partial class MainViewModel : ViewModelBase
             SelectedSystem = system;
     }
 
+    // LB/RB walk the same order the controller rail shows — All Games, Collections, then each
+    // system — so Collections is reachable by shoulder buttons instead of being stepped over.
     private async Task MovePlatformAsync(int direction)
     {
-        var current = CurrentLibraryScope == LibraryScope.AllGames
-            ? 0
-            : SelectedSystem is null ? 0 : Systems.IndexOf(SelectedSystem) + 1;
+        var current = CurrentLibraryScope switch
+        {
+            LibraryScope.AllGames => 0,
+            LibraryScope.RecentlyAdded => 1,
+            _ => SelectedSystem is null ? 0 : Systems.IndexOf(SelectedSystem) + 2,
+        };
         var target = current + direction;
-        if (target < 0 || target > Systems.Count)
+        if (target < 0 || target > Systems.Count + 1)
             return;
 
         if (target == 0)
             await ShowCollectionAsync(LibraryScope.AllGames);
+        else if (target == 1)
+            await ShowCollectionAsync(LibraryScope.RecentlyAdded);
         else
-            SelectedSystem = Systems[target - 1];
+            SelectedSystem = Systems[target - 2];
     }
 
     [RelayCommand]

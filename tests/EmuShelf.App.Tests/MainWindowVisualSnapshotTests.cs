@@ -285,6 +285,71 @@ public class MainWindowVisualSnapshotTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task GamepadFocusMovingDownScrollsTheVirtualizedGrid()
+    {
+        // Regression: focus moved past the visible rows but the grid never scrolled, so the focus
+        // ring walked off-screen and the library appeared stuck at the last visible row.
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+        viewModel.Games.ReplaceAll(Enumerable.Range(0, 60).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = system.Id,
+                Path = $"/Games/{system.Id}/Game {index + 1}.bin",
+                Title = $"Sample game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            viewModel.FocusedGame = viewModel.Games[0];
+            await PumpAsync();
+
+            var scroller = window.GetVisualDescendants()
+                .OfType<ScrollViewer>()
+                .Single(candidate => candidate.Name == "GamepadLibraryScroller");
+            var initialOffset = scroller.Offset.Y;
+
+            // Walk down far enough to leave the first viewport regardless of the resolved column count.
+            for (var step = 0; step < 6; step++)
+            {
+                viewModel.MoveGamepadFocusDownCommand.Execute(null);
+                await PumpAsync();
+            }
+
+            Assert.True(
+                viewModel.Games.IndexOf(viewModel.FocusedGame!) > viewModel.GamepadColumnCount,
+                "focus should have moved past the first row");
+            Assert.True(
+                scroller.Offset.Y > initialOffset,
+                $"grid should have scrolled to reveal the focused game (offset stayed at {scroller.Offset.Y}).");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // The reveal is posted at Input priority, so drain that queue (Background is lower) and then
+    // let a render/layout pass settle before asserting on scroll offsets.
+    private static async Task PumpAsync()
+    {
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+    }
+
     private static async Task SaveGamepadOverlaySnapshotAsync(Window window, string? outputDirectory, string fileName)
     {
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);

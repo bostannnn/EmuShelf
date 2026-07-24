@@ -38,6 +38,14 @@ public partial class MainWindow : Window
     // reveals the corresponding realized tab without making layout/visual concerns business logic.
     private void OnGamepadViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Moving focus down/up past the visible rows must scroll the virtualized grid, otherwise the
+        // focus ring walks off-screen and the library looks stuck at the last visible row.
+        if (e.PropertyName is nameof(MainViewModel.FocusedGame))
+        {
+            Dispatcher.UIThread.Post(RevealFocusedGame, DispatcherPriority.Input);
+            return;
+        }
+
         if (e.PropertyName is not (nameof(MainViewModel.SelectedSystem) or
             nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.IsGamepadRailFocused) or
             nameof(MainViewModel.GamepadRailIndex) or nameof(MainViewModel.GamepadOverlay) or
@@ -48,6 +56,29 @@ public partial class MainWindow : Window
 
         Dispatcher.UIThread.Post(RevealGamepadRail, DispatcherPriority.Input);
         Dispatcher.UIThread.Post(RevealGamepadOverlayFocus, DispatcherPriority.Input);
+    }
+
+    // View-focused coordination only: the view model owns which game is focused; this window scrolls
+    // that game's tile into view. The target row may not be realized yet under virtualization, so it
+    // is realized on demand and laid out before being brought into view.
+    private void RevealFocusedGame()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel ||
+            viewModel.FocusedGame is not { } focused)
+        {
+            return;
+        }
+
+        var index = viewModel.Games.IndexOf(focused);
+        if (index < 0)
+            return;
+
+        var element = GamepadRepeater.TryGetElement(index) ?? GamepadRepeater.GetOrCreateElement(index);
+        if (element is null)
+            return;
+
+        GamepadRepeater.UpdateLayout();
+        element.BringIntoView();
     }
 
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
