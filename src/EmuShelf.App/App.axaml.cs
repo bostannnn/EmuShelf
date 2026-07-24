@@ -8,6 +8,7 @@ using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Launching;
 using EmuShelf.Infrastructure.Achievements;
+using EmuShelf.Infrastructure.Input;
 using EmuShelf.Infrastructure.Metadata;
 
 namespace EmuShelf.App;
@@ -17,6 +18,7 @@ public partial class App : Application
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
     private HttpClient? _metadataHttpClient;
     private HttpClient? _retroAchievementsHttpClient;
+    private GamepadInputService? _gamepadInput;
 
     public override void Initialize()
     {
@@ -154,6 +156,15 @@ public partial class App : Application
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
 
+            // Native controller input (SDL2) drives the same Gamepad-mode routing as Steam Input's
+            // keyboard mapping. It polls only in Gamepad mode and degrades to no-op if SDL2 or a
+            // controller is unavailable, so keyboard/Steam Input remains the fallback everywhere.
+            _gamepadInput = new GamepadInputService(
+                new SdlGamepadReader(),
+                viewModel,
+                interfaceModeService,
+                Bootstrapper.Logger);
+
             // Availability check runs after the UI paints — background, no discovery scan.
             desktop.MainWindow.Opened += (_, _) =>
                 Dispatcher.UIThread.Post(() =>
@@ -163,6 +174,7 @@ public partial class App : Application
                 }, DispatcherPriority.Background);
             desktop.Exit += (_, _) =>
             {
+                _gamepadInput?.Dispose();
                 _metadataHttpClient?.Dispose();
                 _retroAchievementsHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");

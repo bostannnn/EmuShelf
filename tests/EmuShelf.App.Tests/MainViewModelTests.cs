@@ -819,6 +819,33 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void DispatchGamepadAction_OutsideGamepadMode_IsIgnored()
+    {
+        var vm = CreateViewModel();
+
+        Assert.False(vm.DispatchGamepadAction(GamepadAction.Search));
+        Assert.False(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public void DispatchGamepadAction_RoutesActionsIdenticallyToTheKeyboardPath()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+
+        // X opens search (a text overlay); the same routing native input and Steam Input share.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Search));
+        Assert.Equal(GamepadOverlayKind.Search, vm.GamepadOverlay);
+        Assert.True(vm.GamepadOverlayOwnsTextInput);
+
+        // While a text overlay owns input, B dismisses it and directional input is inert.
+        Assert.False(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
     public async Task AddGames_M3uHidesSelectedReferencedDiscs()
     {
         var folder = MakeRomsFolder();

@@ -598,6 +598,108 @@ public partial class MainViewModel : ViewModelBase
             await _interfaceModeService.SetModeAsync(mode);
     }
 
+    /// <summary>
+    /// Single routing entry point for controller commands, shared by native pad input
+    /// (<see cref="GamepadInputService"/>) and Steam-Input keyboard mapping (the MainWindow key
+    /// handler), so both input paths behave identically. Returns whether the action was consumed,
+    /// letting the key handler mark the event handled.
+    /// </summary>
+    public bool DispatchGamepadAction(GamepadAction action)
+    {
+        if (!IsGamepadMode)
+            return false;
+
+        if (GamepadOverlayOwnsTextInput)
+            return DispatchTextOverlayAction(action);
+
+        return HasGamepadOverlay
+            ? DispatchOverlayAction(action)
+            : DispatchLibraryAction(action);
+    }
+
+    private bool DispatchTextOverlayAction(GamepadAction action)
+    {
+        // A Search/Rename overlay owns text entry (typed via the Steam/OS on-screen keyboard); the
+        // controller may only confirm or dismiss it.
+        switch (action)
+        {
+            case GamepadAction.Cancel:
+                CloseGamepadOverlayCommand.Execute(null);
+                return true;
+            case GamepadAction.Confirm when IsGamepadRenameOpen:
+                SaveGamepadTitleCommand.Execute(null);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private bool DispatchOverlayAction(GamepadAction action)
+    {
+        switch (action)
+        {
+            case GamepadAction.Cancel:
+                CloseGamepadOverlayCommand.Execute(null);
+                return true;
+            case GamepadAction.Search when IsGamepadAchievementsOpen:
+                GamepadAchievementDetails?.RefreshCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateUp:
+                MoveGamepadOverlayUpCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateDown:
+                MoveGamepadOverlayDownCommand.Execute(null);
+                return true;
+            case GamepadAction.Confirm when !IsGamepadAchievementsOpen:
+                ActivateGamepadOverlayCommand.Execute(null);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private bool DispatchLibraryAction(GamepadAction action)
+    {
+        switch (action)
+        {
+            case GamepadAction.PreviousPlatform:
+                PreviousPlatformCommand.Execute(null);
+                return true;
+            case GamepadAction.NextPlatform:
+                NextPlatformCommand.Execute(null);
+                return true;
+            case GamepadAction.Confirm when IsGamepadRailFocused:
+                ActivateGamepadRailCommand.Execute(null);
+                return true;
+            case GamepadAction.Confirm:
+                LaunchFocusedGameCommand.Execute(null);
+                return true;
+            case GamepadAction.Cancel:
+                SetInterfaceModeCommand.Execute(InterfaceMode.Desktop);
+                return true;
+            case GamepadAction.Search:
+                OpenGamepadSearchCommand.Execute(null);
+                return true;
+            case GamepadAction.Actions:
+                OpenFocusedGameActionsCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateLeft:
+                MoveGamepadFocusLeftCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateRight:
+                MoveGamepadFocusRightCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateUp:
+                MoveGamepadFocusUpCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateDown:
+                MoveGamepadFocusDownCommand.Execute(null);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void OpenGamepadOverlay(GamepadOverlayKind overlay)
     {
         if (!IsGamepadMode)

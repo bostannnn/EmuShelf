@@ -123,8 +123,49 @@ public class EmulatorLaunchServiceTests : IDisposable
 
         Assert.True(result.Succeeded);
         Assert.Equal("flatpak", _runner.StartSpec!.FileName);
-        Assert.Equal(["run", "net.example.Emulator", "--batch", game.Path], _runner.StartSpec.Arguments);
+        // A read-only grant for the game's directory precedes the app id so the sandbox can see the
+        // ROM; EmuShelf never persistently changes the emulator's Flatpak permissions.
+        Assert.Equal(
+            ["run", $"--filesystem={_directory}:ro", "net.example.Emulator", "--batch", game.Path],
+            _runner.StartSpec.Arguments);
         Assert.DoesNotContain("\"", string.Join(' ', _runner.StartSpec.Arguments));
+    }
+
+    [Fact]
+    public async Task LaunchAsync_FlatpakTarget_GrantsOneReadOnlyDirectoryPerDistinctDependency()
+    {
+        var game = CreateGameFile("playlist/game.m3u");
+        var discOne = CreateGameFile("playlist/game (Disc 1).chd").Path;
+        var discTwo = CreateGameFile("other/game (Disc 2).chd").Path;
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, null, "--batch \"{GamePath}\"")
+        {
+            LaunchTarget = new FlatpakApplicationTarget("net.example.Emulator"),
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_emulator],
+            _logger,
+            new PassingTargetInspector(),
+            // The playlist and both discs share two directories; each is granted once, in order.
+            new FixedDependencyResolver(game.Path, discOne, discTwo));
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        var playlistDirectory = Path.GetDirectoryName(game.Path);
+        var otherDirectory = Path.GetDirectoryName(discTwo);
+        Assert.Equal(
+            [
+                "run",
+                $"--filesystem={playlistDirectory}:ro",
+                $"--filesystem={otherDirectory}:ro",
+                "net.example.Emulator",
+                "--batch",
+                game.Path,
+            ],
+            _runner.StartSpec!.Arguments);
     }
 
     [Fact]

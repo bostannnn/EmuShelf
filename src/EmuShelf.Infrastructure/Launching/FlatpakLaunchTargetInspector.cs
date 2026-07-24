@@ -33,35 +33,15 @@ public sealed class FlatpakLaunchTargetInspector : ILaunchTargetInspector
         if (target is not FlatpakApplicationTarget flatpak)
             return _directInspector.Inspect(target, requiredPaths);
 
+        // The only remaining precondition is that the application is installed. EmuShelf now grants
+        // the sandbox read-only access to the required paths at launch time (see
+        // EmulatorLaunchService.BuildReadOnlyFilesystemGrants), so per-file access is guaranteed by
+        // the launch itself. Deliberately do NOT probe `flatpak info --file-access`: it reports only
+        // the static manifest permissions and prints "hidden" for any path the ephemeral launch
+        // grant will make visible, which would wrongly reject launches that actually succeed.
         var installed = Execute("info", flatpak.AppId);
         if (installed.ExitCode != 0)
             return LaunchTargetInspection.Failed($"Flatpak application '{flatpak.AppId}' is not installed.");
-
-        foreach (var path in requiredPaths.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var access = Execute("info", $"--file-access={path}", flatpak.AppId);
-            if (access.ExitCode != 0 || string.IsNullOrWhiteSpace(access.StandardOutput))
-            {
-                return new LaunchTargetInspection(
-                    true,
-                    WarningMessage: $"Could not determine Flatpak access to '{path}'. Launch will be attempted.");
-            }
-
-            var level = access.StandardOutput.Trim();
-            if (level.Equals("none", StringComparison.OrdinalIgnoreCase))
-            {
-                return LaunchTargetInspection.Failed(
-                    $"Flatpak application '{flatpak.AppId}' cannot access '{path}'.");
-            }
-
-            if (!level.Equals("read", StringComparison.OrdinalIgnoreCase) &&
-                !level.Equals("read-write", StringComparison.OrdinalIgnoreCase))
-            {
-                return new LaunchTargetInspection(
-                    true,
-                    WarningMessage: $"Flatpak returned an unknown access state for '{path}'. Launch will be attempted.");
-            }
-        }
 
         return LaunchTargetInspection.Passed();
     }

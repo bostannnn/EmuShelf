@@ -86,6 +86,20 @@ EmuShelf never writes that file or any other RPCS3 data.
 - License: MIT; the complete text is retained in
   `src/EmuShelf.App/Assets/ThirdParty/YamlDotNet-LICENSE.txt`.
 
+## SDL2 for native controller input
+
+EmuShelf bundles the native Simple DirectMedia Layer 2 (SDL2) shared library to read physical
+game controllers directly (via its GameController API), so Gamepad mode works without relying on
+Steam Input. Only the native binary is distributed — per platform, `SDL2.dll` (Windows),
+`libSDL2.so` (Linux), or `libSDL2.dylib` (macOS), for x64 and arm64. The binaries are obtained from
+the [`ppy.SDL2-CS`](https://github.com/ppy/SDL2-CS) native package; EmuShelf uses its own minimal
+P/Invoke and does not ship the managed SDL2-CS binding assembly. EmuShelf calls into SDL2 only for
+controller polling.
+
+- Copyright: Copyright (C) 1997-2025 Sam Lantinga.
+- License: zlib; the complete text is retained in
+  `src/EmuShelf.App/Assets/ThirdParty/SDL2-LICENSE.txt`.
+
 ## Opt-in network metadata sources (not distributed)
 
 EmuShelf can, only after the user opts in, request title catalogs and individual

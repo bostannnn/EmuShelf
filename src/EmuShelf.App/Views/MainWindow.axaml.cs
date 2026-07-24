@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.ComponentModel;
+using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 
 namespace EmuShelf.App.Views;
@@ -128,51 +129,33 @@ public partial class MainWindow : Window
 
         if (viewModel.IsGamepadMode)
         {
-            // A Gamepad overlay is the only controller-input owner until it closes.
-            if (viewModel.HasGamepadOverlay)
-            {
-                if (e.Key == Key.Escape)
-                    viewModel.CloseGamepadOverlayCommand.Execute(null);
-                else if (viewModel.IsGamepadAchievementsOpen && e.Key == Key.X)
-                    viewModel.GamepadAchievementDetails?.RefreshCommand.Execute(null);
-                else if (e.Key == Key.Up)
-                    viewModel.MoveGamepadOverlayUpCommand.Execute(null);
-                else if (e.Key == Key.Down)
-                    viewModel.MoveGamepadOverlayDownCommand.Execute(null);
-                else if (e.Key == Key.Enter && !viewModel.IsGamepadAchievementsOpen)
-                    viewModel.ActivateGamepadOverlayCommand.Execute(null);
-                else
-                    return;
+            // Steam Input delivers controller buttons as these keys; map them to the same logical
+            // actions native pad input produces and route both through the one view-model dispatcher.
+            if (MapKeyToGamepadAction(e) is { } action && viewModel.DispatchGamepadAction(action))
                 e.Handled = true;
-                return;
-            }
-
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.PageUp)
-                viewModel.PreviousPlatformCommand.Execute(null);
-            else if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.Key == Key.PageDown)
-                viewModel.NextPlatformCommand.Execute(null);
-            else if (viewModel.IsGamepadRailFocused && e.Key == Key.Enter)
-                viewModel.ActivateGamepadRailCommand.Execute(null);
-            else if (e.Key == Key.Enter)
-                viewModel.LaunchFocusedGameCommand.Execute(null);
-            else if (e.Key == Key.Escape)
-                viewModel.SetInterfaceModeCommand.Execute(EmuShelf.Core.Settings.InterfaceMode.Desktop);
-            else if (e.Key == Key.X)
-                viewModel.OpenGamepadSearchCommand.Execute(null);
-            else if (e.Key == Key.Y)
-                viewModel.OpenFocusedGameActionsCommand.Execute(null);
-            else if (e.Key == Key.Left)
-                viewModel.MoveGamepadFocusLeftCommand.Execute(null);
-            else if (e.Key == Key.Right)
-                viewModel.MoveGamepadFocusRightCommand.Execute(null);
-            else if (e.Key == Key.Up)
-                viewModel.MoveGamepadFocusUpCommand.Execute(null);
-            else if (e.Key == Key.Down)
-                viewModel.MoveGamepadFocusDownCommand.Execute(null);
-            else
-                return;
-            e.Handled = true;
             return;
+        }
+
+        // Steam Input keyboard contract: LB/RB map to Ctrl+PageUp/Ctrl+PageDown for platform switching.
+        static GamepadAction? MapKeyToGamepadAction(KeyEventArgs key)
+        {
+            if (key.KeyModifiers.HasFlag(KeyModifiers.Control) && key.Key == Key.PageUp)
+                return GamepadAction.PreviousPlatform;
+            if (key.KeyModifiers.HasFlag(KeyModifiers.Control) && key.Key == Key.PageDown)
+                return GamepadAction.NextPlatform;
+
+            return key.Key switch
+            {
+                Key.Enter => GamepadAction.Confirm,
+                Key.Escape => GamepadAction.Cancel,
+                Key.X => GamepadAction.Search,
+                Key.Y => GamepadAction.Actions,
+                Key.Left => GamepadAction.NavigateLeft,
+                Key.Right => GamepadAction.NavigateRight,
+                Key.Up => GamepadAction.NavigateUp,
+                Key.Down => GamepadAction.NavigateDown,
+                _ => null,
+            };
         }
 
         var isSelectionModifier = e.KeyModifiers.HasFlag(KeyModifiers.Control) ||

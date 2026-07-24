@@ -25,9 +25,17 @@ The release workflow also publishes a self-contained `EmuShelf-linux-x64.AppImag
 SteamOS and other x64 Linux desktops. Extract/download it into a writable folder, mark it
 executable, then add it to Steam as a non-Steam game and start it with `--gamepad-ui` for
 Gaming Mode. If FUSE is unavailable, run `./EmuShelf-linux-x64.AppImage --appimage-extract-and-run`.
-Use Steam Input's keyboard mapping: D-pad/stick arrows, A Enter, B Escape, LB/RB Ctrl+PageUp/
-Ctrl+PageDown, X Search, and Y Actions; use Steam + X for the on-screen keyboard. Configure
-standalone emulator Flatpaks by their explicit app id; EmuShelf never changes Flatpak permissions.
+
+In Gamepad mode EmuShelf reads the controller natively via bundled SDL2 (Windows, Linux, and
+macOS, x64 and arm64): A confirm, B back, X search, Y actions, LB/RB switch platform,
+d-pad/left-stick navigate. No Steam Input layout is required, though the same keyboard mapping
+(arrows, Enter, Escape, Ctrl+PageUp/PageDown, X, Y) still works as a fallback; use Steam + X for
+the on-screen keyboard when typing.
+
+Configure standalone emulator Flatpaks (e.g. `net.pcsx2.PCSX2`) by their explicit app id.
+EmuShelf grants the sandbox read-only access to just the game being launched, for that launch
+only — so ROMs anywhere under your home (Documents, SD card, etc.) launch without Flatseal or
+`flatpak override`, and EmuShelf never persistently alters an emulator's Flatpak permissions.
 
 The Build workflow publishes a self-contained `EmuShelf-win-x64.zip` artifact. Extract
 the zip to a writable folder before launching `EmuShelf.exe`. Runtime data and daily

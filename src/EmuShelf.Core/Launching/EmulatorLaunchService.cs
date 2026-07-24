@@ -179,7 +179,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                     Path.GetDirectoryName(direct.Path) ?? Environment.CurrentDirectory),
                 FlatpakApplicationTarget flatpak => new ProcessStartSpec(
                     "flatpak",
-                    ["run", flatpak.AppId, .. arguments],
+                    ["run", .. BuildReadOnlyFilesystemGrants(dependencies.Paths), flatpak.AppId, .. arguments],
                     Path.GetDirectoryName(game.Path) ?? Environment.CurrentDirectory),
                 _ => throw new InvalidOperationException("Unsupported launch target."),
             };
@@ -192,6 +192,29 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         {
             return LaunchPreparation.Failed($"Cannot launch {game.Title}: {ex.Message}");
         }
+    }
+
+    // A Flatpak emulator runs inside a sandbox that, by default, cannot see the user's ROM
+    // folders — so a launch that passes EmuShelf's own File.Exists check still fails inside the
+    // emulator with a bare "file does not exist". Grant read-only access to exactly the
+    // directories this launch needs (the game plus any resolved CUE/M3U dependencies), scoped to
+    // this single `flatpak run` invocation. The grant is ephemeral: it vanishes when the emulator
+    // exits, so EmuShelf never persistently alters the emulator's stored Flatpak permissions and
+    // never widens access beyond the files being launched. Read-only honors the rule that game
+    // files are never modified.
+    private static IReadOnlyList<string> BuildReadOnlyFilesystemGrants(IReadOnlyList<string> requiredPaths)
+    {
+        var grants = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in requiredPaths)
+        {
+            var directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
+            if (string.IsNullOrEmpty(directory) || !seen.Add(directory))
+                continue;
+            grants.Add($"--filesystem={directory}:ro");
+        }
+
+        return grants;
     }
 
     private static GameLaunchResult Failure(string status) => new(false, status);

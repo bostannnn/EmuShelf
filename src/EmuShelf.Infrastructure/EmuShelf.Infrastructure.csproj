@@ -7,6 +7,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <!-- Native SDL2 binaries only (win/linux/osx incl. arm64). EmuShelf uses its own minimal
+         P/Invoke in SdlGamepadReader, so the managed SDL2-CS binding assembly is excluded. -->
+    <PackageReference Include="ppy.SDL2-CS" Version="1.0.741-alpha" ExcludeAssets="compile;runtime" />
   </ItemGroup>
 
   <ItemGroup>
