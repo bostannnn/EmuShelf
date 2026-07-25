@@ -28,6 +28,25 @@ public interface IGameArtworkProvider
         GameCatalogMatch? match);
 }
 
+/// <summary>Artwork provider that can build a candidate from a title found in its own index.</summary>
+public interface IArtworkTitleIndexProvider : IGameArtworkProvider
+{
+    string ArtworkIndexKey { get; }
+
+    IReadOnlyList<string> GetIndexedTitleQueries(GameCatalogMatch match);
+
+    ArtworkCandidate CreateCandidate(string title);
+}
+
+/// <summary>Resolves verified catalog titles against a provider's remotely maintained title index.</summary>
+public interface IGameArtworkTitleIndex
+{
+    Task<IReadOnlyList<ArtworkCandidate>> FindCandidatesAsync(
+        IArtworkTitleIndexProvider provider,
+        GameCatalogMatch match,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IRemoteArtworkDownloader
 {
     Task<DownloadedArtwork?> DownloadFirstAsync(

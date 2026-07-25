@@ -108,11 +108,23 @@ public sealed class GameTdbPlayStation3ArtworkProvider : IGameArtworkProvider
     }
 }
 
-public sealed class LibretroArtworkProvider : IGameArtworkProvider
+public sealed class LibretroArtworkProvider : IArtworkTitleIndexProvider
 {
+    private const string PspPlaylist = "Sony - PlayStation Portable";
+    private static readonly IReadOnlyDictionary<string, string> PspArtworkTitleAliases =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Lumines - Puzzle Fusion"] = "Lumines",
+            ["Metal Gear Acid"] = "Metal Gear Ac!d",
+            ["Metal Gear Acid 2"] = "Metal Gear Ac!d 2",
+            ["Persona 2 - Batsu - Eternal Punishment"] = "Persona 2 - Batsu",
+        };
+
     private readonly string _playlistName;
 
     public string Id => "libretro-thumbnails";
+
+    public string ArtworkIndexKey => _playlistName;
 
     public LibretroArtworkProvider(string playlistName)
     {
@@ -126,10 +138,27 @@ public sealed class LibretroArtworkProvider : IGameArtworkProvider
         if (match is null)
             return [];
 
-        var filename = SanitizeFilename(match.CanonicalTitle) + ".png";
+        return [CreateCandidate(match.CanonicalTitle)];
+    }
+
+    public ArtworkCandidate CreateCandidate(string title)
+    {
+        var filename = SanitizeFilename(title) + ".png";
         var uri = $"https://thumbnails.libretro.com/{EscapePathSegment(_playlistName)}/" +
             $"Named_Boxarts/{EscapePathSegment(filename)}";
-        return [new ArtworkCandidate(Id, new Uri(uri), ".png")];
+        return new ArtworkCandidate(Id, new Uri(uri), ".png");
+    }
+
+    public IReadOnlyList<string> GetIndexedTitleQueries(GameCatalogMatch match)
+    {
+        if (!string.Equals(match.CatalogId, "libretro-database", StringComparison.Ordinal) ||
+            !string.Equals(_playlistName, PspPlaylist, StringComparison.Ordinal) ||
+            !PspArtworkTitleAliases.TryGetValue(match.CanonicalTitle, out var alias))
+        {
+            return [match.CanonicalTitle];
+        }
+
+        return [match.CanonicalTitle, alias];
     }
 
     internal static string SanitizeFilename(string title)

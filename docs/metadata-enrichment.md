@@ -65,14 +65,14 @@ flight also wins the final database compare-and-set.
 | --- | --- | --- | --- |
 | PlayStation | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PSX by serial, then Libretro by canonical title |
 | PlayStation 2 | Product code from disc data; CUE/M3U references are followed | Libretro redump DAT, keyed by normalized serial | xlenore PS2 by serial, then Libretro by canonical title |
-| PlayStation 3 | RPCS3's exact nine-character title id, normalized as its product serial | Libretro redump DAT, keyed by normalized serial | Libretro by canonical title after the exact serial match |
-| PSP | `DISC_ID` from `PSP_GAME/PARAM.SFO`, normalized as its product serial | Libretro redump DAT, keyed by normalized serial | Libretro by canonical title after the exact serial match |
+| PlayStation 3 | RPCS3's exact nine-character title id, normalized as its product serial | Libretro redump DAT, keyed by normalized serial | GameTDB by serial with regional fallbacks, then Libretro source-indexed title match |
+| PSP | `DISC_ID` from `PSP_GAME/PARAM.SFO`, normalized as its product serial | Libretro redump DAT, keyed by normalized serial | Libretro source-indexed title match after the exact serial match |
 | GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
-| Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
-| Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
-| Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
-| Super Nintendo | SHA-1 of the headerless ROM (optional 512-byte copier header normalized away); header title is display-only | Libretro No-Intro DAT, keyed by SHA-1 | Libretro by canonical title after the exact SHA-1 match |
+| Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
+| Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
+| Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
+| Super Nintendo | SHA-1 of the headerless ROM (optional 512-byte copier header normalized away); header title is display-only | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 
 GameCube and Wii covers are addressed by the disc id through GameTDB — the disc id's fourth
 character selects a region/language folder (`US`, `JA`, `EN`, `DE`, …), with `EN` and `US` tried
@@ -125,7 +125,15 @@ copier formats stay unsupported until their normalization has deterministic fixt
 The expansion artwork route uses the same official Libretro thumbnail server as the existing
 title-addressed fallback. A title-path lookup is intentionally never made from a filename, header
 title, RPCS3 display title, or product code alone: it starts only from the canonical title produced
-by an exact Redump or No-Intro catalog match. The server and its per-console repositories are
+by an exact Redump or No-Intro catalog match. The exact title is tried first; if it is absent,
+EmuShelf downloads and caches the relevant Libretro `Named_Boxarts` directory index for 14 days,
+then selects an actual source filename whose normalized product title is exact. Region, language,
+and revision labels are excluded from that product-title comparison. A short PSP-only list covers
+verified commercial renames and the `Ac!d` typography; each alias must still be present in that
+playlist's source index. Filename
+compatibility lookups retain only the literal filename and never query the index. This is not a
+similarity or edit-distance search: ambiguous or unrelated source names are rejected, so an
+unavailable cover cannot become another game's artwork. The server and its per-console repositories are
 updated periodically; a `404`, non-image response, size-limit rejection, offline failure, or
 provider outage simply leaves the existing/placeholder cover in place. The bounded downloader,
 portable cache, provenance record, and manual-cover compare-and-set are shared with every other

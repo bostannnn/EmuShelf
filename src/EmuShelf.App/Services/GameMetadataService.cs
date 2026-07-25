@@ -51,6 +51,7 @@ public sealed class GameMetadataService : IGameMetadataService
     // being throttled behind identification, without stampeding either resource.
     private const int IdentifyParallelism = 4;
     private const int DownloadParallelism = 12;
+    private const int ArtworkIndexParallelism = 2;
 
     private readonly IGameMetadataStore _store;
     private readonly IReadOnlyDictionary<string, MetadataSystemProfile> _profiles;
@@ -58,7 +59,9 @@ public sealed class GameMetadataService : IGameMetadataService
     private readonly IRemoteArtworkDownloader _artworkDownloader;
     private readonly IGameCoverService _covers;
     private readonly IAppLogger _logger;
+    private readonly IGameArtworkTitleIndex _artworkTitleIndex;
     private readonly SemaphoreSlim _runLock = new(1, 1);
+    private readonly SemaphoreSlim _artworkIndexGate = new(ArtworkIndexParallelism, ArtworkIndexParallelism);
 
     public GameMetadataService(
         IGameMetadataStore store,
@@ -66,7 +69,8 @@ public sealed class GameMetadataService : IGameMetadataService
         IGameMetadataCatalog catalog,
         IRemoteArtworkDownloader artworkDownloader,
         IGameCoverService covers,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        IGameArtworkTitleIndex? artworkTitleIndex = null)
     {
         _store = store;
         _profiles = profiles.ToDictionary(profile => profile.SystemId, StringComparer.Ordinal);
@@ -74,6 +78,7 @@ public sealed class GameMetadataService : IGameMetadataService
         _artworkDownloader = artworkDownloader;
         _covers = covers;
         _logger = logger ?? NullAppLogger.Instance;
+        _artworkTitleIndex = artworkTitleIndex ?? new NullGameArtworkTitleIndex();
     }
 
     public async Task<MetadataEnrichmentSummary> EnrichMissingAsync(
@@ -219,11 +224,25 @@ public sealed class GameMetadataService : IGameMetadataService
                     Path.GetFileNameWithoutExtension(current.Path),
                     Path.GetFileNameWithoutExtension(current.Path),
                     null);
-                var candidates = profile.ArtworkProviders
+                var catalogCandidates = profile.ArtworkProviders
                     .SelectMany(provider => provider.GetCandidates(identifiers, match))
-                    .Concat(profile.ArtworkProviders.SelectMany(provider =>
-                        provider.GetCandidates(identifiers, filenameMatch)))
-                    .Concat(GetLocalArtworkCandidates(current))
+                    .DistinctBy(candidate => candidate.SourceUri)
+                    .ToArray();
+                var filenameCandidates = profile.ArtworkProviders
+                    .SelectMany(provider => provider.GetCandidates(identifiers, filenameMatch))
+                    .DistinctBy(candidate => candidate.SourceUri)
+                    .ToArray();
+                var localCandidates = GetLocalArtworkCandidates(current).ToArray();
+
+                // The directory index can be several megabytes. Resolve it before acquiring a
+                // cover slot, so one playlist cannot block all small cover downloads.
+                var indexedCandidates = match is null
+                    ? Array.Empty<ArtworkCandidate>()
+                    : await GetIndexedCandidatesAsync(profile, match, cancellationToken);
+                var candidates = catalogCandidates
+                    .Concat(indexedCandidates)
+                    .Concat(filenameCandidates)
+                    .Concat(localCandidates)
                     .DistinctBy(candidate => candidate.SourceUri)
                     .ToArray();
 
@@ -354,11 +373,57 @@ public sealed class GameMetadataService : IGameMetadataService
                 Path.GetExtension(path)));
     }
 
+    private async Task<IReadOnlyList<ArtworkCandidate>> GetIndexedCandidatesAsync(
+        MetadataSystemProfile profile,
+        GameCatalogMatch match,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var providers = profile.ArtworkProviders
+                .OfType<IArtworkTitleIndexProvider>()
+                .ToArray();
+            if (providers.Length == 0)
+                return [];
+
+            await _artworkIndexGate.WaitAsync(cancellationToken);
+            try
+            {
+                var tasks = providers
+                    .Select(provider => _artworkTitleIndex.FindCandidatesAsync(provider, match, cancellationToken));
+                var results = await Task.WhenAll(tasks);
+                return results.SelectMany(candidates => candidates).ToArray();
+            }
+            finally
+            {
+                _artworkIndexGate.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("The Libretro artwork title index was unavailable; using direct candidates only.", ex);
+            return [];
+        }
+    }
+
     private sealed record GameEnrichmentResult(
         bool TitleApplied,
         bool CoverApplied,
         bool Unmatched,
         bool Failed);
+}
+
+internal sealed class NullGameArtworkTitleIndex : IGameArtworkTitleIndex
+{
+    public Task<IReadOnlyList<ArtworkCandidate>> FindCandidatesAsync(
+        IArtworkTitleIndexProvider provider,
+        GameCatalogMatch match,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<ArtworkCandidate>>([]);
 }
 
 internal sealed class NullGameMetadataService : IGameMetadataService

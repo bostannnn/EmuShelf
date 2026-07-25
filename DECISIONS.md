@@ -1290,3 +1290,57 @@ per-game conflict granularity:
 
 Measured on a real 81-save card against Drive: a full sync ~30s (rclone skips unchanged payloads),
 an everyday no-change sync 3.5s (was ~10 minutes); only changed payloads upload thereafter.
+
+## 2026-07-25 — Libretro cover fallbacks are deterministic edition variants, not fuzzy matches
+
+Libretro thumbnail repositories sometimes omit a catalogued regional scan while retaining the same
+game's artwork under another region, a revision-free title, or a typography variant. Every
+Libretro-backed platform now keeps the exact canonical title as its first request, then tries only
+deterministic variants of that title: language/revision tags may be removed and a named region may
+be substituted. A small reviewed alias list is reserved for documented regional product renames
+where the target file is known. The candidates remain ordered and source-provenanced through the
+existing downloader.
+
+This deliberately does not use substring, token, edit-distance, or other fuzzy title matching.
+Those approaches can attach the wrong cover (for example a sequel or similarly named regional
+release) and violate the app's exact-evidence metadata contract. The fallback is shared by PSP,
+Mega Drive, DS, GBA, SNES, Dreamcast, and the title-based fallback portion of existing platforms.
+
+## 2026-07-25 — Title variants require catalog evidence and PSP aliases stay PSP-scoped
+
+The literal filename lookup remains a compatibility candidate for older library entries, but it
+does not establish metadata identity. It is therefore never expanded into language, region,
+typography, or regional-title alias variants; those require an exact catalog match. The two
+reviewed regional aliases and the `Acid` → `Ac!d` typography rule are also restricted to the PSP
+Libretro playlist. This preserves the fallback's intended coverage while preventing an arbitrary
+same-named file or another platform's catalogue title from receiving PSP artwork.
+
+## 2026-07-25 — Libretro cover recovery resolves against the source index
+
+The deterministic guessed title variants and PSP-specific aliases above are superseded. They
+still fabricated URL filenames and therefore missed covers that Libretro actually carries under a
+different catalogue convention (for example punctuation, regional product labels, or a revision
+suffix). EmuShelf now caches each used Libretro `Named_Boxarts` listing for 14 days under the
+portable metadata cache and makes recovery candidates only from its real filenames.
+
+Recovery starts only after an exact local catalog match. It normalizes punctuation and excludes
+parenthesized release labels, accepts an exact product-title match, or a single unambiguous
+two-or-more-token title-prefix match. It does not index a raw filename fallback and rejects
+ambiguous names. This makes covers available when the source has them while retaining the
+no-fuzzy-match ownership and provenance guarantees.
+
+## 2026-07-25 — PSP commercial renames are source-index verified aliases
+
+The source-index resolver also retains three narrowly reviewed PSP title spellings that no
+normalizer can infer safely: `Lumines - Puzzle Fusion` is indexed as `Lumines`, and `Metal Gear
+Ac!d`/`Ac!d 2` use a stylized spelling. These aliases are offered only after an exact PSP catalog
+match and must themselves resolve to a real filename in the PSP `Named_Boxarts` index. No alias is
+used for a literal filename fallback or another platform.
+
+## 2026-07-25 — Source-index recovery does not use title prefixes
+
+The earlier unique-prefix rule is superseded: even when an artwork index contains only one title
+with a shared prefix, it can be a different game or sequel and would silently attach incorrect
+artwork. Recovery now accepts only normalized exact source product titles, plus the explicitly
+reviewed PSP aliases above. Directory-index fetches run under their own small concurrency limit
+before cover downloads, so a large listing cannot occupy every cover-download slot.

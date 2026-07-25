@@ -77,7 +77,8 @@ public partial class App : Application
                     _metadataHttpClient,
                     Bootstrapper.Logger),
                 coverService,
-                Bootstrapper.Logger);
+                Bootstrapper.Logger,
+                new LibretroArtworkTitleIndex(Bootstrapper.Paths, _metadataHttpClient));
             _retroAchievementsHttpClient = new HttpClient
             {
                 Timeout = TimeSpan.FromSeconds(30),
