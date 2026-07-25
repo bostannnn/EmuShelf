@@ -41,6 +41,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IGameCoverService _covers;
     private readonly IAppThemeService _themeService;
     private readonly IInterfaceModeService? _interfaceModeService;
+    private readonly IApplicationLifetimeService? _applicationLifetime;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
     private readonly IMetadataPreferencesService _metadataPreferences;
@@ -154,6 +155,9 @@ public partial class MainViewModel : ViewModelBase
     public partial bool IsGamepadMode { get; set; }
 
     [ObservableProperty]
+    public partial bool IsGamepadControllerInputActive { get; set; } = true;
+
+    [ObservableProperty]
     public partial GameViewModel? FocusedGame { get; set; }
 
     [ObservableProperty]
@@ -180,6 +184,13 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadDiscSelectionOpen => GamepadOverlay == GamepadOverlayKind.DiscSelection;
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
+    public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
+    public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
+    public bool IsGamepadSettingsHandoffOpen => GamepadOverlay == GamepadOverlayKind.SettingsDesktopHandoff;
+    public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
+    public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
+        GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
+        GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
     public bool IsGamepadAllGamesRailFocused => IsGamepadRailFocused && GamepadRailIndex == 0;
     public bool IsGamepadCollectionsRailFocused => IsGamepadRailFocused && GamepadRailIndex == 1;
     public string GamepadOverlayTitle => GamepadOverlay switch
@@ -191,7 +202,18 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.Title} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
+        GamepadOverlayKind.SystemMenu => "Menu",
+        GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
+        GamepadOverlayKind.SettingsDesktopHandoff => "Open Settings?",
+        GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
+    };
+    public string GamepadOverlayHelpText => GamepadOverlay switch
+    {
+        GamepadOverlayKind.Achievements => "D-pad Browse   X Refresh   B Back",
+        GamepadOverlayKind.Search => "Steam + X Keyboard   B Back",
+        GamepadOverlayKind.Rename => "A Save   B Back",
+        _ => "D-pad Choose   A Select   B Back",
     };
 
     [ObservableProperty]
@@ -323,7 +345,8 @@ public partial class MainViewModel : ViewModelBase
         IGameMetadataStore? metadataStore = null,
         IInterfaceModeService? interfaceModeService = null,
         IRetroAchievementsBadgeCache? retroBadges = null,
-        CloudSaveSyncCoordinator? cloudSaveSync = null)
+        CloudSaveSyncCoordinator? cloudSaveSync = null,
+        IApplicationLifetimeService? applicationLifetime = null)
     {
         _library = library;
         _scanner = scanner;
@@ -336,6 +359,7 @@ public partial class MainViewModel : ViewModelBase
         _covers = covers ?? new NullGameCoverService();
         _themeService = themeService ?? new NullAppThemeService();
         _interfaceModeService = interfaceModeService;
+        _applicationLifetime = applicationLifetime;
         IsGamepadMode = interfaceModeService?.Current == InterfaceMode.Gamepad;
         if (_interfaceModeService is not null)
         {
@@ -541,6 +565,27 @@ public partial class MainViewModel : ViewModelBase
     private void OpenGamepadCollections() => OpenGamepadOverlay(GamepadOverlayKind.Collections);
 
     [RelayCommand]
+    private void OpenGamepadMenu()
+    {
+        if (IsGamepadSystemMenuOpen)
+            CloseGamepadOverlay();
+        else
+            OpenGamepadOverlay(GamepadOverlayKind.SystemMenu);
+    }
+
+    [RelayCommand]
+    private void RequestDesktopModeFromGamepad() =>
+        OpenGamepadOverlay(GamepadOverlayKind.DesktopModeConfirmation);
+
+    [RelayCommand]
+    private void RequestSettingsFromGamepad() =>
+        OpenGamepadOverlay(GamepadOverlayKind.SettingsDesktopHandoff);
+
+    [RelayCommand]
+    private void RequestQuitFromGamepad() =>
+        OpenGamepadOverlay(GamepadOverlayKind.QuitConfirmation);
+
+    [RelayCommand]
     private void MoveGamepadOverlayUp()
     {
         if (IsGamepadAchievementsOpen)
@@ -583,8 +628,6 @@ public partial class MainViewModel : ViewModelBase
         }
         if (GamepadAchievementDetails is not null)
             GamepadAchievementDetails.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
-        if (GamepadAchievementDetails is not null)
-            GamepadAchievementDetails.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
         GamepadAchievementDetails?.Dispose();
         GamepadAchievementDetails = null;
         FocusedGamepadAchievement = null;
@@ -592,6 +635,27 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlay = GamepadOverlayKind.None;
         IsGameActionsOpen = false;
         RestoreFocusedGame();
+    }
+
+    [RelayCommand]
+    private void BackFromGamepadOverlay()
+    {
+        var returnOverlay = GamepadOverlay switch
+        {
+            GamepadOverlayKind.Rename or
+            GamepadOverlayKind.DiscSelection or
+            GamepadOverlayKind.RemoveConfirmation or
+            GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
+            GamepadOverlayKind.DesktopModeConfirmation or
+            GamepadOverlayKind.SettingsDesktopHandoff or
+            GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
+            _ => GamepadOverlayKind.None,
+        };
+
+        if (returnOverlay == GamepadOverlayKind.None)
+            CloseGamepadOverlay();
+        else
+            OpenGamepadOverlay(returnOverlay);
     }
 
     [RelayCommand]
@@ -639,6 +703,8 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode)
             return false;
 
+        IsGamepadControllerInputActive = true;
+
         // Consume late Steam-Input keyboard events as well as native-pad input while a tracked
         // game is active/returning. In particular, B/Escape must not turn a game return into a
         // Desktop-mode switch.
@@ -660,7 +726,10 @@ public partial class MainViewModel : ViewModelBase
         switch (action)
         {
             case GamepadAction.Cancel:
-                CloseGamepadOverlayCommand.Execute(null);
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            case GamepadAction.Menu:
+                OpenGamepadMenuCommand.Execute(null);
                 return true;
             case GamepadAction.Confirm when IsGamepadRenameOpen:
                 SaveGamepadTitleCommand.Execute(null);
@@ -675,7 +744,10 @@ public partial class MainViewModel : ViewModelBase
         switch (action)
         {
             case GamepadAction.Cancel:
-                CloseGamepadOverlayCommand.Execute(null);
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            case GamepadAction.Menu:
+                OpenGamepadMenuCommand.Execute(null);
                 return true;
             case GamepadAction.Search when IsGamepadAchievementsOpen:
                 GamepadAchievementDetails?.RefreshCommand.Execute(null);
@@ -711,13 +783,20 @@ public partial class MainViewModel : ViewModelBase
                 LaunchFocusedGameCommand.Execute(null);
                 return true;
             case GamepadAction.Cancel:
-                SetInterfaceModeCommand.Execute(InterfaceMode.Desktop);
+                if (IsGamepadRailFocused)
+                {
+                    IsGamepadRailFocused = false;
+                    RestoreFocusedGame();
+                }
                 return true;
             case GamepadAction.Search:
                 OpenGamepadSearchCommand.Execute(null);
                 return true;
             case GamepadAction.Actions:
                 OpenFocusedGameActionsCommand.Execute(null);
+                return true;
+            case GamepadAction.Menu:
+                OpenGamepadMenuCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateLeft:
                 MoveGamepadFocusLeftCommand.Execute(null);
@@ -754,30 +833,39 @@ public partial class MainViewModel : ViewModelBase
                 AddGameActions();
                 break;
             case GamepadOverlayKind.Search:
-                AddOption("Clear search", ClearSearchCommand);
-                AddOption("Back", CloseGamepadOverlayCommand);
                 break;
             case GamepadOverlayKind.Collections:
                 AddOption("Recently Added", ShowGamepadRecentlyAddedCommand);
-                AddOption("Back", CloseGamepadOverlayCommand);
                 break;
             case GamepadOverlayKind.Rename:
-                AddOption("Save", SaveGamepadTitleCommand);
-                AddOption("Cancel", CloseGamepadOverlayCommand);
                 break;
             case GamepadOverlayKind.DiscSelection:
                 AddDiscSelectionOptions();
                 break;
             case GamepadOverlayKind.RemoveConfirmation:
                 AddOption("Remove from library", ConfirmGamepadRemoveCommand);
-                AddOption("Cancel", CloseGamepadOverlayCommand);
                 break;
             case GamepadOverlayKind.CoverDesktopHandoff:
-                AddOption("Switch to Desktop mode", SwitchToDesktopForCoverCommand);
-                AddOption("Back", CloseGamepadOverlayCommand);
+                AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 break;
             case GamepadOverlayKind.Achievements:
                 FocusFirstAchievement();
+                break;
+            case GamepadOverlayKind.SystemMenu:
+                AddOption("Search", OpenGamepadSearchCommand);
+                AddOption("Collections", OpenGamepadCollectionsCommand);
+                AddOption("Settings", RequestSettingsFromGamepadCommand);
+                AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand);
+                break;
+            case GamepadOverlayKind.DesktopModeConfirmation:
+                AddOption("Switch to Desktop mode", SwitchToDesktopModeCommand);
+                break;
+            case GamepadOverlayKind.SettingsDesktopHandoff:
+                AddOption("Open Settings in Desktop mode", OpenSettingsFromGamepadCommand);
+                break;
+            case GamepadOverlayKind.QuitConfirmation:
+                AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand);
                 break;
         }
 
@@ -798,8 +886,6 @@ public partial class MainViewModel : ViewModelBase
         AddOption("Edit title", EditFocusedTitleCommand);
         AddOption("Set cover", SetFocusedCoverCommand);
         AddOption("Remove", RemoveFocusedGameCommand);
-        AddOption("Back", CloseGamepadOverlayCommand);
-        AddOption("Desktop mode", SwitchToDesktopModeCommand);
     }
 
     private void AddDiscSelectionOptions()
@@ -814,8 +900,6 @@ public partial class MainViewModel : ViewModelBase
                     new AsyncRelayCommand(() => SelectDiscFromGamepadAsync(disc)));
             }
         }
-
-        AddOption("Back", new RelayCommand(() => OpenGamepadOverlay(GamepadOverlayKind.Actions)));
     }
 
     private void AddOption(string label, ICommand command) =>
@@ -868,7 +952,13 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadDiscSelectionOpen));
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
+        OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
+        OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsHandoffOpen));
+        OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
+        OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
+        OnPropertyChanged(nameof(GamepadOverlayHelpText));
     }
 
     [RelayCommand]
@@ -891,6 +981,21 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         await SetInterfaceModeAsync(InterfaceMode.Desktop);
+    }
+
+    [RelayCommand]
+    private async Task OpenSettingsFromGamepadAsync()
+    {
+        CloseGamepadOverlay();
+        await SetInterfaceModeAsync(InterfaceMode.Desktop);
+        await OpenSettingsAsync();
+    }
+
+    [RelayCommand]
+    private void ConfirmQuitGamepad()
+    {
+        CloseGamepadOverlay();
+        _applicationLifetime?.Shutdown();
     }
 
     [RelayCommand]
@@ -939,8 +1044,12 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadRailFocused)
             GamepadRailIndex = Math.Max(0, GamepadRailIndex - 1);
-        else
-            MoveFocusedGame(-1);
+        else if (FocusedGame is { } focused)
+        {
+            var index = Games.IndexOf(focused);
+            if (index > 0 && index % GamepadColumnCount != 0)
+                FocusedGame = Games[index - 1];
+        }
     }
 
     [RelayCommand]
@@ -948,8 +1057,12 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadRailFocused)
             GamepadRailIndex = Math.Min(Systems.Count + 1, GamepadRailIndex + 1);
-        else
-            MoveFocusedGame(1);
+        else if (FocusedGame is { } focused)
+        {
+            var index = Games.IndexOf(focused);
+            if (index >= 0 && index + 1 < Games.Count && index % GamepadColumnCount < GamepadColumnCount - 1)
+                FocusedGame = Games[index + 1];
+        }
     }
 
     [RelayCommand]
@@ -987,7 +1100,9 @@ public partial class MainViewModel : ViewModelBase
         }
 
         var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
-        FocusedGame = Games[Math.Min(index + GamepadColumnCount, Games.Count - 1)];
+        var target = index + GamepadColumnCount;
+        if (target < Games.Count)
+            FocusedGame = Games[target];
     }
 
     [RelayCommand]
@@ -1094,6 +1209,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (value)
         {
+            IsGamepadControllerInputActive = true;
             IsGridView = true;
             RestoreFocusedGame();
         }
@@ -1981,6 +2097,12 @@ public partial class MainViewModel : ViewModelBase
             _logger.Warning($"Could not remember Disc {disc.Number} for {game.Title}: {ex.Message}");
             return false;
         }
+    }
+
+    public void NotifyGamepadPointerInput()
+    {
+        if (IsGamepadMode)
+            IsGamepadControllerInputActive = false;
     }
 
     private async Task RefreshRetroAchievementsAfterTrackedExitAsync(int retroAchievementsGameId)

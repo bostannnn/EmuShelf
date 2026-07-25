@@ -153,7 +153,8 @@ public partial class App : Application
                 Bootstrapper.MetadataStore,
                 interfaceModeService,
                 retroAchievementsBadges,
-                Bootstrapper.CloudSaveSync);
+                Bootstrapper.CloudSaveSync,
+                new ApplicationLifetimeService(desktop));
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

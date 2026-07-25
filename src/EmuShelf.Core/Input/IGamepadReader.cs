@@ -18,6 +18,7 @@ public enum GamepadButtons
     DpadDown = 1 << 7,
     DpadLeft = 1 << 8,
     DpadRight = 1 << 9,
+    Start = 1 << 10,
 }
 
 /// <summary>

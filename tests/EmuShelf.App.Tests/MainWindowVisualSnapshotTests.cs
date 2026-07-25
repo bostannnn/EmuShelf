@@ -304,6 +304,17 @@ public class MainWindowVisualSnapshotTests
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             await viewModel.RemoveFocusedGameCommand.ExecuteAsync(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-remove-1280x800.png");
+            viewModel.CloseGamepadOverlayCommand.Execute(null);
+            viewModel.OpenGamepadMenuCommand.Execute(null);
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
+            viewModel.RequestDesktopModeFromGamepadCommand.Execute(null);
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-desktop-confirmation-1280x800.png");
+            viewModel.BackFromGamepadOverlayCommand.Execute(null);
+            viewModel.RequestSettingsFromGamepadCommand.Execute(null);
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-settings-handoff-1280x800.png");
+            viewModel.BackFromGamepadOverlayCommand.Execute(null);
+            viewModel.RequestQuitFromGamepadCommand.Execute(null);
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-quit-confirmation-1280x800.png");
         }
         finally
         {
@@ -362,6 +373,50 @@ public class MainWindowVisualSnapshotTests
             Assert.True(
                 scroller.Offset.Y > initialOffset,
                 $"grid should have scrolled to reveal the focused game (offset stayed at {scroller.Offset.Y}).");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadConfirmationBodyAndActionsUseSeparateLayoutRows()
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
+        var viewModel = new MainViewModel { IsGamepadMode = true };
+        var game = new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = system.Id,
+                Path = "/Games/playstation2/Sample.iso",
+                Title = "Sample game",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio);
+        viewModel.Games.ReplaceAll([game]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.FocusedGame = game;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await viewModel.RemoveFocusedGameCommand.ExecuteAsync(null);
+            await PumpAsync();
+
+            var body = window.FindControl<StackPanel>("GamepadRemoveBody");
+            var actions = window.FindControl<ItemsControl>("GamepadOverlayOptions");
+            Assert.NotNull(body);
+            Assert.NotNull(actions);
+            Assert.True(
+                body.Bounds.Bottom < actions.Bounds.Top,
+                $"confirmation body ended at {body.Bounds.Bottom}, actions started at {actions.Bounds.Top}");
         }
         finally
         {

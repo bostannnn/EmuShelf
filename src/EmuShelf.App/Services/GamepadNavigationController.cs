@@ -18,6 +18,7 @@ public sealed class GamepadNavigationController
         (GamepadButtons.B, GamepadAction.Cancel),
         (GamepadButtons.X, GamepadAction.Search),
         (GamepadButtons.Y, GamepadAction.Actions),
+        (GamepadButtons.Start, GamepadAction.Menu),
         (GamepadButtons.LeftShoulder, GamepadAction.PreviousPlatform),
         (GamepadButtons.RightShoulder, GamepadAction.NextPlatform),
     ];

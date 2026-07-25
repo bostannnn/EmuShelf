@@ -16,4 +16,5 @@ public enum GamepadAction
     NextPlatform,     // RB / Ctrl+PageDown
     Search,           // X
     Actions,          // Y
+    Menu,             // Start / F10
 }

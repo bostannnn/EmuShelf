@@ -14,6 +14,7 @@ namespace EmuShelf.App.Views;
 public partial class MainWindow : Window
 {
     private MainViewModel? _gamepadViewModel;
+    private Point? _lastGamepadPointerPosition;
 
     public MainWindow()
     {
@@ -49,11 +50,14 @@ public partial class MainWindow : Window
         if (e.PropertyName is not (nameof(MainViewModel.SelectedSystem) or
             nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.IsGamepadRailFocused) or
             nameof(MainViewModel.GamepadRailIndex) or nameof(MainViewModel.GamepadOverlay) or
-            nameof(MainViewModel.FocusedGamepadAchievement)))
+            nameof(MainViewModel.GamepadOverlaySelectionIndex) or nameof(MainViewModel.GamepadOverlayTitle) or
+            nameof(MainViewModel.FocusedGamepadAchievement) or
+            nameof(MainViewModel.IsGamepadControllerInputActive)))
         {
             return;
         }
 
+        Dispatcher.UIThread.Post(RevealFocusedGame, DispatcherPriority.Input);
         Dispatcher.UIThread.Post(RevealGamepadRail, DispatcherPriority.Input);
         Dispatcher.UIThread.Post(RevealGamepadOverlayFocus, DispatcherPriority.Input);
     }
@@ -79,24 +83,44 @@ public partial class MainWindow : Window
 
         GamepadRepeater.UpdateLayout();
         element.BringIntoView();
+        if (viewModel.IsGamepadControllerInputActive &&
+            !viewModel.HasGamepadOverlay &&
+            !viewModel.IsGamepadRailFocused)
+        {
+            var gameButton = element as Button ?? element.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(button => ReferenceEquals(button.DataContext, focused));
+            if (gameButton is not null)
+                FocusManager?.Focus(gameButton, NavigationMethod.Directional);
+        }
     }
 
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
     private void RevealGamepadOverlayFocus()
     {
-        if (_gamepadViewModel is not { IsGamepadMode: true })
+        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
             return;
 
-        if (_gamepadViewModel.IsGamepadSearchOpen)
+        if (viewModel.IsGamepadSearchOpen)
             GamepadSearchBox.Focus();
-        else if (_gamepadViewModel.IsGamepadRenameOpen)
+        else if (viewModel.IsGamepadRenameOpen)
             GamepadRenameBox.Focus();
-        else if (_gamepadViewModel.FocusedGamepadAchievement is { } achievement)
+        else if (viewModel.FocusedGamepadAchievement is { } achievement)
         {
-            GamepadAchievementsScroller.GetVisualDescendants()
+            var achievementControl = GamepadAchievementsScroller.GetVisualDescendants()
                 .OfType<Control>()
-                .FirstOrDefault(control => ReferenceEquals(control.DataContext, achievement))
-                ?.BringIntoView();
+                .FirstOrDefault(control => ReferenceEquals(control.DataContext, achievement));
+            achievementControl?.BringIntoView();
+            if (viewModel.IsGamepadControllerInputActive && achievementControl is not null)
+                FocusManager?.Focus(achievementControl, NavigationMethod.Directional);
+        }
+        else if (viewModel.HasGamepadOverlay && viewModel.IsGamepadControllerInputActive)
+        {
+            var focusedOption = GamepadOverlayOptions.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
+            if (focusedOption is not null)
+                FocusManager?.Focus(focusedOption, NavigationMethod.Directional);
         }
     }
 
@@ -124,7 +148,7 @@ public partial class MainWindow : Window
 
         tab.BringIntoView();
         if (_gamepadViewModel.IsGamepadRailFocused)
-            tab.Focus();
+            FocusManager?.Focus(tab, NavigationMethod.Directional);
     }
 
     private void OnOpenSearchClick(object? sender, RoutedEventArgs e)
@@ -181,6 +205,7 @@ public partial class MainWindow : Window
                 Key.Escape => GamepadAction.Cancel,
                 Key.X => GamepadAction.Search,
                 Key.Y => GamepadAction.Actions,
+                Key.F10 => GamepadAction.Menu,
                 Key.Left => GamepadAction.NavigateLeft,
                 Key.Right => GamepadAction.NavigateRight,
                 Key.Up => GamepadAction.NavigateUp,
@@ -210,7 +235,7 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Escape)
         {
-            viewModel.CloseGamepadOverlayCommand.Execute(null);
+            viewModel.BackFromGamepadOverlayCommand.Execute(null);
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && viewModel.IsGamepadRenameOpen)
@@ -218,6 +243,22 @@ public partial class MainWindow : Window
             viewModel.SaveGamepadTitleCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private void OnGamepadPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsGamepadMode: true } viewModel)
+            return;
+
+        var position = e.GetPosition(this);
+        if (_lastGamepadPointerPosition is { } previous)
+        {
+            var delta = position - previous;
+            if (delta.X * delta.X + delta.Y * delta.Y >= 16)
+                viewModel.NotifyGamepadPointerInput();
+        }
+
+        _lastGamepadPointerPosition = position;
     }
 
     private void CloseSearch()

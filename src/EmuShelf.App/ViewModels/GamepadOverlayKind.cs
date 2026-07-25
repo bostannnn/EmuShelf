@@ -16,6 +16,10 @@ public enum GamepadOverlayKind
     DiscSelection,
     RemoveConfirmation,
     CoverDesktopHandoff,
+    SystemMenu,
+    DesktopModeConfirmation,
+    SettingsDesktopHandoff,
+    QuitConfirmation,
 }
 
 /// <summary>A large, controller-selectable action in a Gamepad overlay.</summary>

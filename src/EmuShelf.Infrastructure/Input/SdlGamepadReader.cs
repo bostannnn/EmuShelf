@@ -25,6 +25,7 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
     private const int ButtonB = 1;
     private const int ButtonX = 2;
     private const int ButtonY = 3;
+    private const int ButtonStart = 6;
     private const int ButtonLeftShoulder = 9;
     private const int ButtonRightShoulder = 10;
     private const int ButtonDpadUp = 11;
@@ -69,6 +70,7 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
             buttons |= Held(ButtonB, GamepadButtons.B);
             buttons |= Held(ButtonX, GamepadButtons.X);
             buttons |= Held(ButtonY, GamepadButtons.Y);
+            buttons |= Held(ButtonStart, GamepadButtons.Start);
             buttons |= Held(ButtonLeftShoulder, GamepadButtons.LeftShoulder);
             buttons |= Held(ButtonRightShoulder, GamepadButtons.RightShoulder);
             buttons |= Held(ButtonDpadUp, GamepadButtons.DpadUp);

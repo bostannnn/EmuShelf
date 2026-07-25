@@ -71,7 +71,8 @@ public class MainViewModelTests : IDisposable
         IRetroAchievementsRefreshService? retroRefresh = null,
         IGameMetadataStore? metadataStore = null,
         IEmulatorConfigurationStore? emulatorConfigurations = null,
-        IInterfaceModeService? interfaceModeService = null)
+        IInterfaceModeService? interfaceModeService = null,
+        IApplicationLifetimeService? applicationLifetime = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -95,7 +96,8 @@ public class MainViewModelTests : IDisposable
             retroDetails: retroDetails,
             retroRefresh: retroRefresh,
             metadataStore: metadataStore,
-            interfaceModeService: interfaceModeService);
+            interfaceModeService: interfaceModeService,
+            applicationLifetime: applicationLifetime);
     }
 
     private string MakeRomsFolder()
@@ -847,7 +849,7 @@ public class MainViewModelTests : IDisposable
         Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Select disc");
         vm.OpenFocusedDiscSelectionCommand.Execute(null);
         Assert.Equal(GamepadOverlayKind.DiscSelection, vm.GamepadOverlay);
-        Assert.Equal(["Disc 1 (current)", "Disc 2", "Back"],
+        Assert.Equal(["Disc 1 (current)", "Disc 2"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
         Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
 
@@ -985,6 +987,113 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
         Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public void DispatchGamepadAction_MenuOwnsDesktopHandoffAndCancelNeverLeavesTheShelf()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal(
+            ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            vm.GamepadOverlayOptions.Select(option => option.Label));
+
+        vm.RequestDesktopModeFromGamepadCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.DesktopModeConfirmation, vm.GamepadOverlay);
+        Assert.Equal(["Switch to Desktop mode"], vm.GamepadOverlayOptions.Select(option => option.Label));
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadMenu_SettingsHandsOffToDesktopAndQuitRequiresConfirmation()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var lifetime = new RecordingApplicationLifetimeService();
+        var vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
+
+        vm.RequestSettingsFromGamepadCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.SettingsDesktopHandoff, vm.GamepadOverlay);
+        Assert.Equal(
+            ["Open Settings in Desktop mode"],
+            vm.GamepadOverlayOptions.Select(option => option.Label));
+
+        await vm.OpenSettingsFromGamepadCommand.ExecuteAsync(null);
+        Assert.Equal(InterfaceMode.Desktop, mode.Current);
+        Assert.Equal(1, _dialogs.SettingsShown);
+
+        mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
+        vm.RequestQuitFromGamepadCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.QuitConfirmation, vm.GamepadOverlay);
+        Assert.Equal(0, lifetime.ShutdownRequests);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal(0, lifetime.ShutdownRequests);
+
+        vm.RequestQuitFromGamepadCommand.Execute(null);
+        vm.ConfirmQuitGamepadCommand.Execute(null);
+        Assert.Equal(1, lifetime.ShutdownRequests);
+    }
+
+    [AvaloniaFact]
+    public void GamepadGridNavigationStopsAtVisualRowEdgesAndMissingFinalRowCells()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 6).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Game {index + 1}.cue",
+                Title = $"Game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+        vm.GamepadViewportWidth = 1000;
+        Assert.Equal(4, vm.GamepadColumnCount);
+
+        vm.FocusedGame = vm.Games[3];
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Same(vm.Games[3], vm.FocusedGame);
+
+        vm.FocusedGame = vm.Games[4];
+        vm.MoveGamepadFocusLeftCommand.Execute(null);
+        Assert.Same(vm.Games[4], vm.FocusedGame);
+
+        vm.FocusedGame = vm.Games[1];
+        vm.MoveGamepadFocusDownCommand.Execute(null);
+        Assert.Same(vm.Games[5], vm.FocusedGame);
+
+        vm.FocusedGame = vm.Games[2];
+        vm.MoveGamepadFocusDownCommand.Execute(null);
+        Assert.Same(vm.Games[2], vm.FocusedGame);
+    }
+
+    [AvaloniaFact]
+    public void GamepadInputModalitySuppressesPointerStateUntilThePointerMovesAgain()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+
+        vm.NotifyGamepadPointerInput();
+        Assert.False(vm.IsGamepadControllerInputActive);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.True(vm.IsGamepadControllerInputActive);
     }
 
     [AvaloniaFact]
@@ -1892,6 +2001,13 @@ public class MainViewModelTests : IDisposable
             ModeChanged?.Invoke(this, mode);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class RecordingApplicationLifetimeService : IApplicationLifetimeService
+    {
+        public int ShutdownRequests { get; private set; }
+
+        public void Shutdown() => ShutdownRequests++;
     }
 
     private sealed class RecordingRetroAchievementsRefreshService : IRetroAchievementsRefreshService

@@ -1428,3 +1428,40 @@ Gamepad modes, choosing a disc changes and immediately persists the title's defa
 does not start an emulator or require launch preflight. Launch remains an explicit, separate
 action: Desktop uses the card's normal Launch action and Gamepad uses `A`. This makes the two
 interfaces consistent and lets a player prepare the correct disc before committing to a session.
+
+## 2026-07-25 — Gamepad scope, focus, commands, and interface exit use separate surfaces
+
+The M31 audit found that the original Gamepad header made an active platform, pointer hover,
+Avalonia focus, and the view-model's focused cover look like competing selections. It also exposed
+Launch, Actions, Search, and an inaccurately named `Exit (Esc)` as focusable header controls even
+though controller commands already owned those actions. Most seriously, B/Escape on the main
+shelf changed interface mode without confirmation.
+
+Gamepad mode therefore keeps the upper rail for library scope only, moves contextual controller
+help to a fixed bottom command bar, and opens application-level actions from the controller's
+Start/Menu button (`F10` for the keyboard/Steam Input fallback). B is always Back: it closes or
+returns from an overlay, returns rail focus to the shelf, or is consumed at the shelf boundary. A
+separate named confirmation is the only controller path to Desktop mode. Per-game Y actions no
+longer contain redundant Back or Desktop rows.
+
+Mixed input remains supported. The shell records the most recent controller versus meaningful
+pointer movement and suppresses stale pointer-hover treatment while controller input is active;
+it does not disable mouse input. The selected platform uses a persistent active treatment distinct
+from the single strong controller-focus ring. Controller-family-specific glyphs and synchronization
+of logical focus with Avalonia accessibility focus remain later M31 phases.
+
+## 2026-07-25 — Gamepad Settings and shutdown are explicit lifecycle handoffs
+
+Settings remains a Desktop configuration window for now. Selecting it from the Gamepad global
+menu therefore opens a named confirmation surface, switches interface mode, and only then opens
+Settings; it never presents a keyboard-oriented window as though it were controller-native. Quit
+is a separate global-menu action with its own confirmation and B always returns to the menu without
+shutting down.
+
+The view model requests shutdown through a small application-lifetime interface rather than owning
+Avalonia's desktop lifetime. Native Avalonia focus now follows the logical game, rail, achievement,
+and overlay selection while controller input is active. When an overlay opens, the inactive shelf
+focus ring is hidden so the modal action is the only strong focus treatment. Headless Avalonia does
+not accept native focus in its virtual window backend, so real controller/accessibility focus
+remains an explicit M31 Phase 4 acceptance check even though logical navigation and rendered focus
+geometry are covered automatically.

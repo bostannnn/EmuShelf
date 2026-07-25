@@ -51,9 +51,11 @@ public class GamepadNavigationControllerTests
         _controller.Poll(Connected(), 64);
         Assert.Equal([GamepadAction.Actions], _controller.Poll(Connected(GamepadButtons.Y), 80));
         _controller.Poll(Connected(), 96);
-        Assert.Equal([GamepadAction.PreviousPlatform], _controller.Poll(Connected(GamepadButtons.LeftShoulder), 112));
+        Assert.Equal([GamepadAction.Menu], _controller.Poll(Connected(GamepadButtons.Start), 112));
         _controller.Poll(Connected(), 128);
-        Assert.Equal([GamepadAction.NextPlatform], _controller.Poll(Connected(GamepadButtons.RightShoulder), 144));
+        Assert.Equal([GamepadAction.PreviousPlatform], _controller.Poll(Connected(GamepadButtons.LeftShoulder), 144));
+        _controller.Poll(Connected(), 160);
+        Assert.Equal([GamepadAction.NextPlatform], _controller.Poll(Connected(GamepadButtons.RightShoulder), 176));
     }
 
     [Fact]

@@ -533,10 +533,10 @@ emulator configuration, or emulator-owned data.
       controller/Steam-Input routing while an external emulator owns the session, restore the
       fullscreen window and the prior focused tile on exit, and ignore held/late input until the
       return is stable. A game exit must never silently switch the user to Desktop mode.
-- [ ] Make leaving Gamepad mode deliberate and discoverable. B/Escape dismisses the current
+- [x] Make leaving Gamepad mode deliberate and discoverable. B/Escape dismisses the current
       overlay or returns to the Gamepad library; switching to Desktop mode uses a separately named
       action and, when initiated by a controller, a confirmation that cannot be triggered by the
-      button used to close an emulator.
+      button used to close an emulator (2026-07-25; implemented by M31 Menu and confirmation).
 - [ ] Add end-to-end tests for normal, failed, and non-zero launches; emulator exit with B/Escape
       held; focus restoration; and Gamepad fullscreen restoration. Verify the same behavior on
       real Windows and Deck/Gaming Mode hardware.
@@ -781,3 +781,62 @@ generalized.
 - [ ] On real Windows, launch a supported `.gdi` set through a configured Flycast RetroArch core;
       verify paths with spaces, BIOS/core configuration stays user-owned, and neither game tracks
       nor RetroArch configuration/overrides/playlists/achievement settings are modified.
+
+## M31 — Controller-first Gamepad shell redesign and hardening (in progress)
+
+This milestone is the concrete implementation of M24 Phase 2 after the 2026-07-25 Gamepad audit.
+The audit found interaction failures that require changing the shell and focus model rather than
+preserving the existing header verbatim. Work the phases in order and keep Desktop behavior
+unchanged unless an item explicitly says otherwise.
+
+### Phase 1 — Correctness and safe navigation
+
+- [x] Fix Search, Rename, Remove, and cover-handoff overlay geometry so body copy, text fields,
+      selectable actions, and contextual help never occupy the same layout cell at 1280×800.
+- [x] Make `B` a safe Back action: it closes the current overlay or returns rail focus to the
+      library, and never switches interface mode from the main shelf (2026-07-25).
+- [x] Make cover-grid navigation spatial. Left/Right stop at row edges; Down never jumps sideways
+      when the final row has no tile in the current column; platform shoulder navigation remains
+      bounded and non-wrapping (2026-07-25).
+- [x] Give empty libraries, empty searches, launch/configuration failures, scan progress, and status
+      notifications a visible controller-readable Gamepad presentation (2026-07-25; status-driven
+      operations share the new Gamepad toast).
+
+### Phase 2 — Steam-like shell and deliberate global menu
+
+- [x] Remove the duplicated platform heading and the focusable Launch/Actions/Exit controls from
+      the upper content header. The selected rail tab owns scope identity (2026-07-25).
+- [x] Add a persistent bottom command bar with controller-only language and contextual actions:
+      Menu, A Play/Select, B Back, X Search, Y Actions, and LB/RB Platforms as applicable.
+- [x] Read the controller Start/Menu button natively and map the keyboard/Steam Input fallback to
+      the same logical action. Menu opens an in-window global side sheet (2026-07-25; F10 fallback).
+- [x] Move Collections, Settings/Desktop handoff, and application-level actions into the global
+      menu. Leaving Gamepad mode is named accurately and requires a separate confirmation surface
+      (2026-07-25; Settings hands off explicitly and Quit has its own confirmation).
+- [x] Keep per-game actions in the Y surface; remove redundant Back and Desktop-mode rows because
+      B and the global menu own those responsibilities (2026-07-25; Y opens a right-side sheet).
+
+### Phase 3 — One focus and input-modality model
+
+- [x] Track controller versus pointer modality. Controller input suppresses stale pointer-hover
+      selection; meaningful pointer movement restores mouse affordances without disabling mixed
+      input (2026-07-25).
+- [x] Synchronize logical focused game/rail/overlay state with Avalonia focus so exactly one
+      actionable element has the strong focus treatment. Active platform styling remains visibly
+      distinct from input focus, and the shelf focus ring is suppressed behind overlays
+      (2026-07-25).
+- [ ] Add controller-family-aware glyphs or neutral physical-position glyphs; never mix
+      `L1/R1`, `A/B/X/Y`, and keyboard key names in one Gamepad surface.
+- [ ] Provide a controller-safe text-entry path and automatically request an available on-screen
+      keyboard where the host platform permits it; retain ordinary keyboard entry as fallback.
+
+### Phase 4 — Verification and Deck acceptance
+
+- [ ] Replace render-only Gamepad snapshots with reviewed image baselines or equivalent geometry
+      assertions that fail on overlap, clipping, off-screen focus, or duplicate strong focus.
+- [ ] Cover populated, empty, no-results, unavailable, no-emulator, launch-failure, search, rename,
+      collections, actions, disc selection, removal, cover handoff, achievements, and global-menu
+      states at 1280×800, plus a large 16:9 living-room viewport.
+- [ ] Run keyboard, mouse, Xbox-style pad, PlayStation-style pad, Steam Input, and native SDL paths;
+      verify Windows fullscreen and real Steam Deck/Gaming Mode focus, OSK, emulator return, and
+      menu behavior before marking M31 complete.
