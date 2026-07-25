@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 11;
+    private const int CurrentSchemaVersion = 12;
 
     private readonly IAppPaths _appPaths;
 
@@ -103,10 +103,19 @@ public sealed class LibraryDatabase
         }
 
         if (version < 10)
+        {
             ApplyMigrationV10(connection);
+            version = 10;
+        }
 
-        if (version < CurrentSchemaVersion)
+        if (version < 11)
+        {
             ApplyMigrationV11(connection);
+            version = 11;
+        }
+
+        if (version < 12)
+            ApplyMigrationV12(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -517,6 +526,27 @@ public sealed class LibraryDatabase
               AND ExecutablePath IS NOT NULL AND trim(ExecutablePath) <> '';
 
             UPDATE SchemaVersion SET Version = 11;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV12(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS GameDiscSelections (
+                TitleSetKey TEXT PRIMARY KEY,
+                GameId INTEGER NOT NULL,
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS IX_GameDiscSelections_GameId
+                ON GameDiscSelections (GameId);
+
+            UPDATE SchemaVersion SET Version = 12;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

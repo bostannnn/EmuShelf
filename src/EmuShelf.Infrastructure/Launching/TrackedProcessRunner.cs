@@ -39,4 +39,5 @@ public sealed class TrackedProcessRunner : ITrackedProcessRunner
         await process.WaitForExitAsync(cancellationToken);
         return process.ExitCode;
     }
+
 }

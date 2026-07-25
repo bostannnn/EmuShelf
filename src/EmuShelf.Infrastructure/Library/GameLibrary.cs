@@ -502,6 +502,40 @@ public sealed class GameLibrary : IGameLibrary
         command.ExecuteNonQuery();
     }
 
+    public IReadOnlyDictionary<string, long> GetDiscSelections()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT TitleSetKey, GameId
+            FROM GameDiscSelections;
+            """;
+
+        var selections = new Dictionary<string, long>(StringComparer.Ordinal);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            selections.Add(reader.GetString(0), reader.GetInt64(1));
+        return selections;
+    }
+
+    public void SetDiscSelection(string titleSetKey, long gameId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(titleSetKey);
+
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO GameDiscSelections (TitleSetKey, GameId)
+            VALUES ($titleSetKey, $gameId)
+            ON CONFLICT(TitleSetKey) DO UPDATE SET GameId = excluded.GameId;
+            """;
+        command.Parameters.AddWithValue("$titleSetKey", titleSetKey);
+        command.Parameters.AddWithValue("$gameId", gameId);
+        command.ExecuteNonQuery();
+    }
+
     public void RemoveGame(long gameId)
     {
         RemoveGames([gameId]);

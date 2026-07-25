@@ -90,4 +90,18 @@ public class GamepadNavigationControllerTests
         Assert.Empty(_controller.Poll(Connected(GamepadButtons.A), 48));
         Assert.Empty(_controller.Poll(Connected(GamepadButtons.A), 64));
     }
+
+    [Fact]
+    public void Reset_AfterExternalGameSession_SwallowsTheButtonStillHeldOnReturn()
+    {
+        _controller.Poll(Connected(), 0);
+        _controller.Poll(Connected(GamepadButtons.B), 16);
+
+        // The emulator was closed with B while EmuShelf was minimized. Returning to the frontend
+        // must not treat that still-held button as its Desktop-mode Cancel command.
+        _controller.Reset();
+
+        Assert.Empty(_controller.Poll(Connected(GamepadButtons.B), 32));
+        Assert.Empty(_controller.Poll(Connected(GamepadButtons.B), 48));
+    }
 }

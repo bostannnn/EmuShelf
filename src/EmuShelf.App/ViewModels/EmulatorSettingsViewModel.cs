@@ -173,6 +173,18 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial string RcloneExpectedPath { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSyncLog))]
+    [NotifyPropertyChangedFor(nameof(SyncLogUri))]
+    public partial string SyncLogPath { get; set; } = string.Empty;
+
+    /// <summary>True once at least one sync has been recorded in the activity log.</summary>
+    public bool HasSyncLog => !string.IsNullOrWhiteSpace(SyncLogPath) && File.Exists(SyncLogPath);
+
+    /// <summary>The activity log as a file URI so the view can offer to open it.</summary>
+    public Uri? SyncLogUri =>
+        string.IsNullOrWhiteSpace(SyncLogPath) ? null : new Uri(SyncLogPath);
+
+    [ObservableProperty]
     public partial bool IsDownloadingRclone { get; set; }
 
     public bool IsCloudDisconnected => !IsCloudConnected;
@@ -220,6 +232,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             IsCloudConnected = saves is { Enabled: true, RemoteName.Length: > 0 };
             IsRcloneMissing = !cloudSaves.IsRcloneAvailable;
             RcloneExpectedPath = cloudSaves.RcloneExpectedPath;
+            SyncLogPath = cloudSaves.SyncLogPath;
         }
         if (retroAchievements?.CurrentAccount is { } account)
         {
@@ -697,6 +710,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         finally
         {
             IsCloudBusy = false;
+            // A successful sync creates the log after SyncLogPath was first assigned, so notify
+            // the view that the previously hidden activity-log link is now available.
+            OnPropertyChanged(nameof(HasSyncLog));
         }
     }
 

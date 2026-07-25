@@ -28,6 +28,8 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public void SetAvailabilities(IReadOnlyList<GameAvailabilityUpdate> updates) { }
     public void UpdateTitle(long gameId, string title) { }
     public void UpdateCoverPath(long gameId, string? coverPath) { }
+    public IReadOnlyDictionary<string, long> GetDiscSelections() => new Dictionary<string, long>();
+    public void SetDiscSelection(string titleSetKey, long gameId) { }
     public void RemoveGame(long gameId) { }
     public void RemoveGames(IReadOnlyList<long> gameIds) { }
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null) => [];

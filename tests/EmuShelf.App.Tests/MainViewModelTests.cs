@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using Avalonia.Headless.XUnit;
+using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
@@ -69,7 +70,8 @@ public class MainViewModelTests : IDisposable
         IRetroAchievementsDetailsService? retroDetails = null,
         IRetroAchievementsRefreshService? retroRefresh = null,
         IGameMetadataStore? metadataStore = null,
-        IEmulatorConfigurationStore? emulatorConfigurations = null)
+        IEmulatorConfigurationStore? emulatorConfigurations = null,
+        IInterfaceModeService? interfaceModeService = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -92,7 +94,8 @@ public class MainViewModelTests : IDisposable
             retroProgress: retroProgress,
             retroDetails: retroDetails,
             retroRefresh: retroRefresh,
-            metadataStore: metadataStore);
+            metadataStore: metadataStore,
+            interfaceModeService: interfaceModeService);
     }
 
     private string MakeRomsFolder()
@@ -819,6 +822,84 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadDiscPicker_SelectsThenLaunchesTheRememberedDisc()
+    {
+        var disc1 = Path.Combine(_baseDirectory, "Remembered Game (Disc 1).cue");
+        var disc2 = Path.Combine(_baseDirectory, "Remembered Game (Disc 2).cue");
+        File.WriteAllText(disc1, "FILE \"Disc 1.bin\" BINARY");
+        File.WriteAllText(disc2, "FILE \"Disc 2.bin\" BINARY");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = disc1, Title = "Remembered Game (Disc 1)", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = Ps1.Id, Path = disc2, Title = "Remembered Game (Disc 2)", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var launcher = new RecordingLaunchService(new GameLaunchResult(true, "Finished"));
+        var vm = CreateViewModel(launchService: launcher);
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        Assert.Equal("Remembered Game", vm.FocusedGame.Title);
+        Assert.True(vm.FocusedGame.IsMultiDisc);
+        Assert.Equal("2 discs", vm.FocusedGame.DiscCountText);
+
+        vm.OpenFocusedGameActionsCommand.Execute(null);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Select disc");
+        vm.OpenFocusedDiscSelectionCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.DiscSelection, vm.GamepadOverlay);
+        Assert.Equal(["Disc 1 (current)", "Disc 2", "Back"],
+            vm.GamepadOverlayOptions.Select(option => option.Label));
+        Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
+
+        await ((IAsyncRelayCommand)vm.GamepadOverlayOptions[1].Command).ExecuteAsync(null);
+
+        Assert.Null(launcher.Game);
+        Assert.Equal(2, vm.FocusedGame!.SelectedDiscNumber);
+        Assert.Equal("Disc 2 selected", vm.FocusedGame.SelectedDiscText);
+        Assert.Single(_library.GetDiscSelections().Values, id => id == vm.FocusedGame.LaunchModel.Id);
+
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        Assert.Equal(2, vm.FocusedGame.SelectedDiscNumber);
+        await vm.LaunchFocusedGameCommand.ExecuteAsync(null);
+        Assert.Equal(disc2, launcher.Game?.Path);
+
+        var desktopDisc1 = vm.FocusedGame.DiscOptions[0];
+        Assert.Equal("Disc 1", desktopDisc1.Label);
+        await desktopDisc1.SelectDiscCommand.ExecuteAsync(null);
+        Assert.Equal(disc2, launcher.Game?.Path);
+        Assert.Equal(1, vm.FocusedGame.SelectedDiscNumber);
+        Assert.Single(_library.GetDiscSelections().Values, id => id == desktopDisc1.Disc.Game.Id);
+        Assert.Equal("Disc 1 selected for Remembered Game", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadDiscPicker_ChangesTheDefaultWithoutLaunching()
+    {
+        var disc1 = Path.Combine(_baseDirectory, "Failure Game (Disc 1).cue");
+        var disc2 = Path.Combine(_baseDirectory, "Failure Game (Disc 2).cue");
+        File.WriteAllText(disc1, "x");
+        File.WriteAllText(disc2, "x");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = disc1, Title = "Failure Game (Disc 1)", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = Ps1.Id, Path = disc2, Title = "Failure Game (Disc 2)", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var launcher = new RecordingLaunchService(new GameLaunchResult(false, "Failed"));
+        var vm = CreateViewModel(launchService: launcher);
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        vm.OpenFocusedDiscSelectionCommand.Execute(null);
+        await ((IAsyncRelayCommand)vm.GamepadOverlayOptions[1].Command).ExecuteAsync(null);
+
+        Assert.Equal(2, vm.FocusedGame!.SelectedDiscNumber);
+        Assert.Single(_library.GetDiscSelections().Values, id => id == vm.FocusedGame.LaunchModel.Id);
+        Assert.Null(launcher.Game);
+    }
+
+    [AvaloniaFact]
     public async Task ShoulderButtons_StepThroughCollectionsInRailOrderWithoutWrapping()
     {
         // Regression: LB/RB walked All Games -> systems and stepped over the Collections tab.
@@ -904,6 +985,39 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
         Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadLaunchSession_ConsumesCancelUntilTheFrontendHasReturned()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadReturn.cue");
+        File.WriteAllText(path, "FILE \"GamepadReturn.bin\" BINARY");
+        _library.AddGames([new Game
+        {
+            SystemId = Ps1.Id,
+            Path = path,
+            Title = "Gamepad return",
+            DateAdded = DateTimeOffset.UtcNow,
+        }]);
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var launcher = new BlockingLaunchService();
+        var vm = CreateViewModel(launchService: launcher, interfaceModeService: mode);
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        var launch = vm.LaunchFocusedGameCommand.ExecuteAsync(null);
+        await launcher.Started;
+
+        Assert.True(vm.IsGamepadInputSuspended);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
+
+        launcher.Complete();
+        await launch;
+
+        // The short post-return guard also consumes a late Steam-Input Escape/B event.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
     }
 
     [AvaloniaFact]
@@ -1560,6 +1674,30 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task RemoveGame_RemovesEveryDiscInAGroupedTitle()
+    {
+        var disc1 = Path.Combine(_baseDirectory, "Remove Set (Disc 1).cue");
+        var disc2 = Path.Combine(_baseDirectory, "Remove Set (Disc 2).cue");
+        File.WriteAllText(disc1, "x");
+        File.WriteAllText(disc2, "x");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = disc1, Title = "Remove Set (Disc 1)" },
+            new Game { SystemId = Ps1.Id, Path = disc2, Title = "Remove Set (Disc 2)" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+        var titleSet = Assert.Single(vm.Games);
+
+        _dialogs.ConfirmRemoveToReturn = true;
+        await vm.RemoveGameCommand.ExecuteAsync(titleSet);
+
+        Assert.Empty(_library.GetGames(Ps1.Id));
+        Assert.True(File.Exists(disc1));
+        Assert.True(File.Exists(disc2));
+    }
+
+    [AvaloniaFact]
     public async Task LibrarySelection_TogglesRangesAndSelectsAllInTheCurrentView()
     {
         _library.AddGames(
@@ -1740,6 +1878,20 @@ public class MainViewModelTests : IDisposable
         }
 
         public void Complete() => _complete.TrySetResult();
+    }
+
+    private sealed class RecordingInterfaceModeService(InterfaceMode initial) : IInterfaceModeService
+    {
+        public InterfaceMode Current { get; private set; } = initial;
+        public bool IsCommandLineOverride => false;
+        public event EventHandler<InterfaceMode>? ModeChanged;
+
+        public Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default)
+        {
+            Current = mode;
+            ModeChanged?.Invoke(this, mode);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class RecordingRetroAchievementsRefreshService : IRetroAchievementsRefreshService

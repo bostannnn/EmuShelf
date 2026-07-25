@@ -253,6 +253,18 @@ public partial class MainWindow : Window
         }
     }
 
+    // Context menus live in a detached popup. Invoke the concrete option's parameterless command
+    // from the menu item itself instead of relying on command-parameter binding across that popup.
+    private void OnSelectDiscMenuItemClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is MenuItem { DataContext: GameDiscOptionViewModel option } &&
+            option.SelectDiscCommand.CanExecute(null))
+        {
+            option.SelectDiscCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
     // View wiring only: report the grid area's width so the view model can size covers to fill a
     // whole number of columns (and re-fill when the sidebar collapses or the window resizes), then
     // widen the grid cells (MinItemWidth) to match — the layout otherwise pins cells to 188.

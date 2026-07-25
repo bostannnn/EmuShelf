@@ -94,7 +94,12 @@ public sealed class GamepadNavigationController
         }
     }
 
-    private void Reset()
+    /// <summary>
+    /// Drops the current controller state. The next connected reading is intentionally swallowed,
+    /// so an input held while another application owned the foreground cannot become an EmuShelf
+    /// command when the frontend returns.
+    /// </summary>
+    public void Reset()
     {
         _wasConnected = false;
         _previousButtons = GamepadButtons.None;

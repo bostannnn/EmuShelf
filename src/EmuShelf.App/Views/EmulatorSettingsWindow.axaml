@@ -180,13 +180,15 @@
                                         <Border Height="1" Background="{DynamicResource EmuBorderBrush}"
                                                 Margin="0,0,0,5" />
                                         <TextBlock Text="LAUNCH TARGET" FontSize="10" FontWeight="SemiBold"
+                                                   IsVisible="{Binding IsLaunchTargetPickerVisible}"
                                                    LetterSpacing="0.7"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                        <ComboBox SelectedItem="{Binding TargetKind, Mode=TwoWay}" SelectedIndex="0">
+                                        <ComboBox SelectedItem="{Binding TargetKind, Mode=TwoWay}" SelectedIndex="0"
+                                                  IsVisible="{Binding IsLaunchTargetPickerVisible}">
                                             <x:String>Direct</x:String>
                                             <x:String>Flatpak</x:String>
                                         </ComboBox>
-                                        <TextBlock Text="{Binding ExecutableDescription}" FontSize="10" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding DirectTargetLabel}" FontSize="10" FontWeight="SemiBold"
                                                    LetterSpacing="0.7" IsVisible="{Binding IsDirectTarget}"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -202,10 +204,23 @@
                                         <ComboBox ItemsSource="{Binding AvailableFlatpakApplicationIds}"
                                                   SelectedItem="{Binding FlatpakAppId, Mode=TwoWay}"
                                                   IsEditable="True"
-                                                 IsVisible="{Binding IsFlatpakTarget}"
+                                                 IsVisible="{Binding IsEditableFlatpakTarget}"
                                                  Background="{DynamicResource EmuInputBrush}"
                                                  BorderBrush="{DynamicResource EmuBorderBrush}"
                                                  PlaceholderText="Installed Flatpak or manual app id" />
+                                        <Border IsVisible="{Binding IsUnsupportedFlatpakTarget}"
+                                                Background="{DynamicResource EmuInputBrush}"
+                                                BorderBrush="{DynamicResource EmuDangerBrush}"
+                                                BorderThickness="1" CornerRadius="6" Padding="11">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="{Binding UnsupportedFlatpakTargetMessage}"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                <Button Content="Use direct executable"
+                                                        HorizontalAlignment="Left"
+                                                        Command="{Binding UseDirectTargetCommand}" />
+                                            </StackPanel>
+                                        </Border>
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,4,0,0">
                                             <TextBlock Grid.Column="0" Text="LAUNCH ARGUMENTS" FontSize="10"
                                                        FontWeight="SemiBold" LetterSpacing="0.7"
@@ -470,6 +485,20 @@
                                                  Maximum="{Binding CloudSyncProgressTotal}"
                                                  Value="{Binding CloudSyncProgressCompleted}"
                                                  Height="6" />
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding HasSyncLog}" Spacing="3">
+                                    <TextBlock Text="SYNC ACTIVITY" FontSize="10" FontWeight="SemiBold"
+                                               LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <HyperlinkButton Content="Open sync activity log"
+                                                     NavigateUri="{Binding SyncLogUri}"
+                                                     HorizontalAlignment="Left" Padding="0" />
+                                    <TextBlock Text="{Binding SyncLogPath}"
+                                               FontFamily="Monospace" FontSize="11"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip.Tip="The portable save-sync activity log"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </StackPanel>
 
                                 <TextBlock Text="{Binding CloudStatusText}"

@@ -470,6 +470,15 @@
                                     <ContextMenu>
                                         <MenuItem Header="Launch" Command="{Binding LaunchCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="Select disc" IsVisible="{Binding IsMultiDisc}"
+                                                  ItemsSource="{Binding DiscOptions}">
+                                            <MenuItem.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:GameDiscOptionViewModel">
+                                                    <MenuItem Header="{Binding Label}"
+                                                              Click="OnSelectDiscMenuItemClick" />
+                                                </DataTemplate>
+                                            </MenuItem.ItemTemplate>
+                                        </MenuItem>
                                         <MenuItem Header="Achievements…"
                                                   IsVisible="{Binding CanOpenAchievementDetails}"
                                                   Command="{Binding OpenAchievementsCommand}"
@@ -552,6 +561,13 @@
                                                        MaxWidth="260" TextWrapping="Wrap" />
                                         </ToolTip.Tip>
                                     </Border>
+                                    <Border IsVisible="{Binding IsMultiDisc}"
+                                            Background="#D9000000" CornerRadius="4"
+                                            Padding="7,4" Margin="8"
+                                            HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                                        <TextBlock Text="{Binding DiscCountText}" FontSize="8" FontWeight="Bold"
+                                                   LetterSpacing="0.8" Foreground="White" />
+                                    </Border>
                                     <!-- Achievement mark: shown only on a confirmed RA hash match. -->
                                     <Button Classes="achievement-mark"
                                             IsVisible="{Binding ShowAchievementMark}"
@@ -572,6 +588,10 @@
                                            MaxWidth="{Binding CoverWidth}"
                                            Foreground="{DynamicResource EmuTextPrimaryBrush}"
                                            ToolTip.Tip="{Binding Title}" />
+                                <TextBlock IsVisible="{Binding ShowsSelectedDisc}"
+                                           Text="{Binding SelectedDiscText}" FontSize="11"
+                                           HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource EmuAccentBrush}" />
                                 <Border Padding="7,2" CornerRadius="7"
                                         Background="{DynamicResource EmuFormatPillBrush}"
                                         HorizontalAlignment="Center">
@@ -666,6 +686,15 @@
                                     <ContextMenu>
                                         <MenuItem Header="Launch" Command="{Binding LaunchCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="Select disc" IsVisible="{Binding IsMultiDisc}"
+                                                  ItemsSource="{Binding DiscOptions}">
+                                            <MenuItem.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:GameDiscOptionViewModel">
+                                                    <MenuItem Header="{Binding Label}"
+                                                              Click="OnSelectDiscMenuItemClick" />
+                                                </DataTemplate>
+                                            </MenuItem.ItemTemplate>
+                                        </MenuItem>
                                         <MenuItem Header="Achievements…"
                                                   IsVisible="{Binding CanOpenAchievementDetails}"
                                                   Command="{Binding OpenAchievementsCommand}"
@@ -705,6 +734,12 @@
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                                TextTrimming="CharacterEllipsis" />
+                                    <StackPanel IsVisible="{Binding IsMultiDisc}" Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding DiscCountText}" FontSize="10"
+                                                   Foreground="{DynamicResource EmuAccentBrush}" />
+                                        <TextBlock IsVisible="{Binding ShowsSelectedDisc}" Text="{Binding SelectedDiscText}"
+                                                   FontSize="10" Foreground="{DynamicResource EmuAccentBrush}" />
+                                    </StackPanel>
                                     <TextBlock Text="{Binding Path}" FontSize="10"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                                TextTrimming="CharacterEllipsis" />
@@ -926,6 +961,12 @@
                                                  bleeds a hair rather than letterboxing. -->
                                             <Image Source="{Binding CoverImage}" IsVisible="{Binding HasCoverImage}"
                                                    Stretch="UniformToFill" />
+                                            <Border IsVisible="{Binding IsMultiDisc}" Background="#D9000000"
+                                                    CornerRadius="4" Padding="7,4" Margin="8"
+                                                    HorizontalAlignment="Left" VerticalAlignment="Bottom">
+                                                <TextBlock Text="{Binding DiscCountText}" FontSize="8" FontWeight="Bold"
+                                                           LetterSpacing="0.8" Foreground="White" />
+                                            </Border>
                                         </Panel>
                                     </Border>
                                     <Border IsVisible="{Binding IsFocused}" IsHitTestVisible="False"
@@ -936,6 +977,9 @@
                                 <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
                                            TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" MaxWidth="{Binding CoverWidth}" />
+                                <TextBlock IsVisible="{Binding ShowsSelectedDisc}" Text="{Binding SelectedDiscText}"
+                                           FontSize="12" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource EmuAccentBrush}" />
                             </StackPanel>
                         </Button>
                     </DataTemplate>

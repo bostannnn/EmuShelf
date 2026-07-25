@@ -49,6 +49,12 @@ public interface IGameLibrary
     /// <summary>Updates the copied cover path for one library entry.</summary>
     void UpdateCoverPath(long gameId, string? coverPath);
 
+    /// <summary>Gets the persisted default disc id for each derived multi-disc title-set key.</summary>
+    IReadOnlyDictionary<string, long> GetDiscSelections();
+
+    /// <summary>Remembers a disc after it has launched successfully.</summary>
+    void SetDiscSelection(string titleSetKey, long gameId);
+
     /// <summary>Removes only the library record. Game and cover files are never touched.</summary>
     void RemoveGame(long gameId);
 

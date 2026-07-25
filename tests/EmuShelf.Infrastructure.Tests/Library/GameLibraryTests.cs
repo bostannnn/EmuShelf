@@ -155,6 +155,24 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void DiscSelections_PersistAndAreRemovedWithTheirSelectedGame()
+    {
+        _library.AddGames([
+            NewGame("playstation", "/g/Chrono Cross (Disc 1).cue", "Chrono Cross (Disc 1)"),
+            NewGame("playstation", "/g/Chrono Cross (Disc 2).cue", "Chrono Cross (Disc 2)"),
+        ]);
+        var disc2 = _library.GetGames("playstation").Single(game => game.Title.Contains("Disc 2"));
+
+        _library.SetDiscSelection("playstation\u001FCHRONO CROSS", disc2.Id);
+
+        Assert.Equal(disc2.Id, _library.GetDiscSelections()["playstation\u001FCHRONO CROSS"]);
+
+        _library.RemoveGame(disc2.Id);
+
+        Assert.Empty(_library.GetDiscSelections());
+    }
+
+    [Fact]
     public void UpdateTitle_PersistsAndChangesLibraryOrdering()
     {
         _library.AddGames([

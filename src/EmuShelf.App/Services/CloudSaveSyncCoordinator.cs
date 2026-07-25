@@ -21,6 +21,7 @@ public sealed class CloudSaveSyncCoordinator
     private readonly IAppLogger _logger;
     private readonly string? _rclonePath;
     private readonly Func<string?>? _defaultPcsx2Directory;
+    private readonly FileSaveSyncLog _syncLog;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AppSettings _settings;
 
@@ -38,6 +39,7 @@ public sealed class CloudSaveSyncCoordinator
         _logger = logger;
         _rclonePath = rclonePath;
         _defaultPcsx2Directory = defaultPcsx2Directory;
+        _syncLog = new FileSaveSyncLog(paths);
     }
 
     /// <summary>The PCSX2 config directory derived from the configured emulator, if any.</summary>
@@ -66,6 +68,9 @@ public sealed class CloudSaveSyncCoordinator
 
     /// <summary>The path EmuShelf will invoke for rclone — where it is, or where to place it.</summary>
     public string RcloneExpectedPath => RcloneExecutable.Resolve(_paths, _rclonePath);
+
+    /// <summary>Where the human-readable sync activity log is written.</summary>
+    public string SyncLogPath => _syncLog.LogPath;
 
     /// <summary>The memory-card directory PCSX2 is configured to use, or null if no config directory is set.</summary>
     public async Task<string?> GetDetectedMemoryCardsDirectoryAsync(CancellationToken cancellationToken = default)
@@ -191,6 +196,7 @@ public sealed class CloudSaveSyncCoordinator
         IsRcloneAvailable,
         RcloneExpectedPath,
         DefaultPcsx2Directory,
+        SyncLogPath,
         GetDetectedMemoryCardsDirectoryAsync,
         ConnectGoogleDriveAsync,
         DisconnectAsync,
@@ -209,17 +215,21 @@ public sealed class CloudSaveSyncCoordinator
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        RunPipelineAsync((service, provider, token) => service.SyncAsync(provider, progress, token), cancellationToken);
+        RunPipelineAsync((service, provider, token) => service.SyncAsync(provider, progress, token), "Sync", cancellationToken);
 
     /// <summary>Forces every present unit in one direction (the manual overwrite), still backing up the loser.</summary>
     public Task<CloudSaveSyncOutcome> ForceAsync(
         SaveSyncDirection direction,
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        RunPipelineAsync((service, provider, token) => service.ForceAsync(provider, direction, progress, token), cancellationToken);
+        RunPipelineAsync(
+            (service, provider, token) => service.ForceAsync(provider, direction, progress, token),
+            direction == SaveSyncDirection.Upload ? "Upload → cloud" : "Download → local",
+            cancellationToken);
 
     private async Task<CloudSaveSyncOutcome> RunPipelineAsync(
         Func<SaveSyncService, ISaveLocationProvider, CancellationToken, Task<SaveSyncReport>> operation,
+        string operationLabel,
         CancellationToken cancellationToken)
     {
         var configurationDirectory = EffectivePcsx2Directory;
@@ -240,6 +250,7 @@ public sealed class CloudSaveSyncCoordinator
             var service = new SaveSyncService(endpoint, transport, new JsonSaveSyncManifestStore(_paths));
 
             var report = await operation(service, provider, cancellationToken);
+            await WriteSyncLogAsync(operationLabel, report, cancellationToken);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)
@@ -255,6 +266,19 @@ public sealed class CloudSaveSyncCoordinator
         finally
         {
             _gate.Release();
+        }
+    }
+
+    // The activity log is a convenience for the user; a failure to write it must not fail the sync.
+    private async Task WriteSyncLogAsync(string operation, SaveSyncReport report, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _syncLog.AppendAsync(operation, report, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Error("Could not write the cloud sync activity log.", ex);
         }
     }
 }
@@ -310,6 +334,7 @@ public sealed record CloudSaveSyncSettingsContext(
     bool IsRcloneAvailable,
     string RcloneExpectedPath,
     string? DefaultPcsx2Directory,
+    string SyncLogPath,
     Func<CancellationToken, Task<string?>> GetDetectedMemoryCardsDirectoryAsync,
     Func<string, string, string, CancellationToken, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
     Func<CancellationToken, Task> DisconnectAsync,

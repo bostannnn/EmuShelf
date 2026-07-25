@@ -57,6 +57,15 @@ public sealed class GamepadInputService : IDisposable
 
     private void OnTick(object? sender, EventArgs e)
     {
+        // An emulator may be closed with B/Escape while this process is minimized. Do not let that
+        // held input reach the restored Gamepad library: reset makes the first post-session read a
+        // deliberate no-op and the view model consumes late Steam-Input key events as well.
+        if (_viewModel.IsGamepadInputSuspended)
+        {
+            _navigation.Reset();
+            return;
+        }
+
         var reading = _reader.Read();
         LogAvailabilityOnce();
 

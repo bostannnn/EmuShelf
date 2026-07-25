@@ -1365,3 +1365,66 @@ with a shared prefix, it can be a different game or sequel and would silently at
 artwork. Recovery now accepts only normalized exact source product titles, plus the explicitly
 reviewed PSP aliases above. Directory-index fetches run under their own small concurrency limit
 before cover downloads, so a large listing cannot occupy every cover-download slot.
+
+## 2026-07-25 — M24 is a release-quality gate before further end-user scope
+
+The project has accumulated expansion systems and optional services while its foundational
+experience still has open real-device acceptance work, most notably the Gamepad launch/return
+loop and Windows/SteamOS configuration presentation. M24 therefore becomes an ordered
+product-hardening gate rather than a broad cosmetic backlog: critical game-session reliability
+comes first, then controller flow, high-frequency desktop flow, responsiveness/accessibility,
+and finally visual plus real-device release verification.
+
+This does not remove existing milestones or block maintenance fixes. It prevents new end-user
+features from being presented as release-ready before the portable direct-launch flow, the
+controller-first return path, and the UI quality bar have been demonstrably met.
+
+## 2026-07-25 — Gamepad return suppresses input at both native and command boundaries
+
+Closing an emulator with B/Escape can leave the same physical button held when EmuShelf regains
+focus. Suppressing only SDL polling is insufficient because Steam Input may deliver a late keyboard
+event; suppressing only command handling still lets the native navigation controller retain held
+state. During a tracked game session, EmuShelf therefore pauses native controller routing and
+resets its edge state. After return it consumes all Gamepad actions for 500 ms, covering late
+Steam-Input events and making the first native reading a no-op.
+
+The guard is deliberately short and exists only for the session transition. It does not change the
+normal Gamepad mapping, require a controller release before every interaction, or alter Desktop
+input.
+
+## 2026-07-25 — Flatpak configuration is platform-aware, with explicit legacy migration
+
+Flatpak targets are useful only for supported standalone emulators on Linux; showing them in a
+Windows executable picker suggests a launch path that cannot work. New Windows configurations
+therefore show a direct executable only, while Linux keeps its Direct/AppImage and Flatpak choice.
+Core-aware RetroArch remains direct/AppImage-only on every platform because its Flatpak core paths
+are private to the sandbox.
+
+An existing Flatpak configuration is not silently rewritten or hidden. On an unsupported platform
+Settings presents an explanatory warning and one explicit action to switch that row to a direct
+executable. This preserves the stored configuration until the user chooses its migration and keeps
+the existing preflight failure as the last line of protection.
+
+## 2026-07-25 — Multi-disc games are one library title with a remembered launch disc
+
+Independently imported discs belonging to one release are represented as an ordered title set, not
+as duplicate Grid/List items. The set owns the library presentation and remembers the disc that was
+last launched successfully; its card states the disc count and, when applicable, the selected disc.
+This keeps continuing a long game to one action while leaving the individual media sources explicit
+and inspectable.
+
+The existing `.m3u` entry remains a single canonical library item because it is already the
+descriptor through which emulators can manage a disc set. A direct "select disc" launch is enabled
+only when the target emulator's invocation has been verified to honour that source; EmuShelf must
+not display a choice that silently launches another disc. In Gamepad mode `A` launches the
+remembered target, and `Y` → `Select disc` changes it only after ordinary launch preflight and
+process handoff succeed. In-session disc swaps remain emulator-specific and outside this library
+and launcher flow.
+
+## 2026-07-25 — Selecting a disc never launches it
+
+The preceding multi-disc launch rule is superseded for disc selection. In both Desktop and
+Gamepad modes, choosing a disc changes and immediately persists the title's default source; it
+does not start an emulator or require launch preflight. Launch remains an explicit, separate
+action: Desktop uses the card's normal Launch action and Gamepad uses `A`. This makes the two
+interfaces consistent and lets a player prepare the correct disc before committing to a session.

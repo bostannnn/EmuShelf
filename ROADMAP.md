@@ -504,19 +504,142 @@ it must not create a second downloader, account flow, or background polling mech
 
 ## M24 — UI polish and product-quality pass (planned)
 
-- [ ] Establish a cohesive visual system for typography, spacing, color, elevation, controls,
-      platform shelves, and cover treatment. Apply it consistently to the library, game details,
-      Settings, metadata, and RetroAchievements views without importing OpenEmu branding or
-      unlicensed artwork.
-- [ ] Refine high-frequency flows so the first launch, empty library, scanning/import progress,
-      selection, search, filtering, unavailable games, metadata failures, and launch/preflight
-      errors feel deliberate and understandable rather than like developer states.
-- [ ] Improve layout responsiveness and accessibility: keyboard navigation and visible focus,
-      screen-reader labels, readable contrast in light/dark/follow-system modes, sensible scaling,
-      and polished grid/list virtualization at small and large window sizes.
-- [ ] Add focused UI/view-model coverage and visual regression/manual acceptance checks for every
-      refined state. Keep business behavior in view models and services; code-behind remains view
-      wiring only.
+M24 is a product-hardening gate, not a visual reskin. Complete its phases in order before adding
+new end-user features or marking a new Windows/SteamOS release as a candidate. Preserve the
+portable, read-only game-file contract throughout; polish work must not modify game files,
+emulator configuration, or emulator-owned data.
+
+### Phase 0 — Baseline and quality bar
+
+- [ ] Capture the current Desktop and 1280×800 Gamepad experience for populated, empty, loading,
+      unavailable, search-empty, error, Settings, and achievement states. Turn the approved
+      references into intentional visual-regression baselines rather than treating a render-only
+      test as proof of quality.
+- [ ] Define a small visual system for type scale, spacing, control heights, radii, elevations,
+      semantic color states, focus rings, cover treatment, and motion. Apply it consistently to
+      the library, overlays, dialogs, Settings, metadata, and RetroAchievements without importing
+      OpenEmu branding or unlicensed artwork.
+- [ ] Establish the review matrix: Windows at 100%, 125%, 150%, and 200% scaling; 900×560 minimum
+      desktop window; 1280×800 Gamepad/Deck viewport; light, dark, and follow-system appearances;
+      mouse, keyboard, and controller paths.
+
+### Phase 1 — Make the game-session loop reliable
+
+- [x] Guard the existing Gamepad return path against input used to close an emulator: native
+      polling is suspended for the tracked session and resets on return, while late Steam-Input
+      actions are consumed during a short return guard. Focused tests cover B/Escape-held return,
+      fullscreen restoration, and controller-state reset (2026-07-25).
+- [ ] Treat launch through return as one explicit frontend session. In Gamepad mode suspend
+      controller/Steam-Input routing while an external emulator owns the session, restore the
+      fullscreen window and the prior focused tile on exit, and ignore held/late input until the
+      return is stable. A game exit must never silently switch the user to Desktop mode.
+- [ ] Make leaving Gamepad mode deliberate and discoverable. B/Escape dismisses the current
+      overlay or returns to the Gamepad library; switching to Desktop mode uses a separately named
+      action and, when initiated by a controller, a confirmation that cannot be triggered by the
+      button used to close an emulator.
+- [ ] Add end-to-end tests for normal, failed, and non-zero launches; emulator exit with B/Escape
+      held; focus restoration; and Gamepad fullscreen restoration. Verify the same behavior on
+      real Windows and Deck/Gaming Mode hardware.
+
+### Phase 2 — Validate and refine the existing controller-first Gamepad mode
+
+- [ ] Preserve the implemented fullscreen Gamepad shell: upper platform rail, SDL2 and Steam Input
+      routing, focused-cover navigation, controller-owned actions/search/collections/rename/remove/
+      achievement overlays, and the controller-safe cover handoff. This phase is not a redesign or
+      replacement of that work.
+- [ ] Use the Phase 0 references and real controller sessions to make only evidence-backed
+      refinements to hierarchy, target size, contextual help, modal grouping, rail overflow/reveal,
+      and controller-safe Settings access. Keep the existing action set and focus model unless an
+      acceptance finding shows a concrete usability failure.
+- [ ] Verify every existing Gamepad state—empty, unavailable, no-emulator, launch failure,
+      scan progress, search, rename, cover handoff, collections, and achievements—has a predictable
+      focus entry, selection, cancel, and return target with no desktop-only fallback except the
+      explicit platform file picker.
+- [ ] Validate the adopted shared-shelf cover model at Deck resolution with real artwork of mixed
+      aspect ratios. Preserve each artwork's aspect ratio while confirming stable row geometry,
+      title baselines, focus treatment, and navigation.
+
+### Phase 3 — Desktop library and high-frequency flows
+
+- [ ] Improve first-run guidance into a clear sequence: add games, configure the required
+      emulator, then launch. Make the empty-library actions, PS3/RPCS3 source path, and unavailable
+      reasons actionable without exposing implementation terminology.
+- [x] Add the first user-requested **multi-disc title-set flow** without treating every CD as a separate
+      library game. A title set has one stable library identity and one representative card, while
+       its ordered disc members retain their own source paths and availability. Persist the user-
+       selected disc as that set's default launch target; neither grouping nor disc
+      selection may modify any game file, playlist, emulator configuration, or emulator-owned data
+      (2026-07-25; explicit independently imported discs only).
+  - [x] Build conservative discovery for independently imported discs: group only same-system,
+        complete sources with an explicit, recognized disc-number marker and a shared normalized
+        release title. Exclude regional variants, revisions, demos, bonus discs, loose CUE tracks,
+        and ambiguous filenames. Retain the current `.m3u` behavior as one canonical library entry
+        (2026-07-25).
+  - [ ] Extend the title-set model to enumerate `.m3u`-declared discs where possible, and never
+        claim that a selected disc can be launched through an emulator until that emulator's command
+        behavior is verified.
+  - [ ] Provide a safe correction path for bad filenames: users can split an automatic set or merge
+        compatible library entries, with a reviewable ordered-disc list. Preserve manual title,
+        cover, metadata, achievement, and removal semantics; these continue to affect EmuShelf's
+        records only, never the source media.
+  - [x] Present one card in Grid and one row in List, showing a quiet disc count and a clear
+        `Disc N selected` state when the remembered default differs from Disc 1. Opening the title
+        uses the Gamepad title menu rather than expanding and reflowing the virtualized shelf
+        (2026-07-25).
+  - [x] In Gamepad mode, `A` launches the remembered disc. `Y` opens the existing title menu and
+        exposes `Select disc` for multi-disc sets; the picker marks the current default, has a
+        deterministic focus/cancel return, and selecting a disc changes the next default without
+        launching it. `A` remains the explicit launch action. Single-disc behavior is unchanged
+        (2026-07-25).
+  - [x] Give Desktop the same remembered-disc and picker behavior through the title details/context
+        menu; keyboard, mouse, and controller routes must resolve the same selected source and
+        produce the same notification/recovery states (2026-07-25; Grid and List context menus).
+  - [ ] Add migration, importer, view-model, launcher, and visual-snapshot coverage for ordering,
+        false-positive prevention, `.m3u` descriptors, missing individual discs, manual merge/split,
+        remembered-default persistence, failed launch non-mutation, Grid/List counts, Gamepad `Y`
+        focus flow, and platform-specific launch templates. Complete real-emulator acceptance with
+        representative PS1 and PS2 multi-disc titles before calling the flow release-ready.
+- [ ] Refine scanning/import, metadata fetch, cover download, availability refresh, and launch
+      states. Every long-running operation needs a visible owner, useful progress, cancellation
+      behavior where supported, completion feedback, and an error state that states what the user
+      can do next.
+- [ ] Establish a consistent selection model across grid, list, context menu, keyboard shortcuts,
+      and bulk actions. Make primary, secondary, destructive, and disabled controls visually
+      distinct; retain the guarantee that removal affects only EmuShelf records.
+- [ ] Replace the generic status toast treatment with semantic, accessible notices for progress,
+      success, warning, and blocking failure. Messages must remain readable, dismissible when
+      appropriate, and never hide the only recovery action.
+
+### Phase 4 — Responsive, accessible, platform-aware configuration
+
+- [ ] Validate library virtualization and cover loading at the small window, large-library, and
+      high-DPI matrix from Phase 0. Eliminate clipped controls, orphaned whitespace, unstable cover
+      rows, focus that scrolls off-screen, and layout shifts after cover images load.
+- [ ] Complete keyboard navigation, visible focus, screen-reader names for icon-only controls,
+      logical tab order, color-independent unavailable/error/achievement states, and contrast
+      checks in each supported theme. Do not rely on hover-only affordances.
+- [x] Make emulator settings platform-aware. Windows presents direct executable configuration only;
+      Linux/SteamOS presents direct/AppImage and Flatpak targets with installed-candidate guidance,
+      target-specific validation, and clear unavailable-target messaging. Existing configurations
+      remain readable and never launch through an unsupported target (2026-07-25).
+- [ ] Simplify Settings with progressive disclosure: show a human-readable launch summary by
+      default; keep templates, executable/core paths, Flatpak IDs, and other advanced fields in an
+      explicit advanced area. Make shared RetroArch installations and per-system cores legible.
+
+### Phase 5 — Verification and release exit gate
+
+- [ ] Add focused view-model and integration coverage for every refined lifecycle, command route,
+      focus transition, platform-specific configuration, and recovery state. Keep business behavior
+      in view models/services; code-behind remains view wiring only.
+- [ ] Add reviewed visual snapshots for all Phase 0 states, including Gamepad rail/actions and
+      Settings emulator-target variants. Snapshot changes require an intentional approval note;
+      screenshots alone do not replace interaction tests.
+- [ ] Run the real Windows acceptance checklist using the portable release artifact: first launch,
+      import, configured direct emulator launch/return, failure paths, restart, and portable-folder
+      relocation. Complete the Deck/Gaming Mode checks for controller input, Steam + X text entry,
+      gamescope restore, AppImage fallback, and Flatpak path errors.
+- [ ] M24 exits only when the automated suite is green, the baseline screenshots are approved, the
+      real-device checks above pass, and no P0/P1 usability or launch-return issue remains open.
 
 ## M25 — Multi-select and bulk library actions ✅ (2026-07-20)
 

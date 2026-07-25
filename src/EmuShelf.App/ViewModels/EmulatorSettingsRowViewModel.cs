@@ -26,8 +26,20 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public string EmulatorInstallationId { get; }
     public bool RequiresCorePath { get; }
     public bool IsExecutableShared { get; }
+    /// <summary>Flatpak targets are meaningful only on Linux and never for core-aware RetroArch.</summary>
+    public bool CanSelectFlatpakTarget => OperatingSystem.IsLinux() && !RequiresCorePath;
+    public bool IsLaunchTargetPickerVisible => CanSelectFlatpakTarget;
     public bool IsFlatpakTarget => TargetKind == "Flatpak";
+    public bool IsEditableFlatpakTarget => CanSelectFlatpakTarget && IsFlatpakTarget;
     public bool IsDirectTarget => !IsFlatpakTarget;
+    /// <summary>A persisted Flatpak target is shown read-only when the current platform cannot run it.</summary>
+    public bool IsUnsupportedFlatpakTarget => IsFlatpakTarget && !CanSelectFlatpakTarget;
+    public string DirectTargetLabel => OperatingSystem.IsLinux()
+        ? "DIRECT EXECUTABLE OR APPIMAGE"
+        : "EXECUTABLE";
+    public string UnsupportedFlatpakTargetMessage => OperatingSystem.IsWindows()
+        ? "This saved Flatpak target cannot run on Windows. Choose a direct executable to use this emulator."
+        : "Flatpak RetroArch is unsupported because its cores are private to the sandbox. Choose a direct or AppImage installation.";
     public ObservableCollection<LibretroCoreOption> AvailableCores { get; } = [];
     public ObservableCollection<LibretroCoreOption> FilteredCores { get; } = [];
     public ObservableCollection<string> AvailableFlatpakApplicationIds { get; } = [];
@@ -119,8 +131,11 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         ExecutablePath = configuration?.ExecutablePath ?? string.Empty;
         TargetKind = configuration?.LaunchTarget is FlatpakApplicationTarget ? "Flatpak" : "Direct";
         FlatpakAppId = (configuration?.LaunchTarget as FlatpakApplicationTarget)?.AppId ?? string.Empty;
-        foreach (var appId in new FlatpakApplicationDiscovery().FindInstalledForEmulator(EmulatorId))
-            AvailableFlatpakApplicationIds.Add(appId);
+        if (CanSelectFlatpakTarget)
+        {
+            foreach (var appId in new FlatpakApplicationDiscovery().FindInstalledForEmulator(EmulatorId))
+                AvailableFlatpakApplicationIds.Add(appId);
+        }
         LaunchArguments = configuration?.LaunchArguments ?? emulator.DefaultLaunchArguments;
         CorePath = configuration?.CorePath ?? string.Empty;
         RefreshAvailableCores();
@@ -136,7 +151,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     partial void OnTargetKindChanged(string value)
     {
         OnPropertyChanged(nameof(IsFlatpakTarget));
+        OnPropertyChanged(nameof(IsEditableFlatpakTarget));
         OnPropertyChanged(nameof(IsDirectTarget));
+        OnPropertyChanged(nameof(IsUnsupportedFlatpakTarget));
     }
 
     partial void OnCorePathChanged(string value)
@@ -261,6 +278,10 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
 
     [RelayCommand]
     private void ResetArguments() => LaunchArguments = DefaultLaunchArguments;
+
+    /// <summary>Explicit migration from a legacy/unavailable Flatpak target to a direct executable.</summary>
+    [RelayCommand]
+    private void UseDirectTarget() => TargetKind = "Direct";
 
     [RelayCommand(CanExecute = nameof(CanRescan))]
     private Task RescanLibraryAsync() =>

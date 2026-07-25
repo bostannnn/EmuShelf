@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using Avalonia.Threading;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,6 +28,7 @@ namespace EmuShelf.App.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
+    private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
 
     private readonly IGameLibrary _library;
     private readonly IFolderScanner _scanner;
@@ -62,6 +64,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly HashSet<long> _deferredCoverLoads = [];
     private GameViewModel? _selectionAnchor;
     private bool _isFrontendSuspended;
+    private DateTimeOffset _gamepadInputGuardUntil;
     private string _appliedSearchText = string.Empty;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
@@ -174,6 +177,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadSearchOpen => GamepadOverlay == GamepadOverlayKind.Search;
     public bool IsGamepadCollectionsOpen => GamepadOverlay == GamepadOverlayKind.Collections;
     public bool IsGamepadRenameOpen => GamepadOverlay == GamepadOverlayKind.Rename;
+    public bool IsGamepadDiscSelectionOpen => GamepadOverlay == GamepadOverlayKind.DiscSelection;
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
     public bool IsGamepadAllGamesRailFocused => IsGamepadRailFocused && GamepadRailIndex == 0;
@@ -184,6 +188,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Collections => "Collections",
         GamepadOverlayKind.Rename => "Rename game",
+        GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.Title} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         _ => string.Empty,
@@ -239,6 +244,13 @@ public partial class MainViewModel : ViewModelBase
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
+    /// <summary>
+    /// True while an emulator owns the game session, plus a short return guard that absorbs the
+    /// controller/key used to close it. Input services poll this directly, so it remains accurate
+    /// without a timer or UI notification.
+    /// </summary>
+    public bool IsGamepadInputSuspended =>
+        _isFrontendSuspended || DateTimeOffset.UtcNow < _gamepadInputGuardUntil;
     public int SelectedGameCount => Games.Count(game => game.IsSelected);
     public bool HasSelectedGames => SelectedGameCount > 0;
     public string LibraryTitle => CurrentLibraryScope switch
@@ -462,6 +474,13 @@ public partial class MainViewModel : ViewModelBase
     private Task LaunchFocusedGameAsync() => LaunchGameAsync(FocusedGame);
 
     [RelayCommand]
+    private void OpenFocusedDiscSelection()
+    {
+        if (FocusedGame?.IsMultiDisc == true)
+            OpenGamepadOverlay(GamepadOverlayKind.DiscSelection);
+    }
+
+    [RelayCommand]
     private Task OpenFocusedAchievementsAsync() => OpenAchievementDetailsAsync(FocusedGame);
 
     [RelayCommand]
@@ -620,6 +639,12 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode)
             return false;
 
+        // Consume late Steam-Input keyboard events as well as native-pad input while a tracked
+        // game is active/returning. In particular, B/Escape must not turn a game return into a
+        // Desktop-mode switch.
+        if (IsGamepadInputSuspended)
+            return true;
+
         if (GamepadOverlayOwnsTextInput)
             return DispatchTextOverlayAction(action);
 
@@ -740,6 +765,9 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Save", SaveGamepadTitleCommand);
                 AddOption("Cancel", CloseGamepadOverlayCommand);
                 break;
+            case GamepadOverlayKind.DiscSelection:
+                AddDiscSelectionOptions();
+                break;
             case GamepadOverlayKind.RemoveConfirmation:
                 AddOption("Remove from library", ConfirmGamepadRemoveCommand);
                 AddOption("Cancel", CloseGamepadOverlayCommand);
@@ -753,7 +781,9 @@ public partial class MainViewModel : ViewModelBase
                 break;
         }
 
-        GamepadOverlaySelectionIndex = 0;
+        GamepadOverlaySelectionIndex = overlay == GamepadOverlayKind.DiscSelection && FocusedGame is { } selectedGame
+            ? Math.Max(0, selectedGame.Discs.ToList().FindIndex(disc => disc.Game.Id == selectedGame.LaunchModel.Id))
+            : 0;
         UpdateGamepadOverlayOptionFocus();
         NotifyGamepadOverlayState();
     }
@@ -761,6 +791,8 @@ public partial class MainViewModel : ViewModelBase
     private void AddGameActions()
     {
         AddOption("Launch", LaunchFromGamepadOverlayCommand);
+        if (FocusedGame?.IsMultiDisc == true)
+            AddOption("Select disc", OpenFocusedDiscSelectionCommand);
         if (FocusedGame?.CanOpenAchievementDetails == true)
             AddOption("Achievements", OpenFocusedAchievementsCommand);
         AddOption("Edit title", EditFocusedTitleCommand);
@@ -770,7 +802,23 @@ public partial class MainViewModel : ViewModelBase
         AddOption("Desktop mode", SwitchToDesktopModeCommand);
     }
 
-    private void AddOption(string label, IRelayCommand command) =>
+    private void AddDiscSelectionOptions()
+    {
+        if (FocusedGame is { } game)
+        {
+            foreach (var disc in game.Discs)
+            {
+                var current = disc.Game.Id == game.LaunchModel.Id ? " (current)" : string.Empty;
+                AddOption(
+                    $"Disc {disc.Number}{current}",
+                    new AsyncRelayCommand(() => SelectDiscFromGamepadAsync(disc)));
+            }
+        }
+
+        AddOption("Back", new RelayCommand(() => OpenGamepadOverlay(GamepadOverlayKind.Actions)));
+    }
+
+    private void AddOption(string label, ICommand command) =>
         GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command));
 
     private void MoveGamepadOverlaySelection(int delta)
@@ -817,6 +865,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSearchOpen));
         OnPropertyChanged(nameof(IsGamepadCollectionsOpen));
         OnPropertyChanged(nameof(IsGamepadRenameOpen));
+        OnPropertyChanged(nameof(IsGamepadDiscSelectionOpen));
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
@@ -827,6 +876,14 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         await LaunchFocusedGameAsync();
+    }
+
+    private async Task SelectDiscFromGamepadAsync(GameDisc disc)
+    {
+        var game = FocusedGame;
+        CloseGamepadOverlay();
+        if (game is not null)
+            await SelectDiscFromLibraryAsync(game, disc);
     }
 
     [RelayCommand]
@@ -1159,14 +1216,26 @@ public partial class MainViewModel : ViewModelBase
             {
                 var loaded = scope switch
                 {
-                    LibraryScope.RecentlyAdded => _library.GetRecentlyAddedGames(30),
+                    // Group before limiting. Limiting raw rows first can split a title when one of
+                    // its discs falls just outside the newest 30 imported files.
+                    LibraryScope.RecentlyAdded => _library.GetGames(),
                     LibraryScope.System => _library.GetGames(system!.Id),
                     _ => _library.GetGames(),
                 };
 
-                var viewModels = new List<GameViewModel>(loaded.Count);
-                foreach (var game in loaded)
+                var titleSets = GameDiscSetBuilder.Build(loaded, _library.GetDiscSelections());
+                if (scope == LibraryScope.RecentlyAdded)
                 {
+                    titleSets = titleSets
+                        .OrderByDescending(titleSet => titleSet.Discs.Max(disc => disc.Game.DateAdded))
+                        .ThenBy(titleSet => titleSet.DisplayTitle, StringComparer.OrdinalIgnoreCase)
+                        .Take(30)
+                        .ToArray();
+                }
+                var viewModels = new List<GameViewModel>(titleSets.Count);
+                foreach (var titleSet in titleSets)
+                {
+                    var game = titleSet.DisplayGame;
                     if (!_systemsById.TryGetValue(game.SystemId, out var gameSystem))
                         continue;
 
@@ -1184,7 +1253,12 @@ public partial class MainViewModel : ViewModelBase
                         artwork,
                         gameSystem.CoverAspectRatio,
                         OpenAchievementDetailsCommand,
-                        RemoveSelectedGamesCommand);
+                        RemoveSelectedGamesCommand,
+                        titleSet.Discs,
+                        titleSet.SelectedDisc,
+                        titleSet.DisplayTitle,
+                        titleSet.SelectionKey,
+                        LaunchSelectedDiscFromLibraryAsync);
                     viewModel.CoverAspectRatioChanged += OnGameCoverAspectRatioChanged;
                     viewModels.Add(viewModel);
                 }
@@ -1832,14 +1906,34 @@ public partial class MainViewModel : ViewModelBase
     });
 
     [RelayCommand]
-    private async Task LaunchGameAsync(GameViewModel? game)
+    private Task LaunchGameAsync(GameViewModel? game) => LaunchGameCoreAsync(game);
+
+    private Task LaunchSelectedDiscFromLibraryAsync(GameViewModel game, GameDisc disc) =>
+        SelectDiscFromLibraryAsync(game, disc);
+
+    private async Task SelectDiscFromLibraryAsync(GameViewModel game, GameDisc disc)
+    {
+        if (!game.Discs.Any(candidate => candidate.Game.Id == disc.Game.Id))
+            return;
+
+        await RememberSelectedDiscAsync(game, disc);
+        StatusText = $"Disc {disc.Number} selected for {game.Title}";
+    }
+
+    private async Task LaunchGameCoreAsync(GameViewModel? game)
     {
         if (game is null || IsBusy)
             return;
 
-        if (!game.IsAvailable)
+        var launchDisc = game.Discs.FirstOrDefault(disc => disc.Game.Id == game.LaunchModel.Id);
+        if (launchDisc is null)
+            return;
+
+        var launchGame = launchDisc.Game;
+        if (!launchGame.IsAvailable)
         {
-            StatusText = game.UnavailableLaunchStatus;
+            StatusText = launchGame.IsAvailable ? game.UnavailableLaunchStatus :
+                $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found.";
             return;
         }
 
@@ -1848,7 +1942,7 @@ public partial class MainViewModel : ViewModelBase
         SuspendFrontendUiWork();
         try
         {
-            var result = await _launchService.LaunchAsync(game.Model);
+            var result = await _launchService.LaunchAsync(launchGame);
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             StatusText = result.StatusText;
@@ -1868,6 +1962,24 @@ public partial class MainViewModel : ViewModelBase
         {
             ResumeFrontendUiWork();
             IsBusy = false;
+        }
+    }
+
+    private async Task<bool> RememberSelectedDiscAsync(GameViewModel game, GameDisc disc)
+    {
+        if (game.DiscSelectionKey is null)
+            return false;
+
+        try
+        {
+            await Task.Run(() => _library.SetDiscSelection(game.DiscSelectionKey, disc.Game.Id));
+            game.SetSelectedDisc(disc);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not remember Disc {disc.Number} for {game.Title}: {ex.Message}");
+            return false;
         }
     }
 
@@ -1951,6 +2063,8 @@ public partial class MainViewModel : ViewModelBase
     private void ResumeFrontendUiWork()
     {
         _isFrontendSuspended = false;
+        if (IsGamepadMode)
+            _gamepadInputGuardUntil = DateTimeOffset.UtcNow + GamepadReturnInputGuard;
         if (!string.Equals(SearchText.Trim(), _appliedSearchText, StringComparison.Ordinal))
             ApplyFilter();
 
@@ -2128,7 +2242,7 @@ public partial class MainViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            await Task.Run(() => _library.RemoveGame(game.Id));
+            await Task.Run(() => _library.RemoveGames(game.Discs.Select(disc => disc.Game.Id).ToArray()));
             await ReloadGamesAsync();
             StatusText = $"Removed {game.Title} from the library — game files were not touched";
         }
@@ -2159,7 +2273,10 @@ public partial class MainViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            await Task.Run(() => _library.RemoveGames(selectedGames.Select(game => game.Id).ToArray()));
+            await Task.Run(() => _library.RemoveGames(selectedGames
+                .SelectMany(game => game.Discs.Select(disc => disc.Game.Id))
+                .Distinct()
+                .ToArray()));
             await ReloadGamesAsync();
             StatusText = $"Removed {selectedGames.Length} {(selectedGames.Length == 1 ? "game" : "games")} from the library — game files and covers were not touched";
         }

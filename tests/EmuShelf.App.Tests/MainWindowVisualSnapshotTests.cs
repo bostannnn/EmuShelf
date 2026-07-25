@@ -225,7 +225,7 @@ public class MainWindowVisualSnapshotTests
         var viewModel = new MainViewModel();
         await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
         viewModel.IsGamepadMode = true;
-        viewModel.Games.ReplaceAll(systems.Select((system, index) => new GameViewModel(
+        var gamepadGames = systems.Select((system, index) => new GameViewModel(
             new Game
             {
                 Id = index + 1,
@@ -237,7 +237,32 @@ public class MainWindowVisualSnapshotTests
             system.Name,
             system.ShortName,
             system.AccentColor,
-            coverAspectRatio: system.CoverAspectRatio)));
+            coverAspectRatio: system.CoverAspectRatio)).ToArray();
+        var disc1 = new Game
+        {
+            Id = 101,
+            SystemId = systems[0].Id,
+            Path = "/Games/playstation2/Final Fantasy X (Disc 1).chd",
+            Title = "Final Fantasy X (Disc 1)",
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var disc2 = disc1 with
+        {
+            Id = 102,
+            Path = "/Games/playstation2/Final Fantasy X (Disc 2).chd",
+            Title = "Final Fantasy X (Disc 2)",
+        };
+        gamepadGames[0] = new GameViewModel(
+            disc1,
+            systems[0].Name,
+            systems[0].ShortName,
+            systems[0].AccentColor,
+            coverAspectRatio: systems[0].CoverAspectRatio,
+            discs: [new GameDisc(1, disc1), new GameDisc(2, disc2)],
+            selectedDisc: new GameDisc(2, disc2),
+            displayTitle: "Final Fantasy X",
+            discSelectionKey: "playstation2\u001FFINAL FANTASY X");
+        viewModel.Games.ReplaceAll(gamepadGames);
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
         viewModel.LibraryCountText = "4 games";
@@ -261,6 +286,8 @@ public class MainWindowVisualSnapshotTests
 
             viewModel.OpenFocusedGameActionsCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-actions-1280x800.png");
+            viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-disc-selection-1280x800.png");
             var achievementSnapshot = new RetroAchievementsDetailsSnapshot(
                 new RetroAchievementsGameDetails(7, "PlayStation 2 sample game", 2, 1, 1,
                 [

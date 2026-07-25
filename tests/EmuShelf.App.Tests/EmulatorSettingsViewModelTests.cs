@@ -171,6 +171,34 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void EmulatorTargets_AreLimitedToTheCurrentPlatformAndLegacyFlatpaksCanMigrate()
+    {
+        var emulator = KnownEmulators.All.Single(candidate => candidate.Id == "duckstation");
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation");
+        var legacyFlatpak = new EmulatorConfiguration(system.Id, null, emulator.DefaultLaunchArguments)
+        {
+            LaunchTarget = new FlatpakApplicationTarget("org.example.DuckStation"),
+        };
+        var row = new EmulatorSettingsRowViewModel(system, emulator, legacyFlatpak, _dialogs);
+
+        Assert.Equal(OperatingSystem.IsLinux(), row.CanSelectFlatpakTarget);
+        Assert.Equal(!OperatingSystem.IsLinux(), row.IsUnsupportedFlatpakTarget);
+
+        if (OperatingSystem.IsLinux())
+            return;
+
+        Assert.False(row.IsLaunchTargetPickerVisible);
+        Assert.Equal("EXECUTABLE", row.DirectTargetLabel);
+        Assert.Contains("cannot run on Windows", row.UnsupportedFlatpakTargetMessage);
+
+        row.UseDirectTargetCommand.Execute(null);
+
+        Assert.True(row.IsDirectTarget);
+        Assert.False(row.IsUnsupportedFlatpakTarget);
+        Assert.Null(row.ToConfiguration().LaunchTarget);
+    }
+
+    [AvaloniaFact]
     public void PspRow_UsesPpssppAndTheSingleGamePathArgumentTemplate()
     {
         var viewModel = CreateViewModel();
@@ -521,6 +549,37 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_SyncNow_RefreshesTheActivityLogLink()
+    {
+        var logPath = Path.Combine(Path.GetTempPath(), $"emushelf-save-sync-{Guid.NewGuid():N}.log");
+        try
+        {
+            var changed = new List<string?>();
+            var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+                syncLogPath: logPath,
+                syncNow: async (_, _) =>
+                {
+                    await File.WriteAllTextAsync(logPath, "Sync completed.");
+                    return CloudSaveSyncOutcome.Completed(new SaveSyncReport([]));
+                }));
+            viewModel.PropertyChanged += (_, eventArgs) => changed.Add(eventArgs.PropertyName);
+
+            Assert.False(viewModel.HasSyncLog);
+
+            await viewModel.SyncCloudNowCommand.ExecuteAsync(null);
+
+            Assert.True(viewModel.HasSyncLog);
+            Assert.Equal(new Uri(logPath), viewModel.SyncLogUri);
+            Assert.Contains(nameof(viewModel.HasSyncLog), changed);
+        }
+        finally
+        {
+            if (File.Exists(logPath))
+                File.Delete(logPath);
+        }
+    }
+
+    [AvaloniaFact]
     public void CloudSaves_PreFillsPcsx2DirectoryFromConfiguredEmulator()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
@@ -626,11 +685,13 @@ public class EmulatorSettingsViewModelTests
         Action<string?>? updateDirectory = null,
         bool rcloneAvailable = true,
         Func<CancellationToken, Task<bool>>? downloadRclone = null,
-        string? defaultPcsx2Directory = null) => new(
+        string? defaultPcsx2Directory = null,
+        string? syncLogPath = null) => new(
         current ?? new CloudSaveSyncSettings(),
         rcloneAvailable,
         "/app/rclone",
         defaultPcsx2Directory,
+        syncLogPath ?? Path.Combine(Path.GetTempPath(), "emushelf-save-sync-test.log"),
         _ => Task.FromResult<string?>("/pcsx2/memcards"),
         connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
         _ => Task.CompletedTask,

@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Windows.Input;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -12,6 +13,7 @@ public enum GamepadOverlayKind
     Search,
     Collections,
     Rename,
+    DiscSelection,
     RemoveConfirmation,
     CoverDesktopHandoff,
 }
@@ -20,12 +22,12 @@ public enum GamepadOverlayKind
 public partial class GamepadOverlayOptionViewModel : ObservableObject
 {
     public string Label { get; }
-    public IRelayCommand Command { get; }
+    public ICommand Command { get; }
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
 
-    public GamepadOverlayOptionViewModel(string label, IRelayCommand command)
+    public GamepadOverlayOptionViewModel(string label, ICommand command)
     {
         Label = label;
         Command = command;

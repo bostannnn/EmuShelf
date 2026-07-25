@@ -19,6 +19,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     private static readonly IAsyncRelayCommand NoCommand =
         new AsyncRelayCommand(() => Task.CompletedTask);
     private readonly double _defaultCoverAspectRatio;
+    private readonly IReadOnlyList<GameDisc> _discs;
 
     /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
     private const double CoverFrameWidth = 188;
@@ -32,13 +33,24 @@ public partial class GameViewModel : ObservableObject, IDisposable
     private const double ListCoverFrameHeight = 52;
 
     public Game Model { get; private set; }
+    /// <summary>The concrete source passed to the emulator when this library card is launched.</summary>
+    public Game LaunchModel { get; private set; }
+    public IReadOnlyList<GameDisc> Discs => _discs;
+    public IReadOnlyList<GameDiscOptionViewModel> DiscOptions { get; }
+    public bool IsMultiDisc => _discs.Count > 1;
+    public int DiscCount => _discs.Count;
+    public int SelectedDiscNumber { get; private set; }
+    public string? DiscSelectionKey { get; }
+    public string DiscCountText => $"{DiscCount} discs";
+    public string SelectedDiscText => $"Disc {SelectedDiscNumber} selected";
+    public bool ShowsSelectedDisc => IsMultiDisc && SelectedDiscNumber != 1;
     public long Id { get; }
     public string SystemId { get; }
     public string Path { get; }
     public string SystemName { get; }
     public string SystemShortName { get; }
     public string AccentColor { get; }
-    public string FormatLabel { get; }
+    public string FormatLabel { get; private set; }
     public IImage? PlatformArtwork { get; }
     private double _coverWidth;
     private double _coverHeight;
@@ -112,6 +124,14 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     public partial bool IsAvailable { get; set; }
+
+    partial void OnIsAvailableChanged(bool value)
+    {
+        OnPropertyChanged(nameof(AvailabilityText));
+        OnPropertyChanged(nameof(UnavailableBadgeText));
+        OnPropertyChanged(nameof(UnavailableTooltip));
+        OnPropertyChanged(nameof(UnavailableLaunchStatus));
+    }
 
     [ObservableProperty]
     public partial Bitmap? CoverImage { get; set; }
@@ -188,14 +208,30 @@ public partial class GameViewModel : ObservableObject, IDisposable
         IImage? platformArtwork = null,
         double coverAspectRatio = DefaultCoverAspectRatio,
         IAsyncRelayCommand<GameViewModel?>? openAchievementsCommand = null,
-        IAsyncRelayCommand? removeSelectedCommand = null)
+        IAsyncRelayCommand? removeSelectedCommand = null,
+        IReadOnlyList<GameDisc>? discs = null,
+        GameDisc? selectedDisc = null,
+        string? displayTitle = null,
+        string? discSelectionKey = null,
+        Func<GameViewModel, GameDisc, Task>? launchDiscAction = null)
     {
         Model = game;
+        _discs = discs ?? [new GameDisc(1, game)];
+        var resolvedSelectedDisc = selectedDisc ?? _discs[0];
+        LaunchModel = resolvedSelectedDisc.Game;
+        SelectedDiscNumber = resolvedSelectedDisc.Number;
+        DiscSelectionKey = discSelectionKey;
+        DiscOptions = _discs
+            .Select(disc => new GameDiscOptionViewModel(
+                disc,
+                selectedDisc => launchDiscAction?.Invoke(this, selectedDisc) ?? Task.CompletedTask,
+                disc.Game.Id == LaunchModel.Id))
+            .ToArray();
         Id = game.Id;
         SystemId = game.SystemId;
         Path = game.Path;
-        Title = game.Title;
-        IsAvailable = game.IsAvailable;
+        Title = displayTitle ?? game.Title;
+        IsAvailable = LaunchModel.IsAvailable;
         CoverPath = game.CoverPath;
         SystemName = systemName;
         SystemShortName = systemShortName;
@@ -211,9 +247,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         // List rows share one height; their width follows the cover currently being shown.
         ListCoverHeight = ListCoverFrameHeight;
         ListCoverWidth = Math.Round(ListCoverFrameHeight * coverAspectRatio);
-        FormatLabel = System.IO.Path.GetExtension(game.Path) is { Length: > 1 } extension
-            ? extension[1..].ToUpperInvariant()
-            : "FOLDER";
+        FormatLabel = GetFormatLabel(LaunchModel);
         DraftTitle = game.Title;
         LaunchCommand = launchCommand ?? NoGameCommand;
         SaveTitleCommand = saveTitleCommand ?? NoGameCommand;
@@ -223,6 +257,31 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
         RemoveSelectedCommand = removeSelectedCommand ?? NoCommand;
     }
+
+    /// <summary>Applies a successfully remembered disc to the currently displayed title set.</summary>
+    public void SetSelectedDisc(GameDisc selectedDisc)
+    {
+        if (!_discs.Any(disc => disc.Game.Id == selectedDisc.Game.Id))
+            throw new ArgumentException("The selected disc does not belong to this title set.", nameof(selectedDisc));
+
+        LaunchModel = selectedDisc.Game;
+        SelectedDiscNumber = selectedDisc.Number;
+        IsAvailable = selectedDisc.Game.IsAvailable;
+        FormatLabel = GetFormatLabel(LaunchModel);
+        OnPropertyChanged(nameof(LaunchModel));
+        OnPropertyChanged(nameof(SelectedDiscNumber));
+        OnPropertyChanged(nameof(SelectedDiscText));
+        OnPropertyChanged(nameof(ShowsSelectedDisc));
+        OnPropertyChanged(nameof(FormatLabel));
+        OnPropertyChanged(nameof(UnavailableLaunchStatus));
+        foreach (var option in DiscOptions)
+            option.IsCurrent = option.Disc.Game.Id == selectedDisc.Game.Id;
+    }
+
+    private static string GetFormatLabel(Game game) =>
+        System.IO.Path.GetExtension(game.Path) is { Length: > 1 } extension
+            ? extension[1..].ToUpperInvariant()
+            : "FOLDER";
 
     partial void OnTitleChanged(string value)
     {
