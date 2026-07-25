@@ -69,6 +69,7 @@ public class RetroAchievementsMatchingServiceTests
     [InlineData("megadrive", 1)]
     [InlineData("nds", 18)]
     [InlineData("gba", 5)]
+    [InlineData("dreamcast", 40)]
     public async Task ExpansionSystem_UsesItsVerifiedConsoleCatalogue(
         string systemId,
         int expectedConsoleId)

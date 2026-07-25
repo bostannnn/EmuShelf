@@ -25,7 +25,7 @@ public class PlatformArtworkTests
     public void ExpansionSystems_HaveStableNavigationIdsAndLicensedArtwork()
     {
         Assert.Equal(
-            ["psp", "megadrive", "nds", "gba", "snes"],
+            ["psp", "megadrive", "nds", "gba", "snes", "dreamcast"],
             KnownSystems.All.Skip(5).Select(system => system.Id));
         Assert.All(KnownSystems.All.Skip(5), system =>
             Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
@@ -45,5 +45,8 @@ public class PlatformArtworkTests
         Assert.Equal(
             1.434,
             KnownSystems.All.Single(system => system.Id == "snes").CoverAspectRatio);
+        Assert.Equal(
+            0.708,
+            KnownSystems.All.Single(system => system.Id == "dreamcast").CoverAspectRatio);
     }
 }

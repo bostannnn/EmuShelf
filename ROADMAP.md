@@ -580,3 +580,22 @@ same RetroArch launcher, opt-in metadata pipeline, and read-only RetroAchievemen
       achievements, search, collections, rename, remove, and the reviewed cover handoff.
 - [ ] Perform Deck Gaming Mode acceptance: rail reveal,
       Steam + X search keyboard, gamescope restore, AppImage fallback, and Flatpak path errors.
+
+## M30 — Dreamcast library (planned)
+
+- [x] Add strict `.gdi` descriptor discovery for complete, read-only Dreamcast track sets. The
+      primary track must validate its IP.BIN marker; loose tracks, CDI, and CHD remain unsupported
+      until their logical-track behavior has parity fixtures.
+- [x] Register Dreamcast as a RetroArch/core system and retain its existing licensed navigation
+      artwork. Use a portrait `0.708` (width÷height) cover frame matching representative 512×722
+      Libretro box art, so downloaded covers and the missing-art placeholder have the same ratio.
+- [x] Add exact metadata and cover downloading through the existing opt-in cache/downloader:
+      hash the validated primary data track for the Libretro Redump Dreamcast catalogue, then use
+      its canonical title with the existing Libretro Dreamcast thumbnail provider. Never title-guess
+      an unmatched GDI set.
+- [x] Add RetroAchievements console 40 for validated GDI sets only, using the rcheevos Dreamcast
+      hash (full IP.BIN plus the named boot executable) and existing credential/cache/progress flow.
+      Unverified, incomplete, or unsupported images remain Unknown, never "No achievements".
+- [ ] On real Windows, launch a supported `.gdi` set through a configured Flycast RetroArch core;
+      verify paths with spaces, BIOS/core configuration stays user-owned, and neither game tracks
+      nor RetroArch configuration/overrides/playlists/achievement settings are modified.

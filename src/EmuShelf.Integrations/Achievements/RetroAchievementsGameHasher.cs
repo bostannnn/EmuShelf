@@ -22,6 +22,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string NintendoDsId = "nds";
     private const string GameBoyAdvanceId = "gba";
     private const string SuperNintendoId = "snes";
+    private const string DreamcastId = "dreamcast";
 
     // v2 was the first version that added verified logical-disc readers for GameCube/Wii CISO,
     // WBFS, and RVZ. It was persisted globally before per-system versions existed, so it remains
@@ -41,6 +42,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
     private const string GameBoyAdvanceAlgorithm = "rcheevos-2ac45d3-gba-v1";
     private const string SuperNintendoAlgorithm = "rcheevos-2ac45d3-snes-v1";
+    private const string DreamcastAlgorithm = "rcheevos-2ac45d3-dreamcast-gdi-v1";
 
     public string GetAlgorithmVersion(Game game) => game.SystemId switch
     {
@@ -52,6 +54,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         NintendoDsId => NintendoDsAlgorithm,
         GameBoyAdvanceId => GameBoyAdvanceAlgorithm,
         SuperNintendoId => SuperNintendoAlgorithm,
+        DreamcastId => DreamcastAlgorithm,
         _ => LegacyGlobalV2,
     };
 
@@ -121,6 +124,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                     inspected.SourcePath!,
                     cancellationToken),
                 SuperNintendoId => HashSuperNintendo(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                DreamcastId => DreamcastGdiHasher.Hash(
                     inspected.SourcePath!,
                     cancellationToken),
                 _ => throw new UnsupportedDiscLayoutException(
@@ -247,6 +253,17 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 canHash = extension is ".sfc" or ".smc";
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified Super Nintendo reader.";
+            }
+            else if (game.SystemId == DreamcastId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension == ".gdi" && DreamcastGdiReader.TryRecognize(sourcePath);
+                if (!canHash)
+                    error = extension == ".gdi"
+                        ? "This GDI set does not have a verified Dreamcast data track."
+                        : $"{extension.ToUpperInvariant()} needs a verified Dreamcast track reader.";
+                if (canHash)
+                    dependencies.AddRange(DreamcastGdiReader.GetReferencedFiles(sourcePath));
             }
             else
             {

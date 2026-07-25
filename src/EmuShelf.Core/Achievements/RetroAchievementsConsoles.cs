@@ -17,6 +17,7 @@ public static class RetroAchievementsConsoles
         "gba" => 5,
         "nds" => 18,
         "psp" => 41,
+        "dreamcast" => 40,
         _ => null,
     };
 }

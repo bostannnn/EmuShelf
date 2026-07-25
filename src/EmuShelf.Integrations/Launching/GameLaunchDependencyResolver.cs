@@ -37,7 +37,8 @@ public sealed class GameLaunchDependencyResolver : IGameLaunchDependencyResolver
         paths.Add(path);
         var extension = Path.GetExtension(path);
         if (!extension.Equals(".m3u", StringComparison.OrdinalIgnoreCase) &&
-            !extension.Equals(".cue", StringComparison.OrdinalIgnoreCase))
+            !extension.Equals(".cue", StringComparison.OrdinalIgnoreCase) &&
+            !extension.Equals(".gdi", StringComparison.OrdinalIgnoreCase))
             return;
 
         if (!visiting.Add(path))
@@ -45,9 +46,13 @@ public sealed class GameLaunchDependencyResolver : IGameLaunchDependencyResolver
 
         try
         {
-            var references = extension.Equals(".m3u", StringComparison.OrdinalIgnoreCase)
-                ? ReferencedFileParser.ParseM3u(path)
-                : ReferencedFileParser.ParseCue(path);
+            var references = extension.ToLowerInvariant() switch
+            {
+                ".m3u" => ReferencedFileParser.ParseM3u(path),
+                ".cue" => ReferencedFileParser.ParseCue(path),
+                ".gdi" => DreamcastGdiReader.GetReferencedFiles(path),
+                _ => [],
+            };
             if (references.Count == 0)
                 throw new DependencyResolutionException($"descriptor '{path}' has no readable file references.");
 

@@ -31,5 +31,8 @@ public static class KnownSystems
         // 512×357 (1.434), so unlike the portrait disc systems a SNES cover is short and wide. The
         // frame stays under the 266px disc shelf, bottom-aligned like the other short covers.
         new("snes",         "Super Nintendo", "SNES", "#8D66C4", 1.434),
+        // Representative Libretro Dreamcast scans are 512×722 (0.709), matching the standard
+        // portrait jewel-case frame without visible crop or letterboxing.
+        new("dreamcast",    "Dreamcast",      "DC",  "#F07C3E", 0.708),
     ];
 }

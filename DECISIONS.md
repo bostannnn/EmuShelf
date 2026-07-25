@@ -1179,3 +1179,28 @@ the shoulder buttons silently skipped Collections. Platform cycling now uses the
 space (0 All Games, 1 Collections, 2+ systems) and still refuses to wrap at either end. The
 Collections tab also gains the `selected` styling the other tabs already had, so it looks active
 when reached.
+
+## 2026-07-25 — Dreamcast v1 accepts validated GDI descriptor sets
+
+Dreamcast support starts with `.gdi` descriptor sets, not loose `.bin`, `.cdi`, or `.chd` files.
+The descriptor names every track, and validation requires its primary data track (track 03) to
+contain the `SEGA SEGAKATANA` IP.BIN marker. That gives folder scanning, launch, exact Redump
+data-track SHA-1 matching, and the rcheevos-compatible hash a single well-defined read-only
+source. CDI and CHD remain visibly unsupported until their logical-track readers have parity
+fixtures; treating their extension as evidence would allow false imports and false achievement
+matches.
+
+Dreamcast covers use the physical jewel-case portrait ratio `0.708` (representative Libretro
+scans are 512×722), the existing opt-in Libretro thumbnail provider, and the Redump Dreamcast
+catalogue. RetroAchievements console 40 is enabled only for the validated GDI representation:
+the canonical hash is exactly the 256-byte IP.BIN payload followed by the named boot executable,
+matching rcheevos' Dreamcast algorithm.
+
+## 2026-07-25 — GDI descriptor bounds win over padded track files
+
+For high-density Dreamcast tracks, the next descriptor LBA is the authoritative end of the
+track. EmuShelf rejects a high-density file that is shorter than that range and caps sector
+reads at the same boundary. This prevents incomplete sets from entering the library and avoids
+padded track 03 files shadowing later data tracks during RetroAchievements hashing. Low-density
+tracks remain existence-checked only because their session lead-in gap is not stored in the
+individual track files.

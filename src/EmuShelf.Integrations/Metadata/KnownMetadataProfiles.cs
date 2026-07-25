@@ -20,6 +20,8 @@ public static class KnownMetadataProfiles
         new GameBoyAdvanceRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor SuperNintendoExtractor =
         new SuperNintendoRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor DreamcastExtractor =
+        new DreamcastGdiIdentifierExtractor();
 
     // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
     // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of
@@ -99,6 +101,12 @@ public static class KnownMetadataProfiles
             RawCatalog("metadat/no-intro/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System.dat"),
             SuperNintendoExtractor,
             [new LibretroArtworkProvider("Nintendo - Super Nintendo Entertainment System")]),
+        new(
+            "dreamcast",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/redump/Sega%20-%20Dreamcast.dat"),
+            DreamcastExtractor,
+            [new LibretroArtworkProvider("Sega - Dreamcast")]),
     ];
 
     private static Uri RawCatalog(string path) =>

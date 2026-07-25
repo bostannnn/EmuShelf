@@ -52,6 +52,42 @@ public sealed class GameLaunchDependencyResolverTests : TempAppDirectoryTestBase
         Assert.Contains("missing.bin", result.FailureMessage, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Resolve_GdiIncludesEveryReferencedTrack()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var gdi = Path.Combine(BaseDirectory, "disc.gdi");
+        var tracks = new[] { "track01.bin", "track02.raw", "track03.bin" };
+        File.WriteAllText(gdi, "3\n1 0 4 2352 track01.bin 0\n2 600 0 2352 track02.raw 0\n3 45000 4 2352 track03.bin 0\n");
+        foreach (var track in tracks)
+            File.WriteAllBytes(Path.Combine(BaseDirectory, track), new byte[2352]);
+
+        var result = new GameLaunchDependencyResolver().Resolve(GameFor(gdi));
+
+        Assert.True(result.IsComplete);
+        Assert.Equal(
+            tracks.Prepend(gdi).Select(track =>
+                track == gdi ? track : Path.Combine(BaseDirectory, track))
+                .Select(Path.GetFullPath)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase),
+            result.Paths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Resolve_MissingGdiTrack_FailsAsIncomplete()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var gdi = Path.Combine(BaseDirectory, "disc.gdi");
+        File.WriteAllText(gdi, "3\n1 0 4 2352 track01.bin 0\n2 600 0 2352 track02.raw 0\n3 45000 4 2352 track03.bin 0\n");
+        File.WriteAllBytes(Path.Combine(BaseDirectory, "track01.bin"), new byte[2352]);
+        File.WriteAllBytes(Path.Combine(BaseDirectory, "track03.bin"), new byte[2352]);
+
+        var result = new GameLaunchDependencyResolver().Resolve(GameFor(gdi));
+
+        Assert.False(result.IsComplete);
+        Assert.Contains("track02.raw", result.FailureMessage, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static Game GameFor(string path) => new()
     {
         SystemId = "playstation",

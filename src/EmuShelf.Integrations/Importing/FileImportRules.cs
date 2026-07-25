@@ -7,7 +7,8 @@ namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
 /// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
-/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, GameCube, and Wii. PS3 remains
+/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Super Nintendo, Dreamcast, GameCube,
+/// and Wii. PS3 remains
 /// directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
@@ -19,6 +20,7 @@ public sealed class FileImportRules : IGameImportRules
     private const string NintendoDsId = "nds";
     private const string GameBoyAdvanceId = "gba";
     private const string SuperNintendoId = "snes";
+    private const string DreamcastId = "dreamcast";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
 
@@ -42,6 +44,10 @@ public sealed class FileImportRules : IGameImportRules
             // The extension is a routing hint only: the reader requires a valid internal LoROM or
             // HiROM header. Copier formats (.fig/.swc) wait for their own normalization contract.
             [SuperNintendoId] = new(StringComparer.OrdinalIgnoreCase) { ".sfc", ".smc" },
+            // GDI is the primary Dreamcast descriptor: it names every track and gives the data
+            // track enough structure for safe identification. CDI and CHD wait for their own
+            // verified logical-track readers rather than being filename-guessed.
+            [DreamcastId] = new(StringComparer.OrdinalIgnoreCase) { ".gdi" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
@@ -86,6 +92,9 @@ public sealed class FileImportRules : IGameImportRules
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
             : null;
+        var dreamcastImage = ExtensionsBySystem[DreamcastId].Contains(extension)
+            ? DreamcastGdiReader.TryRecognize(path)
+            : false;
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
         // extensions. Put it first so the system picker defaults to PSP, and never let an
@@ -130,6 +139,9 @@ public sealed class FileImportRules : IGameImportRules
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 SuperNintendoId => superNintendoHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                DreamcastId => !dreamcastImage
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
@@ -178,6 +190,8 @@ public sealed class FileImportRules : IGameImportRules
             return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
         if (system.Id == SuperNintendoId)
             return SuperNintendoRomReader.TryRecognize(path) is not null;
+        if (system.Id == DreamcastId)
+            return DreamcastGdiReader.TryRecognize(path);
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
@@ -207,7 +221,7 @@ public sealed class FileImportRules : IGameImportRules
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (system.Id is not (PlayStationId or PlayStation2Id))
+        if (system.Id is not (PlayStationId or PlayStation2Id or DreamcastId))
             return new GameEntrySelection(distinctCandidates, []);
 
         var referencedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -218,6 +232,7 @@ public sealed class FileImportRules : IGameImportRules
             {
                 ".m3u" => ReferencedFileParser.ParseM3u(candidate),
                 ".cue" => ReferencedFileParser.ParseCue(candidate),
+                ".gdi" => DreamcastGdiReader.GetReferencedFiles(candidate),
                 _ => [],
             };
 
@@ -279,6 +294,13 @@ public sealed class FileImportRules : IGameImportRules
                 "Super Nintendo header",
                 superNintendoEvidence.Sha1,
                 "Super Nintendo ROM");
+
+        if (system.Id == DreamcastId && DreamcastGdiReader.TryRead(path) is { } dreamcastEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "Dreamcast IP.BIN",
+                dreamcastEvidence.DataTrackSha1,
+                "Dreamcast data track");
 
         if (system.Id != PspId || PspGameMetadataReader.TryRead(path) is not { } evidence)
             return GameImportMetadata.Empty;

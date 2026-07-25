@@ -37,6 +37,7 @@ public sealed class RetroArchLaunchTests : IDisposable
             (Id: "megadrive", Core: "genesis_plus_gx_libretro", Extension: ".md"),
             (Id: "nds", Core: "melonds_libretro", Extension: ".nds"),
             (Id: "gba", Core: "mgba_libretro", Extension: ".gba"),
+            (Id: "dreamcast", Core: "flycast_libretro", Extension: ".gdi"),
         };
         originalConfigurations.SaveAll(systems.Select(system =>
             new EmulatorConfiguration(system.Id, executable, RetroArchDefinition.Instance.DefaultLaunchArguments)
@@ -85,8 +86,8 @@ public sealed class RetroArchLaunchTests : IDisposable
                 runner.Calls[^1].Arguments);
         }
 
-        Assert.Equal(3, frontend.MinimizeCount);
-        Assert.Equal(3, frontend.RestoreCount);
+        Assert.Equal(4, frontend.MinimizeCount);
+        Assert.Equal(4, frontend.RestoreCount);
         Assert.Equal(overridesBefore, File.ReadAllBytes(
             Path.Combine(movedBase, "Emulators", "RetroArch", "config", "overrides.cfg")));
         Assert.Equal(overridesTimeBefore, File.GetLastWriteTimeUtc(
