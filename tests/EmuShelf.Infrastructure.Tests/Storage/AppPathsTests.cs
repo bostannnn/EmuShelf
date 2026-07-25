@@ -31,6 +31,7 @@ public class AppPathsTests : TempAppDirectoryTestBase
         Assert.True(Directory.Exists(AppPaths.CacheDirectory));
         Assert.True(Directory.Exists(AppPaths.LogsDirectory));
         Assert.True(Directory.Exists(AppPaths.SettingsDirectory));
+        Assert.True(Directory.Exists(AppPaths.SavesDirectory));
     }
 
     [Fact]

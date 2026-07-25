@@ -273,6 +273,8 @@ public partial class MainViewModel : ViewModelBase
     };
 
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
+    private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
+
     public MainViewModel()
         : this(
             new EmptyGameLibrary(),
@@ -308,7 +310,8 @@ public partial class MainViewModel : ViewModelBase
         IRetroAchievementsRefreshService? retroRefresh = null,
         IGameMetadataStore? metadataStore = null,
         IInterfaceModeService? interfaceModeService = null,
-        IRetroAchievementsBadgeCache? retroBadges = null)
+        IRetroAchievementsBadgeCache? retroBadges = null,
+        CloudSaveSyncCoordinator? cloudSaveSync = null)
     {
         _library = library;
         _scanner = scanner;
@@ -342,6 +345,7 @@ public partial class MainViewModel : ViewModelBase
         _retroDetails = retroDetails;
         _retroRefresh = retroRefresh;
         _retroBadges = retroBadges;
+        _cloudSaveSync = cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -2189,7 +2193,8 @@ public partial class MainViewModel : ViewModelBase
                         _retroAccount.IsConnected,
                         ConnectRetroAchievementsAsync,
                         DisconnectRetroAchievementsAsync,
-                        RefreshRetroAchievementsMatchesAsync));
+                        RefreshRetroAchievementsMatchesAsync),
+                _cloudSaveSync?.CreateSettingsContext());
         }
         catch (Exception ex)
         {

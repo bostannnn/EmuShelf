@@ -109,13 +109,15 @@ the source project's terms and to the rights of their respective publishers.
 
 - [libretro-database](https://github.com/libretro/libretro-database) supplies the
   cached title/identifier catalogs. EmuShelf uses its Redump serial catalogs for PlayStation 3
-  and PSP, its Redump data-track SHA-1 catalog for Dreamcast, and its No-Intro SHA-1 catalogs for Mega Drive / Genesis, Nintendo DS, Game Boy
-  Advance, and Super Nintendo (as well as the existing profiles). The database repository declares
+  and PSP, its Redump data-track SHA-1 catalog for Dreamcast, and its No-Intro SHA-1 catalogs
+  for Mega Drive / Genesis, Nintendo DS, Game Boy Advance, and Super Nintendo (as well as the
+  existing profiles). The database repository declares
   [CC BY-SA 4.0](https://github.com/libretro/libretro-database/blob/master/LICENSE).
 - [libretro-thumbnails](https://github.com/libretro-thumbnails) supplies individual
   named box-art files when an exact canonical title is available, including the PlayStation 3,
-  PSP, Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Super Nintendo, and Dreamcast repositories. The thumbnail server
-  is updated periodically from those repositories. No thumbnail or catalog is bundled; downloaded
+  PSP, Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Super Nintendo, and Dreamcast
+  repositories. The thumbnail server is updated periodically from those repositories. No
+  thumbnail or catalog is bundled; downloaded
   cover images remain subject to their respective publisher rights and source terms.
 - [xlenore/psx-covers](https://github.com/xlenore/psx-covers) and
   [xlenore/ps2-covers](https://github.com/xlenore/ps2-covers) supply individual
@@ -124,3 +126,12 @@ the source project's terms and to the rights of their respective publishers.
   addressed by disc id (`https://art.gametdb.com/wii/cover/<region>/<id>.png`), the same
   community source Dolphin uses. Cover images remain subject to GameTDB's terms and to the
   rights of their respective publishers.
+
+## Bundled tools
+
+- [rclone](https://rclone.org/) is bundled with EmuShelf's Windows and Linux (AppImage) packages
+  to power optional cloud save sync. It is invoked as a separate, unmodified executable — EmuShelf
+  does not link against it, and rclone owns any cloud OAuth token, which never passes through
+  EmuShelf. rclone is distributed under the
+  [MIT License](https://github.com/rclone/rclone/blob/master/COPYING); its license ships beside the
+  executable at `ThirdParty/rclone/LICENSE.txt`.

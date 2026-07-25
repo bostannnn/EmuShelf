@@ -57,6 +57,7 @@ public sealed class AppBootstrapper
     public ITrackedProcessRunner ProcessRunner { get; }
     public ILaunchTargetInspector LaunchTargetInspector { get; }
     public IGameLaunchDependencyResolver GameLaunchDependencies { get; }
+    public CloudSaveSyncCoordinator CloudSaveSync { get; }
 
     public AppBootstrapper()
     {
@@ -118,6 +119,28 @@ public sealed class AppBootstrapper
         ImportRules = new FileImportRules(Systems);
         FolderScanner = new FolderScanner(ImportRules);
         AvailabilityChecker = new FileAvailabilityChecker();
+        CloudSaveSync = new CloudSaveSyncCoordinator(
+            Paths,
+            SettingsService,
+            Settings,
+            Logger,
+            defaultPcsx2Directory: ResolveConfiguredPcsx2Directory);
         Logger.Information("EmuShelf startup services initialized.");
+    }
+
+    // The PCSX2 data directory EmuShelf already knows about from the Emulators settings — the
+    // folder containing the configured executable — used to pre-fill cloud save sync so the user
+    // does not select PCSX2 twice. Flatpak targets have no local executable path, so return null.
+    private string? ResolveConfiguredPcsx2Directory()
+    {
+        var configuration = EmulatorConfigurations.Get("playstation2");
+        var executablePath = configuration?.LaunchTarget switch
+        {
+            DirectExecutableTarget direct => direct.Path,
+            _ => configuration?.ExecutablePath,
+        };
+        return string.IsNullOrWhiteSpace(executablePath)
+            ? null
+            : Path.GetDirectoryName(executablePath);
     }
 }

@@ -10,6 +10,7 @@ public sealed class AppPaths : IAppPaths
     public string CacheDirectory { get; }
     public string LogsDirectory { get; }
     public string SettingsDirectory { get; }
+    public string SavesDirectory { get; }
     public string DatabaseFilePath { get; }
     public string SettingsFilePath { get; }
 
@@ -25,6 +26,7 @@ public sealed class AppPaths : IAppPaths
         CacheDirectory = Path.Combine(baseDirectory, "Cache");
         LogsDirectory = Path.Combine(baseDirectory, "Logs");
         SettingsDirectory = Path.Combine(baseDirectory, "Settings");
+        SavesDirectory = Path.Combine(baseDirectory, "Saves");
         DatabaseFilePath = Path.Combine(DataDirectory, "library.db");
         SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
     }
@@ -36,6 +38,7 @@ public sealed class AppPaths : IAppPaths
         Directory.CreateDirectory(CacheDirectory);
         Directory.CreateDirectory(LogsDirectory);
         Directory.CreateDirectory(SettingsDirectory);
+        Directory.CreateDirectory(SavesDirectory);
     }
 
     internal static string ResolvePortableBaseDirectory()

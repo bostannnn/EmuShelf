@@ -19,4 +19,7 @@ public sealed record AppSettings
 
     /// <summary>RetroAchievements' stable ULID for the connected account. Not a secret.</summary>
     public string? RetroAchievementsUserUlid { get; init; }
+
+    /// <summary>Cloud save-sync configuration. Holds no secret — the OAuth token stays in rclone's own config.</summary>
+    public CloudSaveSyncSettings CloudSaveSync { get; init; } = new();
 }

@@ -3,6 +3,8 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.SaveSync;
+using EmuShelf.Core.Settings;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 
@@ -22,7 +24,7 @@ public class EmulatorSettingsViewModelTests
         bool? closeResult = null;
         viewModel.CloseRequested += saved => closeResult = saved;
 
-        Assert.Equal(10, viewModel.Rows.Count);
+        Assert.Equal(11, viewModel.Rows.Count);
         Assert.Equal("Dolphin", gameCube.EmulatorName);
         Assert.Equal("Dolphin", wii.EmulatorName);
         Assert.Equal(gameCube.DefaultLaunchArguments, wii.DefaultLaunchArguments);
@@ -49,10 +51,12 @@ public class EmulatorSettingsViewModelTests
         var megaDrive = viewModel.Rows.Single(row => row.SystemId == "megadrive");
         var ds = viewModel.Rows.Single(row => row.SystemId == "nds");
         var gba = viewModel.Rows.Single(row => row.SystemId == "gba");
+        var dreamcast = viewModel.Rows.Single(row => row.SystemId == "dreamcast");
 
         Assert.True(megaDrive.IsExecutableShared);
         Assert.True(ds.IsExecutableShared);
         Assert.True(gba.IsExecutableShared);
+        Assert.True(dreamcast.IsExecutableShared);
         Assert.True(ds.RequiresCorePath);
         Assert.Equal("RetroArch", ds.EmulatorName);
 
@@ -64,6 +68,7 @@ public class EmulatorSettingsViewModelTests
 
         Assert.Equal(megaDrive.ExecutablePath, ds.ExecutablePath);
         Assert.Equal(megaDrive.ExecutablePath, gba.ExecutablePath);
+        Assert.Equal(megaDrive.ExecutablePath, dreamcast.ExecutablePath);
         Assert.Equal(megaDrive.ExecutablePath, _configurations.Saved["megadrive"].ExecutablePath);
         Assert.Equal(megaDrive.ExecutablePath, _configurations.Saved["nds"].ExecutablePath);
         Assert.Equal("/portable/RetroArch/cores/genesis_plus_gx_libretro.dll",
@@ -433,9 +438,174 @@ public class EmulatorSettingsViewModelTests
         Assert.False(viewModel.HasRetroAchievements);
     }
 
+    [AvaloniaFact]
+    public void Sections_WithCloudSavesContext_IncludesSavesSection()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext());
+
+        Assert.Contains(SettingsSection.Saves, viewModel.Sections);
+        Assert.True(viewModel.HasCloudSaves);
+    }
+
+    [AvaloniaFact]
+    public void Sections_WithoutCloudSavesContext_OmitSavesSection()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.DoesNotContain(SettingsSection.Saves, viewModel.Sections);
+        Assert.False(viewModel.HasCloudSaves);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_SeededFromConnectedSettings_ShowConnectedState()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(new CloudSaveSyncSettings
+        {
+            Enabled = true,
+            RemoteName = "my-drive",
+            CloudFolder = "Saves",
+            Pcsx2ConfigDirectory = "/pcsx2",
+        }));
+
+        Assert.True(viewModel.IsCloudConnected);
+        Assert.Equal("my-drive", viewModel.CloudRemoteName);
+        Assert.Equal("/pcsx2", viewModel.Pcsx2ConfigDirectory);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_Success_MarksConnectedAndPassesFields()
+    {
+        var calls = new List<(string Remote, string Folder, string Pcsx2)>();
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, pcsx2, _) =>
+        {
+            calls.Add((remote, folder, pcsx2));
+            return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+        }));
+        viewModel.CloudRemoteName = "my-drive";
+        viewModel.CloudFolder = "Saves";
+        viewModel.Pcsx2ConfigDirectory = "/pcsx2";
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        Assert.Equal(("my-drive", "Saves", "/pcsx2"), Assert.Single(calls));
+        Assert.True(viewModel.IsCloudConnected);
+        Assert.Contains("Connected", viewModel.CloudStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_RcloneMissing_StaysDisconnected()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            connect: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsCloudConnected);
+        Assert.Contains("rclone", viewModel.CloudStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_SyncNow_ReportsCompletedSummary()
+    {
+        var report = new SaveSyncReport(
+        [
+            new SaveUnitSyncResult("pcsx2/Mcd001.ps2", SaveSyncAction.Upload, "up"),
+            new SaveUnitSyncResult("pcsx2/Mcd002.ps2", SaveSyncAction.Upload, "up"),
+        ]);
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            syncNow: (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(report))));
+
+        await viewModel.SyncCloudNowCommand.ExecuteAsync(null);
+
+        Assert.Contains("2 uploaded", viewModel.CloudStatusText);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_PreFillsPcsx2DirectoryFromConfiguredEmulator()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            defaultPcsx2Directory: @"F:\ES-DE\Emulators\pcsx2-qt"));
+
+        Assert.Equal(@"F:\ES-DE\Emulators\pcsx2-qt", viewModel.Pcsx2ConfigDirectory);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_SavedPcsx2DirectoryWinsOverTheDerivedDefault()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            current: new CloudSaveSyncSettings { Pcsx2ConfigDirectory = "/saved/pcsx2" },
+            defaultPcsx2Directory: "/derived/pcsx2"));
+
+        Assert.Equal("/saved/pcsx2", viewModel.Pcsx2ConfigDirectory);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_WhenRcloneMissing_FlagsItInTheViewModel()
+    {
+        Assert.False(CreateViewModel(cloudSaves: CreateCloudContext(rcloneAvailable: true)).IsRcloneMissing);
+        Assert.True(CreateViewModel(cloudSaves: CreateCloudContext(rcloneAvailable: false)).IsRcloneMissing);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_DownloadRclone_Success_ClearsTheMissingWarning()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            rcloneAvailable: false,
+            downloadRclone: _ => Task.FromResult(true)));
+        Assert.True(viewModel.IsRcloneMissing);
+
+        await viewModel.DownloadRcloneCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsRcloneMissing);
+        Assert.Contains("installed", viewModel.CloudStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_DownloadRclone_Failure_KeepsTheWarning()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            rcloneAvailable: false,
+            downloadRclone: _ => Task.FromResult(false)));
+
+        await viewModel.DownloadRcloneCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsRcloneMissing);
+        Assert.Contains("Couldn't download", viewModel.CloudStatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_PickPcsx2Directory_PersistsAndDetectsMemoryCards()
+    {
+        string? persisted = null;
+        _dialogs.FolderToReturn = "/picked/pcsx2";
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(updateDirectory: dir => persisted = dir));
+
+        await viewModel.PickPcsx2DirectoryCommand.ExecuteAsync(null);
+
+        Assert.Equal("/picked/pcsx2", viewModel.Pcsx2ConfigDirectory);
+        Assert.Equal("/picked/pcsx2", persisted); // change is saved even without reconnecting
+        Assert.Equal("/pcsx2/memcards", viewModel.DetectedMemoryCardsDirectory);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_ForceDownload_CallsContextWithDownloadDirection()
+    {
+        SaveSyncDirection? captured = null;
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(force: (direction, _, _) =>
+        {
+            captured = direction;
+            return Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
+        }));
+
+        await viewModel.ForceCloudDownloadCommand.ExecuteAsync(null);
+
+        Assert.Equal(SaveSyncDirection.Download, captured);
+    }
+
     private EmulatorSettingsViewModel CreateViewModel(
         LibraryMaintenanceActions? maintenance = null,
-        RetroAchievementsSettingsContext? retroAchievements = null) => new(
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         KnownSystems.All.ToDictionary(
@@ -445,7 +615,29 @@ public class EmulatorSettingsViewModelTests
         _configurations,
         _dialogs,
         maintenance,
-        retroAchievements: retroAchievements);
+        retroAchievements: retroAchievements,
+        cloudSaves: cloudSaves);
+
+    private static CloudSaveSyncSettingsContext CreateCloudContext(
+        CloudSaveSyncSettings? current = null,
+        Func<string, string, string, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
+        Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? syncNow = null,
+        Func<SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
+        Action<string?>? updateDirectory = null,
+        bool rcloneAvailable = true,
+        Func<CancellationToken, Task<bool>>? downloadRclone = null,
+        string? defaultPcsx2Directory = null) => new(
+        current ?? new CloudSaveSyncSettings(),
+        rcloneAvailable,
+        "/app/rclone",
+        defaultPcsx2Directory,
+        _ => Task.FromResult<string?>("/pcsx2/memcards"),
+        connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
+        _ => Task.CompletedTask,
+        syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
+        force ?? ((_, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
+        updateDirectory ?? (_ => { }),
+        downloadRclone ?? (_ => Task.FromResult(true)));
 
     private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore
     {

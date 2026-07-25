@@ -199,7 +199,8 @@ public sealed class DialogService : IDialogService
         IEmulatorConfigurationStore configurations,
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
-        RetroAchievementsSettingsContext? retroAchievements = null)
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -218,7 +219,8 @@ public sealed class DialogService : IDialogService
             maintenance,
             metadataPreferences,
             _logger,
-            retroAchievements);
+            retroAchievements,
+            cloudSaves);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 

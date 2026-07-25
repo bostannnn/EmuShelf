@@ -581,6 +581,65 @@ same RetroArch launcher, opt-in metadata pipeline, and read-only RetroAchievemen
 - [ ] Perform Deck Gaming Mode acceptance: rail reveal,
       Steam + X search keyboard, gamescope restore, AppImage fallback, and Flatpak path errors.
 
+## M29 — Cloud save sync (planned)
+
+EmuShelf launches external emulators and owns no saves; this adds an opt-in, portable cloud
+sync for the games' own **battery / memory-card saves**. Save states (build/arch-fragile) and
+emulator configs (machine-specific input/backend/paths) are deliberately out of scope for now.
+Transport is a user-owned rclone remote; all conflict handling is non-destructive and manifest-
+driven, never a raw creation/modified-date comparison. Proven end-to-end on PCSX2 first, then
+generalized.
+
+### Phase 1 — Foundation + PCSX2 end-to-end
+
+- [x] Core seams: `ICloudSyncTransport` (rclone-backed), `ISaveLocationProvider` (per emulator),
+      a `SaveSyncService` orchestrator, and a `SaveSyncManifest`. No provider or emulator
+      specifics leak into the orchestrator.
+- [x] Portable rclone beside the app; rclone config, sync manifests, and conflict backups under
+      a new portable `Saves/`. Shell-free argv, off the UI thread, cancellable. EmuShelf stores
+      only the remote name + cloud folder — never the OAuth token, and never in `settings.json`,
+      logs, or exception text (rclone owns the token).
+- [x] In-app **Connect Google Drive**: drive rclone's OAuth from Settings (no terminal), create a
+      dedicated remote + cloud folder, and show connected/disconnected state.
+- [x] PCSX2 save-location provider, read-only. Discover the *actual* memcard directory and enabled
+      cards by reading PCSX2's own config (`PCSX2.ini`) through a versioned adapter — users and
+      EmuDeck relocate it — rather than assuming a default path; fall back to the documented
+      default (`Documents/PCSX2/memcards`, Deck Flatpak
+      `~/.var/app/net.pcsx2.PCSX2/config/PCSX2/memcards`). Never write PCSX2 config.
+- [x] Model both PCSX2 card types as sync units: a **file card** (`Mcd00N.ps2`, monolithic) syncs
+      as one whole-card unit; a **folder card** (`Mcd00N/` with `_pcsx2_index` + per-serial
+      subfolders under "Automatically manage saves based on running game") syncs as one unit per
+      game serial. Folder cards are the safer per-game case and are recommended in docs — but
+      EmuShelf never enables them for the user.
+- [ ] Sync engine: a per-unit manifest (content hash + mtime + last-synced revision) classifies
+      each unit as unchanged / local-changed / remote-changed / both-changed, so a machine with a
+      slow or skewed clock never loses a save to a naive "newer date wins." mtime is only a
+      tie-breaker inside a genuine both-sides conflict. Pull before launch, push on emulator exit
+      (reusing the tracked-exit hook). rclone is used only for list/copy/read — never `sync --delete`.
+- [x] Conflict handling: both-sides-changed keeps the newer copy active, backs the loser up to
+      `Saves/conflicts/` with a timestamp, and surfaces a non-blocking notice. Back up local
+      before any overwrite; never delete the only copy of anything.
+- [ ] Manual controls: the auto-detected save folder is shown and user-editable (confirm or point
+      at a custom location); explicit **Sync now**, **Upload local → cloud (overwrite)**, and
+      **Download cloud → local (overwrite)** actions; and per-conflict keep-local / keep-cloud /
+      keep-both. Automatic is the default, manual is always available.
+- [x] Tests: Win/Flatpak path + `PCSX2.ini` resolution, file-card vs folder-card unit chunking,
+      every manifest state transition, clock-skew tie-breaking, conflict backup, forced
+      upload/download, offline/failure-leaves-saves-intact, and cancellation — with rclone faked
+      behind the transport interface. Green on macOS + Windows. Never modifies game files or
+      emulator config.
+
+### Phase 2 — Generalize to the other emulators
+
+- [ ] Add save-location providers for DuckStation, RetroArch, PPSSPP, Dolphin, and RPCS3, each
+      declaring its own sync-unit model (shared card vs per-game). The Phase-1 engine is reused
+      unchanged. Per-system enable/disable and last-sync status in Settings.
+
+### Phase 3 — Beyond Google Drive
+
+- [ ] Expose rclone's other backends (Dropbox, OneDrive, S3, WebDAV/SFTP, self-hosted Nextcloud)
+      through the same connect flow — the transport is already provider-agnostic.
+
 ## M30 — Dreamcast library (planned)
 
 - [x] Add strict `.gdi` descriptor discovery for complete, read-only Dreamcast track sets. The

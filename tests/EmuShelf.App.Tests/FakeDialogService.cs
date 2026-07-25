@@ -60,6 +60,7 @@ internal sealed class FakeDialogService : IDialogService
         return Task.FromResult(MetadataConsentToReturn);
     }
     public RetroAchievementsSettingsContext? RetroAchievementsContext { get; private set; }
+    public CloudSaveSyncSettingsContext? CloudSaveSyncContext { get; private set; }
 
     public Task ShowEmulatorSettingsAsync(
         IReadOnlyList<GameSystem> systems,
@@ -67,11 +68,13 @@ internal sealed class FakeDialogService : IDialogService
         IEmulatorConfigurationStore configurations,
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
-        RetroAchievementsSettingsContext? retroAchievements = null)
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null)
     {
         SettingsShown++;
         MaintenanceActions = maintenance;
         RetroAchievementsContext = retroAchievements;
+        CloudSaveSyncContext = cloudSaves;
         if (SettingsException is not null)
             return Task.FromException(SettingsException);
         return Task.CompletedTask;

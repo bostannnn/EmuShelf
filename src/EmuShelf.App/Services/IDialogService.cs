@@ -47,7 +47,8 @@ public interface IDialogService
         IEmulatorConfigurationStore configurations,
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
-        RetroAchievementsSettingsContext? retroAchievements = null);
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);

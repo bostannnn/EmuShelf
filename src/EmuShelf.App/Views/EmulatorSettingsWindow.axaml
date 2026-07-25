@@ -358,6 +358,127 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsSavesSection}" Spacing="12">
+                        <Border Background="{DynamicResource EmuCardBrush}"
+                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                BorderThickness="1" CornerRadius="9" Padding="18">
+                            <StackPanel Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="CLOUD SAVE SYNC (PCSX2)" FontSize="10"
+                                               FontWeight="Bold" LetterSpacing="1"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                               Text="Sync your PS2 memory cards between machines through your own Google Drive. EmuShelf backs up before every overwrite and never deletes a save. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
+                                </StackPanel>
+
+                                <Border IsVisible="{Binding IsRcloneMissing}"
+                                        Background="{DynamicResource EmuInputBrush}"
+                                        BorderBrush="{DynamicResource EmuDangerBrush}"
+                                        BorderThickness="1" CornerRadius="6" Padding="12">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource EmuTextPrimaryBrush}"
+                                                   Text="rclone isn't installed, and cloud sync needs it. Download it automatically, or place the rclone executable at the exact path below and reopen Settings." />
+                                        <TextBlock Text="{Binding RcloneExpectedPath, StringFormat='Expected at: {0}'}"
+                                                   FontFamily="Monospace" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <Button Content="Download rclone" Classes="accent"
+                                                    Command="{Binding DownloadRcloneCommand}"
+                                                    IsEnabled="{Binding !IsDownloadingRclone}" />
+                                            <HyperlinkButton Content="Or get it manually"
+                                                             NavigateUri="https://rclone.org/downloads/"
+                                                             VerticalAlignment="Center" Padding="0" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="PCSX2 FOLDER, OR YOUR MEMORY-CARDS FOLDER" FontSize="10"
+                                               FontWeight="SemiBold" LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <TextBox Grid.Column="0" Text="{Binding Pcsx2ConfigDirectory, Mode=TwoWay}"
+                                                 Background="{DynamicResource EmuInputBrush}"
+                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                 PlaceholderText="Detected from your configured PCSX2, or pick a folder" />
+                                        <Button Grid.Column="1" Content="Browse…"
+                                                Command="{Binding PickPcsx2DirectoryCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding DetectedMemoryCardsDirectory, StringFormat='Memory cards that will sync: {0}'}"
+                                               IsVisible="{Binding HasDetectedMemoryCards}"
+                                               FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding IsCloudDisconnected}" Spacing="9">
+                                    <TextBlock Text="RCLONE REMOTE NAME" FontSize="10" FontWeight="SemiBold"
+                                               LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBox Text="{Binding CloudRemoteName, Mode=TwoWay}"
+                                             Background="{DynamicResource EmuInputBrush}"
+                                             BorderBrush="{DynamicResource EmuBorderBrush}"
+                                             PlaceholderText="emushelf-gdrive" />
+                                    <TextBlock Text="CLOUD FOLDER" FontSize="10" FontWeight="SemiBold"
+                                               LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBox Text="{Binding CloudFolder, Mode=TwoWay}"
+                                             Background="{DynamicResource EmuInputBrush}"
+                                             BorderBrush="{DynamicResource EmuBorderBrush}"
+                                             PlaceholderText="EmuShelf/Saves" />
+                                    <Button Content="Connect Google Drive" Classes="accent"
+                                            HorizontalAlignment="Left"
+                                            Command="{Binding ConnectCloudCommand}"
+                                            IsEnabled="{Binding !IsCloudBusy}" />
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding IsCloudConnected}" Spacing="10">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="Connected" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding CloudRemoteName, StringFormat='Remote: {0}'}"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Disconnect" VerticalAlignment="Center"
+                                                Command="{Binding DisconnectCloudCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Sync now" Classes="accent"
+                                                Command="{Binding SyncCloudNowCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                        <Button Content="Upload → cloud"
+                                                Command="{Binding ForceCloudUploadCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}"
+                                                ToolTip.Tip="Overwrite the cloud with local saves (older cloud copy is backed up)" />
+                                        <Button Content="Download → local"
+                                                Command="{Binding ForceCloudDownloadCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}"
+                                                ToolTip.Tip="Overwrite local saves with the cloud copy (older local copy is backed up)" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel IsVisible="{Binding HasCloudSyncProgress}" Spacing="5">
+                                    <TextBlock Text="{Binding CloudSyncProgressText}"
+                                               FontSize="11" TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <ProgressBar Minimum="0"
+                                                 Maximum="{Binding CloudSyncProgressTotal}"
+                                                 Value="{Binding CloudSyncProgressCompleted}"
+                                                 Height="6" />
+                                </StackPanel>
+
+                                <TextBlock Text="{Binding CloudStatusText}"
+                                           IsVisible="{Binding HasCloudStatus}"
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </Panel>
             </ScrollViewer>
         </Grid>

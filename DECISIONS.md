@@ -1105,6 +1105,72 @@ cropped or distorted, while mixed portrait, handheld, and wide cartridge artwork
 an irregular shelf grid. This is Gamepad-only presentation and does not change stored artwork or
 the desktop library layout.
 
+## 2026-07-24 — Cloud save sync: rclone transport, manifest merge, save-only, PCSX2 pilot
+
+EmuShelf owns no saves; the emulators do. A new opt-in **M29** cloud sync targets battery/
+memory-card saves only. Save states (tied to exact emulator build/arch) and configs (machine-
+specific input, video backend, absolute paths) are excluded for now.
+
+**Transport is external rclone**, invoked shell-free like an emulator. One integration reaches
+Google Drive plus Dropbox/OneDrive/S3/WebDAV/self-hosted, so "commercial now, own server later"
+costs nothing. Chosen over per-provider SDKs specifically so EmuShelf embeds **no OAuth client
+secret** — it would be extractable from a GPL binary. rclone owns the token; EmuShelf persists
+only the remote name + folder, consistent with the RetroAchievements-key no-logging rule.
+Tradeoff: a ~50–70 MB per-OS binary dependency, acceptable under the existing "launch external
+tools" model. rclone is MIT — fine to invoke from a GPL app as a separate process. The in-app
+**Connect Google Drive** button drives rclone's OAuth from Settings; no terminal.
+
+**Sync logic, not transport, is the hard part.** A per-unit manifest (content hash + mtime +
+last-synced revision) distinguishes unchanged / local-changed / remote-changed / both-changed.
+This is deliberately **not** a raw creation/modified-date comparison: clocks on a PC and a Deck
+drift, and file copies rewrite mtimes, so "newest date wins" silently loses saves. mtime is only
+a tie-breaker inside a genuine both-sides conflict. rclone is used only for list/copy/read —
+never `sync --delete`, which would delete a one-sided save or clobber the better one. A conflict
+keeps the newer copy active and backs the loser up under `Saves/conflicts/`; nothing is deleted
+or silently overwritten. Triggers reuse the tracked-emulator-exit hook (push) and app-start /
+pre-launch (pull). Forced upload/download and per-conflict resolution are always available; the
+auto-detected save folder is user-confirmable and overridable.
+
+**The sync unit is emulator-defined, not per-game, and PCSX2 has two shapes.** A PCSX2 *file*
+memory card (`Mcd00N.ps2`) is monolithic — many games on one card — so its unit is the whole
+card, and a both-sides conflict can supersede a card that changed for a *different* game
+(mitigated by the backup). A PCSX2 *folder* memory card (`Mcd00N/` with a `_pcsx2_index` plus
+per-serial subfolders, created by "Automatically manage saves based on running game") stores each
+game separately, so each game serial is its own unit and conflicts are per-game. Folder cards are
+the safer setup and EmuShelf recommends them in docs but never flips the PCSX2 setting. EmuShelf
+discovers the real memcard directory and card mode by reading PCSX2's own `PCSX2.ini` **read-only**
+through a versioned adapter (users and EmuDeck relocate it), mirroring the M13 RPCS3 read-only
+pattern; it never writes emulator config. Proven end-to-end on PCSX2 first, then generalized
+behind `ISaveLocationProvider` without touching the engine.
+
+## 2026-07-24 — PCSX2 folder-card hashes exclude `_pcsx2_index`
+
+Each folder sync unit is a game-serial subdirectory, so the folder-card-root `_pcsx2_index` is
+outside both its payload and hash. The index records card ordering and timestamp metadata, so
+treating it as save content would manufacture two-machine changes and false conflicts even when
+the per-game save files agree. The deterministic per-game hash is SHA-256 over ordinal-sorted
+relative file paths and file bytes.
+
+## 2026-07-24 — Cloud sidecars preserve EmuShelf hashes
+
+rclone transports opaque unit payloads with `copyto`/`cat` and has no role in deciding content
+identity. Each payload has a sibling JSON sidecar containing the unit id, EmuShelf content hash,
+and modified time; listing reconstructs snapshots from those sidecars rather than a provider hash.
+This preserves the composite folder-card hash across rclone backends while retaining copy-only
+semantics. Folder payloads are deterministic ZIP files supplied by the local endpoint.
+
+## 2026-07-24 — PCSX2 card type is classified from disk, and empty remotes list as empty
+
+Two Phase-1 robustness fixes after review. (1) The PCSX2 provider now decides file-vs-folder per
+card from the filesystem — a directory carrying the `_pcsx2_index` marker is a folder card (one
+unit per game serial), a `*.ps2` file is a file card — instead of switching on the global
+`EmuCore/McdFolderAutoManage` flag. A folder card whose slot filename lacks a `.ps2` extension is
+therefore recognized rather than missed, and the INI parser no longer fails closed on a non-`.ps2`
+slot filename (only a missing/unsafe filename or a non-`SettingsVersion 1` layout still fails
+closed). The exact folder-card INI representation still needs validation against real PCSX2
+hardware. (2) The rclone transport treats `lsjson` exit code 3 (directory not found) as an empty
+listing, so the first sync against a fresh remote no longer throws before anything is uploaded.
+
 ## 2026-07-24 — Flatpak launches get ephemeral, per-launch read-only ROM access
 
 This supersedes the earlier stance (2026-07-21) that EmuShelf never grants a Flatpak emulator
@@ -1204,3 +1270,23 @@ reads at the same boundary. This prevents incomplete sets from entering the libr
 padded track 03 files shadowing later data tracks during RetroAchievements hashing. Low-density
 tracks remain existence-checked only because their session lead-in gap is not stored in the
 individual track files.
+
+## 2026-07-25 — Cloud sync batches through a staging area and a single remote index
+
+Google Drive charges roughly a second of API overhead per file regardless of size, so the first
+per-unit design — one payload plus one `.meta.json` sidecar per save, each uploaded/read with its
+own rclone call — made an 81-save PCSX2 folder card take ~10 minutes, and even a no-op sync ~2
+minutes (listing alone downloaded 80+ tiny sidecars). Two changes fix this without giving up
+per-game conflict granularity:
+
+- **One `index.json` on the remote** describes every unit (id, content hash, modified time), so a
+  sync lists with a single file read instead of one request per save. Per-unit `.payload` files
+  still hold the save data, so change detection stays per game.
+- **Staged, batched transfer.** `RcloneCloudSyncTransport.UploadAsync` stages payloads locally and
+  records their index entries; `FlushAsync` (once per sync) writes the merged index and pushes
+  everything in a single `rclone copy` session so rclone's pacer respects Drive's rate limits.
+  Downloads are served from a one-shot `rclone copy` of the remote into a per-sync inbox. A
+  per-call timeout turns a stalled transfer into a failure instead of an apparent hang.
+
+Measured on a real 81-save card against Drive: a full sync ~30s (rclone skips unchanged payloads),
+an everyday no-change sync 3.5s (was ~10 minutes); only changed payloads upload thereafter.

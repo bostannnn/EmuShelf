@@ -5,6 +5,7 @@ using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.ViewModels;
@@ -14,31 +15,37 @@ public enum SettingsSection
     General,
     Emulators,
     RetroAchievements,
+    Saves,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
 {
     private readonly IEmulatorConfigurationStore _configurations;
+    private readonly IDialogService _dialogs;
     private readonly LibraryMaintenanceActions? _maintenance;
     private readonly IMetadataPreferencesService? _metadataPreferences;
     private readonly RetroAchievementsSettingsContext? _retroAchievements;
+    private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly IAppLogger _logger;
     private bool _synchronizingSharedExecutable;
 
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
     public IReadOnlyList<SettingsSection> Sections { get; }
     public bool HasRetroAchievements => _retroAchievements is not null;
+    public bool HasCloudSaves => _cloudSaves is not null;
     public event Action<bool>? CloseRequested;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGeneralSection))]
     [NotifyPropertyChangedFor(nameof(IsEmulatorsSection))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
+    [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
+    public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -122,6 +129,58 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool AutomaticallyFetchMetadataAfterImport { get; set; }
 
+    [ObservableProperty]
+    public partial string CloudRemoteName { get; set; } = "emushelf-gdrive";
+
+    [ObservableProperty]
+    public partial string CloudFolder { get; set; } = "EmuShelf/Saves";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPcsx2ConfigDirectory))]
+    public partial string Pcsx2ConfigDirectory { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetectedMemoryCards))]
+    public partial string? DetectedMemoryCardsDirectory { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCloudDisconnected))]
+    public partial bool IsCloudConnected { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCloudStatus))]
+    public partial string CloudStatusText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
+    public partial bool IsCloudBusy { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
+    public partial int CloudSyncProgressCompleted { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
+    public partial int CloudSyncProgressTotal { get; set; }
+
+    [ObservableProperty]
+    public partial string CloudSyncProgressText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsRcloneMissing { get; set; }
+
+    [ObservableProperty]
+    public partial string RcloneExpectedPath { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsDownloadingRclone { get; set; }
+
+    public bool IsCloudDisconnected => !IsCloudConnected;
+    public bool HasPcsx2ConfigDirectory => !string.IsNullOrWhiteSpace(Pcsx2ConfigDirectory);
+    public bool HasDetectedMemoryCards => !string.IsNullOrWhiteSpace(DetectedMemoryCardsDirectory);
+    public bool HasCloudStatus => !string.IsNullOrWhiteSpace(CloudStatusText);
+    public bool HasCloudSyncProgress => IsCloudBusy && CloudSyncProgressTotal > 0;
+
     public EmulatorSettingsViewModel(
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
@@ -131,17 +190,37 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         LibraryMaintenanceActions? maintenance = null,
         IMetadataPreferencesService? metadataPreferences = null,
         IAppLogger? logger = null,
-        RetroAchievementsSettingsContext? retroAchievements = null)
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null)
     {
         _configurations = configurations;
+        _dialogs = dialogs;
         _maintenance = maintenance;
         _metadataPreferences = metadataPreferences;
         _retroAchievements = retroAchievements;
+        _cloudSaves = cloudSaves;
         _logger = logger ?? NullAppLogger.Instance;
 
-        Sections = retroAchievements is null
-            ? [SettingsSection.General, SettingsSection.Emulators]
-            : [SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements];
+        var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
+        if (retroAchievements is not null)
+            sections.Add(SettingsSection.RetroAchievements);
+        if (cloudSaves is not null)
+            sections.Add(SettingsSection.Saves);
+        Sections = sections;
+        if (cloudSaves is not null)
+        {
+            var saves = cloudSaves.Current;
+            CloudRemoteName = string.IsNullOrWhiteSpace(saves.RemoteName) ? "emushelf-gdrive" : saves.RemoteName!;
+            CloudFolder = string.IsNullOrWhiteSpace(saves.CloudFolder) ? "EmuShelf/Saves" : saves.CloudFolder!;
+            // Prefer the saved folder; otherwise pre-fill from the emulator EmuShelf already
+            // knows about, so the user does not have to select PCSX2 again.
+            Pcsx2ConfigDirectory = !string.IsNullOrWhiteSpace(saves.Pcsx2ConfigDirectory)
+                ? saves.Pcsx2ConfigDirectory!
+                : cloudSaves.DefaultPcsx2Directory ?? string.Empty;
+            IsCloudConnected = saves is { Enabled: true, RemoteName.Length: > 0 };
+            IsRcloneMissing = !cloudSaves.IsRcloneAvailable;
+            RcloneExpectedPath = cloudSaves.RcloneExpectedPath;
+        }
         if (retroAchievements?.CurrentAccount is { } account)
         {
             RetroAchievementsUsername = account.Username;
@@ -451,6 +530,223 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         {
             IsRetroAchievementsBusy = false;
         }
+    }
+
+    partial void OnSelectedSectionChanged(SettingsSection value)
+    {
+        if (value == SettingsSection.Saves && _cloudSaves is not null &&
+            DetectedMemoryCardsDirectory is null && HasPcsx2ConfigDirectory)
+        {
+            _ = RefreshDetectedMemoryCardsAsync();
+        }
+    }
+
+    [RelayCommand]
+    private async Task PickPcsx2DirectoryAsync()
+    {
+        if (_cloudSaves is null)
+            return;
+
+        var picked = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(picked))
+            return;
+
+        Pcsx2ConfigDirectory = picked;
+        // Persist immediately so a folder change made while already connected survives a restart,
+        // not only a change made during the initial connect.
+        _cloudSaves.UpdatePcsx2Directory(picked);
+        DetectedMemoryCardsDirectory = null;
+        await RefreshDetectedMemoryCardsAsync();
+    }
+
+    [RelayCommand]
+    private async Task ConnectCloudAsync()
+    {
+        if (_cloudSaves is null || IsCloudBusy)
+            return;
+
+        IsCloudBusy = true;
+        CloudStatusText = "Connecting… complete the Google sign-in in your browser.";
+        try
+        {
+            var result = await _cloudSaves.ConnectGoogleDriveAsync(
+                CloudRemoteName.Trim(),
+                CloudFolder.Trim(),
+                Pcsx2ConfigDirectory.Trim(),
+                CancellationToken.None);
+            CloudStatusText = result switch
+            {
+                CloudSaveSyncConnectResult.Connected => "Connected. Saves will sync around each launch.",
+                CloudSaveSyncConnectResult.InvalidInput => "Enter a remote name, cloud folder, and your PCSX2 folder first.",
+                CloudSaveSyncConnectResult.RcloneMissing => "rclone isn't installed — put rclone.exe beside EmuShelf (use “Get rclone” above), then reconnect.",
+                _ => "Couldn't connect. The Google sign-in may have been declined.",
+            };
+            if (result == CloudSaveSyncConnectResult.Connected)
+                IsCloudConnected = true;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Cloud save connect failed from Settings.", ex);
+            CloudStatusText = $"Couldn't connect: {ex.Message}";
+        }
+        finally
+        {
+            IsCloudBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DisconnectCloudAsync()
+    {
+        if (_cloudSaves is null || IsCloudBusy)
+            return;
+
+        IsCloudBusy = true;
+        try
+        {
+            await _cloudSaves.DisconnectAsync(CancellationToken.None);
+            IsCloudConnected = false;
+            CloudStatusText = "Disconnected. Your cloud saves were left untouched.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Cloud save disconnect failed from Settings.", ex);
+            CloudStatusText = $"Couldn't disconnect: {ex.Message}";
+        }
+        finally
+        {
+            IsCloudBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadRcloneAsync()
+    {
+        if (_cloudSaves is null || IsDownloadingRclone)
+            return;
+
+        IsDownloadingRclone = true;
+        CloudStatusText = "Downloading rclone…";
+        try
+        {
+            if (await _cloudSaves.DownloadRcloneAsync(CancellationToken.None))
+            {
+                IsRcloneMissing = false;
+                CloudStatusText = "rclone installed. You can connect Google Drive now.";
+            }
+            else
+            {
+                CloudStatusText = "Couldn't download rclone. Check your connection, or add it manually.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Cloud save rclone download failed from Settings.", ex);
+            CloudStatusText = $"Couldn't download rclone: {ex.Message}";
+        }
+        finally
+        {
+            IsDownloadingRclone = false;
+        }
+    }
+
+    [RelayCommand]
+    private Task SyncCloudNowAsync() =>
+        RunCloudOperationAsync((progress, token) => _cloudSaves!.SyncNowAsync(progress, token), "Syncing saves…");
+
+    [RelayCommand]
+    private Task ForceCloudUploadAsync() =>
+        RunCloudOperationAsync(
+            (progress, token) => _cloudSaves!.ForceAsync(SaveSyncDirection.Upload, progress, token),
+            "Uploading local saves…");
+
+    [RelayCommand]
+    private Task ForceCloudDownloadAsync() =>
+        RunCloudOperationAsync(
+            (progress, token) => _cloudSaves!.ForceAsync(SaveSyncDirection.Download, progress, token),
+            "Downloading cloud saves…");
+
+    private async Task RunCloudOperationAsync(
+        Func<IProgress<SaveSyncProgress>, CancellationToken, Task<CloudSaveSyncOutcome>> operation,
+        string startingMessage)
+    {
+        if (_cloudSaves is null || IsCloudBusy)
+            return;
+
+        IsCloudBusy = true;
+        CloudStatusText = startingMessage;
+        CloudSyncProgressCompleted = 0;
+        CloudSyncProgressTotal = 0;
+        CloudSyncProgressText = string.Empty;
+        var progress = new Progress<SaveSyncProgress>(ApplyCloudProgress);
+        try
+        {
+            var outcome = await operation(progress, CancellationToken.None);
+            CloudStatusText = outcome.Status switch
+            {
+                CloudSaveSyncStatus.Completed => DescribeCloudReport(outcome.Report!),
+                CloudSaveSyncStatus.NotConfigured => "Connect Google Drive and choose your PCSX2 folder first.",
+                _ => outcome.Message is null ? "Sync failed." : $"Sync failed: {outcome.Message}",
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Cloud save sync failed from Settings.", ex);
+            CloudStatusText = $"Sync failed: {ex.Message}";
+        }
+        finally
+        {
+            IsCloudBusy = false;
+        }
+    }
+
+    private void ApplyCloudProgress(SaveSyncProgress progress)
+    {
+        CloudSyncProgressCompleted = progress.Completed;
+        CloudSyncProgressTotal = progress.Total;
+        var position = Math.Min(progress.Completed + 1, progress.Total);
+        CloudSyncProgressText = $"{DescribeAction(progress.Action)} {position} of {progress.Total}: {progress.CurrentUnit}";
+    }
+
+    private static string DescribeAction(SaveSyncAction action) => action switch
+    {
+        SaveSyncAction.Upload => "Uploading",
+        SaveSyncAction.Download => "Downloading",
+        SaveSyncAction.ConflictLocalWins or SaveSyncAction.ConflictRemoteWins => "Resolving",
+        _ => "Checking",
+    };
+
+    private async Task RefreshDetectedMemoryCardsAsync()
+    {
+        if (_cloudSaves is null)
+            return;
+
+        try
+        {
+            DetectedMemoryCardsDirectory =
+                await _cloudSaves.GetDetectedMemoryCardsDirectoryAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not detect the PCSX2 memory-card folder.", ex);
+            DetectedMemoryCardsDirectory = null;
+        }
+    }
+
+    private static string DescribeCloudReport(SaveSyncReport report)
+    {
+        var parts = new List<string>();
+        if (report.Uploaded > 0)
+            parts.Add($"{report.Uploaded} uploaded");
+        if (report.Downloaded > 0)
+            parts.Add($"{report.Downloaded} downloaded");
+        if (report.Conflicts > 0)
+            parts.Add($"{report.Conflicts} conflict{(report.Conflicts == 1 ? "" : "s")} resolved (older copy backed up)");
+        if (report.Unchanged > 0)
+            parts.Add($"{report.Unchanged} already in sync");
+        return parts.Count == 0
+            ? "No PCSX2 saves were found to sync."
+            : "Sync complete: " + string.Join(", ", parts) + ".";
     }
 
     [RelayCommand]
