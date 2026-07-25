@@ -1465,3 +1465,41 @@ focus ring is hidden so the modal action is the only strong focus treatment. Hea
 not accept native focus in its virtual window backend, so real controller/accessibility focus
 remains an explicit M31 Phase 4 acceptance check even though logical navigation and rendered focus
 geometry are covered automatically.
+
+## 2026-07-25 — Save providers authorize local destinations; PPSSPP is the first generalized provider
+
+Remote save-unit identifiers are untrusted portable names, not local paths. Each emulator provider
+therefore resolves a unit only when it belongs to that provider and maps to an allowed destination
+under the emulator's active save root. The filesystem endpoint performs the copy and independently
+checks that resolved paths stay within that root. Existing `pcsx2/...` identifiers remain unchanged
+so deployed manifests and cloud data continue to work.
+
+A multi-provider sync loads the manifest and remote index once, plans all enabled providers together,
+flushes the transport once, and then writes one manifest. PPSSPP is the first additional provider:
+each immediate child directory of `PSP/SAVEDATA` is one folder unit, while `PPSSPP_STATE`, settings,
+plugins, and all other Memory Stick content are outside the provider boundary. Windows Memory Stick
+discovery follows PPSSPP's read-only `installed.txt` modes; explicit overrides are supported without
+rewriting PPSSPP configuration. PPSSPP sync is opt-in, and the existing forced upload/download actions
+remain PCSX2-specific until the per-system controls described in M29 Phase 2 land.
+
+## 2026-07-25 — Save-provider participation follows emulator configuration
+
+This supersedes the PPSSPP opt-in portion of the preceding save-provider decision. PPSSPP follows
+the same participation rule as PCSX2: when EmuShelf has a configured emulator installation or the
+user supplies an explicit save-location override, that provider joins the shared sync operation.
+There is no PPSSPP-only enable flag or checkbox. This avoids a second source of truth whose state
+could disagree with the emulator configuration and establishes the rule future providers follow.
+
+The Saves UI presents supported systems as equal, icon-led rows inside the existing cloud-sync
+section. Platform rows do not create their own cards or borders, and overrides use the same path
+field plus Browse interaction. The bundled, licensed platform artwork is reused rather than adding
+a second icon set.
+
+## 2026-07-26 — Forced save replacement is always platform-scoped
+
+The prior temporary rule that left forced upload/download PCSX2-specific is superseded. A global
+overwrite action is too easy to misread and becomes increasingly dangerous as providers are added.
+The shared cloud section therefore exposes only reconciled `Sync all now`; each platform row owns
+explicit `Replace cloud` and `Replace local` actions that affect only that named platform. Both
+directions retain backup-before-overwrite behavior, and the same provider-resolved path boundary
+applies to normal and forced synchronization.

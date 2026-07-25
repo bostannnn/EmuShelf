@@ -14,6 +14,8 @@ using EmuShelf.App.Views;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.SaveSync;
+using EmuShelf.Core.Settings;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 
@@ -507,6 +509,76 @@ public class MainWindowVisualSnapshotTests
                 using var output = File.Create(Path.Combine(
                     outputDirectory,
                     "emushelf-m8-settings-dark.png"));
+                frame.Save(output, PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task RenderSaveSyncSettingsInDarkTheme()
+    {
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var cloudSaves = new CloudSaveSyncSettingsContext(
+            new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                RemoteName = "emushelf-gdrive",
+                CloudFolder = "EmuShelf/Saves",
+                Pcsx2ConfigDirectory = @"D:\Emulators\PCSX2",
+                PpssppMemoryStickDirectory = @"D:\Emulators\PPSSPP\memstick",
+            },
+            IsRcloneAvailable: true,
+            RcloneExpectedPath: @"D:\EmuShelf\rclone.exe",
+            DefaultPcsx2Directory: @"D:\Emulators\PCSX2",
+            DefaultPpssppInstallationDirectory: @"D:\Emulators\PPSSPP",
+            SyncLogPath: @"D:\EmuShelf\Logs\save-sync.log",
+            _ => Task.FromResult<string?>(@"D:\Emulators\PCSX2\memcards"),
+            _ => Task.FromResult<string?>(@"D:\Emulators\PPSSPP\memstick\PSP\SAVEDATA"),
+            (_, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
+            (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
+            _ => { },
+            _ => { },
+            _ => Task.FromResult(true));
+        var viewModel = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(
+                system => system.Id,
+                _ => (EmulatorConfiguration?)null,
+                StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            cloudSaves: cloudSaves)
+        {
+            SelectedSection = SettingsSection.Saves,
+        };
+
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new EmulatorSettingsWindow
+        {
+            DataContext = viewModel,
+            Width = 780,
+            Height = 620,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Task.Delay(50);
+            using var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            Assert.Equal(new PixelSize(780, 620), frame.PixelSize);
+            if (outputDirectory is not null)
+            {
+                Directory.CreateDirectory(outputDirectory);
+                using var output = File.Create(Path.Combine(outputDirectory, "emushelf-save-sync-settings-dark.png"));
                 frame.Save(output, PngBitmapEncoderOptions.Default);
             }
         }

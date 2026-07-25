@@ -144,6 +144,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial string? DetectedMemoryCardsDirectory { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPpssppMemoryStickDirectory))]
+    public partial string PpssppMemoryStickDirectory { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetectedPpssppSaveData))]
+    public partial string? DetectedPpssppSaveDataDirectory { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCloudDisconnected))]
     public partial bool IsCloudConnected { get; set; }
 
@@ -190,6 +198,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsCloudDisconnected => !IsCloudConnected;
     public bool HasPcsx2ConfigDirectory => !string.IsNullOrWhiteSpace(Pcsx2ConfigDirectory);
     public bool HasDetectedMemoryCards => !string.IsNullOrWhiteSpace(DetectedMemoryCardsDirectory);
+    public bool HasPpssppMemoryStickDirectory => !string.IsNullOrWhiteSpace(PpssppMemoryStickDirectory);
+    public bool HasDetectedPpssppSaveData => !string.IsNullOrWhiteSpace(DetectedPpssppSaveDataDirectory);
     public bool HasCloudStatus => !string.IsNullOrWhiteSpace(CloudStatusText);
     public bool HasCloudSyncProgress => IsCloudBusy && CloudSyncProgressTotal > 0;
 
@@ -229,6 +239,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             Pcsx2ConfigDirectory = !string.IsNullOrWhiteSpace(saves.Pcsx2ConfigDirectory)
                 ? saves.Pcsx2ConfigDirectory!
                 : cloudSaves.DefaultPcsx2Directory ?? string.Empty;
+            PpssppMemoryStickDirectory = saves.PpssppMemoryStickDirectory ?? string.Empty;
             IsCloudConnected = saves is { Enabled: true, RemoteName.Length: > 0 };
             IsRcloneMissing = !cloudSaves.IsRcloneAvailable;
             RcloneExpectedPath = cloudSaves.RcloneExpectedPath;
@@ -418,6 +429,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 await _metadataPreferences.SaveAutomaticFetchAsync(
                     AutomaticallyFetchMetadataAfterImport);
             }
+            PersistCloudSaveLocations();
             CloseRequested?.Invoke(true);
         }
         catch (Exception ex)
@@ -552,6 +564,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         {
             _ = RefreshDetectedMemoryCardsAsync();
         }
+        if (value == SettingsSection.Saves && _cloudSaves is not null &&
+            DetectedPpssppSaveDataDirectory is null)
+        {
+            _ = RefreshDetectedPpssppSaveDataAsync();
+        }
     }
 
     [RelayCommand]
@@ -573,6 +590,22 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private async Task PickPpssppMemoryStickDirectoryAsync()
+    {
+        if (_cloudSaves is null)
+            return;
+
+        var picked = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(picked))
+            return;
+
+        PpssppMemoryStickDirectory = picked;
+        _cloudSaves.UpdatePpssppDirectory(picked);
+        DetectedPpssppSaveDataDirectory = null;
+        await RefreshDetectedPpssppSaveDataAsync();
+    }
+
+    [RelayCommand]
     private async Task ConnectCloudAsync()
     {
         if (_cloudSaves is null || IsCloudBusy)
@@ -586,11 +619,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 CloudRemoteName.Trim(),
                 CloudFolder.Trim(),
                 Pcsx2ConfigDirectory.Trim(),
+                PpssppMemoryStickDirectory.Trim(),
                 CancellationToken.None);
             CloudStatusText = result switch
             {
-                CloudSaveSyncConnectResult.Connected => "Connected. Saves will sync around each launch.",
-                CloudSaveSyncConnectResult.InvalidInput => "Enter a remote name, cloud folder, and your PCSX2 folder first.",
+                CloudSaveSyncConnectResult.Connected => "Connected. Use Sync now to reconcile enabled saves.",
+                CloudSaveSyncConnectResult.InvalidInput => "Enter a remote name and cloud folder, then configure at least one save platform.",
                 CloudSaveSyncConnectResult.RcloneMissing => "rclone isn't installed — put rclone.exe beside EmuShelf (use “Get rclone” above), then reconnect.",
                 _ => "Couldn't connect. The Google sign-in may have been declined.",
             };
@@ -668,16 +702,26 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         RunCloudOperationAsync((progress, token) => _cloudSaves!.SyncNowAsync(progress, token), "Syncing saves…");
 
     [RelayCommand]
-    private Task ForceCloudUploadAsync() =>
-        RunCloudOperationAsync(
-            (progress, token) => _cloudSaves!.ForceAsync(SaveSyncDirection.Upload, progress, token),
-            "Uploading local saves…");
+    private Task ForceCloudUploadAsync(string? systemId) =>
+        ForceCloudAsync(systemId, SaveSyncDirection.Upload);
 
     [RelayCommand]
-    private Task ForceCloudDownloadAsync() =>
-        RunCloudOperationAsync(
-            (progress, token) => _cloudSaves!.ForceAsync(SaveSyncDirection.Download, progress, token),
-            "Downloading cloud saves…");
+    private Task ForceCloudDownloadAsync(string? systemId) =>
+        ForceCloudAsync(systemId, SaveSyncDirection.Download);
+
+    private Task ForceCloudAsync(string? systemId, SaveSyncDirection direction)
+    {
+        if (string.IsNullOrWhiteSpace(systemId))
+            return Task.CompletedTask;
+
+        var platformName = systemId == "psp" ? "PSP" : "PlayStation 2";
+        var startingMessage = direction == SaveSyncDirection.Upload
+            ? $"Uploading {platformName} saves…"
+            : $"Downloading {platformName} saves…";
+        return RunCloudOperationAsync(
+            (progress, token) => _cloudSaves!.ForceAsync(systemId, direction, progress, token),
+            startingMessage);
+    }
 
     private async Task RunCloudOperationAsync(
         Func<IProgress<SaveSyncProgress>, CancellationToken, Task<CloudSaveSyncOutcome>> operation,
@@ -694,11 +738,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         var progress = new Progress<SaveSyncProgress>(ApplyCloudProgress);
         try
         {
+            PersistCloudSaveLocations();
             var outcome = await operation(progress, CancellationToken.None);
             CloudStatusText = outcome.Status switch
             {
                 CloudSaveSyncStatus.Completed => DescribeCloudReport(outcome.Report!),
-                CloudSaveSyncStatus.NotConfigured => "Connect Google Drive and choose your PCSX2 folder first.",
+                CloudSaveSyncStatus.NotConfigured => "Connect Google Drive and configure at least one save platform first.",
                 _ => outcome.Message is null ? "Sync failed." : $"Sync failed: {outcome.Message}",
             };
         }
@@ -722,6 +767,19 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         CloudSyncProgressTotal = progress.Total;
         var position = Math.Min(progress.Completed + 1, progress.Total);
         CloudSyncProgressText = $"{DescribeAction(progress.Action)} {position} of {progress.Total}: {progress.CurrentUnit}";
+    }
+
+    private void PersistCloudSaveLocations()
+    {
+        if (_cloudSaves is null)
+            return;
+
+        // Typed paths and folder-picker paths follow the same persistence rule. A configured
+        // emulator still supplies the default when its corresponding text box is empty.
+        _cloudSaves.UpdatePcsx2Directory(
+            string.IsNullOrWhiteSpace(Pcsx2ConfigDirectory) ? null : Pcsx2ConfigDirectory.Trim());
+        _cloudSaves.UpdatePpssppDirectory(
+            string.IsNullOrWhiteSpace(PpssppMemoryStickDirectory) ? null : PpssppMemoryStickDirectory.Trim());
     }
 
     private static string DescribeAction(SaveSyncAction action) => action switch
@@ -749,6 +807,23 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
     }
 
+    private async Task RefreshDetectedPpssppSaveDataAsync()
+    {
+        if (_cloudSaves is null)
+            return;
+
+        try
+        {
+            DetectedPpssppSaveDataDirectory =
+                await _cloudSaves.GetDetectedPpssppSaveDataDirectoryAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not detect PPSSPP's SAVEDATA folder.", ex);
+            DetectedPpssppSaveDataDirectory = null;
+        }
+    }
+
     private static string DescribeCloudReport(SaveSyncReport report)
     {
         var parts = new List<string>();
@@ -761,7 +836,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         if (report.Unchanged > 0)
             parts.Add($"{report.Unchanged} already in sync");
         return parts.Count == 0
-            ? "No PCSX2 saves were found to sync."
+            ? "No enabled saves were found to sync."
             : "Sync complete: " + string.Join(", ", parts) + ".";
     }
 

@@ -754,9 +754,62 @@ generalized.
 
 ### Phase 2 — Generalize to the other emulators
 
-- [ ] Add save-location providers for DuckStation, RetroArch, PPSSPP, Dolphin, and RPCS3, each
-      declaring its own sync-unit model (shared card vs per-game). The Phase-1 engine is reused
-      unchanged. Per-system enable/disable and last-sync status in Settings.
+- [ ] **Generalization safety gate.** Replace the PCSX2-only filesystem endpoint with a generic,
+      provider-resolved endpoint. A provider must explicitly resolve every local or remote unit to
+      an allow-listed file, folder, or file set; an unknown unit, inactive card/profile, traversal,
+      symlink escape, or layout mismatch fails closed. Preserve the existing `pcsx2/...` unit ids,
+      remote payloads, and manifests so the proven pilot needs no cloud migration.
+- [ ] Add a deterministic **file-set** unit for saves made of several sibling files (notably a
+      Dolphin GCI game). Hash ordinal-sorted logical names + bytes, transfer one deterministic ZIP,
+      and restore through a rollback-capable replacement. File and folder writes receive the same
+      backup-before-overwrite and cancellation guarantees.
+- [ ] Generalize orchestration to register multiple `(provider, local endpoint)` pairs, load the
+      cloud index + local manifest once, reconcile enabled systems, flush rclone once, and save the
+      manifest atomically. One provider's unsupported local configuration is reported for that
+      system without preventing the other valid providers from syncing. Forced upload/download is
+      scoped to one system, never an implicit all-platform overwrite.
+- [ ] Replace the single `Pcsx2ConfigDirectory` setting with backward-compatible per-system save
+      locations: detected/overridden data directory, optional local profile binding, last-success
+      time, and latest error. A configured emulator or explicit override participates automatically;
+      do not add provider-specific activation state. Settings shows one consistent icon-led row per
+      supported platform with its detected path, save shape, Sync now, Upload, and Download controls.
+- [ ] Wire the launch lifecycle promised by Phase 1: reconcile only the selected game's system
+      before launch and again after a tracked emulator exit. An offline pre-launch attempt keeps the
+      local save, warns, and permits launch; a later manifest conflict remains recoverable. Manual
+      sync is disabled during an EmuShelf-tracked session, and users are told to close externally
+      launched emulator instances first.
+- [ ] **PPSSPP first:** resolve its Memory Stick from Windows `installed.txt`, portable layout,
+      Linux/macOS config layout, Flatpak defaults, or a user override. Each immediate child of
+      `PSP/SAVEDATA/` is one folder unit; never include `PPSSPP_STATE`, config, plugins, textures,
+      or other Memory Stick content.
+- [ ] **DuckStation second:** locate its current/legacy/portable user directory, read
+      `settings.ini` read-only, and honor enabled `Card1Type`/`Card2Type` plus explicit card paths.
+      Per-game code/title cards are individual file units; a shared card is one monolithic unit and
+      carries the same cross-game conflict warning as a PCSX2 file card. Never include save states.
+- [ ] **RPCS3 third:** resolve `/dev_hdd0` through a versioned, read-only `vfs.yml` adapter and bind
+      one user-selected local RPCS3 profile to a stable EmuShelf profile key. Each complete
+      `home/<user>/savedata/<save>/` directory is one unit, including its `PARAM.SFO`/`PARAM.PFD`;
+      trophies, licenses, installed games, caches, configs, and save states stay out of scope.
+- [ ] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
+      global/legacy, `-u`, XDG/Flatpak, macOS, or override) and read custom paths read-only. Sync a
+      raw GameCube card as one unit; group GCI files by their embedded game+maker id as a file-set
+      unit; sync each Wii disc title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
+      Never sync the whole NAND; surface that Mii/console-identity-dependent saves may not be fully
+      portable.
+- [ ] **RetroArch last, one verified core adapter at a time:** resolve the effective save path from
+      `retroarch.cfg`, core/content-directory/game overrides, save sorting flags, and the configured
+      core. Start with the exact cores used by EmuShelf's Mega Drive, DS, GBA, SNES, and Dreamcast
+      rows; unsupported cores fail closed. Detect RetroArch's own cloud sync and refuse overlapping
+      management rather than run two manifest systems over the same saves.
+- [ ] Provider contract tests cover Windows, Linux/Flatpak, portable, custom, and macOS paths;
+      unknown config versions; local + remote-only resolution; card/profile mismatch; traversal and
+      symlink rejection; deterministic folder/file-set hashing; and strict save-state/config
+      exclusion. Keep the existing engine tests for every manifest transition, clock skew,
+      conflicts, forced directions, cancellation, and offline safety.
+- [ ] Real-device acceptance for every provider: create an in-game save on Windows, sync to Steam
+      Deck, load and advance it in the emulator, sync back, then edit both sides and verify the
+      losing copy appears under `Saves/conflicts/`. Build and automated tests remain green on macOS
+      even where the v1 UI is Windows-first.
 
 ### Phase 3 — Beyond Google Drive
 

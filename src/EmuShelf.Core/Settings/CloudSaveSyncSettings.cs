@@ -20,4 +20,10 @@ public sealed record CloudSaveSyncSettings
     /// Null until the user points EmuShelf at their PCSX2 install.
     /// </summary>
     public string? Pcsx2ConfigDirectory { get; init; }
+
+    /// <summary>
+    /// Optional PPSSPP Memory Stick override. When absent, the provider derives the location from
+    /// the configured PPSSPP installation and the emulator's documented platform rules.
+    /// </summary>
+    public string? PpssppMemoryStickDirectory { get; init; }
 }

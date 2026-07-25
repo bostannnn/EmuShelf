@@ -19,6 +19,7 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
                 RemoteName = "emushelf-gdrive",
                 CloudFolder = "EmuShelf/Saves",
                 Pcsx2ConfigDirectory = "/home/deck/pcsx2",
+                PpssppMemoryStickDirectory = "/home/deck/Emulation/saves/ppsspp",
             },
         };
 

@@ -35,6 +35,47 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
     public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
         Task.Run<IReadOnlyList<SaveUnit>>(() => GetSaveUnits(cancellationToken), cancellationToken);
 
+    public SaveUnitLocation? ResolveUnit(string unitId)
+    {
+        if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))
+            return null;
+
+        var segments = unitId[UnitIdPrefix.Length..].Split('/', StringSplitOptions.None);
+        if (segments.Length is < 1 or > 2 || segments.Any(segment => !IsSafeCardName(segment)))
+            return null;
+
+        var configuration = ReadConfiguration(CancellationToken.None);
+        var cardName = segments[0];
+        if (!configuration.EnumerateAllCards && !configuration.EnabledCardNames.Contains(cardName))
+            return null;
+
+        var cardPath = Path.GetFullPath(Path.Combine(configuration.MemoryCardsDirectory, cardName));
+        if (segments.Length == 1)
+        {
+            if (!cardName.EndsWith(".ps2", StringComparison.OrdinalIgnoreCase) || Directory.Exists(cardPath))
+                return null;
+
+            // With a readable INI an enabled but not-yet-created file card is a safe destination.
+            // In heuristic fallback mode, require the card to exist rather than allowing an
+            // arbitrary remote id to manufacture a new card.
+            if (configuration.EnumerateAllCards && !File.Exists(cardPath))
+                return null;
+            return new SaveUnitLocation(cardPath, configuration.MemoryCardsDirectory, SaveUnitKind.File);
+        }
+
+        var saveName = segments[1];
+        if (!IsSaveDirectory(saveName) || !Directory.Exists(cardPath) ||
+            !IsFolderCard(cardPath, configuration))
+        {
+            return null;
+        }
+
+        return new SaveUnitLocation(
+            Path.Combine(cardPath, saveName),
+            configuration.MemoryCardsDirectory,
+            SaveUnitKind.Folder);
+    }
+
     private IReadOnlyList<SaveUnit> GetSaveUnits(CancellationToken cancellationToken)
     {
         var configuration = ReadConfiguration(cancellationToken);

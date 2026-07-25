@@ -501,21 +501,33 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void CloudSaves_SeededPpssppSettings_ShowProviderConfiguration()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(new CloudSaveSyncSettings
+        {
+            PpssppMemoryStickDirectory = "/portable/ppsspp",
+        }));
+
+        Assert.Equal("/portable/ppsspp", viewModel.PpssppMemoryStickDirectory);
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_Connect_Success_MarksConnectedAndPassesFields()
     {
-        var calls = new List<(string Remote, string Folder, string Pcsx2)>();
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, pcsx2, _) =>
+        var calls = new List<(string Remote, string Folder, string Pcsx2, string Ppsspp)>();
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, pcsx2, ppsspp, _) =>
         {
-            calls.Add((remote, folder, pcsx2));
+            calls.Add((remote, folder, pcsx2, ppsspp));
             return Task.FromResult(CloudSaveSyncConnectResult.Connected);
         }));
         viewModel.CloudRemoteName = "my-drive";
         viewModel.CloudFolder = "Saves";
         viewModel.Pcsx2ConfigDirectory = "/pcsx2";
+        viewModel.PpssppMemoryStickDirectory = "/ppsspp";
 
         await viewModel.ConnectCloudCommand.ExecuteAsync(null);
 
-        Assert.Equal(("my-drive", "Saves", "/pcsx2"), Assert.Single(calls));
+        Assert.Equal(("my-drive", "Saves", "/pcsx2", "/ppsspp"), Assert.Single(calls));
         Assert.True(viewModel.IsCloudConnected);
         Assert.Contains("Connected", viewModel.CloudStatusText);
     }
@@ -524,7 +536,7 @@ public class EmulatorSettingsViewModelTests
     public async Task CloudSaves_Connect_RcloneMissing_StaysDisconnected()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            connect: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
+            connect: (_, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
 
         await viewModel.ConnectCloudCommand.ExecuteAsync(null);
 
@@ -647,17 +659,52 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public async Task CloudSaves_ForceDownload_CallsContextWithDownloadDirection()
+    public async Task CloudSaves_PickPpssppDirectory_PersistsAndDetectsSaveData()
     {
+        string? persisted = null;
+        _dialogs.FolderToReturn = "/picked/ppsspp";
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            updatePpsspp: directory => persisted = directory));
+
+        await viewModel.PickPpssppMemoryStickDirectoryCommand.ExecuteAsync(null);
+
+        Assert.Equal("/picked/ppsspp", viewModel.PpssppMemoryStickDirectory);
+        Assert.Equal("/picked/ppsspp", persisted);
+        Assert.Equal("/ppsspp/PSP/SAVEDATA", viewModel.DetectedPpssppSaveDataDirectory);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Save_PersistsTypedPlatformPaths()
+    {
+        string? pcsx2 = null;
+        string? ppsspp = null;
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            updateDirectory: directory => pcsx2 = directory,
+            updatePpsspp: directory => ppsspp = directory));
+        viewModel.Pcsx2ConfigDirectory = " /pcsx2 ";
+        viewModel.PpssppMemoryStickDirectory = " /ppsspp ";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("/pcsx2", pcsx2);
+        Assert.Equal("/ppsspp", ppsspp);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_ForceDownload_CallsContextForSelectedPlatform()
+    {
+        string? systemId = null;
         SaveSyncDirection? captured = null;
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(force: (direction, _, _) =>
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(force: (system, direction, _, _) =>
         {
+            systemId = system;
             captured = direction;
             return Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
         }));
 
-        await viewModel.ForceCloudDownloadCommand.ExecuteAsync(null);
+        await viewModel.ForceCloudDownloadCommand.ExecuteAsync("psp");
 
+        Assert.Equal("psp", systemId);
         Assert.Equal(SaveSyncDirection.Download, captured);
     }
 
@@ -679,10 +726,11 @@ public class EmulatorSettingsViewModelTests
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,
-        Func<string, string, string, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
+        Func<string, string, string, string, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
         Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? syncNow = null,
-        Func<SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
+        Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
         Action<string?>? updateDirectory = null,
+        Action<string?>? updatePpsspp = null,
         bool rcloneAvailable = true,
         Func<CancellationToken, Task<bool>>? downloadRclone = null,
         string? defaultPcsx2Directory = null,
@@ -691,13 +739,16 @@ public class EmulatorSettingsViewModelTests
         rcloneAvailable,
         "/app/rclone",
         defaultPcsx2Directory,
+        "/app/ppsspp",
         syncLogPath ?? Path.Combine(Path.GetTempPath(), "emushelf-save-sync-test.log"),
         _ => Task.FromResult<string?>("/pcsx2/memcards"),
-        connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
+        _ => Task.FromResult<string?>("/ppsspp/PSP/SAVEDATA"),
+        connect ?? ((_, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
         _ => Task.CompletedTask,
         syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
-        force ?? ((_, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
+        force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
         updateDirectory ?? (_ => { }),
+        updatePpsspp ?? (_ => { }),
         downloadRclone ?? (_ => Task.FromResult(true)));
 
     private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore

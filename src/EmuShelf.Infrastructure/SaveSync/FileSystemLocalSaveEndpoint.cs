@@ -8,24 +8,23 @@ using EmuShelf.Infrastructure.Storage;
 namespace EmuShelf.Infrastructure.SaveSync;
 
 /// <summary>
-/// Filesystem implementation for PCSX2 save units. It operates only below the configured
-/// memory-card directory and writes conflict copies only below EmuShelf's portable <c>Saves</c>
-/// directory.
+/// Filesystem implementation for provider-resolved save units. It operates only at locations an
+/// <see cref="ISaveLocationProvider"/> explicitly allow-lists and writes conflict copies only
+/// below EmuShelf's portable <c>Saves</c> directory.
 /// </summary>
 public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
 {
-    private const string Pcsx2Prefix = "pcsx2/";
     private static readonly DateTimeOffset ZipTimestamp = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
-    private readonly string _memoryCardsDirectory;
+    private readonly ISaveLocationProvider _provider;
     private readonly string _conflictsDirectory;
     private readonly string _transfersDirectory;
 
-    public FileSystemLocalSaveEndpoint(string memoryCardsDirectory, IAppPaths appPaths)
+    public FileSystemLocalSaveEndpoint(ISaveLocationProvider provider, IAppPaths appPaths)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(memoryCardsDirectory);
+        ArgumentNullException.ThrowIfNull(provider);
         ArgumentNullException.ThrowIfNull(appPaths);
-        _memoryCardsDirectory = Path.GetFullPath(memoryCardsDirectory);
+        _provider = provider;
         _conflictsDirectory = Path.Combine(appPaths.SavesDirectory, "conflicts");
         _transfersDirectory = Path.Combine(appPaths.SavesDirectory, "transfers");
     }
@@ -61,7 +60,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             if (!Directory.Exists(location.Path))
                 return null;
 
-            var files = EnumerateFolderFiles(location.Path, cancellationToken).ToList();
+            var files = EnumerateAllFolderFiles(location.Path, cancellationToken).ToList();
             return new SaveUnitSnapshot(unitId, HashFolder(files, location.Path, cancellationToken), MaxModifiedUtc(files));
         }
 
@@ -124,7 +123,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private void Write(string unitId, Stream content, DateTimeOffset modifiedUtc, CancellationToken cancellationToken)
     {
         var location = Resolve(unitId);
-        Directory.CreateDirectory(_memoryCardsDirectory);
+        Directory.CreateDirectory(Path.GetDirectoryName(location.Path)!);
         if (!location.IsFolder)
         {
             var temporaryPath = location.Path + ".emushelf-tmp";
@@ -144,7 +143,11 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             return;
         }
 
-        var temporaryDirectory = location.Path + ".emushelf-tmp-" + Guid.NewGuid().ToString("N");
+        var parentDirectory = Path.GetDirectoryName(location.Path)!;
+        var temporaryDirectory = Path.Combine(parentDirectory, "_emushelf-incoming-" + Guid.NewGuid().ToString("N"));
+        var displacedDirectory = Path.Combine(parentDirectory, "_emushelf-previous-" + Guid.NewGuid().ToString("N"));
+        var displaced = false;
+        var installed = false;
         try
         {
             Directory.CreateDirectory(temporaryDirectory);
@@ -152,17 +155,25 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             foreach (var file in Directory.EnumerateFiles(temporaryDirectory, "*", SearchOption.AllDirectories))
                 File.SetLastWriteTimeUtc(file, modifiedUtc.UtcDateTime);
 
-            // SaveSyncService took a portable conflict copy before every live-folder overwrite.
-            // A replacement (rather than a merge) is required to avoid resurrecting a file the
-            // winning remote folder no longer contains.
+            // Replace rather than merge so a file absent from the winning remote folder is not
+            // resurrected. Keep the live folder beside the incoming one until the final move
+            // succeeds, allowing an immediate rollback if installation fails.
             if (Directory.Exists(location.Path))
-                Directory.Delete(location.Path, recursive: true);
+            {
+                Directory.Move(location.Path, displacedDirectory);
+                displaced = true;
+            }
             Directory.Move(temporaryDirectory, location.Path);
+            installed = true;
+            if (displaced)
+                Directory.Delete(displacedDirectory, recursive: true);
         }
         finally
         {
             if (Directory.Exists(temporaryDirectory))
                 Directory.Delete(temporaryDirectory, recursive: true);
+            if (!installed && displaced && Directory.Exists(displacedDirectory) && !Directory.Exists(location.Path))
+                Directory.Move(displacedDirectory, location.Path);
         }
     }
 
@@ -199,24 +210,20 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private ResolvedUnit Resolve(string unitId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
-        if (!unitId.StartsWith(Pcsx2Prefix, StringComparison.Ordinal))
-            throw new ArgumentException("Only PCSX2 save unit ids are supported.", nameof(unitId));
+        var approved = _provider.ResolveUnit(unitId) ??
+            throw new ArgumentException(
+                $"The save provider cannot safely materialize unit '{unitId}' in its active configuration.",
+                nameof(unitId));
+        if (approved.Kind is not (SaveUnitKind.File or SaveUnitKind.Folder))
+            throw new ArgumentException("The save unit kind is not supported by the filesystem endpoint.", nameof(unitId));
 
-        var segments = unitId[Pcsx2Prefix.Length..].Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length is < 1 or > 2 || segments.Any(segment => segment is "." or ".." || segment.Contains('\\')))
-            throw new ArgumentException("The save unit id is not a safe PCSX2 relative path.", nameof(unitId));
+        var root = Path.GetFullPath(approved.RootPath);
+        var path = Path.GetFullPath(approved.Path);
+        if (!IsUnderRoot(path, root))
+            throw new ArgumentException("The provider resolved the save unit outside its approved root.", nameof(unitId));
+        EnsureNoLinkedPathBelowRoot(path, root);
 
-        var isFolder = segments.Length == 2;
-        if ((!isFolder && !segments[0].EndsWith(".ps2", StringComparison.OrdinalIgnoreCase)) ||
-            (isFolder && !IsGameSerial(segments[1])))
-        {
-            throw new ArgumentException("The save unit id is not a recognized PCSX2 card unit.", nameof(unitId));
-        }
-
-        var path = Path.GetFullPath(Path.Combine(_memoryCardsDirectory, Path.Combine(segments)));
-        if (!IsUnderRoot(path, _memoryCardsDirectory))
-            throw new ArgumentException("The save unit resolves outside the PCSX2 memory-card directory.", nameof(unitId));
-        return new ResolvedUnit(path, isFolder);
+        return new ResolvedUnit(path, approved.Kind == SaveUnitKind.Folder);
     }
 
     private string CreateBackupDirectory(string unitId)
@@ -228,17 +235,28 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         return path;
     }
 
-    private static IEnumerable<string> EnumerateFolderFiles(string root, CancellationToken cancellationToken) =>
-        EnumerateAllFolderFiles(root, cancellationToken);
-
-    private static IEnumerable<string> EnumerateAllFolderFiles(string root, CancellationToken cancellationToken) =>
-        Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .OrderBy(path => ToRelativePath(root, path), StringComparer.Ordinal)
-            .Select(path =>
+    private static IEnumerable<string> EnumerateAllFolderFiles(string root, CancellationToken cancellationToken)
+    {
+        var files = new List<string>();
+        var pending = new Stack<string>();
+        pending.Push(root);
+        while (pending.TryPop(out var directory))
+        {
+            foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return path;
-            });
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException("A save folder contains a symbolic link or reparse point.");
+                if ((attributes & FileAttributes.Directory) != 0)
+                    pending.Push(entry);
+                else
+                    files.Add(entry);
+            }
+        }
+
+        return files.OrderBy(path => ToRelativePath(root, path), StringComparer.Ordinal);
+    }
 
     private static string HashFolder(IEnumerable<string> files, string root, CancellationToken cancellationToken)
     {
@@ -311,7 +329,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private static void CopyDirectory(string source, string destination, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(destination);
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        foreach (var file in EnumerateAllFolderFiles(source, cancellationToken))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var target = Path.Combine(destination, ToRelativePath(source, file));
@@ -327,13 +345,31 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private static string ToRelativePath(string root, string path) =>
         Path.GetRelativePath(root, path).Replace(Path.DirectorySeparatorChar, '/');
 
-    private static bool IsUnderRoot(string path, string root) =>
-        path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
-        string.Equals(path, Path.TrimEndingDirectorySeparator(root), StringComparison.Ordinal);
+    private static bool IsUnderRoot(string path, string root)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        var trimmedRoot = Path.TrimEndingDirectorySeparator(root);
+        return path.StartsWith(trimmedRoot + Path.DirectorySeparatorChar, comparison);
+    }
 
-    private static bool IsGameSerial(string value) =>
-        value.Length is >= 4 and <= 32 && value.All(character =>
-            char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
+    private static void EnsureNoLinkedPathBelowRoot(string path, string root)
+    {
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        for (var current = path;
+             !string.Equals(Path.TrimEndingDirectorySeparator(current), Path.TrimEndingDirectorySeparator(root), comparison);
+             current = Path.GetDirectoryName(current) ?? root)
+        {
+            if ((File.Exists(current) || Directory.Exists(current)) &&
+                (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+            {
+                throw new InvalidDataException("A save unit resolves through a symbolic link or reparse point.");
+            }
+        }
+    }
 
     private readonly record struct ResolvedUnit(string Path, bool IsFolder);
 }

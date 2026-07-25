@@ -10,13 +10,16 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 {
     private readonly string _configurationDirectory;
     private readonly string _memoryCardsDirectory;
+    private readonly Pcsx2SaveLocationProvider _endpointProvider;
     private readonly FileSystemLocalSaveEndpoint _endpoint;
 
     public FileSystemSaveSyncTests()
     {
         _configurationDirectory = Path.Combine(BaseDirectory, "pcsx2-config");
         _memoryCardsDirectory = Path.Combine(_configurationDirectory, "relocated-cards");
-        _endpoint = new FileSystemLocalSaveEndpoint(_memoryCardsDirectory, AppPaths);
+        WriteIni(autoManageFolderCards: false);
+        _endpointProvider = new Pcsx2SaveLocationProvider(_configurationDirectory);
+        _endpoint = new FileSystemLocalSaveEndpoint(_endpointProvider, AppPaths);
     }
 
     [Fact]
@@ -80,6 +83,29 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         await Assert.ThrowsAsync<Pcsx2ConfigurationFormatException>(() =>
             new Pcsx2SaveLocationProvider(_configurationDirectory).GetSaveUnitsAsync());
+    }
+
+    [Fact]
+    public async Task Endpoint_RejectsAProviderUnitThatResolvesToItsRoot()
+    {
+        var root = Path.Combine(BaseDirectory, "save-root");
+        Directory.CreateDirectory(root);
+        var endpoint = new FileSystemLocalSaveEndpoint(new RootResolvingProvider(root), AppPaths);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => endpoint.SnapshotAsync("unsafe/."));
+    }
+
+    [Fact]
+    public void Provider_RejectsRemoteFolderUnit_WhenTheActiveCardIsAFile()
+    {
+        Directory.CreateDirectory(_memoryCardsDirectory);
+        File.WriteAllText(Path.Combine(_memoryCardsDirectory, "Mcd001.ps2"), "file-card");
+        WriteIni(autoManageFolderCards: false);
+
+        var provider = new Pcsx2SaveLocationProvider(_configurationDirectory);
+
+        Assert.NotNull(provider.ResolveUnit("pcsx2/Mcd001.ps2"));
+        Assert.Null(provider.ResolveUnit("pcsx2/Mcd001.ps2/SLUS-20552"));
     }
 
     [Fact]
@@ -222,6 +248,18 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(new SaveUnit("pcsx2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder), unit);
     }
 
+    private sealed class RootResolvingProvider(string root) : ISaveLocationProvider
+    {
+        public string SystemId => "unsafe";
+        public string UnitIdPrefix => "unsafe/";
+
+        public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SaveUnit>>([]);
+
+        public SaveUnitLocation? ResolveUnit(string unitId) =>
+            new(root, root, SaveUnitKind.Folder);
+    }
+
     [Fact]
     public async Task Provider_IgnoresDirectoryWithoutFolderCardIndex()
     {
@@ -255,14 +293,14 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         // Machine A uploads the per-game folder as a deterministic ZIP payload.
         var serviceA = new SaveSyncService(
-            new FileSystemLocalSaveEndpoint(memcardsA, pathsA),
+            new FileSystemLocalSaveEndpoint(CreateConfiguredProvider(pathsA.BaseDirectory, memcardsA), pathsA),
             transport,
             new JsonSaveSyncManifestStore(pathsA));
         Assert.Equal(1, (await serviceA.SyncAsync(new FakeSaveLocationProvider("playstation2", unit))).Uploaded);
 
         // Machine B (empty) pulls it down and reconstructs the folder byte-for-byte.
         var serviceB = new SaveSyncService(
-            new FileSystemLocalSaveEndpoint(memcardsB, pathsB),
+            new FileSystemLocalSaveEndpoint(CreateConfiguredProvider(pathsB.BaseDirectory, memcardsB), pathsB),
             transport,
             new JsonSaveSyncManifestStore(pathsB));
         var download = await serviceB.SyncAsync(new FakeSaveLocationProvider("playstation2"));
@@ -352,5 +390,16 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
             "[UI]\nSettingsVersion = 1\n[Folders]\nMemoryCards = relocated-cards\n[EmuCore]\n" +
             $"McdFolderAutoManage = {autoManageFolderCards.ToString().ToLowerInvariant()}\n" +
             "[MemoryCards]\nSlot1_Enable = true\nSlot1_Filename = Mcd001.ps2\n");
+    }
+
+    private static Pcsx2SaveLocationProvider CreateConfiguredProvider(string configurationDirectory, string memcards)
+    {
+        Directory.CreateDirectory(configurationDirectory);
+        Directory.CreateDirectory(Path.Combine(memcards, "Mcd001"));
+        File.WriteAllText(
+            Path.Combine(configurationDirectory, "PCSX2.ini"),
+            "[UI]\nSettingsVersion = 1\n[Folders]\n" +
+            $"MemoryCards = {memcards}\n[MemoryCards]\nSlot1_Enable = true\nSlot1_Filename = Mcd001\n");
+        return new Pcsx2SaveLocationProvider(configurationDirectory);
     }
 }

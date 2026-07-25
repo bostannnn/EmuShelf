@@ -380,12 +380,12 @@
                                 BorderThickness="1" CornerRadius="9" Padding="18">
                             <StackPanel Spacing="14">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="CLOUD SAVE SYNC (PCSX2)" FontSize="10"
+                                    <TextBlock Text="CLOUD SAVE SYNC" FontSize="10"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                               Text="Sync your PS2 memory cards between machines through your own Google Drive. EmuShelf backs up before every overwrite and never deletes a save. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
+                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. EmuShelf backs up before every overwrite and never deletes the only copy. Save states and emulator configuration are excluded. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
                                 </StackPanel>
 
                                 <Border IsVisible="{Binding IsRcloneMissing}"
@@ -410,23 +410,96 @@
                                     </StackPanel>
                                 </Border>
 
-                                <StackPanel Spacing="6">
-                                    <TextBlock Text="PCSX2 FOLDER, OR YOUR MEMORY-CARDS FOLDER" FontSize="10"
-                                               FontWeight="SemiBold" LetterSpacing="0.7"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <StackPanel Spacing="14">
+                                    <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
+                                        <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                                Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                                            <Image Width="32" Height="32"
+                                                   Source="{x:Static vm:PlatformArtwork.PlayStation2Icon}"
+                                                   RenderOptions.BitmapInterpolationMode="None" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="3">
+                                            <TextBlock Text="PlayStation 2" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                            <TextBlock Text="PCSX2 memory cards · uses configured emulator unless overridden"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="54,0,0,0">
                                         <TextBox Grid.Column="0" Text="{Binding Pcsx2ConfigDirectory, Mode=TwoWay}"
                                                  Background="{DynamicResource EmuInputBrush}"
                                                  BorderBrush="{DynamicResource EmuBorderBrush}"
-                                                 PlaceholderText="Detected from your configured PCSX2, or pick a folder" />
+                                                 PlaceholderText="Use configured PCSX2, or choose its folder" />
                                         <Button Grid.Column="1" Content="Browse…"
                                                 Command="{Binding PickPcsx2DirectoryCommand}"
                                                 IsEnabled="{Binding !IsCloudBusy}" />
+                                        <Button Grid.Column="2" Content="Replace cloud"
+                                                IsVisible="{Binding IsCloudConnected}"
+                                                Command="{Binding ForceCloudUploadCommand}"
+                                                CommandParameter="playstation2"
+                                                IsEnabled="{Binding !IsCloudBusy}"
+                                                ToolTip.Tip="Replace only the cloud PS2 memory cards; overwritten cloud copies are backed up" />
+                                        <Button Grid.Column="3" Content="Replace local"
+                                                IsVisible="{Binding IsCloudConnected}"
+                                                Command="{Binding ForceCloudDownloadCommand}"
+                                                CommandParameter="playstation2"
+                                                IsEnabled="{Binding !IsCloudBusy}"
+                                                ToolTip.Tip="Replace only local PS2 memory cards; overwritten local copies are backed up" />
                                     </Grid>
-                                    <TextBlock Text="{Binding DetectedMemoryCardsDirectory, StringFormat='Memory cards that will sync: {0}'}"
+                                    <TextBlock Margin="54,0,0,0"
+                                               Text="{Binding DetectedMemoryCardsDirectory, StringFormat='Syncing {0}'}"
                                                IsVisible="{Binding HasDetectedMemoryCards}"
                                                FontSize="11" TextWrapping="Wrap"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <Border Height="1" Margin="54,2,0,2"
+                                            Background="{DynamicResource EmuBorderBrush}" />
+
+                                    <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
+                                        <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                                Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                                            <Image Width="34" Height="34"
+                                                   Source="{x:Static vm:PlatformArtwork.PspIcon}"
+                                                   RenderOptions.BitmapInterpolationMode="None" />
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Spacing="3">
+                                            <TextBlock Text="PSP" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                            <TextBlock Text="PPSSPP in-game saves · uses configured emulator unless overridden"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <TextBlock Text="Save states and emulator files are excluded."
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="54,0,0,0">
+                                        <TextBox Grid.Column="0"
+                                                 Text="{Binding PpssppMemoryStickDirectory, Mode=TwoWay}"
+                                                 Background="{DynamicResource EmuInputBrush}"
+                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                 PlaceholderText="Use configured PPSSPP, or choose its Memory Stick" />
+                                        <Button Grid.Column="1" Content="Browse…"
+                                                Command="{Binding PickPpssppMemoryStickDirectoryCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                        <Button Grid.Column="2" Content="Replace cloud"
+                                                IsVisible="{Binding IsCloudConnected}"
+                                                Command="{Binding ForceCloudUploadCommand}"
+                                                CommandParameter="psp"
+                                                IsEnabled="{Binding !IsCloudBusy}"
+                                                ToolTip.Tip="Replace only the cloud PSP saves; overwritten cloud copies are backed up" />
+                                        <Button Grid.Column="3" Content="Replace local"
+                                                IsVisible="{Binding IsCloudConnected}"
+                                                Command="{Binding ForceCloudDownloadCommand}"
+                                                CommandParameter="psp"
+                                                IsEnabled="{Binding !IsCloudBusy}"
+                                                ToolTip.Tip="Replace only local PSP saves; overwritten local copies are backed up" />
+                                    </Grid>
+                                    <TextBlock Margin="54,0,0,0"
+                                               Text="{Binding DetectedPpssppSaveDataDirectory, StringFormat='Syncing {0}'}"
+                                               IsVisible="{Binding HasDetectedPpssppSaveData}"
+                                               FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 </StackPanel>
 
                                 <StackPanel IsVisible="{Binding IsCloudDisconnected}" Spacing="9">
@@ -462,19 +535,10 @@
                                                 Command="{Binding DisconnectCloudCommand}"
                                                 IsEnabled="{Binding !IsCloudBusy}" />
                                     </Grid>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Button Content="Sync now" Classes="accent"
-                                                Command="{Binding SyncCloudNowCommand}"
-                                                IsEnabled="{Binding !IsCloudBusy}" />
-                                        <Button Content="Upload → cloud"
-                                                Command="{Binding ForceCloudUploadCommand}"
-                                                IsEnabled="{Binding !IsCloudBusy}"
-                                                ToolTip.Tip="Overwrite the cloud with local saves (older cloud copy is backed up)" />
-                                        <Button Content="Download → local"
-                                                Command="{Binding ForceCloudDownloadCommand}"
-                                                IsEnabled="{Binding !IsCloudBusy}"
-                                                ToolTip.Tip="Overwrite local saves with the cloud copy (older local copy is backed up)" />
-                                    </StackPanel>
+                                    <Button Content="Sync all now" Classes="accent"
+                                            HorizontalAlignment="Left"
+                                            Command="{Binding SyncCloudNowCommand}"
+                                            IsEnabled="{Binding !IsCloudBusy}" />
                                 </StackPanel>
 
                                 <StackPanel IsVisible="{Binding HasCloudSyncProgress}" Spacing="5">

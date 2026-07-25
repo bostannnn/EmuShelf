@@ -124,7 +124,9 @@ public sealed class AppBootstrapper
             SettingsService,
             Settings,
             Logger,
-            defaultPcsx2Directory: ResolveConfiguredPcsx2Directory);
+            defaultPcsx2Directory: ResolveConfiguredPcsx2Directory,
+            defaultPpssppInstallationDirectory: ResolveConfiguredPpssppDirectory,
+            isPpssppFlatpak: IsConfiguredPpssppFlatpak);
         Logger.Information("EmuShelf startup services initialized.");
     }
 
@@ -143,4 +145,20 @@ public sealed class AppBootstrapper
             ? null
             : Path.GetDirectoryName(executablePath);
     }
+
+    private string? ResolveConfiguredPpssppDirectory()
+    {
+        var configuration = EmulatorConfigurations.Get("psp");
+        var executablePath = configuration?.LaunchTarget switch
+        {
+            DirectExecutableTarget direct => direct.Path,
+            _ => configuration?.ExecutablePath,
+        };
+        return string.IsNullOrWhiteSpace(executablePath)
+            ? null
+            : Path.GetDirectoryName(executablePath);
+    }
+
+    private bool IsConfiguredPpssppFlatpak() =>
+        EmulatorConfigurations.Get("psp")?.LaunchTarget is FlatpakApplicationTarget;
 }

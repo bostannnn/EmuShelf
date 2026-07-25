@@ -19,6 +19,10 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     public int Downloads { get; private set; }
 
+    public int ListCalls { get; private set; }
+
+    public int FlushCalls { get; private set; }
+
     public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
         _units[unitId] = new StoredUnit(content, Hash(content), modifiedUtc);
 
@@ -32,6 +36,7 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
     public Task<IReadOnlyList<SaveUnitSnapshot>> ListAsync(CancellationToken cancellationToken = default)
     {
         Guard();
+        ListCalls++;
         IReadOnlyList<SaveUnitSnapshot> snapshots = _units
             .Select(pair => new SaveUnitSnapshot(pair.Key, pair.Value.Hash, pair.Value.ModifiedUtc))
             .ToList();
@@ -60,7 +65,11 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
         Uploads++;
     }
 
-    public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        FlushCalls++;
+        return Task.CompletedTask;
+    }
 
     private void Guard()
     {

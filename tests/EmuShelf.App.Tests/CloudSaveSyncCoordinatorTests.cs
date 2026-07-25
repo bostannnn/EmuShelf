@@ -13,7 +13,8 @@ public class CloudSaveSyncCoordinatorTests
     [Fact]
     public async Task SyncNow_WhenNotConfigured_DoesNothing()
     {
-        var outcome = await CreateCoordinator(new FakeSettingsService()).SyncNowAsync();
+        var outcome = await CreateCoordinator(new FakeSettingsService())
+            .SyncNowAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(CloudSaveSyncStatus.NotConfigured, outcome.Status);
     }
@@ -22,7 +23,7 @@ public class CloudSaveSyncCoordinatorTests
     public async Task Connect_WithMissingInput_ReportsInvalidInput()
     {
         var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync("", "", "", CancellationToken.None);
+            .ConnectGoogleDriveAsync("", "", "", "", CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
     }
@@ -31,7 +32,7 @@ public class CloudSaveSyncCoordinatorTests
     public async Task Connect_WhenRcloneMissing_ReportsRcloneMissing()
     {
         var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "/pcsx2", CancellationToken.None);
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "/pcsx2", "", CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
     }
@@ -68,10 +69,77 @@ public class CloudSaveSyncCoordinatorTests
         Assert.Equal(1, settings.SaveCalls);
     }
 
+    [Fact]
+    public void UpdatePpssppDirectory_PersistsPathWithoutChangingConnection()
+    {
+        var settings = new FakeSettingsService
+        {
+            Current = new AppSettings
+            {
+                CloudSaveSync = new CloudSaveSyncSettings
+                {
+                    Enabled = true,
+                    RemoteName = "gdrive",
+                    CloudFolder = "EmuShelf/Saves",
+                },
+            },
+        };
+        var coordinator = CreateCoordinator(settings, settings.Current);
+
+        coordinator.UpdatePpssppDirectory(" /portable/ppsspp ");
+
+        Assert.Equal("/portable/ppsspp", settings.Current.CloudSaveSync.PpssppMemoryStickDirectory);
+        Assert.True(settings.Current.CloudSaveSync.Enabled);
+        Assert.Equal("gdrive", settings.Current.CloudSaveSync.RemoteName);
+        Assert.Equal(1, settings.SaveCalls);
+    }
+
+    [Fact]
+    public async Task Connect_WithPpssppOverride_DoesNotRequirePcsx2Directory()
+    {
+        var settings = new FakeSettingsService();
+
+        var result = await CreateCoordinator(settings)
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "", "/portable/ppsspp", CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+    }
+
+    [Fact]
+    public async Task Connect_WithConfiguredPpsspp_DoesNotRequireOverrides()
+    {
+        var settings = new FakeSettingsService();
+
+        var result = await CreateCoordinator(settings, defaultPpssppDirectory: () => "/app/ppsspp")
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "", "", CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+    }
+
+    [Fact]
+    public async Task Connect_WithFlatpakPpsspp_DoesNotRequireOverrides()
+    {
+        var settings = new FakeSettingsService();
+
+        var result = await CreateCoordinator(settings, isPpssppFlatpak: () => true)
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "", "", CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+    }
+
     private static CloudSaveSyncCoordinator CreateCoordinator(
         FakeSettingsService settings,
-        AppSettings? initial = null) =>
-        new(new FakePaths(), settings, initial ?? new AppSettings(), NullAppLogger.Instance, NonexistentRclone);
+        AppSettings? initial = null,
+        Func<string?>? defaultPpssppDirectory = null,
+        Func<bool>? isPpssppFlatpak = null) =>
+        new(
+            new FakePaths(),
+            settings,
+            initial ?? new AppSettings(),
+            NullAppLogger.Instance,
+            NonexistentRclone,
+            defaultPpssppInstallationDirectory: defaultPpssppDirectory,
+            isPpssppFlatpak: isPpssppFlatpak);
 
     private sealed class FakeSettingsService : ISettingsService
     {

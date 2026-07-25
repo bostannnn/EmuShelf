@@ -154,6 +154,27 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncAll_ReconcilesSeveralProvidersWithOneRemotePass()
+    {
+        var ppsspp = new SaveUnit("ppsspp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
+        var pspLocal = new InMemoryLocalSaveEndpoint();
+        _local.Seed(FileCard.UnitId, Bytes("ps2-save"), T0);
+        pspLocal.Seed(ppsspp.UnitId, Bytes("psp-save"), T0);
+
+        var report = await CreateService().SyncAllAsync(
+            [
+                new SaveSyncTarget(Provider(FileCard), _local),
+                new SaveSyncTarget(new FakeSaveLocationProvider("psp", ppsspp), pspLocal),
+            ]);
+
+        Assert.Equal(2, report.Uploaded);
+        Assert.Equal(1, _remote.ListCalls);
+        Assert.Equal(1, _remote.FlushCalls);
+        Assert.Equal(Bytes("ps2-save"), _remote.Content(FileCard.UnitId));
+        Assert.Equal(Bytes("psp-save"), _remote.Content(ppsspp.UnitId));
+    }
+
+    [Fact]
     public async Task Cancellation_StopsBeforeTouchingSaves()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);

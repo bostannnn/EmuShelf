@@ -22,4 +22,6 @@ internal sealed class FakeSaveLocationProvider : ISaveLocationProvider
 
     public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_units);
+
+    public SaveUnitLocation? ResolveUnit(string unitId) => null;
 }

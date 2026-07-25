@@ -28,7 +28,7 @@ public sealed class LiveCloudSyncTests
         appPaths.EnsureDirectoriesExist();
         var provider = new Pcsx2SaveLocationProvider(pcsx2Dir);
         var memcards = await provider.GetMemoryCardsDirectoryAsync();
-        var endpoint = new FileSystemLocalSaveEndpoint(memcards, appPaths);
+        var endpoint = new FileSystemLocalSaveEndpoint(provider, appPaths);
         var transport = new RcloneCloudSyncTransport(appPaths, remote, cloudFolder);
         var manifests = new JsonSaveSyncManifestStore(appPaths);
         var service = new SaveSyncService(endpoint, transport, manifests);
