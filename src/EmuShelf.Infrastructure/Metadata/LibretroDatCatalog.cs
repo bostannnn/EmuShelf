@@ -34,8 +34,9 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         CancellationToken cancellationToken = default)
     {
         var relevant = identifiers
-            .Where(identifier => identifier.Kind == profile.CatalogKeyKind)
-            .OrderByDescending(identifier => identifier.IsPrimary)
+            .Where(identifier => profile.CatalogKeyKinds.Contains(identifier.Kind))
+            .OrderBy(identifier => CatalogKeyPriority(profile.CatalogKeyKinds, identifier.Kind))
+            .ThenByDescending(identifier => identifier.IsPrimary)
             .ToArray();
         if (relevant.Length == 0)
             return null;
@@ -60,7 +61,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         foreach (var identifier in relevant)
         {
             var key = NormalizeKey(identifier.Kind, identifier.Value);
-            if (index.Entries.TryGetValue(key, out var entry))
+            if (index.TryGetValue(identifier.Kind, key, out var entry))
             {
                 return new GameCatalogMatch(
                     "libretro-database",
@@ -79,7 +80,9 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         var path = Path.Combine(_catalogDirectory, $"{profile.SystemId}.dat");
         await EnsureCurrentCatalogAsync(profile.CatalogUri, path, cancellationToken);
 
-        return await Task.Run(() => Parse(path, profile.CatalogKeyKind), cancellationToken);
+        return await Task.Run(
+            () => Parse(path, profile.CatalogKeyKinds, profile.ReadRomSerials),
+            cancellationToken);
     }
 
     private async Task EnsureCurrentCatalogAsync(
@@ -148,12 +151,33 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     }
 
     internal static CatalogIndex Parse(TextReader reader, GameIdentifierKind keyKind)
+        => Parse(reader, [keyKind], readRomSerials: false);
+
+    internal static CatalogIndex Parse(
+        string path,
+        IReadOnlyList<GameIdentifierKind> keyKinds,
+        bool readRomSerials)
     {
-        var entries = new Dictionary<string, CatalogEntry>(StringComparer.OrdinalIgnoreCase);
+        using var reader = File.OpenText(path);
+        return Parse(reader, keyKinds, readRomSerials);
+    }
+
+    internal static CatalogIndex Parse(
+        TextReader reader,
+        IReadOnlyList<GameIdentifierKind> keyKinds,
+        bool readRomSerials)
+    {
+        var distinctKinds = keyKinds.Distinct().ToArray();
+        if (distinctKinds.Length == 0)
+            throw new ArgumentException("At least one catalogue key kind is required.", nameof(keyKinds));
+
+        var entriesByKind = distinctKinds.ToDictionary(
+            kind => kind,
+            _ => new Dictionary<string, CatalogEntry>(StringComparer.OrdinalIgnoreCase));
         var depth = 0;
         string? name = null;
         string? region = null;
-        string? key = null;
+        Dictionary<GameIdentifierKind, string?>? keys = null;
 
         while (reader.ReadLine() is { } line)
         {
@@ -165,7 +189,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                     depth = 1;
                     name = null;
                     region = null;
-                    key = null;
+                    keys = distinctKinds.ToDictionary(kind => kind, _ => (string?)null);
                 }
                 continue;
             }
@@ -179,25 +203,41 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
             if (value.Equals(")", StringComparison.Ordinal))
             {
                 depth--;
-                if (depth == 0 && name is not null && key is not null)
+                if (depth == 0 && name is not null && keys is not null)
                 {
-                    var normalizedKey = NormalizeKey(keyKind, key);
-                    AddPreferred(entries, normalizedKey, new CatalogEntry(name, region));
+                    foreach (var kind in distinctKinds)
+                    {
+                        if (keys[kind] is not { } key)
+                            continue;
+
+                        var normalizedKey = NormalizeKey(kind, key);
+                        AddPreferred(entriesByKind[kind], normalizedKey, new CatalogEntry(name, region));
+                    }
                 }
                 continue;
             }
 
             // A clrmamepro ROM record may keep its checksum on the `rom (` line or on a
             // nested line. SHA-1/CRC are ROM-content keys, unlike the top-level disc serial.
-            if (keyKind == GameIdentifierKind.Sha1 &&
+            if (keys is null)
+                continue;
+
+            if (keys.ContainsKey(GameIdentifierKind.Sha1) &&
                 TryReadTokenField(value, "sha1", out var parsedSha1))
             {
-                key ??= parsedSha1;
+                keys[GameIdentifierKind.Sha1] ??= parsedSha1;
             }
-            else if (keyKind == GameIdentifierKind.Crc32 &&
+            else if (keys.ContainsKey(GameIdentifierKind.Crc32) &&
                      TryReadTokenField(value, "crc", out var parsedCrc))
             {
-                key ??= parsedCrc;
+                keys[GameIdentifierKind.Crc32] ??= parsedCrc;
+            }
+
+            if (keys.ContainsKey(GameIdentifierKind.Serial) &&
+                (depth == 1 || readRomSerials) &&
+                TryReadEmbeddedQuotedField(value, "serial", out var parsedSerial))
+            {
+                keys[GameIdentifierKind.Serial] ??= parsedSerial;
             }
 
             if (depth != 1)
@@ -207,12 +247,12 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                 name = parsedName;
             else if (TryReadQuotedField(value, "region", out var parsedRegion))
                 region = parsedRegion;
-            else if (keyKind != GameIdentifierKind.Sha1 &&
-                     TryReadQuotedField(value, "serial", out var parsedSerial))
-                key ??= parsedSerial;
         }
 
-        return new CatalogIndex(entries);
+        var readonlyIndexes = entriesByKind.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyDictionary<string, CatalogEntry>)pair.Value);
+        return new CatalogIndex(readonlyIndexes[distinctKinds[0]], readonlyIndexes);
     }
 
     internal static string NormalizeKey(GameIdentifierKind kind, string value)
@@ -223,7 +263,21 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         {
             return $"{match.Groups[1].Value}-{match.Groups[2].Value}{match.Groups[3].Value}";
         }
+        if (kind == GameIdentifierKind.Serial)
+            return string.Concat(normalized.Where(char.IsLetterOrDigit));
         return normalized;
+    }
+
+    private static int CatalogKeyPriority(
+        IReadOnlyList<GameIdentifierKind> keyKinds,
+        GameIdentifierKind kind)
+    {
+        for (var index = 0; index < keyKinds.Count; index++)
+        {
+            if (keyKinds[index] == kind)
+                return index;
+        }
+        return int.MaxValue;
     }
 
     private static bool TryReadQuotedField(string line, string field, out string value)
@@ -260,6 +314,24 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         }
 
         value = match.Groups[1].Value;
+        return true;
+    }
+
+    private static bool TryReadEmbeddedQuotedField(string line, string field, out string value)
+    {
+        var match = Regex.Match(
+            line,
+            $@"(?:^|\s){Regex.Escape(field)}\s+""((?:\\.|[^""])*)""",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        if (!match.Success)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        value = match.Groups[1].Value
+            .Replace("\\\"", "\"", StringComparison.Ordinal)
+            .Replace("\\\\", "\\", StringComparison.Ordinal);
         return true;
     }
 
@@ -308,7 +380,22 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
 
     internal sealed record CatalogEntry(string Title, string? Region);
 
-    internal sealed record CatalogIndex(IReadOnlyDictionary<string, CatalogEntry> Entries);
+    internal sealed record CatalogIndex(
+        IReadOnlyDictionary<string, CatalogEntry> Entries,
+        IReadOnlyDictionary<GameIdentifierKind, IReadOnlyDictionary<string, CatalogEntry>> EntriesByKind)
+    {
+        public bool TryGetValue(GameIdentifierKind kind, string key, out CatalogEntry entry)
+        {
+            if (EntriesByKind.TryGetValue(kind, out var entries) &&
+                entries.TryGetValue(key, out entry!))
+            {
+                return true;
+            }
+
+            entry = default!;
+            return false;
+        }
+    }
 
     [GeneratedRegex(
         @"^([A-Z]{4})[\s_-]*([0-9]{3})[.\s_-]*([0-9]{2})(?:$|[-/])",

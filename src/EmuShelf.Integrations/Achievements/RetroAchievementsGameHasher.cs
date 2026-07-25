@@ -42,7 +42,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
     private const string GameBoyAdvanceAlgorithm = "rcheevos-2ac45d3-gba-v1";
     private const string SuperNintendoAlgorithm = "rcheevos-2ac45d3-snes-v1";
-    private const string DreamcastAlgorithm = "rcheevos-2ac45d3-dreamcast-gdi-v1";
+    // Not suffixed with the container: the hash is IP.BIN plus the boot executable regardless of
+    // how the tracks are packaged, so adding CDI or CHD later must not invalidate stored GDI hashes.
+    private const string DreamcastAlgorithm = "rcheevos-2ac45d3-dreamcast-v1";
 
     public string GetAlgorithmVersion(Game game) => game.SystemId switch
     {

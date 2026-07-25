@@ -37,7 +37,7 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("nds", "rcheevos-2ac45d3-nds-v1", 18)]
     [InlineData("gba", "rcheevos-2ac45d3-gba-v1", 5)]
     [InlineData("snes", "rcheevos-2ac45d3-snes-v1", 3)]
-    [InlineData("dreamcast", "rcheevos-2ac45d3-dreamcast-gdi-v1", 40)]
+    [InlineData("dreamcast", "rcheevos-2ac45d3-dreamcast-v1", 40)]
     public void ExpansionAlgorithmVersionsAndConsoleMappings_AreScopedToVerifiedReaders(
         string systemId,
         string expectedVersion,

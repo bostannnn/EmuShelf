@@ -37,7 +37,7 @@ internal sealed class DreamcastGdiTrackReader : ILogicalSectorReader
                     bufferSize: 64 * 1024, FileOptions.RandomAccess);
                 var userDataOffset = GetUserDataOffset(stream, track, track.Number == primaryTrack.Number);
                 var nextTrackLba = index + 1 < tracks.Count ? tracks[index + 1].Lba : (int?)null;
-                dataTracks.Add(new DataTrack(track, stream, userDataOffset, nextTrackLba));
+                dataTracks.Add(new DataTrack(track, stream, userDataOffset, nextTrackLba, stream.Length));
             }
             _tracks = dataTracks.OrderBy(track => track.Definition.Lba).ToArray();
             if (_tracks.Count == 0 || !HasPrimaryIpBin(primaryTrack))
@@ -78,7 +78,7 @@ internal sealed class DreamcastGdiTrackReader : ILogicalSectorReader
             return 0;
         }
 
-        if (offset < 0 || offset + destination.Length > track.Stream.Length)
+        if (offset < 0 || offset + destination.Length > track.Length)
             return 0;
         track.Stream.Position = offset;
         var read = 0;
@@ -118,10 +118,13 @@ internal sealed class DreamcastGdiTrackReader : ILogicalSectorReader
 
     private static bool Contains(DataTrack track, long sector)
     {
-        var sectors = (track.Stream.Length - track.Definition.Offset) / track.Definition.SectorSize;
+        var sectors = (track.Length - track.Definition.Offset) / track.Definition.SectorSize;
         var fileEnd = track.Definition.Lba + sectors;
         var endExclusive = track.NextTrackLba is { } nextTrackLba
-            ? Math.Min(fileEnd, nextTrackLba)
+            // The descriptor includes a 150-sector pregap before the following track, but a
+            // track file does not. Treat padding in that gap as unreadable so it cannot affect
+            // the canonical RetroAchievements hash.
+            ? Math.Min(fileEnd, (long)nextTrackLba - DreamcastGdiReader.PregapSectors)
             : fileEnd;
         return sector >= track.Definition.Lba && sector < endExclusive;
     }
@@ -153,9 +156,12 @@ internal sealed class DreamcastGdiTrackReader : ILogicalSectorReader
                ipBin.SequenceEqual("SEGA SEGAKATANA "u8);
     }
 
+    // Length is captured once at open time: Contains runs for every track on every sector read,
+    // and FileStream.Length queries the OS each time it is touched.
     private sealed record DataTrack(
         DreamcastGdiTrack Definition,
         FileStream Stream,
         int UserDataOffset,
-        int? NextTrackLba);
+        int? NextTrackLba,
+        long Length);
 }

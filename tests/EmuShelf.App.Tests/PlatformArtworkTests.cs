@@ -46,7 +46,7 @@ public class PlatformArtworkTests
             1.434,
             KnownSystems.All.Single(system => system.Id == "snes").CoverAspectRatio);
         Assert.Equal(
-            0.708,
+            1.0,
             KnownSystems.All.Single(system => system.Id == "dreamcast").CoverAspectRatio);
     }
 }

@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
 using EmuShelf.App.Services;
+using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Library;
 using EmuShelf.Infrastructure.Storage;
 using System.Buffers.Binary;
 using System.IO.Compression;
@@ -84,6 +86,32 @@ public class GameCoverServiceTests : IDisposable
         Assert.True(File.Exists(secondImport.CoverPath));
         Assert.True(File.Exists(firstSource));
         Assert.True(File.Exists(secondSource));
+    }
+
+    [AvaloniaFact]
+    public void GameViewModel_LoadedArtworkUsesItsActualAspectRatio()
+    {
+        var sourcePath = CreateImage("pal-dreamcast.png", new PixelSize(512, 722));
+        var game = new Game
+        {
+            Id = 1,
+            SystemId = "dreamcast",
+            Path = Path.Combine(_baseDirectory, "game.gdi"),
+            Title = "Example",
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var viewModel = new GameViewModel(
+            game,
+            "Dreamcast",
+            "DC",
+            "#F07C3E",
+            coverAspectRatio: 1.0);
+
+        viewModel.CoverImage = new Bitmap(sourcePath);
+
+        Assert.Equal(512d / 722d, viewModel.CoverAspectRatio, precision: 3);
+        Assert.Equal(37d, viewModel.ListCoverWidth);
+        viewModel.Dispose();
     }
 
     private string CreateImage(string fileName, PixelSize size)

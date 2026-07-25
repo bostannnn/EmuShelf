@@ -125,7 +125,7 @@ public sealed partial class LibretroArtworkTitleIndex : IGameArtworkTitleIndex
     {
         var exact = index.Where(entry => entry.Title.Key == requested.Key).ToArray();
         if (exact.Length > 0)
-            return OrderByRegion(exact, preferredRegion ?? requested.Region);
+            return OrderByRegion(exact, NormalizeRegion(preferredRegion) ?? requested.Region);
 
         return [];
     }

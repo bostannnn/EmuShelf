@@ -47,6 +47,22 @@ public sealed class LibretroArtworkTitleIndexTests
     }
 
     [Fact]
+    public void FindMatches_UsesTheTitleRegionWhenTheCatalogRegionIsUnrecognised()
+    {
+        var entries = LibretroArtworkTitleIndex.Parse("""
+            <a href="Crazy%20Taxi%20%28Europe%29.png">cover</a>
+            <a href="Crazy%20Taxi%20%28USA%29.png">cover</a>
+            """);
+
+        var matches = LibretroArtworkTitleIndex.FindMatches(
+            entries,
+            LibretroArtworkTitleIndex.NormalizedTitle.From("Crazy Taxi (USA)"),
+            "United States");
+
+        Assert.Equal("Crazy Taxi (USA)", matches[0].FilenameWithoutExtension);
+    }
+
+    [Fact]
     public void FindMatches_DoesNotMatchAProductTitlePrefix()
     {
         var entries = LibretroArtworkTitleIndex.Parse(

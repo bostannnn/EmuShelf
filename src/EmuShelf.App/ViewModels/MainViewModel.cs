@@ -1171,7 +1171,7 @@ public partial class MainViewModel : ViewModelBase
                         continue;
 
                     artworkBySystem.TryGetValue(game.SystemId, out var artwork);
-                    viewModels.Add(new GameViewModel(
+                    var viewModel = new GameViewModel(
                         game,
                         gameSystem.Name,
                         gameSystem.ShortName,
@@ -1184,7 +1184,9 @@ public partial class MainViewModel : ViewModelBase
                         artwork,
                         gameSystem.CoverAspectRatio,
                         OpenAchievementDetailsCommand,
-                        RemoveSelectedGamesCommand));
+                        RemoveSelectedGamesCommand);
+                    viewModel.CoverAspectRatioChanged += OnGameCoverAspectRatioChanged;
+                    viewModels.Add(viewModel);
                 }
 
                 ApplyAchievementDisplays(viewModels);
@@ -1306,6 +1308,8 @@ public partial class MainViewModel : ViewModelBase
             game.IsCoverLoading = false;
         }
     }
+
+    private void OnGameCoverAspectRatioChanged(object? sender, EventArgs e) => UpdateCoverLayout();
 
     // Sets the sort column, toggling ascending/descending when the same column is chosen again.
     [RelayCommand]

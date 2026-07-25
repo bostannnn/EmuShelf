@@ -489,13 +489,9 @@
                                     </ContextMenu>
                                 </StackPanel.ContextMenu>
 
-                                <!-- Fixed per-platform frame: every cover of a system shares one size
-                                     (from GameSystem.CoverAspectRatio) for the real art and the placeholder
-                                     alike, so a platform's covers are uniform. Frames bottom-align on the
-                                     shelf (sized to the tallest platform) so mixed platforms share a
-                                     baseline and titles line up. Real covers fill the frame — since it
-                                     equals the platform's true scan ratio the crop is a hair of bleed,
-                                     never a letterbox. -->
+                                <!-- The platform ratio frames placeholders. Once artwork loads, its own
+                                     dimensions size the frame, preserving regional package shapes while
+                                     tiles remain bottom-aligned on the shared mixed-library shelf. -->
                                 <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
                                 <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                        VerticalAlignment="Bottom">

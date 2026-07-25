@@ -9,4 +9,16 @@ public sealed record MetadataSystemProfile(
     GameIdentifierKind CatalogKeyKind,
     Uri CatalogUri,
     IGameIdentifierExtractor IdentifierExtractor,
-    IReadOnlyList<IGameArtworkProvider> ArtworkProviders);
+    IReadOnlyList<IGameArtworkProvider> ArtworkProviders,
+    IReadOnlyList<GameIdentifierKind>? FallbackCatalogKeyKinds = null,
+    bool ReadRomSerials = false)
+{
+    /// <summary>
+    /// Ordered catalogue keys. The first is authoritative; later keys are used only if no exact
+    /// match exists for an earlier kind.
+    /// </summary>
+    public IReadOnlyList<GameIdentifierKind> CatalogKeyKinds =>
+        FallbackCatalogKeyKinds is { Count: > 0 }
+            ? [CatalogKeyKind, .. FallbackCatalogKeyKinds]
+            : [CatalogKeyKind];
+}

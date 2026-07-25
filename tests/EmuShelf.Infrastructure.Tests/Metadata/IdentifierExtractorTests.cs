@@ -278,6 +278,28 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.True(identifier.IsPrimary);
     }
 
+    // Dreamcast is the only Sha1 profile pointed at a Redump catalogue rather than No-Intro. Redump
+    // hashes each track file separately, so the profile must offer more than one candidate key.
+    [Fact]
+    public void DreamcastProfile_UsesDataTrackSha1BeforeIpBinProductNumberAndCanonicalArtwork()
+    {
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "dreamcast");
+
+        Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
+        Assert.Equal([GameIdentifierKind.Sha1, GameIdentifierKind.Serial], profile.CatalogKeyKinds);
+        Assert.True(profile.ReadRomSerials);
+        Assert.EndsWith(
+            "/metadat/redump/Sega%20-%20Dreamcast.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Collection(
+            profile.ArtworkProviders,
+            provider => Assert.Equal("libretro-thumbnails", provider.Id));
+        Assert.IsType<DreamcastGdiIdentifierExtractor>(profile.IdentifierExtractor);
+        // An unreadable path yields no evidence rather than a filename guess.
+        Assert.Empty(profile.IdentifierExtractor.Extract(
+            NewGame("dreamcast", Path.Combine(BaseDirectory, "absent.gdi"))));
+    }
+
     [Fact]
     public void ArtworkProviders_UseSerialThenCanonicalLibretroTitle()
     {
@@ -298,7 +320,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(
             "https://example.test/covers/SLUS-20265.jpg",
             Assert.Single(xlenore.GetCandidates(identifiers, match)).SourceUri.ToString());
-        var libretroUri = Assert.Single(libretro.GetCandidates(identifiers, match)).SourceUri;
+        var libretroUri = libretro.GetCandidates(identifiers, match).First().SourceUri;
         Assert.Equal("thumbnails.libretro.com", libretroUri.Host);
         Assert.Contains("PlayStation%202/Named_Boxarts/", libretroUri.AbsoluteUri);
         Assert.EndsWith(".png", libretroUri.AbsolutePath);
@@ -324,9 +346,10 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(
             "https://thumbnails.libretro.com/Sony%20-%20PlayStation%20Portable/Named_Boxarts/" +
             "Lumines%20%28USA%29.png",
-            Assert.Single(profile.ArtworkProviders.Single().GetCandidates(
+            profile.ArtworkProviders.Single().GetCandidates(
                 [identifier],
-                new GameCatalogMatch("libretro-database", "ULUS-10002", "Lumines (USA)", "USA")))
+                new GameCatalogMatch("libretro-database", "ULUS-10002", "Lumines (USA)", "USA"))
+                .First()
                 .SourceUri.AbsoluteUri);
     }
 
@@ -353,9 +376,10 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(
             "https://thumbnails.libretro.com/Sony%20-%20PlayStation%203/Named_Boxarts/" +
             "Demon%27s%20Souls%20%28USA%29.png",
-            Assert.Single(profile.ArtworkProviders.Last().GetCandidates(
+            profile.ArtworkProviders.Last().GetCandidates(
                 [identifier],
-                new GameCatalogMatch("libretro-database", "BLUS-30443", "Demon's Souls (USA)", "USA")))
+                new GameCatalogMatch("libretro-database", "BLUS-30443", "Demon's Souls (USA)", "USA"))
+                .First()
                 .SourceUri.AbsoluteUri);
 
         Assert.Equal(
@@ -378,9 +402,10 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
 
         Assert.Empty(provider.GetCandidates([], match: null));
 
-        var candidate = Assert.Single(provider.GetCandidates(
+        var candidate = provider.GetCandidates(
             [],
-            new GameCatalogMatch("libretro-database", "exact-key", canonicalTitle, "USA")));
+            new GameCatalogMatch("libretro-database", "exact-key", canonicalTitle, "USA"))
+            .First();
         Assert.Contains(expectedPlaylist, candidate.SourceUri.AbsoluteUri);
         Assert.EndsWith(".png", candidate.SourceUri.AbsolutePath);
     }

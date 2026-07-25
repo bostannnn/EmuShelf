@@ -1246,6 +1246,15 @@ space (0 All Games, 1 Collections, 2+ systems) and still refuses to wrap at eith
 Collections tab also gains the `selected` styling the other tabs already had, so it looks active
 when reached.
 
+## 2026-07-25 — Cover frames follow the actual artwork after loading
+
+System cover ratios are defaults for placeholders, not assertions about every regional release.
+The UI updates an individual tile from the cached artwork's width and height after it loads, so
+square US/Japanese Dreamcast jewel cases and portrait PAL keep cases retain their distinct shapes.
+Dreamcast's unloaded default is the square US case because that is the configured library's primary
+region. Libretro artwork fallbacks rank the exact catalogued region first; a regional suffix is
+never discarded for candidate ordering.
+
 ## 2026-07-25 — Dreamcast v1 accepts validated GDI descriptor sets
 
 Dreamcast support starts with `.gdi` descriptor sets, not loose `.bin`, `.cdi`, or `.chd` files.
@@ -1256,9 +1265,8 @@ source. CDI and CHD remain visibly unsupported until their logical-track readers
 fixtures; treating their extension as evidence would allow false imports and false achievement
 matches.
 
-Dreamcast covers use the physical jewel-case portrait ratio `0.708` (representative Libretro
-scans are 512×722), the existing opt-in Libretro thumbnail provider, and the Redump Dreamcast
-catalogue. RetroAchievements console 40 is enabled only for the validated GDI representation:
+Dreamcast uses the existing opt-in Libretro thumbnail provider and the Redump Dreamcast catalogue.
+RetroAchievements console 40 is enabled only for the validated GDI representation:
 the canonical hash is exactly the 256-byte IP.BIN payload followed by the named boot executable,
 matching rcheevos' Dreamcast algorithm.
 
@@ -1270,6 +1278,19 @@ reads at the same boundary. This prevents incomplete sets from entering the libr
 padded track 03 files shadowing later data tracks during RetroAchievements hashing. Low-density
 tracks remain existence-checked only because their session lead-in gap is not stored in the
 individual track files.
+
+## 2026-07-25 — Dreamcast identifies GDI variants by ordered track hashes, then IP.BIN product number
+
+Dreamcast metadata first tries the SHA-1 of every GDI data track, largest first, because Redump's
+catalogue identifies different retail discs by different high-density tracks. The data tracks in a
+GDI are separated by the standard 150-sector pregap, which is represented in descriptor LBAs but
+not in the files themselves; treating the files as directly contiguous rejected valid multi-track
+sets. When a known dump layout differs by padding and no exact track hash exists, EmuShelf may use
+the fixed IP.BIN product number as a lower-priority Redump key. This fallback is deliberately
+disabled only when the descriptor filename or its own folder explicitly labels a translation,
+patch, or hack. Those modifications can keep the retail product number while changing game
+content, and must remain unmatched rather than be relabeled as the retail release; unrelated
+parent folders do not change identification behavior.
 
 ## 2026-07-25 — Cloud sync batches through a staging area and a single remote index
 

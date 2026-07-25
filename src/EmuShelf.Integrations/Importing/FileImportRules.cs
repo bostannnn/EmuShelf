@@ -92,9 +92,8 @@ public sealed class FileImportRules : IGameImportRules
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
             : null;
-        var dreamcastImage = ExtensionsBySystem[DreamcastId].Contains(extension)
-            ? DreamcastGdiReader.TryRecognize(path)
-            : false;
+        var dreamcastImage = ExtensionsBySystem[DreamcastId].Contains(extension) &&
+                             DreamcastGdiReader.TryRecognize(path);
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
         // extensions. Put it first so the system picker defaults to PSP, and never let an
@@ -141,9 +140,9 @@ public sealed class FileImportRules : IGameImportRules
                 SuperNintendoId => superNintendoHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
-                DreamcastId => !dreamcastImage
-                    ? GameFileMatch.Incompatible
-                    : GameFileMatch.Compatible,
+                DreamcastId => dreamcastImage
+                    ? GameFileMatch.Compatible
+                    : GameFileMatch.Incompatible,
                 _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
             };
 
@@ -295,12 +294,13 @@ public sealed class FileImportRules : IGameImportRules
                 superNintendoEvidence.Sha1,
                 "Super Nintendo ROM");
 
-        if (system.Id == DreamcastId && DreamcastGdiReader.TryRead(path) is { } dreamcastEvidence)
-            return CreateCartridgeMetadata(
-                null,
-                "Dreamcast IP.BIN",
-                dreamcastEvidence.DataTrackSha1,
-                "Dreamcast data track");
+        // Dreamcast deliberately supplies no import-time evidence. Its catalogue key is the SHA-1
+        // of a whole data track — up to 1.1 GB per game, and a GDI set can have more than one —
+        // whereas every other system's import evidence is a header read or a cartridge-sized ROM.
+        // DreamcastGdiIdentifierExtractor computes it once during opt-in metadata enrichment, which
+        // is already gated and reports progress, so adding a folder stays as cheap as AnalyzeFile.
+        if (system.Id == DreamcastId)
+            return GameImportMetadata.Empty;
 
         if (system.Id != PspId || PspGameMetadataReader.TryRead(path) is not { } evidence)
             return GameImportMetadata.Empty;

@@ -8,12 +8,10 @@ namespace EmuShelf.Integrations.Systems;
 /// </summary>
 public static class KnownSystems
 {
-    // CoverAspectRatio (width:height) is the one canonical frame every cover of a system
-    // is drawn into — real art and the "artwork missing" placeholder alike — so a
-    // platform's covers are uniform in size. PlayStation ships square CD jewel-case art
-    // (1.0); disc-case systems are portrait (0.708, the measured mode of the scanned box
-    // art, ≈ the physical DVD/BD case). Real covers fill this frame, so matching it to the
-    // real scan ratio keeps the crop to a hair of bleed. Tunable per platform.
+    // CoverAspectRatio (width:height) is the placeholder/default frame. Once a real cover is
+    // loaded its own dimensions take precedence, so regional packaging (notably Dreamcast's
+    // square US/Japanese jewel cases and portrait PAL keep cases) is never cropped to fit a
+    // system-wide assumption.
     public static IReadOnlyList<GameSystem> All { get; } =
     [
         new("playstation",  "PlayStation",   "PS1", "#8A8FA3", 1.0),
@@ -31,8 +29,8 @@ public static class KnownSystems
         // 512×357 (1.434), so unlike the portrait disc systems a SNES cover is short and wide. The
         // frame stays under the 266px disc shelf, bottom-aligned like the other short covers.
         new("snes",         "Super Nintendo", "SNES", "#8D66C4", 1.434),
-        // Representative Libretro Dreamcast scans are 512×722 (0.709), matching the standard
-        // portrait jewel-case frame without visible crop or letterboxing.
-        new("dreamcast",    "Dreamcast",      "DC",  "#F07C3E", 0.708),
+        // The library's default region is US, whose Dreamcast releases use square jewel-case art.
+        // Loaded PAL covers replace this with their image ratio.
+        new("dreamcast",    "Dreamcast",      "DC",  "#F07C3E", 1.0),
     ];
 }

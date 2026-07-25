@@ -74,4 +74,30 @@ public class LibretroDatCatalogTests
         Assert.Equal("USA, Europe", entry.Region);
         Assert.True(index.Entries.ContainsKey("471EE01E97220D35105CC5E9FB2F03765623CD05"));
     }
+
+    [Fact]
+    public void Parser_IndexesDreamcastTrackHashAndNestedProductNumberFallback()
+    {
+        using var reader = new StringReader(
+            """
+            game (
+                name "Tony Hawk's Pro Skater (USA)"
+                region "USA"
+                rom ( name "Tony Hawk's Pro Skater (USA) (Track 5).bin" sha1 E64CC5A24AA2868D23B597332B0D94647A927A15 serial "T-40205N" )
+            )
+            """);
+
+        var index = LibretroDatCatalog.Parse(
+            reader,
+            [GameIdentifierKind.Sha1, GameIdentifierKind.Serial],
+            readRomSerials: true);
+
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Sha1,
+            "E64CC5A24AA2868D23B597332B0D94647A927A15",
+            out var hashEntry));
+        Assert.Equal("Tony Hawk's Pro Skater (USA)", hashEntry.Title);
+        Assert.True(index.TryGetValue(GameIdentifierKind.Serial, "T40205N", out var serialEntry));
+        Assert.Equal("Tony Hawk's Pro Skater (USA)", serialEntry.Title);
+    }
 }

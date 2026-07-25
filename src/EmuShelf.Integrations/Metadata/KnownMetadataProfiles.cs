@@ -106,7 +106,9 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/redump/Sega%20-%20Dreamcast.dat"),
             DreamcastExtractor,
-            [new LibretroArtworkProvider("Sega - Dreamcast")]),
+            [new LibretroArtworkProvider("Sega - Dreamcast")],
+            FallbackCatalogKeyKinds: [GameIdentifierKind.Serial],
+            ReadRomSerials: true),
     ];
 
     private static Uri RawCatalog(string path) =>

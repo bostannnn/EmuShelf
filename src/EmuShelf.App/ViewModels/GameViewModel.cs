@@ -18,11 +18,12 @@ public partial class GameViewModel : ObservableObject, IDisposable
         new AsyncRelayCommand<GameViewModel?>(_ => Task.CompletedTask);
     private static readonly IAsyncRelayCommand NoCommand =
         new AsyncRelayCommand(() => Task.CompletedTask);
+    private readonly double _defaultCoverAspectRatio;
 
     /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
     private const double CoverFrameWidth = 188;
 
-    /// <summary>Default frame ratio (portrait disc case) when a caller omits one.</summary>
+    /// <summary>Default frame ratio when a caller omits one.</summary>
     private const double DefaultCoverAspectRatio = 0.708;
 
     /// <summary>Fixed list-row thumbnail height; the width follows the platform ratio so the
@@ -50,12 +51,15 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Cover height for the current width, preserving the platform's aspect ratio.</summary>
     public double CoverHeight { get => _coverHeight; private set => SetProperty(ref _coverHeight, value); }
 
-    public double ListCoverWidth { get; }
+    public double ListCoverWidth { get; private set; }
     public double ListCoverHeight { get; }
 
-    /// <summary>Platform cover aspect ratio (width:height); the library uses it to choose the
-    /// shelf height for a mixed view.</summary>
-    public double CoverAspectRatio { get; }
+    /// <summary>Displayed cover aspect ratio (width:height). This starts at the platform default
+    /// and switches to the actual artwork ratio after the cover has loaded.</summary>
+    public double CoverAspectRatio { get; private set; }
+
+    /// <summary>Raised when loading or replacing artwork changes this tile's required frame.</summary>
+    public event EventHandler? CoverAspectRatioChanged;
 
     /// <summary>Height of the grid cover shelf this tile sits in: the tallest cover in the
     /// current view, so a mixed collection bottom-aligns covers to one baseline while a single
@@ -198,13 +202,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
         AccentColor = accentColor;
         PlatformArtwork = platformArtwork ??
             EmuShelf.App.ViewModels.PlatformArtwork.ForSystem(game.SystemId);
-        // One fixed frame per platform, shared by the real cover and the placeholder,
-        // so a system's covers are uniform (see the grid tile in MainWindow.axaml).
+        // The system ratio sizes placeholders until artwork is available. Real artwork supplies
+        // its own ratio so regional packaging is not cropped into a fixed system frame.
+        _defaultCoverAspectRatio = coverAspectRatio;
         CoverAspectRatio = coverAspectRatio;
         // Default to the fixed frame width until the library recomputes it from the viewport.
         ApplyCoverLayout(CoverFrameWidth, Math.Round(CoverFrameWidth / coverAspectRatio));
-        // List rows share one height so they align; the width follows the platform ratio so a
-        // square PS1 cover stays square instead of being cropped into a portrait thumbnail.
+        // List rows share one height; their width follows the cover currently being shown.
         ListCoverHeight = ListCoverFrameHeight;
         ListCoverWidth = Math.Round(ListCoverFrameHeight * coverAspectRatio);
         FormatLabel = System.IO.Path.GetExtension(game.Path) is { Length: > 1 } extension
@@ -233,8 +237,33 @@ public partial class GameViewModel : ObservableObject, IDisposable
             CoverImage?.Dispose();
     }
 
-    partial void OnCoverImageChanged(Bitmap? value) =>
+    partial void OnCoverImageChanged(Bitmap? value)
+    {
         OnPropertyChanged(nameof(HasCoverImage));
+
+        if (value is null)
+        {
+            SetCoverAspectRatio(_defaultCoverAspectRatio);
+            return;
+        }
+        if (value.PixelSize.Height <= 0)
+            return;
+
+        var ratio = value.PixelSize.Width / (double)value.PixelSize.Height;
+        SetCoverAspectRatio(ratio);
+    }
+
+    private void SetCoverAspectRatio(double ratio)
+    {
+        if (Math.Abs(ratio - CoverAspectRatio) < 0.001)
+            return;
+
+        CoverAspectRatio = ratio;
+        ListCoverWidth = Math.Round(ListCoverFrameHeight * ratio);
+        OnPropertyChanged(nameof(CoverAspectRatio));
+        OnPropertyChanged(nameof(ListCoverWidth));
+        CoverAspectRatioChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     [RelayCommand]
     private void BeginEditTitle()

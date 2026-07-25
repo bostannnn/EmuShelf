@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using EmuShelf.Integrations.Achievements;
 
 namespace EmuShelf.Integrations.Importing;
@@ -11,6 +12,13 @@ namespace EmuShelf.Integrations.Importing;
 public static class DreamcastGdiReader
 {
     private const int IpBinBytes = 256;
+
+    // Every track change carries the standard 150-sector (two-second) pregap. GDI descriptor
+    // LBAs include it, but no track file stores it, so a track's own extent is the distance to
+    // the next LBA minus this gap. Real dumps are short by exactly this much: 102 Dalmatians
+    // declares track 03 at 45000 and track 04 at 266949 while track03.bin holds 221799 sectors.
+    internal const int PregapSectors = 150;
+
     private static ReadOnlySpan<byte> IpMarker => "SEGA SEGAKATANA "u8;
 
     public static DreamcastGdiEvidence? TryRead(string path)
@@ -21,27 +29,47 @@ public static class DreamcastGdiReader
         try
         {
             var descriptor = Parse(path);
-            var dataTrack = descriptor.Tracks.Single(track => track.Number == 3);
-            if (dataTrack.Type != 4 || dataTrack.SectorSize is not (2048 or 2352))
+            var primaryTrack = PrimaryDataTrack(descriptor.Tracks);
+            if (!IsSupportedDataTrack(primaryTrack))
                 return null;
 
             ValidateTrackFiles(descriptor.Tracks);
-            using var stream = OpenRead(dataTrack.Path);
-            if (!HasIpBinMarker(stream, dataTrack))
+            using var probe = OpenRead(primaryTrack.Path);
+            var ipBin = TryReadIpBin(probe, primaryTrack);
+            if (ipBin is null)
                 return null;
 
-            // GDI's offset field is required to be zero (and Parse enforces that), so this is
-            // precisely the data-track payload recorded by the Redump catalogue.
-            stream.Position = dataTrack.Offset;
-            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
-            var buffer = new byte[64 * 1024];
-            int read;
-            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
-                hash.AppendData(buffer, 0, read);
+            // Redump records one SHA-1 per track file, and libretro's condensed catalogue keeps a
+            // single entry per game: the largest data track. That is track 03 on a single-data-track
+            // disc, but a later high-density track whenever audio splits the data (Sega Rally 2 is
+            // keyed on track 21, Tony Hawk's Pro Skater on track 05). Hash every data track and
+            // report them largest first so the lookup matches either layout.
+            var hashes = new List<DreamcastDataTrackHash>();
+            foreach (var track in descriptor.Tracks)
+            {
+                if (track.Type != 4)
+                    continue;
+
+                using var stream = OpenRead(track.Path);
+                var length = stream.Length;
+                // GDI's offset field is required to be zero (and Parse enforces that), so this is
+                // precisely the track payload recorded by the Redump catalogue.
+                hashes.Add(new DreamcastDataTrackHash(
+                    track.Number,
+                    track.Path,
+                    HashToEnd(stream, track.Offset),
+                    length));
+            }
+
+            if (hashes.Count == 0)
+                return null;
 
             return new DreamcastGdiEvidence(
-                dataTrack.Path,
-                Convert.ToHexString(hash.GetHashAndReset()));
+                hashes
+                    .OrderByDescending(track => track.Length)
+                    .ThenBy(track => track.TrackNumber)
+                    .ToArray(),
+                ReadProductNumberAliases(ipBin));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                                    ArgumentException or NotSupportedException or InvalidDataException or
@@ -60,11 +88,10 @@ public static class DreamcastGdiReader
         try
         {
             var descriptor = Parse(path);
-            var dataTrack = descriptor.Tracks.Single(track => track.Number == 3);
+            var primaryTrack = PrimaryDataTrack(descriptor.Tracks);
             ValidateTrackFiles(descriptor.Tracks);
-            using var stream = OpenRead(dataTrack.Path);
-            return dataTrack.Type == 4 && dataTrack.SectorSize is 2048 or 2352 &&
-                   HasIpBinMarker(stream, dataTrack);
+            using var stream = OpenRead(primaryTrack.Path);
+            return IsSupportedDataTrack(primaryTrack) && TryReadIpBin(stream, primaryTrack) is not null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                                    ArgumentException or NotSupportedException or InvalidDataException or
@@ -91,21 +118,34 @@ public static class DreamcastGdiReader
     internal static DreamcastGdiTrackReader OpenDataTrack(string path)
     {
         var descriptor = Parse(path);
-        var dataTrack = descriptor.Tracks.Single(track => track.Number == 3);
+        var primaryTrack = PrimaryDataTrack(descriptor.Tracks);
         ValidateTrackFiles(descriptor.Tracks);
-        try
-        {
-            if (dataTrack.Type != 4 || dataTrack.SectorSize is not (2048 or 2352))
-            {
-                throw new InvalidDataException("The GDI data track does not start with Dreamcast IP.BIN.");
-            }
+        if (!IsSupportedDataTrack(primaryTrack))
+            throw new InvalidDataException(
+                "The GDI primary track is not a supported Dreamcast data track.");
 
-            return new DreamcastGdiTrackReader(descriptor.Tracks, dataTrack);
-        }
-        catch
-        {
-            throw;
-        }
+        return new DreamcastGdiTrackReader(descriptor.Tracks, primaryTrack);
+    }
+
+    // Parse guarantees sequential numbering from 1 and at least three tracks, so track 03 is
+    // always present. The lookup still fails as invalid data rather than throwing an unhandled
+    // InvalidOperationException if that validation is ever loosened.
+    private static DreamcastGdiTrack PrimaryDataTrack(IReadOnlyList<DreamcastGdiTrack> tracks) =>
+        tracks.FirstOrDefault(track => track.Number == 3)
+        ?? throw new InvalidDataException("The GDI descriptor has no track 03.");
+
+    private static bool IsSupportedDataTrack(DreamcastGdiTrack track) =>
+        track.Type == 4 && track.SectorSize is 2048 or 2352;
+
+    private static string HashToEnd(FileStream stream, long offset)
+    {
+        stream.Position = offset;
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA1);
+        var buffer = new byte[64 * 1024];
+        int read;
+        while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+            hash.AppendData(buffer, 0, read);
+        return Convert.ToHexString(hash.GetHashAndReset());
     }
 
     private static DreamcastGdiDescriptor Parse(string path)
@@ -154,8 +194,6 @@ public static class DreamcastGdiReader
             priorLba = lba;
         }
 
-        if (tracks.All(track => track.Number != 3))
-            throw new InvalidDataException("The GDI descriptor has no track 03.");
         return new DreamcastGdiDescriptor(tracks);
     }
 
@@ -168,30 +206,56 @@ public static class DreamcastGdiReader
             if (!info.Exists || info.Length < track.Offset + track.SectorSize)
                 throw new InvalidDataException("The GDI descriptor references a missing or truncated track.");
 
-            // High-density tracks are contiguous within the GDI's descriptor. Their next LBA
-            // therefore gives a reliable minimum extent, unlike the separate low-density session
-            // whose lead-in gap is intentionally not represented by the track file.
+            // High-density tracks are contiguous within the GDI's descriptor apart from the pregap
+            // preceding each following track, so the next LBA less the gap is a reliable minimum
+            // extent. The separate low-density session is existence-checked only, because its
+            // lead-in is not represented by the track files at all.
             if (track.Number >= 3 && index + 1 < tracks.Count)
             {
-                var requiredLength = checked(track.Offset +
-                    ((long)tracks[index + 1].Lba - track.Lba) * track.SectorSize);
+                var extentSectors = (long)tracks[index + 1].Lba - track.Lba - PregapSectors;
+                if (extentSectors <= 0)
+                    throw new InvalidDataException("The GDI descriptor has an invalid high-density track extent.");
+
+                var requiredLength = checked(track.Offset + extentSectors * track.SectorSize);
                 if (info.Length < requiredLength)
                     throw new InvalidDataException("The GDI descriptor references a missing or truncated track.");
             }
         }
     }
 
-    private static bool HasIpBinMarker(FileStream stream, DreamcastGdiTrack track)
+    private static byte[]? TryReadIpBin(FileStream stream, DreamcastGdiTrack track)
     {
         if (track.Offset > stream.Length || stream.Length - track.Offset < IpBinBytes)
-            return false;
+            return null;
 
         var probe = new byte[Math.Min(track.SectorSize, 64)];
         stream.Position = track.Offset;
         stream.ReadExactly(probe);
         var userOffset = GetUserDataOffset(probe);
-        return userOffset + IpMarker.Length <= probe.Length &&
-               probe.AsSpan(userOffset, IpMarker.Length).SequenceEqual(IpMarker);
+        if (userOffset < 0 || userOffset + IpBinBytes > track.SectorSize ||
+            track.Offset + userOffset + IpBinBytes > stream.Length)
+        {
+            return null;
+        }
+
+        var ipBin = new byte[IpBinBytes];
+        stream.Position = track.Offset + userOffset;
+        stream.ReadExactly(ipBin);
+        return ipBin.AsSpan(0, IpMarker.Length).SequenceEqual(IpMarker) ? ipBin : null;
+    }
+
+    private static IReadOnlyList<string> ReadProductNumberAliases(ReadOnlySpan<byte> ipBin)
+    {
+        // IP.BIN stores the product number in its fixed 10-byte field. Redump's Dreamcast DAT
+        // mostly preserves it, but US entries omit Sega's MK- prefix while the disc header keeps it.
+        var product = Encoding.ASCII.GetString(ipBin.Slice(64, 10)).Trim('\0', ' ');
+        var compact = string.Concat(product.Where(char.IsLetterOrDigit)).ToUpperInvariant();
+        if (compact.Length == 0 || !compact.Any(char.IsDigit))
+            return [];
+
+        return compact.StartsWith("MK", StringComparison.Ordinal) && compact.Length > 2
+            ? [compact[2..]]
+            : [compact];
     }
 
     internal static int GetUserDataOffset(ReadOnlySpan<byte> sector)
@@ -239,7 +303,15 @@ public static class DreamcastGdiReader
         bufferSize: 64 * 1024, FileOptions.SequentialScan);
 }
 
-public sealed record DreamcastGdiEvidence(string DataTrackPath, string DataTrackSha1);
+/// <summary>
+/// The SHA-1 of every data track named by a GDI descriptor, ordered largest first so the
+/// catalogue key Redump records for the disc is tried before the smaller tracks.
+/// </summary>
+public sealed record DreamcastGdiEvidence(
+    IReadOnlyList<DreamcastDataTrackHash> DataTracks,
+    IReadOnlyList<string> ProductNumberAliases);
+
+public sealed record DreamcastDataTrackHash(int TrackNumber, string Path, string Sha1, long Length);
 
 internal sealed record DreamcastGdiDescriptor(IReadOnlyList<DreamcastGdiTrack> Tracks);
 internal sealed record DreamcastGdiTrack(
