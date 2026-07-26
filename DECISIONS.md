@@ -1634,3 +1634,21 @@ compare unequal to the one that produced it.
 An empty override box now means "use the configured emulator" rather than being pre-filled with the
 derived path. Pre-filling turned a derived location into an explicit override the moment the user
 pressed Save, pinning a path that should have kept following the emulator configuration.
+
+## 2026-07-26 — DuckStation sync trusts settings, not guessed save paths
+
+DuckStation save discovery participates only when EmuShelf has a configured DuckStation install,
+a Flatpak target, or an explicit user-directory override. The provider then requires a real
+`settings.ini`: portable mode wins when `portable.txt` is beside the executable, otherwise the
+documented current and legacy user directories are searched in order. An explicit override or
+portable marker that lacks `settings.ini` fails closed rather than silently falling through to a
+different installation. The configured `[MemoryCards] Directory` is required, so EmuShelf never
+guesses where cards live. A shared slot without `CardNPath` uses DuckStation's own
+`shared_card_N.mcd` setting default inside that explicitly configured directory.
+
+Shared cards use slot-based cloud identities (`duckstation/shared/card1` and `card2`) so two
+machines can point the same logical slot at differently named local files. The UI labels them as
+cross-game cards because each is one monolithic conflict domain. `PerGame`, `PerGameTitle`, and
+`PerGameFileTitle` cards use their safe card filename as the identity and remain independent file
+units. `None` and `NonPersistent` slots, stale shared-card files, unrelated files, and save states
+do not participate. Unknown future card types and ambiguous layouts fail closed.

@@ -708,7 +708,7 @@ public class MainWindowVisualSnapshotTests
             IsRcloneAvailable: true,
             RcloneExpectedPath: @"D:\EmuShelf\rclone.exe",
             SyncLogPath: @"D:\EmuShelf\Logs\save-sync.log",
-            Platforms: SaveProviderRegistry.All.Select(descriptor => new CloudSaveSyncPlatformContext(
+            GetPlatforms: () => SaveProviderRegistry.All.Select(descriptor => new CloudSaveSyncPlatformContext(
                 descriptor.SystemId,
                 descriptor.DisplayName,
                 descriptor.SaveShapeDescription,

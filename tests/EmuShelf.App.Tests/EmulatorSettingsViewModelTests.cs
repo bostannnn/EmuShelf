@@ -607,6 +607,42 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_SyncNow_RefreshesPlatformResultWithoutOverwritingTypedPath()
+    {
+        IReadOnlyList<CloudSaveSyncPlatformContext> livePlatforms = SaveProviderRegistry.All
+            .Select(descriptor => new CloudSaveSyncPlatformContext(
+                descriptor.SystemId,
+                descriptor.DisplayName,
+                descriptor.SaveShapeDescription,
+                descriptor.OverridePlaceholder,
+                Override: null,
+                LastSuccessUtc: null,
+                LastError: descriptor.SystemId == "psp" ? "old failure" : null))
+            .ToArray();
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            getPlatforms: () => livePlatforms,
+            syncNow: (_, _) =>
+            {
+                livePlatforms = livePlatforms.Select(platform => platform.SystemId == "psp"
+                    ? platform with
+                    {
+                        LastSuccessUtc = new DateTimeOffset(2026, 7, 26, 12, 0, 0, TimeSpan.Zero),
+                        LastError = null,
+                    }
+                    : platform).ToArray();
+                return Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
+            }));
+        var psp = Row(viewModel, "psp");
+        psp.OverrideDirectory = "/path/the-user-is-still-editing";
+
+        await viewModel.SyncCloudNowCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("old failure", psp.LastResultText);
+        Assert.Contains("Last synced", psp.LastResultText);
+        Assert.Equal("/path/the-user-is-still-editing", psp.OverrideDirectory);
+    }
+
+    [AvaloniaFact]
     public void CloudSaves_WithNoOverride_LeavesTheBoxEmptyForTheConfiguredEmulator()
     {
         // An empty box means "use the configured emulator". Pre-filling it would turn a derived
@@ -756,7 +792,8 @@ public class EmulatorSettingsViewModelTests
         Action<string, string?>? updateOverride = null,
         bool rcloneAvailable = true,
         Func<CancellationToken, Task<bool>>? downloadRclone = null,
-        string? syncLogPath = null)
+        string? syncLogPath = null,
+        Func<IReadOnlyList<CloudSaveSyncPlatformContext>>? getPlatforms = null)
     {
         var configuration = current ?? new CloudSaveSyncSettings();
         var platforms = SaveProviderRegistry.All.Select(descriptor =>
@@ -777,7 +814,7 @@ public class EmulatorSettingsViewModelTests
             rcloneAvailable,
             "/app/rclone",
             syncLogPath ?? Path.Combine(Path.GetTempPath(), "emushelf-save-sync-test.log"),
-            platforms,
+            getPlatforms ?? (() => platforms),
             (systemId, _) => Task.FromResult<string?>(
                 systemId == "psp" ? "/ppsspp/PSP/SAVEDATA" : "/pcsx2/memcards"),
             connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),

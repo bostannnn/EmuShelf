@@ -177,6 +177,19 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public async Task Connect_WithConfiguredDuckStation_DoesNotRequireOverrides()
+    {
+        var result = await CreateCoordinator(
+                new FakeSettingsService(),
+                emulators: systemId => systemId == "playstation"
+                    ? new SaveEmulatorInstallation("/app/duckstation", false)
+                    : null)
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+    }
+
+    [Fact]
     public async Task Connect_WithFlatpakPpsspp_DoesNotRequireOverrides()
     {
         var result = await CreateCoordinator(
@@ -194,14 +207,14 @@ public class CloudSaveSyncCoordinatorTests
 
         Assert.Equal(
             SaveProviderRegistry.SystemIds,
-            context.Platforms.Select(platform => platform.SystemId).ToArray());
+            context.GetPlatforms().Select(platform => platform.SystemId).ToArray());
     }
 
     private static IReadOnlyDictionary<string, string?> Overrides(params (string SystemId, string? Path)[] entries) =>
         entries.ToDictionary(entry => entry.SystemId, entry => entry.Path, StringComparer.Ordinal);
 
     private static CloudSaveSyncCoordinator CreateCoordinator(
-        FakeSettingsService settings,
+        ISettingsService settings,
         AppSettings? initial = null,
         Func<string, SaveEmulatorInstallation?>? emulators = null) =>
         new(
@@ -211,6 +224,35 @@ public class CloudSaveSyncCoordinatorTests
             NullAppLogger.Instance,
             NonexistentRclone,
             emulatorInstallations: emulators);
+
+    [Fact]
+    public async Task SyncFailure_WhenRecordingTheResultCannotBeSaved_ReturnsTheOriginalFailure()
+    {
+        // The settings write is metadata about a transfer that already happened. A portable install
+        // on a removed or read-only drive must not turn a completed sync into a reported failure,
+        // and the retry inside the catch block must not escape the pipeline.
+        var settings = new ThrowingSettingsService
+        {
+            Current = new AppSettings
+            {
+                CloudSaveSync = new CloudSaveSyncSettings
+                {
+                    Enabled = true,
+                    RemoteName = "gdrive",
+                    CloudFolder = "EmuShelf/Saves",
+                    Pcsx2ConfigDirectory = "/pcsx2",
+                },
+            },
+        };
+        var coordinator = CreateCoordinator(settings, settings.Current);
+
+        // rclone is absent, so the transport fails and the pipeline takes its catch path — the
+        // exact route where RecordOutcome used to throw a second time and escape.
+        var outcome = await coordinator.SyncNowAsync(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(CloudSaveSyncStatus.Failed, outcome.Status);
+        Assert.True(settings.SaveAttempts > 0);
+    }
 
     private sealed class FakeSettingsService : ISettingsService
     {
@@ -224,6 +266,26 @@ public class CloudSaveSyncCoordinatorTests
             Current = settings;
             SaveCalls++;
         }
+    }
+
+    private sealed class ThrowingSettingsService : FakeSettingsServiceBase
+    {
+        public int SaveAttempts { get; private set; }
+
+        public override void Save(AppSettings settings)
+        {
+            SaveAttempts++;
+            throw new IOException("the settings drive is not available");
+        }
+    }
+
+    private abstract class FakeSettingsServiceBase : ISettingsService
+    {
+        public AppSettings Current { get; set; } = new();
+
+        public AppSettings Load() => Current;
+
+        public abstract void Save(AppSettings settings);
     }
 
     private sealed class FakePaths : IAppPaths

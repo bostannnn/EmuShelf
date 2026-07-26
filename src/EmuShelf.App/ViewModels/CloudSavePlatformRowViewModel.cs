@@ -78,6 +78,13 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     public string? NormalizedOverride =>
         string.IsNullOrWhiteSpace(OverrideDirectory) ? null : OverrideDirectory.Trim();
 
+    /// <summary>
+    /// Applies a freshly read platform snapshot after a sync. Only the recorded result is taken:
+    /// the override box is left alone because the user may be part-way through editing it.
+    /// </summary>
+    public void ApplyResult(CloudSaveSyncPlatformContext platform) =>
+        LastResultText = DescribeLastResult(platform);
+
     /// <summary>Re-reads the concrete directory this platform resolves to on this machine.</summary>
     public async Task RefreshDetectedDirectoryAsync()
     {

@@ -219,7 +219,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             CloudFolder = string.IsNullOrWhiteSpace(saves.CloudFolder) ? "EmuShelf/Saves" : saves.CloudFolder!;
             // One row per registered platform. The row owns its own override, detected path, and
             // per-platform actions, so this view model never names an emulator.
-            foreach (var platform in cloudSaves.Platforms)
+            foreach (var platform in cloudSaves.GetPlatforms())
             {
                 CloudPlatforms.Add(new CloudSavePlatformRowViewModel(
                     platform,
@@ -700,6 +700,22 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             // A successful sync creates the log after SyncLogPath was first assigned, so notify
             // the view that the previously hidden activity-log link is now available.
             OnPropertyChanged(nameof(HasSyncLog));
+            RefreshPlatformResults();
+        }
+    }
+
+    // Each row shows its own last result, which the coordinator has just rewritten. Re-read it so
+    // a row that previously said "last attempt failed" does not keep saying so after a success.
+    private void RefreshPlatformResults()
+    {
+        if (_cloudSaves is null)
+            return;
+
+        foreach (var platform in _cloudSaves.GetPlatforms())
+        {
+            CloudPlatforms
+                .FirstOrDefault(row => string.Equals(row.SystemId, platform.SystemId, StringComparison.Ordinal))
+                ?.ApplyResult(platform);
         }
     }
 

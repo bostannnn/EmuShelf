@@ -199,7 +199,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IsRcloneAvailable,
         RcloneExpectedPath,
         SyncLogPath,
-        DescribePlatforms(),
+        // A delegate, not a snapshot: Settings re-reads it after each operation so a row's
+        // "last synced" / "last attempt failed" line cannot go stale within an open session.
+        DescribePlatforms,
         GetDetectedPathAsync,
         ConnectGoogleDriveAsync,
         DisconnectAsync,
@@ -369,21 +371,33 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     // Per-system outcomes let Settings show each platform's own state rather than one shared
     // message. A failure keeps the previous success time so "last synced" does not vanish.
+    //
+    // Recording the result is metadata about a transfer that has already happened, so it is
+    // best-effort exactly like the activity log: a settings-write failure must never turn a
+    // completed sync into a reported failure. It also must not throw from inside the caller's
+    // catch block, where a second failing write would escape the pipeline uncaught.
     private void RecordOutcome(IReadOnlyList<string> systemIds, string? error)
     {
         if (systemIds.Count == 0)
             return;
 
-        var configuration = _settings.CloudSaveSync;
-        var completedUtc = DateTimeOffset.UtcNow;
-        foreach (var systemId in systemIds)
+        try
         {
-            configuration = error is null
-                ? configuration.WithSyncSuccess(systemId, completedUtc)
-                : configuration.WithSyncFailure(systemId, error);
-        }
+            var configuration = _settings.CloudSaveSync;
+            var completedUtc = DateTimeOffset.UtcNow;
+            foreach (var systemId in systemIds)
+            {
+                configuration = error is null
+                    ? configuration.WithSyncSuccess(systemId, completedUtc)
+                    : configuration.WithSyncFailure(systemId, error);
+            }
 
-        Persist(configuration);
+            Persist(configuration);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Error("Could not record the per-platform cloud sync result.", ex);
+        }
     }
 
     private void Persist(CloudSaveSyncSettings configuration)
@@ -479,7 +493,7 @@ public sealed record CloudSaveSyncSettingsContext(
     bool IsRcloneAvailable,
     string RcloneExpectedPath,
     string SyncLogPath,
-    IReadOnlyList<CloudSaveSyncPlatformContext> Platforms,
+    Func<IReadOnlyList<CloudSaveSyncPlatformContext>> GetPlatforms,
     Func<string, CancellationToken, Task<string?>> GetDetectedPathAsync,
     Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
     Func<CancellationToken, Task> DisconnectAsync,

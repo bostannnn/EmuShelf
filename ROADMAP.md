@@ -788,7 +788,7 @@ generalized.
       Linux/macOS config layout, Flatpak defaults, or a user override. Each immediate child of
       `PSP/SAVEDATA/` is one folder unit; never include `PPSSPP_STATE`, config, plugins, textures,
       or other Memory Stick content.
-- [ ] **DuckStation second:** locate its current/legacy/portable user directory, read
+- [x] **DuckStation second:** locate its current/legacy/portable user directory, read
       `settings.ini` read-only, and honor enabled `Card1Type`/`Card2Type` plus explicit card paths.
       Per-game code/title cards are individual file units; a shared card is one monolithic unit and
       carries the same cross-game conflict warning as a PCSX2 file card. Never include save states.

@@ -1,5 +1,6 @@
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Storage;
+using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Pcsx2;
 using EmuShelf.Integrations.Emulators.Ppsspp;
 
@@ -49,6 +50,28 @@ public static class SaveProviderRegistry
 {
     public static IReadOnlyList<SaveProviderDescriptor> All { get; } =
     [
+        new SaveProviderDescriptor(
+            SystemId: "playstation",
+            DisplayName: "PlayStation",
+            SaveShapeDescription: "DuckStation memory cards · shared cards contain saves from every game",
+            OverridePlaceholder: "Use configured DuckStation, or choose its user data folder",
+            CreateProvider: static context =>
+            {
+                if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
+                    string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
+                    !context.IsFlatpak)
+                {
+                    return null;
+                }
+
+                return new DuckStationSaveLocationProvider(
+                    context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+                    userDirectoryOverride: context.DirectoryOverride,
+                    isFlatpak: context.IsFlatpak);
+            },
+            DescribeDetectedPathAsync: static (provider, cancellationToken) =>
+                ((DuckStationSaveLocationProvider)provider).GetMemoryCardsDirectoryAsync(cancellationToken)!),
+
         new SaveProviderDescriptor(
             SystemId: "playstation2",
             DisplayName: "PlayStation 2",
