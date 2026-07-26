@@ -8,6 +8,7 @@ public sealed class FlatpakApplicationDiscovery
     private static readonly IReadOnlyDictionary<string, string> ApplicationByEmulatorId =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["retroarch"] = "org.libretro.RetroArch",
             ["pcsx2"] = "net.pcsx2.PCSX2",
             ["dolphin"] = "org.DolphinEmu.dolphin-emu",
             ["rpcs3"] = "net.rpcs3.RPCS3",
@@ -16,6 +17,7 @@ public sealed class FlatpakApplicationDiscovery
 
     public static readonly IReadOnlyList<string> SupportedApplicationIds =
     [
+        "org.libretro.RetroArch",
         "net.pcsx2.PCSX2",
         "org.DolphinEmu.dolphin-emu",
         "net.rpcs3.RPCS3",

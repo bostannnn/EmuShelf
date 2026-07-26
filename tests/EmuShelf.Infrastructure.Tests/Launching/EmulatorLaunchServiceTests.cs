@@ -176,6 +176,71 @@ public class EmulatorLaunchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LaunchAsync_FlatpakRetroArch_PassesCorePathThroughAfterAppId()
+    {
+        var game = CreateGameFile("Game With Spaces.gba", "core-system");
+        var core = CreateGameFile("Flatpak cores/mgba core.so", "core-system").Path;
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, null, null)
+        {
+            LaunchTarget = new FlatpakApplicationTarget("org.libretro.RetroArch"),
+            CorePath = core,
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_coreEmulator],
+            _logger,
+            new PassingTargetInspector(),
+            new FixedDependencyResolver(game.Path));
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("flatpak", _runner.StartSpec!.FileName);
+        Assert.Equal(
+            [
+                "run",
+                $"--filesystem={_directory}:ro",
+                "org.libretro.RetroArch",
+                "-L",
+                core,
+                game.Path,
+            ],
+            _runner.StartSpec.Arguments);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
+    public async Task LaunchAsync_FlatpakRetroArch_RequiresConfiguredCoreBeforeMinimizing(
+        string? corePath)
+    {
+        var game = CreateGameFile("game.gba", "core-system");
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, null, null)
+        {
+            LaunchTarget = new FlatpakApplicationTarget("org.libretro.RetroArch"),
+            CorePath = corePath,
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_coreEmulator],
+            _logger,
+            new PassingTargetInspector(),
+            new FixedDependencyResolver(game.Path));
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("select an installed Test RetroArch core", result.StatusText);
+        Assert.False(_frontend.WasMinimized);
+        Assert.False(_runner.WasRun);
+    }
+
+    [Fact]
     public async Task LaunchAsync_FlatpakTarget_GrantsOneReadOnlyDirectoryPerDistinctDependency()
     {
         var game = CreateGameFile("playlist/game.m3u");

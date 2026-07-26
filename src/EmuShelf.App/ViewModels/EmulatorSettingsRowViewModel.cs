@@ -15,6 +15,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private readonly IAppLogger _logger;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _rescanLibrary;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _syncLibrary;
+    private readonly string _homeDirectory;
 
     public string SystemId { get; }
     public string SystemName { get; }
@@ -26,8 +27,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public string EmulatorInstallationId { get; }
     public bool RequiresCorePath { get; }
     public bool IsExecutableShared { get; }
-    /// <summary>Flatpak targets are meaningful only on Linux and never for core-aware RetroArch.</summary>
-    public bool CanSelectFlatpakTarget => OperatingSystem.IsLinux() && !RequiresCorePath;
+    /// <summary>Flatpak targets are meaningful only on Linux.</summary>
+    public bool CanSelectFlatpakTarget => OperatingSystem.IsLinux();
     public bool IsLaunchTargetPickerVisible => CanSelectFlatpakTarget;
     public bool IsFlatpakTarget => TargetKind == "Flatpak";
     public bool IsEditableFlatpakTarget => CanSelectFlatpakTarget && IsFlatpakTarget;
@@ -39,7 +40,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         : "EXECUTABLE";
     public string UnsupportedFlatpakTargetMessage => OperatingSystem.IsWindows()
         ? "This saved Flatpak target cannot run on Windows. Choose a direct executable to use this emulator."
-        : "Flatpak RetroArch is unsupported because its cores are private to the sandbox. Choose a direct or AppImage installation.";
+        : "Flatpak targets cannot run on Windows or macOS. Choose a direct executable to use this emulator.";
     public ObservableCollection<LibretroCoreOption> AvailableCores { get; } = [];
     public ObservableCollection<LibretroCoreOption> FilteredCores { get; } = [];
     public ObservableCollection<string> AvailableFlatpakApplicationIds { get; } = [];
@@ -52,6 +53,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         : "No core selected";
 
     internal event Action<EmulatorSettingsRowViewModel, string>? ExecutablePathEdited;
+    internal event Action<EmulatorSettingsRowViewModel, string>? TargetKindEdited;
+    internal event Action<EmulatorSettingsRowViewModel, string>? FlatpakAppIdEdited;
 
     [ObservableProperty]
     public partial string ExecutablePath { get; set; }
@@ -110,12 +113,14 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         bool isExpanded = false,
         string? emulatorInstallationId = null,
         bool isExecutableShared = false,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        string? homeDirectory = null)
     {
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
         _rescanLibrary = rescanLibrary;
         _syncLibrary = syncLibrary;
+        _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         SystemId = system.Id;
         SystemName = system.Name;
         SystemShortName = system.ShortName;
@@ -154,6 +159,14 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsEditableFlatpakTarget));
         OnPropertyChanged(nameof(IsDirectTarget));
         OnPropertyChanged(nameof(IsUnsupportedFlatpakTarget));
+        RefreshAvailableCores();
+        TargetKindEdited?.Invoke(this, value);
+    }
+
+    partial void OnFlatpakAppIdChanged(string value)
+    {
+        RefreshAvailableCores();
+        FlatpakAppIdEdited?.Invoke(this, value);
     }
 
     partial void OnCorePathChanged(string value)
@@ -174,16 +187,12 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     {
         AvailableCores.Clear();
         FilteredCores.Clear();
-        if (!RequiresCorePath || string.IsNullOrWhiteSpace(ExecutablePath))
-            return;
-
-        var emulatorDirectory = Path.GetDirectoryName(ExecutablePath);
-        if (string.IsNullOrWhiteSpace(emulatorDirectory))
+        if (!RequiresCorePath)
             return;
 
         try
         {
-            foreach (var core in CoreSearchDirectories(emulatorDirectory)
+            foreach (var core in CoreSearchDirectories()
                          .Where(Directory.Exists)
                          .SelectMany(Directory.EnumerateFiles)
                          .Where(path => Path.GetExtension(path) is ".dll" or ".dylib" or ".so")
@@ -203,13 +212,35 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         RefreshFilteredCores();
     }
 
-    // RetroArch keeps cores beside the executable in portable and AppImage-extracted layouts,
-    // but a system or AppImage install on Linux/macOS keeps them under the user's RetroArch
-    // config directory instead, so an adjacent-only scan leaves the picker empty on the Deck.
-    // The Flatpak core layout is deliberately excluded: Flatpak RetroArch is unsupported and its
-    // cores live in a private sandbox path that must not be inferred.
-    private static IEnumerable<string> CoreSearchDirectories(string emulatorDirectory)
+    // Direct RetroArch targets keep cores beside the executable in portable and AppImage-extracted
+    // layouts, or under the user's RetroArch config directory on Linux/macOS. Flatpak targets have
+    // no executable path; their per-app directory is mounted at the identical host path, so derive
+    // the installed-core directory from the user-selected app id without editing RetroArch config.
+    private IEnumerable<string> CoreSearchDirectories()
     {
+        if (IsFlatpakTarget)
+        {
+            if (string.IsNullOrWhiteSpace(_homeDirectory) || string.IsNullOrWhiteSpace(FlatpakAppId))
+                yield break;
+
+            yield return Path.Combine(
+                _homeDirectory,
+                ".var",
+                "app",
+                FlatpakAppId.Trim(),
+                "config",
+                "retroarch",
+                "cores");
+            yield break;
+        }
+
+        if (string.IsNullOrWhiteSpace(ExecutablePath))
+            yield break;
+
+        var emulatorDirectory = Path.GetDirectoryName(ExecutablePath);
+        if (string.IsNullOrWhiteSpace(emulatorDirectory))
+            yield break;
+
         yield return Path.Combine(emulatorDirectory, "cores");
         if (OperatingSystem.IsWindows())
             yield break;
@@ -217,10 +248,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
         if (string.IsNullOrWhiteSpace(configHome))
         {
-            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (string.IsNullOrWhiteSpace(home))
+            if (string.IsNullOrWhiteSpace(_homeDirectory))
                 yield break;
-            configHome = Path.Combine(home, ".config");
+            configHome = Path.Combine(_homeDirectory, ".config");
         }
 
         yield return Path.Combine(configHome, "retroarch", "cores");

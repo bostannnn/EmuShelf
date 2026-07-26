@@ -80,6 +80,43 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task RetroArchRows_MigrateAnExistingSharedDirectTargetToFlatpakTogether()
+    {
+        var emulator = KnownEmulators.All.Single(candidate => candidate.Id == "retroarch");
+        const string executable = "/portable/RetroArch/retroarch";
+        var configured = KnownSystems.All.ToDictionary(
+            system => system.Id,
+            system => emulator.Supports(system.Id)
+                ? new EmulatorConfiguration(system.Id, executable, emulator.DefaultLaunchArguments)
+                {
+                    LaunchTarget = new DirectExecutableTarget(executable),
+                    EmulatorId = emulator.Id,
+                    EmulatorInstallationId = emulator.Id,
+                }
+                : null,
+            StringComparer.Ordinal);
+        var viewModel = CreateViewModel(configured: configured);
+        var megaDrive = viewModel.Rows.Single(row => row.SystemId == "megadrive");
+
+        megaDrive.TargetKind = "Flatpak";
+        megaDrive.FlatpakAppId = "org.libretro.RetroArch";
+
+        var retroArchRows = viewModel.Rows.Where(row => row.EmulatorId == emulator.Id).ToArray();
+        Assert.All(retroArchRows, row => Assert.Equal("Flatpak", row.TargetKind));
+        Assert.All(retroArchRows, row => Assert.Equal("org.libretro.RetroArch", row.FlatpakAppId));
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, viewModel.StatusText);
+        Assert.Equal(1, _configurations.BatchSaveCalls);
+        Assert.All(
+            retroArchRows,
+            row => Assert.Equal(
+                new FlatpakApplicationTarget("org.libretro.RetroArch"),
+                _configurations.Saved[row.SystemId].LaunchTarget));
+    }
+
+    [AvaloniaFact]
     public async Task RetroArchCoreRow_ShowsTheFileNameAndCanClearOrReplaceTheCore()
     {
         _dialogs.LibretroCoreToReturn = "/portable/RetroArch/cores/melonds_libretro.dll";
@@ -152,6 +189,68 @@ public class EmulatorSettingsViewModelTests
         {
             Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
             try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public void RetroArchFlatpakTargetPicker_IsVisibleOnlyOnLinux()
+    {
+        var emulator = KnownEmulators.All.Single(candidate => candidate.Id == "retroarch");
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "megadrive");
+        var row = new EmulatorSettingsRowViewModel(system, emulator, null, _dialogs);
+
+        Assert.Equal(OperatingSystem.IsLinux(), row.CanSelectFlatpakTarget);
+        Assert.Equal(OperatingSystem.IsLinux(), row.IsLaunchTargetPickerVisible);
+    }
+
+    [AvaloniaFact]
+    public void RetroArchFlatpakCores_AreDiscoveredFromConfiguredAppIdWithoutExecutablePath()
+    {
+        var home = Path.Combine(
+            Path.GetTempPath(),
+            "EmuShelfFlatpakCoreDiscovery",
+            Guid.NewGuid().ToString("N"));
+        const string firstAppId = "org.example.RetroArch";
+        const string forkAppId = "org.example.RetroArchFork";
+        var firstCoresDirectory = Path.Combine(
+            home, ".var", "app", firstAppId, "config", "retroarch", "cores");
+        var forkCoresDirectory = Path.Combine(
+            home, ".var", "app", forkAppId, "config", "retroarch", "cores");
+        Directory.CreateDirectory(firstCoresDirectory);
+        Directory.CreateDirectory(forkCoresDirectory);
+        File.WriteAllText(Path.Combine(firstCoresDirectory, "genesis_plus_gx_libretro.so"), "core");
+        File.WriteAllText(Path.Combine(forkCoresDirectory, "picodrive_libretro.so"), "core");
+
+        try
+        {
+            var emulator = KnownEmulators.All.Single(candidate => candidate.Id == "retroarch");
+            var system = KnownSystems.All.Single(candidate => candidate.Id == "megadrive");
+            var row = new EmulatorSettingsRowViewModel(
+                system,
+                emulator,
+                null,
+                _dialogs,
+                homeDirectory: home);
+
+            Assert.Equal(string.Empty, row.ExecutablePath);
+            Assert.Empty(row.AvailableCores);
+
+            row.FlatpakAppId = firstAppId;
+            row.TargetKind = "Flatpak";
+
+            var firstCore = Assert.Single(row.AvailableCores);
+            Assert.Equal("genesis_plus_gx_libretro.so", firstCore.Name);
+            Assert.Equal(Path.Combine(firstCoresDirectory, firstCore.Name), firstCore.Path);
+
+            row.FlatpakAppId = forkAppId;
+
+            var forkCore = Assert.Single(row.AvailableCores);
+            Assert.Equal("picodrive_libretro.so", forkCore.Name);
+            Assert.Equal(Path.Combine(forkCoresDirectory, forkCore.Name), forkCore.Path);
+        }
+        finally
+        {
+            try { Directory.Delete(home, true); } catch (IOException) { }
         }
     }
 
@@ -771,10 +870,11 @@ public class EmulatorSettingsViewModelTests
     private EmulatorSettingsViewModel CreateViewModel(
         LibraryMaintenanceActions? maintenance = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
-        CloudSaveSyncSettingsContext? cloudSaves = null) => new(
+        CloudSaveSyncSettingsContext? cloudSaves = null,
+        IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
-        KnownSystems.All.ToDictionary(
+        configured ?? KnownSystems.All.ToDictionary(
             system => system.Id,
             _ => (EmulatorConfiguration?)null,
             StringComparer.Ordinal),

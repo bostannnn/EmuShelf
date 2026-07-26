@@ -685,9 +685,10 @@ same RetroArch launcher, opt-in metadata pipeline, and read-only RetroAchievemen
 
 - [x] Store direct executable/AppImage and Flatpak application targets only on shared emulator
       installations; schema v11 migrates legacy executable configurations to direct targets.
-- [x] Launch direct targets and Flatpaks through shell-free argv, read-only target preflight,
-      descriptor dependency resolution, and Flatpak file-access checks. Flatpak RetroArch remains
-      deliberately unsupported; direct/AppImage RetroArch continues adjacent-core discovery.
+- [x] Launch direct targets and Flatpaks through shell-free argv, installed-target preflight,
+      descriptor dependency resolution, and ephemeral read-only filesystem grants. Linux Flatpak
+      RetroArch discovers already-installed cores from its host-visible per-app directory;
+      direct/AppImage RetroArch keeps its existing adjacent and user-config discovery paths.
 - [x] Add a self-contained linux-x64 AppImage build path with ICU, desktop metadata, checksum,
       extraction-run validation, and portable data rooted beside `$APPIMAGE`.
 - [ ] On Linux/SteamOS hardware, verify every supported standalone Flatpak candidate, direct
@@ -806,7 +807,9 @@ generalized.
       `retroarch.cfg`, core/content-directory/game overrides, save sorting flags, and the configured
       core. Start with the exact cores used by EmuShelf's Mega Drive, DS, GBA, SNES, and Dreamcast
       rows; unsupported cores fail closed. Detect RetroArch's own cloud sync and refuse overlapping
-      management rather than run two manifest systems over the same saves.
+      management rather than run two manifest systems over the same saves. Flatpak targets add the
+      host-visible `$HOME/.var/app/<id>/config/retroarch/saves` layout; resolve its effective path
+      through the same read-only config/override rules instead of assuming that default.
 - [ ] Provider contract tests cover Windows, Linux/Flatpak, portable, custom, and macOS paths;
       unknown config versions; local + remote-only resolution; card/profile mismatch; traversal and
       symlink rejection; deterministic folder/file-set hashing; and strict save-state/config
