@@ -333,7 +333,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
-            RecordOutcome(synced, ex.Message);
+            // A multi-provider pass is staged as one operation. Without a structured exception
+            // identifying which target failed, attributing this error to every row would claim
+            // that completed or not-yet-reached platforms failed. The global outcome carries the
+            // error; automatic and force operations still record their single platform precisely.
+            if (synced.Count == 1)
+                RecordOutcome(synced, ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
         finally

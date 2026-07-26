@@ -254,6 +254,30 @@ public class CloudSaveSyncCoordinatorTests
         Assert.True(settings.SaveAttempts > 0);
     }
 
+    [Fact]
+    public async Task MultiPlatformFailure_DoesNotAttributeTheGlobalErrorToEveryPlatform()
+    {
+        var configuration = new CloudSaveSyncSettings
+        {
+            Enabled = true,
+            RemoteName = "gdrive",
+            CloudFolder = "EmuShelf/Saves",
+        }
+            .WithOverride("playstation2", "/pcsx2")
+            .WithOverride("psp", "/ppsspp");
+        var initial = new AppSettings { CloudSaveSync = configuration };
+        var settings = new FakeSettingsService { Current = initial };
+        var coordinator = CreateCoordinator(settings, initial);
+
+        var outcome = await coordinator.SyncNowAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(CloudSaveSyncStatus.Failed, outcome.Status);
+        Assert.Null(coordinator.Current.GetLocation("playstation2").LastError);
+        Assert.Null(coordinator.Current.GetLocation("psp").LastError);
+        Assert.Equal(0, settings.SaveCalls);
+    }
+
     private sealed class FakeSettingsService : ISettingsService
     {
         public AppSettings Current { get; set; } = new();

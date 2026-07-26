@@ -1652,3 +1652,22 @@ cross-game cards because each is one monolithic conflict domain. `PerGame`, `Per
 `PerGameFileTitle` cards use their safe card filename as the identity and remain independent file
 units. `None` and `NonPersistent` slots, stale shared-card files, unrelated files, and save states
 do not participate. Unknown future card types and ambiguous layouts fail closed.
+
+## 2026-07-26 — Save-sync status and DuckStation identities fail closed at their real boundary
+
+This narrows two claims in the preceding save-sync decisions after review. A multi-provider pass is
+one staged operation and its exceptions do not identify the provider that failed. EmuShelf therefore
+keeps that failure in the global operation status instead of writing the same error onto every
+platform row. Single-platform automatic and forced operations still record their platform result.
+
+DuckStation serial and title cards now have distinct cloud namespaces. Serial mode also accepts only
+DuckStation's normalized PlayStation product-code shape, so a title card left behind after a mode
+change cannot be uploaded or restored as an active serial card. `PerGameFileTitle` is deliberately
+unsupported for now: its identity follows the local ROM filename, which is not stable when the same
+game has different filenames on two machines. Supporting it would require an emulator-independent
+game identity rather than relabelling whatever `_N.mcd` files happen to be present.
+
+Finally, the per-system settings dictionary is sanitized before migration. JSON nulls are legal to
+deserialize despite C# nullable annotations, and settings are hand-editable; neither a null dictionary
+nor a null entry may crash startup. An existing valid per-system entry remains authoritative even
+when its override is intentionally empty, so a stale legacy field cannot restore a cleared path.

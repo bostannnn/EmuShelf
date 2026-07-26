@@ -85,9 +85,20 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         if (!localId.StartsWith(perGamePrefix, StringComparison.Ordinal))
             return null;
 
-        var fileName = localId[perGamePrefix.Length..];
-        if (!IsSafeCardFileName(fileName) || !TryGetPerGameSlot(fileName, configuration.Slots, out _))
+        var perGameSegments = localId[perGamePrefix.Length..].Split('/', 2, StringSplitOptions.None);
+        if (perGameSegments.Length != 2 ||
+            !TryParsePerGameScheme(perGameSegments[0], out var requestedType))
+        {
             return null;
+        }
+
+        var fileName = perGameSegments[1];
+        if (!IsSafeCardFileName(fileName) ||
+            !TryGetPerGameSlot(fileName, configuration.Slots, out var matchedSlot) ||
+            matchedSlot?.Type != requestedType)
+        {
+            return null;
+        }
 
         return new SaveUnitLocation(
             Path.Combine(configuration.MemoryCardsDirectory, fileName),
@@ -119,10 +130,10 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var fileName = Path.GetFileName(path);
-                if (TryGetPerGameSlot(fileName, configuration.Slots, out _))
+                if (TryGetPerGameSlot(fileName, configuration.Slots, out var slot) && slot is not null)
                 {
                     units.Add(new SaveUnit(
-                        UnitIdPrefix + "per-game/" + fileName,
+                        UnitIdPrefix + "per-game/" + GetPerGameScheme(slot.Type) + "/" + fileName,
                         fileName,
                         SaveUnitKind.File));
                 }
@@ -220,7 +231,8 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
 
             var identity = fileName[..^suffix.Length];
             if (identity.Length == 0 ||
-                identity.Equals("shared_card", StringComparison.OrdinalIgnoreCase))
+                identity.Equals("shared_card", StringComparison.OrdinalIgnoreCase) ||
+                (slot.Type == MemoryCardType.PerGame && !IsPlayStationSerial(identity)))
             {
                 continue;
             }
@@ -240,6 +252,30 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         !value.Contains('/') &&
         !value.Contains('\\') &&
         !value.Contains('\0');
+
+    private static bool IsPlayStationSerial(string value) =>
+        value.Length == 10 &&
+        value[..4].All(char.IsAsciiLetter) &&
+        value[4] == '-' &&
+        value[5..].All(char.IsAsciiDigit);
+
+    private static string GetPerGameScheme(MemoryCardType type) => type switch
+    {
+        MemoryCardType.PerGame => "serial",
+        MemoryCardType.PerGameTitle => "title",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "The card type has no stable sync scheme."),
+    };
+
+    private static bool TryParsePerGameScheme(string value, out MemoryCardType type)
+    {
+        type = value switch
+        {
+            "serial" => MemoryCardType.PerGame,
+            "title" => MemoryCardType.PerGameTitle,
+            _ => MemoryCardType.None,
+        };
+        return type != MemoryCardType.None;
+    }
 
     private static string FullPathOrEnvironment(string? path, Environment.SpecialFolder fallback) =>
         Path.GetFullPath(string.IsNullOrWhiteSpace(path) ? Environment.GetFolderPath(fallback) : path);
@@ -261,7 +297,7 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     }
 
     private static bool IsPerGame(MemoryCardType type) =>
-        type is MemoryCardType.PerGame or MemoryCardType.PerGameTitle or MemoryCardType.PerGameFileTitle;
+        type is MemoryCardType.PerGame or MemoryCardType.PerGameTitle;
 
     private static class DuckStationIniAdapter
     {
@@ -288,6 +324,12 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
                 {
                     throw new DuckStationConfigurationFormatException(
                         $"DuckStation's settings.ini has no supported Card{number}Type.");
+                }
+                if (type == MemoryCardType.PerGameFileTitle)
+                {
+                    throw new DuckStationConfigurationFormatException(
+                        "DuckStation's PerGameFileTitle cards do not have a stable cross-machine identity. " +
+                        "Use serial- or title-based per-game cards before enabling sync.");
                 }
 
                 string? cardPath = null;

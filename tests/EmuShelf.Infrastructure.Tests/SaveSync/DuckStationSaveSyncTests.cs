@@ -144,8 +144,8 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             [
                 new SaveUnit("duckstation/shared/card1", "Shared memory card 1 (used by every game)", SaveUnitKind.File),
-                new SaveUnit("duckstation/per-game/Final Fantasy VII_2.mcd", "Final Fantasy VII_2.mcd", SaveUnitKind.File),
-                new SaveUnit("duckstation/per-game/SLUS-01041_2.mcd", "SLUS-01041_2.mcd", SaveUnitKind.File),
+                new SaveUnit("duckstation/per-game/title/Final Fantasy VII_2.mcd", "Final Fantasy VII_2.mcd", SaveUnitKind.File),
+                new SaveUnit("duckstation/per-game/title/SLUS-01041_2.mcd", "SLUS-01041_2.mcd", SaveUnitKind.File),
             ],
             await provider.GetSaveUnitsAsync());
     }
@@ -184,16 +184,51 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         WriteSettings(userDirectory, "cards", card1Type: "PerGame", card2Type: "None");
         var provider = ProviderFor(userDirectory);
 
-        var location = provider.ResolveUnit("duckstation/per-game/SCUS-94163_1.mcd");
+        var location = provider.ResolveUnit("duckstation/per-game/serial/SCUS-94163_1.mcd");
 
         Assert.NotNull(location);
         Assert.Equal(
             Path.Combine(userDirectory, "cards", "SCUS-94163_1.mcd"),
             location.Path);
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/SCUS-94163_2.mcd"));
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/../SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/SCUS-94163_2.mcd"));
+        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/../SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("duckstation/per-game/title/SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/Final Fantasy VII_1.mcd"));
+        Assert.Null(provider.ResolveUnit("duckstation/per-game/SCUS-94163_1.mcd"));
         Assert.Null(provider.ResolveUnit("duckstation/shared/card1"));
         Assert.Null(provider.ResolveUnit("pcsx2/SCUS-94163_1.mcd"));
+    }
+
+    [Fact]
+    public async Task SerialModeExcludesStaleTitleCardsAndUsesASchemeSpecificIdentity()
+    {
+        var userDirectory = Path.Combine(BaseDirectory, "user");
+        var cards = Path.Combine(userDirectory, "cards");
+        Directory.CreateDirectory(cards);
+        File.WriteAllText(Path.Combine(cards, "SCUS-94163_1.mcd"), "serial");
+        File.WriteAllText(Path.Combine(cards, "Final Fantasy VII_1.mcd"), "stale title");
+        WriteSettings(userDirectory, "cards", card1Type: "PerGame", card2Type: "None");
+        var provider = ProviderFor(userDirectory);
+
+        Assert.Equal(
+            [new SaveUnit(
+                "duckstation/per-game/serial/SCUS-94163_1.mcd",
+                "SCUS-94163_1.mcd",
+                SaveUnitKind.File)],
+            await provider.GetSaveUnitsAsync());
+    }
+
+    [Fact]
+    public async Task FileTitleCardsFailClosedUntilTheyHaveAStableCrossMachineIdentity()
+    {
+        var userDirectory = Path.Combine(BaseDirectory, "user");
+        WriteSettings(userDirectory, "cards", card1Type: "PerGameFileTitle", card2Type: "None");
+        var provider = ProviderFor(userDirectory);
+
+        var exception = await Assert.ThrowsAsync<DuckStationConfigurationFormatException>(
+            () => provider.GetSaveUnitsAsync());
+
+        Assert.Contains("stable cross-machine identity", exception.Message);
     }
 
     [Fact]

@@ -73,6 +73,43 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         Assert.Equal("/current/pcsx2", configuration.NormalizeSaveLocations().GetOverride("playstation2"));
     }
 
+    [Theory]
+    [InlineData("null")]
+    [InlineData("{\"playstation2\":null}")]
+    public void ExplicitJsonNullSaveLocations_AreSanitizedBeforeUse(string saveLocationsJson)
+    {
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"Pcsx2ConfigDirectory\":\"/legacy/pcsx2\",\"SaveLocations\":" +
+            saveLocationsJson + "}}");
+        var loaded = new JsonSettingsService(AppPaths, NullAppLogger.Instance).Load();
+
+        var normalized = loaded.CloudSaveSync.NormalizeSaveLocations();
+
+        Assert.Equal("/legacy/pcsx2", normalized.GetOverride("playstation2"));
+        Assert.NotNull(normalized.SaveLocations);
+        Assert.DoesNotContain(normalized.SaveLocations, entry => entry.Value is null);
+    }
+
+    [Fact]
+    public void Migration_DoesNotResurrectLegacyPathWhenANewerEntryClearedIt()
+    {
+        var configuration = new CloudSaveSyncSettings
+        {
+            Pcsx2ConfigDirectory = "/legacy/pcsx2",
+            SaveLocations = new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal)
+            {
+                ["playstation2"] = new() { DirectoryOverride = null, LastError = "previous failure" },
+            },
+        };
+
+        var normalized = configuration.NormalizeSaveLocations();
+
+        Assert.Null(normalized.GetOverride("playstation2"));
+        Assert.Equal("previous failure", normalized.GetLocation("playstation2").LastError);
+    }
+
     [Fact]
     public void CloudSaveSyncSettings_DefaultsToDisabledWhenAbsentFromFile()
     {
