@@ -871,7 +871,8 @@ public class EmulatorSettingsViewModelTests
         LibraryMaintenanceActions? maintenance = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null) => new(
+        IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null,
+        TexturePackSettingsContext? texturePacks = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         configured ?? KnownSystems.All.ToDictionary(
@@ -882,7 +883,8 @@ public class EmulatorSettingsViewModelTests
         _dialogs,
         maintenance,
         retroAchievements: retroAchievements,
-        cloudSaves: cloudSaves);
+        cloudSaves: cloudSaves,
+        texturePacks: texturePacks);
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,

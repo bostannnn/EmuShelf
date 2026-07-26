@@ -21,6 +21,8 @@
 
     <Window.Resources>
         <!-- Neutral trophy glyph (mdi-trophy) for the achievement mark; not RA branding. -->
+        <!-- mdi-layers: a neutral "replacement images" mark. Not emulator or vendor branding. -->
+        <StreamGeometry x:Key="TexturePackLayersGeometry">M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,18.54L4.62,12.81L3,14.07L12,21.07L21,14.07L19.37,12.8L12,18.54Z</StreamGeometry>
         <StreamGeometry x:Key="AchievementTrophyGeometry">M18,2H6V4H2V9C2,11.21 3.79,13 6,13V13.5C6,15.43 7.5,17 9.34,17.15L9,18H7V20H17V18H15L14.66,17.15C16.5,17 18,15.43 18,13.5V13C20.21,13 22,11.21 22,9V4H18V2M6,11C4.9,11 4,10.1 4,9V6H6V11M20,9C20,10.1 19.1,11 18,11V6H20V9Z</StreamGeometry>
         <!-- The Fluent Button theme paints its internal presenter on pointer/pressed states even
              when Button.Background is transparent. Game tiles provide cover-sized hover/focus
@@ -240,6 +242,16 @@
         <Style Selector="Button.achievement-mark:pointerover">
             <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <!-- Texture-pack mark: informational only, so it is a Border rather than a Button. There
+             is nothing to open, and EmuShelf never installs, repairs, or removes a pack. -->
+        <Style Selector="Border.texture-mark">
+            <Setter Property="Width" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style Selector="ToggleButton.view-toggle:checked">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
@@ -665,17 +677,32 @@
                                         <TextBlock Text="{Binding DiscCountText}" FontSize="8" FontWeight="Bold"
                                                    LetterSpacing="0.8" Foreground="White" />
                                     </Border>
-                                    <!-- Achievement mark: shown only on a confirmed RA hash match. -->
-                                    <Button Classes="achievement-mark"
-                                            IsVisible="{Binding ShowAchievementMark}"
-                                            Margin="8"
-                                            Command="{Binding OpenAchievementsCommand}"
-                                            CommandParameter="{Binding}"
-                                            ToolTip.Tip="{Binding AchievementsTooltip}">
-                                        <PathIcon Width="13" Height="13"
-                                                  Data="{StaticResource AchievementTrophyGeometry}"
-                                                  Foreground="{DynamicResource EmuAccentBrush}" />
-                                    </Button>
+                                    <!-- Cover marks, laid out together so the texture mark keeps its
+                                         place beside the trophy whether or not the trophy shows. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="5" Margin="8"
+                                                HorizontalAlignment="Left" VerticalAlignment="Top">
+                                        <!-- Achievement mark: shown only on a confirmed RA hash match. -->
+                                        <Button Classes="achievement-mark"
+                                                IsVisible="{Binding ShowAchievementMark}"
+                                                Command="{Binding OpenAchievementsCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="{Binding AchievementsTooltip}">
+                                            <PathIcon Width="13" Height="13"
+                                                      Data="{StaticResource AchievementTrophyGeometry}"
+                                                      Foreground="{DynamicResource EmuAccentBrush}" />
+                                        </Button>
+                                        <!-- Texture mark: shown only for a usable, matched pack. -->
+                                        <Border Classes="texture-mark"
+                                                IsVisible="{Binding ShowTextureMark}">
+                                            <ToolTip.Tip>
+                                                <TextBlock Text="{Binding TexturesTooltip}"
+                                                           MaxWidth="320" TextWrapping="Wrap" />
+                                            </ToolTip.Tip>
+                                            <PathIcon Width="13" Height="13"
+                                                      Data="{StaticResource TexturePackLayersGeometry}"
+                                                      Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </Border>
+                                    </StackPanel>
                                 </Panel>
                                 </Grid>
 
@@ -727,7 +754,7 @@
             <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20">
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
-                    <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,96,100">
+                    <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,96,92,100">
                         <Button Grid.Column="1" Classes="sort-header"
                                 Command="{Binding SortByCommand}"
                                 CommandParameter="{x:Static vm:LibrarySortColumn.Title}">
@@ -762,6 +789,14 @@
                         </Button>
                         <Button Grid.Column="5" Classes="sort-header"
                                 Command="{Binding SortByCommand}"
+                                CommandParameter="{x:Static vm:LibrarySortColumn.Textures}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="TEXTURES" />
+                                <TextBlock Text="{Binding TexturesSortGlyph}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="6" Classes="sort-header"
+                                Command="{Binding SortByCommand}"
                                 CommandParameter="{x:Static vm:LibrarySortColumn.Status}">
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <TextBlock Text="STATUS" />
@@ -774,7 +809,7 @@
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
-                            <Grid ColumnDefinitions="66,*,150,90,96,100" Classes="game-row"
+                            <Grid ColumnDefinitions="66,*,150,90,96,92,100" Classes="game-row"
                                   Classes.selected="{Binding IsSelected}"
                                   Classes.unavailable="{Binding !IsAvailable}"
                                   Tapped="OnGameTapped"
@@ -856,7 +891,20 @@
                                     <TextBlock Text="{Binding AchievementsColumnText}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </StackPanel>
-                                <TextBlock Grid.Column="5" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="5"
+                                            VerticalAlignment="Center">
+                                    <ToolTip.Tip>
+                                        <TextBlock Text="{Binding TexturesTooltip}"
+                                                   MaxWidth="320" TextWrapping="Wrap" />
+                                    </ToolTip.Tip>
+                                    <PathIcon IsVisible="{Binding ShowTextureMark}"
+                                              Width="11" Height="11"
+                                              Data="{StaticResource TexturePackLayersGeometry}"
+                                              Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding TexturesColumnText}"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="6" VerticalAlignment="Center"
                                            Text="{Binding AvailabilityText}"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <Popup Grid.Column="1" IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"

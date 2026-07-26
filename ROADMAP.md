@@ -917,3 +917,107 @@ unchanged unless an item explicitly says otherwise.
 - [ ] Run keyboard, mouse, Xbox-style pad, PlayStation-style pad, Steam Input, and native SDL paths;
       verify Windows fullscreen and real Steam Deck/Gaming Mode focus, OSK, emulator return, and
       menu behavior before marking M31 complete.
+
+## M32 — Installed texture-pack inventory (in progress)
+
+Inventory replacement-texture packs owned by Dolphin, PCSX2, DuckStation, and PPSSPP, match them
+to library games through the exact identifiers each emulator uses, and surface confirmed matches
+in the library. This feature is strictly read-only: EmuShelf never edits emulator configuration,
+moves or deletes packs, or writes into dump/replacement directories. "Installed" means a usable
+pack was found and matched; it does not claim that the emulator will load it unless the effective
+loading setting can also be resolved without guessing.
+
+### Phase 1 — Inventory model and read-only path discovery
+
+- [x] Add Core contracts for emulator-specific texture-pack sources and an inventory snapshot keyed
+      by emulator installation. Keep this external state separate from `Game`; persist scan time,
+      resolved root, pack key/path, matching scope, validation state, and errors without copying
+      texture contents into EmuShelf (2026-07-26; atomic portable JSON cache).
+- [x] Resolve texture roots per configured installation through versioned, read-only adapters and an
+      optional user override. Reuse PCSX2's configuration-directory parsing and PPSSPP's Memory
+      Stick resolution; support DuckStation current/legacy/portable layouts and Dolphin portable,
+      platform-default, custom user-directory, and applicable Flatpak layouts. Unknown versions or
+      ambiguous custom paths fail visibly rather than falling back to a plausible but unproven root.
+      (Portable PCSX2/DuckStation INIs, PPSSPP Memory Stick reuse, effective Dolphin User folders,
+      and explicit overrides landed 2026-07-26; `EmulatorUserDirectories` completed platform-default
+      and Flatpak discovery 2026-07-26, selecting only candidates that exist so an unconfigured
+      emulator reads as unconfigured rather than missing.)
+- [x] Run cancellable scans off the UI thread on first setup, path/configuration changes, explicit
+      **Rescan**, and optional cache staleness — never recursively rescan every texture pack during
+      every application startup. Cache the last good inventory and preserve it with a visible stale
+      or unavailable status when an external drive is disconnected (2026-07-26; `TexturePackCoordinator`
+      loads cache only at startup, holds a single-flight gate, and is cancellable throughout).
+
+### Phase 2 — Emulator-accurate pack validation and identifier matching
+
+- [x] **PCSX2:** inventory `<Textures>/<serial>/replacements`; match the normalized PS2 serial and
+      require at least one filename and image format accepted by PCSX2. A serial folder containing
+      only `dumps`, empty directories, and wrong-case layouts that fail on case-sensitive systems
+      are attention states, not installed-pack matches. (2026-07-26; verified against live packs.)
+- [x] **DuckStation:** inventory current `<Textures>/<serial>/replacements` and the supported legacy
+      layout; validate recognized replacement names plus `config.yaml` aliases. Match exact PS1
+      serials and mirror DuckStation's first-disc fallback so one pack can correctly cover a
+      multi-disc set (2026-07-26; the set-level `GetMatches(gameIds)` overload matches a displayed
+      multi-disc title when any of its discs matches, and deduplicates shared packs).
+- [x] **Dolphin:** inventory `User/Load/Textures` using exact six-character game IDs, explicit
+      three-character region-independent folders, nested game-ID marker files, and shared `all.txt`
+      packs. Require recursively discoverable `tex1_` PNG/DDS replacements; report shared packs
+      separately and never label them as having no library match. (2026-07-26; verified against live packs.)
+- [x] **PPSSPP:** inventory `<Memory Stick>/PSP/TEXTURES/<game-id-without-hyphen>` directories and
+      supported `textures.zip` packs. Match normalized PSP disc IDs, recognize valid replacement
+      content/configuration, and treat a dump-only `new` directory as attention rather than an
+      installed pack. (2026-07-26; verified against live packs.)
+- [x] Bulk-load cached `GameIdentifier` rows and build the game-to-pack map in one background pass —
+      no per-row database reads, repeated disc parsing, title matching, or fuzzy serial matching.
+      A displayed multi-disc title is matched when any applicable disc is matched; two emulator
+      installations retain separate inventories (2026-07-26; `IGameMetadataStore.GetAllIdentifiers`
+      plus `TexturePackLibraryMap.Build`, asserted by a no-N+1 coordinator test).
+- [x] Classify inventory entries as **Matched**, **No library match**, **Shared pack**, **Empty or
+      dumps only**, **Unrecognized layout**, **Folder unavailable**, or **Identifier pending**.
+      "No library match" deliberately does not imply that the pack is broken or safe to delete
+      (2026-07-26; `TexturePackEntryStatus`, with an unmatched pack staying `IdentifierPending`
+      until the library actually holds identifiers of that kind).
+
+### Phase 3 — Library marks and Settings inventory
+
+- [x] Add a sortable **Textures** column to Desktop list view after Achievements. Show a small
+      image/layers mark with `Installed` (or a pack count) only for confirmed matches, an em dash
+      otherwise, and a tooltip containing emulator, matched identifier, pack location, validation
+      state, and loading status when known (2026-07-26).
+- [x] Add the same neutral, non-clickable mark beside the achievement badge on Desktop grid covers.
+      Drive grid visibility, list text, tooltip, and sort value from one pure display-state result so
+      the views cannot disagree (2026-07-26; `TexturePackDisplay`, with both marks in one top-left
+      stack so the texture mark keeps its place whether or not the trophy shows). Extending the mark
+      to Gamepad covers after M31's focus/template work, and verifying it does not obscure disc,
+      availability, or focus treatments, remains open.
+- [x] Add a dedicated **Texture packs** Settings section with matched/no-match/attention totals,
+      last scan time, emulator and status filters, detected/overridden roots, **Rescan**, and
+      **Open folder**. List pack ID, matched game(s), installation, path, and status; provide no
+      delete, move, rename, install, or repair operation (2026-07-26; a test asserts the command
+      surface contains only Rescan, Open folder, and the two override actions).
+- [x] Resolve effective global/per-game replacement-loading settings only through emulator-specific,
+      versioned read-only adapters. Report **Loading disabled** when it is proven and **Loading
+      status unknown** when precedence, configuration version, or runtime override cannot be
+      resolved; the library mark continues to mean installed and matched rather than guaranteed
+      active (2026-07-26; a per-game configuration file for the game being asked about forces
+      Unknown — see `DECISIONS.md`).
+
+### Phase 4 — Verification and acceptance
+
+- [ ] Provider fixtures cover Windows, macOS, Linux/XDG, portable, custom, and supported Flatpak
+      roots; malformed/unknown configuration; missing and disconnected folders; case sensitivity;
+      empty and dumps-only layouts; PPSSPP ZIPs; DuckStation aliases/first-disc fallback; and
+      Dolphin exact, three-character, marker-file, and shared packs. (Source, root-resolver, cache,
+      and loading-resolver fixtures landed 2026-07-26; the platform-default/Flatpak candidate order
+      in `EmulatorUserDirectories` is still only exercised on the host's own layout.)
+- [x] Matching tests cover identifier normalization, region variants, multi-disc aggregation,
+      multiple emulator installations, missing identifiers, strict no-title/no-fuzzy behavior, and
+      the rule that invalid content never produces a library mark (2026-07-26;
+      `TexturePackLibraryMapTests`).
+- [x] Verify cancellation, scan-cache invalidation, no N+1 database work, short-circuit validation,
+      list sorting/tooltips, Settings filters, zero-pack/error states, and Desktop light/dark
+      layouts (2026-07-26; coordinator, display, and Settings-section tests). Gamepad cover geometry
+      at 1280×800 and a large 16:9 viewport waits on the Gamepad mark above.
+- [ ] On real Windows and SteamOS/Linux installations, snapshot game files, emulator configuration,
+      and texture roots before and after detection/rescan; verify all bytes and timestamps remain
+      unchanged and that a missing or unreadable provider cannot block the rest of the library.

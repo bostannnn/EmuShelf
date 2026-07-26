@@ -20,6 +20,7 @@ using EmuShelf.Core.Metadata;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
+using EmuShelf.Core.TexturePacks;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Emulators.Rpcs3;
@@ -103,6 +104,7 @@ public partial class MainViewModel : ViewModelBase
     public string ConsoleSortGlyph => SortGlyph(LibrarySortColumn.Console);
     public string FormatSortGlyph => SortGlyph(LibrarySortColumn.Format);
     public string AchievementsSortGlyph => SortGlyph(LibrarySortColumn.Achievements);
+    public string TexturesSortGlyph => SortGlyph(LibrarySortColumn.Textures);
     public string StatusSortGlyph => SortGlyph(LibrarySortColumn.Status);
 
     private string SortGlyph(LibrarySortColumn column) =>
@@ -117,6 +119,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ConsoleSortGlyph));
         OnPropertyChanged(nameof(FormatSortGlyph));
         OnPropertyChanged(nameof(AchievementsSortGlyph));
+        OnPropertyChanged(nameof(TexturesSortGlyph));
         OnPropertyChanged(nameof(StatusSortGlyph));
     }
 
@@ -310,6 +313,7 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
+    private readonly TexturePackCoordinator? _texturePacks;
 
     public MainViewModel()
         : this(
@@ -349,7 +353,8 @@ public partial class MainViewModel : ViewModelBase
         IRetroAchievementsBadgeCache? retroBadges = null,
         CloudSaveSyncCoordinator? cloudSaveSync = null,
         IGameSaveSyncService? gameSaveSync = null,
-        IApplicationLifetimeService? applicationLifetime = null)
+        IApplicationLifetimeService? applicationLifetime = null,
+        TexturePackCoordinator? texturePacks = null)
     {
         _library = library;
         _scanner = scanner;
@@ -385,6 +390,7 @@ public partial class MainViewModel : ViewModelBase
         _retroRefresh = retroRefresh;
         _retroBadges = retroBadges;
         _cloudSaveSync = cloudSaveSync;
+        _texturePacks = texturePacks;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
@@ -1384,6 +1390,7 @@ public partial class MainViewModel : ViewModelBase
                 }
 
                 ApplyAchievementDisplays(viewModels);
+                ApplyTexturePackDisplays(viewModels);
                 return viewModels;
             });
 
@@ -1442,6 +1449,90 @@ public partial class MainViewModel : ViewModelBase
         {
             // The library must still render if the achievement tables are unreadable.
             _logger.Warning("Could not resolve RetroAchievements display state.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Reads the cached texture inventory after the UI paints and applies the resulting marks.
+    /// Deliberately the cached path: startup must never walk every installed pack.
+    /// </summary>
+    public async Task LoadTexturePacksAtStartupAsync(CancellationToken cancellationToken = default)
+    {
+        if (_texturePacks is null)
+            return;
+
+        try
+        {
+            await _texturePacks.LoadCachedAsync(cancellationToken);
+            await Dispatcher.UIThread.InvokeAsync(() => ApplyTexturePackDisplays(_systemGames));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not load the cached texture-pack inventory.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Rescans every configured texture root, then refreshes the marks. This is the explicit
+    /// Rescan action — the only thing that walks the texture directories.
+    /// </summary>
+    public async Task RefreshTexturePacksAsync(CancellationToken cancellationToken = default)
+    {
+        if (_texturePacks is null)
+            return;
+
+        await _texturePacks.RefreshAsync(cancellationToken);
+        await Dispatcher.UIThread.InvokeAsync(() => ApplyTexturePackDisplays(_systemGames));
+    }
+
+    // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
+    // the achievement pass this is local-only and runs on the load worker: the map was already
+    // built in one background pass, so a row never reads a directory or the database itself.
+    private void ApplyTexturePackDisplays(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_texturePacks is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var result = _texturePacks.Current;
+            var scanned = _texturePacks.HasScanned;
+            var loadingBySystem = result.Platforms.ToDictionary(
+                platform => platform.SystemId,
+                platform => platform.Loading,
+                StringComparer.Ordinal);
+
+            foreach (var viewModel in viewModels)
+            {
+                if (TexturePackProviderRegistry.Find(viewModel.SystemId) is null)
+                {
+                    viewModel.ApplyTexturePackDisplay(TexturePackDisplay.Unsupported);
+                    continue;
+                }
+
+                if (!scanned)
+                {
+                    viewModel.ApplyTexturePackDisplay(TexturePackDisplay.NotScanned);
+                    continue;
+                }
+
+                // A multi-disc title is one card over several library rows, and these emulators key
+                // a pack on one disc's identifier, so the whole set is matched when any disc is.
+                var matches = result.Map.GetMatches(viewModel.Discs.Select(disc => disc.Game.Id));
+                loadingBySystem.TryGetValue(viewModel.SystemId, out var loading);
+                viewModel.ApplyTexturePackDisplay(TexturePackDisplay.For(
+                    matches,
+                    loading,
+                    TexturePackProviderRegistry.DescribeEmulator));
+            }
+        }
+        catch (Exception ex)
+        {
+            // The library must still render if the texture inventory is unusable.
+            _logger.Warning("Could not resolve texture-pack display state.", ex);
         }
     }
 
@@ -1531,6 +1622,7 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Console => By(g => g.SystemName, text),
             LibrarySortColumn.Format => By(g => g.FormatLabel, text),
             LibrarySortColumn.Achievements => By(g => g.AchievementSortKey),
+            LibrarySortColumn.Textures => By(g => g.TextureSortKey),
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
             _ => By(g => g.Title, text),
         };
@@ -2550,7 +2642,10 @@ public partial class MainViewModel : ViewModelBase
                         ConnectRetroAchievementsAsync,
                         DisconnectRetroAchievementsAsync,
                         RefreshRetroAchievementsMatchesAsync),
-                _cloudSaveSync?.CreateSettingsContext());
+                _cloudSaveSync?.CreateSettingsContext(),
+                _texturePacks?.CreateSettingsContext(() => _systemGames.ToDictionary(
+                    game => game.Id,
+                    game => game.Title)));
         }
         catch (Exception ex)
         {

@@ -7,6 +7,7 @@ using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Systems;
+using EmuShelf.Core.TexturePacks;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -16,6 +17,7 @@ public enum SettingsSection
     Emulators,
     RetroAchievements,
     Saves,
+    TexturePacks,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
@@ -26,6 +28,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly IMetadataPreferencesService? _metadataPreferences;
     private readonly RetroAchievementsSettingsContext? _retroAchievements;
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
+    private readonly TexturePackSettingsContext? _texturePacks;
     private readonly IAppLogger _logger;
     private bool _synchronizingSharedInstallation;
 
@@ -33,6 +36,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public IReadOnlyList<SettingsSection> Sections { get; }
     public bool HasRetroAchievements => _retroAchievements is not null;
     public bool HasCloudSaves => _cloudSaves is not null;
+    public bool HasTexturePacks => _texturePacks is not null;
     public event Action<bool>? CloseRequested;
 
     [ObservableProperty]
@@ -40,12 +44,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsEmulatorsSection))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
+    [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
+    public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -137,6 +143,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     /// <summary>One row per registered save platform, rendered by a single view template.</summary>
     public ObservableCollection<CloudSavePlatformRowViewModel> CloudPlatforms { get; } = new();
+    public ObservableCollection<TexturePackRowViewModel> TexturePlatforms { get; } = new();
+
+    /// <summary>The packs matching the current emulator and status filters.</summary>
+    public ObservableCollection<TexturePackEntryViewModel> TexturePackEntries { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCloudDisconnected))]
@@ -196,7 +206,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IMetadataPreferencesService? metadataPreferences = null,
         IAppLogger? logger = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
-        CloudSaveSyncSettingsContext? cloudSaves = null)
+        CloudSaveSyncSettingsContext? cloudSaves = null,
+        TexturePackSettingsContext? texturePacks = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -204,6 +215,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _metadataPreferences = metadataPreferences;
         _retroAchievements = retroAchievements;
         _cloudSaves = cloudSaves;
+        _texturePacks = texturePacks;
         _logger = logger ?? NullAppLogger.Instance;
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
@@ -211,7 +223,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             sections.Add(SettingsSection.RetroAchievements);
         if (cloudSaves is not null)
             sections.Add(SettingsSection.Saves);
+        if (texturePacks is not null)
+            sections.Add(SettingsSection.TexturePacks);
         Sections = sections;
+        if (texturePacks is not null)
+            ApplyTexturePackInventory();
         if (cloudSaves is not null)
         {
             var saves = cloudSaves.Current;
@@ -560,8 +576,199 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Emulator filter for the pack list. The first entry shows every emulator.</summary>
+    public ObservableCollection<string> TextureEmulatorFilters { get; } = new() { AllFilter };
+
+    /// <summary>Status filter for the pack list. The first entry shows every status.</summary>
+    public IReadOnlyList<string> TextureStatusFilters { get; } =
+        [AllFilter, "Matched", "No game in your library", "Needs attention"];
+
+    private const string AllFilter = "All";
+
+    [ObservableProperty]
+    public partial string TextureEmulatorFilter { get; set; } = AllFilter;
+
+    [ObservableProperty]
+    public partial string TextureStatusFilter { get; set; } = AllFilter;
+
+    [ObservableProperty]
+    public partial string TexturePackSummary { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string TexturePackLastScanText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsTexturePackBusy { get; set; }
+
+    [ObservableProperty]
+    public partial string TexturePackStatusText { get; set; } = string.Empty;
+
+    public bool HasNoTexturePacks => TexturePackEntries.Count == 0;
+
+    partial void OnTextureEmulatorFilterChanged(string value) => ApplyTexturePackFilter();
+
+    partial void OnTextureStatusFilterChanged(string value) => ApplyTexturePackFilter();
+
+    /// <summary>Rescans every configured texture root. Read-only: nothing on disk is changed.</summary>
+    [RelayCommand]
+    private async Task RescanTexturePacksAsync()
+    {
+        if (_texturePacks is null || IsTexturePackBusy)
+            return;
+
+        IsTexturePackBusy = true;
+        TexturePackStatusText = "Scanning installed texture packs…";
+        try
+        {
+            await _texturePacks.RescanAsync(CancellationToken.None);
+            ApplyTexturePackInventory();
+            TexturePackStatusText = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Texture-pack rescan failed from Settings.", ex);
+            TexturePackStatusText = $"Couldn't finish the scan: {ex.Message}";
+        }
+        finally
+        {
+            IsTexturePackBusy = false;
+        }
+    }
+
+    /// <summary>Reveals a texture folder in the desktop file manager. It is never modified.</summary>
+    [RelayCommand]
+    private void OpenTextureFolder(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not open the texture folder '{path}': {ex.Message}");
+            TexturePackStatusText = "Couldn't open that folder.";
+        }
+    }
+
+    /// <summary>Points one platform at an explicit texture folder instead of the detected one.</summary>
+    [RelayCommand]
+    private async Task BrowseTextureOverrideAsync(TexturePackRowViewModel? row)
+    {
+        if (_texturePacks is null || row is null)
+            return;
+
+        var directory = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(directory))
+            return;
+
+        row.DirectoryOverride = directory;
+        _texturePacks.UpdateOverride(row.SystemId, directory);
+        await RescanTexturePacksAsync();
+    }
+
+    /// <summary>Clears an override so the platform's detected folder is used again.</summary>
+    [RelayCommand]
+    private async Task ClearTextureOverrideAsync(TexturePackRowViewModel? row)
+    {
+        if (_texturePacks is null || row is null)
+            return;
+
+        row.DirectoryOverride = string.Empty;
+        _texturePacks.UpdateOverride(row.SystemId, null);
+        await RescanTexturePacksAsync();
+    }
+
+    // Rebuilds the platform rows, the totals, and the filter choices from the latest pass. The
+    // totals come from the same classification the library marks use, so Settings and the library
+    // can never report a different number of matches.
+    private void ApplyTexturePackInventory()
+    {
+        if (_texturePacks is null)
+            return;
+
+        var inventory = _texturePacks.GetInventory();
+
+        TexturePlatforms.Clear();
+        foreach (var platform in inventory.Platforms)
+        {
+            _texturePacks.OverridePlaceholders.TryGetValue(platform.SystemId, out var placeholder);
+            TexturePlatforms.Add(new TexturePackRowViewModel(platform, placeholder ?? string.Empty));
+        }
+
+        var emulators = inventory.Map.Classifications
+            .Select(classification => TexturePackProviderRegistry.DescribeEmulator(classification.EmulatorId))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        TextureEmulatorFilters.Clear();
+        TextureEmulatorFilters.Add(AllFilter);
+        foreach (var emulator in emulators)
+            TextureEmulatorFilters.Add(emulator);
+        if (!TextureEmulatorFilters.Contains(TextureEmulatorFilter, StringComparer.Ordinal))
+            TextureEmulatorFilter = AllFilter;
+
+        var map = inventory.Map;
+        TexturePackSummary = _texturePacks.HasScanned()
+            ? $"{map.MatchedCount} matched · {map.NoMatchCount} with no game in your library · {map.AttentionCount} needing attention"
+            : "Not scanned yet.";
+        TexturePackLastScanText = map.LastScannedAt is { } scannedAt
+            ? $"Last scan {scannedAt.ToLocalTime():g}"
+            : string.Empty;
+
+        ApplyTexturePackFilter();
+    }
+
+    private void ApplyTexturePackFilter()
+    {
+        if (_texturePacks is null)
+            return;
+
+        var titles = _texturePacks.GetGameTitles();
+        TexturePackEntries.Clear();
+        foreach (var classification in _texturePacks.GetInventory().Map.Classifications)
+        {
+            var entry = new TexturePackEntryViewModel(classification, titles);
+            if (TextureEmulatorFilter != AllFilter &&
+                !string.Equals(entry.EmulatorName, TextureEmulatorFilter, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!MatchesStatusFilter(entry.Status))
+                continue;
+
+            TexturePackEntries.Add(entry);
+        }
+
+        OnPropertyChanged(nameof(HasNoTexturePacks));
+    }
+
+    private bool MatchesStatusFilter(TexturePackEntryStatus status) => TextureStatusFilter switch
+    {
+        "Matched" => status == TexturePackEntryStatus.Matched,
+        "No game in your library" => status == TexturePackEntryStatus.NoLibraryMatch,
+        // "Needs attention" deliberately excludes "no library match": a pack for a game you have
+        // not imported is a normal state, not something the user has to act on.
+        "Needs attention" => status
+            is TexturePackEntryStatus.EmptyOrDumpsOnly
+            or TexturePackEntryStatus.UnrecognizedLayout
+            or TexturePackEntryStatus.FolderUnavailable
+            or TexturePackEntryStatus.IdentifierPending,
+        _ => true,
+    };
+
     partial void OnSelectedSectionChanged(SettingsSection value)
     {
+        if (value == SettingsSection.TexturePacks && _texturePacks is not null)
+            ApplyTexturePackInventory();
+
         if (value != SettingsSection.Saves || _cloudSaves is null)
             return;
 
