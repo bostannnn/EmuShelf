@@ -823,6 +823,41 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_DetectionShowsPathAndNonBlockingCompatibilityWarning()
+    {
+        const string warning = "Filename-based cards require matching game filenames.";
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            getDetection: (systemId, _) => Task.FromResult<SaveProviderDetection?>(
+                systemId == "playstation"
+                    ? new SaveProviderDetection("/duckstation/memcards", warning)
+                    : null)));
+        var row = Row(viewModel, "playstation");
+
+        await row.RefreshDetectedDirectoryAsync();
+
+        Assert.Equal("/duckstation/memcards", row.DetectedDirectory);
+        Assert.Equal(warning, row.CompatibilityWarning);
+        Assert.True(row.HasCompatibilityWarning);
+        Assert.False(row.HasDetectionError);
+        Assert.True(row.CanReplace);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_DetectionErrorIsVisibleAndDisablesReplaceActions()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            getDetection: (_, _) => throw new InvalidOperationException("Unsupported card layout.")));
+        var row = Row(viewModel, "playstation");
+
+        await row.RefreshDetectedDirectoryAsync();
+
+        Assert.Null(row.DetectedDirectory);
+        Assert.Contains("Unsupported card layout", row.DetectionErrorText);
+        Assert.True(row.HasDetectionError);
+        Assert.False(row.CanReplace);
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_Save_PersistsEveryPlatformsTypedPath()
     {
         var persisted = new Dictionary<string, string?>(StringComparer.Ordinal);
@@ -893,7 +928,8 @@ public class EmulatorSettingsViewModelTests
         bool rcloneAvailable = true,
         Func<CancellationToken, Task<bool>>? downloadRclone = null,
         string? syncLogPath = null,
-        Func<IReadOnlyList<CloudSaveSyncPlatformContext>>? getPlatforms = null)
+        Func<IReadOnlyList<CloudSaveSyncPlatformContext>>? getPlatforms = null,
+        Func<string, CancellationToken, Task<SaveProviderDetection?>>? getDetection = null)
     {
         var configuration = current ?? new CloudSaveSyncSettings();
         var platforms = SaveProviderRegistry.All.Select(descriptor =>
@@ -922,7 +958,8 @@ public class EmulatorSettingsViewModelTests
             syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             updateOverride ?? ((_, _) => { }),
-            downloadRclone ?? (_ => Task.FromResult(true)));
+            downloadRclone ?? (_ => Task.FromResult(true)),
+            getDetection);
     }
 
     private static CloudSavePlatformRowViewModel Row(EmulatorSettingsViewModel viewModel, string systemId) =>

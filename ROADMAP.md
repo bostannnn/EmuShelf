@@ -791,8 +791,9 @@ generalized.
       or other Memory Stick content.
 - [x] **DuckStation second:** locate its current/legacy/portable user directory, read
       `settings.ini` read-only, and honor enabled `Card1Type`/`Card2Type` plus explicit card paths.
-      Per-game code/title cards are individual file units; a shared card is one monolithic unit and
-      carries the same cross-game conflict warning as a PCSX2 file card. Never include save states.
+      Per-game code/title/file-title cards are individual file units; file-title cards retain their
+      exact filenames with a portability warning. A shared card is one monolithic unit and carries
+      the same cross-game conflict warning as a PCSX2 file card. Never include save states.
 - [ ] **RPCS3 third:** resolve `/dev_hdd0` through a versioned, read-only `vfs.yml` adapter and bind
       one user-selected local RPCS3 profile to a stable EmuShelf profile key. Each complete
       `home/<user>/savedata/<save>/` directory is one unit, including its `PARAM.SFO`/`PARAM.PFD`;

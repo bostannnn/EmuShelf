@@ -56,6 +56,15 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     public partial string? DetectedDirectory { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCompatibilityWarning))]
+    public partial string? CompatibilityWarning { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetectionError))]
+    [NotifyPropertyChangedFor(nameof(CanReplace))]
+    public partial string? DetectionErrorText { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasLastResult))]
     public partial string? LastResultText { get; set; }
 
@@ -66,11 +75,18 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     /// <summary>Whether a cloud operation is running, which disables this row's controls.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsIdle))]
+    [NotifyPropertyChangedFor(nameof(CanReplace))]
     public partial bool IsCloudBusy { get; set; }
 
     public bool IsIdle => !IsCloudBusy;
 
+    public bool CanReplace => IsIdle && !HasDetectionError;
+
     public bool HasDetectedDirectory => !string.IsNullOrWhiteSpace(DetectedDirectory);
+
+    public bool HasCompatibilityWarning => !string.IsNullOrWhiteSpace(CompatibilityWarning);
+
+    public bool HasDetectionError => !string.IsNullOrWhiteSpace(DetectionErrorText);
 
     public bool HasLastResult => !string.IsNullOrWhiteSpace(LastResultText);
 
@@ -90,12 +106,26 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     {
         try
         {
-            DetectedDirectory = await _cloudSaves.GetDetectedPathAsync(SystemId, CancellationToken.None);
+            if (_cloudSaves.GetDetectionAsync is { } detect)
+            {
+                var detection = await detect(SystemId, CancellationToken.None);
+                DetectedDirectory = detection?.Directory;
+                CompatibilityWarning = detection?.Warning;
+            }
+            else
+            {
+                DetectedDirectory = await _cloudSaves.GetDetectedPathAsync(SystemId, CancellationToken.None);
+                CompatibilityWarning = null;
+            }
+
+            DetectionErrorText = null;
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not detect the save folder for {DisplayName}.", ex);
             DetectedDirectory = null;
+            CompatibilityWarning = null;
+            DetectionErrorText = $"Cannot sync: {ex.Message}";
         }
     }
 
@@ -109,6 +139,8 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         OverrideDirectory = picked;
         _cloudSaves.UpdateOverride(SystemId, picked);
         DetectedDirectory = null;
+        CompatibilityWarning = null;
+        DetectionErrorText = null;
         await RefreshDetectedDirectoryAsync();
     }
 

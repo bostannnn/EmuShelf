@@ -21,6 +21,9 @@ public sealed record SaveProviderContext(
     bool IsFlatpak,
     IAppPaths Paths);
 
+/// <summary>A provider's resolved save directory plus an optional non-blocking compatibility note.</summary>
+public sealed record SaveProviderDetection(string Directory, string? Warning = null);
+
 /// <summary>
 /// One supported save-sync platform. Everything the coordinator and Settings need per platform
 /// lives here, so adding an emulator is a new provider class plus one entry in
@@ -36,14 +39,14 @@ public sealed record SaveProviderContext(
 /// This is the single source of truth for participation: the coordinator's "can this system sync"
 /// answer calls exactly this, so the two can never disagree.
 /// </param>
-/// <param name="DescribeDetectedPathAsync">Resolves the concrete directory Settings should display.</param>
+/// <param name="DetectAsync">Resolves the concrete directory and optional warning Settings should display.</param>
 public sealed record SaveProviderDescriptor(
     string SystemId,
     string DisplayName,
     string SaveShapeDescription,
     string OverridePlaceholder,
     Func<SaveProviderContext, ISaveLocationProvider?> CreateProvider,
-    Func<ISaveLocationProvider, CancellationToken, Task<string?>> DescribeDetectedPathAsync);
+    Func<ISaveLocationProvider, CancellationToken, Task<SaveProviderDetection>> DetectAsync);
 
 /// <summary>The supported save-sync platforms, in the order Settings presents them.</summary>
 public static class SaveProviderRegistry
@@ -69,8 +72,17 @@ public static class SaveProviderRegistry
                     userDirectoryOverride: context.DirectoryOverride,
                     isFlatpak: context.IsFlatpak);
             },
-            DescribeDetectedPathAsync: static (provider, cancellationToken) =>
-                ((DuckStationSaveLocationProvider)provider).GetMemoryCardsDirectoryAsync(cancellationToken)!),
+            DetectAsync: static async (provider, cancellationToken) =>
+            {
+                var info = await ((DuckStationSaveLocationProvider)provider)
+                    .GetMemoryCardInfoAsync(cancellationToken);
+                return new SaveProviderDetection(
+                    info.Directory,
+                    info.UsesFileTitleCards
+                        ? "Filename-based cards are synced using their exact names. " +
+                          "If a game has a different filename on another machine, DuckStation may not select its card automatically."
+                        : null);
+            }),
 
         new SaveProviderDescriptor(
             SystemId: "playstation2",
@@ -86,8 +98,10 @@ public static class SaveProviderRegistry
                     ? null
                     : new Pcsx2SaveLocationProvider(directory);
             },
-            DescribeDetectedPathAsync: static (provider, cancellationToken) =>
-                ((Pcsx2SaveLocationProvider)provider).GetMemoryCardsDirectoryAsync(cancellationToken)!),
+            DetectAsync: static async (provider, cancellationToken) =>
+                new SaveProviderDetection(
+                    await ((Pcsx2SaveLocationProvider)provider)
+                        .GetMemoryCardsDirectoryAsync(cancellationToken))),
 
         new SaveProviderDescriptor(
             SystemId: "psp",
@@ -110,8 +124,10 @@ public static class SaveProviderRegistry
                     memoryStickDirectoryOverride: context.DirectoryOverride,
                     isFlatpak: context.IsFlatpak);
             },
-            DescribeDetectedPathAsync: static (provider, cancellationToken) =>
-                ((PpssppSaveLocationProvider)provider).GetSaveDataDirectoryAsync(cancellationToken)!),
+            DetectAsync: static async (provider, cancellationToken) =>
+                new SaveProviderDetection(
+                    await ((PpssppSaveLocationProvider)provider)
+                        .GetSaveDataDirectoryAsync(cancellationToken))),
     ];
 
     /// <summary>The descriptor for one system id, or null when the platform is not supported.</summary>

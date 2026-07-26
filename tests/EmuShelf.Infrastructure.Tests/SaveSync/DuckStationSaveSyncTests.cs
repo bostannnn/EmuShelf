@@ -250,16 +250,41 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public async Task FileTitleCardsFailClosedUntilTheyHaveAStableCrossMachineIdentity()
+    public async Task FileTitleCardsSyncByExactFileNameAndReportTheirPortabilityConstraint()
     {
         var userDirectory = Path.Combine(BaseDirectory, "user");
-        WriteSettings(userDirectory, "cards", card1Type: "PerGameFileTitle", card2Type: "None");
+        var cards = Path.Combine(userDirectory, "cards");
+        Directory.CreateDirectory(cards);
+        File.WriteAllText(Path.Combine(cards, "Crash Bandicoot (USA)_1.mcd"), "title card");
+        File.WriteAllText(Path.Combine(cards, "Tekken 3 (USA)_2.mcd"), "file-title card");
+        WriteSettings(
+            userDirectory,
+            "cards",
+            card1Type: "PerGameTitle",
+            card2Type: "PerGameFileTitle");
         var provider = ProviderFor(userDirectory);
 
-        var exception = await Assert.ThrowsAsync<DuckStationConfigurationFormatException>(
-            () => provider.GetSaveUnitsAsync());
+        var info = await provider.GetMemoryCardInfoAsync();
+        var units = await provider.GetSaveUnitsAsync();
 
-        Assert.Contains("stable cross-machine identity", exception.Message);
+        Assert.Equal(cards, info.Directory);
+        Assert.True(info.UsesFileTitleCards);
+        Assert.Equal(
+            [
+                new SaveUnit(
+                    "duckstation/per-game/title/Crash Bandicoot (USA)_1.mcd",
+                    "Crash Bandicoot (USA)_1.mcd",
+                    SaveUnitKind.File),
+                new SaveUnit(
+                    "duckstation/per-game/file-title/Tekken 3 (USA)_2.mcd",
+                    "Tekken 3 (USA)_2.mcd",
+                    SaveUnitKind.File),
+            ],
+            units);
+        Assert.Equal(
+            Path.Combine(cards, "Tekken 3 (USA)_2.mcd"),
+            provider.ResolveUnit("duckstation/per-game/file-title/Tekken 3 (USA)_2.mcd")!.Path);
+        Assert.Null(provider.ResolveUnit("duckstation/per-game/title/Tekken 3 (USA)_2.mcd"));
     }
 
     [Fact]
@@ -304,6 +329,40 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             "progress",
             await File.ReadAllTextAsync(Path.Combine(userB, "cards", "SCUS-94163_1.mcd")));
+    }
+
+    [Fact]
+    public async Task FileTitleCardRoundTripsToASecondMachineByExactFileName()
+    {
+        var pathsA = new AppPaths(Path.Combine(BaseDirectory, "file-title-machine-a"));
+        var pathsB = new AppPaths(Path.Combine(BaseDirectory, "file-title-machine-b"));
+        pathsA.EnsureDirectoriesExist();
+        pathsB.EnsureDirectoriesExist();
+        var userA = Path.Combine(pathsA.BaseDirectory, "duckstation");
+        var userB = Path.Combine(pathsB.BaseDirectory, "duckstation");
+        WriteSettings(userA, "cards", card1Type: "None", card2Type: "PerGameFileTitle");
+        WriteSettings(userB, "cards", card1Type: "None", card2Type: "PerGameFileTitle");
+        const string fileName = "Tekken 3 (USA)_2.mcd";
+        var cardA = Path.Combine(userA, "cards", fileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(cardA)!);
+        await File.WriteAllTextAsync(cardA, "file-title progress");
+        var providerA = ProviderFor(userA);
+        var providerB = ProviderFor(userB);
+        var remote = new InMemoryCloudSyncTransport();
+        var serviceA = new SaveSyncService(
+            new FileSystemLocalSaveEndpoint(providerA, pathsA),
+            remote,
+            new JsonSaveSyncManifestStore(pathsA));
+        var serviceB = new SaveSyncService(
+            new FileSystemLocalSaveEndpoint(providerB, pathsB),
+            remote,
+            new JsonSaveSyncManifestStore(pathsB));
+
+        Assert.Equal(1, (await serviceA.SyncAsync(providerA)).Uploaded);
+        Assert.Equal(1, (await serviceB.SyncAsync(providerB)).Downloaded);
+        Assert.Equal(
+            "file-title progress",
+            await File.ReadAllTextAsync(Path.Combine(userB, "cards", fileName)));
     }
 
     private DuckStationSaveLocationProvider CreateWindowsProvider(

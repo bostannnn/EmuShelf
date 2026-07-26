@@ -73,12 +73,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     /// <summary>The concrete save directory one system will use, or null when it cannot be resolved.</summary>
     public async Task<string?> GetDetectedPathAsync(string systemId, CancellationToken cancellationToken = default)
+        => (await GetDetectionAsync(systemId, cancellationToken))?.Directory;
+
+    /// <summary>The concrete save directory and any non-blocking compatibility warning.</summary>
+    public async Task<SaveProviderDetection?> GetDetectionAsync(
+        string systemId,
+        CancellationToken cancellationToken = default)
     {
         var descriptor = SaveProviderRegistry.Find(systemId);
         if (descriptor is null || CreateProvider(systemId) is not { } provider)
             return null;
 
-        return await descriptor.DescribeDetectedPathAsync(provider, cancellationToken);
+        return await descriptor.DetectAsync(provider, cancellationToken);
     }
 
     /// <summary>Persists an updated cloud-sync configuration to the portable settings file.</summary>
@@ -208,7 +214,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         SyncNowAsync,
         ForceAsync,
         UpdateOverride,
-        DownloadRcloneAsync);
+        DownloadRcloneAsync,
+        GetDetectionAsync);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -510,4 +517,5 @@ public sealed record CloudSaveSyncSettingsContext(
     Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> SyncNowAsync,
     Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> ForceAsync,
     Action<string, string?> UpdateOverride,
-    Func<CancellationToken, Task<bool>> DownloadRcloneAsync);
+    Func<CancellationToken, Task<bool>> DownloadRcloneAsync,
+    Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null);

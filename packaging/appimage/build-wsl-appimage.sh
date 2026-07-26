@@ -36,6 +36,14 @@ dotnet publish src/EmuShelf.App \
   -p:InvariantGlobalization=false \
   -o publish/EmuShelf
 
+# Bundle rclone so the local AppImage matches the CI artifact; cloud save sync shells out to it.
+curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-linux-amd64.zip
+unzip -o -q rclone.zip -d rclone-extract
+rclone_dir="$(dirname "$(find rclone-extract -name rclone -type f | head -n1)")"
+install -m 0755 "$rclone_dir/rclone" publish/EmuShelf/rclone
+mkdir -p publish/EmuShelf/ThirdParty/rclone
+cp "$rclone_dir"/LICENSE* publish/EmuShelf/ThirdParty/rclone/ 2>/dev/null || true
+
 mkdir -p "$output_dir"
 bash packaging/appimage/build-appimage.sh \
   publish/EmuShelf \

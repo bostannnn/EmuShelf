@@ -442,12 +442,12 @@
                                                     <Button Grid.Column="2" Content="Replace cloud"
                                                             IsVisible="{Binding IsCloudConnected}"
                                                             Command="{Binding ReplaceCloudCommand}"
-                                                            IsEnabled="{Binding IsIdle}"
+                                                            IsEnabled="{Binding CanReplace}"
                                                             ToolTip.Tip="Replace only this platform's cloud saves; overwritten cloud copies are backed up" />
                                                     <Button Grid.Column="3" Content="Replace local"
                                                             IsVisible="{Binding IsCloudConnected}"
                                                             Command="{Binding ReplaceLocalCommand}"
-                                                            IsEnabled="{Binding IsIdle}"
+                                                            IsEnabled="{Binding CanReplace}"
                                                             ToolTip.Tip="Replace only this platform's local saves; overwritten local copies are backed up" />
                                                 </Grid>
                                                 <TextBlock Margin="54,0,0,0"
@@ -455,6 +455,16 @@
                                                            IsVisible="{Binding HasDetectedDirectory}"
                                                            FontSize="11" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                <TextBlock Margin="54,0,0,0"
+                                                           Text="{Binding CompatibilityWarning}"
+                                                           IsVisible="{Binding HasCompatibilityWarning}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                <TextBlock Margin="54,0,0,0"
+                                                           Text="{Binding DetectionErrorText}"
+                                                           IsVisible="{Binding HasDetectionError}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuDangerBrush}" />
                                                 <TextBlock Margin="54,0,0,0"
                                                            Text="{Binding LastResultText}"
                                                            IsVisible="{Binding HasLastResult}"

@@ -1708,3 +1708,19 @@ for the tested RetroArch manifest but harmless there and still load-bearing for 
 The validation was performed under Ubuntu WSL2, not on Steam Deck hardware. The open M27
 Linux/SteamOS hardware-verification item therefore remains incomplete pending one real-device
 launch and permission check.
+
+## 2026-07-26 — DuckStation file-title cards sync by exact filename
+
+This supersedes the `PerGameFileTitle` exclusion in **2026-07-26 — DuckStation syncs configured
+memory-card units, not its whole data directory**. A real portable DuckStation installation used
+title-based cards in port 1 and file-title cards in port 2, with live saves in both. Rejecting the
+second mode disabled every PlayStation backup and Settings hid the configuration exception as a
+missing detected path. Requiring users to reconfigure a valid emulator layout would also make
+existing port-2 saves stop being selected by DuckStation.
+
+File-title cards now use a distinct manifest scheme and their exact safe `.mcd` filename as the
+unit identity. Matching filenames round-trip normally; differing game filenames on another machine
+cannot be mapped safely, so EmuShelf preserves the downloaded card without claiming DuckStation
+will select it automatically. Settings shows that limitation as a non-blocking warning beside the
+resolved directory. Genuine detection/configuration failures remain visible and disable destructive
+replace actions instead of silently presenting an empty row.
