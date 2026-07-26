@@ -219,30 +219,35 @@ public sealed class GameMetadataService : IGameMetadataService
                 current is { CoverPath: null } &&
                 current.CoverOrigin != GameCoverOrigin.User)
             {
+                var filenameTitle = Path.GetFileNameWithoutExtension(current.Path);
                 var filenameMatch = new GameCatalogMatch(
                     "filename-fallback",
-                    Path.GetFileNameWithoutExtension(current.Path),
-                    Path.GetFileNameWithoutExtension(current.Path),
+                    filenameTitle,
+                    filenameTitle,
                     null);
-                var catalogCandidates = profile.ArtworkProviders
-                    .SelectMany(provider => provider.GetCandidates(identifiers, match))
-                    .DistinctBy(candidate => candidate.SourceUri)
-                    .ToArray();
-                var filenameCandidates = profile.ArtworkProviders
-                    .SelectMany(provider => provider.GetCandidates(identifiers, filenameMatch))
-                    .DistinctBy(candidate => candidate.SourceUri)
-                    .ToArray();
-                var localCandidates = GetLocalArtworkCandidates(current).ToArray();
 
                 // The directory index can be several megabytes. Resolve it before acquiring a
                 // cover slot, so one playlist cannot block all small cover downloads.
-                var indexedCandidates = match is null
-                    ? Array.Empty<ArtworkCandidate>()
-                    : await GetIndexedCandidatesAsync(profile, match, cancellationToken);
-                var candidates = catalogCandidates
-                    .Concat(indexedCandidates)
-                    .Concat(filenameCandidates)
-                    .Concat(localCandidates)
+                //
+                // The filename is resolved through the same index as a catalogue title, for every
+                // system rather than only the ones keyed by checksum. That is what recovers
+                // artwork for a translated, undubbed, or otherwise modified dump: its checksum
+                // appears in no DAT, so there is no catalogue title to resolve, but its filename
+                // still carries the retail title alongside the release tags.
+                var indexedCandidates = await GetIndexedCandidatesAsync(
+                    profile,
+                    match is null ? [filenameMatch] : [match, filenameMatch],
+                    cancellationToken);
+
+                // A candidate built from an index entry is known to exist. A URL fabricated from a
+                // catalogue or filename title is a guess, so it is only probed once the index has
+                // had its say.
+                var candidates = indexedCandidates
+                    .Concat(profile.ArtworkProviders
+                        .SelectMany(provider => provider.GetCandidates(identifiers, match)))
+                    .Concat(profile.ArtworkProviders
+                        .SelectMany(provider => provider.GetCandidates(identifiers, filenameMatch)))
+                    .Concat(GetLocalArtworkCandidates(current))
                     .DistinctBy(candidate => candidate.SourceUri)
                     .ToArray();
 
@@ -375,7 +380,7 @@ public sealed class GameMetadataService : IGameMetadataService
 
     private async Task<IReadOnlyList<ArtworkCandidate>> GetIndexedCandidatesAsync(
         MetadataSystemProfile profile,
-        GameCatalogMatch match,
+        IReadOnlyList<GameCatalogMatch> matches,
         CancellationToken cancellationToken)
     {
         try
@@ -389,10 +394,17 @@ public sealed class GameMetadataService : IGameMetadataService
             await _artworkIndexGate.WaitAsync(cancellationToken);
             try
             {
-                var tasks = providers
-                    .Select(provider => _artworkTitleIndex.FindCandidatesAsync(provider, match, cancellationToken));
-                var results = await Task.WhenAll(tasks);
-                return results.SelectMany(candidates => candidates).ToArray();
+                // Matches are resolved in order, so an entry found from the catalogue title
+                // outranks one found from the filename. Only the first lookup can touch the
+                // network; the index is memoised per playlist, so the rest are in-memory.
+                var results = new List<ArtworkCandidate>();
+                foreach (var match in matches)
+                {
+                    var tasks = providers
+                        .Select(provider => _artworkTitleIndex.FindCandidatesAsync(provider, match, cancellationToken));
+                    results.AddRange((await Task.WhenAll(tasks)).SelectMany(candidates => candidates));
+                }
+                return results;
             }
             finally
             {

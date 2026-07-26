@@ -101,6 +101,31 @@ public class LibretroDatCatalogTests
         Assert.Equal("Tony Hawk's Pro Skater (USA)", serialEntry.Title);
     }
 
+    // A cartridge DAT records the header game code in the `serial` field. Keying it as a TitleId
+    // is what lets a modified dump — whose ROM checksum matches nothing — still be identified.
+    [Fact]
+    public void Parser_IndexesTheCartridgeGameCodeAsATitleIdFallback()
+    {
+        using var reader = new StringReader(
+            """
+            game (
+                name "Rhythm Heaven (USA)"
+                region "USA"
+                serial "YZHE"
+                rom ( name "Rhythm Heaven (USA).nds" sha1 AABBCCDD serial "YZHE" )
+            )
+            """);
+
+        var index = LibretroDatCatalog.Parse(
+            reader,
+            [GameIdentifierKind.Sha1, GameIdentifierKind.TitleId],
+            readRomSerials: false);
+
+        Assert.True(index.TryGetValue(GameIdentifierKind.TitleId, "YZHE", out var entry));
+        Assert.Equal("Rhythm Heaven (USA)", entry.Title);
+        Assert.Equal("USA", entry.Region);
+    }
+
     // clrmamepro writes a whole `rom ( … )` record on one line, so it sits at the same nesting
     // depth as the game's own fields. A serial there belongs to the ROM, and a profile that did
     // not opt in must not key on it — depth alone cannot tell the two apart.

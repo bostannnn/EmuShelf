@@ -1531,3 +1531,28 @@ units may already have reconciled safely before a later unit failed; EmuShelf in
 with the save state currently on disk, while overwrite backups preserve superseded content.
 Completed automatic passes surface conflicts and empty save sets explicitly, including conflicts
 resolved before launch that a later pass would no longer contain.
+
+## 2026-07-26 — Filename resolution through the artwork index is shared by every system
+
+The artwork title index was previously consulted only when the catalogue returned a match, so a
+game whose checksum appears in no DAT — a translation patch, an undub, a romhack, a trimmed or
+scene-renamed dump — fell through to a single URL fabricated from its literal filename, release
+tags and all, and 404'd. That is the dominant cover-download failure, and it is not specific to
+one platform: it applies wherever a dump can be modified.
+
+`GameMetadataService` therefore resolves the filename against the same index as a catalogue title,
+for every profile that registers an `IArtworkTitleIndexProvider`. Candidates are ordered by how
+certain they are: index-resolved catalogue title, index-resolved filename, fabricated catalogue
+URL, fabricated filename URL, local sidecar. Fabricated URLs stay as a fallback for an index
+outage, but no longer consume the first request when the index has a known-good answer.
+
+Title comparison gained two symmetric normalizations rather than a similarity score: a version
+suffix ahead of the release tags, and a leading publisher possessive carried by only one source.
+Both are applied to each side and the comparison stays whole-title equality, so the matcher still
+cannot pair a game with its sequel or a spin-off. Regional ties now prefer a retail release over a
+kiosk demo, prototype, or control-scheme hack instead of whichever tag sorted first.
+
+The Nintendo DS profile falls back from the ROM checksum to the cartridge header game code, which
+the DAT records in its `serial` field and which a patch or trim leaves untouched. A fallback-key
+match applies the canonical title like any other match, so a modified dump is retitled to the
+retail release it derives from; the release tags remain in its filename.

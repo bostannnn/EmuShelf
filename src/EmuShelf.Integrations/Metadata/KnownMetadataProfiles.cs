@@ -88,7 +88,11 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat"),
             NintendoDsExtractor,
-            [new LibretroArtworkProvider("Nintendo - Nintendo DS")]),
+            [new LibretroArtworkProvider("Nintendo - Nintendo DS")],
+            // The DS DAT records the four-character game code from the cartridge header. Falling
+            // back to it identifies a translated, undubbed, or trimmed dump, whose ROM checksum
+            // matches no DAT entry but whose header is untouched.
+            FallbackCatalogKeyKinds: [GameIdentifierKind.TitleId]),
         new(
             "gba",
             GameIdentifierKind.Sha1,

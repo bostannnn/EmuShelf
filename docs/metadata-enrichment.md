@@ -36,8 +36,10 @@ For each requested game, `GameMetadataService` performs the following bounded ba
    `IGameIdentifierExtractor` against the local entry and persist every typed identifier.
 3. Ask `IGameMetadataCatalog` for an exact match using the profile's declared key kind.
 4. Apply the canonical title only if the current title is filename- or catalog-derived.
-5. Ask the profile's `IGameArtworkProvider` instances for candidates in priority order, then
-   download the first available image through `IRemoteArtworkDownloader`.
+5. Resolve the catalog title (when there is one) and then the game's filename against each
+   `IArtworkTitleIndexProvider`'s remote directory listing, ask the profile's
+   `IGameArtworkProvider` instances for their own candidates, and download the first available
+   image through `IRemoteArtworkDownloader`.
 6. Stage the image with the normal cover service, atomically associate it only if the game still
    has no cover, and record the provider id and source URI.
 7. Record `Matched`, `Partial`, `Unmatched`, or `Failed` plus the last error and attempt time.
@@ -46,6 +48,18 @@ Identifier extraction is targeted, not a scan. The PlayStation extractor reads t
 `SYSTEM.CNF` boot record through the shared `CdSectorReader`/ISO9660 reader — a few kilobytes —
 and only falls back to a bounded, early-exit ASCII scan when an image has no readable layout.
 Because identifiers are cached, a re-run never re-reads a disc whose serial is already known.
+
+Candidate order within step 5 is deliberate. An entry resolved from a provider's own directory
+listing is known to exist, so those are probed first — catalog-title matches ahead of filename
+matches — and only then the URLs a provider fabricates from a title, followed by local sidecar
+artwork. Filename resolution runs for every system, not only the checksum-keyed ones: a
+translated, undubbed, patched, or trimmed dump matches no DAT entry, but its filename still
+carries the retail title next to the release tags. Title comparison ignores release tags, a
+version suffix ahead of them (`Crazy Taxi v1.004 (1999)(Sega)`), and a leading publisher
+possessive carried by only one source (`Disney's Donald Duck - Goin' Quackers`). It remains a
+whole-title equality after that normalization, never a prefix or substring search, so a sequel or
+spin-off cannot borrow another game's cover. Where several regional entries match, the catalog
+region wins, then retail releases outrank kiosk demos, prototypes, and control-scheme hacks.
 
 Steps 1–4 (disk-bound identification) and steps 5–6 (network-bound download) run under separate
 concurrency limits so cover downloads are not throttled behind disc reads, and only one enrichment
@@ -70,7 +84,7 @@ flight also wins the final database compare-and-set.
 | GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
-| Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
+| Nintendo DS | SHA-1 of the verified raw cartridge, then the four-character header game code | Libretro No-Intro DAT, keyed by SHA-1 and falling back to the game code | Libretro source-indexed title match after the exact SHA-1 match |
 | Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 | Super Nintendo | SHA-1 of the headerless ROM (optional 512-byte copier header normalized away); header title is display-only | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 

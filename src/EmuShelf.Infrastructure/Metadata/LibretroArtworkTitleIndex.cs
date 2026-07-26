@@ -123,14 +123,29 @@ public sealed partial class LibretroArtworkTitleIndex : IGameArtworkTitleIndex
         NormalizedTitle requested,
         string? preferredRegion = null)
     {
+        var region = NormalizeRegion(preferredRegion) ?? requested.Region;
         var exact = index.Where(entry => entry.Title.Key == requested.Key).ToArray();
         if (exact.Length > 0)
-            return OrderByRegion(exact, NormalizeRegion(preferredRegion) ?? requested.Region);
+            return OrderByPreference(exact, region);
 
-        return [];
+        // A publisher possessive ("Disney's Donald Duck…", "Tom Clancy's…") is carried by one
+        // source and dropped by the other often enough to lose an otherwise certain match.
+        // Comparing the possessive-free forms recovers those without loosening the comparison
+        // into a prefix or substring search, which would mis-key sequels and spin-offs.
+        var relaxed = index.Where(entry => SharesPossessiveFreeKey(entry.Title, requested)).ToArray();
+        return relaxed.Length > 0 ? OrderByPreference(relaxed, region) : [];
     }
 
-    private static IReadOnlyList<IndexedTitle> OrderByRegion(
+    /// <summary>
+    /// True when the two titles agree once a leading publisher possessive is dropped from either
+    /// side. The comparison stays a whole-key equality, so it cannot match a prefix or a sequel.
+    /// </summary>
+    private static bool SharesPossessiveFreeKey(NormalizedTitle indexed, NormalizedTitle requested) =>
+        (indexed.AlternateKey is not null &&
+         (indexed.AlternateKey == requested.Key || indexed.AlternateKey == requested.AlternateKey)) ||
+        (requested.AlternateKey is not null && requested.AlternateKey == indexed.Key);
+
+    private static IReadOnlyList<IndexedTitle> OrderByPreference(
         IEnumerable<IndexedTitle> matches,
         string? preferredRegion) =>
         matches
@@ -138,8 +153,31 @@ public sealed partial class LibretroArtworkTitleIndex : IGameArtworkTitleIndex
                 entry.Title.Region,
                 NormalizeRegion(preferredRegion),
                 StringComparison.Ordinal))
+            .ThenBy(entry => VariantPenalty(entry.FilenameWithoutExtension))
             .ThenBy(entry => entry.FilenameWithoutExtension, StringComparer.Ordinal)
             .ToArray();
+
+    /// <summary>
+    /// Ranks a kiosk demo, prototype, or control-scheme hack below the retail release it shares a
+    /// title with. Without this the tie is broken alphabetically, which picks whichever tag sorts
+    /// first rather than the release the user actually owns.
+    /// </summary>
+    private static int VariantPenalty(string filename)
+    {
+        var penalty = 0;
+        foreach (var marker in VariantMarkers)
+        {
+            if (filename.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                penalty++;
+        }
+        return penalty;
+    }
+
+    private static readonly string[] VariantMarkers =
+    [
+        "(Demo", "(Kiosk", "(Beta", "(Proto", "(Sample", "(Rev ", "(DPAD",
+        "(Unl", "(Aftermarket", "(Pirate", "(Debug", "(Program",
+    ];
 
     private static async Task CopyWithLimitAsync(Stream source, Stream destination, CancellationToken cancellationToken)
     {
@@ -159,16 +197,33 @@ public sealed partial class LibretroArtworkTitleIndex : IGameArtworkTitleIndex
 
     internal sealed record IndexedTitle(string FilenameWithoutExtension, NormalizedTitle Title);
 
-    internal sealed record NormalizedTitle(string Key, string[] Tokens, string? Region)
+    internal sealed record NormalizedTitle(
+        string Key,
+        string[] Tokens,
+        string? Region,
+        string? AlternateKey = null)
     {
         public static NormalizedTitle From(string value)
         {
-            var productTitle = value.Split(['(', '['], 2)[0];
-            var tokens = TokenRegex().Matches(productTitle)
-                .Select(match => match.Value.ToUpperInvariant())
-                .ToArray();
-            return new NormalizedTitle(string.Join(' ', tokens), tokens, FindRegion(value));
+            // A dump tagged by a scene or romhack tool carries its version ahead of the release
+            // tags ("Crazy Taxi v1.004 (1999)(Sega)"), where an artwork filename never does.
+            var productTitle = VersionSuffixRegex().Replace(value.Split(['(', '['], 2)[0], string.Empty);
+            var tokens = Tokenize(productTitle);
+            var possessiveFree = PossessivePrefixRegex().Replace(productTitle, string.Empty);
+            var alternateTokens = possessiveFree.Length == productTitle.Length
+                ? []
+                : Tokenize(possessiveFree);
+            return new NormalizedTitle(
+                string.Join(' ', tokens),
+                tokens,
+                FindRegion(value),
+                alternateTokens.Length > 0 ? string.Join(' ', alternateTokens) : null);
         }
+
+        private static string[] Tokenize(string value) => TokenRegex()
+            .Matches(value)
+            .Select(match => match.Value.ToUpperInvariant())
+            .ToArray();
     }
 
     private static string? FindRegion(string value)
@@ -187,15 +242,18 @@ public sealed partial class LibretroArtworkTitleIndex : IGameArtworkTitleIndex
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
+        // The single letters are GoodTools codes, which appear in older filenames ("(U)", "(J)")
+        // where a DAT would spell the region out. They only bias ordering between equally valid
+        // matches, so treating them as regions cannot turn a miss into a wrong cover.
         return value.Trim().ToUpperInvariant() switch
         {
-            "USA" or "US" or "NORTH AMERICA" => "USA",
-            "EUROPE" or "EU" => "EUROPE",
-            "JAPAN" or "JP" => "JAPAN",
-            "KOREA" => "KOREA",
-            "BRAZIL" => "BRAZIL",
-            "AUSTRALIA" => "AUSTRALIA",
-            "WORLD" => "WORLD",
+            "USA" or "US" or "U" or "NORTH AMERICA" => "USA",
+            "EUROPE" or "EU" or "E" => "EUROPE",
+            "JAPAN" or "JP" or "J" => "JAPAN",
+            "KOREA" or "K" => "KOREA",
+            "BRAZIL" or "B" => "BRAZIL",
+            "AUSTRALIA" or "A" => "AUSTRALIA",
+            "WORLD" or "W" => "WORLD",
             _ => null,
         };
     }
@@ -208,4 +266,13 @@ public sealed partial class LibretroArtworkTitleIndex : IGameArtworkTitleIndex
 
     [GeneratedRegex(@"[\(\[]\s*(?<tag>[^\)\]]+)\s*[\)\]]", RegexOptions.CultureInvariant)]
     private static partial Regex ParentheticalTagRegex();
+
+    /// <summary>Leading words up to and including a possessive one, such as "Tom Clancy's ".</summary>
+    [GeneratedRegex(
+        @"^(?:[\p{L}\p{N}][\p{L}\p{N}.'’-]*\s+)*?[\p{L}\p{N}][\p{L}\p{N}.-]*['’]s\s+",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex PossessivePrefixRegex();
+
+    [GeneratedRegex(@"\s+v\d+(?:\.\d+)*\s*$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex VersionSuffixRegex();
 }

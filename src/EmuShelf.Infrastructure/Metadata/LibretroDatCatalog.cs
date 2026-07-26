@@ -238,11 +238,19 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
             // A serial inside that record describes the ROM, not the game, and only a profile
             // that opted in may key on it.
             var isGameLevelField = depth == 1 && !IsRecordLine(value, "rom");
-            if (keys.ContainsKey(GameIdentifierKind.Serial) &&
+            // A cartridge game code lives in the same `serial` field as a disc serial. A profile
+            // keying on TitleId is reading that game code, which — unlike a checksum — survives a
+            // translation patch, an undub, or a trimmed dump.
+            var wantsSerial = keys.ContainsKey(GameIdentifierKind.Serial);
+            var wantsTitleId = keys.ContainsKey(GameIdentifierKind.TitleId);
+            if ((wantsSerial || wantsTitleId) &&
                 (isGameLevelField || readRomSerials) &&
                 TryReadEmbeddedQuotedField(value, "serial", out var parsedSerial))
             {
-                keys[GameIdentifierKind.Serial] ??= parsedSerial;
+                if (wantsSerial)
+                    keys[GameIdentifierKind.Serial] ??= parsedSerial;
+                if (wantsTitleId)
+                    keys[GameIdentifierKind.TitleId] ??= parsedSerial;
             }
 
             if (depth != 1)

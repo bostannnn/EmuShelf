@@ -211,6 +211,99 @@ public class GameMetadataServiceTests
         Assert.Equal(GameMetadataStatus.Partial, store.LastAttempt?.Status);
     }
 
+    // A translated or undubbed dump matches no catalogue entry, but its filename still carries the
+    // retail title. Resolving that filename through the artwork index is shared by every system,
+    // not just the checksum-keyed ones.
+    [Fact]
+    public async Task Enrich_WithoutACatalogMatch_ResolvesTheFilenameThroughTheArtworkIndex()
+    {
+        var game = new Game
+        {
+            Id = 12,
+            SystemId = "test-system",
+            Path = "/games/Rhythm Heaven (U)(Undub)(RH2Y).nds",
+            Title = "Rhythm Heaven (U)(Undub)(RH2Y)",
+            TitleOrigin = GameTitleOrigin.Filename,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game);
+        var indexed = new ArtworkCandidate(
+            "libretro-thumbnails",
+            new Uri("https://example.test/indexed/Rhythm%20Heaven%20(USA).png"),
+            ".png");
+        var temporaryPath = Path.GetTempFileName();
+        var index = new RecordingArtworkTitleIndex(indexed);
+        var downloader = new RecordingDownloader(new DownloadedArtwork(indexed, temporaryPath));
+        var service = new GameMetadataService(
+            store,
+            [new MetadataSystemProfile(
+                "test-system",
+                GameIdentifierKind.Sha1,
+                new Uri("https://example.test/catalog.dat"),
+                new FixedExtractor(),
+                [new FixedIndexProvider(indexed)])],
+            new NoMatchCatalog(),
+            downloader,
+            new RecordingCoverService(),
+            null,
+            index);
+
+        var summary = await service.EnrichAsync(
+            [game.Id],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, summary.CoversApplied);
+        Assert.Equal("Rhythm Heaven (U)(Undub)(RH2Y)", Assert.Single(index.QueriedTitles));
+        Assert.Equal(indexed.SourceUri, downloader.Candidates[0].SourceUri);
+        Assert.False(File.Exists(temporaryPath));
+    }
+
+    [Fact]
+    public async Task Enrich_ProbesIndexResolvedCandidatesBeforeFabricatedTitleUrls()
+    {
+        var game = new Game
+        {
+            Id = 13,
+            SystemId = "test-system",
+            Path = "/games/filename.iso",
+            Title = "filename",
+            TitleOrigin = GameTitleOrigin.Filename,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game);
+        var indexed = new ArtworkCandidate(
+            "libretro-thumbnails",
+            new Uri("https://example.test/indexed/Catalog%20Game%20(USA).png"),
+            ".png");
+        var temporaryPath = Path.GetTempFileName();
+        var index = new RecordingArtworkTitleIndex(indexed);
+        var downloader = new RecordingDownloader(new DownloadedArtwork(indexed, temporaryPath));
+        var service = new GameMetadataService(
+            store,
+            [new MetadataSystemProfile(
+                "test-system",
+                GameIdentifierKind.Serial,
+                new Uri("https://example.test/catalog.dat"),
+                new FixedExtractor(),
+                [new FixedIndexProvider(indexed)])],
+            new FixedCatalog(),
+            downloader,
+            new RecordingCoverService(),
+            null,
+            index);
+
+        await service.EnrichAsync([game.Id], cancellationToken: TestContext.Current.CancellationToken);
+
+        // The catalogue title is resolved first, then the filename; both outrank the URLs the
+        // provider fabricates from those same titles.
+        Assert.Equal(["Catalog Game (USA)", "filename"], index.QueriedTitles);
+        Assert.Equal(indexed.SourceUri, downloader.Candidates[0].SourceUri);
+        Assert.Contains(
+            downloader.Candidates,
+            candidate => candidate.SourceUri.AbsolutePath.Contains("fabricated", StringComparison.Ordinal));
+        Assert.False(File.Exists(temporaryPath));
+    }
+
     private sealed class FixedExtractor : IGameIdentifierExtractor
     {
         public IReadOnlyList<GameIdentifier> Extract(Game game) =>
@@ -268,6 +361,55 @@ public class GameMetadataServiceTests
         public IReadOnlyList<ArtworkCandidate> GetCandidates(
             IReadOnlyList<GameIdentifier> identifiers,
             GameCatalogMatch? match) => [candidate];
+    }
+
+    private sealed class FixedIndexProvider(ArtworkCandidate resolved) : IArtworkTitleIndexProvider
+    {
+        public string Id => resolved.ProviderId;
+
+        public string ArtworkIndexKey => "test-playlist";
+
+        public IReadOnlyList<ArtworkCandidate> GetCandidates(
+            IReadOnlyList<GameIdentifier> identifiers,
+            GameCatalogMatch? match) => match is null
+            ? []
+            : [new ArtworkCandidate(
+                Id,
+                new Uri($"https://example.test/fabricated/{Uri.EscapeDataString(match.CanonicalTitle)}.png"),
+                ".png")];
+
+        public IReadOnlyList<string> GetIndexedTitleQueries(GameCatalogMatch match) =>
+            [match.CanonicalTitle];
+
+        public ArtworkCandidate CreateCandidate(string title) => resolved;
+    }
+
+    private sealed class RecordingArtworkTitleIndex(ArtworkCandidate? resolved) : IGameArtworkTitleIndex
+    {
+        public List<string> QueriedTitles { get; } = [];
+
+        public Task<IReadOnlyList<ArtworkCandidate>> FindCandidatesAsync(
+            IArtworkTitleIndexProvider provider,
+            GameCatalogMatch match,
+            CancellationToken cancellationToken = default)
+        {
+            QueriedTitles.Add(match.CanonicalTitle);
+            return Task.FromResult<IReadOnlyList<ArtworkCandidate>>(
+                resolved is null ? [] : [resolved]);
+        }
+    }
+
+    private sealed class RecordingDownloader(DownloadedArtwork? artwork) : IRemoteArtworkDownloader
+    {
+        public IReadOnlyList<ArtworkCandidate> Candidates { get; private set; } = [];
+
+        public Task<DownloadedArtwork?> DownloadFirstAsync(
+            IReadOnlyList<ArtworkCandidate> candidates,
+            CancellationToken cancellationToken = default)
+        {
+            Candidates = candidates;
+            return Task.FromResult(artwork);
+        }
     }
 
     private sealed class FixedDownloader(DownloadedArtwork? artwork) : IRemoteArtworkDownloader
