@@ -1708,3 +1708,31 @@ for the tested RetroArch manifest but harmless there and still load-bearing for 
 The validation was performed under Ubuntu WSL2, not on Steam Deck hardware. The open M27
 Linux/SteamOS hardware-verification item therefore remains incomplete pending one real-device
 launch and permission check.
+
+## 2026-07-26 — PSP accepts CHD through the existing DVD-geometry reader
+
+PSP imports were limited to `.iso` and `.cso`, so a folder of PSP CHDs scanned as empty and an
+explicitly picked PSP `.chd` was offered only as a PS1/PS2 candidate. PPSSPP has loaded CHD since
+1.15, so the gap was EmuShelf's alone.
+
+No new container work was needed. A PSP CHD is DVD geometry — 2048-byte units, zlib or LZMA hunks —
+which `ChdSectorSource` already decodes and which the committed chdman fixtures already prove
+byte-exact against a source ISO. `PspGameMetadataReader` and `PspDiscHasher` both consume
+`ILogicalSectorReader`, so CHD support is one dispatch branch in each, and the PARAM.SFO evidence
+rule is unchanged: a CHD without a valid `PSP_GAME/PARAM.SFO` is never auto-imported as a PSP game.
+
+The RetroAchievements algorithm version is deliberately **not** bumped. The PSP hash is PARAM.SFO
+plus EBOOT.BIN read by logical sector, so a CHD and the ISO it was built from produce the same
+digest; bumping would recompute every stored PSP hash to the identical value. A test pins that
+equality across `.iso`, `.cso`, and `.chd`.
+
+Because every PSP container extension is also a PlayStation one, the PS1/PS2 veto that validated
+PSP evidence applies is now keyed off the PSP extension set rather than a hardcoded ISO/CSO pair,
+so future PSP containers cannot silently reintroduce a misclassification.
+
+Tests build CHDs with `ChdImageBuilder` rather than requiring a chdman install: it emits a real v5
+header and a real Huffman-coded hunk map with a valid CRC-16 self-check, storing every hunk as
+COMPRESSION_NONE — a shape chdman itself emits for incompressible hunks. The production decoder
+reads it through the same path it uses for chdman output, and a round-trip test asserts every
+logical sector matches the source ISO. The committed chdman fixtures remain the byte-exactness
+proof for the zlib/LZMA/cd\* codec paths.

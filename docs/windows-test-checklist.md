@@ -25,12 +25,12 @@ read-only import contract.
 | System | Executable / core selected | Exact emulator/core version or build | Supported input exercised | Pass / fail |
 | --- | --- | --- | --- | --- |
 | PlayStation 3 | `rpcs3.exe` (no core) |  | `games.yml`-listed installed or disc/directory entry; generic file/folder import is unsupported |  |
-| PSP | `PPSSPP*.exe` |  | `.iso` and `.cso` with readable `PSP_GAME/PARAM.SFO` |  |
+| PSP | `PPSSPP*.exe` |  | `.iso`, `.cso`, and `.chd` with readable `PSP_GAME/PARAM.SFO` |  |
 | Mega Drive / Genesis | `retroarch.exe` + selected core |  | Header-valid raw `.md`, `.gen`, or `.bin`, or canonical copier/interleaved `.smd` |  |
 | Nintendo DS | `retroarch.exe` + selected core |  | Header-valid raw `.nds` only |  |
 | Game Boy Advance | `retroarch.exe` + selected core |  | Header-valid raw `.gba` only |  |
 
-Do not mark unsupported archives, PSP CHD/PBP, DS DSi-exclusive or copier-header
+Do not mark unsupported archives, PSP PBP, DS DSi-exclusive or copier-header
 images, or GBA headered/copier images as a successful format run. They must remain
 rejected or visibly unmatched as specified below.
 
@@ -82,11 +82,12 @@ rejected or visibly unmatched as specified below.
 
 - [ ] Record the PPSSPP release used (M14 validates 1.20.4), select its executable in the PSP
       Settings section, and confirm the default launch template is exactly one game-path argument.
-- [ ] Add one standalone PSP `.iso` and one `.cso` containing `PSP_GAME/PARAM.SFO`. Confirm the
-      embedded trustworthy title appears, the exact `DISC_ID` is retained for later metadata, and
-      an image with an invalid/missing SFO is not imported as PSP even when manually confirmed.
-- [ ] Confirm archives, CHD, PBP, and other compressed variants are not imported as PSP entries.
-- [ ] Launch an ISO/CSO whose game and PPSSPP paths contain spaces. Confirm PPSSPP gets one intact
+- [ ] Add one standalone PSP `.iso`, one `.cso`, and one `.chd` containing `PSP_GAME/PARAM.SFO`.
+      Confirm the embedded trustworthy title appears, the exact `DISC_ID` is retained for later
+      metadata, and an image with an invalid/missing SFO is not imported as PSP even when manually
+      confirmed. A PSP CHD must suggest PSP, not PS1/PS2.
+- [ ] Confirm archives, PBP, and other compressed variants are not imported as PSP entries.
+- [ ] Launch an ISO/CSO/CHD whose game and PPSSPP paths contain spaces. Confirm PPSSPP gets one intact
       content argument, EmuShelf minimizes, restores after a normal exit, reports a non-zero exit,
       and fails before minimizing when the selected executable is missing.
 - [ ] Compare the game files and PPSSPP settings directory before and after import/launch; EmuShelf
@@ -161,7 +162,8 @@ rejected or visibly unmatched as specified below.
 - [ ] While a cover request is pending, manually choose a cover for the same game. Confirm the
       manual cover wins and the temporary downloaded file is removed. Disconnect the network or
       provoke a provider error and confirm cached/manual covers remain visible with no retry loop.
-- [ ] Connect a test RetroAchievements account, then identify and refresh one accepted PSP ISO/CSO,
+- [ ] Connect a test RetroAchievements account, then identify and refresh one accepted PSP
+      ISO/CSO/CHD (a CHD must produce the same hash as the ISO it was built from),
       Mega Drive raw/SMD ROM, Nintendo DS ROM, and GBA ROM. Confirm each consults its own console
       catalogue (PSP 41, Mega Drive 1, DS 18, GBA 5); an archive, headered/unknown layout, or stale
       catalogue miss must stay unknown rather than display `No achievements`.

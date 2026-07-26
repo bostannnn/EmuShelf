@@ -37,6 +37,8 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     // The Wii decrypted-partition reader was corrected to scale DOL segment sizes by wii_shift
     // (matching rcheevos); the bump recomputes any hash stored by the earlier, incorrect reader.
     private const string WiiAlgorithmV3 = "rcheevos-2ac45d3-wii-v3";
+    // Not suffixed with the container: the hash is PARAM.SFO plus EBOOT.BIN read by logical
+    // sector, so adding CHD reads the same bytes and must not invalidate stored ISO/CSO hashes.
     private const string PspAlgorithm = "rcheevos-2ac45d3-psp-v1";
     private const string MegaDriveAlgorithm = "rcheevos-2ac45d3-megadrive-v1";
     private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
@@ -224,7 +226,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
             else if (game.SystemId == PspId)
             {
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-                canHash = extension is ".iso" or ".cso";
+                canHash = extension is ".iso" or ".cso" or ".chd";
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified PSP disc reader.";
             }

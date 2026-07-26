@@ -3,11 +3,12 @@ using System.Text;
 using System.Text.RegularExpressions;
 using EmuShelf.Integrations.Achievements;
 using EmuShelf.Integrations.Metadata;
+using EmuShelf.Integrations.Metadata.Chd;
 
 namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
-/// Reads the small <c>PSP_GAME/PARAM.SFO</c> descriptor from a standalone PSP ISO or CSO.
+/// Reads the small <c>PSP_GAME/PARAM.SFO</c> descriptor from a standalone PSP ISO, CSO, or CHD.
 /// It deliberately supports only the formats accepted by the M14 importer and never writes to
 /// the source image.
 /// </summary>
@@ -35,6 +36,14 @@ public static partial class PspGameMetadataReader
             {
                 using var compressed = CompressedIsoSectorSource.TryOpen(path);
                 return compressed is null ? null : TryRead(compressed);
+            }
+
+            // A PSP CHD is DVD-geometry (2048-byte units), which ChdSectorSource already
+            // addresses by logical sector, so the SFO read below is container-agnostic.
+            if (extension.Equals(".chd", StringComparison.OrdinalIgnoreCase))
+            {
+                using var chd = ChdSectorSource.TryOpen(path);
+                return chd is null ? null : TryRead(chd);
             }
 
             if (!extension.Equals(".iso", StringComparison.OrdinalIgnoreCase))

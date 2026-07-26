@@ -172,13 +172,13 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     [InlineData(".iso")]
     [InlineData(".cso")]
     [InlineData(".CSO")]
+    [InlineData(".chd")]
+    [InlineData(".CHD")]
     public void PspImage_RecognizesReadOnlyParamSfoAndExposesTrustedEvidence(string extension)
     {
         var path = Path.Combine(BaseDirectory, $"Lumines{extension}");
         var iso = PspIsoBuilder.Build("ULUS10002", "Lumines");
-        File.WriteAllBytes(path, extension.Equals(".cso", StringComparison.OrdinalIgnoreCase)
-            ? CompressedIsoBuilder.BuildCso(iso)
-            : iso);
+        File.WriteAllBytes(path, WrapPspImage(iso, extension));
         var beforeBytes = File.ReadAllBytes(path);
         var beforeTimestamp = File.GetLastWriteTimeUtc(path);
 
@@ -188,10 +188,12 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
 
         Assert.Equal("psp", analysis.SuggestedSystems[0].Id);
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("psp"));
+        // PS1 lists ISO and CHD but not CSO; PS2 lists all three. Wherever the container is
+        // shared, the validated PARAM.SFO has to veto the PlayStation match.
         Assert.Equal(
-            extension.Equals(".iso", StringComparison.OrdinalIgnoreCase)
-                ? GameFileMatch.Incompatible
-                : GameFileMatch.Unsupported,
+            extension.Equals(".cso", StringComparison.OrdinalIgnoreCase)
+                ? GameFileMatch.Unsupported
+                : GameFileMatch.Incompatible,
             analysis.MatchFor("playstation"));
         Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("playstation2"));
         Assert.Equal(
@@ -266,6 +268,30 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
 
         Assert.Null(exception);
         Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("psp"));
+    }
+
+    [Theory]
+    // A descriptor pointing past the end of the decoded image, and a container whose own header
+    // is corrupt. Neither may throw out of an import inspection; both are simply not PSP games.
+    [InlineData(true)]
+    [InlineData(false)]
+    public void PspImage_MalformedChdIsRejectedWithoutThrowing(bool corruptTheContainer)
+    {
+        var path = Path.Combine(BaseDirectory, $"Malformed {corruptTheContainer}.chd");
+        var iso = PspIsoBuilder.Build();
+        if (!corruptTheContainer)
+            iso.AsSpan(21 * 2048 + 2, 3).Fill(0xFF);
+        var chd = ChdImageBuilder.BuildDvdChd(iso);
+        if (corruptTheContainer)
+            chd.AsSpan(56, 4).Fill(0xFF); // an absurd hunk size fails the header's own checks
+        File.WriteAllBytes(path, chd);
+
+        var exception = Record.Exception(() => _rules.AnalyzeFile(path));
+        var analysis = _rules.AnalyzeFile(path);
+
+        Assert.Null(exception);
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("psp"));
+        Assert.False(_rules.IsFolderCandidate(path, System("psp")));
     }
 
     [Fact]
@@ -355,6 +381,15 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
         File.WriteAllBytes(path, bytes);
         return path;
     }
+
+    /// <summary>Packs a PSP ISO into the container named by <paramref name="extension"/>.</summary>
+    private static byte[] WrapPspImage(byte[] iso, string extension) =>
+        extension.ToLowerInvariant() switch
+        {
+            ".cso" => CompressedIsoBuilder.BuildCso(iso),
+            ".chd" => ChdImageBuilder.BuildDvdChd(iso),
+            _ => iso,
+        };
 
     private static Core.Systems.GameSystem System(string id) =>
         KnownSystems.All.Single(system => system.Id == id);

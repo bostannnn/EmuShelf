@@ -69,6 +69,28 @@ public class ChdSectorSourceTests
         Assert.Equal("DiscContent", identifier.Source);
     }
 
+    // Guards ChdImageBuilder, which the PSP and import tests use to produce CHDs without a
+    // chdman install: its header, Huffman-coded map, and CRC-16 self-check have to be the real
+    // thing, and every logical sector must come back byte-identical to the source ISO.
+    [Fact]
+    public void ChdImageBuilderDvdImage_DecodesLogicalBytesMatchingSourceIso()
+    {
+        var iso = File.ReadAllBytes(Fixture("game.iso"));
+        var path = Path.Combine(Path.GetTempPath(), $"EmuShelfTests-{Guid.NewGuid():N}.chd");
+        File.WriteAllBytes(path, ChdImageBuilder.BuildDvdChd(iso));
+        try
+        {
+            using var source = ChdSectorSource.TryOpen(path);
+            Assert.NotNull(source);
+
+            Assert.Equal(iso, ReadAllSectors(source!, iso.Length));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void CompressedCd_CookedFrameBytes_AreNotOffsetAsRawHeaders_WhenChdmanAvailable()
     {

@@ -346,6 +346,7 @@ an individual PS3-folder import.
       The verified initial set is standalone `.iso` and `.cso` images containing a parseable
       `PSP_GAME/PARAM.SFO`; archive, CHD, PBP, and other compressed variants wait for an exact
       content/identity design rather than treating a container as an opaque game file.
+      (CHD joined that set on 2026-07-26 under the same PARAM.SFO rule — see M21.)
 - [x] Read small PSP `PARAM.SFO` evidence (`DISC_ID`, title where trustworthy) from every
       accepted image without modifying it. Store a valid exact disc id for later metadata lookup,
       retain distinct regions/revisions as distinct paths, and fall back to the filename only for
@@ -470,6 +471,14 @@ it must not create a second downloader, account flow, or background polling mech
       reader can locate and validate `PSP_GAME/PARAM.SFO`, preserve exact `DISC_ID` evidence,
       launch it with a verified PPSSPP release, and prove read-only source bytes/timestamps with
       ISO/CSO parity and malformed-container fixtures. Do not treat a CHD as an opaque PSP file.
+  - Landed 2026-07-26: `.chd` joined the PSP extension map, and `PspGameMetadataReader` and
+    `PspDiscHasher` dispatch it to the existing DVD-geometry `ChdSectorSource`. PARAM.SFO
+    validation, `DISC_ID` evidence, read-only bytes/timestamps, and the pinned RetroAchievements
+    hash are all asserted at ISO/CSO parity, with malformed-descriptor and malformed-container
+    cases covered. Tests build CHDs via `ChdImageBuilder`, so no chdman install is required.
+  - Remaining: launch one real PSP CHD with a verified PPSSPP release on Windows. PPSSPP has
+    loaded CHD since 1.15 and EmuShelf passes every container as the same single argv entry, so
+    no launch-path change is expected — but this stays unchecked until a real launch confirms it.
 - [ ] Run the opt-in `chdman` CD-decode test on Windows CI/dev. `ChdSectorSourceTests`
       `CompressedCd_CookedFrameBytes_AreNotOffsetAsRawHeaders_WhenChdmanAvailable` now skips
       cleanly when `chdman` is absent (fixed 2026-07-19); provision a pinned `chdman` (from MAME

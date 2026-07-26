@@ -3,7 +3,8 @@ using EmuShelf.Core.Launching;
 namespace EmuShelf.Integrations.Emulators.Ppsspp;
 
 /// <summary>
-/// PPSSPP launches the M14 PSP ISO/CSO import profile with the game path as one argv entry.
+/// PPSSPP launches the PSP ISO/CSO/CHD import profile with the game path as one argv entry.
+/// Every container is passed the same way, so CHD needs no launch-argument handling of its own.
 /// </summary>
 public static class PpssppDefinition
 {
