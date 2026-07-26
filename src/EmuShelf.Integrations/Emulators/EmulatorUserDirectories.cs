@@ -60,10 +60,22 @@ public static class EmulatorUserDirectories
         }
     }
 
-    /// <summary>Dolphin's User directory, which holds <c>Config/</c> and <c>Load/Textures/</c>.</summary>
+    /// <summary>
+    /// Dolphin's User directory, which holds <c>Config/</c> and <c>Load/Textures/</c>.
+    /// </summary>
+    /// <remarks>
+    /// Dolphin has no settings key naming its own user directory the way PCSX2 and DuckStation name
+    /// their texture folder, and a launcher can point it somewhere else entirely with <c>-u</c>. A
+    /// machine can therefore hold several valid-looking User directories at once. Among the ones
+    /// that exist, this prefers whichever actually contains texture packs: an empty
+    /// <c>Load/Textures</c> can never produce a match, so choosing it over a populated sibling is
+    /// strictly worse and never what the user meant. The Settings override remains the escape hatch
+    /// when the guess is wrong.
+    /// </remarks>
     public static string? FindDolphin(string? installationDirectory, bool isFlatpak)
     {
-        return First(Candidates());
+        var existing = Candidates().Select(ExistingDirectory).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        return existing.FirstOrDefault(HasTexturePacks) ?? existing.FirstOrDefault();
 
         IEnumerable<string?> Candidates()
         {
@@ -74,10 +86,58 @@ public static class EmulatorUserDirectories
             }
 
             // Dolphin uses a "User" folder beside the executable when one exists (portable builds).
-            yield return ExistingDirectory(Combine(installationDirectory, "User"));
+            yield return Combine(installationDirectory, "User");
+
+            // Frontends that manage their own emulator tree (ES-DE and similar) keep the binaries
+            // under <root>/Emulators/... and the per-emulator data under <root>/saves/<name>/User,
+            // then launch Dolphin with -u pointing there. Walk up from the executable looking for
+            // that sibling rather than assuming the data sits beside the binary.
+            foreach (var candidate in FrontendManagedDolphinDirectories(installationDirectory))
+                yield return candidate;
+
             yield return Documents("Dolphin Emulator");
             yield return Home(".local", "share", "dolphin-emu");
             yield return Home("Library", "Application Support", "Dolphin");
+        }
+    }
+
+    private static IEnumerable<string?> FrontendManagedDolphinDirectories(string? installationDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(installationDirectory))
+            yield break;
+
+        DirectoryInfo? directory;
+        try
+        {
+            directory = new DirectoryInfo(installationDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            yield break;
+        }
+
+        // Bounded walk: deep enough to clear <root>/Emulators/dolphin-emu, short enough that this
+        // never turns into a filesystem crawl.
+        for (var depth = 0; depth < 4 && directory is not null; depth++, directory = directory.Parent)
+        {
+            foreach (var name in DolphinDataDirectoryNames)
+                yield return Combine(directory.FullName, "saves", name, "User");
+        }
+    }
+
+    private static readonly string[] DolphinDataDirectoryNames = ["dolphin", "dolphin-emu"];
+
+    /// <summary>Whether a User directory holds at least one texture-pack folder.</summary>
+    private static bool HasTexturePacks(string userDirectory)
+    {
+        try
+        {
+            var textures = Path.Combine(userDirectory, "Load", "Textures");
+            return Directory.Exists(textures) && Directory.EnumerateDirectories(textures).Any();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

@@ -1828,3 +1828,20 @@ never becomes a startup cost.
 
 Texture-root overrides are also persisted through `ISettingsService` now; they previously lived only
 in memory and silently reverted to auto-detection on the next launch.
+
+## 2026-07-26 — Dolphin's user directory is chosen by which one holds packs
+
+Dolphin names no user directory in its own settings the way PCSX2 and DuckStation name their
+texture folder, and a launcher can redirect it entirely with `-u`. A real ES-DE install had two
+valid-looking candidates at once: an empty `User` beside the binary under `Emulators/dolphin-emu`,
+and the populated one at `saves/dolphin/User` holding 31 packs. Taking the first existing candidate
+found zero packs forever, with no visible reason.
+
+Discovery now adds the frontend-managed `<root>/saves/<dolphin>/User` sibling (a bounded four-level
+walk up from the executable, never a filesystem crawl) and, among the candidates that exist, prefers
+whichever actually contains texture-pack folders. An empty `Load/Textures` can never produce a
+match, so choosing it over a populated sibling is strictly worse and never what the user meant.
+
+This is a discovery heuristic, not a claim about loading: the library mark still means "installed
+and matched", and Dolphin's loading status stays Unknown unless `GFX.ini` proves otherwise. The
+Settings override remains the escape hatch when the guess is wrong.

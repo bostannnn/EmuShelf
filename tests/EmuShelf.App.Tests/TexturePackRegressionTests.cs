@@ -5,6 +5,7 @@ using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.TexturePacks;
+using EmuShelf.Integrations.Emulators;
 
 namespace EmuShelf.App.Tests;
 
@@ -178,6 +179,46 @@ public sealed class TexturePackRegressionTests : IDisposable
         Assert.Equal(TexturePackRootStatus.Ready, platform.RootStatus);
         Assert.False(platform.IsStale);
         Assert.True(reloaded.HasScanned);
+    }
+
+    [Fact]
+    public void DolphinDiscovery_PrefersAPopulatedUserFolderOverAnEmptyOneBesideTheExecutable()
+    {
+        // The real case this came from: a frontend-managed layout keeps the Dolphin binary under
+        // <root>/Emulators/dolphin-emu (with its own empty User folder) while the actual packs live
+        // in <root>/saves/dolphin/User. Picking the empty one found zero packs forever.
+        var install = Path.Combine(_root, "Emulators", "dolphin-emu");
+        Directory.CreateDirectory(Path.Combine(install, "User", "Load", "Textures"));
+        var managed = Path.Combine(_root, "saves", "dolphin", "User");
+        Directory.CreateDirectory(Path.Combine(managed, "Load", "Textures", "GALE01"));
+
+        var chosen = EmulatorUserDirectories.FindDolphin(install, isFlatpak: false);
+
+        Assert.Equal(managed, chosen);
+    }
+
+    [Fact]
+    public void DolphinDiscovery_KeepsTheFolderBesideTheExecutableWhenItIsTheOneWithPacks()
+    {
+        // The ordinary portable install must not be dragged away by the new candidate.
+        var install = Path.Combine(_root, "Emulators", "dolphin-emu");
+        Directory.CreateDirectory(Path.Combine(install, "User", "Load", "Textures", "GALE01"));
+        Directory.CreateDirectory(Path.Combine(_root, "saves", "dolphin", "User", "Load", "Textures"));
+
+        var chosen = EmulatorUserDirectories.FindDolphin(install, isFlatpak: false);
+
+        Assert.Equal(Path.Combine(install, "User"), chosen);
+    }
+
+    [Fact]
+    public void DolphinDiscovery_FallsBackToTheFirstExistingFolderWhenNoneHoldsPacks()
+    {
+        var install = Path.Combine(_root, "Emulators", "dolphin-emu");
+        Directory.CreateDirectory(Path.Combine(install, "User"));
+
+        var chosen = EmulatorUserDirectories.FindDolphin(install, isFlatpak: false);
+
+        Assert.Equal(Path.Combine(install, "User"), chosen);
     }
 
     [Fact]
