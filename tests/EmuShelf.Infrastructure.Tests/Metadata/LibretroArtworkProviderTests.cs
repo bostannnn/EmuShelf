@@ -50,6 +50,22 @@ public sealed class LibretroArtworkProviderTests
         Assert.Equal(["Metal Gear Acid"], filenameFallback);
     }
 
+    // A catalogue title always carries its region and language tags, so an alias table keyed by
+    // product title has to drop them before the lookup. Testing only the bare product title hid
+    // that the aliases never fired against a real match.
+    [Theory]
+    [InlineData("Persona 2 - Batsu - Eternal Punishment (Japan)", "Persona 2 - Batsu")]
+    [InlineData("Metal Gear Acid (Europe) (En,Fr,De,Es,It)", "Metal Gear Ac!d")]
+    [InlineData("Lumines - Puzzle Fusion (Europe) (En,Fr,De,Es,It)", "Lumines")]
+    public void GetIndexedTitleQueries_AppliesAnAliasToATaggedCatalogTitle(
+        string canonicalTitle,
+        string expectedAlias)
+    {
+        var queries = Provider().GetIndexedTitleQueries(Match(canonicalTitle));
+
+        Assert.Equal([canonicalTitle, expectedAlias], queries);
+    }
+
     private static LibretroArtworkProvider Provider() =>
         new("Sony - PlayStation Portable");
 

@@ -1466,6 +1466,18 @@ not accept native focus in its virtual window backend, so real controller/access
 remains an explicit M31 Phase 4 acceptance check even though logical navigation and rendered focus
 geometry are covered automatically.
 
+## 2026-07-26 — Gamepad logical focus owns the visible focus treatment
+
+Gamepad controls still receive real Avalonia focus so keyboard routing, controller navigation, and
+accessibility state remain correct. They do not also render Fluent's default focus adorner when the
+same control already has an EmuShelf logical-focus ring. Rendering both layers produced doubled
+red/white outlines in headless captures and black corner rectangles on the SteamOS/Linux compositor.
+
+The suppression is limited to the custom-focused Gamepad game, platform, modal, footer, and
+achievement surfaces. Text fields and Desktop controls retain their ordinary theme focus behavior.
+Modal choices stretch across the available sheet width, while the footer Menu prompt stays visually
+neutral until genuine pointer hover, leaving one unmistakable strong selection at a time.
+
 ## 2026-07-25 — Save providers authorize local destinations; PPSSPP is the first generalized provider
 
 Remote save-unit identifiers are untrusted portable names, not local paths. Each emulator provider
@@ -1556,3 +1568,23 @@ The Nintendo DS profile falls back from the ROM checksum to the cartridge header
 the DAT records in its `serial` field and which a patch or trim leaves untouched. A fallback-key
 match applies the canonical title like any other match, so a modified dump is retitled to the
 retail release it derives from; the release tags remain in its filename.
+
+## 2026-07-26 — A cartridge game code is never a catalogue key
+
+This supersedes the Nintendo DS fallback-key portion of the preceding decision, which was wrong in
+practice. A romhack patches the ROM but never the four-character header game code, so keying on it
+resolved `New Super Mario Bros. (USA)`, its `(Deluxe)` hack, and `Newer Super Mario Bros. DS` — all
+game code `A2DE` — to one DAT entry, giving three distinct library rows the same title and cover.
+The fallback mis-identified precisely the modified dumps it was added to help.
+
+The checksum is therefore the only cartridge catalogue key. A modified dump is matched by filename
+through the artwork index instead, which recovers its cover without claiming it is the original
+release. The DAT parser keeps no TitleId keying, since nothing consumes it.
+
+Alias tables that map a catalogue title to an artwork filename are keyed by product title and
+looked up with the region and language tags removed. A catalogue title always carries those tags,
+so the previous whole-title lookup never fired against a real match.
+
+GameTDB's PlayStation 3 `coverHQ` set is partial. Candidates now cover every region in the
+high-resolution set and then every region in the standard `cover` set, so a release that only ever
+received the standard image is no longer left without a cover.

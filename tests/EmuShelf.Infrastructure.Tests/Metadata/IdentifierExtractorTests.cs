@@ -382,9 +382,20 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
                 .First()
                 .SourceUri.AbsoluteUri);
 
+        var gameTdbCandidates = profile.ArtworkProviders.First().GetCandidates([identifier], null);
         Assert.Equal(
             "https://art.gametdb.com/ps3/coverHQ/US/BLUS30443.jpg",
-            profile.ArtworkProviders.First().GetCandidates([identifier], null).First().SourceUri.AbsoluteUri);
+            gameTdbCandidates.First().SourceUri.AbsoluteUri);
+
+        // `coverHQ` is a partial set, so the standard-resolution set is probed after every
+        // high-resolution region rather than leaving the release without a cover.
+        Assert.Contains(
+            gameTdbCandidates,
+            candidate => candidate.SourceUri.AbsoluteUri ==
+                "https://art.gametdb.com/ps3/cover/US/BLUS30443.jpg");
+        Assert.True(
+            gameTdbCandidates.TakeWhile(candidate =>
+                candidate.SourceUri.AbsolutePath.Contains("/coverHQ/", StringComparison.Ordinal)).Any());
     }
 
     [Theory]

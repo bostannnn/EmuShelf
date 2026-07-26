@@ -88,11 +88,11 @@ public static class KnownMetadataProfiles
             GameIdentifierKind.Sha1,
             RawCatalog("metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat"),
             NintendoDsExtractor,
-            [new LibretroArtworkProvider("Nintendo - Nintendo DS")],
-            // The DS DAT records the four-character game code from the cartridge header. Falling
-            // back to it identifies a translated, undubbed, or trimmed dump, whose ROM checksum
-            // matches no DAT entry but whose header is untouched.
-            FallbackCatalogKeyKinds: [GameIdentifierKind.TitleId]),
+            // The header game code is deliberately not a catalogue fallback key: a romhack patches
+            // the ROM but never that code, so every hack of a game would resolve to the original's
+            // entry and inherit its title and cover. The checksum stays the only DS catalogue key,
+            // and a modified dump is matched by filename through the artwork index instead.
+            [new LibretroArtworkProvider("Nintendo - Nintendo DS")]),
         new(
             "gba",
             GameIdentifierKind.Sha1,

@@ -75,7 +75,12 @@ public sealed class GameTdbArtworkProvider : IGameArtworkProvider
 
 public sealed class GameTdbPlayStation3ArtworkProvider : IGameArtworkProvider
 {
-    private const string BaseUri = "https://art.gametdb.com/ps3/coverHQ";
+    private const string BaseUri = "https://art.gametdb.com/ps3";
+
+    // `coverHQ` is a partial set: many releases only ever received the standard-resolution
+    // `cover`. Preferring the high-resolution set and falling back to the standard one keeps the
+    // better image where it exists without losing the games it never covered.
+    private static readonly string[] CoverSets = ["coverHQ", "cover"];
 
     public string Id => "gametdb-ps3";
 
@@ -86,11 +91,12 @@ public sealed class GameTdbPlayStation3ArtworkProvider : IGameArtworkProvider
         .Select(identifier => identifier.Value.Replace("-", string.Empty, StringComparison.Ordinal).ToUpperInvariant())
         .Where(serial => serial.Length == 9)
         .Distinct(StringComparer.Ordinal)
-        .SelectMany(serial => RegionFolders(serial)
-            .Select(region => new ArtworkCandidate(
-                Id,
-                new Uri($"{BaseUri}/{region}/{Uri.EscapeDataString(serial)}.jpg"),
-                ".jpg")))
+        .SelectMany(serial => CoverSets
+            .SelectMany(set => RegionFolders(serial)
+                .Select(region => new ArtworkCandidate(
+                    Id,
+                    new Uri($"{BaseUri}/{set}/{region}/{Uri.EscapeDataString(serial)}.jpg"),
+                    ".jpg"))))
         .ToArray();
 
     private static IEnumerable<string> RegionFolders(string serial)
@@ -151,15 +157,20 @@ public sealed class LibretroArtworkProvider : IArtworkTitleIndexProvider
 
     public IReadOnlyList<string> GetIndexedTitleQueries(GameCatalogMatch match)
     {
+        // The aliases are keyed by product title, so the catalogue's region and language tags are
+        // dropped before the lookup — "Persona 2 - Batsu - Eternal Punishment (Japan)" is the same
+        // release as the alias entry for "Persona 2 - Batsu - Eternal Punishment".
         if (!string.Equals(match.CatalogId, "libretro-database", StringComparison.Ordinal) ||
             !string.Equals(_playlistName, PspPlaylist, StringComparison.Ordinal) ||
-            !PspArtworkTitleAliases.TryGetValue(match.CanonicalTitle, out var alias))
+            !PspArtworkTitleAliases.TryGetValue(ProductTitle(match.CanonicalTitle), out var alias))
         {
             return [match.CanonicalTitle];
         }
 
         return [match.CanonicalTitle, alias];
     }
+
+    private static string ProductTitle(string title) => title.Split(['(', '['], 2)[0].TrimEnd();
 
     internal static string SanitizeFilename(string title)
     {

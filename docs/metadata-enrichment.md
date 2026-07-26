@@ -84,9 +84,18 @@ flight also wins the final database compare-and-set.
 | GameCube | Six-character disc id from ISO/GCM/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Wii | Six-character disc id from ISO/CISO/RVZ/WBFS header | Libretro GameTDB DAT, keyed by disc id | GameTDB by disc id, then Libretro by canonical title |
 | Mega Drive / Genesis | SHA-1 of the verified normalized cartridge stream | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
-| Nintendo DS | SHA-1 of the verified raw cartridge, then the four-character header game code | Libretro No-Intro DAT, keyed by SHA-1 and falling back to the game code | Libretro source-indexed title match after the exact SHA-1 match |
+| Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 | Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 | Super Nintendo | SHA-1 of the headerless ROM (optional 512-byte copier header normalized away); header title is display-only | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
+
+A cartridge header game code is never a catalog key. A romhack patches the ROM but leaves that
+code untouched, so keying on it would resolve every hack to the original release and give the two
+the same title and cover. The checksum stays the only cartridge key, and a modified dump is
+matched by filename through the artwork index instead.
+
+PlayStation 3 covers are addressed by serial through GameTDB, high-resolution `coverHQ` set first
+and the standard `cover` set after it: `coverHQ` is partial, and several releases only ever
+received the standard image.
 
 GameCube and Wii covers are addressed by the disc id through GameTDB — the disc id's fourth
 character selects a region/language folder (`US`, `JA`, `EN`, `DE`, …), with `EN` and `US` tried
