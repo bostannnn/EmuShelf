@@ -48,7 +48,8 @@ public interface IDialogService
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
-        CloudSaveSyncSettingsContext? cloudSaves = null);
+        CloudSaveSyncSettingsContext? cloudSaves = null,
+        TexturePackSettingsContext? texturePacks = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);

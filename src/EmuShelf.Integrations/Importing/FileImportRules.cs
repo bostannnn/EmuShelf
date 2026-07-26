@@ -31,9 +31,10 @@ public sealed class FileImportRules : IGameImportRules
                 { ".cue", ".chd", ".m3u", ".pbp", ".iso" },
             [PlayStation2Id] = new(StringComparer.OrdinalIgnoreCase)
                 { ".cue", ".iso", ".chd", ".cso", ".m3u" },
-            // PPSSPP's documented desktop load path. A candidate must also contain a valid
-            // PSP_GAME/PARAM.SFO, so a generic ISO/CSO is never auto-imported as a PSP game.
-            [PspId] = new(StringComparer.OrdinalIgnoreCase) { ".iso", ".cso" },
+            // PPSSPP's documented desktop load path (CHD since PPSSPP 1.15). A candidate must
+            // also contain a valid PSP_GAME/PARAM.SFO, so a generic ISO/CSO/CHD is never
+            // auto-imported as a PSP game.
+            [PspId] = new(StringComparer.OrdinalIgnoreCase) { ".iso", ".cso", ".chd" },
             // The extension is only a routing hint: the reader requires the Sega header and,
             // for .smd, the canonical 512-byte copier-header/interleaved layout.
             [MegaDriveId] = new(StringComparer.OrdinalIgnoreCase) { ".md", ".gen", ".bin", ".smd" },
@@ -95,7 +96,7 @@ public sealed class FileImportRules : IGameImportRules
         var dreamcastImage = ExtensionsBySystem[DreamcastId].Contains(extension) &&
                              DreamcastGdiReader.TryRecognize(path);
 
-        // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO
+        // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO/CHD
         // extensions. Put it first so the system picker defaults to PSP, and never let an
         // explicitly confirmed PS1/PS2 import misclassify a validated PSP image.
         if (pspEvidence is not null && FindSystem(PspId) is { } pspSystem)
@@ -368,10 +369,10 @@ public sealed class FileImportRules : IGameImportRules
                 when extension.Equals(".iso", StringComparison.OrdinalIgnoreCase) &&
                      detectedNintendoSystem != NintendoDiscSystem.Unknown =>
                 GameFileMatch.Incompatible,
+            // Every PSP container extension is also a PlayStation one, so validated PSP evidence
+            // has to veto the PS1/PS2 match for all of them, not just the uncompressed ISO.
             PlayStationId or PlayStation2Id
-                when pspEvidence &&
-                     (extension.Equals(".iso", StringComparison.OrdinalIgnoreCase) ||
-                      extension.Equals(".cso", StringComparison.OrdinalIgnoreCase)) =>
+                when pspEvidence && ExtensionsBySystem[PspId].Contains(extension) =>
                 GameFileMatch.Incompatible,
             _ => GameFileMatch.Compatible,
         };

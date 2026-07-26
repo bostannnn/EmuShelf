@@ -7,5 +7,6 @@ public enum LibrarySortColumn
     Console,
     Format,
     Achievements,
+    Textures,
     Status,
 }

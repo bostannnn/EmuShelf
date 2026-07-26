@@ -1709,6 +1709,91 @@ The validation was performed under Ubuntu WSL2, not on Steam Deck hardware. The 
 Linux/SteamOS hardware-verification item therefore remains incomplete pending one real-device
 launch and permission check.
 
+## 2026-07-26 — Texture-pack inventory mirrors emulator loaders and remains external state
+
+Installed texture packs are discovered through one read-only source per emulator installation and
+are not stored as a flag on `Game`. A pack must contain replacement content accepted by that
+emulator's loader; an ID-shaped directory containing only dumps or unrelated images is an attention
+state, not a library match. Matching follows explicit emulator rules only: exact PlayStation serial,
+hyphenless PSP game ID, exact or documented three-character Dolphin ID, and documented shared or
+multi-disc behavior. Titles are never used as a fallback.
+
+The library mark means "usable pack installed and matched." Effective global/per-game loading is a
+separate versioned configuration result and stays unknown when EmuShelf cannot prove precedence.
+Inventory, configuration, pack files, and game files are always read-only; Settings may rescan or
+open a folder but never installs, repairs, moves, renames, or deletes a pack.
+
+## 2026-07-26 — Texture inventory records evidence, not exhaustive file counts
+
+Scanners stop after proving that a pack has replacement content instead of recursively counting
+every image. Exact counts are neither required for the library mark nor cheap for large packs, and
+would make an explicit rescan scale with every texture file. PPSSPP's automatically generated
+`textures.ini` is not proof by itself: a directory containing only that file and the `new` dump
+folder remains an attention state. A PPSSPP directory pack needs at least one supported image
+outside `new`; a `textures.zip` pack needs a root `textures.ini` plus replacement image content.
+
+## 2026-07-26 — A per-game emulator configuration file makes loading status Unknown, not global
+
+`IniTexturePackLoadingResolver` answers Enabled/Disabled from a versioned global setting, but as
+soon as a per-game configuration file exists for the game being asked about it returns Unknown
+instead. PCSX2, DuckStation, and Dolphin all layer a per-game file over the global switch, and the
+layering rules differ per emulator and per version. Reporting the global value while a per-game file
+sits on top of it is exactly the confident wrong answer this feature forbids, and an emulator-by-
+emulator precedence model is not something a read-only adapter can verify. Absent settings and
+unrecognized boolean spellings are Unknown for the same reason — only a present, recognized, and
+unlayered setting produces Enabled or Disabled.
+
+## 2026-07-26 — One classification pass feeds both the library marks and the Settings totals
+
+`TexturePackLibraryMap.Build` takes the completed snapshots plus one bulk `GetAllIdentifiers()` read
+and produces both the per-pack classification list and the per-game match map. Settings and the
+library therefore cannot report different numbers, and no library row performs a database read or a
+disc parse of its own. `IGameMetadataStore.GetAllIdentifiers()` was added for this: the existing
+per-row `GetIdentifiers(gameId)` would have made the pass N+1 over the library.
+
+Two states exist specifically to avoid overclaiming. A usable pack whose identifier matches nothing
+is `NoLibraryMatch` only when the library actually holds identifiers of that kind; otherwise it is
+`IdentifierPending`, because identification may simply not have run yet. A Dolphin shared pack is
+`SharedPack` and marks no individual game — it applies to everything, so marking every GameCube and
+Wii title as "has a texture pack" would be misleading rather than informative.
+
+## 2026-07-26 — PSP accepts CHD through the existing DVD-geometry reader
+
+PSP imports were limited to `.iso` and `.cso`, so a folder of PSP CHDs scanned as empty and an
+explicitly picked PSP `.chd` was offered only as a PS1/PS2 candidate. PPSSPP has loaded CHD since
+1.15, so the gap was EmuShelf's alone.
+
+No new container work was needed. A PSP CHD is DVD geometry — 2048-byte units, zlib or LZMA hunks —
+which `ChdSectorSource` already decodes and which the committed chdman fixtures already prove
+byte-exact against a source ISO. `PspGameMetadataReader` and `PspDiscHasher` both consume
+`ILogicalSectorReader`, so CHD support is one dispatch branch in each, and the PARAM.SFO evidence
+rule is unchanged: a CHD without a valid `PSP_GAME/PARAM.SFO` is never auto-imported as a PSP game.
+
+The RetroAchievements algorithm version is deliberately **not** bumped. The PSP hash is PARAM.SFO
+plus EBOOT.BIN read by logical sector, so a CHD and the ISO it was built from produce the same
+digest; bumping would recompute every stored PSP hash to the identical value. A test pins that
+equality across `.iso`, `.cso`, and `.chd`.
+
+Because every PSP container extension is also a PlayStation one, the PS1/PS2 veto that validated
+PSP evidence applies is now keyed off the PSP extension set rather than a hardcoded ISO/CSO pair,
+so future PSP containers cannot silently reintroduce a misclassification.
+
+Tests build CHDs with `ChdImageBuilder` rather than requiring a chdman install: it emits a real v5
+header and a real Huffman-coded hunk map with a valid CRC-16 self-check, storing every hunk as
+COMPRESSION_NONE — a shape chdman itself emits for incompressible hunks. The production decoder
+reads it through the same path it uses for chdman output, and a round-trip test asserts every
+logical sector matches the source ISO. The committed chdman fixtures remain the byte-exactness
+proof for the zlib/LZMA/cd\* codec paths.
+
+The added PARAM.SFO probe costs about 22 ms per DVD-geometry CHD, measured over a real 206-disc PS2
+folder: import analysis of that folder went from roughly 0.3 s to 4.9 s. This is accepted rather
+than optimized. Import is a user-initiated action that already reports progress, it is not the
+startup path the performance rule protects, and every cheaper filter considered (volume descriptor
+fields, filename hints) would decide "not PSP" on weaker evidence than the SFO itself — trading a
+one-time five seconds for the possibility of silently failing to recognize a real PSP image.
+CD-geometry CHDs are unaffected in practice (1–4 ms), since a PS1 disc's root directory is reached
+without decompressing large hunks.
+
 ## 2026-07-26 — DuckStation file-title cards sync by exact filename
 
 This supersedes the `PerGameFileTitle` exclusion in **2026-07-26 — DuckStation syncs configured

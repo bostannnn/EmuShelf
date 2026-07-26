@@ -191,16 +191,24 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
         Assert.Null(result.CanonicalHash);
     }
 
+    // The pinned hash is shared by every container: PARAM.SFO and EBOOT.BIN are read by logical
+    // sector, so a CHD must produce the same digest as the ISO it was built from.
     [Theory]
     [InlineData(".iso")]
     [InlineData(".cso")]
-    public void Identify_PspIsoAndCso_MatchPinnedDiscHashWithoutWriting(string extension)
+    [InlineData(".chd")]
+    public void Identify_PspIsoCsoAndChd_MatchPinnedDiscHashWithoutWriting(string extension)
     {
         Directory.CreateDirectory(BaseDirectory);
         var eboot = Enumerable.Range(0, 7000).Select(index => (byte)((index * 29 + 7) & 0xFF)).ToArray();
         var iso = PspIsoBuilder.Build("UCUS98653", "Example PSP", eboot);
         var path = Path.Combine(BaseDirectory, "game" + extension);
-        File.WriteAllBytes(path, extension == ".cso" ? CompressedIsoBuilder.BuildCso(iso) : iso);
+        File.WriteAllBytes(path, extension switch
+        {
+            ".cso" => CompressedIsoBuilder.BuildCso(iso),
+            ".chd" => ChdImageBuilder.BuildDvdChd(iso),
+            _ => iso,
+        });
         var timestamp = new DateTime(2026, 7, 19, 18, 2, 0, DateTimeKind.Utc);
         File.SetLastWriteTimeUtc(path, timestamp);
         var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));

@@ -22,4 +22,7 @@ public sealed record AppSettings
 
     /// <summary>Cloud save-sync configuration. Holds no secret — the OAuth token stays in rclone's own config.</summary>
     public CloudSaveSyncSettings CloudSaveSync { get; init; } = new();
+
+    /// <summary>Installed texture-pack inventory configuration. Read-only discovery only.</summary>
+    public TexturePackSettings TexturePacks { get; init; } = new();
 }

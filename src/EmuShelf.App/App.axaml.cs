@@ -154,7 +154,8 @@ public partial class App : Application
                 interfaceModeService,
                 retroAchievementsBadges,
                 Bootstrapper.CloudSaveSync,
-                applicationLifetime: new ApplicationLifetimeService(desktop));
+                applicationLifetime: new ApplicationLifetimeService(desktop),
+                texturePacks: Bootstrapper.TexturePacks);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
@@ -174,6 +175,7 @@ public partial class App : Application
                 {
                     _ = viewModel.RefreshAvailabilityAsync();
                     _ = viewModel.RefreshRetroAchievementsProgressAtStartupAsync();
+                    _ = viewModel.LoadTexturePacksAtStartupAsync();
                 }, DispatcherPriority.Background);
             desktop.Exit += (_, _) =>
             {

@@ -452,6 +452,9 @@ public class GameMetadataServiceTests
         public IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null) => [Game];
         public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId) => _identifiers;
 
+        public IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers() =>
+            new Dictionary<long, IReadOnlyList<GameIdentifier>> { [Game.Id] = _identifiers };
+
         public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers) =>
             _identifiers = identifiers;
 

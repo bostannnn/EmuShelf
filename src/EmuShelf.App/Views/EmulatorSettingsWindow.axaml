@@ -545,6 +545,147 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsTexturePacksSection}" Spacing="12">
+                        <Border Background="{DynamicResource EmuCardBrush}"
+                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                BorderThickness="1" CornerRadius="9" Padding="18">
+                            <StackPanel Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="TEXTURE PACKS" FontSize="10"
+                                               FontWeight="Bold" LetterSpacing="1"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                               Text="EmuShelf lists the replacement-texture packs your emulators already have installed and matches them to your library by the exact identifier each emulator uses. This is read-only: EmuShelf never installs, repairs, moves, renames, or deletes a pack, and never edits emulator settings. A pack with no matching game is not a problem - the game may simply not be in your library." />
+                                </StackPanel>
+
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                                    <StackPanel Grid.Column="0" Spacing="3">
+                                        <TextBlock Text="{Binding TexturePackSummary}" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding TexturePackLastScanText}" FontSize="11"
+                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Rescan" Classes="accent"
+                                            VerticalAlignment="Top"
+                                            Command="{Binding RescanTexturePacksCommand}"
+                                            IsEnabled="{Binding !IsTexturePackBusy}" />
+                                </Grid>
+
+                                <TextBlock Text="{Binding TexturePackStatusText}"
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+
+                                <!-- One row per registered texture platform. Adding a provider adds a
+                                     row here automatically; this template names no emulator. -->
+                                <ItemsControl ItemsSource="{Binding TexturePlatforms}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:TexturePackRowViewModel">
+                                            <StackPanel Spacing="8" Margin="0,0,0,14">
+                                                <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
+                                                    <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                                            Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                                                        <Image Width="32" Height="32"
+                                                               Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                                                               RenderOptions.BitmapInterpolationMode="None" />
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" Spacing="3">
+                                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                                        <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                                   TextWrapping="Wrap"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8"
+                                                      Margin="54,0,0,0">
+                                                    <TextBox Grid.Column="0" Text="{Binding DirectoryOverride, Mode=TwoWay}"
+                                                             IsReadOnly="True"
+                                                             Background="{DynamicResource EmuInputBrush}"
+                                                             BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                             PlaceholderText="{Binding OverridePlaceholder}" />
+                                                    <Button Grid.Column="1" Content="Browse..."
+                                                            Command="{Binding $parent[Window].((vm:EmulatorSettingsViewModel)DataContext).BrowseTextureOverrideCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Grid.Column="2" Content="Use detected"
+                                                            Command="{Binding $parent[Window].((vm:EmulatorSettingsViewModel)DataContext).ClearTextureOverrideCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Grid.Column="3" Content="Open folder"
+                                                            IsEnabled="{Binding CanOpenFolder}"
+                                                            Command="{Binding $parent[Window].((vm:EmulatorSettingsViewModel)DataContext).OpenTextureFolderCommand}"
+                                                            CommandParameter="{Binding DetectedRoot}" />
+                                                </Grid>
+                                                <TextBlock Margin="54,0,0,0" Text="{Binding DetectedRoot}"
+                                                           IsVisible="{Binding CanOpenFolder}"
+                                                           FontFamily="Monospace" FontSize="11"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                <TextBlock Margin="54,0,0,0" Text="{Binding LoadingText}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Text="Emulator" VerticalAlignment="Center"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding TextureEmulatorFilters}"
+                                              SelectedItem="{Binding TextureEmulatorFilter, Mode=TwoWay}" />
+                                    <TextBlock Grid.Column="2" Text="Status" VerticalAlignment="Center"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <ComboBox Grid.Column="3" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding TextureStatusFilters}"
+                                              SelectedItem="{Binding TextureStatusFilter, Mode=TwoWay}" />
+                                </Grid>
+
+                                <TextBlock IsVisible="{Binding HasNoTexturePacks}" TextWrapping="Wrap"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                           Text="No texture packs to show. Use Rescan after configuring an emulator, or change the filters above." />
+
+                                <ItemsControl ItemsSource="{Binding TexturePackEntries}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:TexturePackEntryViewModel">
+                                            <Border Background="{DynamicResource EmuInputBrush}"
+                                                    BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                    BorderThickness="1" CornerRadius="6"
+                                                    Padding="12" Margin="0,0,0,8">
+                                                <StackPanel Spacing="3">
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                        <TextBlock Grid.Column="0" Text="{Binding PackKey}"
+                                                                   FontWeight="SemiBold"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding StatusText}"
+                                                                   FontSize="11"
+                                                                   ToolTip.Tip="{Binding StatusTooltip}"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding MatchedGames}"
+                                                               IsVisible="{Binding HasMatchedGames}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding EmulatorName}" FontSize="11"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                    <TextBlock Text="{Binding SourcePath}"
+                                                               FontFamily="Monospace" FontSize="11"
+                                                               TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </Panel>
             </ScrollViewer>
         </Grid>

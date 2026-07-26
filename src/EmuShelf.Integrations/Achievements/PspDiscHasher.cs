@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Metadata;
+using EmuShelf.Integrations.Metadata.Chd;
 
 namespace EmuShelf.Integrations.Achievements;
 
@@ -29,12 +30,27 @@ internal static class PspDiscHasher
         return Convert.ToHexString(md5.GetHashAndReset()).ToLowerInvariant();
     }
 
-    private static ILogicalSectorReader OpenDisc(string path) =>
-        Path.GetExtension(path).Equals(".cso", StringComparison.OrdinalIgnoreCase)
-            ? CompressedIsoSectorSource.TryOpen(path)
+    // The hash is PARAM.SFO plus EBOOT.BIN read by logical sector, so the container only decides
+    // which reader opens the image; a CHD and the ISO it was made from hash identically.
+    private static ILogicalSectorReader OpenDisc(string path)
+    {
+        var extension = Path.GetExtension(path);
+        if (extension.Equals(".cso", StringComparison.OrdinalIgnoreCase))
+        {
+            return CompressedIsoSectorSource.TryOpen(path)
                 ?? throw new UnsupportedDiscLayoutException(
-                    "This compressed PSP ISO could not be opened by the local reader.")
-            : CdSectorReader.Open(path);
+                    "This compressed PSP ISO could not be opened by the local reader.");
+        }
+
+        if (extension.Equals(".chd", StringComparison.OrdinalIgnoreCase))
+        {
+            return ChdSectorSource.TryOpen(path)
+                ?? throw new UnsupportedDiscLayoutException(
+                    "This PSP CHD could not be opened by the local reader.");
+        }
+
+        return CdSectorReader.Open(path);
+    }
 
     private static void AppendFile(
         IncrementalHash md5,

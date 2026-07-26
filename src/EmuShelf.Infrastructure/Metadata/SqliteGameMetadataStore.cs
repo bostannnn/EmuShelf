@@ -98,6 +98,40 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
         return identifiers;
     }
 
+    public IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT GameId, Kind, Value, Source, IsPrimary
+            FROM GameIdentifiers
+            ORDER BY GameId, IsPrimary DESC, rowid;
+            """;
+
+        var grouped = new Dictionary<long, List<GameIdentifier>>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var gameId = reader.GetInt64(0);
+            if (!grouped.TryGetValue(gameId, out var identifiers))
+            {
+                identifiers = [];
+                grouped[gameId] = identifiers;
+            }
+
+            identifiers.Add(new GameIdentifier(
+                (GameIdentifierKind)reader.GetInt32(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetInt64(4) != 0));
+        }
+
+        return grouped.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<GameIdentifier>)pair.Value);
+    }
+
     public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers)
     {
         using var connection = _database.CreateConnection();

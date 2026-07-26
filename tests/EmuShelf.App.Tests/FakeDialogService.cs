@@ -10,6 +10,7 @@ internal sealed class FakeDialogService : IDialogService
     public IReadOnlyList<string> FilesToReturn { get; set; } = [];
     public string? FolderToReturn { get; set; }
     public GameSystem? SystemToReturn { get; set; }
+    public TexturePackSettingsContext? TexturePacks { get; private set; }
     public string? EmulatorExecutableToReturn { get; set; }
     public string? Rpcs3ConfigurationDirectoryToReturn { get; set; }
     public string? CoverImageToReturn { get; set; }
@@ -69,9 +70,11 @@ internal sealed class FakeDialogService : IDialogService
         LibraryMaintenanceActions maintenance,
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
-        CloudSaveSyncSettingsContext? cloudSaves = null)
+        CloudSaveSyncSettingsContext? cloudSaves = null,
+        TexturePackSettingsContext? texturePacks = null)
     {
         SettingsShown++;
+        TexturePacks = texturePacks;
         MaintenanceActions = maintenance;
         RetroAchievementsContext = retroAchievements;
         CloudSaveSyncContext = cloudSaves;
