@@ -1030,3 +1030,9 @@ loading setting can also be resolved without guessing.
 - [ ] On real Windows and SteamOS/Linux installations, snapshot game files, emulator configuration,
       and texture roots before and after detection/rescan; verify all bytes and timestamps remain
       unchanged and that a missing or unreadable provider cannot block the rest of the library.
+      (Windows verified 2026-07-26 against a real ES-DE library: 649 games and 208 packs across
+      PCSX2/Dolphin/DuckStation/PPSSPP, 171 matched. All four roots resolved from the emulators'
+      own configuration — including relative paths and Dolphin's redirected `LoadPath` — and all
+      four reported replacement loading correctly. Emulator configs and pack files were unchanged
+      in bytes and timestamps after repeated rescans, and an empty Dolphin root did not stop the
+      other three providers. SteamOS/Linux remains open.)
