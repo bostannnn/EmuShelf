@@ -1784,3 +1784,12 @@ COMPRESSION_NONE — a shape chdman itself emits for incompressible hunks. The p
 reads it through the same path it uses for chdman output, and a round-trip test asserts every
 logical sector matches the source ISO. The committed chdman fixtures remain the byte-exactness
 proof for the zlib/LZMA/cd\* codec paths.
+
+The added PARAM.SFO probe costs about 22 ms per DVD-geometry CHD, measured over a real 206-disc PS2
+folder: import analysis of that folder went from roughly 0.3 s to 4.9 s. This is accepted rather
+than optimized. Import is a user-initiated action that already reports progress, it is not the
+startup path the performance rule protects, and every cheaper filter considered (volume descriptor
+fields, filename hints) would decide "not PSP" on weaker evidence than the SFO itself — trading a
+one-time five seconds for the possibility of silently failing to recognize a real PSP image.
+CD-geometry CHDs are unaffected in practice (1–4 ms), since a PS1 disc's root directory is reached
+without decompressing large hunks.

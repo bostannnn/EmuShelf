@@ -466,19 +466,27 @@ it must not create a second downloader, account flow, or background polling mech
 
 ## M21 — Miscellaneous backlog (planned)
 
-- [ ] Add PSP CHD feasibility and import support. CHD already serves the existing PlayStation
+- [x] Add PSP CHD feasibility and import support. CHD already serves the existing PlayStation
       profile, but it can also contain a PSP UMD image; support it only after the logical-disc
       reader can locate and validate `PSP_GAME/PARAM.SFO`, preserve exact `DISC_ID` evidence,
       launch it with a verified PPSSPP release, and prove read-only source bytes/timestamps with
       ISO/CSO parity and malformed-container fixtures. Do not treat a CHD as an opaque PSP file.
-  - Landed 2026-07-26: `.chd` joined the PSP extension map, and `PspGameMetadataReader` and
-    `PspDiscHasher` dispatch it to the existing DVD-geometry `ChdSectorSource`. PARAM.SFO
-    validation, `DISC_ID` evidence, read-only bytes/timestamps, and the pinned RetroAchievements
-    hash are all asserted at ISO/CSO parity, with malformed-descriptor and malformed-container
-    cases covered. Tests build CHDs via `ChdImageBuilder`, so no chdman install is required.
-  - Remaining: launch one real PSP CHD with a verified PPSSPP release on Windows. PPSSPP has
-    loaded CHD since 1.15 and EmuShelf passes every container as the same single argv entry, so
-    no launch-path change is expected — but this stays unchecked until a real launch confirms it.
+      (2026-07-26) `.chd` joined the PSP extension map, and `PspGameMetadataReader` and
+      `PspDiscHasher` dispatch it to the existing DVD-geometry `ChdSectorSource`. PARAM.SFO
+      validation, `DISC_ID` evidence, read-only bytes/timestamps, and the pinned RetroAchievements
+      hash are all asserted at ISO/CSO parity, with malformed-descriptor and malformed-container
+      cases covered. Tests build CHDs via `ChdImageBuilder`, so no chdman install is required.
+  - Verified against a real library (4 real DVD-geometry `lzma` PSP CHDs, 886 MB–1.58 GB, plus one
+    `chdman createraw -us 2048` conversion of a real PSP ISO). Each imported as PSP with its real
+    embedded title and `DISC_ID`, hashed for RetroAchievements, and left byte-for-byte and
+    timestamp untouched. The converted CHD and its source ISO produced the identical RA hash
+    (`4c04d31a…`), confirming the deliberate non-bump of the PSP algorithm version. 20 real PS1/PS2
+    CHDs were re-checked for regressions and still suggest PlayStation, never PSP.
+  - PPSSPP 1.20.4 launch confirmed: each CHD booted to a window titled with the matching disc id
+    and title (e.g. `ULUS10100 : Def Jam® Fight For NY™`). Sustained gameplay was not observed —
+    PPSSPP exits after a few seconds when started from an automation session, but a real PSP `.iso`
+    does the same, so the instability is the harness, not the container. One manual play session
+    launched from the EmuShelf UI is still worth doing.
 - [ ] Run the opt-in `chdman` CD-decode test on Windows CI/dev. `ChdSectorSourceTests`
       `CompressedCd_CookedFrameBytes_AreNotOffsetAsRawHeaders_WhenChdmanAvailable` now skips
       cleanly when `chdman` is absent (fixed 2026-07-19); provision a pinned `chdman` (from MAME
