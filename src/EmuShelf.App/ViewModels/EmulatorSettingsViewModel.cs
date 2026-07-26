@@ -27,7 +27,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly RetroAchievementsSettingsContext? _retroAchievements;
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly IAppLogger _logger;
-    private bool _synchronizingSharedExecutable;
+    private bool _synchronizingSharedInstallation;
 
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
     public IReadOnlyList<SettingsSection> Sections { get; }
@@ -290,7 +290,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }).ToArray();
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
         foreach (var row in Rows)
+        {
             row.ExecutablePathEdited += SynchronizeSharedExecutable;
+            row.TargetKindEdited += SynchronizeSharedTargetKind;
+            row.FlatpakAppIdEdited += SynchronizeSharedFlatpakAppId;
+        }
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
     }
@@ -388,12 +392,23 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             row.IsMaintenanceBlocked = IsWorking;
     }
 
-    private void SynchronizeSharedExecutable(EmulatorSettingsRowViewModel source, string path)
+    private void SynchronizeSharedExecutable(EmulatorSettingsRowViewModel source, string path) =>
+        SynchronizeSharedInstallation(source, row => row.ExecutablePath = path);
+
+    private void SynchronizeSharedTargetKind(EmulatorSettingsRowViewModel source, string targetKind) =>
+        SynchronizeSharedInstallation(source, row => row.TargetKind = targetKind);
+
+    private void SynchronizeSharedFlatpakAppId(EmulatorSettingsRowViewModel source, string appId) =>
+        SynchronizeSharedInstallation(source, row => row.FlatpakAppId = appId);
+
+    private void SynchronizeSharedInstallation(
+        EmulatorSettingsRowViewModel source,
+        Action<EmulatorSettingsRowViewModel> update)
     {
-        if (_synchronizingSharedExecutable || !source.IsExecutableShared)
+        if (_synchronizingSharedInstallation || !source.IsExecutableShared)
             return;
 
-        _synchronizingSharedExecutable = true;
+        _synchronizingSharedInstallation = true;
         try
         {
             foreach (var row in Rows.Where(row =>
@@ -403,12 +418,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                              source.EmulatorInstallationId,
                              StringComparison.Ordinal)))
             {
-                row.ExecutablePath = path;
+                update(row);
             }
         }
         finally
         {
-            _synchronizingSharedExecutable = false;
+            _synchronizingSharedInstallation = false;
         }
     }
 

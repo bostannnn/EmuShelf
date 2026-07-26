@@ -110,10 +110,6 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return LaunchPreparation.Failed(
                 $"Configure {emulator.Name} for this system in Settings before launching.");
 
-        if (target is FlatpakApplicationTarget && emulator.RequiresCorePath)
-            return LaunchPreparation.Failed(
-                $"Cannot launch {game.Title}: Flatpak RetroArch is not supported; configure a direct or AppImage installation.");
-
         if (target is DirectExecutableTarget directTarget && !File.Exists(directTarget.Path))
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: the configured {emulator.Name} executable was not found.");

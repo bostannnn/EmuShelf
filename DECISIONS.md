@@ -1594,3 +1594,24 @@ so the previous whole-title lookup never fired against a real match.
 GameTDB's PlayStation 3 `coverHQ` set is partial. Candidates now cover every region in the
 high-resolution set and then every region in the standard `cover` set, so a release that only ever
 received the standard image is no longer left without a cover.
+
+## 2026-07-26 — Flatpak RetroArch uses its host-visible per-app core directory
+
+This supersedes the Flatpak RetroArch portions of **2026-07-21 — Typed launcher targets retain
+portable ownership boundaries** and **2026-07-25 — Flatpak configuration is platform-aware, with
+explicit legacy migration**. Their rationale that RetroArch cores are private to the sandbox was
+wrong, not merely outdated. Empirical testing with flatpak 1.16.6 and Flathub RetroArch 1.22.2
+showed that `$HOME/.var/app/<app-id>` is mounted inside the sandbox at the identical host path, and
+the Flathub manifest already grants `host` filesystem access. A host `CorePath` can therefore be
+validated normally and passed to `-L` without translation.
+
+Linux now offers Direct/AppImage and Flatpak targets for RetroArch. For a Flatpak target, the core
+picker derives `$HOME/.var/app/<app-id>/config/retroarch/cores` from the configured application id
+and only enumerates core files already installed by the user. EmuShelf does not download or manage
+cores and does not write RetroArch configuration, overrides, playlists, or achievement settings.
+The existing ephemeral per-launch read-only filesystem grants remain unchanged: they are redundant
+for the tested RetroArch manifest but harmless there and still load-bearing for PCSX2.
+
+The validation was performed under Ubuntu WSL2, not on Steam Deck hardware. The open M27
+Linux/SteamOS hardware-verification item therefore remains incomplete pending one real-device
+launch and permission check.
