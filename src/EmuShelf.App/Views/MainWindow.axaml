@@ -22,6 +22,21 @@
     <Window.Resources>
         <!-- Neutral trophy glyph (mdi-trophy) for the achievement mark; not RA branding. -->
         <StreamGeometry x:Key="AchievementTrophyGeometry">M18,2H6V4H2V9C2,11.21 3.79,13 6,13V13.5C6,15.43 7.5,17 9.34,17.15L9,18H7V20H17V18H15L14.66,17.15C16.5,17 18,15.43 18,13.5V13C20.21,13 22,11.21 22,9V4H18V2M6,11C4.9,11 4,10.1 4,9V6H6V11M20,9C20,10.1 19.1,11 18,11V6H20V9Z</StreamGeometry>
+        <!-- The Fluent Button theme paints its internal presenter on pointer/pressed states even
+             when Button.Background is transparent. Game tiles provide cover-sized hover/focus
+             overlays, so their button template is deliberately content-only. -->
+        <ControlTheme x:Key="GamepadGameButtonTheme" TargetType="Button">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </ControlTheme>
     </Window.Resources>
 
     <Window.Styles>
@@ -75,12 +90,30 @@
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Background" Value="Transparent" />
         </Style>
+        <!-- Gamepad controls draw one explicit logical-focus treatment. Keep native Avalonia
+             focus for routing/accessibility, but suppress Fluent's second focus-adorners: on
+             Linux/SteamOS that extra compositor layer can render as black corner rectangles. -->
+        <Style Selector="Button.gamepad-game, Button.gamepad-platform, Button.gamepad-modal-option, Button.gamepad-footer-action, Border.gamepad-achievement">
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
         <Style Selector="Button.gamepad-game.focused">
             <Setter Property="Background" Value="Transparent" />
         </Style>
-        <Style Selector="Button.gamepad-game.controller-input:pointerover">
+        <!-- The button spans the shared mixed-platform shelf height, which can be much taller
+             than a DS/GBA-style cover. Never paint that outer hit target; hover is rendered by
+             the cover-sized overlay below so no grey cell appears around short artwork. -->
+        <Style Selector="Button.gamepad-game:pointerover, Button.gamepad-game:focus, Button.gamepad-game:pressed">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.gamepad-hover-ring">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Button.gamepad-game:pointerover Border.gamepad-hover-ring">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Button.gamepad-game.controller-input:pointerover Border.gamepad-hover-ring">
+            <Setter Property="Opacity" Value="0" />
         </Style>
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
@@ -117,6 +150,7 @@
         <Style Selector="Button.gamepad-modal-option">
             <Setter Property="MinHeight" Value="52" />
             <Setter Property="FontSize" Value="18" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Padding" Value="18,12" />
             <Setter Property="CornerRadius" Value="9" />
@@ -141,9 +175,20 @@
             <Setter Property="Padding" Value="16,8" />
             <Setter Property="CornerRadius" Value="9" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Button.gamepad-footer-action:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-footer-action.controller-input:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
         <Style Selector="Border.gamepad-overlay">
             <Setter Property="HorizontalAlignment" Value="Center" />
@@ -966,6 +1011,7 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:GameViewModel">
                         <Button Classes="gamepad-game" Classes.focused="{Binding IsFocused}"
+                                Theme="{StaticResource GamepadGameButtonTheme}"
                                 Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
                                 Width="{Binding CoverWidth}" Padding="0" Margin="0" Background="Transparent" BorderThickness="2"
                                 Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).FocusGameCommand}"
@@ -980,7 +1026,7 @@
                                 <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
                                   <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                          VerticalAlignment="Bottom">
-                                    <Border CornerRadius="9" Background="{DynamicResource EmuCoverWellBrush}"
+                                    <Border Classes="gamepad-cover-frame" CornerRadius="9" Background="{DynamicResource EmuCoverWellBrush}"
                                             BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1" ClipToBounds="True"
                                             AttachedToVisualTree="OnGameCoverAttached"
                                             DataContextChanged="OnGameCoverDataContextChanged">
@@ -1011,6 +1057,9 @@
                                             </Border>
                                         </Panel>
                                     </Border>
+                                    <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
+                                            CornerRadius="9" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
+                                            BorderThickness="2" />
                                     <Border Classes="gamepad-focus-ring" IsVisible="{Binding IsFocused}" IsHitTestVisible="False"
                                             CornerRadius="9" BorderBrush="{DynamicResource EmuAccentBrush}"
                                             BorderThickness="3" />

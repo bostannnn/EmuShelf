@@ -1478,6 +1478,12 @@ achievement surfaces. Text fields and Desktop controls retain their ordinary the
 Modal choices stretch across the available sheet width, while the footer Menu prompt stays visually
 neutral until genuine pointer hover, leaving one unmistakable strong selection at a time.
 
+All Games still uses one shared shelf height to align mixed cover shapes along a common baseline,
+but that shelf cell is layout and hit-target space only. The outer game button stays transparent for
+hover, native focus, and pressed states. Pointer hover is drawn by a non-layout-changing overlay
+inside the actual cover-sized panel, with the controller focus ring above it. This keeps mouse
+feedback without painting a tall grey rectangle around short DS/GBA-style artwork.
+
 ## 2026-07-25 — Save providers authorize local destinations; PPSSPP is the first generalized provider
 
 Remote save-unit identifiers are untrusted portable names, not local paths. Each emulator provider

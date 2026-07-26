@@ -879,6 +879,12 @@ unchanged unless an item explicitly says otherwise.
       actionable element has the strong focus treatment. Active platform styling remains visibly
       distinct from input focus, and the shelf focus ring is suppressed behind overlays
       (2026-07-25).
+- [x] Keep native Avalonia focus for routing and accessibility but suppress Fluent's additional
+      focus adorner on Gamepad surfaces that draw their own focus ring. This prevents doubled
+      outlines and Linux/SteamOS compositor corner artifacts (2026-07-26).
+- [x] Keep the mixed-platform shelf cell visually transparent in every tile interaction state;
+      mouse hover and controller focus follow the actual cover frame so short artwork never gains
+      an oversized grey rectangle in All Games (2026-07-26).
 - [ ] Add controller-family-aware glyphs or neutral physical-position glyphs; never mix
       `L1/R1`, `A/B/X/Y`, and keyboard key names in one Gamepad surface.
 - [ ] Provide a controller-safe text-entry path and automatically request an available on-screen
