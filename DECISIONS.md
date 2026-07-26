@@ -1671,3 +1671,19 @@ Finally, the per-system settings dictionary is sanitized before migration. JSON 
 deserialize despite C# nullable annotations, and settings are hand-editable; neither a null dictionary
 nor a null entry may crash startup. An existing valid per-system entry remains authoritative even
 when its override is intentionally empty, so a stale legacy field cannot restore a cleared path.
+
+## 2026-07-26 — DuckStation discovery mirrors the emulator's data-root precedence
+
+The earlier DuckStation decision described current and legacy directories in documentation order,
+but that is not the selection order used by the emulator. EmuShelf now mirrors DuckStation's actual
+data-root decision tree: an installation-local `settings.ini` is a portable trigger even without
+`portable.txt`; an existing Windows `Documents/DuckStation` directory retains precedence over
+LocalAppData; and native Linux honors an absolute `XDG_CONFIG_HOME` before the default
+`~/.local/share` root. Flatpak follows the equivalent config root while retaining its data root as a
+legacy fallback. Once DuckStation has selected a root, a missing `settings.ini` fails closed instead
+of allowing EmuShelf to fall through to a different, inactive profile.
+
+Provider-result attribution follows the same fail-closed rule. An exception raised while a target
+is being constructed belongs to that target, and a runtime exception with only one participating
+target belongs to that sole platform. Runtime exceptions after multiple targets are staged remain
+global because the current engine does not expose which target raised them.

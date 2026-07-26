@@ -298,18 +298,22 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
 
+        var requestedSystemIds = systemIds.Distinct(StringComparer.Ordinal).ToArray();
         await _gate.WaitAsync(cancellationToken);
         var synced = new List<string>();
+        var targets = new List<SaveSyncTarget>();
+        string? constructingSystemId = null;
         try
         {
-            var targets = new List<SaveSyncTarget>();
-            foreach (var systemId in systemIds.Distinct(StringComparer.Ordinal))
+            foreach (var systemId in requestedSystemIds)
             {
+                constructingSystemId = systemId;
                 if (CreateTarget(systemId) is { } target)
                 {
                     targets.Add(target);
                     synced.Add(systemId);
                 }
+                constructingSystemId = null;
             }
 
             if (targets.Count == 0)
@@ -333,12 +337,13 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
-            // A multi-provider pass is staged as one operation. Without a structured exception
-            // identifying which target failed, attributing this error to every row would claim
-            // that completed or not-yet-reached platforms failed. The global outcome carries the
-            // error; automatic and force operations still record their single platform precisely.
-            if (synced.Count == 1)
-                RecordOutcome(synced, ex.Message);
+            // Construction failures identify the provider being built, and a runtime failure with
+            // one target can only belong to that target. A runtime failure after several targets
+            // were staged is ambiguous and remains solely in the global outcome.
+            var failedSystemId = constructingSystemId ??
+                (targets.Count == 1 ? targets[0].Provider.SystemId : null);
+            if (failedSystemId is not null)
+                RecordOutcome([failedSystemId], ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
         finally

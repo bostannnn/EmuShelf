@@ -19,7 +19,7 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     private readonly string _homeDirectory;
     private readonly string _localApplicationDataDirectory;
     private readonly string _documentsDirectory;
-    private readonly string? _xdgDataHome;
+    private readonly string? _xdgConfigHome;
     private readonly bool _isWindows;
     private readonly bool _isMacOS;
     private readonly bool _isFlatpak;
@@ -30,7 +30,7 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         string? homeDirectory = null,
         string? localApplicationDataDirectory = null,
         string? documentsDirectory = null,
-        string? xdgDataHome = null,
+        string? xdgConfigHome = null,
         bool? isWindows = null,
         bool? isMacOS = null,
         bool isFlatpak = false)
@@ -45,7 +45,13 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
             localApplicationDataDirectory,
             Environment.SpecialFolder.LocalApplicationData);
         _documentsDirectory = FullPathOrEnvironment(documentsDirectory, Environment.SpecialFolder.MyDocuments);
-        _xdgDataHome = string.IsNullOrWhiteSpace(xdgDataHome) ? null : Path.GetFullPath(xdgDataHome);
+        var configuredXdgHome = string.IsNullOrWhiteSpace(xdgConfigHome)
+            ? Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+            : xdgConfigHome;
+        _xdgConfigHome = string.IsNullOrWhiteSpace(configuredXdgHome) ||
+                         !Path.IsPathFullyQualified(configuredXdgHome)
+            ? null
+            : Path.GetFullPath(configuredXdgHome);
         _isWindows = isWindows ?? OperatingSystem.IsWindows();
         _isMacOS = isMacOS ?? OperatingSystem.IsMacOS();
         _isFlatpak = isFlatpak;
@@ -164,43 +170,53 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         if (_userDirectoryOverride is not null)
             return RequireSettings(_userDirectoryOverride, "The selected DuckStation user directory");
 
-        if (File.Exists(Path.Combine(_installationDirectory, PortableMarkerFileName)))
+        // DuckStation treats either portable.txt or an existing settings.ini beside the
+        // executable as portable mode. The latter matters for older/unmarked portable installs.
+        if (!_isFlatpak &&
+            (File.Exists(Path.Combine(_installationDirectory, PortableMarkerFileName)) ||
+             File.Exists(Path.Combine(_installationDirectory, SettingsFileName))))
+        {
             return RequireSettings(_installationDirectory, "DuckStation's portable directory");
+        }
 
-        var candidates = GetUserDirectoryCandidates();
-        var match = candidates.FirstOrDefault(candidate => File.Exists(Path.Combine(candidate, SettingsFileName)));
-        if (match is not null)
-            return match;
-
-        throw new DuckStationConfigurationFormatException(
-            "DuckStation's settings.ini was not found in any supported user directory. Choose the DuckStation user directory in Settings.");
-    }
-
-    private IReadOnlyList<string> GetUserDirectoryCandidates()
-    {
         if (_isFlatpak)
         {
-            return
-            [
-                Path.Combine(_homeDirectory, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation"),
-                Path.Combine(_homeDirectory, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation"),
-            ];
+            var current = Path.Combine(
+                _homeDirectory, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
+            var legacy = Path.Combine(
+                _homeDirectory, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
+            if (Directory.Exists(current))
+                return RequireSettings(current, "DuckStation's Flatpak user directory");
+            if (Directory.Exists(legacy))
+                return RequireSettings(legacy, "DuckStation's legacy Flatpak user directory");
+            return RequireSettings(current, "DuckStation's Flatpak user directory");
         }
 
         if (_isWindows)
         {
-            return
-            [
+            // Current DuckStation intentionally retains the legacy Documents data root whenever
+            // that directory exists, and only otherwise selects LocalAppData. Checking for a
+            // settings file instead of the directory would silently switch profiles before
+            // DuckStation has had a chance to create/repair that file.
+            var legacy = Path.Combine(_documentsDirectory, "DuckStation");
+            if (Directory.Exists(legacy))
+                return RequireSettings(legacy, "DuckStation's legacy user directory");
+            return RequireSettings(
                 Path.Combine(_localApplicationDataDirectory, "DuckStation"),
-                Path.Combine(_documentsDirectory, "DuckStation"),
-            ];
+                "DuckStation's user directory");
         }
 
         if (_isMacOS)
-            return [Path.Combine(_homeDirectory, "Library", "Application Support", "DuckStation")];
+        {
+            return RequireSettings(
+                Path.Combine(_homeDirectory, "Library", "Application Support", "DuckStation"),
+                "DuckStation's user directory");
+        }
 
-        var dataHome = _xdgDataHome ?? Path.Combine(_homeDirectory, ".local", "share");
-        return [Path.Combine(dataHome, "duckstation")];
+        var dataRoot = _xdgConfigHome is null
+            ? Path.Combine(_homeDirectory, ".local", "share", "duckstation")
+            : Path.Combine(_xdgConfigHome, "duckstation");
+        return RequireSettings(dataRoot, "DuckStation's user directory");
     }
 
     private static string RequireSettings(string directory, string description)

@@ -8,7 +8,7 @@ namespace EmuShelf.Infrastructure.Tests.SaveSync;
 public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
 {
     [Fact]
-    public async Task Windows_UsesCurrentUserDirectoryBeforeLegacyDirectory()
+    public async Task Windows_UsesExistingLegacyDirectoryBeforeCurrentDirectory()
     {
         var localAppData = Path.Combine(BaseDirectory, "LocalAppData");
         var documents = Path.Combine(BaseDirectory, "Documents");
@@ -20,21 +20,34 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateWindowsProvider(localAppData: localAppData, documents: documents);
 
         Assert.Equal(
-            Path.Combine(current, "current-cards"),
+            Path.Combine(legacy, "legacy-cards"),
             await provider.GetMemoryCardsDirectoryAsync());
     }
 
     [Fact]
-    public async Task Windows_UsesLegacyUserDirectoryWhenCurrentSettingsAreAbsent()
+    public async Task Windows_UsesCurrentUserDirectoryWhenLegacyDirectoryIsAbsent()
     {
         var localAppData = Path.Combine(BaseDirectory, "LocalAppData");
         var documents = Path.Combine(BaseDirectory, "Documents");
-        var legacy = Path.Combine(documents, "DuckStation");
-        WriteSettings(legacy, "memcards");
+        var current = Path.Combine(localAppData, "DuckStation");
+        WriteSettings(current, "memcards");
 
         var provider = CreateWindowsProvider(localAppData: localAppData, documents: documents);
 
-        Assert.Equal(Path.Combine(legacy, "memcards"), await provider.GetMemoryCardsDirectoryAsync());
+        Assert.Equal(Path.Combine(current, "memcards"), await provider.GetMemoryCardsDirectoryAsync());
+    }
+
+    [Fact]
+    public async Task Windows_ExistingLegacyDirectoryWithoutSettingsFailsClosed()
+    {
+        var localAppData = Path.Combine(BaseDirectory, "LocalAppData");
+        var documents = Path.Combine(BaseDirectory, "Documents");
+        Directory.CreateDirectory(Path.Combine(documents, "DuckStation"));
+        WriteSettings(Path.Combine(localAppData, "DuckStation"), "inactive-current-cards");
+        var provider = CreateWindowsProvider(localAppData: localAppData, documents: documents);
+
+        await Assert.ThrowsAsync<DuckStationConfigurationFormatException>(
+            () => provider.GetMemoryCardsDirectoryAsync());
     }
 
     [Fact]
@@ -55,15 +68,32 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public async Task Flatpak_UsesCurrentDataDirectoryAndSupportsLegacyConfigDirectory()
+    public async Task SettingsBesideExecutable_AlsoSelectsPortableModeWithoutMarker()
+    {
+        var installation = Path.Combine(BaseDirectory, "DuckStation-portable");
+        var localAppData = Path.Combine(BaseDirectory, "LocalAppData");
+        WriteSettings(installation, "portable-cards");
+        WriteSettings(Path.Combine(localAppData, "DuckStation"), "global-cards");
+
+        var provider = CreateWindowsProvider(installation, localAppData: localAppData);
+
+        Assert.Equal(
+            Path.Combine(installation, "portable-cards"),
+            await provider.GetMemoryCardsDirectoryAsync());
+    }
+
+    [Fact]
+    public async Task Flatpak_UsesCurrentConfigDirectoryAndSupportsLegacyDataDirectory()
     {
         var home = Path.Combine(BaseDirectory, "home");
         var current = Path.Combine(
-            home, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
+            home, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
         WriteSettings(current, "cards");
+        var placeholderInstallation = Path.Combine(BaseDirectory, "unused-install");
+        WriteSettings(placeholderInstallation, "unrelated-cards");
 
         var provider = new DuckStationSaveLocationProvider(
-            Path.Combine(BaseDirectory, "unused-install"),
+            placeholderInstallation,
             homeDirectory: home,
             isWindows: false,
             isMacOS: false,
@@ -72,8 +102,9 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(Path.Combine(current, "cards"), await provider.GetMemoryCardsDirectoryAsync());
 
         File.Delete(Path.Combine(current, "settings.ini"));
+        Directory.Delete(current);
         var legacy = Path.Combine(
-            home, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
+            home, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
         WriteSettings(legacy, "legacy-cards");
 
         Assert.Equal(Path.Combine(legacy, "legacy-cards"), await provider.GetMemoryCardsDirectoryAsync());
@@ -91,7 +122,7 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         var linux = new DuckStationSaveLocationProvider(
             Path.Combine(BaseDirectory, "install"),
             homeDirectory: home,
-            xdgDataHome: xdg,
+            xdgConfigHome: xdg,
             isWindows: false,
             isMacOS: false);
         var mac = new DuckStationSaveLocationProvider(
