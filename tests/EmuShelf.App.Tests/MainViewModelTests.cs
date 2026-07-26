@@ -2059,6 +2059,9 @@ public class MainViewModelTests : IDisposable
 
         public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId) => inner.GetIdentifiers(gameId);
 
+        public IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers() =>
+            inner.GetAllIdentifiers();
+
         public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers)
         {
             ReplaceIdentifiersCallCount++;

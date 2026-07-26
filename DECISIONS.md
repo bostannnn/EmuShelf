@@ -1708,3 +1708,51 @@ for the tested RetroArch manifest but harmless there and still load-bearing for 
 The validation was performed under Ubuntu WSL2, not on Steam Deck hardware. The open M27
 Linux/SteamOS hardware-verification item therefore remains incomplete pending one real-device
 launch and permission check.
+
+## 2026-07-26 — Texture-pack inventory mirrors emulator loaders and remains external state
+
+Installed texture packs are discovered through one read-only source per emulator installation and
+are not stored as a flag on `Game`. A pack must contain replacement content accepted by that
+emulator's loader; an ID-shaped directory containing only dumps or unrelated images is an attention
+state, not a library match. Matching follows explicit emulator rules only: exact PlayStation serial,
+hyphenless PSP game ID, exact or documented three-character Dolphin ID, and documented shared or
+multi-disc behavior. Titles are never used as a fallback.
+
+The library mark means "usable pack installed and matched." Effective global/per-game loading is a
+separate versioned configuration result and stays unknown when EmuShelf cannot prove precedence.
+Inventory, configuration, pack files, and game files are always read-only; Settings may rescan or
+open a folder but never installs, repairs, moves, renames, or deletes a pack.
+
+## 2026-07-26 — Texture inventory records evidence, not exhaustive file counts
+
+Scanners stop after proving that a pack has replacement content instead of recursively counting
+every image. Exact counts are neither required for the library mark nor cheap for large packs, and
+would make an explicit rescan scale with every texture file. PPSSPP's automatically generated
+`textures.ini` is not proof by itself: a directory containing only that file and the `new` dump
+folder remains an attention state. A PPSSPP directory pack needs at least one supported image
+outside `new`; a `textures.zip` pack needs a root `textures.ini` plus replacement image content.
+
+## 2026-07-26 — A per-game emulator configuration file makes loading status Unknown, not global
+
+`IniTexturePackLoadingResolver` answers Enabled/Disabled from a versioned global setting, but as
+soon as a per-game configuration file exists for the game being asked about it returns Unknown
+instead. PCSX2, DuckStation, and Dolphin all layer a per-game file over the global switch, and the
+layering rules differ per emulator and per version. Reporting the global value while a per-game file
+sits on top of it is exactly the confident wrong answer this feature forbids, and an emulator-by-
+emulator precedence model is not something a read-only adapter can verify. Absent settings and
+unrecognized boolean spellings are Unknown for the same reason — only a present, recognized, and
+unlayered setting produces Enabled or Disabled.
+
+## 2026-07-26 — One classification pass feeds both the library marks and the Settings totals
+
+`TexturePackLibraryMap.Build` takes the completed snapshots plus one bulk `GetAllIdentifiers()` read
+and produces both the per-pack classification list and the per-game match map. Settings and the
+library therefore cannot report different numbers, and no library row performs a database read or a
+disc parse of its own. `IGameMetadataStore.GetAllIdentifiers()` was added for this: the existing
+per-row `GetIdentifiers(gameId)` would have made the pass N+1 over the library.
+
+Two states exist specifically to avoid overclaiming. A usable pack whose identifier matches nothing
+is `NoLibraryMatch` only when the library actually holds identifiers of that kind; otherwise it is
+`IdentifierPending`, because identification may simply not have run yet. A Dolphin shared pack is
+`SharedPack` and marks no individual game — it applies to everything, so marking every GameCube and
+Wii title as "has a texture pack" would be misleading rather than informative.

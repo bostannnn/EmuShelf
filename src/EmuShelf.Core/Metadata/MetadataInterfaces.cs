@@ -66,6 +66,13 @@ public interface IGameMetadataStore
 
     IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId);
 
+    /// <summary>
+    /// Every stored identifier, grouped by game id, in one query. Callers that need identifiers
+    /// for the whole library — texture-pack matching, for example — use this instead of calling
+    /// <see cref="GetIdentifiers"/> per row.
+    /// </summary>
+    IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers();
+
     void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers);
 
     bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle);

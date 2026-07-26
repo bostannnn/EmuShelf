@@ -58,6 +58,7 @@ public sealed class AppBootstrapper
     public ILaunchTargetInspector LaunchTargetInspector { get; }
     public IGameLaunchDependencyResolver GameLaunchDependencies { get; }
     public CloudSaveSyncCoordinator CloudSaveSync { get; }
+    public TexturePackCoordinator TexturePacks { get; }
 
     public AppBootstrapper()
     {
@@ -122,6 +123,12 @@ public sealed class AppBootstrapper
         CloudSaveSync = new CloudSaveSyncCoordinator(
             Paths,
             SettingsService,
+            Settings,
+            Logger,
+            emulatorInstallations: ResolveConfiguredEmulator);
+        TexturePacks = new TexturePackCoordinator(
+            Paths,
+            MetadataStore,
             Settings,
             Logger,
             emulatorInstallations: ResolveConfiguredEmulator);

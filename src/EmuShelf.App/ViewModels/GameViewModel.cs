@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.TexturePacks;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -186,6 +187,29 @@ public partial class GameViewModel : ObservableObject, IDisposable
         return slash > 0 && int.TryParse(display.ColumnText.AsSpan(0, slash), out var awarded)
             ? awarded
             : 0;
+    }
+
+    /// <summary>Whether the cover shows the texture-pack mark (a confirmed, usable installed pack).</summary>
+    [ObservableProperty]
+    public partial bool ShowTextureMark { get; set; }
+
+    /// <summary>List-view Textures column: <c>Installed</c>, a pack count, or an em dash.</summary>
+    [ObservableProperty]
+    public partial string TexturesColumnText { get; set; } = TexturePackDisplay.Dash;
+
+    [ObservableProperty]
+    public partial string TexturesTooltip { get; set; } = TexturePackDisplay.NotScanned.Tooltip;
+
+    /// <summary>Sort key for the Textures column: -1 unknown, 0 no pack, otherwise the pack count.</summary>
+    public int TextureSortKey { get; private set; } = -1;
+
+    /// <summary>Applies a resolved texture-pack presentation from the display state machine.</summary>
+    public void ApplyTexturePackDisplay(TexturePackDisplay display)
+    {
+        ShowTextureMark = display.ShowMark;
+        TexturesColumnText = display.ColumnText;
+        TexturesTooltip = display.Tooltip;
+        TextureSortKey = display.SortKey;
     }
 
     /// <summary>Only confirmed achievement-bearing catalogue links can open the detail popup.</summary>
