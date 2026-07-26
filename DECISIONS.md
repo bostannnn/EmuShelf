@@ -1809,3 +1809,22 @@ cannot be mapped safely, so EmuShelf preserves the downloaded card without claim
 will select it automatically. Settings shows that limitation as a non-blocking warning beside the
 resolved directory. Genuine detection/configuration failures remain visible and disable destructive
 replace actions instead of silently presenting an empty row.
+
+## 2026-07-26 — An explicit texture rescan extracts its own matching evidence
+
+Texture matching reads cached `GameIdentifier` rows, but GameCube, Wii, PlayStation, and PS2 write
+no identifiers at import: `FileImportRules.ReadImportMetadata` returns evidence only for Mega Drive,
+DS, GBA, SNES, and PSP. Their disc ids and serials were therefore written solely by the opt-in
+network-metadata pass, so a user who never enabled that saw every Dolphin and DuckStation pack sit
+at "identification pending" forever, with no way to resolve it from the texture UI.
+
+An explicit **Rescan** now extracts the missing evidence itself, through the same
+`IGameIdentifierExtractor` the metadata profiles already own. The extraction is a local header or
+descriptor read and needs no network and no consent — only the catalogue/artwork stage does — so
+this does not widen the metadata consent boundary. It stays narrowly scoped: explicit rescans only
+(never the startup cached load), only systems whose installation actually holds a usable pack, and
+only games with no stored identifier, so it never re-reads a disc whose evidence already exists and
+never becomes a startup cost.
+
+Texture-root overrides are also persisted through `ISettingsService` now; they previously lived only
+in memory and silently reverted to auto-detection on the next launch.

@@ -33,9 +33,12 @@ public sealed record TexturePackDisplay(bool ShowMark, string ColumnText, string
     public static TexturePackDisplay NotScanned { get; } =
         new(false, Dash, "Texture packs haven't been scanned yet.", -1);
 
-    /// <summary>No emulator that supports replacement textures is configured for this system.</summary>
+    /// <summary>
+    /// This console has no texture-pack support in EmuShelf at all. Worded as a capability rather
+    /// than a configuration problem: there is nothing the user could set up to change it.
+    /// </summary>
     public static TexturePackDisplay Unsupported { get; } =
-        new(false, Dash, "No texture-pack-capable emulator is configured for this system.", -1);
+        new(false, Dash, "EmuShelf doesn't track texture packs for this console.", -1);
 
     public static TexturePackDisplay For(
         IReadOnlyList<TexturePackMatch> matches,

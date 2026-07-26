@@ -1479,13 +1479,37 @@ public partial class MainViewModel : ViewModelBase
     /// Rescans every configured texture root, then refreshes the marks. This is the explicit
     /// Rescan action — the only thing that walks the texture directories.
     /// </summary>
-    public async Task RefreshTexturePacksAsync(CancellationToken cancellationToken = default)
+    public async Task<TexturePackInventoryResult> RefreshTexturePacksAsync(
+        CancellationToken cancellationToken = default)
     {
         if (_texturePacks is null)
-            return;
+            return TexturePackInventoryResult.Empty;
 
-        await _texturePacks.RefreshAsync(cancellationToken);
+        var result = await _texturePacks.RefreshAsync(cancellationToken);
+        // Reapply here rather than waiting for the next collection load. Settings drives this, and
+        // without it the already-rendered rows keep their old marks until the user happens to
+        // switch platforms — which reads as the scan having done nothing.
         await Dispatcher.UIThread.InvokeAsync(() => ApplyTexturePackDisplays(_systemGames));
+        return result;
+    }
+
+    // Every library game's display title, keyed by id, for surfaces that must name a game outside
+    // the visible collection. Falls back to the loaded collection if the library read fails, so
+    // Settings degrades to partial titles rather than throwing.
+    private IReadOnlyDictionary<long, string> BuildLibraryTitleLookup()
+    {
+        try
+        {
+            var titles = new Dictionary<long, string>();
+            foreach (var game in _library.GetGames())
+                titles[game.Id] = game.Title;
+            return titles;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not read library titles for the texture-pack list.", ex);
+            return _systemGames.ToDictionary(game => game.Id, game => game.Title);
+        }
     }
 
     // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
@@ -2643,9 +2667,11 @@ public partial class MainViewModel : ViewModelBase
                         DisconnectRetroAchievementsAsync,
                         RefreshRetroAchievementsMatchesAsync),
                 _cloudSaveSync?.CreateSettingsContext(),
-                _texturePacks?.CreateSettingsContext(() => _systemGames.ToDictionary(
-                    game => game.Id,
-                    game => game.Title)));
+                // Titles come from the whole library, not the visible collection: a Dolphin pack
+                // must still name the GameCube game it matched while the user is viewing PS1.
+                _texturePacks?.CreateSettingsContext(
+                    BuildLibraryTitleLookup,
+                    RefreshTexturePacksAsync));
         }
         catch (Exception ex)
         {

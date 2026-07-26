@@ -24,14 +24,26 @@ public sealed class TexturePackCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public async Task BeforeAnyPass_TheResultIsEmptyAndTheViewsCanTellNothingHasBeenScanned()
+    public async Task ACacheOnlyLoadThatFindsNothingCached_StillCountsAsNotScanned()
     {
+        // Nothing was examined, so the library must keep saying "not scanned yet" rather than
+        // claiming every game definitively has no texture pack.
         var coordinator = Create(new MemoryStore());
 
         Assert.False(coordinator.HasScanned);
         Assert.Empty(coordinator.Current.Map.Classifications);
 
         await coordinator.LoadCachedAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(coordinator.HasScanned);
+    }
+
+    [Fact]
+    public async Task AnExplicitRescan_CountsAsScannedEvenWhenItFindsNoPack()
+    {
+        var coordinator = Create(new MemoryStore());
+
+        await coordinator.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.True(coordinator.HasScanned);
     }

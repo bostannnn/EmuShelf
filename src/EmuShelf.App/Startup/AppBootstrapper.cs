@@ -131,7 +131,13 @@ public sealed class AppBootstrapper
             MetadataStore,
             Settings,
             Logger,
-            emulatorInstallations: ResolveConfiguredEmulator);
+            emulatorInstallations: ResolveConfiguredEmulator,
+            // The settings service persists texture-root overrides. The library and metadata
+            // profiles let an explicit rescan extract the disc evidence it matches on, so texture
+            // marks no longer depend on the opt-in network-metadata pass having run first.
+            settingsService: SettingsService,
+            gamesForSystem: systemId => Library.GetGames(systemId),
+            metadataProfiles: MetadataProfiles);
         Logger.Information("EmuShelf startup services initialized.");
     }
 

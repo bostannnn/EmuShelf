@@ -1,4 +1,5 @@
 using EmuShelf.Core.Diagnostics;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
@@ -64,6 +65,9 @@ public sealed class TexturePackCoordinator
     private readonly TexturePackInventoryService _inventory;
     private readonly IAppLogger _logger;
     private readonly Func<string, SaveEmulatorInstallation?>? _emulatorInstallations;
+    private readonly ISettingsService? _settingsService;
+    private readonly Func<string, IReadOnlyList<Game>>? _gamesForSystem;
+    private readonly IReadOnlyDictionary<string, IGameIdentifierExtractor> _identifierExtractors;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AppSettings _settings;
 
@@ -73,7 +77,10 @@ public sealed class TexturePackCoordinator
         AppSettings settings,
         IAppLogger logger,
         ITexturePackInventoryStore? store = null,
-        Func<string, SaveEmulatorInstallation?>? emulatorInstallations = null)
+        Func<string, SaveEmulatorInstallation?>? emulatorInstallations = null,
+        ISettingsService? settingsService = null,
+        Func<string, IReadOnlyList<Game>>? gamesForSystem = null,
+        IReadOnlyList<MetadataSystemProfile>? metadataProfiles = null)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(metadataStore);
@@ -83,12 +90,24 @@ public sealed class TexturePackCoordinator
         _logger = logger;
         _inventory = new TexturePackInventoryService(store ?? new Infrastructure.TexturePacks.TexturePackInventoryCache(paths));
         _emulatorInstallations = emulatorInstallations;
+        _settingsService = settingsService;
+        _gamesForSystem = gamesForSystem;
+        _identifierExtractors = (metadataProfiles ?? [])
+            .Where(profile => TexturePackProviderRegistry.Find(profile.SystemId) is not null)
+            .ToDictionary(
+                profile => profile.SystemId,
+                profile => profile.IdentifierExtractor,
+                StringComparer.Ordinal);
     }
 
     /// <summary>The most recent completed pass, or an empty result before the first one.</summary>
     public TexturePackInventoryResult Current { get; private set; } = TexturePackInventoryResult.Empty;
 
-    /// <summary>Whether any pass has completed, so the views can tell "no packs" from "not scanned".</summary>
+    /// <summary>
+    /// Whether a real inventory has been produced, so the views can tell "no packs" from "not
+    /// scanned yet". A cache-only load that found nothing cached does not count: nothing was
+    /// examined, so claiming a game has no pack would be a statement we cannot support.
+    /// </summary>
     public bool HasScanned { get; private set; }
 
     public TexturePackSettings Settings => _settings.TexturePacks;
@@ -96,18 +115,30 @@ public sealed class TexturePackCoordinator
     /// <summary>Applies a changed settings snapshot; the next pass picks up new overrides.</summary>
     public void UpdateSettings(AppSettings settings) => _settings = settings;
 
-    /// <summary>Replaces one platform's texture-root override in memory for the next pass.</summary>
-    public void UpdateOverride(string systemId, string? directory) =>
+    /// <summary>
+    /// Replaces one platform's texture-root override and persists it, so a folder the user chose
+    /// explicitly survives a restart rather than silently reverting to auto-detection.
+    /// </summary>
+    public void UpdateOverride(string systemId, string? directory)
+    {
         _settings = _settings with { TexturePacks = _settings.TexturePacks.WithOverride(systemId, directory) };
+        _settingsService?.Save(_settings);
+    }
 
     /// <summary>Bundles the coordinator's operations as a delegate context for the Settings view model.</summary>
+    /// <param name="gameTitles">Titles for every library game, not just the visible collection.</param>
+    /// <param name="rescanAsync">
+    /// Overrides the rescan delegate so the library view can refresh its marks in the same pass.
+    /// Defaults to a bare refresh, which updates Settings but leaves already-rendered rows stale.
+    /// </param>
     public TexturePackSettingsContext CreateSettingsContext(
-        Func<IReadOnlyDictionary<long, string>> gameTitles) => new(
+        Func<IReadOnlyDictionary<long, string>> gameTitles,
+        Func<CancellationToken, Task<TexturePackInventoryResult>>? rescanAsync = null) => new(
         // Delegates, not snapshots: Settings re-reads them after a Rescan so the totals, the
         // per-platform rows, and the pack list cannot disagree within an open session.
         () => Current,
         () => HasScanned,
-        RefreshAsync,
+        rescanAsync ?? RefreshAsync,
         UpdateOverride,
         TexturePackProviderRegistry.All
             .Select(descriptor => (descriptor.SystemId, descriptor.OverridePlaceholder))
@@ -152,16 +183,95 @@ public sealed class TexturePackCoordinator
                     snapshots.Add(snapshot);
             }
 
+            // An explicit rescan may extract the identifiers it needs. Without this, texture
+            // matching would silently depend on the opt-in network-metadata pass having run:
+            // GameCube, Wii, PlayStation, and PS2 write no identifiers at import, so every pack
+            // for them would sit at "identification pending" forever. The extraction itself is a
+            // local header/descriptor read and needs no consent — only the network stage does.
+            if (refresh)
+                await BackfillIdentifiersAsync(snapshots, cancellationToken);
+
             var identifiers = await Task.Run(_metadataStore.GetAllIdentifiers, cancellationToken);
             Current = new TexturePackInventoryResult(
                 TexturePackLibraryMap.Build(snapshots, identifiers),
                 platforms);
-            HasScanned = true;
+            // A cache-only load that found no cached snapshot examined nothing, so it must not
+            // flip the views from "not scanned yet" to "no pack for this game".
+            HasScanned |= refresh || snapshots.Count > 0;
             return Current;
         }
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Extracts identifiers for games whose system has packs installed but that carry none yet.
+    /// Scoped deliberately narrowly: only systems that actually produced a snapshot, only games
+    /// with no identifiers at all, and only on an explicit rescan — so this never becomes a
+    /// startup cost and never re-reads a disc whose evidence is already stored.
+    /// </summary>
+    private async Task BackfillIdentifiersAsync(
+        IReadOnlyList<TexturePackInventorySnapshot> snapshots,
+        CancellationToken cancellationToken)
+    {
+        if (_gamesForSystem is null || _identifierExtractors.Count == 0 || snapshots.Count == 0)
+            return;
+
+        // Only bother with systems whose installation actually holds a usable pack; reading discs
+        // for a platform with an empty texture folder would be work with no possible payoff.
+        var systemIds = TexturePackProviderRegistry.All
+            .Where(descriptor => _identifierExtractors.ContainsKey(descriptor.SystemId))
+            .Where(descriptor => snapshots.Any(snapshot =>
+                string.Equals(snapshot.EmulatorId, descriptor.EmulatorId, StringComparison.Ordinal) &&
+                snapshot.Entries.Any(entry => entry.IsUsable)))
+            .Select(descriptor => descriptor.SystemId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (systemIds.Length == 0)
+            return;
+
+        try
+        {
+            var existing = await Task.Run(_metadataStore.GetAllIdentifiers, cancellationToken);
+            await Task.Run(
+                () =>
+                {
+                    foreach (var systemId in systemIds)
+                    {
+                        var extractor = _identifierExtractors[systemId];
+                        foreach (var game in _gamesForSystem(systemId))
+                        {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            if (existing.TryGetValue(game.Id, out var stored) && stored.Count > 0)
+                                continue;
+
+                            try
+                            {
+                                var identifiers = extractor.Extract(game);
+                                if (identifiers.Count > 0)
+                                    _metadataStore.ReplaceIdentifiers(game.Id, identifiers);
+                            }
+                            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                            {
+                                // One unreadable game must not abort the whole pass.
+                                _logger?.Warning(
+                                    $"Could not read texture-match evidence from '{game.Path}': {ex.Message}");
+                            }
+                        }
+                    }
+                },
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Matching simply stays pending if this fails; it must never break the scan.
+            _logger?.Warning($"Texture-match identifier backfill failed: {ex.Message}");
         }
     }
 
@@ -237,7 +347,11 @@ public sealed class TexturePackCoordinator
                     false);
             }
 
-            state = new TexturePackInventoryState(cached, IsStale: true, TexturePackRootStatus.Unknown);
+            // This IS the last completed scan, not a fallback after a failed one, so it reports
+            // that scan's own root status. "Stale" is reserved for a refresh that could not read
+            // the folder and fell back to cache — conflating the two made a perfectly good cached
+            // inventory read as "Not scanned yet".
+            state = new TexturePackInventoryState(cached, IsStale: false, cached.RootStatus);
         }
 
         scanned[provider.InstallationId] = state;
