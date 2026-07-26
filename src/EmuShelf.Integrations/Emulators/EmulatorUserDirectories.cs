@@ -74,8 +74,7 @@ public static class EmulatorUserDirectories
     /// </remarks>
     public static string? FindDolphin(string? installationDirectory, bool isFlatpak)
     {
-        var existing = Candidates().Select(ExistingDirectory).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        return existing.FirstOrDefault(HasTexturePacks) ?? existing.FirstOrDefault();
+        return First(Candidates());
 
         IEnumerable<string?> Candidates()
         {
@@ -85,59 +84,16 @@ public static class EmulatorUserDirectories
                 yield break;
             }
 
-            // Dolphin uses a "User" folder beside the executable when one exists (portable builds).
-            yield return Combine(installationDirectory, "User");
-
-            // Frontends that manage their own emulator tree (ES-DE and similar) keep the binaries
-            // under <root>/Emulators/... and the per-emulator data under <root>/saves/<name>/User,
-            // then launch Dolphin with -u pointing there. Walk up from the executable looking for
-            // that sibling rather than assuming the data sits beside the binary.
-            foreach (var candidate in FrontendManagedDolphinDirectories(installationDirectory))
-                yield return candidate;
+            // Dolphin's own rule: portable.txt beside the executable means the User folder there is
+            // the user directory. Without that marker a User folder beside the binary is not
+            // authoritative, so it must not outrank the platform default.
+            if (HasAny(installationDirectory, "portable.txt"))
+                yield return Combine(installationDirectory, "User");
 
             yield return Documents("Dolphin Emulator");
             yield return Home(".local", "share", "dolphin-emu");
             yield return Home("Library", "Application Support", "Dolphin");
-        }
-    }
-
-    private static IEnumerable<string?> FrontendManagedDolphinDirectories(string? installationDirectory)
-    {
-        if (string.IsNullOrWhiteSpace(installationDirectory))
-            yield break;
-
-        DirectoryInfo? directory;
-        try
-        {
-            directory = new DirectoryInfo(installationDirectory);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            yield break;
-        }
-
-        // Bounded walk: deep enough to clear <root>/Emulators/dolphin-emu, short enough that this
-        // never turns into a filesystem crawl.
-        for (var depth = 0; depth < 4 && directory is not null; depth++, directory = directory.Parent)
-        {
-            foreach (var name in DolphinDataDirectoryNames)
-                yield return Combine(directory.FullName, "saves", name, "User");
-        }
-    }
-
-    private static readonly string[] DolphinDataDirectoryNames = ["dolphin", "dolphin-emu"];
-
-    /// <summary>Whether a User directory holds at least one texture-pack folder.</summary>
-    private static bool HasTexturePacks(string userDirectory)
-    {
-        try
-        {
-            var textures = Path.Combine(userDirectory, "Load", "Textures");
-            return Directory.Exists(textures) && Directory.EnumerateDirectories(textures).Any();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
+            yield return Combine(installationDirectory, "User");
         }
     }
 

@@ -1829,19 +1829,26 @@ never becomes a startup cost.
 Texture-root overrides are also persisted through `ISettingsService` now; they previously lived only
 in memory and silently reverted to auto-detection on the next launch.
 
-## 2026-07-26 — Dolphin's user directory is chosen by which one holds packs
+## 2026-07-26 — Dolphin's texture root comes from Dolphin.ini, not from folder layout
 
-Dolphin names no user directory in its own settings the way PCSX2 and DuckStation name their
-texture folder, and a launcher can redirect it entirely with `-u`. A real ES-DE install had two
-valid-looking candidates at once: an empty `User` beside the binary under `Emulators/dolphin-emu`,
-and the populated one at `saves/dolphin/User` holding 31 packs. Taking the first existing candidate
-found zero packs forever, with no visible reason.
+Dolphin does name its Load directory in configuration — `Config/Dolphin.ini`, `[General] LoadPath`
+— and its Paths settings let a user move it anywhere. A real ES-DE install has `portable.txt`
+beside the binary, so the user directory *is* the adjacent `User` folder per Dolphin's own rule,
+while `LoadPath` redirects to a `saves/dolphin/User/Load/` tree elsewhere on the drive, where the 31
+packs actually live. Taking the first existing user directory and appending `Load/Textures` found
+zero packs, with no visible reason.
 
-Discovery now adds the frontend-managed `<root>/saves/<dolphin>/User` sibling (a bounded four-level
-walk up from the executable, never a filesystem crawl) and, among the candidates that exist, prefers
-whichever actually contains texture-pack folders. An empty `Load/Textures` can never produce a
-match, so choosing it over a populated sibling is strictly worse and never what the user meant.
+A first attempt inferred the root by preferring whichever candidate user directory contained pack
+folders. That produced the right answer on this install, but only by coincidence: it reads layout
+instead of configuration, so it breaks the moment the folder moves, an old populated copy lingers,
+or the packs are not installed yet. The resolver now reads `LoadPath` and appends `Textures`,
+normalising the mixed separators and trailing slash Dolphin writes and resolving a relative value
+against the user directory. An absent key is not an error — Dolphin then uses `<User>/Load`, so that
+is the fallback — and an unreadable ini still resolves to the default while reporting why.
+User-directory discovery follows Dolphin's documented rule as well: a `User` folder beside the
+binary is authoritative only when `portable.txt` is present.
 
-This is a discovery heuristic, not a claim about loading: the library mark still means "installed
-and matched", and Dolphin's loading status stays Unknown unless `GFX.ini` proves otherwise. The
-Settings override remains the escape hatch when the guess is wrong.
+This puts Dolphin on the same footing as PCSX2 and DuckStation, whose texture roots were already
+read from their own settings files rather than guessed. The library mark still means "installed and
+matched": loading status stays Unknown unless `GFX.ini` proves otherwise, and the Settings override
+remains the escape hatch.

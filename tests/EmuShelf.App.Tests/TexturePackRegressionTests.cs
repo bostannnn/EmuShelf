@@ -6,6 +6,7 @@ using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.TexturePacks;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Dolphin;
 
 namespace EmuShelf.App.Tests;
 
@@ -182,43 +183,81 @@ public sealed class TexturePackRegressionTests : IDisposable
     }
 
     [Fact]
-    public void DolphinDiscovery_PrefersAPopulatedUserFolderOverAnEmptyOneBesideTheExecutable()
+    public async Task DolphinTextures_FollowTheConfiguredLoadPathWhenItPointsOutsideTheUserFolder()
     {
-        // The real case this came from: a frontend-managed layout keeps the Dolphin binary under
-        // <root>/Emulators/dolphin-emu (with its own empty User folder) while the actual packs live
-        // in <root>/saves/dolphin/User. Picking the empty one found zero packs forever.
-        var install = Path.Combine(_root, "Emulators", "dolphin-emu");
-        Directory.CreateDirectory(Path.Combine(install, "User", "Load", "Textures"));
-        var managed = Path.Combine(_root, "saves", "dolphin", "User");
-        Directory.CreateDirectory(Path.Combine(managed, "Load", "Textures", "GALE01"));
+        // The real case: a frontend redirects [General] LoadPath away from <User>/Load, so the
+        // packs are nowhere near the user directory. Reading the key is what survives the move.
+        var user = Path.Combine(_root, "Emulators", "dolphin-emu", "User");
+        var moved = Path.Combine(_root, "somewhere", "else", "Load");
+        Directory.CreateDirectory(Path.Combine(moved, "Textures", "GALE01"));
+        // Written the way Dolphin actually writes it: mixed separators and a trailing slash.
+        WriteDolphinIni(user, "LoadPath = " + moved.Replace('\\', '/') + "/");
 
-        var chosen = EmulatorUserDirectories.FindDolphin(install, isFlatpak: false);
+        var resolution = await new DolphinTextureRootResolver("i", user).ResolveAsync(
+            TestContext.Current.CancellationToken);
 
-        Assert.Equal(managed, chosen);
+        Assert.Equal(Path.Combine(moved, "Textures"), resolution.RootDirectory);
     }
 
     [Fact]
-    public void DolphinDiscovery_KeepsTheFolderBesideTheExecutableWhenItIsTheOneWithPacks()
+    public async Task DolphinTextures_FallBackToTheDefaultLoadFolderWhenTheKeyIsAbsent()
     {
-        // The ordinary portable install must not be dragged away by the new candidate.
-        var install = Path.Combine(_root, "Emulators", "dolphin-emu");
-        Directory.CreateDirectory(Path.Combine(install, "User", "Load", "Textures", "GALE01"));
-        Directory.CreateDirectory(Path.Combine(_root, "saves", "dolphin", "User", "Load", "Textures"));
+        var user = Path.Combine(_root, "User");
+        WriteDolphinIni(user, "UseDiscordPresence = False");
 
-        var chosen = EmulatorUserDirectories.FindDolphin(install, isFlatpak: false);
+        var resolution = await new DolphinTextureRootResolver("i", user).ResolveAsync(
+            TestContext.Current.CancellationToken);
 
-        Assert.Equal(Path.Combine(install, "User"), chosen);
+        Assert.Equal(Path.Combine(user, "Load", "Textures"), resolution.RootDirectory);
     }
 
     [Fact]
-    public void DolphinDiscovery_FallsBackToTheFirstExistingFolderWhenNoneHoldsPacks()
+    public async Task DolphinTextures_UseTheDefaultWhenNoConfigurationExistsAtAll()
     {
+        var user = Path.Combine(_root, "FreshUser");
+        Directory.CreateDirectory(user);
+
+        var resolution = await new DolphinTextureRootResolver("i", user).ResolveAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.True(resolution.IsResolved);
+        Assert.Equal(Path.Combine(user, "Load", "Textures"), resolution.RootDirectory);
+    }
+
+    [Fact]
+    public async Task DolphinTextures_ResolveARelativeLoadPathAgainstTheUserFolder()
+    {
+        var user = Path.Combine(_root, "RelUser");
+        WriteDolphinIni(user, @"LoadPath = .\CustomLoad\");
+
+        var resolution = await new DolphinTextureRootResolver("i", user).ResolveAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(Path.Combine(user, "CustomLoad", "Textures"), resolution.RootDirectory);
+    }
+
+    [Fact]
+    public void DolphinUserDirectory_HonoursThePortableMarkerBesideTheExecutable()
+    {
+        // Dolphin's own rule: portable.txt makes the adjacent User folder authoritative, ahead of
+        // any platform default. Deliberately not asserting the negative case — what wins without
+        // the marker depends on whether this machine happens to have a Documents\Dolphin Emulator.
         var install = Path.Combine(_root, "Emulators", "dolphin-emu");
         Directory.CreateDirectory(Path.Combine(install, "User"));
+        File.WriteAllText(Path.Combine(install, "portable.txt"), string.Empty);
 
-        var chosen = EmulatorUserDirectories.FindDolphin(install, isFlatpak: false);
+        Assert.Equal(
+            Path.Combine(install, "User"),
+            EmulatorUserDirectories.FindDolphin(install, isFlatpak: false));
+    }
 
-        Assert.Equal(Path.Combine(install, "User"), chosen);
+    private static void WriteDolphinIni(string userDirectory, string generalLine)
+    {
+        var config = Path.Combine(userDirectory, "Config");
+        Directory.CreateDirectory(config);
+        File.WriteAllLines(
+            Path.Combine(config, "Dolphin.ini"),
+            ["[General]", generalLine]);
     }
 
     [Fact]
