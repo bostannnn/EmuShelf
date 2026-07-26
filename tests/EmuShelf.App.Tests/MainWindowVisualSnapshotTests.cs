@@ -695,28 +695,35 @@ public class MainWindowVisualSnapshotTests
     public async Task RenderSaveSyncSettingsInDarkTheme()
     {
         var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var configuration = new CloudSaveSyncSettings
+        {
+            Enabled = true,
+            RemoteName = "emushelf-gdrive",
+            CloudFolder = "EmuShelf/Saves",
+            Pcsx2ConfigDirectory = @"D:\Emulators\PCSX2",
+            PpssppMemoryStickDirectory = @"D:\Emulators\PPSSPP\memstick",
+        }.NormalizeSaveLocations();
         var cloudSaves = new CloudSaveSyncSettingsContext(
-            new CloudSaveSyncSettings
-            {
-                Enabled = true,
-                RemoteName = "emushelf-gdrive",
-                CloudFolder = "EmuShelf/Saves",
-                Pcsx2ConfigDirectory = @"D:\Emulators\PCSX2",
-                PpssppMemoryStickDirectory = @"D:\Emulators\PPSSPP\memstick",
-            },
+            configuration,
             IsRcloneAvailable: true,
             RcloneExpectedPath: @"D:\EmuShelf\rclone.exe",
-            DefaultPcsx2Directory: @"D:\Emulators\PCSX2",
-            DefaultPpssppInstallationDirectory: @"D:\Emulators\PPSSPP",
             SyncLogPath: @"D:\EmuShelf\Logs\save-sync.log",
-            _ => Task.FromResult<string?>(@"D:\Emulators\PCSX2\memcards"),
-            _ => Task.FromResult<string?>(@"D:\Emulators\PPSSPP\memstick\PSP\SAVEDATA"),
-            (_, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            Platforms: SaveProviderRegistry.All.Select(descriptor => new CloudSaveSyncPlatformContext(
+                descriptor.SystemId,
+                descriptor.DisplayName,
+                descriptor.SaveShapeDescription,
+                descriptor.OverridePlaceholder,
+                configuration.GetOverride(descriptor.SystemId),
+                LastSuccessUtc: null,
+                LastError: null)).ToArray(),
+            (systemId, _) => Task.FromResult<string?>(systemId == "psp"
+                ? @"D:\Emulators\PPSSPP\memstick\PSP\SAVEDATA"
+                : @"D:\Emulators\PCSX2\memcards"),
+            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
-            _ => { },
-            _ => { },
+            (_, _) => { },
             _ => Task.FromResult(true));
         var viewModel = new EmulatorSettingsViewModel(
             KnownSystems.All,

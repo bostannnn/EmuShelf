@@ -1,0 +1,122 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using EmuShelf.App.Services;
+using EmuShelf.Core.Diagnostics;
+using EmuShelf.Core.SaveSync;
+
+namespace EmuShelf.App.ViewModels;
+
+/// <summary>
+/// One supported save-sync platform row in Settings. Every platform renders from this same view
+/// model over one template, so adding a provider adds a row without touching the view.
+/// </summary>
+public partial class CloudSavePlatformRowViewModel : ViewModelBase
+{
+    private readonly CloudSaveSyncSettingsContext _cloudSaves;
+    private readonly IDialogService _dialogs;
+    private readonly IAppLogger _logger;
+    private readonly Func<string, SaveSyncDirection, Task> _force;
+
+    public CloudSavePlatformRowViewModel(
+        CloudSaveSyncPlatformContext platform,
+        CloudSaveSyncSettingsContext cloudSaves,
+        IDialogService dialogs,
+        IAppLogger logger,
+        Func<string, SaveSyncDirection, Task> force)
+    {
+        _cloudSaves = cloudSaves;
+        _dialogs = dialogs;
+        _logger = logger;
+        _force = force;
+        SystemId = platform.SystemId;
+        DisplayName = platform.DisplayName;
+        SaveShapeDescription = platform.SaveShapeDescription;
+        OverridePlaceholder = platform.OverridePlaceholder;
+        OverrideDirectory = platform.Override ?? string.Empty;
+        LastResultText = DescribeLastResult(platform);
+    }
+
+    /// <summary>The stable system id this row configures.</summary>
+    public string SystemId { get; }
+
+    /// <summary>The platform name, e.g. <c>PlayStation 2</c>.</summary>
+    public string DisplayName { get; }
+
+    /// <summary>One short line describing what this platform syncs.</summary>
+    public string SaveShapeDescription { get; }
+
+    /// <summary>Placeholder shown in the override path box.</summary>
+    public string OverridePlaceholder { get; }
+
+    [ObservableProperty]
+    public partial string OverrideDirectory { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetectedDirectory))]
+    public partial string? DetectedDirectory { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLastResult))]
+    public partial string? LastResultText { get; set; }
+
+    /// <summary>Whether sync is connected, which gates the destructive replace actions.</summary>
+    [ObservableProperty]
+    public partial bool IsCloudConnected { get; set; }
+
+    /// <summary>Whether a cloud operation is running, which disables this row's controls.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdle))]
+    public partial bool IsCloudBusy { get; set; }
+
+    public bool IsIdle => !IsCloudBusy;
+
+    public bool HasDetectedDirectory => !string.IsNullOrWhiteSpace(DetectedDirectory);
+
+    public bool HasLastResult => !string.IsNullOrWhiteSpace(LastResultText);
+
+    /// <summary>The override as it should be persisted: trimmed, or null when empty.</summary>
+    public string? NormalizedOverride =>
+        string.IsNullOrWhiteSpace(OverrideDirectory) ? null : OverrideDirectory.Trim();
+
+    /// <summary>Re-reads the concrete directory this platform resolves to on this machine.</summary>
+    public async Task RefreshDetectedDirectoryAsync()
+    {
+        try
+        {
+            DetectedDirectory = await _cloudSaves.GetDetectedPathAsync(SystemId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not detect the save folder for {DisplayName}.", ex);
+            DetectedDirectory = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task PickDirectoryAsync()
+    {
+        var picked = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(picked))
+            return;
+
+        OverrideDirectory = picked;
+        _cloudSaves.UpdateOverride(SystemId, picked);
+        DetectedDirectory = null;
+        await RefreshDetectedDirectoryAsync();
+    }
+
+    [RelayCommand]
+    private Task ReplaceCloudAsync() => _force(SystemId, SaveSyncDirection.Upload);
+
+    [RelayCommand]
+    private Task ReplaceLocalAsync() => _force(SystemId, SaveSyncDirection.Download);
+
+    private static string? DescribeLastResult(CloudSaveSyncPlatformContext platform)
+    {
+        if (!string.IsNullOrWhiteSpace(platform.LastError))
+            return $"Last attempt failed: {platform.LastError}";
+        return platform.LastSuccessUtc is { } success
+            ? $"Last synced {success.ToLocalTime():g}"
+            : null;
+    }
+}

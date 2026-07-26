@@ -328,7 +328,7 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
 }
 
 /// <summary>Raised when a readable PCSX2 INI does not match the explicitly supported adapter format.</summary>
-public sealed class Pcsx2ConfigurationFormatException : Exception
+public sealed class Pcsx2ConfigurationFormatException : SaveProviderConfigurationException
 {
     public Pcsx2ConfigurationFormatException(string message) : base(message)
     {

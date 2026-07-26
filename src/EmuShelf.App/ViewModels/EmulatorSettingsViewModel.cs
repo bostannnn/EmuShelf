@@ -135,21 +135,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string CloudFolder { get; set; } = "EmuShelf/Saves";
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPcsx2ConfigDirectory))]
-    public partial string Pcsx2ConfigDirectory { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasDetectedMemoryCards))]
-    public partial string? DetectedMemoryCardsDirectory { get; set; }
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPpssppMemoryStickDirectory))]
-    public partial string PpssppMemoryStickDirectory { get; set; } = string.Empty;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasDetectedPpssppSaveData))]
-    public partial string? DetectedPpssppSaveDataDirectory { get; set; }
+    /// <summary>One row per registered save platform, rendered by a single view template.</summary>
+    public ObservableCollection<CloudSavePlatformRowViewModel> CloudPlatforms { get; } = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCloudDisconnected))]
@@ -196,10 +183,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial bool IsDownloadingRclone { get; set; }
 
     public bool IsCloudDisconnected => !IsCloudConnected;
-    public bool HasPcsx2ConfigDirectory => !string.IsNullOrWhiteSpace(Pcsx2ConfigDirectory);
-    public bool HasDetectedMemoryCards => !string.IsNullOrWhiteSpace(DetectedMemoryCardsDirectory);
-    public bool HasPpssppMemoryStickDirectory => !string.IsNullOrWhiteSpace(PpssppMemoryStickDirectory);
-    public bool HasDetectedPpssppSaveData => !string.IsNullOrWhiteSpace(DetectedPpssppSaveDataDirectory);
     public bool HasCloudStatus => !string.IsNullOrWhiteSpace(CloudStatusText);
     public bool HasCloudSyncProgress => IsCloudBusy && CloudSyncProgressTotal > 0;
 
@@ -234,12 +217,17 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             var saves = cloudSaves.Current;
             CloudRemoteName = string.IsNullOrWhiteSpace(saves.RemoteName) ? "emushelf-gdrive" : saves.RemoteName!;
             CloudFolder = string.IsNullOrWhiteSpace(saves.CloudFolder) ? "EmuShelf/Saves" : saves.CloudFolder!;
-            // Prefer the saved folder; otherwise pre-fill from the emulator EmuShelf already
-            // knows about, so the user does not have to select PCSX2 again.
-            Pcsx2ConfigDirectory = !string.IsNullOrWhiteSpace(saves.Pcsx2ConfigDirectory)
-                ? saves.Pcsx2ConfigDirectory!
-                : cloudSaves.DefaultPcsx2Directory ?? string.Empty;
-            PpssppMemoryStickDirectory = saves.PpssppMemoryStickDirectory ?? string.Empty;
+            // One row per registered platform. The row owns its own override, detected path, and
+            // per-platform actions, so this view model never names an emulator.
+            foreach (var platform in cloudSaves.Platforms)
+            {
+                CloudPlatforms.Add(new CloudSavePlatformRowViewModel(
+                    platform,
+                    cloudSaves,
+                    dialogs,
+                    _logger,
+                    (systemId, direction) => ForceCloudAsync(systemId, direction)));
+            }
             IsCloudConnected = saves is { Enabled: true, RemoteName.Length: > 0 };
             IsRcloneMissing = !cloudSaves.IsRcloneAvailable;
             RcloneExpectedPath = cloudSaves.RcloneExpectedPath;
@@ -559,50 +547,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     partial void OnSelectedSectionChanged(SettingsSection value)
     {
-        if (value == SettingsSection.Saves && _cloudSaves is not null &&
-            DetectedMemoryCardsDirectory is null && HasPcsx2ConfigDirectory)
-        {
-            _ = RefreshDetectedMemoryCardsAsync();
-        }
-        if (value == SettingsSection.Saves && _cloudSaves is not null &&
-            DetectedPpssppSaveDataDirectory is null)
-        {
-            _ = RefreshDetectedPpssppSaveDataAsync();
-        }
-    }
-
-    [RelayCommand]
-    private async Task PickPcsx2DirectoryAsync()
-    {
-        if (_cloudSaves is null)
+        if (value != SettingsSection.Saves || _cloudSaves is null)
             return;
 
-        var picked = await _dialogs.PickFolderAsync();
-        if (string.IsNullOrWhiteSpace(picked))
-            return;
-
-        Pcsx2ConfigDirectory = picked;
-        // Persist immediately so a folder change made while already connected survives a restart,
-        // not only a change made during the initial connect.
-        _cloudSaves.UpdatePcsx2Directory(picked);
-        DetectedMemoryCardsDirectory = null;
-        await RefreshDetectedMemoryCardsAsync();
-    }
-
-    [RelayCommand]
-    private async Task PickPpssppMemoryStickDirectoryAsync()
-    {
-        if (_cloudSaves is null)
-            return;
-
-        var picked = await _dialogs.PickFolderAsync();
-        if (string.IsNullOrWhiteSpace(picked))
-            return;
-
-        PpssppMemoryStickDirectory = picked;
-        _cloudSaves.UpdatePpssppDirectory(picked);
-        DetectedPpssppSaveDataDirectory = null;
-        await RefreshDetectedPpssppSaveDataAsync();
+        foreach (var platform in CloudPlatforms.Where(row => row.DetectedDirectory is null))
+            _ = platform.RefreshDetectedDirectoryAsync();
     }
 
     [RelayCommand]
@@ -618,8 +567,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             var result = await _cloudSaves.ConnectGoogleDriveAsync(
                 CloudRemoteName.Trim(),
                 CloudFolder.Trim(),
-                Pcsx2ConfigDirectory.Trim(),
-                PpssppMemoryStickDirectory.Trim(),
+                CollectOverrides(),
                 CancellationToken.None);
             CloudStatusText = result switch
             {
@@ -701,20 +649,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private Task SyncCloudNowAsync() =>
         RunCloudOperationAsync((progress, token) => _cloudSaves!.SyncNowAsync(progress, token), "Syncing saves…");
 
-    [RelayCommand]
-    private Task ForceCloudUploadAsync(string? systemId) =>
-        ForceCloudAsync(systemId, SaveSyncDirection.Upload);
-
-    [RelayCommand]
-    private Task ForceCloudDownloadAsync(string? systemId) =>
-        ForceCloudAsync(systemId, SaveSyncDirection.Download);
-
     private Task ForceCloudAsync(string? systemId, SaveSyncDirection direction)
     {
         if (string.IsNullOrWhiteSpace(systemId))
             return Task.CompletedTask;
 
-        var platformName = systemId == "psp" ? "PSP" : "PlayStation 2";
+        var platformName = CloudPlatforms
+            .FirstOrDefault(row => string.Equals(row.SystemId, systemId, StringComparison.Ordinal))
+            ?.DisplayName ?? systemId;
         var startingMessage = direction == SaveSyncDirection.Upload
             ? $"Uploading {platformName} saves…"
             : $"Downloading {platformName} saves…";
@@ -775,12 +717,17 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             return;
 
         // Typed paths and folder-picker paths follow the same persistence rule. A configured
-        // emulator still supplies the default when its corresponding text box is empty.
-        _cloudSaves.UpdatePcsx2Directory(
-            string.IsNullOrWhiteSpace(Pcsx2ConfigDirectory) ? null : Pcsx2ConfigDirectory.Trim());
-        _cloudSaves.UpdatePpssppDirectory(
-            string.IsNullOrWhiteSpace(PpssppMemoryStickDirectory) ? null : PpssppMemoryStickDirectory.Trim());
+        // emulator still supplies the default when a platform's box is left empty.
+        foreach (var platform in CloudPlatforms)
+            _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
     }
+
+    /// <summary>The per-platform overrides as typed, keyed by system id for the connect call.</summary>
+    private IReadOnlyDictionary<string, string?> CollectOverrides() =>
+        CloudPlatforms.ToDictionary(
+            platform => platform.SystemId,
+            platform => platform.NormalizedOverride,
+            StringComparer.Ordinal);
 
     private static string DescribeAction(SaveSyncAction action) => action switch
     {
@@ -790,38 +737,18 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _ => "Checking",
     };
 
-    private async Task RefreshDetectedMemoryCardsAsync()
+    // The rows render their own enabled/visible state, so mirror the shared cloud state onto them
+    // rather than binding each row back up to the parent view model through the item template.
+    partial void OnIsCloudBusyChanged(bool value)
     {
-        if (_cloudSaves is null)
-            return;
-
-        try
-        {
-            DetectedMemoryCardsDirectory =
-                await _cloudSaves.GetDetectedMemoryCardsDirectoryAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Could not detect the PCSX2 memory-card folder.", ex);
-            DetectedMemoryCardsDirectory = null;
-        }
+        foreach (var platform in CloudPlatforms)
+            platform.IsCloudBusy = value;
     }
 
-    private async Task RefreshDetectedPpssppSaveDataAsync()
+    partial void OnIsCloudConnectedChanged(bool value)
     {
-        if (_cloudSaves is null)
-            return;
-
-        try
-        {
-            DetectedPpssppSaveDataDirectory =
-                await _cloudSaves.GetDetectedPpssppSaveDataDirectoryAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Could not detect PPSSPP's SAVEDATA folder.", ex);
-            DetectedPpssppSaveDataDirectory = null;
-        }
+        foreach (var platform in CloudPlatforms)
+            platform.IsCloudConnected = value;
     }
 
     private static string DescribeCloudReport(SaveSyncReport report)

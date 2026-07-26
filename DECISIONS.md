@@ -1594,3 +1594,43 @@ so the previous whole-title lookup never fired against a real match.
 GameTDB's PlayStation 3 `coverHQ` set is partial. Candidates now cover every region in the
 high-resolution set and then every region in the standard `cover` set, so a release that only ever
 received the standard image is no longer left without a cover.
+
+## 2026-07-26 — A save-provider registry owns all platform knowledge
+
+Adding PPSSPP alongside PCSX2 left platform knowledge in three hand-maintained lists that had to
+agree: the system ids `SyncNowAsync` passed, the `CanSyncSystem` switch, and the `CreateTarget`
+switch. They agreed, but nothing enforced it, and a disagreement had a silent failure mode: the
+pipeline returns `NotConfigured`, the launch path shows no message for that status, and the user
+plays believing their saves were pulled.
+
+`SaveProviderRegistry` is now the single source of truth. A `SaveProviderDescriptor` carries the
+system id, display name, presentation strings, a `CreateProvider` factory, and a detected-path
+resolver. `CanSyncSystem` answers by calling exactly the factory the sync pipeline calls, so the
+participation answer and the provider construction cannot diverge. The coordinator, the settings
+view model, and the settings view now name no emulator at all; the view renders one row template
+over the registry. Adding a platform is a provider class plus one registry entry.
+
+Provider configuration exceptions derive from `SaveProviderConfigurationException`, so the two
+catch filters name one base type. Previously each new provider had to be added to both filters by
+hand, and omitting one would let its exception escape and fault the whole sync.
+
+`ConnectGoogleDriveAsync` takes overrides keyed by system id rather than one positional string per
+emulator. Four positional strings made transposing two paths easy and invisible; each additional
+platform made it worse.
+
+## 2026-07-26 — Save locations are per-system, with legacy fields mirrored for rollback
+
+`CloudSaveSyncSettings` now holds `SaveLocations`, a system-id-keyed dictionary of override plus
+last-success time plus last error, so Settings reports each platform's own outcome instead of one
+shared status line. `NormalizeSaveLocations` folds the legacy `Pcsx2ConfigDirectory` and
+`PpssppMemoryStickDirectory` fields in on load, and an entry already in the dictionary always wins
+so migration cannot resurrect a stale value over a newer explicit choice. Writes mirror back onto
+the two legacy fields, so a user who rolls back to an older build still finds their configuration.
+
+The record defines structural equality explicitly: the synthesized record `Equals` would compare
+the dictionary by reference, making a settings object that round-tripped through `settings.json`
+compare unequal to the one that produced it.
+
+An empty override box now means "use the configured emulator" rather than being pre-filled with the
+derived path. Pre-filling turned a derived location into an explicit override the moment the user
+pressed Save, pinning a path that should have kept following the emulator configuration.

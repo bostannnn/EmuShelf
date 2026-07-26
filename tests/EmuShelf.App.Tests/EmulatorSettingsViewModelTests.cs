@@ -497,7 +497,7 @@ public class EmulatorSettingsViewModelTests
 
         Assert.True(viewModel.IsCloudConnected);
         Assert.Equal("my-drive", viewModel.CloudRemoteName);
-        Assert.Equal("/pcsx2", viewModel.Pcsx2ConfigDirectory);
+        Assert.Equal("/pcsx2", Row(viewModel, "playstation2").OverrideDirectory);
     }
 
     [AvaloniaFact]
@@ -508,26 +508,41 @@ public class EmulatorSettingsViewModelTests
             PpssppMemoryStickDirectory = "/portable/ppsspp",
         }));
 
-        Assert.Equal("/portable/ppsspp", viewModel.PpssppMemoryStickDirectory);
+        Assert.Equal("/portable/ppsspp", Row(viewModel, "psp").OverrideDirectory);
     }
 
     [AvaloniaFact]
-    public async Task CloudSaves_Connect_Success_MarksConnectedAndPassesFields()
+    public void CloudSaves_ShowsOneRowPerRegisteredPlatform()
     {
-        var calls = new List<(string Remote, string Folder, string Pcsx2, string Ppsspp)>();
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, pcsx2, ppsspp, _) =>
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext());
+
+        Assert.Equal(
+            SaveProviderRegistry.SystemIds,
+            viewModel.CloudPlatforms.Select(row => row.SystemId).ToArray());
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_Success_MarksConnectedAndPassesOverridesBySystemId()
+    {
+        var calls = new List<(string Remote, string Folder, IReadOnlyDictionary<string, string?> Overrides)>();
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, overrides, _) =>
         {
-            calls.Add((remote, folder, pcsx2, ppsspp));
+            calls.Add((remote, folder, overrides));
             return Task.FromResult(CloudSaveSyncConnectResult.Connected);
         }));
         viewModel.CloudRemoteName = "my-drive";
         viewModel.CloudFolder = "Saves";
-        viewModel.Pcsx2ConfigDirectory = "/pcsx2";
-        viewModel.PpssppMemoryStickDirectory = "/ppsspp";
+        Row(viewModel, "playstation2").OverrideDirectory = "/pcsx2";
+        Row(viewModel, "psp").OverrideDirectory = "/ppsspp";
 
         await viewModel.ConnectCloudCommand.ExecuteAsync(null);
 
-        Assert.Equal(("my-drive", "Saves", "/pcsx2", "/ppsspp"), Assert.Single(calls));
+        var call = Assert.Single(calls);
+        Assert.Equal("my-drive", call.Remote);
+        Assert.Equal("Saves", call.Folder);
+        // Keyed, so a new platform cannot shift one emulator's path onto another.
+        Assert.Equal("/pcsx2", call.Overrides["playstation2"]);
+        Assert.Equal("/ppsspp", call.Overrides["psp"]);
         Assert.True(viewModel.IsCloudConnected);
         Assert.Contains("Connected", viewModel.CloudStatusText);
     }
@@ -536,7 +551,7 @@ public class EmulatorSettingsViewModelTests
     public async Task CloudSaves_Connect_RcloneMissing_StaysDisconnected()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            connect: (_, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
+            connect: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
 
         await viewModel.ConnectCloudCommand.ExecuteAsync(null);
 
@@ -592,22 +607,34 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void CloudSaves_PreFillsPcsx2DirectoryFromConfiguredEmulator()
+    public void CloudSaves_WithNoOverride_LeavesTheBoxEmptyForTheConfiguredEmulator()
     {
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            defaultPcsx2Directory: @"F:\ES-DE\Emulators\pcsx2-qt"));
+        // An empty box means "use the configured emulator". Pre-filling it would turn a derived
+        // path into an explicit override the moment the user pressed Save.
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext());
 
-        Assert.Equal(@"F:\ES-DE\Emulators\pcsx2-qt", viewModel.Pcsx2ConfigDirectory);
+        Assert.Equal(string.Empty, Row(viewModel, "playstation2").OverrideDirectory);
+        Assert.Null(Row(viewModel, "playstation2").NormalizedOverride);
     }
 
     [AvaloniaFact]
-    public void CloudSaves_SavedPcsx2DirectoryWinsOverTheDerivedDefault()
+    public void CloudSaves_SavedOverrideIsShownInItsPlatformRow()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            current: new CloudSaveSyncSettings { Pcsx2ConfigDirectory = "/saved/pcsx2" },
-            defaultPcsx2Directory: "/derived/pcsx2"));
+            current: new CloudSaveSyncSettings { Pcsx2ConfigDirectory = "/saved/pcsx2" }));
 
-        Assert.Equal("/saved/pcsx2", viewModel.Pcsx2ConfigDirectory);
+        Assert.Equal("/saved/pcsx2", Row(viewModel, "playstation2").OverrideDirectory);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_ShowsEachPlatformsOwnLastResult()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithSyncFailure("psp", "the remote was unreachable");
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(configuration));
+
+        Assert.Contains("the remote was unreachable", Row(viewModel, "psp").LastResultText);
+        Assert.False(Row(viewModel, "playstation2").HasLastResult);
     }
 
     [AvaloniaFact]
@@ -645,53 +672,38 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public async Task CloudSaves_PickPcsx2Directory_PersistsAndDetectsMemoryCards()
+    public async Task CloudSaves_PickDirectory_PersistsAndDetectsThatPlatformsPath()
     {
-        string? persisted = null;
+        var persisted = new List<(string SystemId, string? Directory)>();
         _dialogs.FolderToReturn = "/picked/pcsx2";
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(updateDirectory: dir => persisted = dir));
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            updateOverride: (systemId, directory) => persisted.Add((systemId, directory))));
 
-        await viewModel.PickPcsx2DirectoryCommand.ExecuteAsync(null);
+        await Row(viewModel, "playstation2").PickDirectoryCommand.ExecuteAsync(null);
 
-        Assert.Equal("/picked/pcsx2", viewModel.Pcsx2ConfigDirectory);
-        Assert.Equal("/picked/pcsx2", persisted); // change is saved even without reconnecting
-        Assert.Equal("/pcsx2/memcards", viewModel.DetectedMemoryCardsDirectory);
+        Assert.Equal("/picked/pcsx2", Row(viewModel, "playstation2").OverrideDirectory);
+        // The change is saved even without reconnecting.
+        Assert.Equal(("playstation2", "/picked/pcsx2"), Assert.Single(persisted));
+        Assert.Equal("/pcsx2/memcards", Row(viewModel, "playstation2").DetectedDirectory);
     }
 
     [AvaloniaFact]
-    public async Task CloudSaves_PickPpssppDirectory_PersistsAndDetectsSaveData()
+    public async Task CloudSaves_Save_PersistsEveryPlatformsTypedPath()
     {
-        string? persisted = null;
-        _dialogs.FolderToReturn = "/picked/ppsspp";
+        var persisted = new Dictionary<string, string?>(StringComparer.Ordinal);
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            updatePpsspp: directory => persisted = directory));
-
-        await viewModel.PickPpssppMemoryStickDirectoryCommand.ExecuteAsync(null);
-
-        Assert.Equal("/picked/ppsspp", viewModel.PpssppMemoryStickDirectory);
-        Assert.Equal("/picked/ppsspp", persisted);
-        Assert.Equal("/ppsspp/PSP/SAVEDATA", viewModel.DetectedPpssppSaveDataDirectory);
-    }
-
-    [AvaloniaFact]
-    public async Task CloudSaves_Save_PersistsTypedPlatformPaths()
-    {
-        string? pcsx2 = null;
-        string? ppsspp = null;
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            updateDirectory: directory => pcsx2 = directory,
-            updatePpsspp: directory => ppsspp = directory));
-        viewModel.Pcsx2ConfigDirectory = " /pcsx2 ";
-        viewModel.PpssppMemoryStickDirectory = " /ppsspp ";
+            updateOverride: (systemId, directory) => persisted[systemId] = directory));
+        Row(viewModel, "playstation2").OverrideDirectory = " /pcsx2 ";
+        Row(viewModel, "psp").OverrideDirectory = " /ppsspp ";
 
         await viewModel.SaveCommand.ExecuteAsync(null);
 
-        Assert.Equal("/pcsx2", pcsx2);
-        Assert.Equal("/ppsspp", ppsspp);
+        Assert.Equal("/pcsx2", persisted["playstation2"]);
+        Assert.Equal("/ppsspp", persisted["psp"]);
     }
 
     [AvaloniaFact]
-    public async Task CloudSaves_ForceDownload_CallsContextForSelectedPlatform()
+    public async Task CloudSaves_ReplaceLocal_CallsContextForThatRowsPlatformOnly()
     {
         string? systemId = null;
         SaveSyncDirection? captured = null;
@@ -702,10 +714,22 @@ public class EmulatorSettingsViewModelTests
             return Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
         }));
 
-        await viewModel.ForceCloudDownloadCommand.ExecuteAsync("psp");
+        await Row(viewModel, "psp").ReplaceLocalCommand.ExecuteAsync(null);
 
         Assert.Equal("psp", systemId);
         Assert.Equal(SaveSyncDirection.Download, captured);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_ReplaceCloud_UsesTheRowsOwnPlatformName()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext());
+
+        await Row(viewModel, "psp").ReplaceCloudCommand.ExecuteAsync(null);
+
+        // The progress message reads from the registry rather than a hardcoded name map, so a
+        // third platform can never be mislabelled as one of the first two.
+        Assert.DoesNotContain("PlayStation 2", viewModel.CloudStatusText);
     }
 
     private EmulatorSettingsViewModel CreateViewModel(
@@ -726,30 +750,46 @@ public class EmulatorSettingsViewModelTests
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,
-        Func<string, string, string, string, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
+        Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
         Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? syncNow = null,
         Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
-        Action<string?>? updateDirectory = null,
-        Action<string?>? updatePpsspp = null,
+        Action<string, string?>? updateOverride = null,
         bool rcloneAvailable = true,
         Func<CancellationToken, Task<bool>>? downloadRclone = null,
-        string? defaultPcsx2Directory = null,
-        string? syncLogPath = null) => new(
-        current ?? new CloudSaveSyncSettings(),
-        rcloneAvailable,
-        "/app/rclone",
-        defaultPcsx2Directory,
-        "/app/ppsspp",
-        syncLogPath ?? Path.Combine(Path.GetTempPath(), "emushelf-save-sync-test.log"),
-        _ => Task.FromResult<string?>("/pcsx2/memcards"),
-        _ => Task.FromResult<string?>("/ppsspp/PSP/SAVEDATA"),
-        connect ?? ((_, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
-        _ => Task.CompletedTask,
-        syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
-        force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
-        updateDirectory ?? (_ => { }),
-        updatePpsspp ?? (_ => { }),
-        downloadRclone ?? (_ => Task.FromResult(true)));
+        string? syncLogPath = null)
+    {
+        var configuration = current ?? new CloudSaveSyncSettings();
+        var platforms = SaveProviderRegistry.All.Select(descriptor =>
+        {
+            var location = configuration.NormalizeSaveLocations().GetLocation(descriptor.SystemId);
+            return new CloudSaveSyncPlatformContext(
+                descriptor.SystemId,
+                descriptor.DisplayName,
+                descriptor.SaveShapeDescription,
+                descriptor.OverridePlaceholder,
+                location.DirectoryOverride,
+                location.LastSuccessUtc,
+                location.LastError);
+        }).ToArray();
+
+        return new CloudSaveSyncSettingsContext(
+            configuration,
+            rcloneAvailable,
+            "/app/rclone",
+            syncLogPath ?? Path.Combine(Path.GetTempPath(), "emushelf-save-sync-test.log"),
+            platforms,
+            (systemId, _) => Task.FromResult<string?>(
+                systemId == "psp" ? "/ppsspp/PSP/SAVEDATA" : "/pcsx2/memcards"),
+            connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
+            _ => Task.CompletedTask,
+            syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
+            force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
+            updateOverride ?? ((_, _) => { }),
+            downloadRclone ?? (_ => Task.FromResult(true)));
+    }
+
+    private static CloudSavePlatformRowViewModel Row(EmulatorSettingsViewModel viewModel, string systemId) =>
+        viewModel.CloudPlatforms.Single(row => row.SystemId == systemId);
 
     private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore
     {

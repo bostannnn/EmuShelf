@@ -124,41 +124,30 @@ public sealed class AppBootstrapper
             SettingsService,
             Settings,
             Logger,
-            defaultPcsx2Directory: ResolveConfiguredPcsx2Directory,
-            defaultPpssppInstallationDirectory: ResolveConfiguredPpssppDirectory,
-            isPpssppFlatpak: IsConfiguredPpssppFlatpak);
+            emulatorInstallations: ResolveConfiguredEmulator);
         Logger.Information("EmuShelf startup services initialized.");
     }
 
-    // The PCSX2 data directory EmuShelf already knows about from the Emulators settings — the
+    // The emulator data directory EmuShelf already knows about from the Emulators settings — the
     // folder containing the configured executable — used to pre-fill cloud save sync so the user
-    // does not select PCSX2 twice. Flatpak targets have no local executable path, so return null.
-    private string? ResolveConfiguredPcsx2Directory()
+    // does not select the same emulator twice. Flatpak targets have no local executable path, so
+    // they report a null directory and rely on the provider's documented Flatpak layout instead.
+    private SaveEmulatorInstallation? ResolveConfiguredEmulator(string systemId)
     {
-        var configuration = EmulatorConfigurations.Get("playstation2");
-        var executablePath = configuration?.LaunchTarget switch
+        var configuration = EmulatorConfigurations.Get(systemId);
+        if (configuration is null)
+            return null;
+
+        var executablePath = configuration.LaunchTarget switch
         {
             DirectExecutableTarget direct => direct.Path,
-            _ => configuration?.ExecutablePath,
+            _ => configuration.ExecutablePath,
         };
-        return string.IsNullOrWhiteSpace(executablePath)
+        var directory = string.IsNullOrWhiteSpace(executablePath)
             ? null
             : Path.GetDirectoryName(executablePath);
+        return new SaveEmulatorInstallation(
+            directory,
+            configuration.LaunchTarget is FlatpakApplicationTarget);
     }
-
-    private string? ResolveConfiguredPpssppDirectory()
-    {
-        var configuration = EmulatorConfigurations.Get("psp");
-        var executablePath = configuration?.LaunchTarget switch
-        {
-            DirectExecutableTarget direct => direct.Path,
-            _ => configuration?.ExecutablePath,
-        };
-        return string.IsNullOrWhiteSpace(executablePath)
-            ? null
-            : Path.GetDirectoryName(executablePath);
-    }
-
-    private bool IsConfiguredPpssppFlatpak() =>
-        EmulatorConfigurations.Get("psp")?.LaunchTarget is FlatpakApplicationTarget;
 }

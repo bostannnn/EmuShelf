@@ -23,7 +23,18 @@ public class CloudSaveSyncCoordinatorTests
     public async Task Connect_WithMissingInput_ReportsInvalidInput()
     {
         var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync("", "", "", "", CancellationToken.None);
+            .ConnectGoogleDriveAsync("", "", Overrides(), CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
+    }
+
+    [Fact]
+    public async Task Connect_WithNoUsablePlatform_ReportsInvalidInput()
+    {
+        // A remote alone is not enough: without a platform that can produce a provider there would
+        // be nothing to sync into the newly created cloud folder.
+        var result = await CreateCoordinator(new FakeSettingsService())
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
     }
@@ -32,7 +43,11 @@ public class CloudSaveSyncCoordinatorTests
     public async Task Connect_WhenRcloneMissing_ReportsRcloneMissing()
     {
         var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "/pcsx2", "", CancellationToken.None);
+            .ConnectGoogleDriveAsync(
+                "gdrive",
+                "EmuShelf/Saves",
+                Overrides(("playstation2", "/pcsx2")),
+                CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
     }
@@ -76,7 +91,7 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
-    public void UpdatePcsx2Directory_PersistsPathWithoutChangingConnection()
+    public void UpdateOverride_PersistsPathWithoutChangingConnection()
     {
         var settings = new FakeSettingsService
         {
@@ -93,46 +108,59 @@ public class CloudSaveSyncCoordinatorTests
         };
         var coordinator = CreateCoordinator(settings, settings.Current);
 
-        coordinator.UpdatePcsx2Directory("/new/pcsx2");
+        coordinator.UpdateOverride("playstation2", "/new/pcsx2");
 
-        Assert.Equal("/new/pcsx2", settings.Current.CloudSaveSync.Pcsx2ConfigDirectory);
+        Assert.Equal("/new/pcsx2", settings.Current.CloudSaveSync.GetOverride("playstation2"));
         Assert.True(settings.Current.CloudSaveSync.Enabled);
         Assert.Equal("gdrive", settings.Current.CloudSaveSync.RemoteName);
         Assert.Equal(1, settings.SaveCalls);
     }
 
     [Fact]
-    public void UpdatePpssppDirectory_PersistsPathWithoutChangingConnection()
+    public void UpdateOverride_TrimsAndMirrorsOntoTheLegacyField()
     {
-        var settings = new FakeSettingsService
+        var settings = new FakeSettingsService();
+        var coordinator = CreateCoordinator(settings);
+
+        coordinator.UpdateOverride("psp", " /portable/ppsspp ");
+
+        Assert.Equal("/portable/ppsspp", settings.Current.CloudSaveSync.GetOverride("psp"));
+        // Mirrored so rolling back to a build that predates the per-system dictionary still reads it.
+        Assert.Equal("/portable/ppsspp", settings.Current.CloudSaveSync.PpssppMemoryStickDirectory);
+    }
+
+    [Fact]
+    public void LegacySettings_AreMigratedIntoPerSystemLocations()
+    {
+        var legacy = new AppSettings
         {
-            Current = new AppSettings
+            CloudSaveSync = new CloudSaveSyncSettings
             {
-                CloudSaveSync = new CloudSaveSyncSettings
-                {
-                    Enabled = true,
-                    RemoteName = "gdrive",
-                    CloudFolder = "EmuShelf/Saves",
-                },
+                Enabled = true,
+                RemoteName = "gdrive",
+                CloudFolder = "EmuShelf/Saves",
+                Pcsx2ConfigDirectory = "/legacy/pcsx2",
+                PpssppMemoryStickDirectory = "/legacy/ppsspp",
             },
         };
-        var coordinator = CreateCoordinator(settings, settings.Current);
 
-        coordinator.UpdatePpssppDirectory(" /portable/ppsspp ");
+        var coordinator = CreateCoordinator(new FakeSettingsService(), legacy);
 
-        Assert.Equal("/portable/ppsspp", settings.Current.CloudSaveSync.PpssppMemoryStickDirectory);
-        Assert.True(settings.Current.CloudSaveSync.Enabled);
-        Assert.Equal("gdrive", settings.Current.CloudSaveSync.RemoteName);
-        Assert.Equal(1, settings.SaveCalls);
+        Assert.Equal("/legacy/pcsx2", coordinator.Current.GetOverride("playstation2"));
+        Assert.Equal("/legacy/ppsspp", coordinator.Current.GetOverride("psp"));
+        Assert.True(coordinator.CanSyncSystem("playstation2"));
+        Assert.True(coordinator.CanSyncSystem("psp"));
     }
 
     [Fact]
     public async Task Connect_WithPpssppOverride_DoesNotRequirePcsx2Directory()
     {
-        var settings = new FakeSettingsService();
-
-        var result = await CreateCoordinator(settings)
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "", "/portable/ppsspp", CancellationToken.None);
+        var result = await CreateCoordinator(new FakeSettingsService())
+            .ConnectGoogleDriveAsync(
+                "gdrive",
+                "EmuShelf/Saves",
+                Overrides(("psp", "/portable/ppsspp")),
+                CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
     }
@@ -140,10 +168,10 @@ public class CloudSaveSyncCoordinatorTests
     [Fact]
     public async Task Connect_WithConfiguredPpsspp_DoesNotRequireOverrides()
     {
-        var settings = new FakeSettingsService();
-
-        var result = await CreateCoordinator(settings, defaultPpssppDirectory: () => "/app/ppsspp")
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "", "", CancellationToken.None);
+        var result = await CreateCoordinator(
+                new FakeSettingsService(),
+                emulators: systemId => systemId == "psp" ? new SaveEmulatorInstallation("/app/ppsspp", false) : null)
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
     }
@@ -151,27 +179,38 @@ public class CloudSaveSyncCoordinatorTests
     [Fact]
     public async Task Connect_WithFlatpakPpsspp_DoesNotRequireOverrides()
     {
-        var settings = new FakeSettingsService();
-
-        var result = await CreateCoordinator(settings, isPpssppFlatpak: () => true)
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", "", "", CancellationToken.None);
+        var result = await CreateCoordinator(
+                new FakeSettingsService(),
+                emulators: systemId => systemId == "psp" ? new SaveEmulatorInstallation(null, true) : null)
+            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
 
         Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
     }
 
+    [Fact]
+    public void SettingsContext_ExposesOneRowPerRegisteredPlatform()
+    {
+        var context = CreateCoordinator(new FakeSettingsService()).CreateSettingsContext();
+
+        Assert.Equal(
+            SaveProviderRegistry.SystemIds,
+            context.Platforms.Select(platform => platform.SystemId).ToArray());
+    }
+
+    private static IReadOnlyDictionary<string, string?> Overrides(params (string SystemId, string? Path)[] entries) =>
+        entries.ToDictionary(entry => entry.SystemId, entry => entry.Path, StringComparer.Ordinal);
+
     private static CloudSaveSyncCoordinator CreateCoordinator(
         FakeSettingsService settings,
         AppSettings? initial = null,
-        Func<string?>? defaultPpssppDirectory = null,
-        Func<bool>? isPpssppFlatpak = null) =>
+        Func<string, SaveEmulatorInstallation?>? emulators = null) =>
         new(
             new FakePaths(),
             settings,
             initial ?? new AppSettings(),
             NullAppLogger.Instance,
             NonexistentRclone,
-            defaultPpssppInstallationDirectory: defaultPpssppDirectory,
-            isPpssppFlatpak: isPpssppFlatpak);
+            emulatorInstallations: emulators);
 
     private sealed class FakeSettingsService : ISettingsService
     {

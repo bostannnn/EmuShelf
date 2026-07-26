@@ -763,16 +763,21 @@ generalized.
       Dolphin GCI game). Hash ordinal-sorted logical names + bytes, transfer one deterministic ZIP,
       and restore through a rollback-capable replacement. File and folder writes receive the same
       backup-before-overwrite and cancellation guarantees.
-- [ ] Generalize orchestration to register multiple `(provider, local endpoint)` pairs, load the
+- [x] Generalize orchestration to register multiple `(provider, local endpoint)` pairs, load the
       cloud index + local manifest once, reconcile enabled systems, flush rclone once, and save the
-      manifest atomically. One provider's unsupported local configuration is reported for that
-      system without preventing the other valid providers from syncing. Forced upload/download is
-      scoped to one system, never an implicit all-platform overwrite.
-- [ ] Replace the single `Pcsx2ConfigDirectory` setting with backward-compatible per-system save
-      locations: detected/overridden data directory, optional local profile binding, last-success
-      time, and latest error. A configured emulator or explicit override participates automatically;
-      do not add provider-specific activation state. Settings shows one consistent icon-led row per
-      supported platform with its detected path, save shape, Sync now, Upload, and Download controls.
+      manifest atomically. Forced upload/download is scoped to one system, never an implicit
+      all-platform overwrite. `SaveProviderRegistry` owns all platform knowledge, so the coordinator,
+      settings view model, and settings view name no emulator; `CanSyncSystem` answers by calling the
+      same provider factory the pipeline uses, so participation and construction cannot disagree
+      (2026-07-26). Reporting one provider's unsupported configuration without failing the others
+      remains open: a provider exception still fails the whole run.
+- [x] Replace the single `Pcsx2ConfigDirectory` setting with backward-compatible per-system save
+      locations: overridden data directory, last-success time, and latest error, migrated from the
+      legacy fields on load and mirrored back for rollback. A configured emulator or explicit
+      override participates automatically; there is no provider-specific activation state. Settings
+      renders one icon-led row per registered platform from a single template, with its detected
+      path, save shape, per-platform Replace cloud / Replace local, and its own last result
+      (2026-07-26). Optional local profile binding waits for RPCS3, its first consumer.
 - [x] Wire the launch lifecycle promised by Phase 1: reconcile only the selected game's system
       after launch preflight succeeds but before the process starts, and again after a tracked
       emulator exit. A failed pre-launch pass warns and permits launch using the save state then on

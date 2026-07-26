@@ -3,17 +3,21 @@ using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Infrastructure.SaveSync;
-using EmuShelf.Integrations.Emulators.Pcsx2;
-using EmuShelf.Integrations.Emulators.Ppsspp;
 
 namespace EmuShelf.App.Services;
 
+/// <summary>Where a system's emulator lives on this machine, as resolved from EmuShelf's own config.</summary>
+/// <param name="Directory">The emulator-derived directory, or null when nothing is configured.</param>
+/// <param name="IsFlatpak">Whether the configured installation is a Flatpak target.</param>
+public sealed record SaveEmulatorInstallation(string? Directory, bool IsFlatpak);
+
 /// <summary>
-/// Composes the save-sync pipeline (PCSX2 provider + filesystem endpoint + rclone transport +
-/// manifest store) from portable settings and runs it under a single-flight gate so a manual sync
-/// and a launch-triggered sync can never overlap. The rclone OAuth "connect" step and the Settings
-/// view that drives it are added alongside that view; this coordinator owns the reusable logic that
-/// stays out of code-behind.
+/// Composes the save-sync pipeline (registry-provided provider + filesystem endpoint + rclone
+/// transport + manifest store) from portable settings and runs it under a single-flight gate so a
+/// manual sync and a launch-triggered sync can never overlap.
+///
+/// Platform knowledge lives in <see cref="SaveProviderRegistry"/>, not here: this type never names
+/// an emulator, so adding one does not touch it.
 /// </summary>
 public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 {
@@ -21,9 +25,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private readonly ISettingsService _settingsService;
     private readonly IAppLogger _logger;
     private readonly string? _rclonePath;
-    private readonly Func<string?>? _defaultPcsx2Directory;
-    private readonly Func<string?>? _defaultPpssppInstallationDirectory;
-    private readonly Func<bool>? _isPpssppFlatpak;
+    private readonly Func<string, SaveEmulatorInstallation?>? _emulatorInstallations;
     private readonly FileSaveSyncLog _syncLog;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AppSettings _settings;
@@ -34,38 +36,17 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         AppSettings settings,
         IAppLogger logger,
         string? rclonePath = null,
-        Func<string?>? defaultPcsx2Directory = null,
-        Func<string?>? defaultPpssppInstallationDirectory = null,
-        Func<bool>? isPpssppFlatpak = null)
+        Func<string, SaveEmulatorInstallation?>? emulatorInstallations = null)
     {
         _paths = paths;
         _settingsService = settingsService;
-        _settings = settings;
+        // Fold the legacy per-emulator fields into the per-system dictionary once, up front, so
+        // every read below sees one shape regardless of how old the settings file is.
+        _settings = settings with { CloudSaveSync = settings.CloudSaveSync.NormalizeSaveLocations() };
         _logger = logger;
         _rclonePath = rclonePath;
-        _defaultPcsx2Directory = defaultPcsx2Directory;
-        _defaultPpssppInstallationDirectory = defaultPpssppInstallationDirectory;
-        _isPpssppFlatpak = isPpssppFlatpak;
+        _emulatorInstallations = emulatorInstallations;
         _syncLog = new FileSaveSyncLog(paths);
-    }
-
-    /// <summary>The PCSX2 config directory derived from the configured emulator, if any.</summary>
-    public string? DefaultPcsx2Directory => _defaultPcsx2Directory?.Invoke();
-
-    /// <summary>The PPSSPP installation directory derived from the configured emulator, if any.</summary>
-    public string? DefaultPpssppInstallationDirectory => _defaultPpssppInstallationDirectory?.Invoke();
-
-    // The saved directory wins; otherwise fall back to the one derived from the configured
-    // emulator, so a user who already set up PCSX2 in Settings need not select it again.
-    private string? EffectivePcsx2Directory
-    {
-        get
-        {
-            var saved = _settings.CloudSaveSync.Pcsx2ConfigDirectory;
-            return !string.IsNullOrWhiteSpace(saved)
-                ? ResolvePortablePath(saved)
-                : ResolvePortablePath(_defaultPcsx2Directory?.Invoke());
-        }
     }
 
     /// <summary>The current cloud-sync settings snapshot.</summary>
@@ -75,13 +56,11 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public bool IsConfigured =>
         _settings.CloudSaveSync is { Enabled: true, RemoteName.Length: > 0, CloudFolder.Length: > 0 };
 
-    public bool CanSyncSystem(string systemId) =>
-        IsConfigured && systemId switch
-        {
-            "playstation2" => !string.IsNullOrWhiteSpace(EffectivePcsx2Directory),
-            "psp" => HasPpssppConfiguration(_settings.CloudSaveSync.PpssppMemoryStickDirectory),
-            _ => false,
-        };
+    /// <summary>
+    /// Whether one system participates in sync. This asks the registry to build the provider, the
+    /// same call the sync pipeline makes, so a "yes" here cannot become a silent no-op there.
+    /// </summary>
+    public bool CanSyncSystem(string systemId) => IsConfigured && CreateProvider(systemId) is not null;
 
     /// <summary>Whether the rclone executable EmuShelf will invoke actually exists.</summary>
     public bool IsRcloneAvailable => File.Exists(RcloneExecutable.Resolve(_paths, _rclonePath));
@@ -92,22 +71,14 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// <summary>Where the human-readable sync activity log is written.</summary>
     public string SyncLogPath => _syncLog.LogPath;
 
-    /// <summary>The memory-card directory PCSX2 is configured to use, or null if no config directory is set.</summary>
-    public async Task<string?> GetDetectedMemoryCardsDirectoryAsync(CancellationToken cancellationToken = default)
+    /// <summary>The concrete save directory one system will use, or null when it cannot be resolved.</summary>
+    public async Task<string?> GetDetectedPathAsync(string systemId, CancellationToken cancellationToken = default)
     {
-        var configurationDirectory = EffectivePcsx2Directory;
-        if (string.IsNullOrWhiteSpace(configurationDirectory))
+        var descriptor = SaveProviderRegistry.Find(systemId);
+        if (descriptor is null || CreateProvider(systemId) is not { } provider)
             return null;
 
-        return await new Pcsx2SaveLocationProvider(configurationDirectory)
-            .GetMemoryCardsDirectoryAsync(cancellationToken);
-    }
-
-    /// <summary>The PPSSPP SAVEDATA directory selected or derived for this machine.</summary>
-    public async Task<string?> GetDetectedPpssppSaveDataDirectoryAsync(CancellationToken cancellationToken = default)
-    {
-        var provider = CreatePpssppProvider();
-        return provider is null ? null : await provider.GetSaveDataDirectoryAsync(cancellationToken);
+        return await descriptor.DescribeDetectedPathAsync(provider, cancellationToken);
     }
 
     /// <summary>Persists an updated cloud-sync configuration to the portable settings file.</summary>
@@ -117,41 +88,36 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         Persist(configuration);
     }
 
-    /// <summary>Persists a new PCSX2 configuration directory without changing the connection state.</summary>
-    public void UpdatePcsx2Directory(string? directory) =>
-        Persist(_settings.CloudSaveSync with
-        {
-            Pcsx2ConfigDirectory = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim(),
-        });
-
-    /// <summary>Persists PPSSPP's optional Memory Stick override.</summary>
-    public void UpdatePpssppDirectory(string? memoryStickDirectory) =>
-        Persist(_settings.CloudSaveSync with
-        {
-            PpssppMemoryStickDirectory = string.IsNullOrWhiteSpace(memoryStickDirectory)
-                ? null
-                : memoryStickDirectory.Trim(),
-        });
+    /// <summary>Persists one system's save-location override without changing the connection state.</summary>
+    public void UpdateOverride(string systemId, string? directory) =>
+        Persist(_settings.CloudSaveSync.WithOverride(systemId, directory));
 
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
     /// persists the connection. Only the non-secret remote name and folder are stored — the OAuth
     /// token stays in rclone's own config, never in EmuShelf's settings.
     /// </summary>
+    /// <param name="overrides">
+    /// Save-location overrides by system id. Keyed rather than positional so adding a platform
+    /// cannot silently shift one emulator's path onto another.
+    /// </param>
     public async Task<CloudSaveSyncConnectResult> ConnectGoogleDriveAsync(
         string remoteName,
         string cloudFolder,
-        string pcsx2ConfigurationDirectory,
-        string ppssppMemoryStickDirectory,
+        IReadOnlyDictionary<string, string?> overrides,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(remoteName) ||
-            string.IsNullOrWhiteSpace(cloudFolder) ||
-            (string.IsNullOrWhiteSpace(pcsx2ConfigurationDirectory) &&
-                !HasPpssppConfiguration(ppssppMemoryStickDirectory)))
-        {
+        ArgumentNullException.ThrowIfNull(overrides);
+        if (string.IsNullOrWhiteSpace(remoteName) || string.IsNullOrWhiteSpace(cloudFolder))
             return CloudSaveSyncConnectResult.InvalidInput;
-        }
+
+        // At least one platform must be able to produce a provider once the overrides are applied,
+        // otherwise connecting would leave the user with a remote and nothing to sync into it.
+        var candidate = _settings.CloudSaveSync;
+        foreach (var (systemId, directory) in overrides)
+            candidate = candidate.WithOverride(systemId, directory);
+        if (!SaveProviderRegistry.SystemIds.Any(systemId => CreateProvider(systemId, candidate) is not null))
+            return CloudSaveSyncConnectResult.InvalidInput;
 
         await _gate.WaitAsync(cancellationToken);
         try
@@ -165,17 +131,11 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             await configurator.CreateGoogleDriveRemoteAsync(trimmedRemote, cancellationToken);
             await configurator.EnsureFolderAsync(trimmedRemote, trimmedFolder, cancellationToken);
 
-            Persist(_settings.CloudSaveSync with
+            Persist(candidate with
             {
                 Enabled = true,
                 RemoteName = trimmedRemote,
                 CloudFolder = trimmedFolder,
-                Pcsx2ConfigDirectory = string.IsNullOrWhiteSpace(pcsx2ConfigurationDirectory)
-                    ? null
-                    : pcsx2ConfigurationDirectory.Trim(),
-                PpssppMemoryStickDirectory = string.IsNullOrWhiteSpace(ppssppMemoryStickDirectory)
-                    ? null
-                    : ppssppMemoryStickDirectory.Trim(),
             });
             return CloudSaveSyncConnectResult.Connected;
         }
@@ -238,44 +198,27 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         _settings.CloudSaveSync,
         IsRcloneAvailable,
         RcloneExpectedPath,
-        DefaultPcsx2Directory,
-        DefaultPpssppInstallationDirectory,
         SyncLogPath,
-        GetDetectedMemoryCardsDirectoryAsync,
-        GetDetectedPpssppSaveDataDirectoryAsync,
+        DescribePlatforms(),
+        GetDetectedPathAsync,
         ConnectGoogleDriveAsync,
         DisconnectAsync,
         SyncNowAsync,
         ForceAsync,
-        UpdatePcsx2Directory,
-        UpdatePpssppDirectory,
+        UpdateOverride,
         DownloadRcloneAsync);
 
-    private void Persist(CloudSaveSyncSettings configuration)
-    {
-        _settings = _settings with { CloudSaveSync = configuration };
-        _settingsService.Save(_settings);
-    }
-
-    /// <summary>Reconciles every enabled provider's local and cloud saves using one shared last-synced baseline.</summary>
+    /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        RunSyncPipelineAsync(
-            ["playstation2", "psp"],
-            progress,
-            "Sync all",
-            cancellationToken);
+        RunSyncPipelineAsync(SaveProviderRegistry.SystemIds, progress, "Sync all", cancellationToken);
 
     /// <summary>Reconciles only the save provider associated with one launched system.</summary>
     public Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
         CancellationToken cancellationToken = default) =>
-        RunSyncPipelineAsync(
-            [systemId],
-            progress: null,
-            $"Automatic sync ({systemId})",
-            cancellationToken);
+        RunSyncPipelineAsync([systemId], progress: null, $"Automatic sync ({systemId})", cancellationToken);
 
     /// <summary>Forces one platform's present units in one direction, still backing up the loser.</summary>
     public Task<CloudSaveSyncOutcome> ForceAsync(
@@ -284,6 +227,20 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
         RunForcePipelineAsync(systemId, direction, progress, cancellationToken);
+
+    private IReadOnlyList<CloudSaveSyncPlatformContext> DescribePlatforms() =>
+        SaveProviderRegistry.All.Select(descriptor =>
+        {
+            var location = _settings.CloudSaveSync.GetLocation(descriptor.SystemId);
+            return new CloudSaveSyncPlatformContext(
+                descriptor.SystemId,
+                descriptor.DisplayName,
+                descriptor.SaveShapeDescription,
+                descriptor.OverridePlaceholder,
+                location.DirectoryOverride,
+                location.LastSuccessUtc,
+                location.LastError);
+        }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
         string systemId,
@@ -298,21 +255,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            var transport = new RcloneCloudSyncTransport(
-                _paths,
-                _settings.CloudSaveSync.RemoteName!,
-                _settings.CloudSaveSync.CloudFolder!,
-                _rclonePath);
             var service = new SaveSyncService(
                 target.LocalEndpoint,
-                transport,
+                CreateTransport(),
                 new JsonSaveSyncManifestStore(_paths));
 
             var report = await service.ForceAsync(target.Provider, direction, progress, cancellationToken);
+            var platformName = SaveProviderRegistry.Find(systemId)?.DisplayName ?? systemId;
             var operationLabel = direction == SaveSyncDirection.Upload
-                ? $"Upload {systemId} → cloud"
-                : $"Download {systemId} → local";
+                ? $"Upload {platformName} → cloud"
+                : $"Download {platformName} → local";
             await WriteSyncLogAsync(operationLabel, report, cancellationToken);
+            RecordOutcome([systemId], error: null);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)
@@ -321,9 +275,10 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or ArgumentException or
-                Pcsx2ConfigurationFormatException or PpssppConfigurationFormatException)
+                SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
+            RecordOutcome([systemId], ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
         finally
@@ -342,29 +297,29 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             return CloudSaveSyncOutcome.NotConfigured();
 
         await _gate.WaitAsync(cancellationToken);
+        var synced = new List<string>();
         try
         {
             var targets = new List<SaveSyncTarget>();
             foreach (var systemId in systemIds.Distinct(StringComparer.Ordinal))
             {
                 if (CreateTarget(systemId) is { } target)
+                {
                     targets.Add(target);
+                    synced.Add(systemId);
+                }
             }
 
             if (targets.Count == 0)
                 return CloudSaveSyncOutcome.NotConfigured();
 
-            var transport = new RcloneCloudSyncTransport(
-                _paths,
-                _settings.CloudSaveSync.RemoteName!,
-                _settings.CloudSaveSync.CloudFolder!,
-                _rclonePath);
             var service = new SaveSyncService(
                 targets[0].LocalEndpoint,
-                transport,
+                CreateTransport(),
                 new JsonSaveSyncManifestStore(_paths));
             var report = await service.SyncAllAsync(targets, progress, cancellationToken);
             await WriteSyncLogAsync(operationLabel, report, cancellationToken);
+            RecordOutcome(synced, error: null);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)
@@ -373,9 +328,10 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or ArgumentException or
-                Pcsx2ConfigurationFormatException or PpssppConfigurationFormatException)
+                SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
+            RecordOutcome(synced, ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
         finally
@@ -384,38 +340,57 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
     }
 
-    private PpssppSaveLocationProvider? CreatePpssppProvider()
+    private RcloneCloudSyncTransport CreateTransport() => new(
+        _paths,
+        _settings.CloudSaveSync.RemoteName!,
+        _settings.CloudSaveSync.CloudFolder!,
+        _rclonePath);
+
+    private ISaveLocationProvider? CreateProvider(string systemId) =>
+        CreateProvider(systemId, _settings.CloudSaveSync);
+
+    private ISaveLocationProvider? CreateProvider(string systemId, CloudSaveSyncSettings configuration)
     {
-        var installationDirectory = ResolvePortablePath(_defaultPpssppInstallationDirectory?.Invoke());
-        var memoryStickOverride = ResolvePortablePath(_settings.CloudSaveSync.PpssppMemoryStickDirectory);
-        var isFlatpak = _isPpssppFlatpak?.Invoke() == true;
-        if (string.IsNullOrWhiteSpace(installationDirectory) && string.IsNullOrWhiteSpace(memoryStickOverride) && !isFlatpak)
+        if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
             return null;
 
-        return new PpssppSaveLocationProvider(
-            installationDirectory ?? _paths.BaseDirectory,
-            memoryStickDirectoryOverride: memoryStickOverride,
-            isFlatpak: isFlatpak);
+        var installation = _emulatorInstallations?.Invoke(systemId);
+        return descriptor.CreateProvider(new SaveProviderContext(
+            ResolvePortablePath(configuration.GetOverride(systemId)),
+            ResolvePortablePath(installation?.Directory),
+            installation?.IsFlatpak == true,
+            _paths));
     }
 
-    private SaveSyncTarget? CreateTarget(string systemId)
-    {
-        ISaveLocationProvider? provider = systemId switch
-        {
-            "playstation2" when EffectivePcsx2Directory is { } directory =>
-                new Pcsx2SaveLocationProvider(directory),
-            "psp" => CreatePpssppProvider(),
-            _ => null,
-        };
-        return provider is null
+    private SaveSyncTarget? CreateTarget(string systemId) =>
+        CreateProvider(systemId) is not { } provider
             ? null
             : new SaveSyncTarget(provider, new FileSystemLocalSaveEndpoint(provider, _paths));
+
+    // Per-system outcomes let Settings show each platform's own state rather than one shared
+    // message. A failure keeps the previous success time so "last synced" does not vanish.
+    private void RecordOutcome(IReadOnlyList<string> systemIds, string? error)
+    {
+        if (systemIds.Count == 0)
+            return;
+
+        var configuration = _settings.CloudSaveSync;
+        var completedUtc = DateTimeOffset.UtcNow;
+        foreach (var systemId in systemIds)
+        {
+            configuration = error is null
+                ? configuration.WithSyncSuccess(systemId, completedUtc)
+                : configuration.WithSyncFailure(systemId, error);
+        }
+
+        Persist(configuration);
     }
 
-    private bool HasPpssppConfiguration(string? memoryStickDirectory) =>
-        !string.IsNullOrWhiteSpace(memoryStickDirectory) ||
-        !string.IsNullOrWhiteSpace(_defaultPpssppInstallationDirectory?.Invoke()) ||
-        _isPpssppFlatpak?.Invoke() == true;
+    private void Persist(CloudSaveSyncSettings configuration)
+    {
+        _settings = _settings with { CloudSaveSync = configuration };
+        _settingsService.Save(_settings);
+    }
 
     private string? ResolvePortablePath(string? path)
     {
@@ -474,7 +449,7 @@ public enum CloudSaveSyncConnectResult
     /// <summary>The remote was created (or reused) and the connection was saved.</summary>
     Connected,
 
-    /// <summary>Required input (remote name, folder, or PCSX2 directory) was missing.</summary>
+    /// <summary>Required input (remote name, folder, or any usable save platform) was missing.</summary>
     InvalidInput,
 
     /// <summary>The portable rclone executable is not present beside EmuShelf.</summary>
@@ -484,23 +459,31 @@ public enum CloudSaveSyncConnectResult
     Failed,
 }
 
+/// <summary>One supported save platform as Settings needs to present it.</summary>
+public sealed record CloudSaveSyncPlatformContext(
+    string SystemId,
+    string DisplayName,
+    string SaveShapeDescription,
+    string OverridePlaceholder,
+    string? Override,
+    DateTimeOffset? LastSuccessUtc,
+    string? LastError);
+
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view
-/// model stays testable with a fake context.
+/// model stays testable with a fake context. The delegate set is platform-agnostic: every operation
+/// takes a system id, so adding a platform does not change this shape.
 /// </summary>
 public sealed record CloudSaveSyncSettingsContext(
     CloudSaveSyncSettings Current,
     bool IsRcloneAvailable,
     string RcloneExpectedPath,
-    string? DefaultPcsx2Directory,
-    string? DefaultPpssppInstallationDirectory,
     string SyncLogPath,
-    Func<CancellationToken, Task<string?>> GetDetectedMemoryCardsDirectoryAsync,
-    Func<CancellationToken, Task<string?>> GetDetectedPpssppSaveDataDirectoryAsync,
-    Func<string, string, string, string, CancellationToken, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
+    IReadOnlyList<CloudSaveSyncPlatformContext> Platforms,
+    Func<string, CancellationToken, Task<string?>> GetDetectedPathAsync,
+    Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
     Func<CancellationToken, Task> DisconnectAsync,
     Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> SyncNowAsync,
     Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> ForceAsync,
-    Action<string?> UpdatePcsx2Directory,
-    Action<string?> UpdatePpssppDirectory,
+    Action<string, string?> UpdateOverride,
     Func<CancellationToken, Task<bool>> DownloadRcloneAsync);

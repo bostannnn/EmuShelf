@@ -89,10 +89,6 @@ public static class PlatformArtwork
     public static IReadOnlyCollection<string> SupportedSystemIds { get; } =
         Assets.Keys.ToArray();
 
-    public static IImage? PlayStation2Icon => ForSystem("playstation2");
-
-    public static IImage? PspIcon => ForSystem("psp");
-
     public static IImage? ForSystem(string? systemId)
     {
         if (systemId is null)

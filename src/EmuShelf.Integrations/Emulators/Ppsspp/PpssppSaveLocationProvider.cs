@@ -177,7 +177,7 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
 }
 
 /// <summary>Raised when PPSSPP's readable Memory Stick selector has an unsupported shape.</summary>
-public sealed class PpssppConfigurationFormatException : Exception
+public sealed class PpssppConfigurationFormatException : SaveProviderConfigurationException
 {
     public PpssppConfigurationFormatException(string message) : base(message)
     {

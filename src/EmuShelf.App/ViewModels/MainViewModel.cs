@@ -2142,6 +2142,16 @@ public partial class MainViewModel : ViewModelBase
                     $"Cloud save sync failed {(afterExit ? "after" : "before")} launching " +
                     $"game id {game.Id}: {outcome.Message}");
             }
+            else if (outcome.Status == CloudSaveSyncStatus.NotConfigured)
+            {
+                // CanSyncSystem already said this system participates, so reaching NotConfigured
+                // means the participation check and the provider construction disagree. Nothing is
+                // surfaced to the user for this status, which would make it a silent no-sync.
+                _logger.Warning(
+                    $"Cloud save sync reported no configured provider for system '{game.SystemId}' " +
+                    $"{(afterExit ? "after" : "before")} launching game id {game.Id}, even though " +
+                    "the system was reported as syncable. Saves were not synchronized.");
+            }
             return outcome;
         }
         catch (OperationCanceledException)
