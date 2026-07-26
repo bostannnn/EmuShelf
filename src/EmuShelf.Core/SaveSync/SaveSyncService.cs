@@ -145,7 +145,7 @@ public sealed class SaveSyncService
                 if (remoteSnapshots.TryGetValue(unit.UnitId, out var existingRemote) &&
                     !ContentEquals(existingRemote.ContentHash, localSnapshot.ContentHash))
                 {
-                    await BackupRemoteAsync(unit.UnitId, "Overwritten by a forced upload.", cancellationToken);
+                    await BackupRemoteAsync(_local, unit.UnitId, "Overwritten by a forced upload.", cancellationToken);
                 }
 
                 await UploadAsync(_local, unit.UnitId, localSnapshot, cancellationToken);
@@ -208,7 +208,7 @@ public sealed class SaveSyncService
                 return manifest.With(NextBaseline(remoteSnapshot!, baseline));
 
             case SaveSyncAction.ConflictLocalWins:
-                await BackupRemoteAsync(unitId, "Superseded by a newer local save in a conflict.", cancellationToken);
+                await BackupRemoteAsync(local, unitId, "Superseded by a newer local save in a conflict.", cancellationToken);
                 await UploadAsync(local, unitId, localSnapshot!, cancellationToken);
                 return manifest.With(NextBaseline(localSnapshot!, baseline));
 
@@ -244,10 +244,18 @@ public sealed class SaveSyncService
         await local.WriteAsync(unitId, content, remoteSnapshot.ModifiedUtc, cancellationToken);
     }
 
-    private async Task BackupRemoteAsync(string unitId, string reason, CancellationToken cancellationToken)
+    // The endpoint is passed in rather than read from _local: a multi-provider sync reconciles
+    // units from several providers, and each unit's backup must be written by the endpoint that
+    // owns it. Using _local here would hand a PPSSPP unit to the PCSX2 endpoint, whose provider
+    // refuses to resolve it and fails the whole run.
+    private async Task BackupRemoteAsync(
+        ILocalSaveEndpoint local,
+        string unitId,
+        string reason,
+        CancellationToken cancellationToken)
     {
         await using var content = await _remote.DownloadAsync(unitId, cancellationToken);
-        await _local.BackupIncomingAsync(unitId, content, reason, cancellationToken);
+        await local.BackupIncomingAsync(unitId, content, reason, cancellationToken);
     }
 
     private static SaveUnitBaseline NextBaseline(SaveUnitSnapshot snapshot, SaveUnitBaseline? previous) =>

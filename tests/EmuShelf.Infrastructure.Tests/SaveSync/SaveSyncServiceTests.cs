@@ -175,6 +175,36 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncAll_ConflictOnASecondProvider_BacksTheLoserUpThroughThatProvidersEndpoint()
+    {
+        // Regression: the losing remote copy used to be handed to the first target's endpoint
+        // regardless of which provider owned the unit. A real PCSX2 endpoint refuses to resolve a
+        // `ppsspp/...` id, so a PSP conflict aborted the whole multi-provider run.
+        var ppsspp = new SaveUnit("ppsspp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
+        var pspLocal = new InMemoryLocalSaveEndpoint();
+        _local.Seed(FileCard.UnitId, Bytes("ps2-save"), T0);
+        // Both sides changed with no baseline; the local copy is newer, so local wins.
+        pspLocal.Seed(ppsspp.UnitId, Bytes("psp-local"), T0.AddMinutes(10));
+        _remote.Seed(ppsspp.UnitId, Bytes("psp-remote"), T0);
+
+        var report = await CreateService().SyncAllAsync(
+            [
+                new SaveSyncTarget(Provider(FileCard), _local),
+                new SaveSyncTarget(new FakeSaveLocationProvider("psp", ppsspp), pspLocal),
+            ]);
+
+        Assert.Equal(1, report.Conflicts);
+        var backup = Assert.Single(pspLocal.Backups);
+        Assert.Equal(ppsspp.UnitId, backup.UnitId);
+        Assert.Equal(Bytes("psp-remote"), backup.Content);
+        Assert.False(backup.FromLocal);
+        // The PS2 endpoint must not have been asked to back up a unit it does not own.
+        Assert.Empty(_local.Backups);
+        // The winning local copy still reached the cloud.
+        Assert.Equal(Bytes("psp-local"), _remote.Content(ppsspp.UnitId));
+    }
+
+    [Fact]
     public async Task Cancellation_StopsBeforeTouchingSaves()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
