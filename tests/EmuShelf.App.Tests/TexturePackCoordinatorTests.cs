@@ -31,7 +31,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
         Assert.False(coordinator.HasScanned);
         Assert.Empty(coordinator.Current.Map.Classifications);
 
-        await coordinator.LoadCachedAsync();
+        await coordinator.LoadCachedAsync(TestContext.Current.CancellationToken);
 
         Assert.True(coordinator.HasScanned);
     }
@@ -45,7 +45,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
         // load reports nothing scanned yet.
         var coordinator = Create(new MemoryStore());
 
-        var result = await coordinator.LoadCachedAsync();
+        var result = await coordinator.LoadCachedAsync(TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(result.Platforms);
         Assert.All(result.Platforms, platform =>
@@ -61,7 +61,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
     [Fact]
     public async Task ThePlatformRowsCoverEveryRegisteredSystemInPresentationOrder()
     {
-        var result = await Create(new MemoryStore()).LoadCachedAsync();
+        var result = await Create(new MemoryStore()).LoadCachedAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(
             TexturePackProviderRegistry.SystemIds,
@@ -74,7 +74,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
         var store = new MemoryStore();
         var coordinator = Create(store, new TexturePackSettings { Enabled = false });
 
-        var result = await coordinator.RefreshAsync();
+        var result = await coordinator.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(result.Platforms);
         Assert.Equal(0, store.LoadCount);
@@ -99,7 +99,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
                 [7] = [new GameIdentifier(GameIdentifierKind.Serial, "SLUS-00594", "test")],
             }));
 
-        var result = await coordinator.RefreshAsync();
+        var result = await coordinator.RefreshAsync(TestContext.Current.CancellationToken);
 
         var match = Assert.Single(result.Map.GetMatches(7));
         Assert.Equal("SLUS-00594", match.PackKey);
@@ -115,7 +115,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
             new MemoryStore(),
             new TexturePackSettings().WithOverride("playstation", Path.Combine(_root, "gone")));
 
-        var result = await coordinator.RefreshAsync();
+        var result = await coordinator.RefreshAsync(TestContext.Current.CancellationToken);
 
         var platform = result.Platforms.Single(p => p.SystemId == "playstation");
         Assert.Equal(TexturePackRootStatus.Missing, platform.RootStatus);
@@ -126,7 +126,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
     public async Task Cancellation_IsObservedAndLeavesThePreviousResultIntact()
     {
         var coordinator = Create(new MemoryStore());
-        await coordinator.LoadCachedAsync();
+        await coordinator.LoadCachedAsync(TestContext.Current.CancellationToken);
         var before = coordinator.Current;
 
         using var cancellation = new CancellationTokenSource();
@@ -147,7 +147,7 @@ public sealed class TexturePackCoordinatorTests : IDisposable
         });
         var coordinator = Create(new MemoryStore(), new TexturePackSettings(), metadata);
 
-        await coordinator.RefreshAsync();
+        await coordinator.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1, metadata.BulkReads);
         Assert.Equal(0, metadata.PerGameReads);
