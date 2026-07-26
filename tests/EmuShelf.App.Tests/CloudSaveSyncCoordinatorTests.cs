@@ -44,6 +44,38 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public void CanSyncSystem_RequiresConnectionAndAResolvedPlatformDirectory()
+    {
+        var disconnectedSettings = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                PpssppMemoryStickDirectory = "/portable/ppsspp",
+            },
+        };
+        var disconnected = CreateCoordinator(new FakeSettingsService(), disconnectedSettings);
+
+        Assert.False(disconnected.CanSyncSystem("psp"));
+
+        var connectedSettings = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                RemoteName = "gdrive",
+                CloudFolder = "EmuShelf/Saves",
+                Pcsx2ConfigDirectory = "/portable/pcsx2",
+                PpssppMemoryStickDirectory = "/portable/ppsspp",
+            },
+        };
+        var connected = CreateCoordinator(new FakeSettingsService(), connectedSettings);
+
+        Assert.True(connected.CanSyncSystem("playstation2"));
+        Assert.True(connected.CanSyncSystem("psp"));
+        Assert.False(connected.CanSyncSystem("playstation"));
+    }
+
+    [Fact]
     public void UpdatePcsx2Directory_PersistsPathWithoutChangingConnection()
     {
         var settings = new FakeSettingsService

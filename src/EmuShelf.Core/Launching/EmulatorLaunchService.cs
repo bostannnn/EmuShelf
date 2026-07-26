@@ -34,6 +34,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
 
     public async Task<GameLaunchResult> LaunchAsync(
         Game game,
+        Func<CancellationToken, Task>? beforeStart = null,
         CancellationToken cancellationToken = default)
     {
         // Portable installs commonly live on external drives. Keep the SQLite read and
@@ -47,6 +48,13 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             _logger.Warning(preparation.Failure.StatusText);
             return preparation.Failure;
         }
+
+        // Lifecycle work such as pulling cloud saves belongs after every launch check succeeds,
+        // but before the emulator can read or write those saves. Keeping the callback here avoids
+        // duplicating launch validation in the UI and guarantees a failed preflight has no sync
+        // side effects.
+        if (beforeStart is not null)
+            await beforeStart(cancellationToken);
 
         _logger.Information($"Launching {preparation.EmulatorName} for {game.Title}.");
         _frontend.SuspendForGame();

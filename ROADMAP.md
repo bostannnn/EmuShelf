@@ -734,7 +734,7 @@ generalized.
       subfolders under "Automatically manage saves based on running game") syncs as one unit per
       game serial. Folder cards are the safer per-game case and are recommended in docs — but
       EmuShelf never enables them for the user.
-- [ ] Sync engine: a per-unit manifest (content hash + mtime + last-synced revision) classifies
+- [x] Sync engine: a per-unit manifest (content hash + mtime + last-synced revision) classifies
       each unit as unchanged / local-changed / remote-changed / both-changed, so a machine with a
       slow or skewed clock never loses a save to a naive "newer date wins." mtime is only a
       tie-breaker inside a genuine both-sides conflict. Pull before launch, push on emulator exit
@@ -773,12 +773,13 @@ generalized.
       time, and latest error. A configured emulator or explicit override participates automatically;
       do not add provider-specific activation state. Settings shows one consistent icon-led row per
       supported platform with its detected path, save shape, Sync now, Upload, and Download controls.
-- [ ] Wire the launch lifecycle promised by Phase 1: reconcile only the selected game's system
-      before launch and again after a tracked emulator exit. An offline pre-launch attempt keeps the
-      local save, warns, and permits launch; a later manifest conflict remains recoverable. Manual
-      sync is disabled during an EmuShelf-tracked session, and users are told to close externally
-      launched emulator instances first.
-- [ ] **PPSSPP first:** resolve its Memory Stick from Windows `installed.txt`, portable layout,
+- [x] Wire the launch lifecycle promised by Phase 1: reconcile only the selected game's system
+      after launch preflight succeeds but before the process starts, and again after a tracked
+      emulator exit. A failed pre-launch pass warns and permits launch using the save state then on
+      disk without claiming the multi-unit pass was atomic; conflicts are surfaced and remain
+      recoverable. Manual sync is disabled during an EmuShelf-tracked session, and users are told
+      to close externally launched emulator instances first.
+- [x] **PPSSPP first:** resolve its Memory Stick from Windows `installed.txt`, portable layout,
       Linux/macOS config layout, Flatpak defaults, or a user override. Each immediate child of
       `PSP/SAVEDATA/` is one folder unit; never include `PPSSPP_STATE`, config, plugins, textures,
       or other Memory Stick content.

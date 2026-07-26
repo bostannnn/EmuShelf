@@ -15,7 +15,7 @@ namespace EmuShelf.App.Services;
 /// view that drives it are added alongside that view; this coordinator owns the reusable logic that
 /// stays out of code-behind.
 /// </summary>
-public sealed class CloudSaveSyncCoordinator
+public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 {
     private readonly IAppPaths _paths;
     private readonly ISettingsService _settingsService;
@@ -74,6 +74,14 @@ public sealed class CloudSaveSyncCoordinator
     /// <summary>Whether a remote is connected and sync is enabled.</summary>
     public bool IsConfigured =>
         _settings.CloudSaveSync is { Enabled: true, RemoteName.Length: > 0, CloudFolder.Length: > 0 };
+
+    public bool CanSyncSystem(string systemId) =>
+        IsConfigured && systemId switch
+        {
+            "playstation2" => !string.IsNullOrWhiteSpace(EffectivePcsx2Directory),
+            "psp" => HasPpssppConfiguration(_settings.CloudSaveSync.PpssppMemoryStickDirectory),
+            _ => false,
+        };
 
     /// <summary>Whether the rclone executable EmuShelf will invoke actually exists.</summary>
     public bool IsRcloneAvailable => File.Exists(RcloneExecutable.Resolve(_paths, _rclonePath));
@@ -253,7 +261,21 @@ public sealed class CloudSaveSyncCoordinator
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        RunSyncPipelineAsync(progress, cancellationToken);
+        RunSyncPipelineAsync(
+            ["playstation2", "psp"],
+            progress,
+            "Sync all",
+            cancellationToken);
+
+    /// <summary>Reconciles only the save provider associated with one launched system.</summary>
+    public Task<CloudSaveSyncOutcome> SyncSystemAsync(
+        string systemId,
+        CancellationToken cancellationToken = default) =>
+        RunSyncPipelineAsync(
+            [systemId],
+            progress: null,
+            $"Automatic sync ({systemId})",
+            cancellationToken);
 
     /// <summary>Forces one platform's present units in one direction, still backing up the loser.</summary>
     public Task<CloudSaveSyncOutcome> ForceAsync(
@@ -311,7 +333,9 @@ public sealed class CloudSaveSyncCoordinator
     }
 
     private async Task<CloudSaveSyncOutcome> RunSyncPipelineAsync(
+        IReadOnlyList<string> systemIds,
         IProgress<SaveSyncProgress>? progress,
+        string operationLabel,
         CancellationToken cancellationToken)
     {
         if (!IsConfigured)
@@ -321,10 +345,11 @@ public sealed class CloudSaveSyncCoordinator
         try
         {
             var targets = new List<SaveSyncTarget>();
-            if (CreateTarget("playstation2") is { } pcsx2)
-                targets.Add(pcsx2);
-            if (CreateTarget("psp") is { } ppsspp)
-                targets.Add(ppsspp);
+            foreach (var systemId in systemIds.Distinct(StringComparer.Ordinal))
+            {
+                if (CreateTarget(systemId) is { } target)
+                    targets.Add(target);
+            }
 
             if (targets.Count == 0)
                 return CloudSaveSyncOutcome.NotConfigured();
@@ -339,7 +364,7 @@ public sealed class CloudSaveSyncCoordinator
                 transport,
                 new JsonSaveSyncManifestStore(_paths));
             var report = await service.SyncAllAsync(targets, progress, cancellationToken);
-            await WriteSyncLogAsync("Sync", report, cancellationToken);
+            await WriteSyncLogAsync(operationLabel, report, cancellationToken);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)

@@ -60,6 +60,50 @@ public class EmulatorLaunchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LaunchAsync_DoesNotInvokeBeforeStartWhenPreflightFails()
+    {
+        var game = CreateGameFile();
+        var callbackInvoked = false;
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(
+            game,
+            _ =>
+            {
+                callbackInvoked = true;
+                return Task.CompletedTask;
+            });
+
+        Assert.False(result.Succeeded);
+        Assert.False(callbackInvoked);
+        Assert.False(_runner.WasRun);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_InvokesBeforeStartAfterPreflightAndBeforeFrontendSuspends()
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("emulator.exe");
+        _configurations.Configuration = new(game.SystemId, executable, null);
+        var callbackInvoked = false;
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(
+            game,
+            _ =>
+            {
+                Assert.False(_frontend.WasMinimized);
+                Assert.False(_runner.WasRun);
+                callbackInvoked = true;
+                return Task.CompletedTask;
+            });
+
+        Assert.True(result.Succeeded);
+        Assert.True(callbackInvoked);
+        Assert.True(_runner.WasRun);
+    }
+
+    [Fact]
     public async Task LaunchAsync_PassesArgumentArrayTracksExitAndRestoresFrontend()
     {
         var game = CreateGameFile("Game With Spaces.cue");

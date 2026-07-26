@@ -385,7 +385,7 @@
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. EmuShelf backs up before every overwrite and never deletes the only copy. Save states and emulator configuration are excluded. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
+                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. EmuShelf syncs the selected platform before launch and after the emulator exits. Close externally launched emulators before using manual sync. Save states and emulator configuration are excluded. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
                                 </StackPanel>
 
                                 <Border IsVisible="{Binding IsRcloneMissing}"

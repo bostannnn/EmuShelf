@@ -17,6 +17,7 @@ using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Integrations.Systems;
@@ -308,6 +309,7 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
+    private readonly IGameSaveSyncService? _gameSaveSync;
 
     public MainViewModel()
         : this(
@@ -346,6 +348,7 @@ public partial class MainViewModel : ViewModelBase
         IInterfaceModeService? interfaceModeService = null,
         IRetroAchievementsBadgeCache? retroBadges = null,
         CloudSaveSyncCoordinator? cloudSaveSync = null,
+        IGameSaveSyncService? gameSaveSync = null,
         IApplicationLifetimeService? applicationLifetime = null)
     {
         _library = library;
@@ -382,6 +385,7 @@ public partial class MainViewModel : ViewModelBase
         _retroRefresh = retroRefresh;
         _retroBadges = retroBadges;
         _cloudSaveSync = cloudSaveSync;
+        _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
         CurrentTheme = _themeService.Current;
 
@@ -2058,12 +2062,31 @@ public partial class MainViewModel : ViewModelBase
         SuspendFrontendUiWork();
         try
         {
-            var result = await _launchService.LaunchAsync(launchGame);
+            CloudSaveSyncOutcome? beforeSync = null;
+            var result = await _launchService.LaunchAsync(
+                launchGame,
+                async cancellationToken =>
+                {
+                    beforeSync = await SyncSavesForLaunchAsync(
+                        launchGame,
+                        afterExit: false,
+                        cancellationToken);
+                    StatusText = beforeSync?.Status == CloudSaveSyncStatus.Failed
+                        ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
+                        : $"Launching {game.Title}…";
+                });
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
-            StatusText = result.StatusText;
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
                 _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
+
+            CloudSaveSyncOutcome? afterSync = null;
+            if (result.ProcessExited)
+                afterSync = await SyncSavesForLaunchAsync(
+                    launchGame,
+                    afterExit: true,
+                    CancellationToken.None);
+            StatusText = DescribeLaunchAndSaveSync(result, beforeSync, afterSync);
         }
         catch (OperationCanceledException)
         {
@@ -2098,6 +2121,83 @@ public partial class MainViewModel : ViewModelBase
             return false;
         }
     }
+
+    private async Task<CloudSaveSyncOutcome?> SyncSavesForLaunchAsync(
+        Game game,
+        bool afterExit,
+        CancellationToken cancellationToken)
+    {
+        if (_gameSaveSync?.CanSyncSystem(game.SystemId) != true)
+            return null;
+
+        StatusText = afterExit
+            ? $"{game.Title} finished. Syncing saves…"
+            : $"Syncing saves before launching {game.Title}…";
+        try
+        {
+            var outcome = await _gameSaveSync.SyncSystemAsync(game.SystemId, cancellationToken);
+            if (outcome.Status == CloudSaveSyncStatus.Failed)
+            {
+                _logger.Warning(
+                    $"Cloud save sync failed {(afterExit ? "after" : "before")} launching " +
+                    $"game id {game.Id}: {outcome.Message}");
+            }
+            return outcome;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(
+                $"Unexpected cloud save sync failure {(afterExit ? "after" : "before")} launching game id {game.Id}.",
+                ex);
+            return CloudSaveSyncOutcome.Failed(ex.Message);
+        }
+    }
+
+    private static string DescribeLaunchAndSaveSync(
+        GameLaunchResult launch,
+        CloudSaveSyncOutcome? beforeSync,
+        CloudSaveSyncOutcome? afterSync)
+    {
+        var syncParts = new List<string>();
+        if (beforeSync?.Status == CloudSaveSyncStatus.Failed)
+            syncParts.Add("pre-launch save sync did not complete; the saves currently on disk were used");
+        else if (beforeSync?.Report?.Conflicts > 0)
+            syncParts.Add(DescribeConflicts(beforeSync.Report.Conflicts, "during pre-launch sync"));
+        if (afterSync?.Status == CloudSaveSyncStatus.Completed)
+            syncParts.Add(DescribeCompletedSyncAfterExit(afterSync.Report!));
+        else if (afterSync?.Status == CloudSaveSyncStatus.Failed)
+            syncParts.Add($"save sync after exit failed: {afterSync.Message ?? "unknown error"}");
+        if (syncParts.Count == 0)
+            return launch.StatusText;
+
+        return launch.StatusText.TrimEnd('.', ' ') + ". " + string.Join(". ", syncParts) + ".";
+    }
+
+    private static string DescribeCompletedSyncAfterExit(SaveSyncReport report)
+    {
+        if (report.Results.Count == 0)
+            return "no saves were found to sync after exit";
+
+        var parts = new List<string>();
+        if (report.Uploaded > 0)
+            parts.Add($"{report.Uploaded} uploaded");
+        if (report.Downloaded > 0)
+            parts.Add($"{report.Downloaded} downloaded");
+        if (report.Conflicts > 0)
+            parts.Add(DescribeConflicts(report.Conflicts, context: null));
+        if (report.Unchanged > 0)
+            parts.Add($"{report.Unchanged} already in sync");
+        return "save sync after exit: " + string.Join(", ", parts);
+    }
+
+    private static string DescribeConflicts(int count, string? context) =>
+        $"{count} conflict{(count == 1 ? "" : "s")} resolved" +
+        (context is null ? "" : $" {context}") +
+        " (older copy backed up)";
 
     public void NotifyGamepadPointerInput()
     {
@@ -2416,6 +2516,9 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task OpenSettingsAsync()
     {
+        if (IsBusy)
+            return;
+
         try
         {
             await _dialogs.ShowEmulatorSettingsAsync(

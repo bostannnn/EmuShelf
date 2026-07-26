@@ -132,6 +132,7 @@ internal sealed class NullEmulatorLaunchService : IEmulatorLaunchService
 {
     public Task<GameLaunchResult> LaunchAsync(
         Game game,
+        Func<CancellationToken, Task>? beforeStart = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new GameLaunchResult(false, "Emulator launching is unavailable."));
 }

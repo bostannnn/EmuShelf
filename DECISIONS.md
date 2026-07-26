@@ -1503,3 +1503,31 @@ The shared cloud section therefore exposes only reconciled `Sync all now`; each 
 explicit `Replace cloud` and `Replace local` actions that affect only that named platform. Both
 directions retain backup-before-overwrite behavior, and the same provider-resolved path boundary
 applies to normal and forced synchronization.
+
+## 2026-07-26 — Automatic save sync wraps the shared game-launch command
+
+Desktop and Gamepad launches already converge on `MainViewModel` and the launch service does not
+return until an EmuShelf-started emulator exits. Automatic save sync therefore wraps that shared
+command: reconcile only the selected game's system before calling the launch service, then
+reconcile the same system again only when the result confirms a tracked process exited. This keeps
+emulator process ownership unchanged and avoids platform-specific launch hooks.
+
+A pre-launch transport failure is advisory, not a launch veto: EmuShelf warns, retains the local
+save, and starts the game. It retries after exit so restored connectivity can upload or reconcile
+the session, with ordinary manifest conflict backups still protecting both versions. While the
+launch command is active, the existing busy state disables Settings/manual sync; Settings also
+states that emulators launched outside EmuShelf must be closed before manual synchronization.
+
+## 2026-07-26 — Launch preflight precedes automatic save synchronization
+
+This refines the preceding lifecycle decision. The shared launch service completes all read-only
+launch validation before invoking the pre-start save-sync callback, so a missing emulator, core,
+game dependency, or invalid argument template cannot trigger cloud access or change the active
+save state. The callback still runs before the frontend is suspended and before the emulator
+process starts.
+
+A failed multi-unit pass is not described as retaining the original local save because earlier
+units may already have reconciled safely before a later unit failed; EmuShelf instead launches
+with the save state currently on disk, while overwrite backups preserve superseded content.
+Completed automatic passes surface conflicts and empty save sets explicitly, including conflicts
+resolved before launch that a later pass would no longer contain.

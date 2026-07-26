@@ -9,6 +9,7 @@ using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
@@ -38,6 +39,7 @@ public class MainViewModelTests : IDisposable
     private readonly LibraryDatabase _database;
     private readonly FakeDialogService _dialogs = new();
     private static readonly GameSystem Ps1 = KnownSystems.All.Single(s => s.Id == "playstation");
+    private static readonly GameSystem Psp = KnownSystems.All.Single(s => s.Id == "psp");
     private static readonly GameSystem Ps3 = KnownSystems.All.Single(s => s.Id == "playstation3");
     private static readonly GameSystem GameCube = KnownSystems.All.Single(s => s.Id == "gamecube");
     private static readonly GameSystem MegaDrive = KnownSystems.All.Single(s => s.Id == "megadrive");
@@ -72,6 +74,7 @@ public class MainViewModelTests : IDisposable
         IGameMetadataStore? metadataStore = null,
         IEmulatorConfigurationStore? emulatorConfigurations = null,
         IInterfaceModeService? interfaceModeService = null,
+        IGameSaveSyncService? gameSaveSync = null,
         IApplicationLifetimeService? applicationLifetime = null)
     {
         importRules ??= new FileImportRules();
@@ -97,6 +100,7 @@ public class MainViewModelTests : IDisposable
             retroRefresh: retroRefresh,
             metadataStore: metadataStore,
             interfaceModeService: interfaceModeService,
+            gameSaveSync: gameSaveSync,
             applicationLifetime: applicationLifetime);
     }
 
@@ -1333,6 +1337,131 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_SyncsSelectedSystemBeforeLaunchAndAfterTrackedExit()
+    {
+        var events = new List<string>();
+        var sync = new RecordingGameSaveSyncService(
+            events,
+            CloudSaveSyncOutcome.Completed(new SaveSyncReport([])),
+            CompletedSync(SaveSyncAction.Upload));
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished", ProcessExited: true),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.Equal(["sync:psp", "launch", "sync:psp"], events);
+        Assert.Contains("save sync after exit: 1 uploaded", vm.StatusText);
+        Assert.False(vm.IsBusy);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_PreLaunchSyncFailureWarnsButStillLaunchesAndRetriesAfterExit()
+    {
+        var events = new List<string>();
+        var sync = new RecordingGameSaveSyncService(
+            events,
+            CloudSaveSyncOutcome.Failed("cloud offline"),
+            CompletedSync(SaveSyncAction.None));
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished", ProcessExited: true),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.NotNull(launcher.Game);
+        Assert.Equal(["sync:psp", "launch", "sync:psp"], events);
+        Assert.Contains("pre-launch save sync did not complete", vm.StatusText);
+        Assert.Contains("saves currently on disk were used", vm.StatusText);
+        Assert.Contains("save sync after exit: 1 already in sync", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_ReportsAutomaticSyncConflictsFromBothPasses()
+    {
+        var events = new List<string>();
+        var sync = new RecordingGameSaveSyncService(
+            events,
+            CompletedSync(SaveSyncAction.ConflictRemoteWins),
+            CompletedSync(SaveSyncAction.ConflictLocalWins));
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished", ProcessExited: true),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.Contains("1 conflict resolved during pre-launch sync (older copy backed up)", vm.StatusText);
+        Assert.Contains("save sync after exit: 1 conflict resolved (older copy backed up)", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_ReportsWhenNoSavesWereFound()
+    {
+        var events = new List<string>();
+        var sync = new RecordingGameSaveSyncService(
+            events,
+            CloudSaveSyncOutcome.Completed(new SaveSyncReport([])),
+            CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished", ProcessExited: true));
+        var path = Path.Combine(_baseDirectory, "Lumines.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.Contains("no saves were found to sync after exit", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_DoesNotSyncAfterLaunchWhenNoTrackedProcessExited()
+    {
+        var events = new List<string>();
+        var sync = new RecordingGameSaveSyncService(
+            events,
+            CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(false, "PPSSPP could not start", ProcessExited: false),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.Equal(["sync:psp", "launch"], events);
+        Assert.Equal("PPSSPP could not start", vm.StatusText);
+    }
+
+    private static CloudSaveSyncOutcome CompletedSync(SaveSyncAction action) =>
+        CloudSaveSyncOutcome.Completed(new SaveSyncReport(
+            [new SaveUnitSyncResult("ppsspp/ULUS10041DATA00", action, "test")]));
+
+    [AvaloniaFact]
     public async Task LaunchGame_UnavailableGameIsRejectedBeforeLaunchService()
     {
         var folder = MakeRomsFolder();
@@ -1955,16 +2084,47 @@ public class MainViewModelTests : IDisposable
         public void RecordAttempt(GameMetadataAttempt attempt) => inner.RecordAttempt(attempt);
     }
 
-    private sealed class RecordingLaunchService(GameLaunchResult result) : IEmulatorLaunchService
+    private sealed class RecordingLaunchService(
+        GameLaunchResult result,
+        Action? onLaunch = null) : IEmulatorLaunchService
     {
         public Game? Game { get; private set; }
 
         public Task<GameLaunchResult> LaunchAsync(
             Game game,
+            Func<CancellationToken, Task>? beforeStart = null,
             CancellationToken cancellationToken = default)
         {
             Game = game;
-            return Task.FromResult(result);
+            return LaunchCoreAsync(beforeStart, cancellationToken);
+        }
+
+        private async Task<GameLaunchResult> LaunchCoreAsync(
+            Func<CancellationToken, Task>? beforeStart,
+            CancellationToken cancellationToken)
+        {
+            if (beforeStart is not null)
+                await beforeStart(cancellationToken);
+            onLaunch?.Invoke();
+            return result;
+        }
+    }
+
+    private sealed class RecordingGameSaveSyncService(
+        List<string> events,
+        params CloudSaveSyncOutcome[] outcomes) : IGameSaveSyncService
+    {
+        private int _nextOutcome;
+
+        public bool CanSyncSystem(string systemId) => systemId == "psp";
+
+        public Task<CloudSaveSyncOutcome> SyncSystemAsync(
+            string systemId,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add($"sync:{systemId}");
+            var index = Math.Min(_nextOutcome++, outcomes.Length - 1);
+            return Task.FromResult(outcomes[index]);
         }
     }
 
@@ -1979,8 +2139,11 @@ public class MainViewModelTests : IDisposable
 
         public async Task<GameLaunchResult> LaunchAsync(
             Game game,
+            Func<CancellationToken, Task>? beforeStart = null,
             CancellationToken cancellationToken = default)
         {
+            if (beforeStart is not null)
+                await beforeStart(cancellationToken);
             _started.TrySetResult();
             await _complete.Task.WaitAsync(cancellationToken);
             return new GameLaunchResult(true, $"{game.Title} finished");
