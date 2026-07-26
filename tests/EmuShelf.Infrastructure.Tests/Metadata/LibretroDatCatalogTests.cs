@@ -100,4 +100,57 @@ public class LibretroDatCatalogTests
         Assert.True(index.TryGetValue(GameIdentifierKind.Serial, "T40205N", out var serialEntry));
         Assert.Equal("Tony Hawk's Pro Skater (USA)", serialEntry.Title);
     }
+
+    // clrmamepro writes a whole `rom ( … )` record on one line, so it sits at the same nesting
+    // depth as the game's own fields. A serial there belongs to the ROM, and a profile that did
+    // not opt in must not key on it — depth alone cannot tell the two apart.
+    [Fact]
+    public void Parser_WithoutRomSerialOptIn_IgnoresSerialsInsideRomRecords()
+    {
+        const string dat = """
+            game (
+                name "Example (USA)"
+                region "USA"
+                rom ( name "Example (USA) (Track 3).bin" sha1 AABBCCDD serial "T-40205N" )
+            )
+            """;
+
+        var optedOut = LibretroDatCatalog.Parse(
+            new StringReader(dat),
+            [GameIdentifierKind.Serial],
+            readRomSerials: false);
+        var optedIn = LibretroDatCatalog.Parse(
+            new StringReader(dat),
+            [GameIdentifierKind.Serial],
+            readRomSerials: true);
+
+        Assert.False(optedOut.TryGetValue(GameIdentifierKind.Serial, "T40205N", out _));
+        Assert.True(optedIn.TryGetValue(GameIdentifierKind.Serial, "T40205N", out _));
+    }
+
+    // The game's own serial is still read when a rom record also carries one, whether or not the
+    // profile opted in, because `??=` keeps the first and the game-level field comes first.
+    [Fact]
+    public void Parser_PrefersTheGameLevelSerialOverARomRecordSerial()
+    {
+        const string dat = """
+            game (
+                name "Example (USA)"
+                serial "T-11111N"
+                rom ( name "Example (USA) (Track 3).bin" sha1 AABBCCDD serial "T-99999N" )
+            )
+            """;
+
+        foreach (var readRomSerials in new[] { false, true })
+        {
+            var index = LibretroDatCatalog.Parse(
+                new StringReader(dat),
+                [GameIdentifierKind.Serial],
+                readRomSerials);
+
+            Assert.True(index.TryGetValue(GameIdentifierKind.Serial, "T11111N", out var entry));
+            Assert.Equal("Example (USA)", entry.Title);
+            Assert.False(index.TryGetValue(GameIdentifierKind.Serial, "T99999N", out _));
+        }
+    }
 }

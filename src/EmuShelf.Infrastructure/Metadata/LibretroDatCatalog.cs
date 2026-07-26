@@ -233,8 +233,13 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                 keys[GameIdentifierKind.Crc32] ??= parsedCrc;
             }
 
+            // `depth == 1` does not identify a game-level field: clrmamepro writes the whole
+            // `rom ( … )` record on one line, so it sits at depth 1 alongside `name` and `serial`.
+            // A serial inside that record describes the ROM, not the game, and only a profile
+            // that opted in may key on it.
+            var isGameLevelField = depth == 1 && !IsRecordLine(value, "rom");
             if (keys.ContainsKey(GameIdentifierKind.Serial) &&
-                (depth == 1 || readRomSerials) &&
+                (isGameLevelField || readRomSerials) &&
                 TryReadEmbeddedQuotedField(value, "serial", out var parsedSerial))
             {
                 keys[GameIdentifierKind.Serial] ??= parsedSerial;
@@ -316,6 +321,13 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         value = match.Groups[1].Value;
         return true;
     }
+
+    /// <summary>True when the line opens or contains a whole clrmamepro record of this kind.</summary>
+    private static bool IsRecordLine(string line, string record) =>
+        line.StartsWith(record, StringComparison.OrdinalIgnoreCase) &&
+        (line.Length == record.Length ||
+         line[record.Length] == '(' ||
+         char.IsWhiteSpace(line[record.Length]));
 
     private static bool TryReadEmbeddedQuotedField(string line, string field, out string value)
     {

@@ -89,12 +89,31 @@ public class DreamcastGdiReaderTests : TempAppDirectoryTestBase
         Directory.CreateDirectory(BaseDirectory);
         var gdi = CreateGdiSet(productNumber: "MK-51019");
 
-        var identifier = Assert.Single(Extract(gdi), item => item.Kind == GameIdentifierKind.Serial);
+        var serials = Extract(gdi).Where(item => item.Kind == GameIdentifierKind.Serial).ToArray();
 
-        // US Redump entries omit Sega's MK- header even though the IP.BIN product field retains it.
-        Assert.Equal("51019", identifier.Value);
-        Assert.Equal("Dreamcast IP.BIN product number", identifier.Source);
-        Assert.False(identifier.IsPrimary);
+        // Redump is inconsistent about Sega's MK- prefix that IP.BIN always keeps: US entries drop
+        // it (51019), PAL entries such as MK-51053 retain it. Both spellings must be offered, the
+        // disc's own first so a PAL disc prefers its exact PAL entry over the US one.
+        Assert.Equal(["MK51019", "51019"], serials.Select(item => item.Value));
+        Assert.All(serials, item =>
+        {
+            Assert.Equal("Dreamcast IP.BIN product number", item.Source);
+            Assert.False(item.IsPrimary);
+        });
+    }
+
+    // A sub-two-second audio track abuts the next track, leaving no extent to require. That is a
+    // legal layout and must not reject the set; only a payload-less data track is invalid.
+    [Fact]
+    public void MultiTrackGdiSet_WithAudioTrackShorterThanAPregap_IsAccepted()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var gdi = CreateMultiTrackGdiSet(trackFourSectors: 20, trackFourPregap: 0);
+
+        Assert.True(DreamcastGdiReader.TryRecognize(gdi));
+        Assert.Equal(
+            GameFileMatch.Compatible,
+            new FileImportRules().AnalyzeFile(gdi).MatchFor("dreamcast"));
     }
 
     [Fact]
@@ -379,15 +398,16 @@ public class DreamcastGdiReaderTests : TempAppDirectoryTestBase
         return gdi;
     }
 
-    private string CreateMultiTrackGdiSet()
+    // trackFourPregap defaults to the standard gap; pass 0 to abut track 05 against the audio
+    // track, the layout a sub-two-second audio track produces.
+    private string CreateMultiTrackGdiSet(int trackFourSectors = 10, int? trackFourPregap = null)
     {
         // Track 03 holds 50 sectors and track 04 starts 50 + 150 sectors later, exactly the shape
         // of a real dump: 102 Dalmatians' track 03 spans 221799 sectors with track 04 at +221949.
         const int trackThreeLba = 45000;
         const int trackThreeSectors = 50;
         const int trackFourLba = trackThreeLba + trackThreeSectors + PregapSectors;
-        const int trackFourSectors = 10;
-        const int trackFiveLba = trackFourLba + trackFourSectors + PregapSectors;
+        var trackFiveLba = trackFourLba + trackFourSectors + (trackFourPregap ?? PregapSectors);
 
         var gdi = Path.Combine(BaseDirectory, "Multi-track.gdi");
         File.WriteAllText(
@@ -407,7 +427,7 @@ public class DreamcastGdiReaderTests : TempAppDirectoryTestBase
         "SEGA SEGAKATANA "u8.CopyTo(primary.AsSpan(16, 16));
         "1ST_READ.BIN"u8.CopyTo(primary.AsSpan(16 + 96));
         WritePvd(primary.AsSpan(16 * 2352 + 16, 2048), rootDirectorySector: trackThreeLba + 20);
-        WriteDirectory(primary.AsSpan(20 * 2352 + 16, 2048), sector: trackFiveLba);
+        WriteDirectory(primary.AsSpan(20 * 2352 + 16, 2048), sector: (uint)trackFiveLba);
         File.WriteAllBytes(Path.Combine(BaseDirectory, "track03.bin"), primary);
 
         // Deliberately the largest data track, matching Sega Rally 2 and Tony Hawk's Pro Skater,

@@ -214,7 +214,17 @@ public static class DreamcastGdiReader
             {
                 var extentSectors = (long)tracks[index + 1].Lba - track.Lba - PregapSectors;
                 if (extentSectors <= 0)
-                    throw new InvalidDataException("The GDI descriptor has an invalid high-density track extent.");
+                {
+                    // Audio tracks abut each other, so one shorter than a pregap legitimately
+                    // lands here and the existence check above already covers it. A data track
+                    // with no payload cannot hold IP.BIN or a filesystem, so that stays invalid.
+                    if (track.Type == 4)
+                    {
+                        throw new InvalidDataException(
+                            "The GDI descriptor has an invalid high-density track extent.");
+                    }
+                    continue;
+                }
 
                 var requiredLength = checked(track.Offset + extentSectors * track.SectorSize);
                 if (info.Length < requiredLength)
@@ -246,15 +256,18 @@ public static class DreamcastGdiReader
 
     private static IReadOnlyList<string> ReadProductNumberAliases(ReadOnlySpan<byte> ipBin)
     {
-        // IP.BIN stores the product number in its fixed 10-byte field. Redump's Dreamcast DAT
-        // mostly preserves it, but US entries omit Sega's MK- prefix while the disc header keeps it.
+        // IP.BIN stores the product number in its fixed 10-byte field. Redump's Dreamcast DAT is
+        // inconsistent about Sega's MK- prefix that the disc header always keeps: US entries drop
+        // it (51019 for a disc reading MK-51019) while PAL entries such as MK-51053 retain it.
+        // Offer both spellings, the disc's own first so a PAL disc prefers its exact PAL entry and
+        // only then falls back to the same game's prefix-less US entry.
         var product = Encoding.ASCII.GetString(ipBin.Slice(64, 10)).Trim('\0', ' ');
         var compact = string.Concat(product.Where(char.IsLetterOrDigit)).ToUpperInvariant();
         if (compact.Length == 0 || !compact.Any(char.IsDigit))
             return [];
 
         return compact.StartsWith("MK", StringComparison.Ordinal) && compact.Length > 2
-            ? [compact[2..]]
+            ? [compact, compact[2..]]
             : [compact];
     }
 
