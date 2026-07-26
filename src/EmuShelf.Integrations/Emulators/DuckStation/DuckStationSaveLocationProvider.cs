@@ -3,6 +3,9 @@ using EmuShelf.Core.SaveSync;
 
 namespace EmuShelf.Integrations.Emulators.DuckStation;
 
+/// <summary>Detected DuckStation memory-card location and any portability-sensitive layout traits.</summary>
+public sealed record DuckStationMemoryCardInfo(string Directory, bool UsesFileTitleCards);
+
 /// <summary>
 /// Locates DuckStation's user directory and reads its memory-card settings without modifying them.
 /// Shared cards are exposed by slot; per-game cards are exposed as individual files. Save states
@@ -64,6 +67,21 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     /// <summary>Returns the directory explicitly selected by DuckStation for memory cards.</summary>
     public Task<string> GetMemoryCardsDirectoryAsync(CancellationToken cancellationToken = default) =>
         Task.Run(() => ReadConfiguration(cancellationToken).MemoryCardsDirectory, cancellationToken);
+
+    /// <summary>
+    /// Returns the configured directory and whether any active slot derives card names from the
+    /// launched file. File-title cards are safe to sync by exact filename, but another machine must
+    /// use the same game filename for DuckStation to select the downloaded card automatically.
+    /// </summary>
+    public Task<DuckStationMemoryCardInfo> GetMemoryCardInfoAsync(
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() =>
+        {
+            var configuration = ReadConfiguration(cancellationToken);
+            return new DuckStationMemoryCardInfo(
+                configuration.MemoryCardsDirectory,
+                configuration.Slots.Any(slot => slot.Type == MemoryCardType.PerGameFileTitle));
+        }, cancellationToken);
 
     public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
         Task.Run<IReadOnlyList<SaveUnit>>(() => GetSaveUnits(cancellationToken), cancellationToken);
@@ -181,10 +199,11 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
 
         if (_isFlatpak)
         {
+            var flatpakHome = RequireResolvedRoot(_homeDirectory, "The home directory");
             var current = Path.Combine(
-                _homeDirectory, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
+                flatpakHome, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
             var legacy = Path.Combine(
-                _homeDirectory, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
+                flatpakHome, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
             if (Directory.Exists(current))
                 return RequireSettings(current, "DuckStation's Flatpak user directory");
             if (Directory.Exists(legacy))
@@ -198,23 +217,39 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
             // that directory exists, and only otherwise selects LocalAppData. Checking for a
             // settings file instead of the directory would silently switch profiles before
             // DuckStation has had a chance to create/repair that file.
-            var legacy = Path.Combine(_documentsDirectory, "DuckStation");
-            if (Directory.Exists(legacy))
-                return RequireSettings(legacy, "DuckStation's legacy user directory");
+            if (!string.IsNullOrWhiteSpace(_documentsDirectory))
+            {
+                var legacy = Path.Combine(_documentsDirectory, "DuckStation");
+                if (Directory.Exists(legacy))
+                    return RequireSettings(legacy, "DuckStation's legacy user directory");
+            }
+
             return RequireSettings(
-                Path.Combine(_localApplicationDataDirectory, "DuckStation"),
+                Path.Combine(
+                    RequireResolvedRoot(
+                        _localApplicationDataDirectory,
+                        "DuckStation's application data directory"),
+                    "DuckStation"),
                 "DuckStation's user directory");
         }
 
         if (_isMacOS)
         {
             return RequireSettings(
-                Path.Combine(_homeDirectory, "Library", "Application Support", "DuckStation"),
+                Path.Combine(
+                    RequireResolvedRoot(_homeDirectory, "The home directory"),
+                    "Library",
+                    "Application Support",
+                    "DuckStation"),
                 "DuckStation's user directory");
         }
 
         var dataRoot = _xdgConfigHome is null
-            ? Path.Combine(_homeDirectory, ".local", "share", "duckstation")
+            ? Path.Combine(
+                RequireResolvedRoot(_homeDirectory, "The home directory"),
+                ".local",
+                "share",
+                "duckstation")
             : Path.Combine(_xdgConfigHome, "duckstation");
         return RequireSettings(dataRoot, "DuckStation's user directory");
     }
@@ -279,7 +314,8 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     {
         MemoryCardType.PerGame => "serial",
         MemoryCardType.PerGameTitle => "title",
-        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "The card type has no stable sync scheme."),
+        MemoryCardType.PerGameFileTitle => "file-title",
+        _ => throw new ArgumentOutOfRangeException(nameof(type), type, "The card type is not per-game."),
     };
 
     private static bool TryParsePerGameScheme(string value, out MemoryCardType type)
@@ -288,13 +324,29 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         {
             "serial" => MemoryCardType.PerGame,
             "title" => MemoryCardType.PerGameTitle,
+            "file-title" => MemoryCardType.PerGameFileTitle,
             _ => MemoryCardType.None,
         };
         return type != MemoryCardType.None;
     }
 
-    private static string FullPathOrEnvironment(string? path, Environment.SpecialFolder fallback) =>
-        Path.GetFullPath(string.IsNullOrWhiteSpace(path) ? Environment.GetFolderPath(fallback) : path);
+    // Environment.GetFolderPath returns an empty string for a folder the current platform cannot
+    // resolve: MyDocuments and LocalApplicationData are empty on a Linux session without XDG
+    // user-dirs, which is the normal shape of a Steam Deck Game Mode session. Path.GetFullPath
+    // rejects an empty string, so keep the value unresolved here and let the platform branch that
+    // actually consumes it fail with a readable message, instead of throwing while merely
+    // constructing the provider on a platform that never reads that folder.
+    private static string FullPathOrEnvironment(string? path, Environment.SpecialFolder fallback)
+    {
+        var resolved = string.IsNullOrWhiteSpace(path) ? Environment.GetFolderPath(fallback) : path;
+        return string.IsNullOrWhiteSpace(resolved) ? string.Empty : Path.GetFullPath(resolved);
+    }
+
+    private static string RequireResolvedRoot(string directory, string description) =>
+        string.IsNullOrWhiteSpace(directory)
+            ? throw new DuckStationConfigurationFormatException(
+                $"{description} could not be resolved on this system.")
+            : directory;
 
     private sealed record DuckStationConfiguration(
         string MemoryCardsDirectory,
@@ -313,7 +365,7 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     }
 
     private static bool IsPerGame(MemoryCardType type) =>
-        type is MemoryCardType.PerGame or MemoryCardType.PerGameTitle;
+        type is MemoryCardType.PerGame or MemoryCardType.PerGameTitle or MemoryCardType.PerGameFileTitle;
 
     private static class DuckStationIniAdapter
     {
@@ -341,13 +393,6 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
                     throw new DuckStationConfigurationFormatException(
                         $"DuckStation's settings.ini has no supported Card{number}Type.");
                 }
-                if (type == MemoryCardType.PerGameFileTitle)
-                {
-                    throw new DuckStationConfigurationFormatException(
-                        "DuckStation's PerGameFileTitle cards do not have a stable cross-machine identity. " +
-                        "Use serial- or title-based per-game cards before enabling sync.");
-                }
-
                 string? cardPath = null;
                 if (type == MemoryCardType.Shared)
                 {
