@@ -29,7 +29,8 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     private readonly string _remoteName;
     private readonly string _cloudFolder;
     private readonly string _transfersDirectory;
-    private readonly TimeSpan _operationTimeout;
+    private readonly TimeSpan _metadataTimeout;
+    private readonly TimeSpan _transferTimeout;
     private string? _cloudFolderId;
     private readonly HashSet<string> _expectedDownloads = new(StringComparer.Ordinal);
     private readonly HashSet<string> _missingPayloads = new(StringComparer.Ordinal);
@@ -58,9 +59,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         _remoteName = remoteName;
         _cloudFolder = cloudFolder.Trim().Trim('/').Replace('\\', '/');
         _transfersDirectory = Path.Combine(appPaths.SavesDirectory, "transfers");
-        // A single rclone call (upload/download of one save) should be quick; a much longer wait
-        // means a stalled network, so fail rather than appear to hang forever.
-        _operationTimeout = operationTimeout ?? TimeSpan.FromMinutes(2);
+        // Two budgets, because one number cannot serve both kinds of call. A metadata call — read
+        // the index, list a folder — is a round trip and a long one means a stalled network. A
+        // transfer is bounded by how much data there is: this library's first RPCS3 upload was
+        // 179 MB, and a two-minute cap on it guaranteed a killed session on any ordinary uplink.
+        _metadataTimeout = operationTimeout ?? TimeSpan.FromMinutes(2);
+        _transferTimeout = operationTimeout ?? TimeSpan.FromMinutes(30);
     }
 
     public async Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default)
@@ -359,6 +363,49 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     }
 
     /// <summary>
+    /// Lists what the remote actually stores and returns the indexed units whose payload is not
+    /// there. Those entries are marked for removal, so the next <see cref="FlushAsync"/> rewrites
+    /// the index without them and the machines still holding those saves upload them again.
+    /// </summary>
+    /// <remarks>
+    /// One listing for the whole remote, rather than discovering each break by failing a download:
+    /// the machine that owns a save never downloads it, so it would otherwise never learn that its
+    /// upload is missing.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> FindMissingPayloadsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var buffer = new MemoryStream();
+        var exitCode = await RunAsync(
+            ["lsf", "-R", "--files-only", RemoteRoot],
+            buffer,
+            cancellationToken,
+            throwOnNonZeroExit: false);
+        if (exitCode == RcloneDirectoryNotFoundExit)
+            return [];
+        if (exitCode != 0)
+            throw new IOException($"rclone could not list the cloud folder (exit code {exitCode}).");
+
+        var present = new HashSet<string>(StringComparer.Ordinal);
+        using (var reader = new StreamReader(new MemoryStream(buffer.ToArray())))
+        {
+            while (await reader.ReadLineAsync(cancellationToken) is { } line)
+            {
+                var name = line.Trim();
+                if (name.Length > 0)
+                    present.Add(name);
+            }
+        }
+
+        var missing = _remoteIndex.Keys
+            .Where(unitId => !present.Contains(unitId + ".payload"))
+            .OrderBy(unitId => unitId, StringComparer.Ordinal)
+            .ToList();
+        foreach (var unitId in missing)
+            _missingPayloads.Add(unitId);
+        return missing;
+    }
+
+    /// <summary>
     /// Adopts a folder id resolved by <see cref="ResolveCloudFolderIdAsync"/> for the rest of this
     /// transport's life, so one session's timings and staging state stay in one instance.
     /// </summary>
@@ -433,7 +480,8 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         var elapsed = Stopwatch.StartNew();
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("The operating system did not start rclone.");
-        using var timeout = new CancellationTokenSource(_operationTimeout);
+        var operationTimeout = operationArguments[0] is "copy" or "copyto" ? _transferTimeout : _metadataTimeout;
+        using var timeout = new CancellationTokenSource(operationTimeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         var token = linked.Token;
         var copyOutput = process.StandardOutput.BaseStream.CopyToAsync(standardOutput, 81920, token);
@@ -445,7 +493,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             TryKill(process);
-            throw new IOException($"rclone did not respond within {_operationTimeout.TotalSeconds:0} seconds.");
+            throw new IOException($"rclone did not respond within {operationTimeout.TotalSeconds:0} seconds.");
         }
 
         elapsed.Stop();

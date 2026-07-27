@@ -2080,3 +2080,24 @@ per-unit condition that the service records and steps over, so one bad entry cos
 than the pass. And the transport drops such entries from the index it writes at the end of the pass,
 so the machine that still has the save stops seeing "already on the remote" and uploads it. The
 damage already on the remote heals on the next pass from either machine.
+
+## 2026-07-27 — Every full sync verifies the cloud against itself
+
+Auditing the remote after the index/payload defect showed the damage was not one platform's:
+74 of 255 indexed units had no payload — 71 RPCS3 and 3 PPSSPP. (A first pass reported 79 and
+included DuckStation and RetroArch; that was wrong. The index JSON-escapes apostrophes, so five
+entries were compared against their unescaped file names and looked missing when they were not.)
+
+The 71 name the second cause. The per-rclone-call timeout was two minutes for every kind of call,
+and the first RPCS3 upload is 179 MB of save data and trophy sets. On an ordinary uplink that
+session could not finish inside the cap, so it was killed after the small index had already gone up.
+Timeouts are now split by what the call does: two minutes for a metadata round trip, thirty for a
+transfer, because a transfer's duration is set by how much data there is, not by whether the network
+is alive.
+
+Repair could not rely on a failed download. The machine that owns a save never downloads it, so it
+would never discover its own broken upload; only a second machine would, one failed download at a
+time. A full manual sync therefore lists the remote once and compares it against the index, drops
+the entries with no payload, and lets the owning machine upload them again on the same pass. That
+listing costs one call on an operation the user already waits on, and it is deliberately not part of
+the pre-launch pass, which is optimized for latency.

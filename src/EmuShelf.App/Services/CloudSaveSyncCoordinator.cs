@@ -270,13 +270,49 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        RunSyncPipelineAsync(SaveProviderRegistry.SystemIds, progress, "Sync all", cancellationToken);
+        RunSyncPipelineAsync(
+            SaveProviderRegistry.SystemIds,
+            progress,
+            "Sync all",
+            cancellationToken,
+            // A full manual sync is where the cloud is checked against itself. It is one extra
+            // listing on an operation the user is already waiting on, and it is the only way the
+            // machine that owns a save learns that its upload never arrived — it never downloads
+            // its own save, so a broken entry would otherwise stay broken until another machine
+            // tripped over it.
+            verifyRemote: true);
 
     /// <summary>Reconciles only the save provider associated with one launched system.</summary>
     public Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
         CancellationToken cancellationToken = default) =>
         RunSyncPipelineAsync([systemId], progress: null, $"Automatic sync ({systemId})", cancellationToken);
+
+    /// <summary>
+    /// Checks every indexed save against what the remote actually stores, drops the entries whose
+    /// payload is missing, and reports them. The saves themselves are re-uploaded by whichever
+    /// machine still has them on its next sync.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> VerifyCloudDataAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return [];
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var transport = await CreateTransportAsync(cancellationToken);
+            await transport.ListAsync(cancellationToken);
+            var missing = await transport.FindMissingPayloadsAsync(cancellationToken);
+            if (missing.Count > 0)
+                await transport.FlushAsync(cancellationToken);
+            return missing;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     /// <summary>Forces one platform's present units in one direction, still backing up the loser.</summary>
     public Task<CloudSaveSyncOutcome> ForceAsync(
@@ -353,7 +389,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IReadOnlyList<string> systemIds,
         IProgress<SaveSyncProgress>? progress,
         string operationLabel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool verifyRemote = false)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
@@ -381,6 +418,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
             var elapsed = Stopwatch.StartNew();
             var transport = await CreateTransportAsync(cancellationToken);
+            if (verifyRemote)
+            {
+                await transport.ListAsync(cancellationToken);
+                var missing = await transport.FindMissingPayloadsAsync(cancellationToken);
+                if (missing.Count > 0)
+                {
+                    _logger.Warning(
+                        $"{missing.Count} cloud save entries had no payload on the remote and were removed " +
+                        "from the index; the machines still holding those saves will upload them again.");
+                }
+            }
+
             var service = new SaveSyncService(
                 targets[0].LocalEndpoint,
                 transport,

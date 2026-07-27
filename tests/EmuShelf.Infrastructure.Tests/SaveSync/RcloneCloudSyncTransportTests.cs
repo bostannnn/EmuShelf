@@ -125,6 +125,51 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task LocalBackend_VerificationFindsBrokenEntriesTheOwningMachineWouldNeverDownload()
+    {
+        // The machine that uploaded a save never downloads it, so it cannot discover a failed
+        // upload by failing a download. One listing of the remote is how it finds out.
+        var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");
+        if (string.IsNullOrWhiteSpace(rclonePath) || !File.Exists(rclonePath))
+            return;
+
+        var remoteRoot = Path.Combine(BaseDirectory, "verify-remote");
+        Directory.CreateDirectory(AppPaths.SettingsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(AppPaths.SettingsDirectory, "rclone.conf"),
+            "[testlocal]\ntype = local\n");
+        var cloudFolder = Path.GetFullPath(remoteRoot).Replace('\\', '/');
+        var seeding = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        var units = new[] { "rpcs3/savedata/BCES00006", "rpcs3/trophy/NPWR00706_00", "pcsx2/Mcd001.ps2" };
+        foreach (var unitId in units)
+        {
+            await seeding.UploadAsync(
+                unitId,
+                new MemoryStream(Encoding.UTF8.GetBytes(unitId)),
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unitId))),
+                new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
+        }
+
+        await seeding.FlushAsync();
+        File.Delete(Path.Combine(remoteRoot, "rpcs3", "savedata", "BCES00006.payload"));
+        File.Delete(Path.Combine(remoteRoot, "rpcs3", "trophy", "NPWR00706_00.payload"));
+
+        var transport = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        await transport.ListAsync();
+        var missing = await transport.FindMissingPayloadsAsync();
+
+        Assert.Equal(["rpcs3/savedata/BCES00006", "rpcs3/trophy/NPWR00706_00"], missing);
+
+        await transport.FlushAsync();
+        var repaired = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+
+        Assert.Equal(
+            ["pcsx2/Mcd001.ps2"],
+            (await repaired.ListAsync()).Select(snapshot => snapshot.UnitId));
+        Assert.Empty(await repaired.FindMissingPayloadsAsync());
+    }
+
+    [Fact]
     public async Task LocalBackend_FolderIdShortcutIsNotAppliedToANonDriveRemote()
     {
         // The id form drops the folder from the remote path, which only works because
