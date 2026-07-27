@@ -48,9 +48,15 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
         return Task.FromResult(snapshots);
     }
 
+    /// <summary>Unit ids the index advertises but whose payload the remote cannot produce.</summary>
+    public HashSet<string> MissingPayloads { get; } = new(StringComparer.Ordinal);
+
     public Task<Stream> DownloadAsync(string unitId, CancellationToken cancellationToken = default)
     {
         Guard();
+        if (MissingPayloads.Contains(unitId))
+            throw new CloudPayloadMissingException(unitId);
+
         Downloads++;
         Stream stream = new MemoryStream(_units[unitId].Content, writable: false);
         return Task.FromResult(stream);

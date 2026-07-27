@@ -1047,3 +1047,77 @@ loading setting can also be resolved without guessing.
       four reported replacement loading correctly. Emulator configs and pack files were unchanged
       in bytes and timestamps after repeated rescans, and an empty Dolphin root did not stop the
       other three providers. SteamOS/Linux remains open.)
+
+## M33 — Sync beyond saves: states, cheats, patches, per-game settings (planned)
+
+M29 syncs the games' own battery/memory-card saves and stops there, on the reasoning that
+everything else is either machine-specific or fragile. That reasoning holds for *some* of it, but a
+library that moves between a desktop and a Steam Deck loses more than saves: a save state mid-boss,
+a widescreen patch, a cheat file, and the per-game settings that made a game run at all. This
+milestone extends the existing engine — one unit id, one manifest baseline, non-destructive
+conflicts — to those kinds, one kind at a time, with the risky ones behind their own switch.
+
+Everything here reuses M29's machinery. A content kind is a new unit-id namespace under the same
+provider (`duckstation/cheats/…` beside `duckstation/per-game/…`), so the planner, backup-before-
+overwrite rule, conflict backups, and activity log need no new concepts.
+
+### Phase 1 — Foundation
+
+- [ ] Per-kind opt-in per platform, defaulting to saves only. Cheats and patches are kilobytes and
+      near-always wanted; save states are gigabytes and change every session, and must never become
+      an implicit upload. Settings shows each kind's size on disk before it is enabled.
+- [ ] Per-file units for kinds made of many independent files, so one changed state does not
+      re-upload a folder. The existing folder unit stays for save data that is only meaningful whole.
+- [ ] A retention rule for states: keep the newest N per game, never delete the local copy, and
+      exclude auto/undo slots (`.state.auto`, DuckStation's resume state, PCSX2's backup slot),
+      which change on every exit and are worth nothing on another machine.
+- [ ] Kind-aware conflict handling. A cheat or patch file is user-edited text where "keep the newer
+      one" is wrong: keep both sides, both readable, and say so — the current timestamp tie-break
+      stays right for opaque binary state.
+
+### Phase 2 — Portable-by-nature kinds (do these first)
+
+- [ ] **Cheats.** DuckStation `cheats/<serial>.cht`, PCSX2 `cheats/<CRC>.pnach`, PPSSPP
+      `PSP/Cheats/*.ini`, RetroArch `cheats/`, Dolphin's Gecko/AR sections. Small, text, keyed by
+      game id rather than by machine; the clearest win in this milestone.
+- [ ] **Patches.** PCSX2 `patches/` pnach files and RPCS3 `patches/patch.yml` — the community
+      patch sets that carry widescreen and performance fixes, and that are pure content with no
+      machine-specific paths. Soft patches that live *beside the ROM* (`.ips`/`.bps`/`.ups`) are
+      excluded: EmuShelf never writes into the user's game folders.
+- [ ] **Per-game settings.** DuckStation `gamesettings/`, PCSX2 `gamesettings/`, Dolphin
+      `GameSettings/`, RetroArch per-game overrides. High value — this is the tuning that makes a
+      specific game work — but the files can name a renderer, an adapter, or an absolute path, so
+      sync must filter machine-bound keys rather than copy blindly, and a Deck and a desktop must be
+      able to keep different graphics choices for the same game.
+
+### Phase 3 — Save states, behind a version guard
+
+- [ ] **Save states.** DuckStation `savestates/`, PCSX2 `sstates/*.p2s`, PPSSPP
+      `PSP/PPSSPP_STATE/*.ppst`, Dolphin `StateSaves/`, RetroArch `states/*.state`, RPCS3's own
+      `.SAVESTAT`. These are the reason the original exclusion existed: a state is bound to the
+      emulator build that wrote it, and often to its CPU architecture, so restoring one into a
+      different build ranges from a graphical mess to a crash.
+- [ ] Record the writing emulator's version and platform beside each state unit, and refuse to
+      restore a state whose version does not match the local emulator — surfacing it as "available,
+      not restored" rather than silently overwriting or silently skipping. A matching version
+      restores normally.
+- [ ] Bandwidth honesty: show the transfer size before the first sync of a platform's states, and
+      keep them out of the pre-launch pass's critical path — a state is not needed to *start* a
+      game the way a memory card is.
+
+### Phase 4 — Worth considering, decide before building
+
+- [ ] **EmuShelf's own library** (`Data/library.db`, `Covers/`) so a second machine sees the same
+      collection, ratings, and artwork. Arguably the highest-value item here after cheats, and the
+      one with the most design questions: stored paths differ per machine, and the cover cache is
+      large. Needs its own decision on portable paths before any code.
+- [ ] **Screenshots and captures** — RetroArch `screenshots/`, PPSSPP `PSP/SCREENSHOT/`, RPCS3
+      `captures/`. Purely additive, no conflicts possible, cheap to implement; low value, so only
+      worth it once the machinery above exists.
+- [ ] **Controller profiles and input remaps** — RetroArch `config/remaps`, DuckStation and PCSX2
+      input profiles. Tempting and usually wrong: device names, indices, and Steam Input differ
+      between a Deck and a desktop, so a synced remap can silently break input on the other machine.
+      If it happens at all, it should be an explicit "copy this profile there", not background sync.
+- [ ] Deliberately out of scope, recorded so it is not revisited: BIOS and firmware images (large,
+      static, and the user's own to place), texture packs (gigabytes, already inventoried by M32),
+      emulator binaries, and RetroAchievements progress (the server owns it).

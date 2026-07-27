@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using EmuShelf.Core.SaveSync;
 using EmuShelf.Infrastructure.SaveSync;
 
 namespace EmuShelf.Infrastructure.Tests.SaveSync;
@@ -74,8 +75,53 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
 
         Assert.Equal("pcsx2/Mcd001.ps2", await ReadAllAsync(transport, "pcsx2/Mcd001.ps2"));
         Assert.Equal("rpcs3/savedata/BCES00006", await ReadAllAsync(transport, "rpcs3/savedata/BCES00006"));
-        await Assert.ThrowsAsync<IOException>(() => transport.DownloadAsync("pcsx2/Missing.ps2"));
+        await Assert.ThrowsAsync<CloudPayloadMissingException>(
+            () => transport.DownloadAsync("pcsx2/Missing.ps2"));
         await transport.FlushAsync();
+    }
+
+    [Fact]
+    public async Task LocalBackend_AnIndexEntryWithNoPayloadIsReportedAndThenPrunedFromTheIndex()
+    {
+        // Regression: a flush that uploaded index.json alongside the payloads could commit an entry
+        // whose payload never arrived. The owning machine then saw "unchanged" forever while every
+        // other machine failed downloading it, so the entry has to be removable.
+        var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");
+        if (string.IsNullOrWhiteSpace(rclonePath) || !File.Exists(rclonePath))
+            return;
+
+        var remoteRoot = Path.Combine(BaseDirectory, "stale-index-remote");
+        Directory.CreateDirectory(AppPaths.SettingsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(AppPaths.SettingsDirectory, "rclone.conf"),
+            "[testlocal]\ntype = local\n");
+        var cloudFolder = Path.GetFullPath(remoteRoot).Replace('\\', '/');
+        var seeding = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        foreach (var unitId in new[] { "ppsspp/ULES00841", "ppsspp/ULUS10277" })
+        {
+            await seeding.UploadAsync(
+                unitId,
+                new MemoryStream(Encoding.UTF8.GetBytes(unitId)),
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unitId))),
+                new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
+        }
+
+        await seeding.FlushAsync();
+        // Reproduce the damage the old flush ordering could leave behind.
+        File.Delete(Path.Combine(remoteRoot, "ppsspp", "ULES00841.payload"));
+
+        var transport = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        Assert.Equal(2, (await transport.ListAsync()).Count);
+        var missing = await Assert.ThrowsAsync<CloudPayloadMissingException>(
+            () => transport.DownloadAsync("ppsspp/ULES00841"));
+        Assert.Equal("ppsspp/ULES00841", missing.UnitId);
+        await transport.FlushAsync();
+
+        // The healthy unit survives; the entry with no payload is gone, so the machine that still
+        // has that save will upload it instead of believing the remote already has it.
+        var repaired = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        var remaining = await repaired.ListAsync();
+        Assert.Equal(["ppsspp/ULUS10277"], remaining.Select(snapshot => snapshot.UnitId));
     }
 
     [Fact]

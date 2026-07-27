@@ -32,6 +32,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     private readonly TimeSpan _operationTimeout;
     private string? _cloudFolderId;
     private readonly HashSet<string> _expectedDownloads = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _missingPayloads = new(StringComparer.Ordinal);
     private readonly List<string> _timings = [];
     private string? _outbox;
     private string? _inbox;
@@ -129,7 +130,11 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                 cancellationToken,
                 throwOnNonZeroExit: false);
             if (exitCode != 0 || !File.Exists(payloadPath))
-                throw new IOException($"The cloud save payload for '{unitId}' was not found on the remote.");
+            {
+                // Recorded so the next flush prunes the index entry that promised it.
+                _missingPayloads.Add(unitId);
+                throw new CloudPayloadMissingException(unitId);
+            }
         }
 
         return new FileStream(payloadPath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -164,27 +169,62 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     {
         try
         {
+            if (_outbox is null && _missingPayloads.Count == 0)
+                return;
+
+            // Payloads first, index second, in two separate rclone sessions. In one session rclone
+            // transfers concurrently, so a failure could leave index.json describing a payload that
+            // never arrived — and because the index carries the content hash, the machine that owns
+            // that save then sees "unchanged" and never re-uploads it, while every other machine
+            // fails trying to download it. The index is a commit, so it goes last and only after
+            // the payloads it describes are on the remote.
+            // --no-traverse: the destination holds every save ever synced, and rclone would
+            // otherwise list all of it to decide whether to copy a handful of staged files.
             if (_outbox is not null && _pendingIndex.Count > 0)
             {
-                var index = new Dictionary<string, SaveUnitSnapshot>(_remoteIndex, StringComparer.Ordinal);
-                foreach (var (unitId, snapshot) in _pendingIndex)
-                    index[unitId] = snapshot;
-
-                var entries = index.Values
-                    .Select(snapshot => new RemoteUnitMetadata(snapshot.UnitId, snapshot.ContentHash, snapshot.ModifiedUtc))
-                    .ToList();
-                await File.WriteAllTextAsync(
-                    Path.Combine(_outbox, IndexFileName),
-                    JsonSerializer.Serialize(entries, SerializerOptions),
-                    cancellationToken);
-                // --no-traverse: the destination holds every save ever synced, and rclone would
-                // otherwise list all of it to decide whether to copy the handful of staged files.
                 await RunAsync(
                     ["copy", _outbox, RemoteRoot, "--no-traverse"],
                     Stream.Null,
                     cancellationToken);
-                _remoteIndex = index;
             }
+
+            var index = new Dictionary<string, SaveUnitSnapshot>(_remoteIndex, StringComparer.Ordinal);
+            foreach (var (unitId, snapshot) in _pendingIndex)
+                index[unitId] = snapshot;
+
+            // Entries whose payload was found to be missing are dropped, so the machine that still
+            // has the save stops seeing "already on the remote" and uploads it on its next pass.
+            foreach (var unitId in _missingPayloads)
+            {
+                if (!_pendingIndex.ContainsKey(unitId))
+                    index.Remove(unitId);
+            }
+
+            if (_pendingIndex.Count == 0 && _missingPayloads.Count == 0)
+                return;
+
+            var entries = index.Values
+                .Select(snapshot => new RemoteUnitMetadata(snapshot.UnitId, snapshot.ContentHash, snapshot.ModifiedUtc))
+                .ToList();
+            var indexDirectory = CreateStagingDirectory("index");
+            try
+            {
+                await File.WriteAllTextAsync(
+                    Path.Combine(indexDirectory, IndexFileName),
+                    JsonSerializer.Serialize(entries, SerializerOptions),
+                    cancellationToken);
+                await RunAsync(
+                    ["copy", indexDirectory, RemoteRoot, "--no-traverse"],
+                    Stream.Null,
+                    cancellationToken);
+            }
+            finally
+            {
+                TryDeleteDirectory(indexDirectory);
+            }
+
+            _remoteIndex = index;
+            _missingPayloads.Clear();
         }
         finally
         {

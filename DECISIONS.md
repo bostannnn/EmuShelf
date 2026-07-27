@@ -2059,3 +2059,24 @@ in 1.8–2.2 s by id versus 3.2 s by path. rclone's own process start is 152 ms,
 provider's round trip, and no amount of local work removes it: every pass has to ask the cloud
 whether another machine changed a save. That is the floor this design has, and the 12-second launch
 budget is what keeps a bad minute from reaching the user.
+
+## 2026-07-27 — The cloud index is a commit, and is written after the payloads it describes
+
+A PSP sync on the Steam Deck failed with "the cloud save payload for 'ppsspp/ULES00841' was not
+found on the remote", and the remote confirmed it: the index listed thirteen PSP units while only
+ten payloads existed. All three of the missing saves were present locally on the machine that had
+uploaded them.
+
+The cause was a single `rclone copy` of the whole outbox — payloads and `index.json` together.
+rclone transfers concurrently, so a session that failed partway could land the small index while a
+payload did not arrive. That is unrecoverable by itself, because the index carries the content hash:
+the owning machine then reconciles to "unchanged" and never re-uploads, while every other machine
+fails downloading it and, since one failure aborted the pass, loses the sync of every unit behind it.
+
+Three changes, in the order the failure needs them. Payloads are uploaded first and the index second,
+in separate sessions, so an interruption can only leave a payload with no index entry — harmless,
+re-uploaded next pass — rather than an entry with no payload. A missing payload now raises a typed
+per-unit condition that the service records and steps over, so one bad entry costs one unit rather
+than the pass. And the transport drops such entries from the index it writes at the end of the pass,
+so the machine that still has the save stops seeing "already on the remote" and uploads it. The
+damage already on the remote heals on the next pass from either machine.

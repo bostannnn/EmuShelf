@@ -161,6 +161,27 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task AUnitTheIndexPromisesButCannotDeliver_DoesNotCostTheOtherUnitsTheirSync()
+    {
+        // Real failure: the cloud index listed three PSP saves whose payloads were never uploaded,
+        // and the first of them aborted every pass on the other machine.
+        var missing = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
+        var healthy = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
+        _remote.Seed(missing.UnitId, Bytes("promised"), T0);
+        _remote.Seed(healthy.UnitId, Bytes("deliverable"), T0);
+        _remote.MissingPayloads.Add(missing.UnitId);
+
+        var report = await CreateService().SyncAsync(Provider(missing, healthy));
+
+        Assert.Equal(1, report.Downloaded);
+        Assert.Equal(Bytes("deliverable"), _local.Content(healthy.UnitId));
+        Assert.False(_local.Has(missing.UnitId));
+        Assert.Contains(
+            report.Results,
+            result => result.UnitId == missing.UnitId && result.Reason.Contains("missing"));
+    }
+
+    [Fact]
     public async Task RemoteUnitsOwnedByAnotherProvider_AreIgnored()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);

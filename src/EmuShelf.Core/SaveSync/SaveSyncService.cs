@@ -105,17 +105,32 @@ public sealed class SaveSyncService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new SaveSyncProgress(
                 completed, planned.Count, unit.Item.DisplayName, unit.Decision.Action));
-            manifest = await ApplyAsync(
-                unit.Item.LocalEndpoint,
-                unit.Item.UnitId,
-                unit.Decision.Action,
-                unit.LocalSnapshot,
-                unit.RemoteSnapshot,
-                unit.Baseline,
-                manifest,
-                cancellationToken);
+            try
+            {
+                manifest = await ApplyAsync(
+                    unit.Item.LocalEndpoint,
+                    unit.Item.UnitId,
+                    unit.Decision.Action,
+                    unit.LocalSnapshot,
+                    unit.RemoteSnapshot,
+                    unit.Baseline,
+                    manifest,
+                    cancellationToken);
 
-            results.Add(new SaveUnitSyncResult(unit.Item.UnitId, unit.Decision.Action, unit.Decision.Reason));
+                results.Add(new SaveUnitSyncResult(unit.Item.UnitId, unit.Decision.Action, unit.Decision.Reason));
+            }
+            catch (CloudPayloadMissingException)
+            {
+                // One unit the remote index promised but cannot deliver must not cost every other
+                // unit its sync. The baseline is deliberately not advanced, and the transport drops
+                // the stale index entry, so the machine that still holds the save re-uploads it.
+                results.Add(new SaveUnitSyncResult(
+                    unit.Item.UnitId,
+                    SaveSyncAction.None,
+                    "The cloud copy is missing; the stale entry was removed and the save will be " +
+                    "re-uploaded by the machine that still has it."));
+            }
+
             completed++;
         }
 
@@ -194,12 +209,23 @@ public sealed class SaveSyncService
 
                 progress?.Report(new SaveSyncProgress(completed, remoteSnapshots.Count, unitId, SaveSyncAction.Download));
                 var localSnapshot = await _local.SnapshotAsync(unitId, cancellationToken);
-                if (localSnapshot is not null && !ContentEquals(localSnapshot.ContentHash, remoteSnapshot.ContentHash))
-                    await _local.BackupLocalAsync(unitId, "Overwritten by a forced download.", cancellationToken);
+                try
+                {
+                    if (localSnapshot is not null && !ContentEquals(localSnapshot.ContentHash, remoteSnapshot.ContentHash))
+                        await _local.BackupLocalAsync(unitId, "Overwritten by a forced download.", cancellationToken);
 
-                await DownloadAsync(_local, unitId, remoteSnapshot, cancellationToken);
-                manifest = manifest.With(NextBaseline(remoteSnapshot, manifest.Get(unitId)));
-                results.Add(new SaveUnitSyncResult(unitId, SaveSyncAction.Download, "Forced download of the cloud save."));
+                    await DownloadAsync(_local, unitId, remoteSnapshot, cancellationToken);
+                    manifest = manifest.With(NextBaseline(remoteSnapshot, manifest.Get(unitId)));
+                    results.Add(new SaveUnitSyncResult(unitId, SaveSyncAction.Download, "Forced download of the cloud save."));
+                }
+                catch (CloudPayloadMissingException)
+                {
+                    results.Add(new SaveUnitSyncResult(
+                        unitId,
+                        SaveSyncAction.None,
+                        "The cloud copy is missing; the local save was left untouched."));
+                }
+
                 completed++;
             }
         }
