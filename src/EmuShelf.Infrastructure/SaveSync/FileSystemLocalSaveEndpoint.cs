@@ -210,10 +210,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private ResolvedUnit Resolve(string unitId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
-        var approved = _provider.ResolveUnit(unitId) ??
-            throw new ArgumentException(
-                $"The save provider cannot safely materialize unit '{unitId}' in its active configuration.",
-                nameof(unitId));
+        var approved = _provider.ResolveUnit(unitId) ?? throw new SaveUnitNotResolvableException(unitId);
         if (approved.Kind is not (SaveUnitKind.File or SaveUnitKind.Folder))
             throw new ArgumentException("The save unit kind is not supported by the filesystem endpoint.", nameof(unitId));
 

@@ -80,10 +80,28 @@ public sealed class SaveSyncService
         // whole remote. Decisions depend only on each unit's own local/remote/baseline state, so
         // taking them all up front is equivalent to interleaving them.
         var planned = new List<PlannedUnit>(work.Count);
+        var results = new List<SaveUnitSyncResult>();
         foreach (var item in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var localSnapshot = await item.LocalEndpoint.SnapshotAsync(item.UnitId, cancellationToken);
+            SaveUnitSnapshot? localSnapshot;
+            try
+            {
+                localSnapshot = await item.LocalEndpoint.SnapshotAsync(item.UnitId, cancellationToken);
+            }
+            catch (SaveUnitNotResolvableException)
+            {
+                // The cloud holds a save this machine's configuration has no place for — a card
+                // scheme the local emulator does not use, say. Two machines may legitimately differ,
+                // so this unit sits out and the rest of the pass proceeds.
+                results.Add(new SaveUnitSyncResult(
+                    item.UnitId,
+                    SaveSyncAction.None,
+                    "This machine's emulator configuration has no place for this save, so it was left " +
+                    "in the cloud untouched."));
+                continue;
+            }
+
             allRemoteSnapshots.TryGetValue(item.UnitId, out var remoteSnapshot);
             var baseline = manifest.Get(item.UnitId);
             planned.Add(new PlannedUnit(
@@ -98,7 +116,6 @@ public sealed class SaveSyncService
             .Where(unit => NeedsRemotePayload(unit.Decision.Action))
             .Select(unit => unit.Item.UnitId));
 
-        var results = new List<SaveUnitSyncResult>();
         var completed = 0;
         foreach (var unit in planned)
         {
@@ -129,6 +146,14 @@ public sealed class SaveSyncService
                     SaveSyncAction.None,
                     "The cloud copy is missing; the stale entry was removed and the save will be " +
                     "re-uploaded by the machine that still has it."));
+            }
+            catch (SaveUnitNotResolvableException)
+            {
+                results.Add(new SaveUnitSyncResult(
+                    unit.Item.UnitId,
+                    SaveSyncAction.None,
+                    "This machine's emulator configuration has no place for this save, so it was left " +
+                    "in the cloud untouched."));
             }
 
             completed++;
@@ -234,9 +259,9 @@ public sealed class SaveSyncService
                 cancellationToken.ThrowIfCancellationRequested();
 
                 progress?.Report(new SaveSyncProgress(completed, remoteSnapshots.Count, unitId, SaveSyncAction.Download));
-                var localSnapshot = await _local.SnapshotAsync(unitId, cancellationToken);
                 try
                 {
+                    var localSnapshot = await _local.SnapshotAsync(unitId, cancellationToken);
                     if (localSnapshot is not null && !ContentEquals(localSnapshot.ContentHash, remoteSnapshot.ContentHash))
                         await _local.BackupLocalAsync(unitId, "Overwritten by a forced download.", cancellationToken);
 
@@ -250,6 +275,15 @@ public sealed class SaveSyncService
                         unitId,
                         SaveSyncAction.None,
                         "The cloud copy is missing; the local save was left untouched."));
+                }
+                catch (SaveUnitNotResolvableException)
+                {
+                    // Forcing a direction cannot force a layout this machine does not use.
+                    results.Add(new SaveUnitSyncResult(
+                        unitId,
+                        SaveSyncAction.None,
+                        "This machine's emulator configuration has no place for this save, so it was " +
+                        "left in the cloud untouched."));
                 }
 
                 completed++;

@@ -2198,3 +2198,20 @@ cannot infer it, since nothing it does locally correlates with bytes on the wire
 has moved enough to report a percentage the bar is indeterminate, which is honest about not knowing
 rather than inventing a number. Reading stderr line by line for this also means only its tail is
 kept for error messages, which is all an error ever needed.
+
+## 2026-07-27 — A save this machine cannot place is a skipped unit, not a failed sync
+
+The Steam Deck, now on the current build, failed a whole sync on one unit: "the save provider cannot
+safely materialize unit 'duckstation/per-game/file-title/Silent Hill …_2.mcd' in its active
+configuration". That refusal is correct — the Windows machine writes filename-based cards in slot 2
+and the Deck's DuckStation does not enable that scheme, so placing the card there would invent an
+active card the emulator would not read. What was wrong is that it aborted everything behind it.
+
+This is the same shape as the missing-payload defect and gets the same treatment: a typed per-unit
+condition the reconciliation records and steps over. The unit is reported as left in the cloud
+untouched, and the pass syncs the rest. Both machines keep their own configuration, which they are
+entitled to; only the units that depend on the difference sit out.
+
+It also has to be caught while planning, not only while applying. The local snapshot resolves the
+unit through the same provider, so an unplaceable remote unit throws before any decision is made —
+which is exactly where the Deck's pass was dying.

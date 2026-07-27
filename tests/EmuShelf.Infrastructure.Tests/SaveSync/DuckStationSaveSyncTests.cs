@@ -425,6 +425,42 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
             await File.ReadAllTextAsync(Path.Combine(userB, "cards", fileName)));
     }
 
+    [Fact]
+    public async Task ACloudCardThisMachinesCardModeCannotPlace_LeavesTheRestOfThePassAlone()
+    {
+        // Two machines are allowed to configure DuckStation differently. One writes filename-based
+        // cards, the other does not enable that slot at all — and the second must still sync
+        // everything else instead of failing the whole pass on a unit it will not materialize.
+        var paths = new AppPaths(Path.Combine(BaseDirectory, "mismatched-machine"));
+        paths.EnsureDirectoriesExist();
+        var userDirectory = Path.Combine(paths.BaseDirectory, "duckstation");
+        WriteSettings(userDirectory, "cards", card1Type: "PerGameTitle", card2Type: "None");
+        var cards = Path.Combine(userDirectory, "cards");
+        Directory.CreateDirectory(cards);
+        await File.WriteAllTextAsync(Path.Combine(cards, "Crash Bandicoot (USA)_1.mcd"), "local title card");
+
+        var provider = ProviderFor(userDirectory);
+        var remote = new InMemoryCloudSyncTransport();
+        remote.Seed(
+            "duckstation/per-game/file-title/Silent Hill [Uncensored] (Europe) (En,Fr,De,Es,It)_2.mcd",
+            "a card written by the other machine"u8.ToArray(),
+            new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
+        var service = new SaveSyncService(
+            new FileSystemLocalSaveEndpoint(provider, paths),
+            remote,
+            new JsonSaveSyncManifestStore(paths));
+
+        var report = await service.SyncAsync(provider);
+
+        Assert.Equal(1, report.Uploaded);
+        Assert.True(remote.Has("duckstation/per-game/title/Crash Bandicoot (USA)_1.mcd"));
+        Assert.Contains(
+            report.Results,
+            result => result.UnitId.StartsWith("duckstation/per-game/file-title/", StringComparison.Ordinal) &&
+                result.Action == SaveSyncAction.None &&
+                result.Reason.Contains("no place for this save"));
+    }
+
     private DuckStationSaveLocationProvider CreateWindowsProvider(
         string? installation = null,
         string? localAppData = null,
