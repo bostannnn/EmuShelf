@@ -2101,3 +2101,72 @@ time. A full manual sync therefore lists the remote once and compares it against
 the entries with no payload, and lets the owning machine upload them again on the same pass. That
 listing costs one call on an operation the user already waits on, and it is deliberately not part of
 the pre-launch pass, which is optimized for latency.
+
+## 2026-07-27 — Status messages carry a severity, and only some of them expire
+
+The library toast waited for a manual dismissal. Every message did — a rename confirmation sat on
+screen as long as an import failure, and in Gamepad mode, where the toast had no dismiss button at
+all, neither could be got rid of.
+
+A single timer would have been wrong, because `StatusText` was doing three unrelated jobs. It
+carries results ("Removed 1 game"), live commentary on work in flight ("Scanning PlayStation… 41
+found"), and failures ("Import failed: …"). Expiring all three on one short countdown discards an
+error before it can be read; expiring none of them is where we started.
+
+Messages are therefore set through `SetStatus(text, severity)` rather than by assigning the
+property, and the severity picks the lifetime. Results get five seconds. Failures get fifteen —
+long enough to read, but still finite, because a stale error on a library that is now working is
+its own kind of wrong. Progress gets no countdown at all: the operation that emits it replaces the
+text with its own result when it finishes, and a scan that goes quiet for five seconds on a slow
+folder must not look like it stopped.
+
+Severity is also what marks a failure visually. The app's accent is red, so a red dot cannot say
+"this went wrong" — the toast switches the dot for a warning triangle instead, and the distinction
+survives whatever the accent colour is.
+
+## 2026-07-27 — Restored view state is persisted by name, and only restored window bounds are saved
+
+Nothing about the library's presentation survived a restart: view mode, sort, selected platform,
+and sidebar state all reset every launch, and the window always reopened at 1240x800, centred.
+
+Two choices in how this is stored. The sort column and library scope are written as **strings**
+rather than enums, because both name view-layer concepts that Core deliberately does not model —
+`LibrarySortColumn` and `LibraryScope` live in `EmuShelf.App.ViewModels`, and Core takes no
+dependency on the UI. Names also keep the portable settings file readable and survive reordering
+the enums. Unrecognized names fall back to defaults instead of throwing.
+
+For the window, **only the restored bounds are ever persisted.** Maximized and full-screen bounds
+describe the monitor, not a decision the user made about the window, so they are tracked separately
+and the maximized flag is stored on its own. This is what lets quitting from Gamepad mode — which
+is full screen — still reopen the desktop window at the size it was last dragged to. A saved
+position is validated against the attached displays at startup, so a window last closed on a
+monitor that is now gone reopens centred rather than somewhere unreachable.
+
+Restoring assigns the same properties the user normally drives, so saving is suppressed while it
+runs; otherwise the first launch after adding this would write defaults over a good remembered view.
+
+## 2026-07-27 — What is deliberately not animated
+
+Covers crossfade over their placeholder, the toast rises as it fades in, and desktop tiles lift
+under the pointer. All of it is on Opacity or RenderTransform, which composite without triggering
+layout, so it stays cheap across a fully realized grid.
+
+The Gamepad hover and focus rings are excluded on purpose. They are the only indication of where
+you are when navigating with a controller, and fading them in costs the input a frame of feedback
+for no visual gain. A snapshot test that asserts the hover ring's opacity caught the first attempt
+to animate them, which is the behaviour working as intended rather than a test to relax.
+
+## 2026-07-27 — A scoped download session reports a broken entry instead of failing on it
+
+Reviewing the repair work found it incomplete in the one place that mattered most. Scoping the
+download session with `--files-from` names exactly the payloads a pass needs — including, on a
+remote with broken entries, payloads that are not there. rclone fails the whole session over one
+absent file, and the transport treated that as a failed download of everything, so a machine facing
+the 74 broken entries would still have lost every unit behind the first one. A scoped session now
+reports a non-zero exit rather than throwing: anything that did not arrive is caught per unit, where
+it is already a recoverable condition. An unscoped session still fails loudly, because there the
+exit code is the only signal there is.
+
+Verification also gained a floor. An empty listing against a non-empty index is far more likely to
+be a listing that did not work than a remote that lost every payload, and pruning on it would drop
+the entire index. That case now reports nothing and leaves the decision to the next verification.

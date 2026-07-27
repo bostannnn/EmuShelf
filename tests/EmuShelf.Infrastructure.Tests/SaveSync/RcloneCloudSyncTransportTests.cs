@@ -170,6 +170,44 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task LocalBackend_AScopedSessionNamingABrokenEntryStillDeliversTheHealthyUnits()
+    {
+        // The index can promise a payload that is not there, and rclone fails a --files-from
+        // session over one absent file. That must not put every other unit's sync behind it —
+        // which is the fault the scoping was added alongside.
+        var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");
+        if (string.IsNullOrWhiteSpace(rclonePath) || !File.Exists(rclonePath))
+            return;
+
+        var remoteRoot = Path.Combine(BaseDirectory, "scoped-broken-remote");
+        Directory.CreateDirectory(AppPaths.SettingsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(AppPaths.SettingsDirectory, "rclone.conf"),
+            "[testlocal]\ntype = local\n");
+        var cloudFolder = Path.GetFullPath(remoteRoot).Replace('\\', '/');
+        var seeding = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        foreach (var unitId in new[] { "ppsspp/ULES00841", "ppsspp/ULUS10277" })
+        {
+            await seeding.UploadAsync(
+                unitId,
+                new MemoryStream(Encoding.UTF8.GetBytes(unitId)),
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unitId))),
+                new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
+        }
+
+        await seeding.FlushAsync();
+        File.Delete(Path.Combine(remoteRoot, "ppsspp", "ULES00841.payload"));
+
+        var transport = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        await transport.ListAsync();
+        transport.ExpectDownloads(["ppsspp/ULES00841", "ppsspp/ULUS10277"]);
+
+        Assert.Equal("ppsspp/ULUS10277", await ReadAllAsync(transport, "ppsspp/ULUS10277"));
+        await Assert.ThrowsAsync<CloudPayloadMissingException>(
+            () => transport.DownloadAsync("ppsspp/ULES00841"));
+    }
+
+    [Fact]
     public async Task LocalBackend_FolderIdShortcutIsNotAppliedToANonDriveRemote()
     {
         // The id form drops the folder from the remote path, which only works because

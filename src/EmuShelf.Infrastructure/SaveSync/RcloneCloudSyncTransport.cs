@@ -287,7 +287,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         try
         {
             var exitCode = await RunAsync(arguments, Stream.Null, cancellationToken, throwOnNonZeroExit: false);
-            if (exitCode != 0 && exitCode != RcloneDirectoryNotFoundExit)
+            // A scoped session names payloads the index promised, and the index can be wrong: rclone
+            // fails the whole session over one absent file. Failing here would put every unit's sync
+            // behind one broken entry again — exactly the fault this scoping was added alongside. Any
+            // payload that did not arrive is caught per unit below, where it is a recoverable
+            // condition, so a scoped session reports rather than throws.
+            if (exitCode != 0 && exitCode != RcloneDirectoryNotFoundExit && fileList is null)
                 throw new IOException($"rclone could not download the cloud saves (exit code {exitCode}).");
         }
         finally
@@ -395,6 +400,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                     present.Add(name);
             }
         }
+
+        // An empty listing against a non-empty index is far more likely to be a listing that did not
+        // work than a remote that lost every payload, and acting on it would drop the whole index.
+        // Report nothing and let the next verification decide.
+        if (present.Count == 0 && _remoteIndex.Count > 0)
+            return [];
 
         var missing = _remoteIndex.Keys
             .Where(unitId => !present.Contains(unitId + ".payload"))
