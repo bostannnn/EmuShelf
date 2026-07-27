@@ -2170,3 +2170,16 @@ exit code is the only signal there is.
 Verification also gained a floor. An empty listing against a non-empty index is far more likely to
 be a listing that did not work than a remote that lost every payload, and pruning on it would drop
 the entire index. That case now reports nothing and leaves the decision to the next verification.
+
+## 2026-07-27 — A repair completes in the pass that finds it
+
+The first verified sync worked: the remote went from 255 index entries against 181 payloads to 181
+against 181, with nothing broken. It also showed the repair only half-finishing. Verification marked
+the 74 orphaned entries, but the pruned index was written by the pass's own flush at the very end,
+so the reconciliation in between still planned against the entries it was about to remove — all 74
+looked "unchanged" — and the saves themselves would only have been uploaded by a second sync the
+user had no reason to know was needed. Worse, between the two the saves existed on exactly one
+machine with nothing in the cloud.
+
+The pruned index is now committed before the reconciliation reads it. The pass that discovers the
+breakage is the pass that repairs it: one extra index write, only when something was actually wrong.
