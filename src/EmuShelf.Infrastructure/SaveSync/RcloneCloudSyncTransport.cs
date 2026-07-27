@@ -30,6 +30,9 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     private readonly string _cloudFolder;
     private readonly string _transfersDirectory;
     private readonly TimeSpan _operationTimeout;
+    private string? _cloudFolderId;
+    private readonly HashSet<string> _expectedDownloads = new(StringComparer.Ordinal);
+    private readonly List<string> _timings = [];
     private string? _outbox;
     private string? _inbox;
     private Dictionary<string, SaveUnitSnapshot> _remoteIndex = new(StringComparer.Ordinal);
@@ -40,8 +43,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         string remoteName,
         string cloudFolder,
         string? rclonePath = null,
-        TimeSpan? operationTimeout = null)
+        TimeSpan? operationTimeout = null,
+        string? cloudFolderId = null)
     {
+        _cloudFolderId = string.IsNullOrWhiteSpace(cloudFolderId) || !IsSafeFolderId(cloudFolderId)
+            ? null
+            : cloudFolderId.Trim();
         ArgumentNullException.ThrowIfNull(appPaths);
         ValidateRemoteName(remoteName);
         ValidateCloudFolder(cloudFolder);
@@ -112,7 +119,19 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         var inbox = await EnsureInboxAsync(cancellationToken);
         var payloadPath = Path.Combine(inbox, StageRelativePath(unitId + ".payload"));
         if (!File.Exists(payloadPath))
-            throw new IOException($"The cloud save payload for '{unitId}' was not found on the remote.");
+        {
+            // The session was scoped to the announced units. A download outside that set is still
+            // served — one extra call for one payload — so scoping can never lose a save.
+            Directory.CreateDirectory(Path.GetDirectoryName(payloadPath)!);
+            var exitCode = await RunAsync(
+                ["copyto", RemoteRoot.TrimEnd('/') + "/" + unitId + ".payload", payloadPath, "--no-traverse"],
+                Stream.Null,
+                cancellationToken,
+                throwOnNonZeroExit: false);
+            if (exitCode != 0 || !File.Exists(payloadPath))
+                throw new IOException($"The cloud save payload for '{unitId}' was not found on the remote.");
+        }
+
         return new FileStream(payloadPath, FileMode.Open, FileAccess.Read, FileShare.Read);
     }
 
@@ -158,7 +177,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                     Path.Combine(_outbox, IndexFileName),
                     JsonSerializer.Serialize(entries, SerializerOptions),
                     cancellationToken);
-                await RunAsync(["copy", _outbox, RemoteRoot], Stream.Null, cancellationToken);
+                // --no-traverse: the destination holds every save ever synced, and rclone would
+                // otherwise list all of it to decide whether to copy the handful of staged files.
+                await RunAsync(
+                    ["copy", _outbox, RemoteRoot, "--no-traverse"],
+                    Stream.Null,
+                    cancellationToken);
                 _remoteIndex = index;
             }
         }
@@ -179,15 +203,54 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         }
     }
 
+    /// <summary>
+    /// Declares the units this session may download, so the one rclone session fetches those
+    /// payloads instead of the whole remote. Without this the transport still works — it falls back
+    /// to copying everything — but a one-save download would pull every platform's saves.
+    /// </summary>
+    public void ExpectDownloads(IEnumerable<string> unitIds)
+    {
+        ArgumentNullException.ThrowIfNull(unitIds);
+        foreach (var unitId in unitIds)
+        {
+            if (IsSafeUnitId(unitId))
+                _expectedDownloads.Add(unitId);
+        }
+    }
+
     private async Task<string> EnsureInboxAsync(CancellationToken cancellationToken)
     {
         if (_inbox is not null)
             return _inbox;
 
         var inbox = CreateStagingDirectory("inbox");
-        var exitCode = await RunAsync(["copy", RemoteRoot, inbox], Stream.Null, cancellationToken, throwOnNonZeroExit: false);
-        if (exitCode != 0 && exitCode != RcloneDirectoryNotFoundExit)
-            throw new IOException($"rclone could not download the cloud saves (exit code {exitCode}).");
+        var arguments = new List<string> { "copy", RemoteRoot, inbox };
+        string? fileList = null;
+        if (_expectedDownloads.Count > 0)
+        {
+            // One listing of just these paths beats walking the whole remote: on a provider like
+            // Drive the traversal, not the transfer, is what a small download waits on.
+            fileList = Path.Combine(Path.GetDirectoryName(inbox)!, Path.GetFileName(inbox) + "-files.txt");
+            await File.WriteAllLinesAsync(
+                fileList,
+                _expectedDownloads.Select(unitId => unitId + ".payload"),
+                cancellationToken);
+            arguments.Add("--files-from");
+            arguments.Add(fileList);
+            arguments.Add("--no-traverse");
+        }
+
+        try
+        {
+            var exitCode = await RunAsync(arguments, Stream.Null, cancellationToken, throwOnNonZeroExit: false);
+            if (exitCode != 0 && exitCode != RcloneDirectoryNotFoundExit)
+                throw new IOException($"rclone could not download the cloud saves (exit code {exitCode}).");
+        }
+        finally
+        {
+            TryDeleteFile(fileList);
+        }
+
         _inbox = inbox;
         return inbox;
     }
@@ -203,8 +266,99 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     private static string StageRelativePath(string remoteRelativePath) =>
         remoteRelativePath.Replace('/', Path.DirectorySeparatorChar);
 
+    // With the folder's own id known, the remote root is that folder directly: the provider no
+    // longer resolves one path segment at a time from the account root on every call.
     private string RemoteRoot =>
-        string.IsNullOrEmpty(_cloudFolder) ? _remoteName + ":" : _remoteName + ":" + _cloudFolder;
+        _cloudFolderId is not null || string.IsNullOrEmpty(_cloudFolder)
+            ? _remoteName + ":"
+            : _remoteName + ":" + _cloudFolder;
+
+    /// <summary>Looks up the provider's id for the configured folder, or null when it cannot.</summary>
+    /// <remarks>
+    /// Google Drive only. Addressing a folder by id means dropping it from the remote path, which is
+    /// correct exactly because <c>--drive-root-folder-id</c> re-roots the remote there. On any other
+    /// backend that flag is ignored, so the same substitution would silently address the remote's
+    /// root instead of the saves folder.
+    /// </remarks>
+    public async Task<string?> ResolveCloudFolderIdAsync(CancellationToken cancellationToken = default)
+    {
+        if (_cloudFolderId is not null || string.IsNullOrEmpty(_cloudFolder))
+            return _cloudFolderId;
+        if (!await IsGoogleDriveRemoteAsync(cancellationToken))
+            return null;
+
+        // Deliberately a listing of the parent rather than `lsjson --stat` on the folder itself:
+        // stat describes the queried path as its own root and reports no id at all, which is how
+        // this silently resolved to nothing the first time.
+        var separator = _cloudFolder.LastIndexOf('/');
+        var parent = separator < 0 ? string.Empty : _cloudFolder[..separator];
+        var name = separator < 0 ? _cloudFolder : _cloudFolder[(separator + 1)..];
+
+        await using var buffer = new MemoryStream();
+        var exitCode = await RunAsync(
+            ["lsjson", "--dirs-only", _remoteName + ":" + parent],
+            buffer,
+            cancellationToken,
+            throwOnNonZeroExit: false);
+        if (exitCode != 0 || buffer.Length == 0)
+            return null;
+
+        try
+        {
+            var entries = JsonSerializer.Deserialize<List<RemoteStatEntry>>(buffer.ToArray()) ?? [];
+            var match = entries.FirstOrDefault(entry =>
+                entry is { IsDir: true } &&
+                string.Equals(entry.Name, name, StringComparison.Ordinal) &&
+                IsSafeFolderId(entry.ID));
+            return match?.ID;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Adopts a folder id resolved by <see cref="ResolveCloudFolderIdAsync"/> for the rest of this
+    /// transport's life, so one session's timings and staging state stay in one instance.
+    /// </summary>
+    public void UseCloudFolderId(string folderId)
+    {
+        if (IsSafeFolderId(folderId))
+            _cloudFolderId = folderId.Trim();
+    }
+
+    private async Task<bool> IsGoogleDriveRemoteAsync(CancellationToken cancellationToken)
+    {
+        await using var buffer = new MemoryStream();
+        var exitCode = await RunAsync(
+            ["config", "show", _remoteName],
+            buffer,
+            cancellationToken,
+            throwOnNonZeroExit: false);
+        if (exitCode != 0)
+            return false;
+
+        using var reader = new StreamReader(new MemoryStream(buffer.ToArray()));
+        while (reader.ReadLine() is { } rawLine)
+        {
+            var line = rawLine.Trim();
+            if (!line.StartsWith("type", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var separator = line.IndexOf('=');
+            if (separator > 0)
+                return line[(separator + 1)..].Trim().Equals("drive", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    // Provider ids are opaque tokens; accept only what can be passed as one argument safely.
+    private static bool IsSafeFolderId(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Length <= 256 &&
+        value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_');
 
     private async Task<int> RunAsync(
         IReadOnlyList<string> operationArguments,
@@ -227,9 +381,16 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         };
         startInfo.ArgumentList.Add("--config");
         startInfo.ArgumentList.Add(_configurationPath);
+        if (_cloudFolderId is not null)
+        {
+            startInfo.ArgumentList.Add("--drive-root-folder-id");
+            startInfo.ArgumentList.Add(_cloudFolderId);
+        }
+
         foreach (var argument in operationArguments)
             startInfo.ArgumentList.Add(argument);
 
+        var elapsed = Stopwatch.StartNew();
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("The operating system did not start rclone.");
         using var timeout = new CancellationTokenSource(_operationTimeout);
@@ -247,10 +408,20 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             throw new IOException($"rclone did not respond within {_operationTimeout.TotalSeconds:0} seconds.");
         }
 
+        elapsed.Stop();
+        // Recorded per invocation because the cloud provider's latency, not EmuShelf's work, is what
+        // a user waits on before a launch: the log has to say which call spent the time.
+        _timings.Add($"rclone {operationArguments[0]} — {elapsed.ElapsedMilliseconds} ms");
+
         if (throwOnNonZeroExit && process.ExitCode != 0)
             throw new IOException($"rclone exited with code {process.ExitCode}: {(await readError).Trim()}");
         return process.ExitCode;
     }
+
+    /// <summary>
+    /// How long each rclone call in this session took, oldest first, for the activity log.
+    /// </summary>
+    public IReadOnlyList<string> Timings => _timings;
 
     private static void TryKill(Process process)
     {
@@ -295,6 +466,18 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         }
     }
 
+    private static void TryDeleteFile(string? path)
+    {
+        try
+        {
+            if (path is not null && File.Exists(path))
+                File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try
@@ -311,4 +494,6 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     }
 
     private sealed record RemoteUnitMetadata(string UnitId, string ContentHash, DateTimeOffset ModifiedUtc);
+
+    private sealed record RemoteStatEntry(string? ID, string? Name, bool IsDir);
 }

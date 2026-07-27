@@ -141,6 +141,26 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task EveryUnitNeedingTheCloudPayloadIsAnnouncedBeforeTheFirstTransfer()
+    {
+        // The rclone transport opens one download session for the whole pass; it can only scope that
+        // session to the payloads this pass needs if the service says so before transferring.
+        var download = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
+        var conflict = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
+        _local.Seed(FileCard.UnitId, Bytes("upload-only"), T0);
+        _remote.Seed(download.UnitId, Bytes("remote-only"), T0);
+        _local.Seed(conflict.UnitId, Bytes("local-edit"), T0.AddMinutes(2));
+        _remote.Seed(conflict.UnitId, Bytes("remote-edit"), T0.AddMinutes(1));
+
+        await CreateService().SyncAsync(Provider(FileCard, download, conflict));
+
+        Assert.Equal(
+            [download.UnitId, conflict.UnitId],
+            _remote.AnnouncedDownloads.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(FileCard.UnitId, _remote.AnnouncedDownloads);
+    }
+
+    [Fact]
     public async Task RemoteUnitsOwnedByAnotherProvider_AreIgnored()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);

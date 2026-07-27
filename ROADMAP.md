@@ -811,23 +811,34 @@ generalized.
       Per-game code/title/file-title cards are individual file units; file-title cards retain their
       exact filenames with a portability warning. A shared card is one monolithic unit and carries
       the same cross-game conflict warning as a PCSX2 file card. Never include save states.
-- [ ] **RPCS3 third:** resolve `/dev_hdd0` through a versioned, read-only `vfs.yml` adapter and bind
+- [x] **RPCS3 third:** resolve `/dev_hdd0` through a versioned, read-only `vfs.yml` adapter and bind
       one user-selected local RPCS3 profile to a stable EmuShelf profile key. Each complete
       `home/<user>/savedata/<save>/` directory is one unit, including its `PARAM.SFO`/`PARAM.PFD`;
       trophies, licenses, installed games, caches, configs, and save states stay out of scope.
+      The profile key is the unit id's *absence* of an account: ids address the save alone, the
+      account is bound locally, and the existing per-system save-location override is what selects
+      it when several accounts hold saves (2026-07-26). Extended the same day beyond the original
+      scope: the bound account's `trophy/<NPWR…>/` sets and the console-wide
+      `dev_hdd0/savedata/vmc` PS1/PS2 Classics cards sync as their own unit namespaces.
 - [ ] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
       global/legacy, `-u`, XDG/Flatpak, macOS, or override) and read custom paths read-only. Sync a
       raw GameCube card as one unit; group GCI files by their embedded game+maker id as a file-set
       unit; sync each Wii disc title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
       Never sync the whole NAND; surface that Mii/console-identity-dependent saves may not be fully
       portable.
-- [ ] **RetroArch last, one verified core adapter at a time:** resolve the effective save path from
+- [x] **RetroArch last, one verified core adapter at a time:** resolve the effective save path from
       `retroarch.cfg`, core/content-directory/game overrides, save sorting flags, and the configured
       core. Start with the exact cores used by EmuShelf's Mega Drive, DS, GBA, SNES, and Dreamcast
       rows; unsupported cores fail closed. Detect RetroArch's own cloud sync and refuse overlapping
       management rather than run two manifest systems over the same saves. Flatpak targets add the
       host-visible `$HOME/.var/app/<id>/config/retroarch/saves` layout; resolve its effective path
       through the same read-only config/override rules instead of assuming that default.
+      Shipped for Mega Drive, SNES, DS, GBA, and Dreamcast. Saves are claimed by game name rather
+      than a per-core extension list, so changing core does not silently stop the backup; the folder
+      RetroArch sorts into comes from the installed core's own `corename`. While RetroArch's shared
+      save folder is in use, each row claims only saves named after its own library entries
+      (2026-07-26). Flycast's *shared* VMU images live in RetroArch's system directory and remain out
+      of scope — only its per-game VMUs are in the save folder.
 - [ ] Provider contract tests cover Windows, Linux/Flatpak, portable, custom, and macOS paths;
       unknown config versions; local + remote-only resolution; card/profile mismatch; traversal and
       symlink rejection; deterministic folder/file-set hashing; and strict save-state/config

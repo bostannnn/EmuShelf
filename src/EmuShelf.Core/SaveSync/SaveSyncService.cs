@@ -75,30 +75,47 @@ public sealed class SaveSyncService
             }
         }
 
-        var results = new List<SaveUnitSyncResult>();
-        var completed = 0;
+        // Two phases on purpose. Deciding everything before the first transfer lets the transport be
+        // told which payloads this pass needs, so a cloud session can fetch those instead of the
+        // whole remote. Decisions depend only on each unit's own local/remote/baseline state, so
+        // taking them all up front is equivalent to interleaving them.
+        var planned = new List<PlannedUnit>(work.Count);
         foreach (var item in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
             var localSnapshot = await item.LocalEndpoint.SnapshotAsync(item.UnitId, cancellationToken);
             allRemoteSnapshots.TryGetValue(item.UnitId, out var remoteSnapshot);
             var baseline = manifest.Get(item.UnitId);
-
-            var decision = SaveSyncPlanner.Decide(localSnapshot, remoteSnapshot, baseline);
-            progress?.Report(new SaveSyncProgress(
-                completed, work.Count, item.DisplayName, decision.Action));
-            manifest = await ApplyAsync(
-                item.LocalEndpoint,
-                item.UnitId,
-                decision.Action,
+            planned.Add(new PlannedUnit(
+                item,
+                SaveSyncPlanner.Decide(localSnapshot, remoteSnapshot, baseline),
                 localSnapshot,
                 remoteSnapshot,
-                baseline,
+                baseline));
+        }
+
+        _remote.ExpectDownloads(planned
+            .Where(unit => NeedsRemotePayload(unit.Decision.Action))
+            .Select(unit => unit.Item.UnitId));
+
+        var results = new List<SaveUnitSyncResult>();
+        var completed = 0;
+        foreach (var unit in planned)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new SaveSyncProgress(
+                completed, planned.Count, unit.Item.DisplayName, unit.Decision.Action));
+            manifest = await ApplyAsync(
+                unit.Item.LocalEndpoint,
+                unit.Item.UnitId,
+                unit.Decision.Action,
+                unit.LocalSnapshot,
+                unit.RemoteSnapshot,
+                unit.Baseline,
                 manifest,
                 cancellationToken);
 
-            results.Add(new SaveUnitSyncResult(item.UnitId, decision.Action, decision.Reason));
+            results.Add(new SaveUnitSyncResult(unit.Item.UnitId, unit.Decision.Action, unit.Decision.Reason));
             completed++;
         }
 
@@ -129,13 +146,26 @@ public sealed class SaveSyncService
         if (direction == SaveSyncDirection.Upload)
         {
             var localUnits = await provider.GetSaveUnitsAsync(cancellationToken);
+            var localSnapshots = new Dictionary<string, SaveUnitSnapshot>(StringComparer.Ordinal);
+            foreach (var unit in localUnits)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (await _local.SnapshotAsync(unit.UnitId, cancellationToken) is { } snapshot)
+                    localSnapshots[unit.UnitId] = snapshot;
+            }
+
+            // Only the units whose remote copy differs are read back, to preserve it as a backup.
+            _remote.ExpectDownloads(localSnapshots
+                .Where(pair => remoteSnapshots.TryGetValue(pair.Key, out var remote) &&
+                    !ContentEquals(remote.ContentHash, pair.Value.ContentHash))
+                .Select(pair => pair.Key));
+
             var completed = 0;
             foreach (var unit in localUnits)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var localSnapshot = await _local.SnapshotAsync(unit.UnitId, cancellationToken);
-                if (localSnapshot is null)
+                if (!localSnapshots.TryGetValue(unit.UnitId, out var localSnapshot))
                 {
                     completed++;
                     continue;
@@ -156,6 +186,7 @@ public sealed class SaveSyncService
         }
         else
         {
+            _remote.ExpectDownloads(remoteSnapshots.Keys);
             var completed = 0;
             foreach (var (unitId, remoteSnapshot) in remoteSnapshots)
             {
@@ -264,5 +295,17 @@ public sealed class SaveSyncService
     private static bool ContentEquals(string first, string second) =>
         string.Equals(first, second, StringComparison.Ordinal);
 
+    // Every action that reads the remote payload: a download, and either side of a conflict — the
+    // local winner still fetches the cloud copy to preserve it as a backup.
+    private static bool NeedsRemotePayload(SaveSyncAction action) =>
+        action is SaveSyncAction.Download or SaveSyncAction.ConflictRemoteWins or SaveSyncAction.ConflictLocalWins;
+
     private sealed record SyncWorkItem(string UnitId, string DisplayName, ILocalSaveEndpoint LocalEndpoint);
+
+    private sealed record PlannedUnit(
+        SyncWorkItem Item,
+        SaveSyncDecision Decision,
+        SaveUnitSnapshot? LocalSnapshot,
+        SaveUnitSnapshot? RemoteSnapshot,
+        SaveUnitBaseline? Baseline);
 }

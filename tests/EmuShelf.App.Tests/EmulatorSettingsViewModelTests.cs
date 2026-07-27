@@ -624,11 +624,12 @@ public class EmulatorSettingsViewModelTests
     public async Task CloudSaves_Connect_Success_MarksConnectedAndPassesOverridesBySystemId()
     {
         var calls = new List<(string Remote, string Folder, IReadOnlyDictionary<string, string?> Overrides)>();
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, overrides, _) =>
-        {
-            calls.Add((remote, folder, overrides));
-            return Task.FromResult(CloudSaveSyncConnectResult.Connected);
-        }));
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            connect: (remote, folder, overrides, _, _, _) =>
+            {
+                calls.Add((remote, folder, overrides));
+                return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+            }));
         viewModel.CloudRemoteName = "my-drive";
         viewModel.CloudFolder = "Saves";
         Row(viewModel, "playstation2").OverrideDirectory = "/pcsx2";
@@ -647,10 +648,75 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_ImportedGoogleClientJson_IsPassedToTheConnectFlow()
+    {
+        // The point of importing is that the user copies nothing: the file Google hands them is
+        // enough, and the secret goes straight through to rclone without EmuShelf storing it.
+        var path = Path.Combine(Path.GetTempPath(), $"client_secret_{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(
+            path,
+            """
+            {"installed":{"client_id":"test-id.apps.googleusercontent.com","project_id":"emushelf-test",
+            "client_secret":"test-secret","redirect_uris":["http://localhost"]}}
+            """,
+            TestContext.Current.CancellationToken);
+        var calls = new List<(string? ClientId, string? ClientSecret)>();
+        var dialogs = new FakeDialogService { GoogleClientJsonPath = path };
+        try
+        {
+            var viewModel = CreateViewModel(
+                dialogs: dialogs,
+                cloudSaves: CreateCloudContext(connect: (_, _, _, _, clientId, clientSecret) =>
+                {
+                    calls.Add((clientId, clientSecret));
+                    return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+                }));
+
+            await viewModel.ImportGoogleClientCommand.ExecuteAsync(null);
+
+            Assert.Equal("test-id.apps.googleusercontent.com", viewModel.CloudClientId);
+            Assert.Contains("emushelf-test", viewModel.CloudClientStatusText);
+            Assert.DoesNotContain("test-secret", viewModel.CloudClientStatusText);
+
+            await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+            var call = Assert.Single(calls);
+            Assert.Equal("test-id.apps.googleusercontent.com", call.ClientId);
+            Assert.Equal("test-secret", call.ClientSecret);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_ImportedFileWithoutCredentials_ReportsWhatToDownload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"not-a-client-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, """{"hello":"world"}""", TestContext.Current.CancellationToken);
+        try
+        {
+            var viewModel = CreateViewModel(
+                dialogs: new FakeDialogService { GoogleClientJsonPath = path },
+                cloudSaves: CreateCloudContext());
+
+            await viewModel.ImportGoogleClientCommand.ExecuteAsync(null);
+
+            Assert.Empty(viewModel.CloudClientId);
+            Assert.Contains("Download JSON", viewModel.CloudClientStatusText);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_Connect_RcloneMissing_StaysDisconnected()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            connect: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
+            connect: (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
 
         await viewModel.ConnectCloudCommand.ExecuteAsync(null);
 
@@ -907,7 +973,8 @@ public class EmulatorSettingsViewModelTests
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null,
-        TexturePackSettingsContext? texturePacks = null) => new(
+        TexturePackSettingsContext? texturePacks = null,
+        FakeDialogService? dialogs = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         configured ?? KnownSystems.All.ToDictionary(
@@ -915,7 +982,7 @@ public class EmulatorSettingsViewModelTests
             _ => (EmulatorConfiguration?)null,
             StringComparer.Ordinal),
         _configurations,
-        _dialogs,
+        dialogs ?? _dialogs,
         maintenance,
         retroAchievements: retroAchievements,
         cloudSaves: cloudSaves,
@@ -923,7 +990,7 @@ public class EmulatorSettingsViewModelTests
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,
-        Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
+        Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, string?, string?, Task<CloudSaveSyncConnectResult>>? connect = null,
         Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? syncNow = null,
         Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
         Action<string, string?>? updateOverride = null,
@@ -955,7 +1022,7 @@ public class EmulatorSettingsViewModelTests
             getPlatforms ?? (() => platforms),
             (systemId, _) => Task.FromResult<string?>(
                 systemId == "psp" ? "/ppsspp/PSP/SAVEDATA" : "/pcsx2/memcards"),
-            connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
+            connect ?? ((_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
             _ => Task.CompletedTask,
             syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),

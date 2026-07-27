@@ -28,6 +28,11 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     public bool Has(string unitId) => _units.ContainsKey(unitId);
 
+    /// <summary>The unit ids the service announced before transferring anything, in order.</summary>
+    public List<string> AnnouncedDownloads { get; } = [];
+
+    public void ExpectDownloads(IEnumerable<string> unitIds) => AnnouncedDownloads.AddRange(unitIds);
+
     public byte[] Content(string unitId) => _units[unitId].Content;
 
     public Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default) =>

@@ -130,6 +130,45 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public async Task Detection_SaysSoWhenTheResolvedFolderDoesNotExistOnThisMachine()
+    {
+        // The quietest possible failure: a platform resolves a path, finds nothing there, and
+        // reports a successful sync of zero saves. The row has to say the folder is not there.
+        var root = Path.Combine(Path.GetTempPath(), "emushelf-detect", Guid.NewGuid().ToString("N"));
+        var present = Path.Combine(root, "memstick");
+        Directory.CreateDirectory(Path.Combine(present, "PSP", "SAVEDATA"));
+        var absent = Path.Combine(root, "not-installed");
+        try
+        {
+            var coordinator = CreateCoordinator(
+                new FakeSettingsService(),
+                new AppSettings
+                {
+                    CloudSaveSync = new CloudSaveSyncSettings
+                    {
+                        Enabled = true,
+                        RemoteName = "gdrive",
+                        CloudFolder = "EmuShelf/Saves",
+                    }.WithOverride("psp", present),
+                });
+
+            var found = await coordinator.GetDetectionAsync("psp", TestContext.Current.CancellationToken);
+            Assert.NotNull(found);
+            Assert.Null(found.Warning);
+
+            coordinator.UpdateOverride("psp", absent);
+            var missing = await coordinator.GetDetectionAsync("psp", TestContext.Current.CancellationToken);
+
+            Assert.NotNull(missing);
+            Assert.Contains("does not exist on this machine", missing.Warning);
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void LegacySettings_AreMigratedIntoPerSystemLocations()
     {
         var legacy = new AppSettings

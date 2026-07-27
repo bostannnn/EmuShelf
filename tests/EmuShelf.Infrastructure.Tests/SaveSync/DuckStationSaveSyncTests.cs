@@ -83,12 +83,15 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public async Task Flatpak_UsesCurrentConfigDirectoryAndSupportsLegacyDataDirectory()
+    public async Task Flatpak_UsesSandboxDataDirectoryAndSupportsRelocatedConfigDirectory()
     {
         var home = Path.Combine(BaseDirectory, "home");
         var current = Path.Combine(
-            home, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
+            home, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
         WriteSettings(current, "cards");
+        WriteSettings(
+            Path.Combine(home, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation"),
+            "inactive-config-cards");
         var placeholderInstallation = Path.Combine(BaseDirectory, "unused-install");
         WriteSettings(placeholderInstallation, "unrelated-cards");
 
@@ -103,11 +106,12 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
 
         File.Delete(Path.Combine(current, "settings.ini"));
         Directory.Delete(current);
-        var legacy = Path.Combine(
-            home, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
-        WriteSettings(legacy, "legacy-cards");
+        var fallback = Path.Combine(
+            home, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
 
-        Assert.Equal(Path.Combine(legacy, "legacy-cards"), await provider.GetMemoryCardsDirectoryAsync());
+        Assert.Equal(
+            Path.Combine(fallback, "inactive-config-cards"),
+            await provider.GetMemoryCardsDirectoryAsync());
     }
 
     [Fact]
@@ -122,7 +126,7 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         var linux = new DuckStationSaveLocationProvider(
             Path.Combine(BaseDirectory, "install"),
             homeDirectory: home,
-            xdgConfigHome: xdg,
+            xdgDataHome: xdg,
             isWindows: false,
             isMacOS: false);
         var mac = new DuckStationSaveLocationProvider(
@@ -285,6 +289,62 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
             Path.Combine(cards, "Tekken 3 (USA)_2.mcd"),
             provider.ResolveUnit("duckstation/per-game/file-title/Tekken 3 (USA)_2.mcd")!.Path);
         Assert.Null(provider.ResolveUnit("duckstation/per-game/title/Tekken 3 (USA)_2.mcd"));
+    }
+
+    [Fact]
+    public async Task StockSettingsWithoutAMemoryCardSectionUsesDuckStationsOwnDefaults()
+    {
+        // DuckStation only writes non-default settings, so a freshly configured install has no
+        // [MemoryCards] section: slot 1 keeps a per-title card under <user directory>/memcards.
+        var userDirectory = Path.Combine(BaseDirectory, "stock-user");
+        Directory.CreateDirectory(userDirectory);
+        await File.WriteAllLinesAsync(
+            Path.Combine(userDirectory, "settings.ini"),
+            ["[Main]", "SettingsVersion = 3", "[BIOS]", "SearchDirectory = bios"]);
+        var cards = Path.Combine(userDirectory, "memcards");
+        Directory.CreateDirectory(cards);
+        await File.WriteAllTextAsync(Path.Combine(cards, "Crash Bandicoot_1.mcd"), "title card");
+        await File.WriteAllTextAsync(Path.Combine(cards, "Crash Bandicoot_2.mcd"), "slot 2 is disabled");
+        var provider = ProviderFor(userDirectory);
+
+        var info = await provider.GetMemoryCardInfoAsync();
+
+        Assert.Equal(cards, info.Directory);
+        Assert.False(info.UsesFileTitleCards);
+        Assert.Equal(
+            [new SaveUnit(
+                "duckstation/per-game/title/Crash Bandicoot_1.mcd",
+                "Crash Bandicoot_1.mcd",
+                SaveUnitKind.File)],
+            await provider.GetSaveUnitsAsync());
+    }
+
+    [Fact]
+    public async Task PartialMemoryCardSectionKeepsDefaultsForTheKeysDuckStationOmitted()
+    {
+        var userDirectory = Path.Combine(BaseDirectory, "partial-user");
+        Directory.CreateDirectory(userDirectory);
+        await File.WriteAllLinesAsync(
+            Path.Combine(userDirectory, "settings.ini"),
+            ["[MemoryCards]", "Card2Type = Shared"]);
+        var cards = Path.Combine(userDirectory, "memcards");
+        Directory.CreateDirectory(cards);
+        await File.WriteAllTextAsync(Path.Combine(cards, "shared_card_2.mcd"), "shared");
+        await File.WriteAllTextAsync(Path.Combine(cards, "Tekken 3_1.mcd"), "default slot 1 card");
+        var provider = ProviderFor(userDirectory);
+
+        Assert.Equal(
+            [
+                new SaveUnit(
+                    "duckstation/shared/card2",
+                    "Shared memory card 2 (used by every game)",
+                    SaveUnitKind.File),
+                new SaveUnit(
+                    "duckstation/per-game/title/Tekken 3_1.mcd",
+                    "Tekken 3_1.mcd",
+                    SaveUnitKind.File),
+            ],
+            await provider.GetSaveUnitsAsync());
     }
 
     [Fact]

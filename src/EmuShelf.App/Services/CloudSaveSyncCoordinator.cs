@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using EmuShelf.Core.Diagnostics;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
@@ -9,7 +11,7 @@ namespace EmuShelf.App.Services;
 /// <summary>Where a system's emulator lives on this machine, as resolved from EmuShelf's own config.</summary>
 /// <param name="Directory">The emulator-derived directory, or null when nothing is configured.</param>
 /// <param name="IsFlatpak">Whether the configured installation is a Flatpak target.</param>
-public sealed record SaveEmulatorInstallation(string? Directory, bool IsFlatpak);
+public sealed record SaveEmulatorInstallation(string? Directory, bool IsFlatpak, string? CorePath = null);
 
 /// <summary>
 /// Composes the save-sync pipeline (registry-provided provider + filesystem endpoint + rclone
@@ -26,6 +28,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private readonly IAppLogger _logger;
     private readonly string? _rclonePath;
     private readonly Func<string, SaveEmulatorInstallation?>? _emulatorInstallations;
+    private readonly Func<string, IReadOnlyList<Game>>? _gamesForSystem;
     private readonly FileSaveSyncLog _syncLog;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AppSettings _settings;
@@ -36,8 +39,10 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         AppSettings settings,
         IAppLogger logger,
         string? rclonePath = null,
-        Func<string, SaveEmulatorInstallation?>? emulatorInstallations = null)
+        Func<string, SaveEmulatorInstallation?>? emulatorInstallations = null,
+        Func<string, IReadOnlyList<Game>>? gamesForSystem = null)
     {
+        _gamesForSystem = gamesForSystem;
         _paths = paths;
         _settingsService = settingsService;
         // Fold the legacy per-emulator fields into the per-system dictionary once, up front, so
@@ -84,7 +89,35 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         if (descriptor is null || CreateProvider(systemId) is not { } provider)
             return null;
 
-        return await descriptor.DetectAsync(provider, cancellationToken);
+        var detection = await descriptor.DetectAsync(provider, cancellationToken);
+        return detection with { Warning = WithMissingDirectoryNotice(detection) };
+    }
+
+    // A resolved folder that does not exist is the quietest possible failure: the platform reports a
+    // path, syncs zero units, and reports success — which reads as "my saves did not sync" with
+    // nothing to go on. Say it in the row instead. An existing but empty folder is normal (the
+    // emulator has simply not written a save yet) and is not flagged.
+    private static string? WithMissingDirectoryNotice(SaveProviderDetection detection)
+    {
+        if (string.IsNullOrWhiteSpace(detection.Directory) || DirectoryExists(detection.Directory))
+            return detection.Warning;
+
+        const string notice =
+            "This folder does not exist on this machine, so nothing is being synced from it. " +
+            "Check that the emulator is the one you actually play with, or set the save location here.";
+        return string.IsNullOrWhiteSpace(detection.Warning) ? notice : detection.Warning + " " + notice;
+    }
+
+    private static bool DirectoryExists(string path)
+    {
+        try
+        {
+            return Directory.Exists(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Persists an updated cloud-sync configuration to the portable settings file.</summary>
@@ -107,11 +140,17 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// Save-location overrides by system id. Keyed rather than positional so adding a platform
     /// cannot silently shift one emulator's path onto another.
     /// </param>
+    /// <param name="clientId">An optional Google OAuth client id; null uses rclone's shared client.</param>
+    /// <param name="clientSecret">
+    /// The matching secret. It is passed to rclone and never stored by EmuShelf.
+    /// </param>
     public async Task<CloudSaveSyncConnectResult> ConnectGoogleDriveAsync(
         string remoteName,
         string cloudFolder,
         IReadOnlyDictionary<string, string?> overrides,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? clientId = null,
+        string? clientSecret = null)
     {
         ArgumentNullException.ThrowIfNull(overrides);
         if (string.IsNullOrWhiteSpace(remoteName) || string.IsNullOrWhiteSpace(cloudFolder))
@@ -134,7 +173,11 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
             var trimmedRemote = remoteName.Trim();
             var trimmedFolder = cloudFolder.Trim();
-            await configurator.CreateGoogleDriveRemoteAsync(trimmedRemote, cancellationToken);
+            await configurator.CreateGoogleDriveRemoteAsync(
+                trimmedRemote,
+                cancellationToken,
+                clientId,
+                clientSecret);
             await configurator.EnsureFolderAsync(trimmedRemote, trimmedFolder, cancellationToken);
 
             Persist(candidate with
@@ -142,6 +185,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 Enabled = true,
                 RemoteName = trimmedRemote,
                 CloudFolder = trimmedFolder,
+                // The id is recorded so Settings can show which client the remote uses and prefill
+                // it next time; the secret is not, and only rclone's config holds it.
+                GoogleClientId = string.IsNullOrWhiteSpace(clientId) ? null : clientId.Trim(),
+                // A different folder has a different id; carrying the old one over would address
+                // the previous connection's folder.
+                CloudFolderId = null,
             });
             return CloudSaveSyncConnectResult.Connected;
         }
@@ -264,17 +313,20 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            var elapsed = Stopwatch.StartNew();
+            var transport = await CreateTransportAsync(cancellationToken);
             var service = new SaveSyncService(
                 target.LocalEndpoint,
-                CreateTransport(),
+                transport,
                 new JsonSaveSyncManifestStore(_paths));
 
             var report = await service.ForceAsync(target.Provider, direction, progress, cancellationToken);
+            elapsed.Stop();
             var platformName = SaveProviderRegistry.Find(systemId)?.DisplayName ?? systemId;
             var operationLabel = direction == SaveSyncDirection.Upload
                 ? $"Upload {platformName} → cloud"
                 : $"Download {platformName} → local";
-            await WriteSyncLogAsync(operationLabel, report, cancellationToken);
+            await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
             RecordOutcome([systemId], error: null);
             return CloudSaveSyncOutcome.Completed(report);
         }
@@ -287,6 +339,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
+            ForgetCloudFolderId();
             RecordOutcome([systemId], ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
@@ -326,12 +379,15 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             if (targets.Count == 0)
                 return CloudSaveSyncOutcome.NotConfigured();
 
+            var elapsed = Stopwatch.StartNew();
+            var transport = await CreateTransportAsync(cancellationToken);
             var service = new SaveSyncService(
                 targets[0].LocalEndpoint,
-                CreateTransport(),
+                transport,
                 new JsonSaveSyncManifestStore(_paths));
             var report = await service.SyncAllAsync(targets, progress, cancellationToken);
-            await WriteSyncLogAsync(operationLabel, report, cancellationToken);
+            elapsed.Stop();
+            await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
             RecordOutcome(synced, error: null);
             return CloudSaveSyncOutcome.Completed(report);
         }
@@ -344,6 +400,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
+            ForgetCloudFolderId();
             // Construction failures identify the provider being built, and a runtime failure with
             // one target can only belong to that target. A runtime failure after several targets
             // were staged is ambiguous and remains solely in the global outcome.
@@ -363,7 +420,35 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         _paths,
         _settings.CloudSaveSync.RemoteName!,
         _settings.CloudSaveSync.CloudFolder!,
-        _rclonePath);
+        _rclonePath,
+        cloudFolderId: _settings.CloudSaveSync.CloudFolderId);
+
+    // One extra call, once: from then on every pass addresses the saves folder by its provider id
+    // instead of walking the account root to it. A failed lookup is not an error — the transport
+    // keeps using the path — and a stale id is repaired by clearing it on the next failed pass.
+    private async Task<RcloneCloudSyncTransport> CreateTransportAsync(CancellationToken cancellationToken)
+    {
+        var transport = CreateTransport();
+        if (!string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
+            return transport;
+
+        try
+        {
+            if (await transport.ResolveCloudFolderIdAsync(cancellationToken) is not { } folderId)
+                return transport;
+
+            // Adopted rather than rebuilt, so this pass already benefits and every rclone call it
+            // makes is accounted for in one place.
+            transport.UseCloudFolderId(folderId);
+            Persist(_settings.CloudSaveSync with { CloudFolderId = folderId });
+            return transport;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException)
+        {
+            _logger.Warning($"Could not resolve the cloud folder id; using the folder path instead: {ex.Message}");
+            return transport;
+        }
+    }
 
     private ISaveLocationProvider? CreateProvider(string systemId) =>
         CreateProvider(systemId, _settings.CloudSaveSync);
@@ -378,8 +463,19 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             ResolvePortablePath(configuration.GetOverride(systemId)),
             ResolvePortablePath(installation?.Directory),
             installation?.IsFlatpak == true,
-            _paths));
+            _paths,
+            ResolvePortablePath(installation?.CorePath),
+            _gamesForSystem is null ? null : () => GameFileNames(systemId)));
     }
+
+    // File names, not titles: an emulator that names a save after the game file can only be matched
+    // on what is actually on disk. Extensions are stripped because that is how every such emulator
+    // derives the save name.
+    private IReadOnlyCollection<string> GameFileNames(string systemId) =>
+        _gamesForSystem!(systemId)
+            .Select(game => Path.GetFileNameWithoutExtension(game.Path))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private SaveSyncTarget? CreateTarget(string systemId) =>
         CreateProvider(systemId) is not { } provider
@@ -417,6 +513,14 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
     }
 
+    // A cached folder id can go stale — the folder was moved, renamed, or recreated elsewhere. Any
+    // failed pass drops it, so the next attempt resolves the folder by path again and re-caches it.
+    private void ForgetCloudFolderId()
+    {
+        if (!string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
+            Persist(_settings.CloudSaveSync with { CloudFolderId = null });
+    }
+
     private void Persist(CloudSaveSyncSettings configuration)
     {
         _settings = _settings with { CloudSaveSync = configuration };
@@ -435,11 +539,16 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     }
 
     // The activity log is a convenience for the user; a failure to write it must not fail the sync.
-    private async Task WriteSyncLogAsync(string operation, SaveSyncReport report, CancellationToken cancellationToken)
+    private async Task WriteSyncLogAsync(
+        string operation,
+        SaveSyncReport report,
+        TimeSpan elapsed,
+        IReadOnlyList<string> transportTimings,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await _syncLog.AppendAsync(operation, report, cancellationToken);
+            await _syncLog.AppendAsync(operation, report, elapsed, transportTimings, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -512,7 +621,7 @@ public sealed record CloudSaveSyncSettingsContext(
     string SyncLogPath,
     Func<IReadOnlyList<CloudSaveSyncPlatformContext>> GetPlatforms,
     Func<string, CancellationToken, Task<string?>> GetDetectedPathAsync,
-    Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
+    Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, string?, string?, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
     Func<CancellationToken, Task> DisconnectAsync,
     Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> SyncNowAsync,
     Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> ForceAsync,

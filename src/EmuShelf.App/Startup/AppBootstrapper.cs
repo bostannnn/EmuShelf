@@ -125,7 +125,10 @@ public sealed class AppBootstrapper
             SettingsService,
             Settings,
             Logger,
-            emulatorInstallations: ResolveConfiguredEmulator);
+            emulatorInstallations: ResolveConfiguredEmulator,
+            // RetroArch writes every core's saves into one folder unless the user turns on
+            // per-core sorting, so the save providers need the library to tell whose save is whose.
+            gamesForSystem: systemId => Library.GetGames(systemId));
         TexturePacks = new TexturePackCoordinator(
             Paths,
             MetadataStore,
@@ -161,6 +164,7 @@ public sealed class AppBootstrapper
             : Path.GetDirectoryName(executablePath);
         return new SaveEmulatorInstallation(
             directory,
-            configuration.LaunchTarget is FlatpakApplicationTarget);
+            configuration.LaunchTarget is FlatpakApplicationTarget,
+            configuration.CorePath);
     }
 }

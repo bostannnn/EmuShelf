@@ -32,6 +32,12 @@ public partial class MainViewModel : ViewModelBase
     private const int SearchDebounceMs = 250;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// How long a launch may wait for the pre-launch save sync. Long enough for a healthy cloud
+    /// round trip, short enough that a throttled provider does not read as a hung launcher.
+    /// </summary>
+    private static readonly TimeSpan PreLaunchSyncBudget = TimeSpan.FromSeconds(12);
+
     private readonly IGameLibrary _library;
     private readonly IFolderScanner _scanner;
     private readonly IGameImportRules _importRules;
@@ -2249,9 +2255,20 @@ public partial class MainViewModel : ViewModelBase
         StatusText = afterExit
             ? $"{game.Title} finished. Syncing saves…"
             : $"Syncing saves before launching {game.Title}…";
+
+        // Before a launch the user is waiting on a cloud round trip they did not ask for, and a
+        // provider having a slow minute must not become a slow minute for the game. The pass is
+        // given a budget; past it, the launch proceeds with the saves already on disk, exactly as
+        // it does when a pre-launch sync fails. After exit nothing is blocked, so it runs out.
+        using var budget = afterExit ? null : new CancellationTokenSource(PreLaunchSyncBudget);
+        using var linked = budget is null
+            ? null
+            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budget.Token);
         try
         {
-            var outcome = await _gameSaveSync.SyncSystemAsync(game.SystemId, cancellationToken);
+            var outcome = await _gameSaveSync.SyncSystemAsync(
+                game.SystemId,
+                linked?.Token ?? cancellationToken);
             if (outcome.Status == CloudSaveSyncStatus.Failed)
             {
                 _logger.Warning(
@@ -2269,6 +2286,16 @@ public partial class MainViewModel : ViewModelBase
                     "the system was reported as syncable. Saves were not synchronized.");
             }
             return outcome;
+        }
+        catch (OperationCanceledException) when (budget?.IsCancellationRequested == true &&
+            !cancellationToken.IsCancellationRequested)
+        {
+            _logger.Warning(
+                $"The pre-launch save sync for game id {game.Id} exceeded " +
+                $"{PreLaunchSyncBudget.TotalSeconds:0} seconds and was left to the post-exit pass; " +
+                "the saves already on disk were used.");
+            return CloudSaveSyncOutcome.Failed(
+                $"the cloud did not answer within {PreLaunchSyncBudget.TotalSeconds:0} seconds");
         }
         catch (OperationCanceledException)
         {

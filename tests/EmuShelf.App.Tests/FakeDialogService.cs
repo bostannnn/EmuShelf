@@ -38,6 +38,10 @@ internal sealed class FakeDialogService : IDialogService
         Task.FromResult(LibretroCoreToReturn);
     public Task<string?> PickRpcs3ConfigurationDirectoryAsync() =>
         Task.FromResult(Rpcs3ConfigurationDirectoryToReturn);
+    public string? GoogleClientJsonPath { get; set; }
+
+    public Task<string?> PickGoogleClientJsonAsync() => Task.FromResult(GoogleClientJsonPath);
+
     public Task<string?> PickCoverImageAsync(string gameTitle)
     {
         LastCoverGameTitle = gameTitle;

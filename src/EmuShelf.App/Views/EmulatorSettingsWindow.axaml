@@ -490,6 +490,23 @@
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="EmuShelf/Saves" />
+                                    <TextBlock Text="GOOGLE OAUTH CLIENT (OPTIONAL)" FontSize="10" FontWeight="SemiBold"
+                                               LetterSpacing="0.7"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock TextWrapping="Wrap" FontSize="11"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                               Text="Without your own client, rclone's shared Google client is used — it is rate limited, which shows up as a slow sync before a game starts, and Google retires it during 2026. Import the OAuth client JSON from Google Cloud console → Credentials → Download JSON. The secret goes straight to rclone; EmuShelf stores only the client id." />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Content="Import client JSON…"
+                                                Command="{Binding ImportGoogleClientCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                        <TextBlock Text="{Binding CloudClientId}" VerticalAlignment="Center"
+                                                   FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="320"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding CloudClientStatusText}" TextWrapping="Wrap"
+                                               IsVisible="{Binding HasCloudClientStatus}" FontSize="11"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <Button Content="Connect Google Drive" Classes="accent"
                                             HorizontalAlignment="Left"
                                             Command="{Binding ConnectCloudCommand}"

@@ -42,6 +42,74 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task LocalBackend_ScopedDownloadSessionStillServesAnUnannouncedUnit()
+    {
+        var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");
+        if (string.IsNullOrWhiteSpace(rclonePath) || !File.Exists(rclonePath))
+            return;
+
+        var remoteRoot = Path.Combine(BaseDirectory, "scoped-remote");
+        Directory.CreateDirectory(AppPaths.SettingsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(AppPaths.SettingsDirectory, "rclone.conf"),
+            "[testlocal]\ntype = local\n");
+        var cloudFolder = Path.GetFullPath(remoteRoot).Replace('\\', '/');
+        var seeding = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        foreach (var unitId in new[] { "pcsx2/Mcd001.ps2", "rpcs3/savedata/BCES00006", "retroarch/nds/Contra 4.srm" })
+        {
+            await seeding.UploadAsync(
+                unitId,
+                new MemoryStream(Encoding.UTF8.GetBytes(unitId)),
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unitId))),
+                new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
+        }
+
+        await seeding.FlushAsync();
+
+        // The session is scoped to the announced unit; the un-announced one must still arrive,
+        // through a single-payload fetch, rather than failing the pass.
+        var transport = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        await transport.ListAsync();
+        transport.ExpectDownloads(["pcsx2/Mcd001.ps2"]);
+
+        Assert.Equal("pcsx2/Mcd001.ps2", await ReadAllAsync(transport, "pcsx2/Mcd001.ps2"));
+        Assert.Equal("rpcs3/savedata/BCES00006", await ReadAllAsync(transport, "rpcs3/savedata/BCES00006"));
+        await Assert.ThrowsAsync<IOException>(() => transport.DownloadAsync("pcsx2/Missing.ps2"));
+        await transport.FlushAsync();
+    }
+
+    [Fact]
+    public async Task LocalBackend_FolderIdShortcutIsNotAppliedToANonDriveRemote()
+    {
+        // The id form drops the folder from the remote path, which only works because
+        // --drive-root-folder-id re-roots a Drive remote there. Any other backend must keep the path.
+        var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");
+        if (string.IsNullOrWhiteSpace(rclonePath) || !File.Exists(rclonePath))
+            return;
+
+        var remoteRoot = Path.Combine(BaseDirectory, "non-drive-remote");
+        Directory.CreateDirectory(remoteRoot);
+        Directory.CreateDirectory(AppPaths.SettingsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(AppPaths.SettingsDirectory, "rclone.conf"),
+            "[testlocal]\ntype = local\n");
+        var transport = new RcloneCloudSyncTransport(
+            AppPaths,
+            "testlocal",
+            Path.GetFullPath(remoteRoot).Replace('\\', '/'),
+            rclonePath);
+
+        Assert.Null(await transport.ResolveCloudFolderIdAsync());
+    }
+
+    private static async Task<string> ReadAllAsync(RcloneCloudSyncTransport transport, string unitId)
+    {
+        await using var stream = await transport.DownloadAsync(unitId);
+        using var reader = new StreamReader(stream);
+        return await reader.ReadToEndAsync();
+    }
+
+    [Fact]
     public async Task LocalBackend_MissingRemoteFolder_ListsNothingInsteadOfThrowing()
     {
         var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");

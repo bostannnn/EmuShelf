@@ -25,6 +25,12 @@ public interface IDialogService
     /// <summary>Absolute path of a manually selected cover image, or null if cancelled.</summary>
     Task<string?> PickCoverImageAsync(string gameTitle);
 
+    /// <summary>
+    /// Absolute path of the OAuth client JSON downloaded from the Google Cloud console, or null if
+    /// cancelled.
+    /// </summary>
+    Task<string?> PickGoogleClientJsonAsync();
+
     /// <summary>Confirms removing a game from the library without touching its files.</summary>
     Task<bool> ConfirmRemoveGameAsync(string gameTitle);
 

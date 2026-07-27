@@ -1852,3 +1852,210 @@ This puts Dolphin on the same footing as PCSX2 and DuckStation, whose texture ro
 read from their own settings files rather than guessed. The library mark still means "installed and
 matched": loading status stays Unknown unless `GFX.ini` proves otherwise, and the Settings override
 remains the escape hatch.
+
+## 2026-07-26 — DuckStation settings are read with DuckStation's own defaults
+
+Reported from a real Steam Deck AppImage install: EmuShelf refused to sync PlayStation saves with
+"DuckStation's settings.ini has no supported Card1Type." Current DuckStation only writes settings
+that differ from its defaults, so a normal install has a small `settings.ini` with no `[MemoryCards]`
+section at all. Treating an absent key as an unknown layout made the common case fail closed for a
+configuration DuckStation itself considers fully specified.
+
+An absent key now means the emulator default — memory cards under `<user directory>/memcards`,
+slot 1 `PerGameTitle`, slot 2 `None` — and only a key that is present with a value DuckStation would
+not accept still fails closed. This supersedes the "explicitly configured directory" requirement in
+**2026-07-26 — Save-sync status and DuckStation identities fail closed at their real boundary**: the
+fail-closed boundary is a value EmuShelf cannot interpret, not a value the emulator chose not to
+write.
+
+This also corrects the Linux root in **2026-07-26 — DuckStation discovery mirrors the emulator's
+data-root precedence**. DuckStation roots its Linux user directory at `XDG_DATA_HOME` (default
+`~/.local/share/duckstation`), not `XDG_CONFIG_HOME`; the previous branch pointed at the wrong
+directory whenever `XDG_CONFIG_HOME` was set. By the same rule, a Flatpak install's user directory
+is `~/.var/app/org.duckstation.DuckStation/data/duckstation` — the sandbox's `XDG_DATA_HOME` — with
+the `config` path kept only as a fallback for hand-relocated profiles.
+
+## 2026-07-26 — RPCS3 saves are addressed without their local account
+
+RPCS3 is the fourth save-sync platform. Its hard disk is resolved the way RPCS3 resolves it: a
+`portable/` directory beside the executable wins on every platform, then `RPCS3_CONFIG_DIR` and the
+executable directory on Windows, `$XDG_CONFIG_HOME/rpcs3` (default `~/.config/rpcs3`) on Linux,
+`~/Library/Application Support/rpcs3` on macOS, and the sandbox path for Flatpak. `vfs.yml` — read
+from `config/` on Windows and the configuration directory elsewhere — supplies `$(EmulatorDir)` and
+`/dev_hdd0/`; an absent file or empty entry means RPCS3's own documented default, while an
+unreadable file or an unknown `$(…)` placeholder fails closed. Only those two top-level keys are
+interpreted, so a future device entry cannot move the hard disk behind EmuShelf's back.
+
+The account is the interesting part. `dev_hdd0/home/00000001` is machine-local: the same person can
+be `00000001` on a desktop and `00000002` on a Deck, so embedding the account in the unit id would
+make the same save two different cloud objects. Unit ids are therefore `rpcs3/savedata/<save>` and
+the account is bound locally — that binding *is* the stable profile key. Binding is automatic while
+only one account can be meant (a single account, or the single account holding saves) and fails
+closed with an actionable message when several accounts hold saves; the existing per-system save
+location override is how the user picks one, and it accepts RPCS3's folder, its `dev_hdd0`, one
+account folder, or that account's `savedata`. No new settings field was needed. Those forms are
+matched widest-container-first, because `dev_hdd0` has a `savedata` directory of its own — the
+PS1/PS2 Classics virtual memory cards — and matching on a `savedata` child first would resolve a
+`dev_hdd0` override to the virtual cards instead of the account's saves.
+
+A save unit is a `savedata/<save>/` directory containing `PARAM.SFO` — the file that makes the
+directory a save RPCS3's own save manager recognizes. Directories without it are partial copies, not
+units. Trophies, `exdata` licenses, installed games, caches, configuration, and save states sit
+outside `savedata` and are never enumerated. Verified read-only against a real 63-save RPCS3
+install: every save name passed the id-safety filter and none of the sibling directories did.
+
+## 2026-07-26 — RPCS3 trophies and virtual memory cards are their own namespaces
+
+Trophy progress and PS1/PS2 Classics saves are things users lose when only `savedata` travels, so
+both now sync. A trophy set is `home/<account>/trophy/<NPWR…>/` containing `TROPUSR.DAT` — the
+communication id is the same on every machine, so it needs no library lookup — and a virtual memory
+card is a `.VM1`/`.VM2` file in the console-wide `dev_hdd0/savedata/vmc`. They take the unit
+namespaces `rpcs3/trophy/…` and `rpcs3/vmc/…`, leaving the shipped `rpcs3/savedata/…` ids untouched,
+and each resolves under its own root so no namespace can address a sibling of another.
+
+The virtual-card directory is console-wide rather than account-scoped, so it is only in scope when
+the resolved location still sits in RPCS3's own `dev_hdd0/home/<account>` shape. A save folder
+chosen anywhere else stays account-scoped instead of reaching up into a parent EmuShelf was never
+pointed at. Verified read-only against a real install: 63 saves, 23 trophy sets, 2 cards.
+
+## 2026-07-26 — RetroArch resolves per system, and the library decides whose save is whose
+
+RetroArch is one installation serving five EmuShelf rows, so each row resolves its own effective
+save directory from `retroarch.cfg`: `:` and `~` expand the way RetroArch expands them (application
+directory, home), a per-core override at `<config>/<core>/<core>.cfg` is layered on top, and
+`sort_savefiles_enable` appends the core's own folder name. Anything EmuShelf cannot resolve to one
+exact directory fails closed with a message naming the setting — saves kept in the content
+directory, sorting by content directory, no configured save directory, a missing `retroarch.cfg`,
+and RetroArch's own cloud sync being enabled for saves, which EmuShelf refuses to double-manage.
+
+The harder problem is that RetroArch's default is one shared save folder: every core writes `.srm`
+into it, so the file name is the only evidence of which system a save belongs to. Claiming all of
+them would have each of the four rows syncing the other three's saves under four different unit ids.
+EmuShelf therefore matches save names against the library's own file names for that system, which is
+the same evidence RetroArch used when it named the file. The rule applies to remote-only units too:
+a downloaded save can only land under a system that has the matching game. A directory that is
+exclusively this system's — because the core sorts into its own folder, or because the user chose
+the folder explicitly — skips matching entirely. The cost is that a save whose game is not in the
+library is left alone; the escape hatch is the per-platform save location.
+
+Cores are an explicit verified table (Genesis Plus GX, Snes9x, melonDS DS, mGBA — all `.srm`), and
+an unrecognized core fails closed rather than guessing an extension. Dreamcast is deliberately not
+registered: Flycast writes VMU images to RetroArch's system directory or the save directory
+depending on a core option, and that has not been verified against a real install. Verified against
+one: the DS row claimed exactly the five DS saves in a shared folder of nine, leaving the GBA and
+SNES saves and two saves whose ROMs are not in the library.
+
+## 2026-07-26 — RetroArch saves are claimed by game name, not by a per-core extension list
+
+This supersedes the verified-core table in **2026-07-26 — RetroArch resolves per system, and the
+library decides whose save is whose**. That table paired each core with the extension it writes, and
+the premise was wrong twice over. First, testing against a real install showed melonDS DS writing
+`.sav`, not the `.srm` the migration docs implied — an allow-list would have synced none of that
+user's 31 DS saves. Second, an extension list turns a core swap into silent data loss: switching a
+DS core to DeSmuME changes the extension to `.dsv` and sync would have stopped without a word.
+
+What is actually stable is the file *name*: every core names a save after the content file. A unit is
+therefore any direct child of the resolved save folder that is not one of RetroArch's own artifacts
+(save states by `.state*`/`.auto` shape, replays, screenshots, configuration, and extension-less core
+hint files such as "Place NDS saves here"). Whose save it is comes from the same two rules as before:
+a folder RetroArch sorts per core — or one the user chose — belongs entirely to that system, and a
+shared folder is filtered by the library's own file names. Any core works now, including cores
+EmuShelf has never heard of, so Dreamcast/Flycast is registered too; its shared VMU images live in
+RetroArch's system directory and are still out of scope, while per-game VMUs land in the save folder
+and match like anything else.
+
+The core's *name* is still needed for one thing — the folder RetroArch sorts into — and that name is
+libretro's `corename` ("melonDS DS"), read from the installed core's own `info/` entry. It is
+explicitly not `display_name`, which names the system ("Nintendo - DS (melonDS DS)") and would
+produce a folder that does not exist. A built-in table covers a handful of cores as a fallback, and
+sorting with an unreadable core name fails closed rather than guessing a directory.
+
+## 2026-07-26 — Sync latency is measured, and cloud sessions are scoped to what a pass needs
+
+A launch-time sync was reported as taking about a minute. Measured on the real library, the local
+half is not the cost: enumerating and hashing all 88 PS3 units — 1,520 files, 175 MB — takes about
+270 ms, and 31 DS saves take 55 ms. The time is in rclone, so the log now records the wall clock of
+each pass and the duration of every rclone invocation. A user (or a future decision) should not have
+to guess which call a launch waited on.
+
+Two rclone patterns were structurally wasteful regardless of what the timings show. Downloading any
+single unit opened the session with `rclone copy <remote root> <inbox>`, which fetches *every*
+platform's payloads — a one-save DS download could pull the whole PS3 collection. The service now
+decides every unit's action before transferring anything and announces the units that need a remote
+payload (a download, and either side of a conflict, since the loser is preserved as a backup), so the
+session runs with `--files-from` over exactly those paths. A download that was never announced still
+succeeds through a single-payload fetch, so scoping can never lose a save. Uploads and the scoped
+download now pass `--no-traverse`: the remote holds every save ever synced, and rclone would
+otherwise list all of it to decide whether to copy a handful of staged files.
+
+Deciding before transferring also made the two-phase structure explicit. It is equivalent to the
+previous interleaved loop because a unit's decision depends only on its own local, remote, and
+baseline state — never on another unit's outcome.
+
+## 2026-07-27 — The launch wait is a Drive path lookup, and it is now bounded
+
+The instrumented log answered the question. A launch-time pass for PlayStation with nothing to do —
+7 units, no transfers — took 22.2 seconds, of which 22.24 were a single `rclone cat` of `index.json`.
+A pass moments later took 3.5 seconds for the same call. EmuShelf's own work is not involved: the
+whole PS3 library hashes in 271 ms.
+
+Measured directly against the configured remote, `cat` of the index costs 3.5–6.0 s normally, with
+occasional ~20 s outliers. The same read addressed by the folder's own id — `--drive-root-folder-id`
+— costs 1.7–2.1 s. Google Drive has no real paths, so `EmuShelf/Saves/index.json` is resolved one
+listing request per segment on every call, and those requests are both slow and rate-limited.
+EmuShelf now caches the folder's id in settings after one lookup and addresses the folder directly.
+The id is not a secret and grants nothing; a failed lookup falls back to the path, and any failed
+pass clears the cached id so a moved or recreated folder repairs itself on the next attempt.
+
+The outliers are Google throttling, not something EmuShelf can fix — rclone's shared Google client id
+is rate-limited (and, per rclone's own notice, retired during 2026). So the pre-launch pass is now
+bounded: it gets 12 seconds, after which the game starts with the saves already on disk, exactly as
+it does when a pre-launch sync fails. The post-exit pass keeps running to completion because nothing
+is waiting on it. A cloud that is having a bad minute can no longer turn into a launcher that looks
+hung.
+
+## 2026-07-27 — A resolved save folder that does not exist is reported, not silently empty
+
+A PSP sync on the Steam Deck "did nothing" with no error. That shape of failure is possible for every
+platform: the provider resolves a path, the folder is not there, zero units are enumerated, and the
+pass reports success. Detection now checks the resolved directory and says so in the platform row
+when it is absent, naming the two things that cause it — the configured emulator is not the one the
+user actually plays with, or the save location needs setting explicitly. An existing but empty folder
+is normal (the emulator has not written a save yet) and is not flagged.
+
+The same review found PPSSPP resolving `~/.config/ppsspp` on macOS, where PPSSPP actually keeps its
+Memory Stick under `~/Library/Application Support/PPSSPP` — the root this repo's own texture resolver
+already reads `ppsspp.ini` from. The save provider now agrees with it.
+
+## 2026-07-27 — A personal Google OAuth client is imported as a file, and its secret never lands in settings
+
+rclone's shared Google client is rate-limited — the multi-second `rclone cat` before a launch, and
+the ~20 s outliers — and Google retires it during 2026. Using a personal OAuth client fixes both, so
+Settings now imports the `client_secret_*.json` the Google Cloud console produces: choose the file,
+press Connect, sign in once. Copying two long strings by hand was the only alternative and is the
+kind of step users skip.
+
+The split follows the rule the connect flow already had for the OAuth token: EmuShelf stores the
+client *id* (public by design, and useful to show which client a remote uses) and never stores the
+*secret*. The secret is read from the file the user chose, handed to rclone as one argv entry, and
+dropped from memory as soon as the connection attempt returns; rclone's own config holds it beside
+the token. The parser accepts either the `installed` or `web` section, and a file without both
+values reports what to download from where rather than failing with a JSON error. Nothing about the
+file's contents is ever logged or echoed into a status message.
+
+## 2026-07-27 — The folder-id lookup was reading the wrong rclone output
+
+The first attempt at caching the Drive folder id never worked, and the instrumented log is what
+showed it: every pass ran `rclone config` + `rclone lsjson` and then still paid full price for
+`rclone cat`, because `lsjson --stat` on the folder describes the queried path as its own root and
+reports no id at all. The id only appears when the *parent* is listed, so resolution now lists the
+parent and matches the folder by name. The resolved id is also adopted by the transport that found
+it rather than rebuilding one, so the pass that pays for the lookup benefits from it and all of its
+rclone calls are accounted for in one place — the previous split meant the header time excluded the
+lookup the user was waiting on.
+
+Measured against the real remote afterwards: lookup 1.5 s once, then a full index read of 255 units
+in 1.8–2.2 s by id versus 3.2 s by path. rclone's own process start is 152 ms, so what remains is the
+provider's round trip, and no amount of local work removes it: every pass has to ask the cloud
+whether another machine changed a save. That is the floor this design has, and the 12-second launch
+budget is what keeps a bad minute from reaching the user.

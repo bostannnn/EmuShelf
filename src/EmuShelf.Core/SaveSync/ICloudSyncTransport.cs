@@ -13,6 +13,16 @@ public interface ICloudSyncTransport
     /// <summary>A snapshot of every unit currently stored on the remote.</summary>
     Task<IReadOnlyList<SaveUnitSnapshot>> ListAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Announces every unit this reconciliation may download, before the first
+    /// <see cref="DownloadAsync"/>. A transport that fetches in one session can scope that session
+    /// to these units instead of the whole remote; one that cannot may ignore it. Implementations
+    /// must still serve a download that was not announced.
+    /// </summary>
+    void ExpectDownloads(IEnumerable<string> unitIds)
+    {
+    }
+
     /// <summary>Opens the remote payload for a unit for reading.</summary>
     Task<Stream> DownloadAsync(string unitId, CancellationToken cancellationToken = default);
 
