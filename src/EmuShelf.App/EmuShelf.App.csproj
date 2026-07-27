@@ -6,6 +6,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Windows shell icon (Explorer, taskbar pinning). Avalonia windows set their own icon
+         from the same file as an avares resource — see Icon= on each Window. -->
+    <ApplicationIcon>Assets\emushelf.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- `dotnet restore` has no configuration unless a caller supplies one. Defaulting it here

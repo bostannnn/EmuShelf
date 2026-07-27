@@ -41,6 +41,17 @@ public partial class App : Application
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings);
             var mainWindow = new MainWindow();
+            var libraryViewState = new LibraryViewStateService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                Bootstrapper.Logger);
+            // Applies the saved geometry before the interface-mode service reads the window state,
+            // so starting in Gamepad mode still records a maximized desktop window to return to.
+            _ = new WindowLayoutService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                mainWindow,
+                Bootstrapper.Logger);
             var interfaceModeService = new WindowInterfaceModeService(
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings,
@@ -155,10 +166,15 @@ public partial class App : Application
                 retroAchievementsBadges,
                 Bootstrapper.CloudSaveSync,
                 applicationLifetime: new ApplicationLifetimeService(desktop),
-                texturePacks: Bootstrapper.TexturePacks);
+                texturePacks: Bootstrapper.TexturePacks,
+                libraryViewState: libraryViewState);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
+
+            // Subscribed after WindowLayoutService's own Closing handler, so the layout is written
+            // first and this read-modify-write picks it up rather than racing it.
+            mainWindow.Closing += (_, _) => viewModel.FlushPendingLibraryViewStateSave();
 
             // Native controller input (SDL2) drives the same Gamepad-mode routing as Steam Input's
             // keyboard mapping. It polls only in Gamepad mode and degrades to no-op if SDL2 or a

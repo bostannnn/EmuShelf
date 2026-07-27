@@ -30,7 +30,18 @@ namespace EmuShelf.App.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
+    private const int ViewStateSaveDebounceMs = 500;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>How long a completed action's result stays on screen before dismissing itself.</summary>
+    private static readonly TimeSpan InfoStatusLifetime = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Failures get noticeably longer than a result does. The toast is the only place a failed
+    /// import or launch is reported, so it has to outlast a glance away from the screen — but it
+    /// still clears itself, because a stale error on a working library is its own kind of wrong.
+    /// </summary>
+    private static readonly TimeSpan ErrorStatusLifetime = TimeSpan.FromSeconds(15);
 
     /// <summary>
     /// How long a launch may wait for the pre-launch save sync. Long enough for a healthy cloud
@@ -69,6 +80,10 @@ public partial class MainViewModel : ViewModelBase
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
     private readonly DispatcherTimer _searchDebounce;
+    private readonly DispatcherTimer _statusDismiss;
+    private readonly DispatcherTimer _viewStateSave;
+    private readonly ILibraryViewStateService _libraryViewState;
+    private bool _isRestoringViewState;
     private readonly List<GameViewModel> _systemGames = [];
     private readonly HashSet<long> _deferredCoverLoads = [];
     private GameViewModel? _selectionAnchor;
@@ -116,8 +131,19 @@ public partial class MainViewModel : ViewModelBase
     private string SortGlyph(LibrarySortColumn column) =>
         SortColumn == column ? (SortDescending ? "▼" : "▲") : string.Empty;
 
-    partial void OnSortColumnChanged(LibrarySortColumn value) => NotifySortGlyphs();
-    partial void OnSortDescendingChanged(bool value) => NotifySortGlyphs();
+    partial void OnSortColumnChanged(LibrarySortColumn value)
+    {
+        NotifySortGlyphs();
+        ScheduleLibraryViewStateSave();
+    }
+
+    partial void OnSortDescendingChanged(bool value)
+    {
+        NotifySortGlyphs();
+        ScheduleLibraryViewStateSave();
+    }
+
+    partial void OnIsGridViewChanged(bool value) => ScheduleLibraryViewStateSave();
 
     private void NotifySortGlyphs()
     {
@@ -131,6 +157,10 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
+
+    /// <summary>Drives both how long the toast lives and the colour of its leading dot.</summary>
+    [ObservableProperty]
+    public partial StatusSeverity StatusSeverity { get; set; } = StatusSeverity.Info;
 
     [ObservableProperty]
     public partial bool IsSearchOpen { get; set; }
@@ -250,6 +280,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(NavigationWidth));
         OnPropertyChanged(nameof(IsNavigationExpanded));
+        ScheduleLibraryViewStateSave();
     }
 
     // Grid cover sizing: covers grow from a 188px floor up to a cap so a whole number of columns
@@ -276,6 +307,9 @@ public partial class MainViewModel : ViewModelBase
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
+
+    /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
+    public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
     /// <summary>
     /// True while an emulator owns the game session, plus a short return guard that absorbs the
     /// controller/key used to close it. Input services poll this directly, so it remains accurate
@@ -360,8 +394,10 @@ public partial class MainViewModel : ViewModelBase
         CloudSaveSyncCoordinator? cloudSaveSync = null,
         IGameSaveSyncService? gameSaveSync = null,
         IApplicationLifetimeService? applicationLifetime = null,
-        TexturePackCoordinator? texturePacks = null)
+        TexturePackCoordinator? texturePacks = null,
+        ILibraryViewStateService? libraryViewState = null)
     {
+        _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _library = library;
         _scanner = scanner;
         _importRules = importRules;
@@ -380,8 +416,11 @@ public partial class MainViewModel : ViewModelBase
             _interfaceModeService.ModeChanged += (_, mode) =>
             {
                 IsGamepadMode = mode == InterfaceMode.Gamepad;
-                if (IsGamepadMode)
-                    IsGridView = true;
+                // Gamepad mode renders tiles, so it forces a grid. Returning to Desktop puts the
+                // user's own view choice back: leaving the forced grid in place would both strand
+                // a list-view user in a grid and, on their next unrelated change, persist that
+                // grid over the preference they never changed.
+                IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
             };
         }
         _metadataService = metadataService ?? new NullGameMetadataService();
@@ -413,7 +452,100 @@ public partial class MainViewModel : ViewModelBase
             ApplyFilter();
         };
 
-        SelectedSystem = Systems.FirstOrDefault();
+        _statusDismiss = new DispatcherTimer();
+        _statusDismiss.Tick += (_, _) =>
+        {
+            _statusDismiss.Stop();
+            StatusText = string.Empty;
+        };
+
+        // Selecting a platform moves several of these properties at once. Coalesce them into one
+        // write so a click on the sidebar is not three settings-file round trips.
+        _viewStateSave = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ViewStateSaveDebounceMs) };
+        _viewStateSave.Tick += (_, _) =>
+        {
+            _viewStateSave.Stop();
+            _ = _libraryViewState.SaveAsync(BuildLibraryViewState());
+        };
+
+        RestoreLibraryViewState();
+    }
+
+    /// <summary>
+    /// Puts the library back the way it was left. Restoring assigns the same properties the user
+    /// normally drives, so the save is suppressed for the duration — otherwise the first launch
+    /// after an upgrade would write defaults over a perfectly good remembered view.
+    /// </summary>
+    private void RestoreLibraryViewState()
+    {
+        var state = _libraryViewState.Current;
+        _isRestoringViewState = true;
+        try
+        {
+            IsGridView = state.IsGridView;
+            SortColumn = Enum.TryParse<LibrarySortColumn>(state.SortColumn, out var column)
+                ? column
+                : LibrarySortColumn.Title;
+            SortDescending = state.SortDescending;
+            IsNavigationCollapsed = state.IsNavigationCollapsed;
+
+            var scope = Enum.TryParse<LibraryScope>(state.Scope, out var parsed)
+                ? parsed
+                : LibraryScope.System;
+            if (scope == LibraryScope.System)
+            {
+                // A system id can disappear between launches; fall back rather than open empty.
+                SelectedSystem = state.SelectedSystemId is { } id &&
+                    _systemsById.TryGetValue(id, out var system)
+                    ? system
+                    : Systems.FirstOrDefault();
+            }
+            else
+            {
+                CurrentLibraryScope = scope;
+                _selectedSystemLoad = ReloadGamesAsync();
+            }
+        }
+        finally
+        {
+            _isRestoringViewState = false;
+        }
+    }
+
+    /// <summary>The snapshot the debounced save writes. Internal so tests can assert it directly.</summary>
+    internal LibraryViewSettings BuildLibraryViewState() => new()
+    {
+        // Gamepad mode forces a grid to render its tiles, which is not a statement about what the
+        // user wants on the desktop. Keep the stored desktop preference while that mode is active.
+        IsGridView = IsGamepadMode ? _libraryViewState.Current.IsGridView : IsGridView,
+        SortColumn = SortColumn.ToString(),
+        SortDescending = SortDescending,
+        IsNavigationCollapsed = IsNavigationCollapsed,
+        Scope = CurrentLibraryScope.ToString(),
+        SelectedSystemId = SelectedSystem?.Id,
+    };
+
+    private void ScheduleLibraryViewStateSave()
+    {
+        if (_isRestoringViewState)
+            return;
+
+        _viewStateSave.Stop();
+        _viewStateSave.Start();
+    }
+
+    /// <summary>
+    /// Writes a pending view change immediately instead of waiting out the debounce. Called as the
+    /// window closes: switching to list view and quitting straight away is well under the debounce
+    /// interval, and without this the change the user just made is the one change never saved.
+    /// </summary>
+    internal void FlushPendingLibraryViewStateSave()
+    {
+        if (!_viewStateSave.IsEnabled)
+            return;
+
+        _viewStateSave.Stop();
+        _libraryViewState.Save(BuildLibraryViewState());
     }
 
     partial void OnSelectedSystemChanged(GameSystem? value)
@@ -422,6 +554,7 @@ public partial class MainViewModel : ViewModelBase
             CurrentLibraryScope = LibraryScope.System;
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
+        ScheduleLibraryViewStateSave();
         _selectedSystemLoad = ReloadGamesAsync();
     }
 
@@ -431,6 +564,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsRecentlyAddedSelected));
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
+        ScheduleLibraryViewStateSave();
     }
 
     partial void OnSearchTextChanged(string value)
@@ -439,8 +573,50 @@ public partial class MainViewModel : ViewModelBase
         _searchDebounce.Start();
     }
 
-    partial void OnStatusTextChanged(string value) =>
+    partial void OnStatusSeverityChanged(StatusSeverity value) =>
+        OnPropertyChanged(nameof(IsStatusError));
+
+    partial void OnStatusTextChanged(string value)
+    {
         OnPropertyChanged(nameof(HasStatusMessage));
+        ScheduleStatusDismiss();
+    }
+
+    /// <summary>
+    /// The single entry point for the library toast. Severity is set first so the dismiss timer
+    /// that <see cref="OnStatusTextChanged"/> starts is already looking at the new message's kind.
+    /// </summary>
+    private void SetStatus(string text, StatusSeverity severity = StatusSeverity.Info)
+    {
+        StatusSeverity = severity;
+        StatusText = text;
+    }
+
+    /// <summary>
+    /// How long the current message has left before it dismisses itself, or <see cref="TimeSpan.Zero"/>
+    /// if it never will. Progress messages get no countdown at all: the operation producing them
+    /// replaces the text with its own result (or an error) when it finishes, and a scan that goes
+    /// quiet for five seconds must not look like it stopped.
+    /// </summary>
+    internal TimeSpan StatusDismissDelay => !HasStatusMessage
+        ? TimeSpan.Zero
+        : StatusSeverity switch
+        {
+            StatusSeverity.Progress => TimeSpan.Zero,
+            StatusSeverity.Error => ErrorStatusLifetime,
+            _ => InfoStatusLifetime,
+        };
+
+    private void ScheduleStatusDismiss()
+    {
+        _statusDismiss.Stop();
+        var lifetime = StatusDismissDelay;
+        if (lifetime <= TimeSpan.Zero)
+            return;
+
+        _statusDismiss.Interval = lifetime;
+        _statusDismiss.Start();
+    }
 
     [RelayCommand]
     private void ClearSearch()
@@ -698,7 +874,7 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        StatusText = "Cover selection is available in Desktop mode.";
+        SetStatus("Cover selection is available in Desktop mode.");
     }
 
     [RelayCommand]
@@ -1420,7 +1596,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Could not load the current library view.", ex);
-            StatusText = $"Could not load library: {ex.Message}";
+            SetStatus($"Could not load library: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -1615,7 +1791,7 @@ public partial class MainViewModel : ViewModelBase
                     return;
                 }
                 _logger.Warning($"Could not load the cover for game id {game.Id}.", ex);
-                StatusText = $"Could not load cover for {game.Title}: {ex.Message}";
+                SetStatus($"Could not load cover for {game.Title}: {ex.Message}", StatusSeverity.Error);
             }
         }
         finally
@@ -1690,10 +1866,13 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var previousStatus = StatusText;
+        var previousSeverity = StatusSeverity;
         IsBusy = true;
         try
         {
-            StatusText = paths.Count == 1 ? "Inspecting game…" : $"Inspecting {paths.Count} files…";
+            SetStatus(
+                paths.Count == 1 ? "Inspecting game…" : $"Inspecting {paths.Count} files…",
+                StatusSeverity.Progress);
             var analyses = await Task.Run(() => paths
                 .Select(_importRules.AnalyzeFile)
                 .ToList());
@@ -1708,13 +1887,13 @@ public partial class MainViewModel : ViewModelBase
             var system = await _dialogs.PickSystemAsync(Systems, suggested);
             if (system is null)
             {
-                StatusText = previousStatus;
+                SetStatus(previousStatus, previousSeverity);
                 return;
             }
 
             if (system.Id == "playstation3")
             {
-                StatusText = "PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.";
+                SetStatus("PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.");
                 return;
             }
 
@@ -1733,18 +1912,18 @@ public partial class MainViewModel : ViewModelBase
             var selection = await Task.Run(() => _importRules.SelectGameEntries(accepted, system));
             var importResult = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
-            StatusText = BuildAddGamesStatus(
+            SetStatus(BuildAddGamesStatus(
                 importResult.AddedCount,
                 incompatible,
                 unsupported,
                 confirmedUnrecognized,
-                system.Name);
+                system.Name));
             await MaybeStartMetadataForImportAsync(importResult.AddedGameIds);
         }
         catch (Exception ex)
         {
             _logger.Error("Game import failed.", ex);
-            StatusText = $"Import failed: {ex.Message}";
+            SetStatus($"Import failed: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -1805,7 +1984,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (system.Id == "playstation3")
         {
-            StatusText = "PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.";
+            SetStatus("PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.");
             return;
         }
 
@@ -1813,22 +1992,22 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var progress = new Progress<ScanProgress>(p =>
-                StatusText = $"Scanning {system.Name}… {p.CandidatesFound} found");
+                SetStatus($"Scanning {system.Name}… {p.CandidatesFound} found", StatusSeverity.Progress));
 
             var selection = await _scanner.ScanAsync(folder, system, progress);
             await Task.Run(() => _library.AddLibraryFolder(system.Id, folder));
 
             var importResult = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
-            StatusText = importResult.AddedCount == 1
+            SetStatus(importResult.AddedCount == 1
                 ? "Added 1 game from folder"
-                : $"Added {importResult.AddedCount} games from folder";
+                : $"Added {importResult.AddedCount} games from folder");
             await MaybeStartMetadataForImportAsync(importResult.AddedGameIds);
         }
         catch (Exception ex)
         {
             _logger.Error($"Folder scan failed for system {system.Id}.", ex);
-            StatusText = $"Scan failed: {ex.Message}";
+            SetStatus($"Scan failed: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -1841,7 +2020,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (SelectedSystem?.Id == "playstation3")
         {
-            StatusText = "Use Settings to sync the explicitly selected RPCS3 library.";
+            SetStatus("Use Settings to sync the explicitly selected RPCS3 library.");
             return Task.CompletedTask;
         }
 
@@ -1890,20 +2069,20 @@ public partial class MainViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            StatusText = "Reading the RPCS3 game list…";
+            SetStatus("Reading the RPCS3 game list…", StatusSeverity.Progress);
             var source = new Rpcs3LibrarySource(configurationDirectory);
             var result = await new ExternalLibrarySyncService(_library).SyncAsync(source);
             var playStation3 = Systems.FirstOrDefault(system => system.Id == "playstation3");
             if (playStation3 is not null)
                 await ShowSystemAsync(playStation3);
 
-            StatusText = BuildRpcs3SyncStatus(result);
+            SetStatus(BuildRpcs3SyncStatus(result));
             return StatusText;
         }
         catch (Rpcs3LibraryFormatException ex)
         {
             _logger.Warning($"RPCS3 library sync was rejected: {ex.Message}");
-            StatusText = $"RPCS3 library sync failed: {ex.Message}";
+            SetStatus($"RPCS3 library sync failed: {ex.Message}", StatusSeverity.Error);
             return StatusText;
         }
         catch (ExternalLibrarySourceConflictException ex)
@@ -1911,13 +2090,13 @@ public partial class MainViewModel : ViewModelBase
             // Expected, recoverable condition: an entry collides with another game's path. The
             // reconciliation left the library unchanged, so surface the actionable message plainly.
             _logger.Warning($"RPCS3 library sync stopped on a path conflict: {ex.Message}");
-            StatusText = $"RPCS3 library sync stopped: {ex.Message}";
+            SetStatus($"RPCS3 library sync stopped: {ex.Message}", StatusSeverity.Error);
             return StatusText;
         }
         catch (Exception ex)
         {
             _logger.Error("RPCS3 library sync failed.", ex);
-            StatusText = $"RPCS3 library sync failed: {ex.Message}";
+            SetStatus($"RPCS3 library sync failed: {ex.Message}", StatusSeverity.Error);
             return StatusText;
         }
         finally
@@ -1961,7 +2140,7 @@ public partial class MainViewModel : ViewModelBase
                 foreach (var folder in folders)
                 {
                     var progress = new Progress<ScanProgress>(p =>
-                        StatusText = $"Rescanning {system.Name}… {p.CandidatesFound} found");
+                        SetStatus($"Rescanning {system.Name}… {p.CandidatesFound} found", StatusSeverity.Progress));
                     var selection = await _scanner.ScanAsync(folder.Path, system, progress);
                     var importResult = await ReconcileImportAsync(system, selection);
                     total += importResult.AddedCount;
@@ -1974,7 +2153,7 @@ public partial class MainViewModel : ViewModelBase
                 await ShowSystemAsync(systemToShow);
             else
                 await ReloadGamesAsync();
-            StatusText = total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)";
+            SetStatus(total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)");
             if (addedIds.Count > 0)
             {
                 // A remembered-folder rescan is another import path. Only its newly discovered
@@ -1992,7 +2171,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Library rescan failed.", ex);
-            StatusText = $"Rescan failed: {ex.Message}";
+            SetStatus($"Rescan failed: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2096,7 +2275,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Library availability check failed.", ex);
-            StatusText = $"Availability check failed: {ex.Message}";
+            SetStatus($"Availability check failed: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2159,7 +2338,7 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         await RememberSelectedDiscAsync(game, disc);
-        StatusText = $"Disc {disc.Number} selected for {game.Title}";
+        SetStatus($"Disc {disc.Number} selected for {game.Title}");
     }
 
     private async Task LaunchGameCoreAsync(GameViewModel? game)
@@ -2174,13 +2353,15 @@ public partial class MainViewModel : ViewModelBase
         var launchGame = launchDisc.Game;
         if (!launchGame.IsAvailable)
         {
-            StatusText = launchGame.IsAvailable ? game.UnavailableLaunchStatus :
-                $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found.";
+            SetStatus(
+                launchGame.IsAvailable ? game.UnavailableLaunchStatus :
+                    $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found.",
+                StatusSeverity.Error);
             return;
         }
 
         IsBusy = true;
-        StatusText = $"Launching {game.Title}…";
+        SetStatus($"Launching {game.Title}…", StatusSeverity.Progress);
         SuspendFrontendUiWork();
         try
         {
@@ -2193,9 +2374,11 @@ public partial class MainViewModel : ViewModelBase
                         launchGame,
                         afterExit: false,
                         cancellationToken);
-                    StatusText = beforeSync?.Status == CloudSaveSyncStatus.Failed
-                        ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
-                        : $"Launching {game.Title}…";
+                    SetStatus(
+                        beforeSync?.Status == CloudSaveSyncStatus.Failed
+                            ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
+                            : $"Launching {game.Title}…",
+                        StatusSeverity.Progress);
                 });
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
@@ -2208,16 +2391,18 @@ public partial class MainViewModel : ViewModelBase
                     launchGame,
                     afterExit: true,
                     CancellationToken.None);
-            StatusText = DescribeLaunchAndSaveSync(result, beforeSync, afterSync);
+            SetStatus(
+                DescribeLaunchAndSaveSync(result, beforeSync, afterSync),
+                result.Succeeded ? StatusSeverity.Info : StatusSeverity.Error);
         }
         catch (OperationCanceledException)
         {
-            StatusText = $"Launch cancelled for {game.Title}";
+            SetStatus($"Launch cancelled for {game.Title}");
         }
         catch (Exception ex)
         {
             _logger.Error($"Unexpected launch failure for game id {game.Id}.", ex);
-            StatusText = $"Could not launch {game.Title}: {ex.Message}";
+            SetStatus($"Could not launch {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2252,9 +2437,11 @@ public partial class MainViewModel : ViewModelBase
         if (_gameSaveSync?.CanSyncSystem(game.SystemId) != true)
             return null;
 
-        StatusText = afterExit
-            ? $"{game.Title} finished. Syncing saves…"
-            : $"Syncing saves before launching {game.Title}…";
+        SetStatus(
+            afterExit
+                ? $"{game.Title} finished. Syncing saves…"
+                : $"Syncing saves before launching {game.Title}…",
+            StatusSeverity.Progress);
 
         // Before a launch the user is waiting on a cloud round trip they did not ask for, and a
         // provider having a slow minute must not become a slow minute for the game. The pass is
@@ -2388,7 +2575,7 @@ public partial class MainViewModel : ViewModelBase
         {
             if (_retroDetails is null || _retroAccount is null)
             {
-                StatusText = "Achievement details are unavailable right now.";
+                SetStatus("Achievement details are unavailable right now.", StatusSeverity.Error);
                 return;
             }
 
@@ -2413,7 +2600,7 @@ public partial class MainViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.Error($"Could not open Gamepad achievements for game id {game.Id}.", ex);
-                StatusText = $"Could not open achievements for {game.Title}: {ex.Message}";
+                SetStatus($"Could not open achievements for {game.Title}: {ex.Message}", StatusSeverity.Error);
                 return;
             }
         }
@@ -2425,7 +2612,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error($"Could not open achievements for game id {game.Id}.", ex);
-            StatusText = $"Could not open achievements for {game.Title}: {ex.Message}";
+            SetStatus($"Could not open achievements for {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2465,7 +2652,7 @@ public partial class MainViewModel : ViewModelBase
         var title = game.DraftTitle.Trim();
         if (title.Length == 0)
         {
-            StatusText = "A game title cannot be empty.";
+            SetStatus("A game title cannot be empty.", StatusSeverity.Error);
             return;
         }
 
@@ -2481,12 +2668,12 @@ public partial class MainViewModel : ViewModelBase
             await Task.Run(() => _library.UpdateTitle(game.Id, title));
             game.CompleteTitleEdit(title);
             await ReloadGamesAsync();
-            StatusText = $"Renamed game to {title}";
+            SetStatus($"Renamed game to {title}");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not rename game id {game.Id}.", ex);
-            StatusText = $"Could not rename {game.Title}: {ex.Message}";
+            SetStatus($"Could not rename {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2505,7 +2692,7 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         IsBusy = true;
-        StatusText = $"Preparing cover for {game.Title}…";
+        SetStatus($"Preparing cover for {game.Title}…", StatusSeverity.Progress);
         var previousCoverPath = game.CoverPath;
         try
         {
@@ -2582,14 +2769,16 @@ public partial class MainViewModel : ViewModelBase
             if (cleanupFailure is not null)
                 warnings.Add($"the previous EmuShelf cover could not be removed: {cleanupFailure.Message}");
 
-            StatusText = warnings.Count == 0
-                ? $"Updated cover for {game.Title}"
-                : $"Updated cover for {game.Title}, but {string.Join("; ", warnings)}";
+            SetStatus(
+                warnings.Count == 0
+                    ? $"Updated cover for {game.Title}"
+                    : $"Updated cover for {game.Title}, but {string.Join("; ", warnings)}",
+                warnings.Count == 0 ? StatusSeverity.Info : StatusSeverity.Error);
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not set a cover for game id {game.Id}.", ex);
-            StatusText = $"Could not set cover for {game.Title}: {ex.Message}";
+            SetStatus($"Could not set cover for {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2619,12 +2808,12 @@ public partial class MainViewModel : ViewModelBase
         {
             await Task.Run(() => _library.RemoveGames(game.Discs.Select(disc => disc.Game.Id).ToArray()));
             await ReloadGamesAsync();
-            StatusText = $"Removed {game.Title} from the library — game files were not touched";
+            SetStatus($"Removed {game.Title} from the library — game files were not touched");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not remove game id {game.Id} from the library.", ex);
-            StatusText = $"Could not remove {game.Title}: {ex.Message}";
+            SetStatus($"Could not remove {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2653,12 +2842,12 @@ public partial class MainViewModel : ViewModelBase
                 .Distinct()
                 .ToArray()));
             await ReloadGamesAsync();
-            StatusText = $"Removed {selectedGames.Length} {(selectedGames.Length == 1 ? "game" : "games")} from the library — game files and covers were not touched";
+            SetStatus($"Removed {selectedGames.Length} {(selectedGames.Length == 1 ? "game" : "games")} from the library — game files and covers were not touched");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not remove {selectedGames.Length} selected games from the library.", ex);
-            StatusText = $"Could not remove the selected games: {ex.Message}";
+            SetStatus($"Could not remove the selected games: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2703,7 +2892,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Could not open emulator settings.", ex);
-            StatusText = $"Could not open emulator settings: {ex.Message}";
+            SetStatus($"Could not open emulator settings: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2797,7 +2986,7 @@ public partial class MainViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.Warning("Could not persist the metadata consent preference.", ex);
-                StatusText += " — metadata preference could not be saved";
+                SetStatus(StatusText + " — metadata preference could not be saved", StatusSeverity.Error);
             }
         }
 
@@ -2809,17 +2998,19 @@ public partial class MainViewModel : ViewModelBase
     {
         try
         {
-            StatusText = gameIds.Count == 1
-                ? "Fetching metadata for 1 new game…"
-                : $"Fetching metadata for {gameIds.Count} new games…";
+            SetStatus(
+                gameIds.Count == 1
+                    ? "Fetching metadata for 1 new game…"
+                    : $"Fetching metadata for {gameIds.Count} new games…",
+                StatusSeverity.Progress);
             var summary = await _metadataService.EnrichAsync(gameIds);
             await ReloadGamesAsync();
-            StatusText = summary.ToStatusText();
+            SetStatus(summary.ToStatusText());
         }
         catch (Exception ex)
         {
             _logger.Error("Automatic metadata enrichment failed.", ex);
-            StatusText = $"Metadata failed: {ex.Message}";
+            SetStatus($"Metadata failed: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2937,7 +3128,7 @@ public partial class MainViewModel : ViewModelBase
 
         var summary = await _metadataService.EnrichMissingAsync(systemId, progress);
         await ReloadGamesAsync();
-        StatusText = summary.ToStatusText();
+        SetStatus(summary.ToStatusText());
         return StatusText;
     }
 
@@ -2951,13 +3142,15 @@ public partial class MainViewModel : ViewModelBase
         {
             await _themeService.SetThemeAsync(preference);
             CurrentTheme = _themeService.Current;
-            StatusText = $"Appearance set to {preference.ToString().ToLowerInvariant()}";
+            SetStatus($"Appearance set to {preference.ToString().ToLowerInvariant()}");
         }
         catch (Exception ex)
         {
             _logger.Error("Could not persist the appearance preference.", ex);
             CurrentTheme = _themeService.Current;
-            StatusText = $"Appearance changed for this session, but could not be saved: {ex.Message}";
+            SetStatus(
+                $"Appearance changed for this session, but could not be saved: {ex.Message}",
+                StatusSeverity.Error);
         }
     }
 }

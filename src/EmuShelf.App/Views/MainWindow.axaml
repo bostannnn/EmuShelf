@@ -9,6 +9,7 @@
         x:Class="EmuShelf.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="EmuShelf"
+        Icon="avares://EmuShelf/Assets/emushelf.ico"
         Width="1240" Height="800"
         MinWidth="900" MinHeight="560"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
@@ -23,6 +24,8 @@
         <!-- Neutral trophy glyph (mdi-trophy) for the achievement mark; not RA branding. -->
         <!-- mdi-layers: a neutral "replacement images" mark. Not emulator or vendor branding. -->
         <StreamGeometry x:Key="TexturePackLayersGeometry">M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,18.54L4.62,12.81L3,14.07L12,21.07L21,14.07L19.37,12.8L12,18.54Z</StreamGeometry>
+        <!-- mdi-alert: marks a failed operation in the status toast. -->
+        <StreamGeometry x:Key="StatusWarningGeometry">M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16</StreamGeometry>
         <StreamGeometry x:Key="AchievementTrophyGeometry">M18,2H6V4H2V9C2,11.21 3.79,13 6,13V13.5C6,15.43 7.5,17 9.34,17.15L9,18H7V20H17V18H15L14.66,17.15C16.5,17 18,15.43 18,13.5V13C20.21,13 22,11.21 22,9V4H18V2M6,11C4.9,11 4,10.1 4,9V6H6V11M20,9C20,10.1 19.1,11 18,11V6H20V9Z</StreamGeometry>
         <!-- The Fluent Button theme paints its internal presenter on pointer/pressed states even
              when Button.Background is transparent. Game tiles provide cover-sized hover/focus
@@ -42,6 +45,88 @@
     </Window.Resources>
 
     <Window.Styles>
+        <!-- ============================ Motion ============================
+             Durations are deliberately short. These transitions exist to keep state changes from
+             snapping, not to be noticed: a cover appearing, a toast arriving, a hover landing.
+             Every one is on Opacity or RenderTransform, which are composited and do not trigger
+             layout, so they stay cheap across a fully realized grid.
+
+             IsVisible cannot be animated — a collapsed element is not rendered at all — so the
+             things that fade (covers, toasts) are always visible and driven by Opacity classes
+             instead, with hit testing switched off separately where it matters. -->
+
+        <!-- Covers crossfade over their placeholder. Both layers stay rendered so there is no
+             frame in between showing an empty well, and virtualization recycling a tile onto a
+             new game replays the fade rather than swapping artwork instantly. -->
+        <!-- Grid in the cover views, Image in the list's small thumbnail well. -->
+        <Style Selector="Grid.cover-placeholder, Image.cover-placeholder">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.20" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.cover-placeholder.covered, Image.cover-placeholder.covered">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Image.cover-image">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.20" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Image.cover-image.loaded">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+
+        <!-- The toast rises a few pixels as it fades in, so a message replacing another one reads
+             as new rather than as text quietly changing in place. -->
+        <Style Selector="Border.status-toast">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransform" Value="translateY(8px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.18" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.status-toast.showing">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- Desktop tiles lift very slightly under the pointer. -->
+        <Style Selector="StackPanel.game-tile">
+            <Setter Property="RenderTransform" Value="none" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.14" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="StackPanel.game-tile:pointerover">
+            <Setter Property="RenderTransform" Value="scale(1.025)" />
+        </Style>
+
+        <!-- Deliberately NOT animated: the gamepad hover and focus rings. They are the only
+             indication of where you are when navigating with a controller, and fading them in
+             costs the input a frame of feedback for no visual gain. -->
+
+        <Style Selector="Button.toolbar-button, Button.add-library, Button.collection-item">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <!-- ========================== End motion ========================== -->
+
         <Style Selector="Button.toolbar-button">
             <Setter Property="MinWidth" Value="36" />
             <Setter Property="Height" Value="36" />
@@ -279,6 +364,25 @@
         </Style>
         <Style Selector="StackPanel.game-tile.unavailable, Grid.game-row.unavailable">
             <Setter Property="Opacity" Value="0.58" />
+        </Style>
+        <!-- Gamepad tiles dim the artwork and title rather than the whole button: the focus
+             ring is the only way to tell where you are on a controller, so it stays full
+             strength even when the game's files are missing. -->
+        <Style Selector="Button.gamepad-game.unavailable Border.gamepad-cover-frame">
+            <Setter Property="Opacity" Value="0.58" />
+        </Style>
+        <Style Selector="Button.gamepad-game.unavailable TextBlock.gamepad-tile-title">
+            <Setter Property="Opacity" Value="0.58" />
+        </Style>
+        <!-- Couch-distance counterpart to the desktop cover marks (Button.achievement-mark
+             and Border.texture-mark), which are sized for a pointer at desk distance. -->
+        <Style Selector="Border.gamepad-mark">
+            <Setter Property="Width" Value="30" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="CornerRadius" Value="15" />
+            <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
         </Style>
         <Style Selector="Border.cover-card">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuCoverBorderBrush}" />
@@ -620,7 +724,8 @@
                                             AttachedToVisualTree="OnGameCoverAttached"
                                             DataContextChanged="OnGameCoverDataContextChanged">
                                         <Panel>
-                                            <Grid IsVisible="{Binding !HasCoverImage}"
+                                            <Grid Classes="cover-placeholder"
+                                                  Classes.covered="{Binding HasCoverImage}"
                                                   RowDefinitions="5,*,Auto">
                                                 <Border Grid.Row="0" Background="{Binding AccentColor}" />
                                                 <StackPanel Grid.Row="1" HorizontalAlignment="Center"
@@ -648,7 +753,8 @@
                                                 </Border>
                                             </Grid>
                                             <Image Source="{Binding CoverImage}"
-                                                   IsVisible="{Binding HasCoverImage}"
+                                                   Classes="cover-image"
+                                                   Classes.loaded="{Binding HasCoverImage}"
                                                    Stretch="UniformToFill" />
                                         </Panel>
                                     </Border>
@@ -856,10 +962,12 @@
                                         DataContextChanged="OnGameCoverDataContextChanged">
                                     <Panel>
                                         <Image Source="{Binding PlatformArtwork}" Width="29" Height="29"
-                                               IsVisible="{Binding !HasCoverImage}"
+                                               Classes="cover-placeholder"
+                                               Classes.covered="{Binding HasCoverImage}"
                                                RenderOptions.BitmapInterpolationMode="None" />
                                         <Image Source="{Binding CoverImage}"
-                                               IsVisible="{Binding HasCoverImage}"
+                                               Classes="cover-image"
+                                               Classes.loaded="{Binding HasCoverImage}"
                                                Stretch="UniformToFill" />
                                     </Panel>
                                 </Border>
@@ -971,15 +1079,25 @@
             </StackPanel>
 
             <!-- Operational feedback appears only when there is something useful to say. -->
-            <Border IsVisible="{Binding HasStatusMessage}"
+            <Border Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
+                    IsHitTestVisible="{Binding HasStatusMessage}"
                     HorizontalAlignment="Right" VerticalAlignment="Bottom"
                     MaxWidth="520" Margin="18" Padding="11,8"
                     CornerRadius="9" Background="{DynamicResource EmuPopoverBrush}"
                     BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
                     BoxShadow="0 8 24 0 #50000000">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                    <Ellipse Width="7" Height="7" Fill="{Binding LibraryAccentColor}"
-                             VerticalAlignment="Center" />
+                    <!-- The app's accent is already red, so a red dot cannot carry "this failed".
+                         The shape does it instead: a dot for results and progress, a warning
+                         triangle for errors. -->
+                    <Panel VerticalAlignment="Center" Width="12" Height="12">
+                        <Ellipse Width="7" Height="7" Fill="{Binding LibraryAccentColor}"
+                                 IsVisible="{Binding !IsStatusError}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <PathIcon Width="12" Height="12" IsVisible="{Binding IsStatusError}"
+                                  Data="{StaticResource StatusWarningGeometry}"
+                                  Foreground="{DynamicResource EmuDangerBrush}" />
+                    </Panel>
                     <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="11"
                                VerticalAlignment="Center" TextWrapping="Wrap"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -1059,6 +1177,7 @@
                 <ItemsRepeater.ItemTemplate>
                     <DataTemplate x:DataType="vm:GameViewModel">
                         <Button Classes="gamepad-game" Classes.focused="{Binding IsFocused}"
+                                Classes.unavailable="{Binding !IsAvailable}"
                                 Theme="{StaticResource GamepadGameButtonTheme}"
                                 Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
                                 Width="{Binding CoverWidth}" Padding="0" Margin="0" Background="Transparent" BorderThickness="2"
@@ -1079,7 +1198,8 @@
                                             AttachedToVisualTree="OnGameCoverAttached"
                                             DataContextChanged="OnGameCoverDataContextChanged">
                                         <Panel>
-                                            <Grid IsVisible="{Binding !HasCoverImage}" RowDefinitions="5,*"
+                                            <Grid Classes="cover-placeholder"
+                                                  Classes.covered="{Binding HasCoverImage}" RowDefinitions="5,*"
                                                   Background="{DynamicResource EmuCoverWellBrush}">
                                                 <Border Grid.Row="0" Background="{Binding AccentColor}" />
                                                 <StackPanel Grid.Row="1" HorizontalAlignment="Center"
@@ -1095,15 +1215,40 @@
                                             </Grid>
                                             <!-- The frame is the platform's true scan ratio, so filling it
                                                  bleeds a hair rather than letterboxing. -->
-                                            <Image Source="{Binding CoverImage}" IsVisible="{Binding HasCoverImage}"
+                                            <Image Source="{Binding CoverImage}" Classes="cover-image"
+                                                   Classes.loaded="{Binding HasCoverImage}"
                                                    Stretch="UniformToFill" />
                                             <Border IsVisible="{Binding IsMultiDisc}" Background="#D9000000"
-                                                    CornerRadius="4" Padding="7,4" Margin="8"
+                                                    CornerRadius="4" Padding="9,5" Margin="10"
                                                     HorizontalAlignment="Left" VerticalAlignment="Bottom">
-                                                <TextBlock Text="{Binding DiscCountText}" FontSize="8" FontWeight="Bold"
+                                                <TextBlock Text="{Binding DiscCountText}" FontSize="10" FontWeight="Bold"
                                                            LetterSpacing="0.8" Foreground="White" />
                                             </Border>
                                         </Panel>
+                                    </Border>
+                                    <!-- Same marks the desktop grid shows, sized for a couch viewing
+                                         distance. Both are Borders here: a focusable button inside a
+                                         tile button would capture controller focus, and every gamepad
+                                         action for a game is reached through the Y actions overlay. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="10"
+                                                HorizontalAlignment="Left" VerticalAlignment="Top">
+                                        <Border Classes="gamepad-mark" IsVisible="{Binding ShowAchievementMark}">
+                                            <PathIcon Width="16" Height="16"
+                                                      Data="{StaticResource AchievementTrophyGeometry}"
+                                                      Foreground="{DynamicResource EmuAccentBrush}" />
+                                        </Border>
+                                        <Border Classes="gamepad-mark" IsVisible="{Binding ShowTextureMark}">
+                                            <PathIcon Width="16" Height="16"
+                                                      Data="{StaticResource TexturePackLayersGeometry}"
+                                                      Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <Border IsVisible="{Binding !IsAvailable}"
+                                            Background="#E1292D34" CornerRadius="5"
+                                            Padding="9,5" Margin="10"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top">
+                                        <TextBlock Text="{Binding UnavailableBadgeText}" FontSize="10" FontWeight="Bold"
+                                                   LetterSpacing="0.9" Foreground="White" />
                                     </Border>
                                     <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
                                             CornerRadius="9" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
@@ -1113,10 +1258,11 @@
                                             BorderThickness="3" />
                                   </Panel>
                                 </Grid>
-                                <TextBlock Text="{Binding Title}" TextWrapping="NoWrap"
+                                <TextBlock Classes="gamepad-tile-title" Text="{Binding Title}" TextWrapping="NoWrap"
                                            TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" MaxWidth="{Binding CoverWidth}" />
-                                <TextBlock IsVisible="{Binding ShowsSelectedDisc}" Text="{Binding SelectedDiscText}"
+                                <TextBlock Classes="gamepad-tile-title" IsVisible="{Binding ShowsSelectedDisc}"
+                                           Text="{Binding SelectedDiscText}"
                                            FontSize="12" HorizontalAlignment="Center"
                                            Foreground="{DynamicResource EmuAccentBrush}" />
                             </StackPanel>
@@ -1139,12 +1285,33 @@
             <TextBlock Text="Press X to edit or clear the search."
                        FontSize="17" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
         </StackPanel>
-        <Border Grid.Row="1" IsVisible="{Binding HasStatusMessage}"
+        <Border Grid.Row="1" Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
+                IsHitTestVisible="{Binding HasStatusMessage}"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom" MaxWidth="560"
                 Margin="36" Padding="16,12" CornerRadius="10"
                 Background="{DynamicResource EmuPopoverBrush}"
                 BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
-            <TextBlock Text="{Binding StatusText}" FontSize="15" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                <Panel VerticalAlignment="Center" Width="16" Height="16">
+                    <Ellipse Width="10" Height="10" Fill="{Binding LibraryAccentColor}"
+                             IsVisible="{Binding !IsStatusError}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <PathIcon Width="16" Height="16" IsVisible="{Binding IsStatusError}"
+                              Data="{StaticResource StatusWarningGeometry}"
+                              Foreground="{DynamicResource EmuDangerBrush}" />
+                </Panel>
+                <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="15"
+                           VerticalAlignment="Center" TextWrapping="Wrap" />
+                <!-- Messages expire on their own here as they do on the desktop, but a pointer is
+                     still usable in Gamepad mode and this was previously the one toast with no
+                     way at all to get rid of it. -->
+                <Button Grid.Column="2" Width="30" Height="30" Padding="7"
+                        CornerRadius="15" Background="Transparent" BorderThickness="0"
+                        Command="{Binding ClearStatusCommand}" ToolTip.Tip="Dismiss">
+                    <PathIcon Width="11" Height="11"
+                              Data="M2,1 L10,9 L9,10 L1,2 Z M9,1 L10,2 L2,10 L1,9 Z" />
+                </Button>
+            </Grid>
         </Border>
         <Border Grid.Row="2" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0"
@@ -1171,9 +1338,14 @@
         </Border>
         <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window. -->
         <Grid Grid.RowSpan="3" IsVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
+            <!-- The panel is the overlay's height budget: it keeps a margin off the screen edges,
+                 and the overlay's MaxHeight tracks it so a 720p or windowed viewport shrinks the
+                 sheet instead of clipping it. Height is the preferred size, not the actual one. -->
+            <Panel x:Name="GamepadOverlayHost" Margin="0,36">
             <Border Classes="gamepad-overlay" Classes.system-menu="{Binding IsGamepadSystemMenuOpen}"
                     Classes.side-sheet="{Binding IsGameActionsOpen}"
                     VerticalAlignment="Center" Height="620"
+                    MaxHeight="{Binding #GamepadOverlayHost.Bounds.Height}"
                     Padding="28" CornerRadius="16" Background="{DynamicResource EmuPopoverBrush}"
                     BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="2">
                 <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
@@ -1275,6 +1447,7 @@
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 </Grid>
             </Border>
+            </Panel>
         </Grid>
     </Grid>
     </Grid>
