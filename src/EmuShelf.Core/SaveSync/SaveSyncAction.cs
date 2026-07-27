@@ -17,4 +17,12 @@ public enum SaveSyncAction
 
     /// <summary>Both sides changed; the remote copy is newer and wins, and the local copy is kept as a backup.</summary>
     ConflictRemoteWins,
+
+    /// <summary>
+    /// The unit was deliberately left alone and the reason says why — this machine's configuration
+    /// has no place for it, or the cloud copy it named is not there. Distinct from
+    /// <see cref="None"/>, which means both sides already agree: reporting a skip as "unchanged"
+    /// hides the one outcome a user needs to act on.
+    /// </summary>
+    Skipped,
 }

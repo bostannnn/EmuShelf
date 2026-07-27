@@ -34,6 +34,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         OverridePlaceholder = platform.OverridePlaceholder;
         OverrideDirectory = platform.Override ?? string.Empty;
         LastResultText = DescribeLastResult(platform);
+        LastNoticeText = platform.LastNotice;
     }
 
     /// <summary>The stable system id this row configures.</summary>
@@ -68,6 +69,14 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasLastResult))]
     public partial string? LastResultText { get; set; }
 
+    /// <summary>
+    /// What the last successful pass deliberately left alone, and why. A sync that succeeds without
+    /// moving a save the user expected is the case that otherwise looks like a silent failure.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLastNotice))]
+    public partial string? LastNoticeText { get; set; }
+
     /// <summary>Whether sync is connected, which gates the destructive replace actions.</summary>
     [ObservableProperty]
     public partial bool IsCloudConnected { get; set; }
@@ -90,6 +99,8 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     public bool HasLastResult => !string.IsNullOrWhiteSpace(LastResultText);
 
+    public bool HasLastNotice => !string.IsNullOrWhiteSpace(LastNoticeText);
+
     /// <summary>The override as it should be persisted: trimmed, or null when empty.</summary>
     public string? NormalizedOverride =>
         string.IsNullOrWhiteSpace(OverrideDirectory) ? null : OverrideDirectory.Trim();
@@ -98,8 +109,11 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     /// Applies a freshly read platform snapshot after a sync. Only the recorded result is taken:
     /// the override box is left alone because the user may be part-way through editing it.
     /// </summary>
-    public void ApplyResult(CloudSaveSyncPlatformContext platform) =>
+    public void ApplyResult(CloudSaveSyncPlatformContext platform)
+    {
         LastResultText = DescribeLastResult(platform);
+        LastNoticeText = platform.LastNotice;
+    }
 
     /// <summary>Re-reads the concrete directory this platform resolves to on this machine.</summary>
     public async Task RefreshDetectedDirectoryAsync()

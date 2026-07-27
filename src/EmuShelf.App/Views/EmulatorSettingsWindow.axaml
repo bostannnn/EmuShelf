@@ -471,6 +471,11 @@
                                                            IsVisible="{Binding HasLastResult}"
                                                            FontSize="11" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                <TextBlock Margin="54,0,0,0"
+                                                           Text="{Binding LastNoticeText}"
+                                                           IsVisible="{Binding HasLastNotice}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>

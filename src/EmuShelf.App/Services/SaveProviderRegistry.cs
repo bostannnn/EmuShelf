@@ -88,9 +88,11 @@ public static class SaveProviderRegistry
                 return new SaveProviderDetection(
                     info.Directory,
                     info.UsesFileTitleCards
-                        ? "Filename-based cards are synced using their exact names. " +
-                          "If a game has a different filename on another machine, DuckStation may not select its card automatically."
-                        : null);
+                        ? "This machine uses filename-based cards, which are synced under their exact file names. " +
+                          "Another machine only picks one up if its DuckStation enables the same card type in the same " +
+                          "slot and the game file has the same name; otherwise that save stays in the cloud."
+                        : "Cards are synced per slot and card type. A machine whose DuckStation uses a different card " +
+                          "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
             }),
 
         new SaveProviderDescriptor(
@@ -231,8 +233,10 @@ public static class SaveProviderRegistry
                         ? $"RetroArch keeps {core}'s saves in their own folder, so everything in it is synced. " +
                           "Saves are matched by file name, so the same game needs the same file name on both machines."
                         : "RetroArch keeps every core's saves in this one folder, so EmuShelf syncs only the saves " +
-                          "named after games in your library for this system. Turning on RetroArch's " +
-                          "\"sort saves into folders by core name\" gives this system a folder of its own.") +
+                          "named after games in your library for this system. To sync all of them, turn on " +
+                          "RetroArch → Settings → Saving → \"Sort Saves Into Folders By Core Name\", then move the " +
+                          "existing saves into the new per-core folder — RetroArch does not move them for you, and " +
+                          "will not find them until you do.") +
                     perGame + duplicates);
             });
     }

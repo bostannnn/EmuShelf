@@ -74,6 +74,13 @@ public sealed class FileSaveSyncLog
                 builder.AppendLine($"    - {conflict.UnitId}: {conflict.Reason}");
         }
 
+        if (report.Skipped.Count > 0)
+        {
+            builder.AppendLine($"  Skipped ({report.Skipped.Count}) — left exactly as they were:");
+            foreach (var skipped in report.Skipped)
+                builder.AppendLine($"    - {skipped.UnitId}: {skipped.Reason}");
+        }
+
         builder.AppendLine($"  Unchanged: {report.Unchanged}");
         if (report.Uploaded == 0 && report.Downloaded == 0 && conflicts.Count == 0)
             builder.AppendLine("  (everything was already in sync)");

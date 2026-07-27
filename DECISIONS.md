@@ -2215,3 +2215,23 @@ entitled to; only the units that depend on the difference sit out.
 It also has to be caught while planning, not only while applying. The local snapshot resolves the
 unit through the same provider, so an unplaceable remote unit throws before any decision is made —
 which is exactly where the Deck's pass was dying.
+
+## 2026-07-27 — A skipped save is its own outcome, and says why in the row
+
+Two machines can be configured differently, so a sync can succeed and still leave a save where it
+was — and until now the only trace was a line in the activity log. Worse, the per-unit reasons were
+recorded as `None`, the same value that means "both sides already agree", so the log counted a save
+nobody synced as "unchanged".
+
+`Skipped` is now its own action with the reason attached. The activity log lists them under their own
+heading, and the last pass's reason is persisted per platform and shown in that platform's row, so
+the answer to "why is this save not on my Deck" is in the place the question gets asked rather than
+in a log the user has to know to open.
+
+The two hints that lead to skipped saves are now written to be acted on rather than merely
+understood. RetroArch's names the setting and its path — Settings → Saving → Sort Saves Into Folders
+By Core Name — and warns that RetroArch does not move existing saves into the new per-core folder and
+will not find them until the user does. DuckStation's says that cards are matched per slot and card
+type, so a machine using a different type in a slot has no place for the other's cards. The two
+Replace buttons gained tooltips naming the direction they overwrite and where the overwritten copies
+are kept.

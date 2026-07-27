@@ -333,7 +333,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 descriptor.OverridePlaceholder,
                 location.DirectoryOverride,
                 location.LastSuccessUtc,
-                location.LastError);
+                location.LastError,
+                location.LastNotice);
         }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
@@ -363,7 +364,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 ? $"Upload {platformName} → cloud"
                 : $"Download {platformName} → local";
             await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
-            RecordOutcome([systemId], error: null);
+            RecordOutcome([systemId], error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)
@@ -442,7 +443,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             var report = await service.SyncAllAsync(targets, progress, cancellationToken);
             elapsed.Stop();
             await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
-            RecordOutcome(synced, error: null);
+            RecordOutcome(synced, error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)
@@ -543,7 +544,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     // best-effort exactly like the activity log: a settings-write failure must never turn a
     // completed sync into a reported failure. It also must not throw from inside the caller's
     // catch block, where a second failing write would escape the pipeline uncaught.
-    private void RecordOutcome(IReadOnlyList<string> systemIds, string? error)
+    private void RecordOutcome(IReadOnlyList<string> systemIds, string? error, SaveSyncReport? report = null)
     {
         if (systemIds.Count == 0)
             return;
@@ -555,7 +556,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             foreach (var systemId in systemIds)
             {
                 configuration = error is null
-                    ? configuration.WithSyncSuccess(systemId, completedUtc)
+                    ? configuration.WithSyncSuccess(systemId, completedUtc, DescribeSkipped(systemId, report))
                     : configuration.WithSyncFailure(systemId, error);
             }
 
@@ -574,6 +575,33 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         if (!string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
             Persist(_settings.CloudSaveSync with { CloudFolderId = null });
     }
+
+    // A pass can succeed and still not have moved a save the user expected. The reasons are already
+    // written per unit; the row needs the one line that says how many and why, scoped to the
+    // platform whose row will show it.
+    private string? DescribeSkipped(string systemId, SaveSyncReport? report)
+    {
+        var prefix = SaveProviderRegistry.Find(systemId) is null ? null : systemId;
+        if (prefix is null || report is null)
+            return null;
+
+        var skipped = report.Skipped
+            .Where(result => BelongsToSystem(result.UnitId, systemId))
+            .ToList();
+        if (skipped.Count == 0)
+            return null;
+
+        var reason = skipped[0].Reason;
+        return skipped.Count == 1
+            ? $"1 save was not synced. {reason}"
+            : $"{skipped.Count} saves were not synced. {reason}";
+    }
+
+    // Unit ids are namespaced by provider, not by system id, so ask the registry's own provider
+    // which prefix belongs to this platform rather than pattern-matching the id here.
+    private bool BelongsToSystem(string unitId, string systemId) =>
+        CreateProvider(systemId) is { } provider &&
+        unitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal);
 
     private void Persist(CloudSaveSyncSettings configuration)
     {
@@ -661,7 +689,8 @@ public sealed record CloudSaveSyncPlatformContext(
     string OverridePlaceholder,
     string? Override,
     DateTimeOffset? LastSuccessUtc,
-    string? LastError);
+    string? LastError,
+    string? LastNotice = null);
 
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view

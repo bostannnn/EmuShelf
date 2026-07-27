@@ -457,7 +457,7 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.Contains(
             report.Results,
             result => result.UnitId.StartsWith("duckstation/per-game/file-title/", StringComparison.Ordinal) &&
-                result.Action == SaveSyncAction.None &&
+                result.Action == SaveSyncAction.Skipped &&
                 result.Reason.Contains("no place for this save"));
     }
 

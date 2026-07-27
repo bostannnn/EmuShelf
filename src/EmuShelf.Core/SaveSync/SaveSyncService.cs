@@ -96,7 +96,7 @@ public sealed class SaveSyncService
                 // so this unit sits out and the rest of the pass proceeds.
                 results.Add(new SaveUnitSyncResult(
                     item.UnitId,
-                    SaveSyncAction.None,
+                    SaveSyncAction.Skipped,
                     "This machine's emulator configuration has no place for this save, so it was left " +
                     "in the cloud untouched."));
                 continue;
@@ -143,7 +143,7 @@ public sealed class SaveSyncService
                 // the stale index entry, so the machine that still holds the save re-uploads it.
                 results.Add(new SaveUnitSyncResult(
                     unit.Item.UnitId,
-                    SaveSyncAction.None,
+                    SaveSyncAction.Skipped,
                     "The cloud copy is missing; the stale entry was removed and the save will be " +
                     "re-uploaded by the machine that still has it."));
             }
@@ -151,7 +151,7 @@ public sealed class SaveSyncService
             {
                 results.Add(new SaveUnitSyncResult(
                     unit.Item.UnitId,
-                    SaveSyncAction.None,
+                    SaveSyncAction.Skipped,
                     "This machine's emulator configuration has no place for this save, so it was left " +
                     "in the cloud untouched."));
             }
@@ -273,7 +273,7 @@ public sealed class SaveSyncService
                 {
                     results.Add(new SaveUnitSyncResult(
                         unitId,
-                        SaveSyncAction.None,
+                        SaveSyncAction.Skipped,
                         "The cloud copy is missing; the local save was left untouched."));
                 }
                 catch (SaveUnitNotResolvableException)
@@ -281,7 +281,7 @@ public sealed class SaveSyncService
                     // Forcing a direction cannot force a layout this machine does not use.
                     results.Add(new SaveUnitSyncResult(
                         unitId,
-                        SaveSyncAction.None,
+                        SaveSyncAction.Skipped,
                         "This machine's emulator configuration has no place for this save, so it was " +
                         "left in the cloud untouched."));
                 }

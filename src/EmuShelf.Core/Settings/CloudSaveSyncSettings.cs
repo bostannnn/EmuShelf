@@ -14,6 +14,13 @@ public sealed record SaveLocationSettings
 
     /// <summary>The most recent failure message for this system, or null after a success.</summary>
     public string? LastError { get; init; }
+
+    /// <summary>
+    /// What the last successful pass left undone and why — saves this machine's configuration has
+    /// no place for, or cloud copies that were not there. A sync can succeed and still not have
+    /// moved a save the user expected, and that is the case worth explaining in the row.
+    /// </summary>
+    public string? LastNotice { get; init; }
 }
 
 /// <summary>
@@ -93,8 +100,14 @@ public sealed record CloudSaveSyncSettings
     }
 
     /// <summary>Records a successful sync for one system and clears its last error.</summary>
-    public CloudSaveSyncSettings WithSyncSuccess(string systemId, DateTimeOffset completedUtc) =>
-        With(systemId, location => location with { LastSuccessUtc = completedUtc, LastError = null });
+    /// <param name="notice">What the pass left undone and why, or null when it left nothing.</param>
+    public CloudSaveSyncSettings WithSyncSuccess(string systemId, DateTimeOffset completedUtc, string? notice = null) =>
+        With(systemId, location => location with
+        {
+            LastSuccessUtc = completedUtc,
+            LastError = null,
+            LastNotice = string.IsNullOrWhiteSpace(notice) ? null : notice,
+        });
 
     /// <summary>Records a failure for one system without discarding its last known success.</summary>
     public CloudSaveSyncSettings WithSyncFailure(string systemId, string message) =>
