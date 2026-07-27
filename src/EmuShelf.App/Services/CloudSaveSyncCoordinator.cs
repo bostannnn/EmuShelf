@@ -305,7 +305,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             await transport.ListAsync(cancellationToken);
             var missing = await transport.FindMissingPayloadsAsync(cancellationToken);
             if (missing.Count > 0)
-                await transport.FlushAsync(cancellationToken);
+                await transport.FlushAsync(cancellationToken: cancellationToken);
             return missing;
         }
         finally
@@ -428,7 +428,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                     // flush at the end. Otherwise this pass still plans against the entries it is
                     // about to remove — every one of them looks "unchanged" — and the saves are only
                     // re-uploaded by a second sync the user has no reason to know they need.
-                    await transport.FlushAsync(cancellationToken);
+                    await transport.FlushAsync(cancellationToken: cancellationToken);
                     _logger.Warning(
                         $"{missing.Count} cloud save entries had no payload on the remote and were removed " +
                         "from the index; the saves still held on this machine are uploaded by this pass.");

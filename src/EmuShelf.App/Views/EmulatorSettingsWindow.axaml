@@ -539,6 +539,7 @@
                                     <ProgressBar Minimum="0"
                                                  Maximum="{Binding CloudSyncProgressTotal}"
                                                  Value="{Binding CloudSyncProgressCompleted}"
+                                                 IsIndeterminate="{Binding IsCloudTransferIndeterminate}"
                                                  Height="6" />
                                 </StackPanel>
 

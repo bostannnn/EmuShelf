@@ -169,7 +169,9 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         _pendingIndex[unitId] = new SaveUnitSnapshot(unitId, contentHash, modifiedUtc);
     }
 
-    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    public async Task FlushAsync(
+        IProgress<int>? transferProgress = null,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -189,7 +191,8 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                 await RunAsync(
                     ["copy", _outbox, RemoteRoot, "--no-traverse"],
                     Stream.Null,
-                    cancellationToken);
+                    cancellationToken,
+                    transferProgress: transferProgress);
             }
 
             var index = new Dictionary<string, SaveUnitSnapshot>(_remoteIndex, StringComparer.Ordinal);
@@ -462,7 +465,8 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         IReadOnlyList<string> operationArguments,
         Stream standardOutput,
         CancellationToken cancellationToken,
-        bool throwOnNonZeroExit = true)
+        bool throwOnNonZeroExit = true,
+        IProgress<int>? transferProgress = null)
     {
         if (!File.Exists(_rclonePath))
             throw new IOException($"rclone was not found at {_rclonePath}. Place rclone beside EmuShelf.");
@@ -488,6 +492,17 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         foreach (var argument in operationArguments)
             startInfo.ArgumentList.Add(argument);
 
+        // rclone reports its own transfer stats on stderr, which is the only true measure of a
+        // large upload's progress — EmuShelf cannot infer it, because everything is staged before
+        // a byte moves.
+        if (transferProgress is not null)
+        {
+            startInfo.ArgumentList.Add("--stats");
+            startInfo.ArgumentList.Add("1s");
+            startInfo.ArgumentList.Add("--stats-one-line");
+            startInfo.ArgumentList.Add("-v");
+        }
+
         var elapsed = Stopwatch.StartNew();
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("The operating system did not start rclone.");
@@ -496,7 +511,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         var token = linked.Token;
         var copyOutput = process.StandardOutput.BaseStream.CopyToAsync(standardOutput, 81920, token);
-        var readError = process.StandardError.ReadToEndAsync(token);
+        var readError = ReadErrorAsync(process, transferProgress, token);
         try
         {
             await Task.WhenAll(copyOutput, readError, process.WaitForExitAsync(token));
@@ -515,6 +530,48 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         if (throwOnNonZeroExit && process.ExitCode != 0)
             throw new IOException($"rclone exited with code {process.ExitCode}: {(await readError).Trim()}");
         return process.ExitCode;
+    }
+
+    // Read line by line rather than to the end, so the stats lines can drive progress while the
+    // transfer runs. Only the tail is kept: a verbose session is long, and all an error needs is
+    // what rclone said last.
+    private static async Task<string> ReadErrorAsync(
+        Process process,
+        IProgress<int>? transferProgress,
+        CancellationToken cancellationToken)
+    {
+        var tail = new Queue<string>();
+        var lastPercent = -1;
+        while (await process.StandardError.ReadLineAsync(cancellationToken) is { } line)
+        {
+            tail.Enqueue(line);
+            if (tail.Count > 20)
+                tail.Dequeue();
+
+            if (transferProgress is null || !TryReadPercent(line, out var percent) || percent == lastPercent)
+                continue;
+
+            lastPercent = percent;
+            transferProgress.Report(percent);
+        }
+
+        return string.Join(Environment.NewLine, tail);
+    }
+
+    // A one-line stats report looks like "12.345 MiB / 179.000 MiB, 7%, 5.012 MiB/s, ETA 26s".
+    private static bool TryReadPercent(string line, out int percent)
+    {
+        percent = 0;
+        var marker = line.IndexOf("%,", StringComparison.Ordinal);
+        if (marker <= 0)
+            return false;
+
+        var start = marker;
+        while (start > 0 && char.IsAsciiDigit(line[start - 1]))
+            start--;
+        return start != marker &&
+            int.TryParse(line[start..marker], out percent) &&
+            percent is >= 0 and <= 100;
     }
 
     /// <summary>

@@ -2183,3 +2183,18 @@ machine with nothing in the cloud.
 
 The pruned index is now committed before the reconciliation reads it. The pass that discovers the
 breakage is the pass that repairs it: one extra index write, only when something was actually wrong.
+
+## 2026-07-27 — The transfer is a phase of its own, measured by rclone
+
+The repair completed in one pass — the remote went to 255 indexed units against 255 payloads, with
+nothing broken and nothing orphaned — and the log showed where the time went: `rclone copy 49517 ms`
+for the 179 MB, against about six seconds for everything else. The progress bar had reached 255 of
+255 long before that, because uploads are staged locally during reconciliation and transferred once
+at the end. A counter that reads "finished" while the work runs is worse than no counter.
+
+Progress now carries a phase. Reconciliation counts units, as before; the transfer reports its own
+0-100 percentage, taken from rclone's own `--stats` output on stderr rather than guessed — EmuShelf
+cannot infer it, since nothing it does locally correlates with bytes on the wire. Until the provider
+has moved enough to report a percentage the bar is indeterminate, which is honest about not knowing
+rather than inventing a number. Reading stderr line by line for this also means only its tail is
+kept for error messages, which is all an error ever needed.

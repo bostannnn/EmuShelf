@@ -43,6 +43,10 @@ public interface ICloudSyncTransport
     /// implementation stages uploads locally and pushes them here in a single rclone session, so a
     /// whole sync paces itself against the provider's rate limits instead of making one call per
     /// save. Called once at the end of a sync.
+    ///
+    /// This is where a sync that moves real data spends its time, so implementations report the
+    /// transfer's progress as a 0-100 percentage when the provider tells them; a caller that does
+    /// not care passes null.
     /// </summary>
-    Task FlushAsync(CancellationToken cancellationToken = default);
+    Task FlushAsync(IProgress<int>? transferProgress = null, CancellationToken cancellationToken = default);
 }

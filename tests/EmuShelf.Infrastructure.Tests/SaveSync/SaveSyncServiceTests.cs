@@ -182,6 +182,27 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task TheTransferIsReportedAsItsOwnPhase_NotAsAFinishedUnitCounter()
+    {
+        // Units are staged locally, so the counter reaches its total before a byte moves. Without a
+        // phase of its own, a large upload looks like a finished sync that has hung.
+        _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
+        var reports = new List<SaveSyncProgress>();
+
+        await CreateService().SyncAsync(
+            Provider(FileCard),
+            new Progress<SaveSyncProgress>(reports.Add));
+
+        // Progress is marshalled, so allow the posted callbacks to run before asserting.
+        for (var attempt = 0; attempt < 50 && !reports.Any(r => r.Phase == SaveSyncPhase.Transferring); attempt++)
+            await Task.Delay(10);
+
+        var transfer = Assert.Single(reports, report => report.Phase == SaveSyncPhase.Transferring);
+        Assert.Null(transfer.TransferPercent);
+        Assert.Contains(reports, report => report.Phase == SaveSyncPhase.Reconciling);
+    }
+
+    [Fact]
     public async Task RemoteUnitsOwnedByAnotherProvider_AreIgnored()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
@@ -269,10 +290,13 @@ public sealed class SaveSyncServiceTests
 
         await CreateService().SyncAsync(Provider(first, second), progress);
 
-        Assert.Equal(2, progress.Reports.Count);
-        Assert.All(progress.Reports, report => Assert.Equal(2, report.Total));
-        Assert.Equal([0, 1], progress.Reports.Select(report => report.Completed));
-        Assert.All(progress.Reports, report => Assert.Equal(SaveSyncAction.Upload, report.Action));
+        // Per unit while reconciling, plus one report for the transfer that follows them.
+        var perUnit = progress.Reports.Where(report => report.Phase == SaveSyncPhase.Reconciling).ToList();
+        Assert.Equal(2, perUnit.Count);
+        Assert.All(perUnit, report => Assert.Equal(2, report.Total));
+        Assert.Equal([0, 1], perUnit.Select(report => report.Completed));
+        Assert.All(perUnit, report => Assert.Equal(SaveSyncAction.Upload, report.Action));
+        Assert.Single(progress.Reports, report => report.Phase == SaveSyncPhase.Transferring);
     }
 
     private static FakeSaveLocationProvider Provider(params SaveUnit[] units) =>

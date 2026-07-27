@@ -134,9 +134,35 @@ public sealed class SaveSyncService
             completed++;
         }
 
-        await _remote.FlushAsync(cancellationToken);
+        await FlushAsync(progress, planned.Count, cancellationToken);
         await _manifests.SaveAsync(manifest, cancellationToken);
         return new SaveSyncReport(results);
+    }
+
+    // The transfer is one step of the pass, but for a sync that actually moves data it is nearly
+    // all of the wall clock: everything above only stages files locally. Reporting it as its own
+    // phase is what keeps the caller from showing a finished counter while the upload runs.
+    private async Task FlushAsync(
+        IProgress<SaveSyncProgress>? progress,
+        int unitCount,
+        CancellationToken cancellationToken)
+    {
+        if (progress is null)
+        {
+            await _remote.FlushAsync(cancellationToken: cancellationToken);
+            return;
+        }
+
+        progress.Report(new SaveSyncProgress(
+            unitCount, unitCount, "Transferring to the cloud", SaveSyncAction.Upload, SaveSyncPhase.Transferring));
+        var transferProgress = new Progress<int>(percent => progress.Report(new SaveSyncProgress(
+            unitCount,
+            unitCount,
+            "Transferring to the cloud",
+            SaveSyncAction.Upload,
+            SaveSyncPhase.Transferring,
+            percent)));
+        await _remote.FlushAsync(transferProgress, cancellationToken);
     }
 
     /// <summary>
@@ -230,7 +256,7 @@ public sealed class SaveSyncService
             }
         }
 
-        await _remote.FlushAsync(cancellationToken);
+        await FlushAsync(progress, results.Count, cancellationToken);
         await _manifests.SaveAsync(manifest, cancellationToken);
         return new SaveSyncReport(results);
     }

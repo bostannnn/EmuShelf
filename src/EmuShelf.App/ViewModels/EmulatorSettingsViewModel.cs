@@ -191,6 +191,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
     public partial int CloudSyncProgressTotal { get; set; }
 
+    /// <summary>Whether the transfer is running but has not reported a percentage yet.</summary>
+    [ObservableProperty]
+    public partial bool IsCloudTransferIndeterminate { get; set; }
+
     [ObservableProperty]
     public partial string CloudSyncProgressText { get; set; } = string.Empty;
 
@@ -1002,6 +1006,22 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     private void ApplyCloudProgress(SaveSyncProgress progress)
     {
+        // Comparing units and transferring them are different measures. The unit counter reaches
+        // its total before the upload starts — everything until then is staged locally — so the
+        // transfer reports its own percentage, and an indeterminate bar until the provider has
+        // moved enough bytes to report one.
+        if (progress.Phase == SaveSyncPhase.Transferring)
+        {
+            IsCloudTransferIndeterminate = progress.TransferPercent is null;
+            CloudSyncProgressTotal = 100;
+            CloudSyncProgressCompleted = progress.TransferPercent ?? 0;
+            CloudSyncProgressText = progress.TransferPercent is { } percent
+                ? $"Transferring saves to the cloud — {percent}%"
+                : "Transferring saves to the cloud…";
+            return;
+        }
+
+        IsCloudTransferIndeterminate = false;
         CloudSyncProgressCompleted = progress.Completed;
         CloudSyncProgressTotal = progress.Total;
         var position = Math.Min(progress.Completed + 1, progress.Total);
