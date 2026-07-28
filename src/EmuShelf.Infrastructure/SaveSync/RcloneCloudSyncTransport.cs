@@ -37,6 +37,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     private readonly List<string> _timings = [];
     private string? _outbox;
     private string? _inbox;
+    private bool _remoteIndexExists;
     private Dictionary<string, SaveUnitSnapshot> _remoteIndex = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SaveUnitSnapshot> _pendingIndex = new(StringComparer.Ordinal);
 
@@ -95,12 +96,19 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             buffer,
             cancellationToken,
             throwOnNonZeroExit: false);
-        if (exitCode is RcloneDirectoryNotFoundExit or RcloneFileNotFoundExit || buffer.Length == 0)
+        if (exitCode is RcloneDirectoryNotFoundExit or RcloneFileNotFoundExit)
+        {
+            if (_remoteIndexExists)
+                throw new IOException("The cloud index disappeared during this save-sync session.");
             return new Dictionary<string, SaveUnitSnapshot>(StringComparer.Ordinal);
+        }
         if (exitCode != 0)
             throw new IOException($"rclone could not read the cloud index (exit code {exitCode}).");
+        if (buffer.Length == 0)
+            throw new InvalidDataException("The cloud index is empty.");
 
-        var entries = JsonSerializer.Deserialize<List<RemoteUnitMetadata>>(buffer.ToArray()) ?? [];
+        var entries = JsonSerializer.Deserialize<List<RemoteUnitMetadata>>(buffer.ToArray()) ??
+            throw new InvalidDataException("The cloud index is not valid EmuShelf metadata.");
         var index = new Dictionary<string, SaveUnitSnapshot>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
@@ -110,9 +118,15 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                 throw new InvalidDataException("The cloud index is not valid EmuShelf metadata.");
             }
 
-            index[entry.UnitId] = new SaveUnitSnapshot(entry.UnitId, entry.ContentHash, entry.ModifiedUtc);
+            if (!index.TryAdd(
+                    entry.UnitId,
+                    new SaveUnitSnapshot(entry.UnitId, entry.ContentHash, entry.ModifiedUtc)))
+            {
+                throw new InvalidDataException("The cloud index contains a duplicate save unit.");
+            }
         }
 
+        _remoteIndexExists = true;
         return index;
     }
 
@@ -133,12 +147,16 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                 Stream.Null,
                 cancellationToken,
                 throwOnNonZeroExit: false);
-            if (exitCode != 0 || !File.Exists(payloadPath))
+            if (exitCode is RcloneDirectoryNotFoundExit or RcloneFileNotFoundExit)
             {
                 // Recorded so the next flush prunes the index entry that promised it.
                 _missingPayloads.Add(unitId);
                 throw new CloudPayloadMissingException(unitId);
             }
+            if (exitCode != 0)
+                throw new IOException($"rclone could not download save unit '{unitId}' (exit code {exitCode}).");
+            if (!File.Exists(payloadPath))
+                throw new IOException($"rclone reported success but did not download save unit '{unitId}'.");
         }
 
         return new FileStream(payloadPath, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -189,7 +207,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             if (_outbox is not null && _pendingIndex.Count > 0)
             {
                 await RunAsync(
-                    ["copy", _outbox, RemoteRoot, "--no-traverse"],
+                    ["copy", _outbox, RemoteRoot, "--no-traverse", "--ignore-times"],
                     Stream.Null,
                     cancellationToken,
                     transferProgress: transferProgress);
@@ -221,7 +239,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                     JsonSerializer.Serialize(entries, SerializerOptions),
                     cancellationToken);
                 await RunAsync(
-                    ["copy", indexDirectory, RemoteRoot, "--no-traverse"],
+                    ["copy", indexDirectory, RemoteRoot, "--no-traverse", "--ignore-times"],
                     Stream.Null,
                     cancellationToken);
             }
@@ -231,6 +249,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             }
 
             _remoteIndex = index;
+            _remoteIndexExists = true;
             _missingPayloads.Clear();
         }
         finally
@@ -388,8 +407,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             buffer,
             cancellationToken,
             throwOnNonZeroExit: false);
-        if (exitCode == RcloneDirectoryNotFoundExit)
+        if (exitCode is RcloneDirectoryNotFoundExit or RcloneFileNotFoundExit)
+        {
+            if (_remoteIndexExists)
+                throw new IOException("The cloud folder disappeared during save verification.");
             return [];
+        }
         if (exitCode != 0)
             throw new IOException($"rclone could not list the cloud folder (exit code {exitCode}).");
 
@@ -404,11 +427,10 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             }
         }
 
-        // An empty listing against a non-empty index is far more likely to be a listing that did not
-        // work than a remote that lost every payload, and acting on it would drop the whole index.
-        // Report nothing and let the next verification decide.
-        if (present.Count == 0 && _remoteIndex.Count > 0)
-            return [];
+        // lsf includes index.json itself. If an index was read successfully but this listing cannot
+        // see it, the listing is not authoritative evidence that any payload is missing.
+        if (_remoteIndexExists && !present.Contains(IndexFileName))
+            throw new IOException("rclone could not verify the cloud index while listing save payloads.");
 
         var missing = _remoteIndex.Keys
             .Where(unitId => !present.Contains(unitId + ".payload"))
@@ -516,10 +538,13 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         {
             await Task.WhenAll(copyOutput, readError, process.WaitForExitAsync(token));
         }
-        catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             TryKill(process);
-            throw new IOException($"rclone did not respond within {operationTimeout.TotalSeconds:0} seconds.");
+            await ObserveProcessExitAsync(process, copyOutput, readError);
+            if (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+                throw new IOException($"rclone did not respond within {operationTimeout.TotalSeconds:0} seconds.");
+            throw;
         }
 
         elapsed.Stop();
@@ -588,6 +613,31 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         }
         catch (Exception ex) when (
             ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+        }
+    }
+
+    private static async Task ObserveProcessExitAsync(
+        Process process,
+        Task copyOutput,
+        Task<string> readError)
+    {
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None);
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        try
+        {
+            await Task.WhenAll(copyOutput, readError);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (IOException)
         {
         }
     }

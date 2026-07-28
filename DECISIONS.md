@@ -2235,3 +2235,22 @@ will not find them until the user does. DuckStation's says that cards are matche
 type, so a machine using a different type in a slot has no place for the other's cards. The two
 Replace buttons gained tooltips naming the direction they overwrite and where the overwritten copies
 are kept.
+
+## 2026-07-28 — A failed cloud request is never evidence that a save is absent
+
+The rclone transport keeps its original copy-only layout and stable `<unit-id>.payload` names; this
+hardening does not introduce a new index format, immutable-object store, retention policy, or remote
+deletion. Only rclone's documented directory-not-found and file-not-found exits establish absence.
+Every other non-zero result is an operational failure, and a successful but zero-byte `index.json`
+is invalid rather than an empty cloud.
+
+Verification uses the index itself as its authority marker: after successfully reading a non-empty
+index, a recursive listing must contain `index.json` before it can classify any payload as missing.
+This prevents authentication, throttling, and partial-listing failures from pruning healthy entries.
+Caller cancellation also kills and awaits the rclone child process before returning, so canceled
+launch passes cannot leave transfers running against staging files that EmuShelf is cleaning up.
+
+The same fail-closed rule applies to structurally ambiguous indexes: JSON `null` and duplicate unit
+ids are invalid rather than alternate spellings of an empty or last-entry-wins index. Outbox and
+index staging directories contain only files already selected for upload, so those two rclone copies
+use `--ignore-times`; matching size and timestamp cannot skip a write that reconciliation committed.

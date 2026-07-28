@@ -769,6 +769,11 @@ generalized.
       upload/download, offline/failure-leaves-saves-intact, and cancellation — with rclone faked
       behind the transport interface. Green on macOS + Windows. Never modifies game files or
       emulator config.
+- [x] Harden rclone failure classification without changing the remote format: failed or empty
+      index reads cannot become an empty cloud, operational download failures cannot prune an
+      indexed save, verification requires its known `index.json`, and caller cancellation kills
+      and awaits the transfer process; reject null/duplicate indexes and make explicitly staged
+      outbound copies unconditional (2026-07-28).
 
 ### Phase 2 — Generalize to the other emulators
 
