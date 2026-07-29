@@ -27,13 +27,15 @@ public partial class GamepadOverlayOptionViewModel : ObservableObject
 {
     public string Label { get; }
     public ICommand Command { get; }
+    public bool IsDestructive { get; }
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
 
-    public GamepadOverlayOptionViewModel(string label, ICommand command)
+    public GamepadOverlayOptionViewModel(string label, ICommand command, bool isDestructive = false)
     {
         Label = label;
         Command = command;
+        IsDestructive = isDestructive;
     }
 }

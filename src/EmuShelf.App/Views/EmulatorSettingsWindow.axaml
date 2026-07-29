@@ -68,6 +68,25 @@
                         BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="1" CornerRadius="9"
                         Padding="16" Margin="0,0,0,12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                        <StackPanel Grid.Column="0" Spacing="3">
+                            <TextBlock Text="PLATFORM NAVIGATION" FontSize="10"
+                                       FontWeight="Bold" LetterSpacing="1"
+                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                            <TextBlock Text="Empty platforms stay available when adding games and configuring emulators. Platforms with temporarily unavailable games remain visible."
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1"
+                                      OnContent="Show empty" OffContent="Hide empty"
+                                      IsChecked="{Binding ShowEmptyPlatforms, Mode=TwoWay}"
+                                      VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+                <Border Background="{DynamicResource EmuCardBrush}"
+                        BorderBrush="{DynamicResource EmuBorderBrush}"
+                        BorderThickness="1" CornerRadius="9"
+                        Padding="16" Margin="0,0,0,12">
                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto"
                           ColumnSpacing="16" RowSpacing="8">
                         <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
@@ -386,7 +405,7 @@
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. EmuShelf syncs the selected platform before launch and after the emulator exits. Close externally launched emulators before using manual sync. Save states and emulator configuration are excluded. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
+                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. In-game saves sync before launch and after exit. Cheats, patches, and version-guarded save states are optional and included only in manual Sync all or Replace actions. Close externally launched emulators before manual sync. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
                                 </StackPanel>
 
                                 <Border IsVisible="{Binding IsRcloneMissing}"
@@ -451,6 +470,31 @@
                                                             IsEnabled="{Binding CanReplace}"
                                                             ToolTip.Tip="Replace only this platform's local saves; overwritten local copies are backed up" />
                                                 </Grid>
+                                                <StackPanel Margin="54,0,0,0" Spacing="7"
+                                                            IsVisible="{Binding HasOptionalContent}">
+                                                    <CheckBox Content="Sync cheats and patches"
+                                                              IsVisible="{Binding SupportsCheatsAndPatches}"
+                                                              IsChecked="{Binding SyncCheatsAndPatches, Mode=TwoWay}"
+                                                              IsEnabled="{Binding IsIdle}"
+                                                              ToolTip.Tip="Includes emulator-owned cheat and patch files in manual Sync all and Replace actions; files beside games are never touched" />
+                                                    <CheckBox Content="Sync save states during manual Sync all"
+                                                              IsVisible="{Binding SupportsSaveStates}"
+                                                              IsChecked="{Binding SyncSaveStates, Mode=TwoWay}"
+                                                              IsEnabled="{Binding IsIdle}"
+                                                              ToolTip.Tip="Only states from the same emulator version and CPU architecture are restored" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="8"
+                                                                IsVisible="{Binding SupportsSaveStates}">
+                                                        <TextBlock Text="Sync newest states per game"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                        <NumericUpDown Width="72" Minimum="1" Maximum="10" Increment="1"
+                                                                       Value="{Binding SaveStateRetention, Mode=TwoWay}"
+                                                                       IsEnabled="{Binding IsIdle}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="Older local and cloud states are kept and continue using storage; EmuShelf never deletes them automatically."
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                </StackPanel>
                                                 <TextBlock Margin="54,0,0,0"
                                                            Text="{Binding DetectedDirectory, StringFormat='Syncing {0}'}"
                                                            IsVisible="{Binding HasDetectedDirectory}"
@@ -461,6 +505,11 @@
                                                            IsVisible="{Binding HasCompatibilityWarning}"
                                                            FontSize="11" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                <TextBlock Margin="54,0,0,0"
+                                                           Text="{Binding OptionalContentSummary}"
+                                                           IsVisible="{Binding HasOptionalContentSummary}"
+                                                           FontSize="11" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 <TextBlock Margin="54,0,0,0"
                                                            Text="{Binding DetectionErrorText}"
                                                            IsVisible="{Binding HasDetectionError}"

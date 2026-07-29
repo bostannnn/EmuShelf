@@ -1,5 +1,8 @@
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Storage;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text.RegularExpressions;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.Pcsx2;
@@ -31,13 +34,27 @@ public sealed record SaveProviderContext(
     IAppPaths Paths,
     string? CorePath = null,
     Func<IReadOnlyCollection<string>>? GameFileNames = null,
-    string? LaunchArguments = null);
+    string? LaunchArguments = null,
+    string? ExecutablePath = null,
+    string? FlatpakApplicationId = null);
 
 /// <summary>A provider's resolved save directory plus optional display text and compatibility note.</summary>
 public sealed record SaveProviderDetection(
     string Directory,
     string? Warning = null,
-    string? DisplayLocation = null);
+    string? DisplayLocation = null,
+    string? OptionalContentSummary = null,
+    IReadOnlyList<OptionalContentDetection>? OptionalContent = null);
+
+/// <summary>One independently resolved optional sync root shown under a platform row.</summary>
+public sealed record OptionalContentDetection(
+    string Kind,
+    string? Directory,
+    int EligibleFileCount,
+    int TotalFileCount,
+    long EligibleBytes,
+    string? Compatibility = null,
+    string? Warning = null);
 
 /// <summary>
 /// One supported save-sync platform. Everything the coordinator and Settings need per platform
@@ -61,11 +78,20 @@ public sealed record SaveProviderDescriptor(
     string SaveShapeDescription,
     string OverridePlaceholder,
     Func<SaveProviderContext, ISaveLocationProvider?> CreateProvider,
-    Func<ISaveLocationProvider, CancellationToken, Task<SaveProviderDetection>> DetectAsync);
+    Func<ISaveLocationProvider, CancellationToken, Task<SaveProviderDetection>> DetectAsync,
+    bool SupportsCheatsAndPatches = false,
+    bool SupportsSaveStates = false);
 
 /// <summary>The supported save-sync platforms, in the order Settings presents them.</summary>
 public static class SaveProviderRegistry
 {
+    private static readonly ConcurrentDictionary<string, Lazy<string?>> FlatpakVersions =
+        new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, Lazy<string?>> FlatpakArchitectures =
+        new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, Lazy<string?>> ExecutableVersions =
+        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+
     public static IReadOnlyList<SaveProviderDescriptor> All { get; } =
     [
         new SaveProviderDescriptor(
@@ -99,7 +125,9 @@ public static class SaveProviderRegistry
                           "slot and the game file has the same name; otherwise that save stays in the cloud."
                         : "Cards are synced per slot and card type. A machine whose DuckStation uses a different card " +
                           "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
-            }),
+            },
+            SupportsCheatsAndPatches: true,
+            SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
             SystemId: "playstation2",
@@ -118,7 +146,9 @@ public static class SaveProviderRegistry
             DetectAsync: static async (provider, cancellationToken) =>
                 new SaveProviderDetection(
                     await ((Pcsx2SaveLocationProvider)provider)
-                        .GetMemoryCardsDirectoryAsync(cancellationToken))),
+                        .GetMemoryCardsDirectoryAsync(cancellationToken)),
+            SupportsCheatsAndPatches: true,
+            SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
             SystemId: "playstation3",
@@ -154,7 +184,9 @@ public static class SaveProviderRegistry
                         ? $"RPCS3 has {info.AvailableProfiles.Count} user accounts on this machine. " +
                           $"EmuShelf syncs {profile}; choose another account's folder above to sync that one instead."
                         : null);
-            }),
+            },
+            SupportsCheatsAndPatches: true,
+            SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
             SystemId: "psp",
@@ -180,7 +212,9 @@ public static class SaveProviderRegistry
             DetectAsync: static async (provider, cancellationToken) =>
                 new SaveProviderDetection(
                     await ((PpssppSaveLocationProvider)provider)
-                        .GetSaveDataDirectoryAsync(cancellationToken))),
+                        .GetSaveDataDirectoryAsync(cancellationToken)),
+            SupportsCheatsAndPatches: true,
+            SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
             SystemId: "gamecube",
@@ -198,7 +232,8 @@ public static class SaveProviderRegistry
                     "A raw-card save is portable only when the other machine uses a compatible card in the same slot; " +
                     "GCI saves are synced as individual files.",
                     DescribeDolphinLocations(info));
-            }),
+            },
+            SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
             SystemId: "wii",
@@ -212,7 +247,8 @@ public static class SaveProviderRegistry
                     .GetSaveLocationInfoAsync(cancellationToken);
                 return new SaveProviderDetection(
                     info.UserDirectory,
-                    "Game save data is synced per Wii title. Console identity, Mii data, channels, and save states stay local.",
+                    "Game save data is synced per Wii title. Console identity, Mii data, and channels stay local. " +
+                    "Dolphin's shared StateSaves folder is configured once on the GameCube row.",
                     DescribeDolphinLocations(info));
             }),
 
@@ -304,7 +340,9 @@ public static class SaveProviderRegistry
                           "existing saves into the new per-core folder — RetroArch does not move them for you, and " +
                           "will not find them until you do.") +
                     perGame + duplicates);
-            });
+            },
+            SupportsCheatsAndPatches: true,
+            SupportsSaveStates: true);
     }
 
     /// <summary>The descriptor for one system id, or null when the platform is not supported.</summary>
@@ -313,4 +351,413 @@ public static class SaveProviderRegistry
 
     /// <summary>Every supported system id, in presentation order.</summary>
     public static IReadOnlyList<string> SystemIds { get; } = All.Select(descriptor => descriptor.SystemId).ToArray();
+
+    /// <summary>Adds the optional, per-file namespaces selected for one platform.</summary>
+    internal static ISaveLocationProvider WithOptionalContent(
+        SaveProviderDescriptor descriptor,
+        ISaveLocationProvider saves,
+        SaveProviderContext context,
+        bool includeCheatsAndPatches,
+        bool includeSaveStates,
+        int stateRetention)
+    {
+        var sources = new List<AuxiliaryFileSource>();
+        if (includeCheatsAndPatches && descriptor.SupportsCheatsAndPatches)
+            AddCheatAndPatchSources(saves, sources);
+        if (includeSaveStates && descriptor.SupportsSaveStates)
+            AddStateSources(saves, sources);
+        if (sources.Count == 0)
+            return saves;
+
+        StateCompatibility? compatibility = null;
+        if (includeSaveStates)
+        {
+            var coreVersion = ResolveCoreVersion(context);
+            var emulatorVersion = saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion)
+                ? null
+                : ResolveEmulatorVersion(context);
+            compatibility = StateCompatibility.Create(
+                EmulatorId(saves),
+                emulatorVersion,
+                coreVersion,
+                ResolveEmulatorArchitecture(context));
+        }
+        return new AuxiliarySyncProvider(saves, sources, compatibility, stateRetention);
+    }
+
+    private static void AddCheatAndPatchSources(
+        ISaveLocationProvider provider,
+        ICollection<AuxiliaryFileSource> sources)
+    {
+        switch (provider)
+        {
+            case DuckStationSaveLocationProvider duckStation:
+                sources.Add(Source(AuxiliaryContentKind.Cheats, "cheats", Root(duckStation.GetUserDirectoryAsync, "cheats"), ".cht"));
+                sources.Add(Source(AuxiliaryContentKind.Patches, "patches", Root(duckStation.GetUserDirectoryAsync, "patches"), ".cht"));
+                break;
+            case Pcsx2SaveLocationProvider pcsx2:
+                sources.Add(Source(AuxiliaryContentKind.Cheats, "cheats", token => Content(pcsx2, token).Cheats, ".pnach"));
+                sources.Add(Source(AuxiliaryContentKind.Patches, "patches", token => Content(pcsx2, token).Patches, ".pnach"));
+                break;
+            case PpssppSaveLocationProvider ppsspp:
+                sources.Add(Source(
+                    AuxiliaryContentKind.Cheats,
+                    "cheats",
+                    token => Path.Combine(Await(ppsspp.GetMemoryStickDirectoryAsync(token)), "PSP", "Cheats"),
+                    ".ini"));
+                break;
+            case Rpcs3SaveLocationProvider rpcs3:
+                sources.Add(new AuxiliaryFileSource(
+                    AuxiliaryContentKind.Patches,
+                    "patches",
+                    token => Content(rpcs3, token).Patches,
+                    path => Path.GetFileName(path).Equals("patch.yml", StringComparison.OrdinalIgnoreCase),
+                    Recursive: false));
+                break;
+            case RetroArchSaveLocationProvider retroArch:
+                sources.Add(Source(
+                    AuxiliaryContentKind.Cheats,
+                    "cheats",
+                    token => Await(retroArch.GetContentDirectoriesAsync(token)).Cheats,
+                    ".cht"));
+                break;
+        }
+    }
+
+    private static void AddStateSources(
+        ISaveLocationProvider provider,
+        ICollection<AuxiliaryFileSource> sources)
+    {
+        AuxiliaryFileSource? source = provider switch
+        {
+            DuckStationSaveLocationProvider duckStation => State(
+                Root(duckStation.GetUserDirectoryAsync, "savestates"),
+                path => HasExtension(path, ".sav") || Path.GetFileName(path).Contains(".savestate", StringComparison.OrdinalIgnoreCase)),
+            Pcsx2SaveLocationProvider pcsx2 => State(
+                token => Content(pcsx2, token).SaveStates,
+                path => HasExtension(path, ".p2s")),
+            PpssppSaveLocationProvider ppsspp => State(
+                token => Path.Combine(Await(ppsspp.GetMemoryStickDirectoryAsync(token)), "PSP", "PPSSPP_STATE"),
+                path => HasExtension(path, ".ppst")),
+            DolphinSaveLocationProvider dolphin when dolphin.SystemId == "gamecube" => State(
+                token => Path.Combine(Await(dolphin.GetUserDirectoryAsync(token)), "StateSaves"),
+                path => HasExtension(path, ".sav", ".s01", ".s02", ".s03", ".s04", ".s05", ".s06", ".s07", ".s08", ".s09", ".s10")),
+            Rpcs3SaveLocationProvider rpcs3 => State(
+                token => Content(rpcs3, token).SaveStates,
+                path => HasExtension(path, ".savestat")),
+            RetroArchSaveLocationProvider retroArch => State(
+                token => Await(retroArch.GetContentDirectoriesAsync(token)).SaveStates,
+                path => Path.GetFileName(path).Contains(".state", StringComparison.OrdinalIgnoreCase)),
+            _ => null,
+        };
+        if (source is not null)
+            sources.Add(source);
+    }
+
+    private static AuxiliaryFileSource Source(
+        AuxiliaryContentKind kind,
+        string unitNamespace,
+        Func<CancellationToken, string?> root,
+        params string[] extensions) =>
+        new(kind, unitNamespace, root, path => HasExtension(path, extensions));
+
+    private static AuxiliaryFileSource State(
+        Func<CancellationToken, string?> root,
+        Func<string, bool> include) =>
+        new(
+            AuxiliaryContentKind.SaveStates,
+            "states",
+            root,
+            path => AuxiliarySyncProvider.IsManualState(path) && include(path),
+            StateGroup: AuxiliarySyncProvider.DefaultStateGroup);
+
+    private static Func<CancellationToken, string?> Root(
+        Func<CancellationToken, Task<string>> root,
+        string child) =>
+        token => Path.Combine(Await(root(token)), child);
+
+    private static Pcsx2ContentDirectories Content(Pcsx2SaveLocationProvider provider, CancellationToken token) =>
+        Await(provider.GetContentDirectoriesAsync(token));
+
+    private static Rpcs3ContentDirectories Content(Rpcs3SaveLocationProvider provider, CancellationToken token) =>
+        Await(provider.GetContentDirectoriesAsync(token));
+
+    private static T Await<T>(Task<T> task) => task.ConfigureAwait(false).GetAwaiter().GetResult();
+
+    private static bool HasExtension(string path, params string[] extensions) =>
+        extensions.Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
+
+    private static string EmulatorId(ISaveLocationProvider provider) => provider switch
+    {
+        DuckStationSaveLocationProvider => "duckstation",
+        Pcsx2SaveLocationProvider => "pcsx2",
+        PpssppSaveLocationProvider => "ppsspp",
+        DolphinSaveLocationProvider => "dolphin",
+        Rpcs3SaveLocationProvider => "rpcs3",
+        RetroArchSaveLocationProvider => "retroarch",
+        _ => provider.SystemId,
+    };
+
+    private static string? ResolveEmulatorVersion(SaveProviderContext context)
+    {
+        if (!string.IsNullOrWhiteSpace(context.ExecutablePath) && File.Exists(context.ExecutablePath))
+        {
+            return ExecutableVersions.GetOrAdd(
+                Path.GetFullPath(context.ExecutablePath),
+                path => new Lazy<string?>(() => ReadExecutableVersion(path), true)).Value;
+        }
+
+        if (!context.IsFlatpak || string.IsNullOrWhiteSpace(context.FlatpakApplicationId))
+            return null;
+        return FlatpakVersions.GetOrAdd(
+            context.FlatpakApplicationId,
+            applicationId => new Lazy<string?>(() => ReadFlatpakVersion(applicationId), true)).Value;
+    }
+
+    private static string? ReadFlatpakVersion(string applicationId)
+        => ReadFlatpakInfo(applicationId, "--show-version", normalizeVersion: true);
+
+    private static string? ReadFlatpakInfo(string applicationId, string option, bool normalizeVersion)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "flatpak",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                ArgumentList = { "info", option, applicationId },
+            });
+            if (process is null)
+                return null;
+            if (!process.WaitForExit(5000))
+            {
+                process.Kill(entireProcessTree: true);
+                return null;
+            }
+            if (process.ExitCode != 0)
+                return null;
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            return normalizeVersion ? FirstVersion(output) : NormalizeArchitecture(output);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolveEmulatorArchitecture(SaveProviderContext context)
+    {
+        if (!string.IsNullOrWhiteSpace(context.CorePath) && File.Exists(context.CorePath) &&
+            ReadBinaryArchitecture(context.CorePath) is { } coreArchitecture)
+        {
+            return coreArchitecture;
+        }
+        if (!string.IsNullOrWhiteSpace(context.ExecutablePath) && File.Exists(context.ExecutablePath) &&
+            ReadBinaryArchitecture(context.ExecutablePath) is { } executableArchitecture)
+        {
+            return executableArchitecture;
+        }
+        if (!context.IsFlatpak || string.IsNullOrWhiteSpace(context.FlatpakApplicationId))
+            return null;
+        return FlatpakArchitectures.GetOrAdd(
+            context.FlatpakApplicationId,
+            applicationId => new Lazy<string?>(
+                () => ReadFlatpakInfo(applicationId, "--show-arch", normalizeVersion: false),
+                true)).Value;
+    }
+
+    internal static string? ReadBinaryArchitecture(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new BinaryReader(stream);
+            var magic = reader.ReadBytes(4);
+            if (magic.Length < 4)
+                return null;
+
+            // Portable Executable: machine id follows PE\0\0 at e_lfanew.
+            if (magic[0] == 'M' && magic[1] == 'Z')
+            {
+                stream.Position = 0x3c;
+                var peOffset = reader.ReadInt32();
+                if (peOffset < 0 || peOffset > stream.Length - 6)
+                    return null;
+                stream.Position = peOffset;
+                if (reader.ReadUInt32() != 0x00004550)
+                    return null;
+                return MachineName(reader.ReadUInt16());
+            }
+
+            // ELF: e_machine is a two-byte field at offset 18 and follows EI_DATA endianness.
+            if (magic is [0x7f, (byte)'E', (byte)'L', (byte)'F'])
+            {
+                stream.Position = 5;
+                var littleEndian = reader.ReadByte() != 2;
+                stream.Position = 18;
+                var machineBytes = reader.ReadBytes(2);
+                if (machineBytes.Length != 2)
+                    return null;
+                var machine = littleEndian
+                    ? (ushort)(machineBytes[0] | machineBytes[1] << 8)
+                    : (ushort)(machineBytes[1] | machineBytes[0] << 8);
+                return MachineName(machine);
+            }
+
+            // Thin Mach-O binaries. Universal binaries are deliberately left unknown rather than
+            // guessing which slice the emulator process will execute.
+            var littleMach = magic is [0xce, 0xfa, 0xed, 0xfe] or [0xcf, 0xfa, 0xed, 0xfe];
+            var bigMach = magic is [0xfe, 0xed, 0xfa, 0xce] or [0xfe, 0xed, 0xfa, 0xcf];
+            if (littleMach || bigMach)
+            {
+                var cpuBytes = reader.ReadBytes(4);
+                if (cpuBytes.Length != 4)
+                    return null;
+                var cpu = littleMach
+                    ? BitConverter.ToUInt32(cpuBytes)
+                    : ((uint)cpuBytes[0] << 24) | ((uint)cpuBytes[1] << 16) | ((uint)cpuBytes[2] << 8) | cpuBytes[3];
+                return cpu switch
+                {
+                    0x01000007 => "x64",
+                    0x0100000c => "arm64",
+                    7 => "x86",
+                    12 => "arm",
+                    _ => null,
+                };
+            }
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return null;
+        }
+
+        static string? MachineName(ushort machine) => machine switch
+        {
+            0x014c or 3 => "x86",
+            0x8664 or 62 => "x64",
+            0x01c0 or 40 => "arm",
+            0xaa64 or 183 => "arm64",
+            _ => null,
+        };
+    }
+
+    private static string? ReadExecutableVersion(string executablePath)
+    {
+        try
+        {
+            var info = FileVersionInfo.GetVersionInfo(executablePath);
+            if (FirstVersion(info.ProductVersion, info.FileVersion) is { } embedded)
+                return embedded;
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or System.ComponentModel.Win32Exception)
+        {
+            // AppImages and other native Unix executables commonly have no Windows-style version
+            // resource. Their own version command below is the authoritative fallback.
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = executablePath,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                ArgumentList = { "--version" },
+            });
+            if (process is null)
+                return null;
+            if (!process.WaitForExit(5000))
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit();
+                return null;
+            }
+            if (process.ExitCode != 0)
+                return null;
+            return FirstVersion(process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+    }
+
+    private static string? ResolveCoreVersion(SaveProviderContext context)
+    {
+        if (string.IsNullOrWhiteSpace(context.CorePath))
+            return null;
+        var coreId = Path.GetFileNameWithoutExtension(context.CorePath)
+            .Replace("_libretro", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var fileName = coreId + "_libretro.info";
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(context.EmulatorDirectory))
+            candidates.Add(Path.Combine(context.EmulatorDirectory, "info", fileName));
+        if (context.IsFlatpak)
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                candidates.Add(Path.Combine(
+                    home, ".var", "app", "org.libretro.RetroArch", "config", "retroarch", "info", fileName));
+            }
+        }
+        var infoPath = candidates.FirstOrDefault(File.Exists);
+        if (infoPath is null)
+            return null;
+        try
+        {
+            return File.ReadLines(infoPath)
+                .Select(line => line.Split('=', 2))
+                .Where(parts => parts.Length == 2 && parts[0].Trim().Equals("display_version", StringComparison.OrdinalIgnoreCase))
+                .Select(parts => parts[1].Trim().Trim('"'))
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static string? FirstVersion(params string?[] candidates) => candidates
+        .Select(NormalizeVersion)
+        .FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));
+
+    internal static string? NormalizeVersion(string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate))
+            return null;
+        var match = Regex.Match(
+            candidate,
+            @"(?<![A-Za-z0-9])v?(?<version>\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return candidate.Trim().Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)[0].Trim();
+
+        var version = match.Groups["version"].Value.ToLowerInvariant();
+        var suffix = version.IndexOfAny(['-', '+']);
+        var numeric = suffix < 0 ? version : version[..suffix];
+        var remainder = suffix < 0 ? string.Empty : version[suffix..];
+        var parts = numeric.Split('.').ToList();
+        while (parts.Count > 3 && parts[^1] == "0")
+            parts.RemoveAt(parts.Count - 1);
+        return string.Join('.', parts) + remainder;
+    }
+
+    private static string? NullIfWhiteSpace(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? NormalizeArchitecture(string? value) => NullIfWhiteSpace(value)?.ToLowerInvariant() switch
+    {
+        "x86_64" or "amd64" or "x64" => "x64",
+        "aarch64" or "arm64" => "arm64",
+        "i386" or "i686" or "x86" => "x86",
+        "arm" or "armhf" => "arm",
+        _ => null,
+    };
 }

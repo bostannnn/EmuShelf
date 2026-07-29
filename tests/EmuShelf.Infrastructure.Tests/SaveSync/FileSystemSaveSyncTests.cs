@@ -238,7 +238,12 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
     public async Task ManifestStore_RoundTripsBaselinesThroughPortableSavesDirectory()
     {
         var store = new JsonSaveSyncManifestStore(AppPaths);
-        var baseline = new SaveUnitBaseline("pcsx2/Mcd001.ps2", "ABC", DateTimeOffset.UtcNow, 3);
+        var baseline = new SaveUnitBaseline(
+            "pcsx2/Mcd001.ps2",
+            "ABC",
+            DateTimeOffset.UtcNow,
+            3,
+            Compatibility: "pcsx2-2.4-x64");
 
         await store.SaveAsync(new SaveSyncManifest([baseline]));
 
@@ -347,13 +352,18 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(Path.Combine(relocatedMemcards, "Mcd002.ps2"), "file-card");
         await File.WriteAllTextAsync(
             Path.Combine(inis, "PCSX2.ini"),
-            "[UI]\nSettingsVersion = 1\n[Folders]\nMemoryCards = ..\\..\\saves\\ps2\\pcsx2\\memcards\n[EmuCore]\n" +
+            "[UI]\nSettingsVersion = 1\n[Folders]\nMemoryCards = ..\\..\\saves\\ps2\\pcsx2\\memcards\n" +
+            "Cheats = cheats\nPatches = patches\nSaveStates = sstates\n[EmuCore]\n" +
             "McdFolderAutoManage = true\n[MemoryCards]\nSlot1_Enable = true\nSlot1_Filename = Mcdf01.ps2\n" +
             "Slot2_Enable = true\nSlot2_Filename = Mcd002.ps2\n");
 
         var provider = new Pcsx2SaveLocationProvider(pcsx2);
 
         Assert.Equal(Path.GetFullPath(relocatedMemcards), await provider.GetMemoryCardsDirectoryAsync());
+        var content = await provider.GetContentDirectoriesAsync();
+        Assert.Equal(Path.Combine(pcsx2, "cheats"), content.Cheats);
+        Assert.Equal(Path.Combine(pcsx2, "patches"), content.Patches);
+        Assert.Equal(Path.Combine(pcsx2, "sstates"), content.SaveStates);
         Assert.Equal(
             [
                 new SaveUnit("pcsx2/Mcd002.ps2", "Mcd002.ps2", SaveUnitKind.File),
@@ -381,6 +391,8 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
                 new SaveUnit("pcsx2/Mcdf01.ps2/BASCUS-97399GodOfWar", "Mcdf01.ps2 — BASCUS-97399GodOfWar", SaveUnitKind.Folder),
             ],
             await provider.GetSaveUnitsAsync());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetContentDirectoriesAsync());
+        Assert.Contains("memory-card folder", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

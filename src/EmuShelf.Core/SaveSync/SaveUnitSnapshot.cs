@@ -8,4 +8,8 @@ namespace EmuShelf.Core.SaveSync;
 /// direction on its own.
 /// </param>
 /// <param name="ModifiedUtc">Last-modified time, used solely to break a genuine two-sided conflict.</param>
-public sealed record SaveUnitSnapshot(string UnitId, string ContentHash, DateTimeOffset ModifiedUtc);
+public sealed record SaveUnitSnapshot(
+    string UnitId,
+    string ContentHash,
+    DateTimeOffset ModifiedUtc,
+    string? Compatibility = null);

@@ -137,6 +137,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial bool AutomaticallyFetchMetadataAfterImport { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowEmptyPlatforms { get; set; }
+
+    [ObservableProperty]
     public partial string CloudRemoteName { get; set; } = "emushelf-gdrive";
 
     [ObservableProperty]
@@ -329,6 +332,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
+        ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
     }
 
     partial void OnIsSavingChanged(bool value)
@@ -476,6 +480,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 await _metadataPreferences.SaveAutomaticFetchAsync(
                     AutomaticallyFetchMetadataAfterImport);
             }
+            if (_maintenance?.SetShowEmptyPlatforms is not null)
+                await _maintenance.SetShowEmptyPlatforms(ShowEmptyPlatforms);
             PersistCloudSaveLocations();
             CloseRequested?.Invoke(true);
         }

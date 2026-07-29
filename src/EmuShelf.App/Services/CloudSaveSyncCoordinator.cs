@@ -17,7 +17,9 @@ public sealed record SaveEmulatorInstallation(
     string? Directory,
     bool IsFlatpak,
     string? CorePath = null,
-    string? LaunchArguments = null);
+    string? LaunchArguments = null,
+    string? ExecutablePath = null,
+    string? FlatpakApplicationId = null);
 
 /// <summary>
 /// Composes the save-sync pipeline (registry-provided provider + filesystem endpoint + rclone
@@ -71,7 +73,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// Whether one system participates in sync. This asks the registry to build the provider, the
     /// same call the sync pipeline makes, so a "yes" here cannot become a silent no-op there.
     /// </summary>
-    public bool CanSyncSystem(string systemId) => IsConfigured && CreateProvider(systemId) is not null;
+    public bool CanSyncSystem(string systemId) => IsConfigured && CreateBaseProvider(systemId) is not null;
 
     /// <summary>Whether the rclone executable EmuShelf will invoke actually exists.</summary>
     public bool IsRcloneAvailable => File.Exists(RcloneExecutable.Resolve(_paths, _rclonePath));
@@ -92,11 +94,37 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         CancellationToken cancellationToken = default)
     {
         var descriptor = SaveProviderRegistry.Find(systemId);
-        if (descriptor is null || CreateProvider(systemId) is not { } provider)
+        if (descriptor is null || CreateBaseProvider(systemId) is not { } provider)
             return null;
 
         var detection = await descriptor.DetectAsync(provider, cancellationToken);
-        return detection with { Warning = WithMissingDirectoryNotice(detection) };
+        var context = CreateProviderContext(systemId, _settings.CloudSaveSync);
+        var optionalSummary = (Summary: (string?)null, Locations: (IReadOnlyList<OptionalContentDetection>)[]);
+        try
+        {
+            var optional = SaveProviderRegistry.WithOptionalContent(
+                descriptor,
+                provider,
+                context,
+                includeCheatsAndPatches: true,
+                includeSaveStates: true,
+                stateRetention: _settings.CloudSaveSync.GetLocation(systemId).SaveStateRetention);
+            optionalSummary = await DescribeOptionalContentAsync(optional, provider, cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+        {
+            // Optional discovery is diagnostic only. It must not turn a valid memory-card/save
+            // location into a disabled platform row.
+            optionalSummary = (
+                "Optional content could not be inspected.",
+                [new OptionalContentDetection("Optional content", null, 0, 0, 0, Warning: ex.Message)]);
+        }
+        return detection with
+        {
+            Warning = WithMissingDirectoryNotice(detection),
+            OptionalContentSummary = optionalSummary.Summary,
+            OptionalContent = optionalSummary.Locations,
+        };
     }
 
     // A resolved folder that does not exist is the quietest possible failure: the platform reports a
@@ -137,6 +165,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public void UpdateOverride(string systemId, string? directory) =>
         Persist(_settings.CloudSaveSync.WithOverride(systemId, directory));
 
+    /// <summary>Persists one platform's opt-in portable content choices.</summary>
+    public void UpdateOptionalContent(
+        string systemId,
+        bool syncCheatsAndPatches,
+        bool syncSaveStates,
+        int saveStateRetention) =>
+        Persist(_settings.CloudSaveSync.WithOptionalContent(
+            systemId,
+            syncCheatsAndPatches,
+            syncSaveStates,
+            saveStateRetention));
+
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
     /// persists the connection. Only the non-secret remote name and folder are stored — the OAuth
@@ -167,7 +207,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         var candidate = _settings.CloudSaveSync;
         foreach (var (systemId, directory) in overrides)
             candidate = candidate.WithOverride(systemId, directory);
-        if (!SaveProviderRegistry.SystemIds.Any(systemId => CreateProvider(systemId, candidate) is not null))
+        if (!SaveProviderRegistry.SystemIds.Any(systemId => CreateBaseProvider(systemId, candidate) is not null))
             return CloudSaveSyncConnectResult.InvalidInput;
 
         await _gate.WaitAsync(cancellationToken);
@@ -270,7 +310,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         ForceAsync,
         UpdateOverride,
         DownloadRcloneAsync,
-        GetDetectionAsync);
+        GetDetectionAsync,
+        UpdateOptionalContent);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -340,7 +381,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 location.DirectoryOverride,
                 location.LastSuccessUtc,
                 location.LastError,
-                location.LastNotice);
+                location.LastNotice,
+                descriptor.SupportsCheatsAndPatches,
+                descriptor.SupportsSaveStates,
+                location.SyncCheatsAndPatches,
+                location.SyncSaveStates,
+                Math.Clamp(location.SaveStateRetention, 1, 10));
         }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
@@ -349,7 +395,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IProgress<SaveSyncProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var target = CreateTarget(systemId);
+        var target = CreateTarget(systemId, includeOptionalContent: true);
         if (!IsConfigured || target is null)
             return CloudSaveSyncOutcome.NotConfigured();
 
@@ -412,7 +458,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             foreach (var systemId in requestedSystemIds)
             {
                 constructingSystemId = systemId;
-                if (CreateTarget(systemId) is { } target)
+                if (CreateTarget(systemId, includeOptionalContent: verifyRemote) is { } target)
                 {
                     targets.Add(target);
                     synced.Add(systemId);
@@ -511,23 +557,101 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
     }
 
-    private ISaveLocationProvider? CreateProvider(string systemId) =>
-        CreateProvider(systemId, _settings.CloudSaveSync);
+    private ISaveLocationProvider? CreateProvider(string systemId, bool includeOptionalContent = false) =>
+        CreateProvider(systemId, _settings.CloudSaveSync, includeOptionalContent);
 
-    private ISaveLocationProvider? CreateProvider(string systemId, CloudSaveSyncSettings configuration)
+    private ISaveLocationProvider? CreateProvider(
+        string systemId,
+        CloudSaveSyncSettings configuration,
+        bool includeOptionalContent)
     {
         if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
             return null;
 
+        var context = CreateProviderContext(systemId, configuration);
+        var saves = descriptor.CreateProvider(context);
+        if (saves is null)
+            return null;
+        var options = configuration.GetLocation(systemId);
+        return SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            saves,
+            context,
+            includeOptionalContent && options.SyncCheatsAndPatches,
+            includeOptionalContent && options.SyncSaveStates,
+            options.SaveStateRetention);
+    }
+
+    private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
+        CreateBaseProvider(systemId, _settings.CloudSaveSync);
+
+    private ISaveLocationProvider? CreateBaseProvider(string systemId, CloudSaveSyncSettings configuration)
+    {
+        if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
+            return null;
+        return descriptor.CreateProvider(CreateProviderContext(systemId, configuration));
+    }
+
+    private SaveProviderContext CreateProviderContext(string systemId, CloudSaveSyncSettings configuration)
+    {
         var installation = _emulatorInstallations?.Invoke(systemId);
-        return descriptor.CreateProvider(new SaveProviderContext(
+        return new SaveProviderContext(
             ResolvePortablePath(configuration.GetOverride(systemId)),
             ResolvePortablePath(installation?.Directory),
             installation?.IsFlatpak == true,
             _paths,
             ResolvePortablePath(installation?.CorePath),
             _gamesForSystem is null ? null : () => GameFileNames(systemId),
-            installation?.LaunchArguments));
+            installation?.LaunchArguments,
+            ResolvePortablePath(installation?.ExecutablePath),
+            installation?.FlatpakApplicationId);
+    }
+
+    private static async Task<(string? Summary, IReadOnlyList<OptionalContentDetection> Locations)> DescribeOptionalContentAsync(
+        ISaveLocationProvider optional,
+        ISaveLocationProvider saves,
+        CancellationToken cancellationToken)
+    {
+        if (ReferenceEquals(optional, saves))
+            return (null, []);
+        if (optional is not AuxiliarySyncProvider auxiliary)
+            return (null, []);
+
+        var inspected = await auxiliary.GetContentLocationsAsync(cancellationToken);
+        var locations = inspected.Select(location => new OptionalContentDetection(
+            location.Kind switch
+            {
+                AuxiliaryContentKind.Cheats => "Cheats",
+                AuxiliaryContentKind.Patches => "Patches",
+                _ => "Save states",
+            },
+            location.Directory,
+            location.EligibleFileCount,
+            location.TotalFileCount,
+            location.EligibleBytes,
+            location.Compatibility,
+            location.Warning)).ToArray();
+        var contentFiles = locations.Where(location => location.Kind is "Cheats" or "Patches").Sum(location => location.EligibleFileCount);
+        var contentBytes = locations.Where(location => location.Kind is "Cheats" or "Patches").Sum(location => location.EligibleBytes);
+        var states = locations.Where(location => location.Kind == "Save states").Sum(location => location.EligibleFileCount);
+        var stateBytes = locations.Where(location => location.Kind == "Save states").Sum(location => location.EligibleBytes);
+        return (
+            $"Found {contentFiles} cheat/patch file(s) ({FormatBytes(contentBytes)}) and " +
+            $"{states} eligible state(s) ({FormatBytes(stateBytes)}).",
+            locations);
+
+        static string FormatBytes(long bytes)
+        {
+            string[] suffixes = ["B", "KB", "MB", "GB"];
+            var value = (double)bytes;
+            var suffix = 0;
+            while (value >= 1024 && suffix < suffixes.Length - 1)
+            {
+                value /= 1024;
+                suffix++;
+            }
+            return $"{value:0.#} {suffixes[suffix]}";
+        }
     }
 
     // File names, not titles: an emulator that names a save after the game file can only be matched
@@ -539,8 +663,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    private SaveSyncTarget? CreateTarget(string systemId) =>
-        CreateProvider(systemId) is not { } provider
+    private SaveSyncTarget? CreateTarget(string systemId, bool includeOptionalContent = false) =>
+        CreateProvider(systemId, includeOptionalContent) is not { } provider
             ? null
             : new SaveSyncTarget(provider, new FileSystemLocalSaveEndpoint(provider, _paths));
 
@@ -615,13 +739,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     // Unit ids are namespaced by provider, not by system id, so ask the registry's own provider
     // which prefix belongs to this platform rather than pattern-matching the id here.
     private bool BelongsToSystem(string unitId, string systemId) =>
-        CreateProvider(systemId) is { } provider &&
+        CreateBaseProvider(systemId) is { } provider &&
         unitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal);
 
     private void Persist(CloudSaveSyncSettings configuration)
     {
-        _settings = _settings with { CloudSaveSync = configuration };
-        _settingsService.Save(_settings);
+        _settings = _settingsService.Update(latest => latest with { CloudSaveSync = configuration });
     }
 
     private string? ResolvePortablePath(string? path)
@@ -705,7 +828,12 @@ public sealed record CloudSaveSyncPlatformContext(
     string? Override,
     DateTimeOffset? LastSuccessUtc,
     string? LastError,
-    string? LastNotice = null);
+    string? LastNotice = null,
+    bool SupportsCheatsAndPatches = false,
+    bool SupportsSaveStates = false,
+    bool SyncCheatsAndPatches = false,
+    bool SyncSaveStates = false,
+    int SaveStateRetention = 3);
 
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view
@@ -725,4 +853,5 @@ public sealed record CloudSaveSyncSettingsContext(
     Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> ForceAsync,
     Action<string, string?> UpdateOverride,
     Func<CancellationToken, Task<bool>> DownloadRcloneAsync,
-    Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null);
+    Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null,
+    Action<string, bool, bool, int>? UpdateOptionalContent = null);

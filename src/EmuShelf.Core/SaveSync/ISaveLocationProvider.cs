@@ -9,6 +9,33 @@ public interface ISaveLocationProvider
     /// <summary>The unit-id namespace owned by this provider (for example <c>pcsx2/</c>).</summary>
     string UnitIdPrefix { get; }
 
+    /// <summary>
+    /// Whether this provider owns a unit from the cloud index. Providers with optional namespaces
+    /// override this so disabled content remains visible in the cloud without being downloaded.
+    /// </summary>
+    bool OwnsUnit(string unitId)
+    {
+        if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))
+            return false;
+        var localId = unitId[UnitIdPrefix.Length..];
+        var separator = localId.IndexOf('/');
+        var unitNamespace = separator < 0 ? localId : localId[..separator];
+        return unitNamespace is not ("cheats" or "patches" or "states");
+    }
+
+    /// <summary>
+    /// Selects the owned remote units that should participate in this pass. Optional state
+    /// providers use this to apply retention without deleting older cloud objects.
+    /// </summary>
+    IReadOnlyList<SaveUnitSnapshot> SelectRemoteUnits(IReadOnlyList<SaveUnitSnapshot> snapshots) =>
+        snapshots.Where(snapshot => OwnsUnit(snapshot.UnitId)).ToArray();
+
+    /// <summary>Compatibility metadata written beside a unit in the cloud index, when required.</summary>
+    string? GetCompatibility(string unitId) => null;
+
+    /// <summary>A reason a remote unit cannot be restored here, or null when it is compatible.</summary>
+    string? GetRemoteIncompatibilityReason(SaveUnitSnapshot remoteSnapshot) => null;
+
     /// <summary>The save units currently present for this system on this machine.</summary>
     Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default);
 

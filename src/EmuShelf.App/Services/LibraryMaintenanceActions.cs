@@ -9,4 +9,6 @@ public sealed record LibraryMaintenanceActions(
     Func<Task<string>> RescanAll,
     Func<string, Task<string>>? FetchMetadataForSystem = null,
     Func<IProgress<MetadataEnrichmentProgress>, Task<string>>? FetchAllMetadata = null,
-    Func<Task<string>>? SyncRpcs3Library = null);
+    Func<Task<string>>? SyncRpcs3Library = null,
+    Func<bool>? GetShowEmptyPlatforms = null,
+    Func<bool, Task>? SetShowEmptyPlatforms = null);

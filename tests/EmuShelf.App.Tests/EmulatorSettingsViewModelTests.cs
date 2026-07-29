@@ -338,6 +338,28 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task GeneralSettings_LoadAndSaveEmptyPlatformVisibility()
+    {
+        bool? saved = null;
+        var maintenance = new LibraryMaintenanceActions(
+            _ => Task.FromResult("unused"),
+            () => Task.FromResult("unused"),
+            GetShowEmptyPlatforms: () => true,
+            SetShowEmptyPlatforms: value =>
+            {
+                saved = value;
+                return Task.CompletedTask;
+            });
+        var viewModel = CreateViewModel(maintenance);
+
+        Assert.True(viewModel.ShowEmptyPlatforms);
+        viewModel.ShowEmptyPlatforms = false;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(saved);
+    }
+
+    [AvaloniaFact]
     public async Task PlayStation3Row_ExposesTheExplicitRpcs3LibrarySyncOnly()
     {
         var calls = 0;

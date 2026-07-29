@@ -62,12 +62,9 @@ public sealed class MetadataPreferencesService : IMetadataPreferencesService
         Func<AppSettings, AppSettings> update,
         CancellationToken cancellationToken)
     {
-        // Merge with the latest snapshot so a metadata preference never reverts a
-        // theme change saved by the independent appearance service (or vice versa).
-        var latest = await Task.Run(_settingsService.Load, cancellationToken);
-        _settings = update(latest);
-        var snapshot = _settings;
-        await Task.Run(() => _settingsService.Save(snapshot), cancellationToken);
+        _settings = await Task.Run(
+            () => _settingsService.Update(update),
+            cancellationToken);
     }
 }
 

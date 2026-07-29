@@ -111,6 +111,9 @@ public sealed record RetroArchSaveInfo(
     bool IsExclusive,
     bool HasUnreadPerGameOverride = false);
 
+/// <summary>Core-scoped RetroArch roots that are safe to sync without touching ROM folders.</summary>
+public sealed record RetroArchContentDirectories(string? Cheats, string? SaveStates);
+
 /// <summary>
 /// Resolves the effective battery-save directory for one system by reading RetroArch's own
 /// <c>retroarch.cfg</c> and the configured core's override, then exposes each of that core's save
@@ -189,6 +192,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     /// <summary>Returns the effective save directory.</summary>
     public async Task<string> GetSaveDirectoryAsync(CancellationToken cancellationToken = default) =>
         (await GetSaveInfoAsync(cancellationToken)).SaveDirectory;
+
+    public Task<RetroArchContentDirectories> GetContentDirectoriesAsync(
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => ResolveContentDirectories(cancellationToken), cancellationToken);
 
     public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
         Task.Run<IReadOnlyList<SaveUnit>>(() => GetSaveUnits(cancellationToken), cancellationToken);
@@ -336,6 +343,43 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             sortedByCore,
             IsExclusive: sortedByCore,
             HasUnreadPerGameOverride: HasPerGameSaveOverride(overrideRoot, core, cancellationToken));
+    }
+
+    private RetroArchContentDirectories ResolveContentDirectories(CancellationToken cancellationToken)
+    {
+        var core = _core ?? throw new RetroArchConfigurationFormatException(
+            "No libretro core is configured for this system, so optional content cannot be scoped safely.");
+        var configPath = ResolveConfigPath();
+        var configDirectory = Path.GetDirectoryName(configPath)!;
+        var settings = ReadConfig(configPath, cancellationToken);
+
+        var cheatRoot = ResolveConfiguredDirectory(
+            settings.GetValueOrDefault("cheat_database_path"),
+            Path.Combine(configDirectory, "cheats"));
+        var coreCheats = core.Name is null ? null : Path.Combine(cheatRoot, core.Name);
+
+        string? states = null;
+        if (!IsTrue(settings, "savestates_in_content_dir") &&
+            !IsTrue(settings, "sort_savestates_by_content_enable"))
+        {
+            states = ResolveConfiguredDirectory(
+                settings.GetValueOrDefault("savestate_directory"),
+                Path.Combine(configDirectory, "states"));
+            if (IsTrue(settings, "sort_savestates_enable"))
+            {
+                if (core.Name is null)
+                    states = null;
+                else
+                    states = Path.Combine(states, core.Name);
+            }
+        }
+
+        return new RetroArchContentDirectories(coreCheats, states);
+
+        string ResolveConfiguredDirectory(string? configured, string fallback) =>
+            string.IsNullOrWhiteSpace(configured) || configured.Equals("default", StringComparison.OrdinalIgnoreCase)
+                ? Path.GetFullPath(fallback)
+                : ExpandPath(configured, configDirectory);
     }
 
     // RetroArch's own precedence: a configuration beside the executable is a portable install,

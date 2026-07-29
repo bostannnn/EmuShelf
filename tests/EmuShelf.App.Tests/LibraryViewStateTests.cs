@@ -2,6 +2,7 @@ using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
@@ -81,6 +82,7 @@ public class LibraryViewStateTests : IDisposable
             SortColumn = nameof(LibrarySortColumn.Console),
             SortDescending = true,
             IsNavigationCollapsed = true,
+            ShowEmptyPlatforms = true,
             Scope = nameof(LibraryScope.System),
             SelectedSystemId = "gamecube",
         }));
@@ -110,6 +112,7 @@ public class LibraryViewStateTests : IDisposable
     {
         var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
         {
+            ShowEmptyPlatforms = true,
             Scope = nameof(LibraryScope.System),
             SelectedSystemId = "a-console-that-no-longer-exists",
         }));
@@ -122,12 +125,48 @@ public class LibraryViewStateTests : IDisposable
     {
         var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
         {
+            ShowEmptyPlatforms = true,
             SortColumn = "NotAColumn",
             Scope = "NotAScope",
         }));
 
         Assert.Equal(LibrarySortColumn.Title, viewModel.SortColumn);
         Assert.Equal(LibraryScope.System, viewModel.CurrentLibraryScope);
+    }
+
+    [AvaloniaFact]
+    public async Task EmptyPlatformsAreHiddenButUnavailableLibraryEntriesStayVisible()
+    {
+        var missingGame = new Game
+        {
+            SystemId = GameCube.Id,
+            Path = Path.Combine(_baseDirectory, "missing.iso"),
+            Title = "Missing SD card game",
+            IsAvailable = false,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        _library.AddGames([missingGame]);
+
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            Scope = nameof(LibraryScope.AllGames),
+        }));
+        await viewModel.ReloadGamesAsync();
+
+        Assert.Equal([GameCube.Id], viewModel.NavigationSystems.Select(system => system.Id));
+        Assert.Equal([GameCube.Id], viewModel.GamepadPlatforms.Select(platform => platform.System.Id));
+    }
+
+    [AvaloniaFact]
+    public void ShowEmptyPlatformsRestoresTheCompleteSupportedList()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ShowEmptyPlatforms = true,
+            Scope = nameof(LibraryScope.AllGames),
+        }));
+
+        Assert.Equal(KnownSystems.All, viewModel.NavigationSystems);
     }
 
     [AvaloniaFact]

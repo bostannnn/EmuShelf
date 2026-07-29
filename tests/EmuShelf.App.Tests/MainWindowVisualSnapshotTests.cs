@@ -1,9 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Chrome;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
@@ -25,6 +28,84 @@ namespace EmuShelf.App.Tests;
 
 public class MainWindowVisualSnapshotTests
 {
+    [AvaloniaFact]
+    public async Task DesktopChrome_KeepsToolbarAndCaptionControlsVisibleInsideWindow()
+    {
+        var window = new MainWindow
+        {
+            DataContext = new MainViewModel(),
+            Width = 1000,
+            Height = 720,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.Equal(WindowDecorations.None, window.WindowDecorations);
+            Assert.True(window.ExtendClientAreaToDecorationsHint);
+
+            var search = window.FindControl<Button>("SearchTrigger");
+            var navigation = window.FindControl<Button>("NavigationToggle");
+            var grid = window.FindControl<ToggleButton>("GridViewToggle");
+            var list = window.FindControl<ToggleButton>("ListViewToggle");
+            var gamepad = window.FindControl<Button>("GamepadModeButton");
+            var theme = window.FindControl<Button>("ThemeButton");
+            var settings = window.FindControl<Button>("SettingsButton");
+            var captions = window.FindControl<StackPanel>("CaptionButtons");
+            var minimize = window.FindControl<Button>("MinimizeWindowButton");
+            var maximize = window.FindControl<Button>("MaximizeWindowButton");
+            var close = window.FindControl<Button>("CloseWindowButton");
+            Assert.NotNull(search);
+            Assert.NotNull(navigation);
+            Assert.NotNull(grid);
+            Assert.NotNull(list);
+            Assert.NotNull(gamepad);
+            Assert.NotNull(theme);
+            Assert.NotNull(settings);
+            Assert.NotNull(captions);
+            Assert.NotNull(minimize);
+            Assert.NotNull(maximize);
+            Assert.NotNull(close);
+            Assert.True(search.IsVisible);
+            Assert.True(captions.IsVisible);
+            Assert.Equal(3 * 46, captions.Bounds.Width, 1);
+
+            var captionOrigin = captions.TranslatePoint(default, window);
+            Assert.NotNull(captionOrigin);
+            Assert.True(captionOrigin.Value.X >= 0);
+            Assert.True(captionOrigin.Value.X + captions.Bounds.Width <= window.Bounds.Width + 1);
+
+            foreach (var control in new Control[]
+                     {
+                         navigation, grid, list, search, gamepad, theme, settings,
+                         minimize, maximize, close,
+                     })
+            {
+                AssertPointerCanReach(window, control);
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static void AssertPointerCanReach(Window window, Control target)
+    {
+        var center = new Point(target.Bounds.Width / 2, target.Bounds.Height / 2);
+        var position = target.TranslatePoint(center, window);
+        Assert.True(position.HasValue, $"Could not translate {target.Name} into window coordinates.");
+
+        var role = target.GetVisualAncestors()
+            .Prepend(target)
+            .Select(WindowDecorationProperties.GetElementRole)
+            .FirstOrDefault(candidate => candidate != WindowDecorationsElementRole.None);
+        Assert.True(
+            role == WindowDecorationsElementRole.User,
+            $"{target.Name} must remain an interactive client control inside the custom title bar; actual role: {role}.");
+    }
+
     [AvaloniaFact]
     public async Task SearchButton_ExpandsFocusTargetAndCloseClearsFilter()
     {
@@ -241,6 +322,106 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task DesktopGrid_SelectionRingAndDiscChoiceStayInsideTheTile()
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation");
+        var disc1 = new Game
+        {
+            Id = 1,
+            SystemId = system.Id,
+            Path = "/games/Xenogears (Disc 1).chd",
+            Title = "Xenogears (Disc 1)",
+            IsAvailable = true,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var disc2 = disc1 with
+        {
+            Id = 2,
+            Path = "/games/Xenogears (Disc 2).chd",
+            Title = "Xenogears (Disc 2)",
+        };
+        var multiDisc = new GameViewModel(
+            disc1,
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio,
+            discs: [new GameDisc(1, disc1), new GameDisc(2, disc2)],
+            selectedDisc: new GameDisc(1, disc1),
+            displayTitle: "Xenogears");
+        multiDisc.IsSelected = true;
+        var singleDisc = new GameViewModel(
+            disc1 with { Id = 3, Path = "/games/Vagrant Story.chd", Title = "Vagrant Story" },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio);
+        var viewModel = new MainViewModel();
+        await viewModel.ReloadGamesAsync();
+        viewModel.Games.ReplaceAll([multiDisc, singleDisc]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1000, Height = 720 };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var tiles = window.GetVisualDescendants()
+                .OfType<StackPanel>()
+                .Where(control => control.Classes.Contains("game-tile"))
+                .ToArray();
+            var selectedTile = tiles.Single(tile => ReferenceEquals(tile.DataContext, multiDisc));
+            var regularTile = tiles.Single(tile => ReferenceEquals(tile.DataContext, singleDisc));
+            var initialTileHeight = selectedTile.Bounds.Height;
+
+            var hoverPoint = selectedTile.TranslatePoint(
+                new Point(selectedTile.Bounds.Width / 2, selectedTile.Bounds.Height / 2),
+                window);
+            Assert.NotNull(hoverPoint);
+            window.MouseMove(hoverPoint.Value);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            Assert.True(selectedTile.IsPointerOver);
+            Assert.NotNull(selectedTile.RenderTransform);
+            Assert.False(selectedTile.RenderTransform.Value.IsIdentity);
+            var hoverOffset = selectedTile.RenderTransform.Value.Transform(default);
+            Assert.Equal(0, hoverOffset.X, 1);
+            Assert.InRange(hoverOffset.Y, -selectedTile.Margin.Top, 0);
+
+            multiDisc.SetSelectedDisc(new GameDisc(2, disc2));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var cover = selectedTile.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("cover-card"));
+            var ring = selectedTile.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("selection-ring"));
+            var badgeText = selectedTile.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Single(control => control.Text == "Disc 2 of 2");
+
+            Assert.Equal(initialTileHeight, selectedTile.Bounds.Height, 1);
+            Assert.Equal(regularTile.Bounds.Height, selectedTile.Bounds.Height, 1);
+            var coverOrigin = cover.TranslatePoint(default, selectedTile);
+            var ringOrigin = ring.TranslatePoint(default, selectedTile);
+            Assert.NotNull(coverOrigin);
+            Assert.NotNull(ringOrigin);
+            Assert.True(ringOrigin.Value.X >= coverOrigin.Value.X);
+            Assert.True(ringOrigin.Value.Y >= coverOrigin.Value.Y);
+            Assert.True(ringOrigin.Value.X + ring.Bounds.Width <= coverOrigin.Value.X + cover.Bounds.Width);
+            Assert.True(ringOrigin.Value.Y + ring.Bounds.Height <= coverOrigin.Value.Y + cover.Bounds.Height);
+            Assert.Contains(
+                badgeText.GetVisualAncestors(),
+                ancestor => ancestor is Border border && border.Classes.Contains("disc-badge"));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task RecycledCoverElement_RequestsReplacementDataContextCover()
     {
         var viewModel = new MainViewModel();
@@ -447,6 +628,9 @@ public class MainWindowVisualSnapshotTests
             selectedDisc: new GameDisc(2, disc2),
             displayTitle: "Final Fantasy X",
             discSelectionKey: "playstation2\u001FFINAL FANTASY X");
+        var sharedShelfHeight = gamepadGames.Max(game => game.CoverHeight);
+        foreach (var game in gamepadGames)
+            game.ApplyCoverLayout(game.CoverWidth, sharedShelfHeight);
         viewModel.Games.ReplaceAll(gamepadGames);
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
@@ -462,6 +646,19 @@ public class MainWindowVisualSnapshotTests
             using var frame = window.CaptureRenderedFrame();
             Assert.NotNull(frame);
             Assert.Equal(new PixelSize(1280, 800), frame.PixelSize);
+            var gamepadTitles = window.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Where(control => control.Classes.Contains("gamepad-tile-title"))
+                .ToArray();
+            Assert.Equal(4, gamepadTitles.Length);
+            var titleBaselines = gamepadTitles
+                .Select(control => control.TranslatePoint(default, window)?.Y)
+                .ToArray();
+            Assert.DoesNotContain(titleBaselines, value => value is null);
+            Assert.InRange(titleBaselines.Max()!.Value - titleBaselines.Min()!.Value, 0, 1);
+            Assert.True(window.GetVisualDescendants()
+                .OfType<Border>()
+                .Count(control => control.Classes.Contains("gamepad-key") && control.IsVisible) >= 7);
             if (outputDirectory is not null)
             {
                 Directory.CreateDirectory(outputDirectory);
@@ -469,10 +666,17 @@ public class MainWindowVisualSnapshotTests
                 frame.Save(output, PngBitmapEncoderOptions.Default);
             }
 
+            viewModel.FocusedGame!.Title =
+                "Shin Megami Tensei: Persona 3 FES — The Journey and The Answer";
             viewModel.OpenFocusedGameActionsCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-actions-1280x800.png");
+            AssertGamepadOverlayHeightBelow(window, 600);
+            AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
+            Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Remove").IsDestructive);
             viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-disc-selection-1280x800.png");
+            AssertGamepadOverlayHeightBelow(window, 440);
+            AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
             var achievementSnapshot = new RetroAchievementsDetailsSnapshot(
                 new RetroAchievementsGameDetails(7, "PlayStation 2 sample game", 2, 1, 1,
                 [
@@ -485,14 +689,18 @@ public class MainWindowVisualSnapshotTests
             viewModel.GamepadOverlay = GamepadOverlayKind.Achievements;
             viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.Achievements[0];
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-achievements-1280x800.png");
+            AssertGamepadOverlayHeightBelow(window, 620);
             viewModel.OpenGamepadSearchCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-search-1280x800.png");
+            AssertGamepadOverlayHeightBelow(window, 460);
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             await viewModel.RemoveFocusedGameCommand.ExecuteAsync(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-remove-1280x800.png");
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             viewModel.OpenGamepadMenuCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
+            AssertGamepadOverlayHeightBelow(window, 500);
+            Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Quit EmuShelf").IsDestructive);
             viewModel.RequestDesktopModeFromGamepadCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-desktop-confirmation-1280x800.png");
             viewModel.BackFromGamepadOverlayCommand.Execute(null);
@@ -506,6 +714,207 @@ public class MainWindowVisualSnapshotTests
         {
             window.Close();
             Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadAchievements_EmptyCacheShowsUsefulStateInsteadOfBlankPanel()
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation");
+        var game = new GameViewModel(
+            new Game
+            {
+                Id = 77,
+                SystemId = system.Id,
+                Path = "/games/achievements.cue",
+                Title = "Achievement sample",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio);
+        game.ApplyAchievementLink(7007);
+        var viewModel = new MainViewModel(
+            new EmptyGameLibrary(),
+            new NullFolderScanner(),
+            new NoImportRules(),
+            new AlwaysAvailableChecker(),
+            new NullDialogService(),
+            KnownSystems.All,
+            retroAccount: new DisconnectedSnapshotAccount(),
+            retroDetails: new EmptySnapshotDetailsService())
+        {
+            IsGamepadMode = true,
+            HasGames = true,
+            IsLibraryEmpty = false,
+            FocusedGame = game,
+        };
+        viewModel.Games.Add(game);
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await viewModel.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.Equal(GamepadOverlayKind.Achievements, viewModel.GamepadOverlay);
+            Assert.NotNull(viewModel.GamepadAchievementDetails);
+            Assert.False(viewModel.GamepadAchievementDetails.HasAchievements);
+            Assert.Contains("Connect RetroAchievements", viewModel.GamepadAchievementDetails.StatusText);
+            var emptyTitle = window.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Single(control => control.Text == "No achievement details cached");
+            var emptyDescription = window.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Single(control => control.Text?.StartsWith("Reconnect to load") == true);
+            Assert.True(emptyTitle.IsVisible);
+            Assert.True(emptyDescription.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadAchievements_ScrollBodyAndHintsStayInsideMinimumWindow()
+    {
+        var achievements = Enumerable.Range(1, 12)
+            .Select(index => new RetroAchievementsAchievement(
+                index,
+                $"Achievement {index}",
+                "A deliberately wrapping description that keeps each achievement row realistic.",
+                5,
+                "",
+                index,
+                null,
+                null))
+            .ToArray();
+        var snapshot = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(7, "A long achievement game title", 12, 0, 0, achievements),
+            DateTimeOffset.UtcNow);
+        var viewModel = new MainViewModel { IsGamepadMode = true };
+        viewModel.GamepadAchievementDetails = new AchievementDetailsViewModel(
+            "A long achievement game title",
+            7,
+            new SnapshotDetailsService(snapshot),
+            new SnapshotAccount(),
+            cached: snapshot);
+        viewModel.GamepadOverlay = GamepadOverlayKind.Achievements;
+        viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.Achievements[0];
+
+        var window = new MainWindow { DataContext = viewModel, Width = 900, Height = 560 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            var host = window.FindControl<Panel>("GamepadOverlayHost");
+            var hints = window.FindControl<StackPanel>("GamepadOverlayHints");
+            var scroller = window.FindControl<ScrollViewer>("GamepadAchievementsScroller");
+            var overlay = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("gamepad-overlay"));
+            Assert.NotNull(host);
+            Assert.NotNull(hints);
+            Assert.NotNull(scroller);
+
+            var overlayOrigin = overlay.TranslatePoint(default, window);
+            var hostOrigin = host.TranslatePoint(default, window);
+            var hintsOrigin = hints.TranslatePoint(default, overlay);
+            Assert.NotNull(overlayOrigin);
+            Assert.NotNull(hostOrigin);
+            Assert.NotNull(hintsOrigin);
+            Assert.True(overlayOrigin.Value.Y >= hostOrigin.Value.Y);
+            Assert.True(overlayOrigin.Value.Y + overlay.Bounds.Height <= hostOrigin.Value.Y + host.Bounds.Height + 1);
+            Assert.True(hintsOrigin.Value.Y + hints.Bounds.Height <= overlay.Bounds.Height - overlay.Padding.Bottom + 1);
+            Assert.InRange(scroller.Bounds.Height, 1, 419);
+            var cards = scroller.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(control => control.Classes.Contains("gamepad-achievement"))
+                .ToArray();
+            var scrollBar = scroller.GetVisualDescendants()
+                .OfType<ScrollBar>()
+                .Single(control => control.Orientation == Orientation.Vertical);
+            Assert.InRange(cards.Length, 1, achievements.Length - 1);
+            Assert.InRange(scrollBar.Bounds.Width, 6, 10);
+            var cardOrigin = cards[0].TranslatePoint(default, scroller);
+            var scrollBarOrigin = scrollBar.TranslatePoint(default, scroller);
+            Assert.NotNull(cardOrigin);
+            Assert.NotNull(scrollBarOrigin);
+            Assert.True(
+                cardOrigin.Value.X + cards[0].Bounds.Width + 6 <= scrollBarOrigin.Value.X,
+                "achievement cards should stop before the dedicated scrollbar gutter");
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR"),
+                "emushelf-gamepad-achievements-900x560.png",
+                new PixelSize(900, 560));
+        }
+        finally
+        {
+            viewModel.CloseGamepadOverlayCommand.Execute(null);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadLongOptionList_RevealsTheFocusedOption()
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
+        var discs = Enumerable.Range(1, 12)
+            .Select(number => new GameDisc(number, new Game
+            {
+                Id = number,
+                SystemId = system.Id,
+                Path = $"/Games/playstation2/Sample (Disc {number}).chd",
+                Title = $"Sample (Disc {number})",
+                DateAdded = DateTimeOffset.UtcNow,
+            }))
+            .ToArray();
+        var game = new GameViewModel(
+            discs[0].Game,
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio,
+            discs: discs,
+            selectedDisc: discs[0],
+            displayTitle: "Sample",
+            discSelectionKey: "playstation2\u001FSAMPLE");
+        var viewModel = new MainViewModel { IsGamepadMode = true };
+        viewModel.Games.ReplaceAll([game]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.FocusedGame = game;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 900, Height = 560 };
+        window.Show();
+        try
+        {
+            viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
+            await PumpAsync();
+            var scroller = window.FindControl<ScrollViewer>("GamepadOverlayOptionsScroller");
+            Assert.NotNull(scroller);
+            var initialOffset = scroller.Offset.Y;
+
+            for (var step = 0; step < 10; step++)
+            {
+                viewModel.MoveGamepadOverlayDownCommand.Execute(null);
+                await PumpAsync();
+            }
+
+            Assert.Equal(10, viewModel.GamepadOverlaySelectionIndex);
+            Assert.True(
+                scroller.Offset.Y > initialOffset,
+                $"options should scroll to reveal the focused row (offset stayed at {scroller.Offset.Y})");
+        }
+        finally
+        {
+            viewModel.CloseGamepadOverlayCommand.Execute(null);
+            window.Close();
         }
     }
 
@@ -600,9 +1009,14 @@ public class MainWindowVisualSnapshotTests
             var actions = window.FindControl<ItemsControl>("GamepadOverlayOptions");
             Assert.NotNull(body);
             Assert.NotNull(actions);
+            var bodyOrigin = body.TranslatePoint(default, window);
+            var actionsOrigin = actions.TranslatePoint(default, window);
+            Assert.NotNull(bodyOrigin);
+            Assert.NotNull(actionsOrigin);
+            var bodyBottom = bodyOrigin.Value.Y + body.Bounds.Height;
             Assert.True(
-                body.Bounds.Bottom < actions.Bounds.Top,
-                $"confirmation body ended at {body.Bounds.Bottom}, actions started at {actions.Bounds.Top}");
+                bodyBottom < actionsOrigin.Value.Y,
+                $"confirmation body ended at {bodyBottom}, actions started at {actionsOrigin.Value.Y}");
         }
         finally
         {
@@ -788,18 +1202,44 @@ public class MainWindowVisualSnapshotTests
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
     }
 
-    private static async Task SaveGamepadOverlaySnapshotAsync(Window window, string? outputDirectory, string fileName)
+    private static async Task SaveGamepadOverlaySnapshotAsync(
+        Window window,
+        string? outputDirectory,
+        string fileName,
+        PixelSize? expectedSize = null)
     {
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
         using var frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);
-        Assert.Equal(new PixelSize(1280, 800), frame.PixelSize);
+        Assert.Equal(expectedSize ?? new PixelSize(1280, 800), frame.PixelSize);
         if (outputDirectory is not null)
         {
             Directory.CreateDirectory(outputDirectory);
             using var output = File.Create(Path.Combine(outputDirectory, fileName));
             frame.Save(output, PngBitmapEncoderOptions.Default);
         }
+    }
+
+    private static void AssertGamepadOverlayHeightBelow(Window window, double previousFixedHeight)
+    {
+        var overlay = window.GetVisualDescendants()
+            .OfType<Border>()
+            .Single(control => control.Classes.Contains("gamepad-overlay"));
+        Assert.InRange(overlay.Bounds.Height, 1, previousFixedHeight - 1);
+    }
+
+    private static void AssertGamepadOverlayTitleFits(Window window, string title)
+    {
+        var overlay = window.GetVisualDescendants()
+            .OfType<Border>()
+            .Single(control => control.Classes.Contains("gamepad-overlay"));
+        var titleBlock = window.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Single(control => control.IsVisible && control.Text == title);
+        var origin = titleBlock.TranslatePoint(default, overlay);
+        Assert.NotNull(origin);
+        Assert.True(origin.Value.X >= 0);
+        Assert.True(origin.Value.X + titleBlock.Bounds.Width <= overlay.Bounds.Width + 1);
     }
 
     private sealed class SnapshotDetailsService(RetroAchievementsDetailsSnapshot snapshot) : IRetroAchievementsDetailsService
@@ -818,6 +1258,33 @@ public class MainWindowVisualSnapshotTests
         public RetroAchievementsCredentials? CurrentCredentials => new("Snapshot", "KEY", "ULID");
         public Task<RetroAchievementsConnectionResult> ConnectAsync(string username, string apiKey, CancellationToken cancellationToken = default) => Task.FromResult(RetroAchievementsConnectionResult.Connected);
         public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class DisconnectedSnapshotAccount : IRetroAchievementsAccountService
+    {
+        public RetroAchievementsAccount? Account => null;
+        public bool IsConnected => false;
+        public RetroAchievementsCredentials? CurrentCredentials => null;
+        public Task<RetroAchievementsConnectionResult> ConnectAsync(
+            string username,
+            string apiKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(RetroAchievementsConnectionResult.Offline);
+        public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class EmptySnapshotDetailsService : IRetroAchievementsDetailsService
+    {
+        public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed { add { } remove { } }
+        public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => null;
+        public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
+            RetroAchievementsCredentials credentials,
+            int retroAchievementsGameId,
+            CancellationToken cancellationToken = default,
+            bool manual = false) =>
+            Task.FromResult(RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
+                RetroAchievementsRequestStatus.Offline));
+        public void Clear() { }
     }
 
     [AvaloniaFact]

@@ -120,7 +120,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
 
             if (!index.TryAdd(
                     entry.UnitId,
-                    new SaveUnitSnapshot(entry.UnitId, entry.ContentHash, entry.ModifiedUtc)))
+                    new SaveUnitSnapshot(entry.UnitId, entry.ContentHash, entry.ModifiedUtc, entry.Compatibility)))
             {
                 throw new InvalidDataException("The cloud index contains a duplicate save unit.");
             }
@@ -167,7 +167,8 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         Stream content,
         string contentHash,
         DateTimeOffset modifiedUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? compatibility = null)
     {
         ValidateUnitId(unitId);
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
@@ -184,7 +185,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             await content.CopyToAsync(payload, 81920, cancellationToken);
         }
 
-        _pendingIndex[unitId] = new SaveUnitSnapshot(unitId, contentHash, modifiedUtc);
+        _pendingIndex[unitId] = new SaveUnitSnapshot(unitId, contentHash, modifiedUtc, compatibility);
     }
 
     public async Task FlushAsync(
@@ -229,7 +230,11 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                 return;
 
             var entries = index.Values
-                .Select(snapshot => new RemoteUnitMetadata(snapshot.UnitId, snapshot.ContentHash, snapshot.ModifiedUtc))
+                .Select(snapshot => new RemoteUnitMetadata(
+                    snapshot.UnitId,
+                    snapshot.ContentHash,
+                    snapshot.ModifiedUtc,
+                    snapshot.Compatibility))
                 .ToList();
             var indexDirectory = CreateStagingDirectory("index");
             try
@@ -699,7 +704,11 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         }
     }
 
-    private sealed record RemoteUnitMetadata(string UnitId, string ContentHash, DateTimeOffset ModifiedUtc);
+    private sealed record RemoteUnitMetadata(
+        string UnitId,
+        string ContentHash,
+        DateTimeOffset ModifiedUtc,
+        string? Compatibility = null);
 
     private sealed record RemoteStatEntry(string? ID, string? Name, bool IsDir);
 }

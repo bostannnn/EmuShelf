@@ -9,8 +9,10 @@ namespace EmuShelf.Core.SaveSync;
 /// <param name="ContentHash">Content hash agreed by both sides at the last successful sync.</param>
 /// <param name="ModifiedUtc">The modified time recorded at that sync.</param>
 /// <param name="Revision">Monotonic counter incremented each time the baseline advances.</param>
+/// <param name="Compatibility">Creator-version identity for guarded content such as save states.</param>
 public sealed record SaveUnitBaseline(
     string UnitId,
     string ContentHash,
     DateTimeOffset ModifiedUtc,
-    long Revision);
+    long Revision,
+    string? Compatibility = null);

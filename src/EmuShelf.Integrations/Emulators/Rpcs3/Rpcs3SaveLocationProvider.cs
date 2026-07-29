@@ -3,6 +3,8 @@ using EmuShelf.Core.SaveSync;
 
 namespace EmuShelf.Integrations.Emulators.Rpcs3;
 
+public sealed record Rpcs3ContentDirectories(string Patches, string SaveStates);
+
 /// <summary>One RPCS3 local user account under <c>dev_hdd0/home</c>.</summary>
 /// <param name="Id">The eight-digit account directory name, e.g. <c>00000001</c>.</param>
 /// <param name="Name">The account's display name from <c>localusername</c>, when readable.</param>
@@ -96,6 +98,15 @@ public sealed class Rpcs3SaveLocationProvider : ISaveLocationProvider
     public string SystemId => "playstation3";
 
     public string UnitIdPrefix => "rpcs3/";
+
+    /// <summary>RPCS3-owned roots for its patch database and manually created save states.</summary>
+    public Task<Rpcs3ContentDirectories> GetContentDirectoriesAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var root = ResolveConfigDirectory();
+            return new Rpcs3ContentDirectories(Path.Combine(root, "patches"), Path.Combine(root, "savestates"));
+        }, cancellationToken);
 
     /// <summary>Returns the bound account's save-data directory and the accounts available beside it.</summary>
     public Task<Rpcs3SaveDataInfo> GetSaveDataInfoAsync(CancellationToken cancellationToken = default) =>

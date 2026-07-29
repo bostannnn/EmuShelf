@@ -314,7 +314,8 @@ public sealed class DialogService : IDialogService
             _retroAchievementsDetails,
             _retroAchievementsAccount,
             _retroAchievementsBadges,
-            cached);
+            cached,
+            logger: _logger);
         var dialog = new AchievementDetailsWindow { DataContext = viewModel };
         viewModel.CloseRequested += dialog.Close;
         dialog.Opened += (_, _) => _ = viewModel.RefreshIfStaleAsync();

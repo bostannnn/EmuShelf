@@ -45,6 +45,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public string DiscCountText => $"{DiscCount} discs";
     public string SelectedDiscText => $"Disc {SelectedDiscNumber} selected";
     public bool ShowsSelectedDisc => IsMultiDisc && SelectedDiscNumber != 1;
+    public string DiscBadgeText => $"Disc {SelectedDiscNumber} of {DiscCount}";
     public long Id { get; }
     public string SystemId { get; }
     public string Path { get; }
@@ -300,6 +301,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedDiscNumber));
         OnPropertyChanged(nameof(SelectedDiscText));
         OnPropertyChanged(nameof(ShowsSelectedDisc));
+        OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
         foreach (var option in DiscOptions)

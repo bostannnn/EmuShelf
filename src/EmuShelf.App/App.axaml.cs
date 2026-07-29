@@ -57,7 +57,7 @@ public partial class App : Application
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings,
                 mainWindow,
-                AppLaunchOptions.GamepadUiRequested);
+                AppLaunchOptions.InterfaceModeOverride);
             var launchService = new EmulatorLaunchService(
                 Bootstrapper.EmulatorConfigurations,
                 Bootstrapper.ProcessRunner,

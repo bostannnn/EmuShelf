@@ -16,6 +16,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     private readonly IAppLogger _logger;
     private readonly Func<string, SaveSyncDirection, Task> _force;
+    private bool _isInitializing = true;
 
     public CloudSavePlatformRowViewModel(
         CloudSaveSyncPlatformContext platform,
@@ -35,6 +36,12 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         OverrideDirectory = platform.Override ?? string.Empty;
         LastResultText = DescribeLastResult(platform);
         LastNoticeText = platform.LastNotice;
+        SupportsCheatsAndPatches = platform.SupportsCheatsAndPatches;
+        SupportsSaveStates = platform.SupportsSaveStates;
+        SyncCheatsAndPatches = platform.SyncCheatsAndPatches;
+        SyncSaveStates = platform.SyncSaveStates;
+        SaveStateRetention = Math.Clamp(platform.SaveStateRetention, 1, 10);
+        _isInitializing = false;
     }
 
     /// <summary>The stable system id this row configures.</summary>
@@ -49,6 +56,21 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     /// <summary>Placeholder shown in the override path box.</summary>
     public string OverridePlaceholder { get; }
 
+    public bool SupportsCheatsAndPatches { get; }
+
+    public bool SupportsSaveStates { get; }
+
+    public bool HasOptionalContent => SupportsCheatsAndPatches || SupportsSaveStates;
+
+    [ObservableProperty]
+    public partial bool SyncCheatsAndPatches { get; set; }
+
+    [ObservableProperty]
+    public partial bool SyncSaveStates { get; set; }
+
+    [ObservableProperty]
+    public partial int SaveStateRetention { get; set; } = 3;
+
     [ObservableProperty]
     public partial string OverrideDirectory { get; set; } = string.Empty;
 
@@ -59,6 +81,10 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCompatibilityWarning))]
     public partial string? CompatibilityWarning { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOptionalContentSummary))]
+    public partial string? OptionalContentSummary { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDetectionError))]
@@ -95,6 +121,8 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     public bool HasCompatibilityWarning => !string.IsNullOrWhiteSpace(CompatibilityWarning);
 
+    public bool HasOptionalContentSummary => !string.IsNullOrWhiteSpace(OptionalContentSummary);
+
     public bool HasDetectionError => !string.IsNullOrWhiteSpace(DetectionErrorText);
 
     public bool HasLastResult => !string.IsNullOrWhiteSpace(LastResultText);
@@ -125,11 +153,13 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
                 var detection = await detect(SystemId, CancellationToken.None);
                 DetectedDirectory = detection?.DisplayLocation ?? detection?.Directory;
                 CompatibilityWarning = detection?.Warning;
+                OptionalContentSummary = DescribeOptionalContent(detection);
             }
             else
             {
                 DetectedDirectory = await _cloudSaves.GetDetectedPathAsync(SystemId, CancellationToken.None);
                 CompatibilityWarning = null;
+                OptionalContentSummary = null;
             }
 
             DetectionErrorText = null;
@@ -139,6 +169,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
             _logger.Error($"Could not detect the save folder for {DisplayName}.", ex);
             DetectedDirectory = null;
             CompatibilityWarning = null;
+            OptionalContentSummary = null;
             DetectionErrorText = $"Cannot sync: {ex.Message}";
         }
     }
@@ -163,6 +194,66 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     [RelayCommand]
     private Task ReplaceLocalAsync() => _force(SystemId, SaveSyncDirection.Download);
+
+    partial void OnSyncCheatsAndPatchesChanged(bool value) => PersistOptionalContent();
+
+    partial void OnSyncSaveStatesChanged(bool value) => PersistOptionalContent();
+
+    private static string? DescribeOptionalContent(SaveProviderDetection? detection)
+    {
+        if (detection?.OptionalContent is not { Count: > 0 } locations)
+            return detection?.OptionalContentSummary;
+
+        return string.Join(Environment.NewLine, locations.Select(location =>
+        {
+            var path = string.IsNullOrWhiteSpace(location.Directory) ? "Unavailable" : location.Directory;
+            var fileCount = location.TotalFileCount > location.EligibleFileCount
+                ? $"{location.EligibleFileCount} of {location.TotalFileCount} file(s) selected"
+                : $"{location.EligibleFileCount} eligible file(s)";
+            var details = $"{fileCount}, {FormatBytes(location.EligibleBytes)}";
+            if (!string.IsNullOrWhiteSpace(location.Compatibility))
+                details += $", {location.Compatibility}";
+            if (!string.IsNullOrWhiteSpace(location.Warning))
+                details += $" — {location.Warning}";
+            return $"{location.Kind}: {path} · {details}";
+        }));
+
+        static string FormatBytes(long bytes)
+        {
+            string[] suffixes = ["B", "KB", "MB", "GB"];
+            var value = (double)bytes;
+            var suffix = 0;
+            while (value >= 1024 && suffix < suffixes.Length - 1)
+            {
+                value /= 1024;
+                suffix++;
+            }
+            return $"{value:0.#} {suffixes[suffix]}";
+        }
+    }
+
+    partial void OnSaveStateRetentionChanged(int value)
+    {
+        var clamped = Math.Clamp(value, 1, 10);
+        if (value != clamped)
+        {
+            SaveStateRetention = clamped;
+            return;
+        }
+        PersistOptionalContent();
+    }
+
+    private void PersistOptionalContent()
+    {
+        if (!_isInitializing)
+        {
+            _cloudSaves.UpdateOptionalContent?.Invoke(
+                SystemId,
+                SyncCheatsAndPatches,
+                SyncSaveStates,
+                SaveStateRetention);
+        }
+    }
 
     private static string? DescribeLastResult(CloudSaveSyncPlatformContext platform)
     {

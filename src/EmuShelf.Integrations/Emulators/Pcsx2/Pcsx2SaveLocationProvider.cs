@@ -3,6 +3,8 @@ using EmuShelf.Core.SaveSync;
 
 namespace EmuShelf.Integrations.Emulators.Pcsx2;
 
+public sealed record Pcsx2ContentDirectories(string Cheats, string Patches, string SaveStates);
+
 /// <summary>
 /// Reads PCSX2's version-1 INI format without modifying it and exposes each memory-card save as
 /// an independently addressable sync unit. Unknown configuration formats fail closed so a future
@@ -27,6 +29,10 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
     public string SystemId => "playstation2";
 
     public string UnitIdPrefix => "pcsx2/";
+
+    /// <summary>Configured roots for portable content stored outside the memory cards folder.</summary>
+    public Task<Pcsx2ContentDirectories> GetContentDirectoriesAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() => ReadContentDirectories(cancellationToken), cancellationToken);
 
     /// <summary>Gets the configured memory-card location, or the platform default when the INI is unreadable.</summary>
     public async Task<string> GetMemoryCardsDirectoryAsync(CancellationToken cancellationToken = default) =>
@@ -141,6 +147,57 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
         catch (UnauthorizedAccessException)
         {
             return ConfigurationWithoutIni();
+        }
+    }
+
+    private Pcsx2ContentDirectories ReadContentDirectories(CancellationToken cancellationToken)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var iniPath = ResolveIniPath();
+        if (iniPath is null && IsLikelyMemoryCardsDirectory(_configurationDirectory))
+        {
+            throw new InvalidOperationException(
+                "The selected PCSX2 location is the memory-card folder. Select PCSX2's data folder " +
+                "to resolve its cheats, patches, and save-state folders safely.");
+        }
+
+        var contentRoot = iniPath is null
+            ? Path.GetDirectoryName(_fallbackMemoryCardsDirectory)!
+            : _configurationDirectory;
+        if (iniPath is not null)
+        {
+            using var stream = new FileStream(iniPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var inFolders = false;
+            while (reader.ReadLine() is { } line)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var trimmed = line.Trim();
+                if (trimmed.StartsWith('[') && trimmed.EndsWith(']'))
+                {
+                    inFolders = trimmed.Equals("[Folders]", StringComparison.OrdinalIgnoreCase);
+                    continue;
+                }
+                if (!inFolders)
+                    continue;
+                var equals = trimmed.IndexOf('=');
+                if (equals > 0)
+                    values[trimmed[..equals].Trim()] = trimmed[(equals + 1)..].Trim();
+            }
+        }
+
+        return new Pcsx2ContentDirectories(
+            ResolveFolder(values.GetValueOrDefault("Cheats"), "cheats"),
+            ResolveFolder(values.GetValueOrDefault("Patches"), "patches"),
+            ResolveFolder(values.GetValueOrDefault("SaveStates"), "sstates"));
+
+        string ResolveFolder(string? configured, string fallback)
+        {
+            var value = string.IsNullOrWhiteSpace(configured) ? fallback : configured;
+            var normalized = value.Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
+            return Path.GetFullPath(Path.IsPathFullyQualified(normalized)
+                ? normalized
+                : Path.Combine(contentRoot, normalized));
         }
     }
 

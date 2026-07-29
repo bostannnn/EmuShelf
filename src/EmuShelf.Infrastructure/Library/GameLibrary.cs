@@ -42,6 +42,19 @@ public sealed class GameLibrary : IGameLibrary
         return games;
     }
 
+    public IReadOnlySet<string> GetPopulatedSystemIds()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT DISTINCT SystemId FROM Games;";
+
+        var systemIds = new HashSet<string>(StringComparer.Ordinal);
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+            systemIds.Add(reader.GetString(0));
+        return systemIds;
+    }
+
     public IReadOnlyList<Game> GetRecentlyAddedGames(int limit)
     {
         if (limit <= 0)

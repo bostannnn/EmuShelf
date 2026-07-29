@@ -2434,3 +2434,161 @@ the validated DNS answer to the outbound socket. Downloaded headers must also de
 codec's scaled decode off the UI thread and enter the ranked grid independently as each bounded
 download finishes; the selected original receives the same dimension check during normal cover
 import. These checks apply to manual web search without changing trusted automatic metadata hosts.
+
+## 2026-07-29 — Settings updates are atomic, launch shortcuts own context, and navigation reflects the library
+
+Every component that owns one settings section now updates that section through a single serialized
+read-modify-write operation in `ISettingsService`. Loading and saving independently was insufficient:
+cloud-sync results and texture-pack overrides retained the startup `AppSettings` snapshot and could
+write an older theme or interface preference back after the user changed it. Atomic scoped updates
+make the JSON file the latest source of truth without introducing a second settings store.
+
+Interface mode has two layers. An unqualified launch uses the persisted Desktop/Gamepad preference;
+`--gamepad-ui` and `--desktop-ui` force one launch and never mutate that preference. This lets a Steam
+Gaming Mode shortcut and a desktop shortcut share the same portable AppImage and data directory
+without whichever context ran last changing the other one's next startup.
+
+Platform navigation represents library contents, not the complete capability catalogue. Desktop and
+Gamepad hide platforms with zero database entries by default; import and emulator Settings still use
+the complete registered system list. An unavailable entry remains sufficient to show its platform,
+because a disconnected removable drive is a recoverable library state rather than an empty library.
+General Settings persists a `Show empty platforms` escape hatch for setup and preference.
+
+## 2026-07-29 — Settings serialization crosses process boundaries and navigation refresh preserves intent
+
+The portable settings transaction is guarded by a sibling lock file as well as a process-local lock.
+The lock file remains in `Settings/`: deleting it after release would let a third process create a new
+file while another process still holds the old file handle, splitting the lock. This makes concurrent
+Steam and desktop launches serialize their read-modify-write operations before the existing atomic
+rename replaces `settings.json`.
+
+Platform membership is queried with `SELECT DISTINCT SystemId` rather than materializing the entire
+game library. Library reload owns the empty-selected-system fallback, so every import, rescan, sync,
+and removal path reaches All Games consistently when its platform disappears. A refresh also keeps a
+tentative Gamepad rail position while the rail has focus; active-scope synchronization resumes after
+focus leaves the rail.
+
+## 2026-07-29 — Desktop chrome, semantic color, and navigation artwork share one visual contract
+
+The main Desktop window uses Avalonia-drawn, theme-owned chrome instead of the native title strip.
+Windows 10 cannot officially darken its native caption, while extending under full decorations
+causes the system title to overlap EmuShelf's sidebar header. The window therefore keeps its public
+`Title` and taskbar identity but draws explicit minimize/maximize/close controls, marks both header
+surfaces as native drag regions, and delegates all eight resize edges/corners through Avalonia's
+`WindowDecorationProperties` roles. Caption controls are positioned against the live window bounds,
+not the library's desired width, so wide list columns cannot push them off-screen at high DPI.
+Gamepad mode remains fullscreen and does not show Desktop caption controls.
+
+Color tokens now carry one meaning each: coral remains brand/selection, gold identifies
+achievements, blue identifies informational or in-progress feedback, green is reserved for success,
+amber for warnings, and red for destructive or failed states. Platform and collection bitmaps keep
+their licensed source pixels but render with uniform scaling inside the same neutral 26-point icon
+well. This equalizes portrait, landscape, and 32-pixel collection assets without redrawing or
+relicensing them; the selected well receives the existing coral focus border.
+
+## 2026-07-29 — Custom title-bar drag regions never own toolbar input
+
+The Desktop headers remain native title-bar drag regions, but every control or control group inside
+them is explicitly assigned Avalonia's `User` decoration role. This makes non-client hit testing
+redirect input to grid/list mode, search, Gamepad mode, theme, Settings, and navigation controls
+before it considers the containing header as a window-drag target. The caption buttons alone occupy
+the top-level overlay; no full-width transparent surface may sit above the toolbar. The window-sized
+root keeps those caption buttons aligned to the live client edge without widening their hit target.
+
+## 2026-07-29 — Grid state indicators stay inside the cover footprint
+
+Selection and multi-disc state must not change a library tile's measured height. The Desktop
+selection ring is inset within the cover frame because `UniformGridLayout` may clip pixels rendered
+outside its row boundary. A multi-disc title uses its existing cover badge for both count and active
+disc: it reads “2 discs” while disc 1 is current and “Disc 2 of 2” after another disc is selected.
+Desktop and Gamepad grids do not add a conditional status row beneath the title; the list uses the
+same compact label in its already-present metadata line.
+
+## 2026-07-29 — Multi-disc badges always identify the active disc
+
+The cover badge uses one stable meaning for every multi-disc title: “Disc N of M,” including when
+disc 1 is active. A badge that alternates between the collection size (“2 discs”) and the active
+position (“Disc 2 of 2”) makes the same surface communicate two different things. The explicit
+position also confirms which disc will launch without requiring the user to remember whether a
+non-default selection was made.
+
+## 2026-07-29 — Virtualized Desktop tiles do not scale outside their cells
+
+Pointer hover is communicated through the cover's stronger border and shadow, not by scaling the
+whole game tile. `UniformGridLayout` clips transformed content at virtualized cell boundaries; when
+a selected tile remained under the pointer after a click, scaling it by 1.025 moved the inset
+selection ring beyond the cell and removed its top edge. Keeping the tile transform at identity
+preserves the complete selection outline while retaining visible hover feedback.
+
+## 2026-07-29 — Desktop hover motion uses reserved in-cell headroom
+
+Desktop cover tiles retain animated motion, but use a three-pixel upward translation instead of
+scaling the whole tile. Each repeater item reserves four pixels above the card, so the translated
+selection ring remains inside its virtualized cell. Border and shadow changes continue alongside
+the lift. This preserves responsive hover feedback without cropping the selected cover or changing
+cover width and column spacing.
+
+## 2026-07-29 — Gamepad surfaces keep stable geometry and explicit controller states
+
+Gamepad library rows reserve a fixed title zone beneath a bottom-aligned cover shelf, so mixed cover
+ratios do not move or hide titles. Controller guidance is rendered as compact button caps, overlays
+use a height appropriate to their workflow, and destructive actions are visually separated from
+ordinary choices. The achievements overlay must always render one of its meaningful states—loading,
+results, empty, offline, or disconnected—rather than presenting a blank panel while data is absent.
+
+## 2026-07-29 — Gamepad overlays are content-sized with bounded scrolling
+
+Controller menus, prompts, and action sheets grow from their visible content instead of reserving a
+fixed dialog height. Achievement-only header fields are collapsed as one group so missing nested
+data cannot leave invisible rows in other overlays. Option lists and achievement rows have bounded
+scroll regions for unusually long content, while the surrounding sheet remains centered and compact.
+Achievement presentation distinguishes a loaded game with no available achievements from loading or
+missing cached details, and collection replacement restores focus to a live achievement row.
+
+## 2026-07-29 — Gamepad layout constraints follow visible content and preserve navigation context
+
+The overlay header and footer remain auto-sized, while the middle body owns the flexible height and
+scrolls inside the minimum supported window instead of pushing controller hints out of view. Cover
+shelf height is recalculated from the filtered games currently on screen, not hidden search results.
+Achievement refresh restores focus by achievement id when that achievement still exists, and every
+unexpected refresh failure resolves to an explicit cached or uncached state rather than escaping a
+fire-and-forget task.
+
+## 2026-07-29 — Optional sync content reuses the stable catalog and stays opt-in
+
+Cheats/patches and save states use per-file namespaces beneath each existing emulator prefix; the
+stable `index.json` and payload protocol are unchanged. Both kinds default off. Cheats and patches
+may join normal save passes when enabled, while states run only in manual Sync all/replace actions.
+The existing index entry records the detected emulator version, libretro core version where
+applicable, and CPU architecture; state unit ids stay stable so emulator upgrades do not create a
+new generation of orphaned objects. Incompatible remote states remain indexed and are reported
+rather than restored.
+Retention selects the newest configured number per game across local and remote candidates without
+deleting older local or cloud files. Auto, resume, undo, and backup states are excluded.
+
+Dolphin Gecko/Action Replay sections are intentionally not copied: they live inside the same
+GameSettings INIs as machine-specific per-game emulator settings, which this milestone explicitly
+does not sync. Copying the complete INI would violate that boundary; section-aware merge can be
+revisited only with the per-game-settings work.
+
+## 2026-07-29 — Optional sync is manual, observable, and independently detectable
+
+This supersedes the automatic-cheat portion of the preceding decision. Real portable emulator
+installs can place thousands of bundled/community database files in the same cheats and patches
+roots as user-authored files. Hashing and reconciling those files before every launch would put a
+large, optional catalog on the game's critical path. Cheats, patches, and states therefore run only
+in manual Sync all/replace actions; ordinary in-game saves remain the only automatic pre/post-launch
+content.
+
+Settings reports each optional kind independently with its exact resolved folder, selected/total
+file count, size, compatibility identity, and any advisory error. Failure to resolve one optional
+folder never invalidates the ordinary save location. A direct PCSX2 memory-card override cannot
+identify sibling content safely and reports that limitation instead of inventing paths beneath the
+card folder.
+
+State compatibility is provenance attached to content, not a label inferred anew from the emulator
+installed today. The local manifest retains the compatibility identity alongside the content hash;
+unchanged bytes keep that identity after an emulator upgrade, while genuinely changed bytes receive
+the current identity. This prevents an upgrade from silently certifying an old state as compatible.
+Executable version strings are normalized across packaging formats, and native executables without
+embedded version resources fall back to their bounded `--version` command.

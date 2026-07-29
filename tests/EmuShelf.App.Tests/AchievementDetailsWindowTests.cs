@@ -10,6 +10,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Diagnostics;
 
 namespace EmuShelf.App.Tests;
 
@@ -171,9 +172,66 @@ public class AchievementDetailsWindowTests
         viewModel.Dispose();
     }
 
+    [Fact]
+    public void LoadedSnapshotWithoutRows_IsReportedAsAValidEmptyAchievementSet()
+    {
+        var cached = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(1234, "Game", 0, 0, 0, []),
+            DateTimeOffset.UtcNow);
+        var viewModel = new AchievementDetailsViewModel(
+            "Game", 1234, new FakeDetailsService(), new FakeAccount(), cached: cached);
+
+        Assert.True(viewModel.HasLoadedSnapshot);
+        Assert.False(viewModel.HasAchievements);
+        Assert.Equal("No achievements available", viewModel.EmptyStateTitle);
+        Assert.Equal(
+            "RetroAchievements did not return any achievements for this game.",
+            viewModel.EmptyStateDescription);
+
+        viewModel.Dispose();
+    }
+
+    [AvaloniaFact]
+    public async Task UnexpectedRefreshFailure_LeavesAUsefulUncachedState()
+    {
+        var details = new FakeDetailsService
+        {
+            RefreshException = new InvalidOperationException("broken detail store"),
+        };
+        var logger = new RecordingLogger();
+        var viewModel = new AchievementDetailsViewModel(
+            "Game", 1234, details, new FakeAccount(), logger: logger);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsRefreshing);
+        Assert.Equal(
+            "Achievement details could not be loaded and no cached copy is available.",
+            viewModel.StatusText);
+        Assert.Equal("No achievement details cached", viewModel.EmptyStateTitle);
+        Assert.IsType<InvalidOperationException>(logger.LastException);
+        Assert.Contains("game id 1234", logger.LastMessage);
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void DeferredBadgeRows_DoNotRequestArtworkUntilTheViewportAsksForIt()
+    {
+        var badgeCache = new RecordingBadgeCache();
+        var row = new AchievementRowViewModel(
+            new RetroAchievementsAchievement(1, "First", "", 5, "000001", 1, null, null),
+            badgeCache,
+            loadBadge: false);
+
+        Assert.Equal("000001", row.BadgeName);
+        Assert.Equal(0, badgeCache.Requests);
+        row.Dispose();
+    }
+
     private sealed class FakeDetailsService : IRetroAchievementsDetailsService
     {
         public RetroAchievementsDetailsSnapshot? Response { get; set; }
+        public Exception? RefreshException { get; set; }
         public int RefreshCalls { get; private set; }
         public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed;
         public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => Response;
@@ -184,6 +242,8 @@ public class AchievementDetailsWindowTests
             bool manual = false)
         {
             RefreshCalls++;
+            if (RefreshException is { } exception)
+                return Task.FromException<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>>(exception);
             return Task.FromResult(Response is { } response
                 ? RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Success(response)
                 : RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
@@ -209,5 +269,34 @@ public class AchievementDetailsWindowTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(RetroAchievementsConnectionResult.Connected);
         public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingLogger : IAppLogger
+    {
+        public string LastMessage { get; private set; } = string.Empty;
+        public Exception? LastException { get; private set; }
+
+        public void Information(string message) { }
+        public void Warning(string message, Exception? exception = null) { }
+        public void Error(string message, Exception? exception = null)
+        {
+            LastMessage = message;
+            LastException = exception;
+        }
+    }
+
+    private sealed class RecordingBadgeCache : IRetroAchievementsBadgeCache
+    {
+        public int Requests { get; private set; }
+
+        public Task<string?> GetBadgePathAsync(
+            string badgeName,
+            CancellationToken cancellationToken = default)
+        {
+            Requests++;
+            return Task.FromResult<string?>(null);
+        }
+
+        public void Clear() { }
     }
 }

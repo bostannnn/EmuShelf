@@ -21,6 +21,15 @@ public sealed record SaveLocationSettings
     /// moved a save the user expected, and that is the case worth explaining in the row.
     /// </summary>
     public string? LastNotice { get; init; }
+
+    /// <summary>Whether portable cheat and patch files participate for this platform.</summary>
+    public bool SyncCheatsAndPatches { get; init; }
+
+    /// <summary>Whether manually initiated syncs include guarded emulator save states.</summary>
+    public bool SyncSaveStates { get; init; }
+
+    /// <summary>Maximum manual state slots exposed per game. Local files are never deleted.</summary>
+    public int SaveStateRetention { get; init; } = 3;
 }
 
 /// <summary>
@@ -98,6 +107,19 @@ public sealed record CloudSaveSyncSettings
         var trimmed = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim();
         return With(systemId, location => location with { DirectoryOverride = trimmed });
     }
+
+    /// <summary>Updates optional content without changing the platform's save location or result.</summary>
+    public CloudSaveSyncSettings WithOptionalContent(
+        string systemId,
+        bool syncCheatsAndPatches,
+        bool syncSaveStates,
+        int saveStateRetention) =>
+        With(systemId, location => location with
+        {
+            SyncCheatsAndPatches = syncCheatsAndPatches,
+            SyncSaveStates = syncSaveStates,
+            SaveStateRetention = Math.Clamp(saveStateRetention, 1, 10),
+        });
 
     /// <summary>Records a successful sync for one system and clears its last error.</summary>
     /// <param name="notice">What the pass left undone and why, or null when it left nothing.</param>

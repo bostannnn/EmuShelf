@@ -67,6 +67,14 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
 
     public string UnitIdPrefix => "duckstation/";
 
+    /// <summary>Returns DuckStation's effective user-data root.</summary>
+    public Task<string> GetUserDirectoryAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ResolveUserDirectory();
+        }, cancellationToken);
+
     /// <summary>Returns the directory explicitly selected by DuckStation for memory cards.</summary>
     public Task<string> GetMemoryCardsDirectoryAsync(CancellationToken cancellationToken = default) =>
         Task.Run(() => ReadConfiguration(cancellationToken).MemoryCardsDirectory, cancellationToken);

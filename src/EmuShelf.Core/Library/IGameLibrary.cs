@@ -10,6 +10,12 @@ public interface IGameLibrary
     /// <summary>All games, optionally filtered to one system, ordered by title.</summary>
     IReadOnlyList<Game> GetGames(string? systemId = null);
 
+    /// <summary>
+    /// System ids that have at least one library record. Availability is intentionally ignored so
+    /// a temporarily disconnected game drive does not make its platform disappear.
+    /// </summary>
+    IReadOnlySet<string> GetPopulatedSystemIds();
+
     /// <summary>The newest games across all systems, ordered newest first and limited in SQL.</summary>
     IReadOnlyList<Game> GetRecentlyAddedGames(int limit);
 

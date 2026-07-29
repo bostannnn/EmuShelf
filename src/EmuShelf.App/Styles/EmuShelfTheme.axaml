@@ -24,9 +24,16 @@
             <SolidColorBrush x:Key="EmuTextTertiaryBrush" Color="#85818A" />
             <SolidColorBrush x:Key="EmuHoverBrush" Color="#12000000" />
             <SolidColorBrush x:Key="EmuNavSelectionBrush" Color="#21000000" />
+            <SolidColorBrush x:Key="EmuNavIconWellBrush" Color="#DAD8DC" />
+            <SolidColorBrush x:Key="EmuNavIconBorderBrush" Color="#C7C4C9" />
             <SolidColorBrush x:Key="EmuAccentBrush" Color="#D43F4A" />
             <SolidColorBrush x:Key="EmuSelectionBrush" Color="#D43F4A" />
-            <SolidColorBrush x:Key="EmuDangerBrush" Color="#C64045" />
+            <SolidColorBrush x:Key="EmuAchievementBrush" Color="#A96400" />
+            <SolidColorBrush x:Key="EmuInfoBrush" Color="#28749A" />
+            <SolidColorBrush x:Key="EmuProgressBrush" Color="#28749A" />
+            <SolidColorBrush x:Key="EmuSuccessBrush" Color="#287A59" />
+            <SolidColorBrush x:Key="EmuWarningBrush" Color="#A85E00" />
+            <SolidColorBrush x:Key="EmuDangerBrush" Color="#B42332" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
             <SolidColorBrush x:Key="EmuWindowBackgroundBrush" Color="#19191B" />
@@ -51,9 +58,16 @@
             <SolidColorBrush x:Key="EmuTextTertiaryBrush" Color="#8E8A92" />
             <SolidColorBrush x:Key="EmuHoverBrush" Color="#15FFFFFF" />
             <SolidColorBrush x:Key="EmuNavSelectionBrush" Color="#23FFFFFF" />
+            <SolidColorBrush x:Key="EmuNavIconWellBrush" Color="#343438" />
+            <SolidColorBrush x:Key="EmuNavIconBorderBrush" Color="#4A4A4F" />
             <SolidColorBrush x:Key="EmuAccentBrush" Color="#EF4855" />
             <SolidColorBrush x:Key="EmuSelectionBrush" Color="#EF4855" />
-            <SolidColorBrush x:Key="EmuDangerBrush" Color="#FF737E" />
+            <SolidColorBrush x:Key="EmuAchievementBrush" Color="#F0BD55" />
+            <SolidColorBrush x:Key="EmuInfoBrush" Color="#6EBCE1" />
+            <SolidColorBrush x:Key="EmuProgressBrush" Color="#6EBCE1" />
+            <SolidColorBrush x:Key="EmuSuccessBrush" Color="#70D3A4" />
+            <SolidColorBrush x:Key="EmuWarningBrush" Color="#F0AE54" />
+            <SolidColorBrush x:Key="EmuDangerBrush" Color="#FF6673" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
 </ResourceDictionary>

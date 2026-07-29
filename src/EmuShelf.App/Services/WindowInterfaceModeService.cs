@@ -19,13 +19,13 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
         ISettingsService settingsService,
         AppSettings settings,
         Window window,
-        bool gamepadUiRequested)
+        InterfaceMode? interfaceModeOverride)
     {
         _settingsService = settingsService;
         _settings = settings;
         _window = window;
-        IsCommandLineOverride = gamepadUiRequested;
-        Current = gamepadUiRequested ? InterfaceMode.Gamepad : settings.InterfaceMode;
+        IsCommandLineOverride = interfaceModeOverride is not null;
+        Current = interfaceModeOverride ?? settings.InterfaceMode;
         ApplyWindowState();
     }
 
@@ -37,9 +37,9 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
         if (IsCommandLineOverride)
             return;
 
-        _settings = (await Task.Run(_settingsService.Load, cancellationToken)) with { InterfaceMode = mode };
-        var snapshot = _settings;
-        await Task.Run(() => _settingsService.Save(snapshot), cancellationToken);
+        _settings = await Task.Run(
+            () => _settingsService.Update(latest => latest with { InterfaceMode = mode }),
+            cancellationToken);
     }
 
     /// <summary>

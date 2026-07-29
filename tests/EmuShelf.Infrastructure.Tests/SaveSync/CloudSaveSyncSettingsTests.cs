@@ -118,4 +118,23 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         Assert.False(loaded.CloudSaveSync.Enabled);
         Assert.Null(loaded.CloudSaveSync.RemoteName);
     }
+
+    [Fact]
+    public void OptionalContent_IsOptInAndRetentionIsClamped()
+    {
+        var defaults = new CloudSaveSyncSettings().GetLocation("playstation2");
+        Assert.False(defaults.SyncCheatsAndPatches);
+        Assert.False(defaults.SyncSaveStates);
+        Assert.Equal(3, defaults.SaveStateRetention);
+
+        var enabled = new CloudSaveSyncSettings().WithOptionalContent(
+            "playstation2",
+            syncCheatsAndPatches: true,
+            syncSaveStates: true,
+            saveStateRetention: 99).GetLocation("playstation2");
+
+        Assert.True(enabled.SyncCheatsAndPatches);
+        Assert.True(enabled.SyncSaveStates);
+        Assert.Equal(10, enabled.SaveStateRetention);
+    }
 }

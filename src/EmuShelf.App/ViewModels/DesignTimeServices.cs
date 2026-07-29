@@ -16,6 +16,7 @@ namespace EmuShelf.App.ViewModels;
 internal sealed class EmptyGameLibrary : IGameLibrary
 {
     public IReadOnlyList<Game> GetGames(string? systemId = null) => [];
+    public IReadOnlySet<string> GetPopulatedSystemIds() => new HashSet<string>();
     public IReadOnlyList<Game> GetRecentlyAddedGames(int limit) => [];
     public int AddGames(IEnumerable<Game> games) => 0;
     public GameImportResult ReconcileImport(

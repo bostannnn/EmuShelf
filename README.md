@@ -24,7 +24,10 @@ dotnet run --project src/EmuShelf.App
 The release workflow also publishes a self-contained `EmuShelf-linux-x64.AppImage` for
 SteamOS and other x64 Linux desktops. Extract/download it into a writable folder, mark it
 executable, then add it to Steam as a non-Steam game and start it with `--gamepad-ui` for
-Gaming Mode. If FUSE is unavailable, run `./EmuShelf-linux-x64.AppImage --appimage-extract-and-run`.
+Gaming Mode. That option forces Gamepad mode for the Steam launch only; use `--desktop-ui`
+on a custom desktop shortcut when both shortcuts point to the same portable install (the bundled
+desktop entry already includes it). Neither option changes the saved default. If FUSE is unavailable, run
+`./EmuShelf-linux-x64.AppImage --appimage-extract-and-run`.
 
 In Gamepad mode EmuShelf reads the controller natively via bundled SDL2 (Windows, Linux, and
 macOS, x64 and arm64): A confirm, B back, X search, Y actions, Start opens Menu, LB/RB switch

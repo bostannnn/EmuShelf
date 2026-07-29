@@ -43,6 +43,57 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task IncompatibleRemoteOnlyState_IsReportedWithoutDownloading()
+    {
+        var state = new SaveUnit("test/states/GAME.state", "GAME.state", SaveUnitKind.File);
+        _remote.Seed(state.UnitId, Bytes("old state"), T0, compatibility: "old-build");
+
+        var report = await CreateService().SyncAsync(new CompatibilityProvider(state, includeLocal: false));
+
+        var skipped = Assert.Single(report.Skipped);
+        Assert.Contains("different build", skipped.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(_local.Has(state.UnitId));
+        Assert.Equal(0, _remote.Downloads);
+    }
+
+    [Fact]
+    public async Task CompatibleLocalState_ReplacesIncompatibleStableRemoteUnitAfterBackup()
+    {
+        var state = new SaveUnit("test/states/GAME.state", "GAME.state", SaveUnitKind.File);
+        _local.CompatibilityResolver = _ => "current-build";
+        _local.Seed(state.UnitId, Bytes("current state"), T0.AddMinutes(1));
+        _remote.Seed(state.UnitId, Bytes("old state"), T0, compatibility: "old-build");
+
+        var report = await CreateService().SyncAsync(new CompatibilityProvider(state, includeLocal: true));
+
+        Assert.Equal(1, report.Conflicts);
+        Assert.Equal(Bytes("current state"), _remote.Content(state.UnitId));
+        Assert.Single(_local.Backups, backup => !backup.FromLocal);
+    }
+
+    [Fact]
+    public async Task EmulatorUpgrade_DoesNotRelabelUnchangedOldStateAsCurrent()
+    {
+        var state = new SaveUnit("test/states/GAME.state", "GAME.state", SaveUnitKind.File);
+        _local.Seed(state.UnitId, Bytes("old state"), T0);
+        _local.CompatibilityResolver = _ => "old-build";
+        var service = CreateService();
+
+        await service.SyncAsync(new CompatibilityProvider(state, includeLocal: true, currentBuild: "old-build"));
+        Assert.Equal("old-build", _manifests.Current.Get(state.UnitId)?.Compatibility);
+
+        // Merely installing a new emulator changes the provider's current identity, not the state
+        // bytes. The old provenance must survive and the old state must not be certified as new.
+        _local.CompatibilityResolver = _ => "current-build";
+        var report = await service.SyncAsync(new CompatibilityProvider(state, includeLocal: true));
+
+        Assert.Single(report.Skipped);
+        Assert.Equal("old-build", _remote.Compatibility(state.UnitId));
+        Assert.Equal(1, _remote.Uploads);
+        Assert.Equal("old-build", _manifests.Current.Get(state.UnitId)?.Compatibility);
+    }
+
+    [Fact]
     public async Task CorruptDownload_DoesNotReplaceLocalOrAdvanceItsBaseline()
     {
         _local.Seed(FileCard.UnitId, Bytes("original"), T0);
@@ -356,5 +407,21 @@ public sealed class SaveSyncServiceTests
         public List<SaveSyncProgress> Reports { get; } = [];
 
         public void Report(SaveSyncProgress value) => Reports.Add(value);
+    }
+
+    private sealed class CompatibilityProvider(
+        SaveUnit state,
+        bool includeLocal,
+        string currentBuild = "current-build") : ISaveLocationProvider
+    {
+        public string SystemId => "test";
+        public string UnitIdPrefix => "test/";
+        public bool OwnsUnit(string unitId) => unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal);
+        public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SaveUnit>>(includeLocal ? [state] : []);
+        public SaveUnitLocation? ResolveUnit(string unitId) => null;
+        public string? GetCompatibility(string unitId) => currentBuild;
+        public string? GetRemoteIncompatibilityReason(SaveUnitSnapshot remoteSnapshot) =>
+            remoteSnapshot.Compatibility == currentBuild ? null : "This state was written by a different build.";
     }
 }

@@ -146,10 +146,7 @@ public sealed class WindowLayoutService
     {
         try
         {
-            // Merge against the latest snapshot: closing the window must not revert a setting
-            // another service saved during the session.
-            var latest = _settingsService.Load();
-            _settingsService.Save(latest with
+            _settingsService.Update(latest => latest with
             {
                 WindowLayout = new WindowLayoutSettings
                 {

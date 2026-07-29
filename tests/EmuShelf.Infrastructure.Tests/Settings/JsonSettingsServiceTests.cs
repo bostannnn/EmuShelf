@@ -74,4 +74,53 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.False(File.Exists(AppPaths.SettingsFilePath + ".tmp"));
         Assert.Equal(ThemePreference.Dark, service.Load().Theme);
     }
+
+    [Fact]
+    public void Update_MergesEachScopedChangeAgainstTheLatestFile()
+    {
+        var service = new JsonSettingsService(AppPaths);
+        service.Save(new AppSettings { Theme = ThemePreference.Dark });
+
+        service.Update(settings => settings with
+        {
+            InterfaceMode = InterfaceMode.Gamepad,
+        });
+
+        var loaded = service.Load();
+        Assert.Equal(ThemePreference.Dark, loaded.Theme);
+        Assert.Equal(InterfaceMode.Gamepad, loaded.InterfaceMode);
+    }
+
+    [Fact]
+    public async Task Update_SerializesIndependentServicesUsingTheSameSettingsFile()
+    {
+        var firstService = new JsonSettingsService(AppPaths);
+        var secondService = new JsonSettingsService(AppPaths);
+        firstService.Save(new AppSettings());
+        using var firstUpdateEntered = new ManualResetEventSlim();
+        using var releaseFirstUpdate = new ManualResetEventSlim();
+        using var secondUpdateEntered = new ManualResetEventSlim();
+
+        var firstUpdate = Task.Run(() => firstService.Update(settings =>
+        {
+            firstUpdateEntered.Set();
+            releaseFirstUpdate.Wait();
+            return settings with { Theme = ThemePreference.Dark };
+        }));
+        Assert.True(firstUpdateEntered.Wait(TimeSpan.FromSeconds(2)));
+
+        var secondUpdate = Task.Run(() => secondService.Update(settings =>
+        {
+            secondUpdateEntered.Set();
+            return settings with { InterfaceMode = InterfaceMode.Gamepad };
+        }));
+
+        Assert.False(secondUpdateEntered.Wait(TimeSpan.FromMilliseconds(100)));
+        releaseFirstUpdate.Set();
+        await Task.WhenAll(firstUpdate, secondUpdate);
+
+        var loaded = firstService.Load();
+        Assert.Equal(ThemePreference.Dark, loaded.Theme);
+        Assert.Equal(InterfaceMode.Gamepad, loaded.InterfaceMode);
+    }
 }

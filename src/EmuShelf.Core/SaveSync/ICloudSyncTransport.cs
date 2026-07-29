@@ -36,7 +36,8 @@ public interface ICloudSyncTransport
         Stream content,
         string contentHash,
         DateTimeOffset modifiedUtc,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? compatibility = null);
 
     /// <summary>
     /// Commits everything queued by <see cref="UploadAsync"/> since the last flush. The rclone

@@ -10,6 +10,8 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
 
     public List<BackupEntry> Backups { get; } = new();
 
+    public Func<string, string?>? CompatibilityResolver { get; set; }
+
     public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
         _units[unitId] = new LiveUnit(content, modifiedUtc);
 
@@ -22,7 +24,11 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
         if (!_units.TryGetValue(unitId, out var unit))
             return Task.FromResult<SaveUnitSnapshot?>(null);
         return Task.FromResult<SaveUnitSnapshot?>(
-            new SaveUnitSnapshot(unitId, Hash(unit.Content), unit.ModifiedUtc));
+            new SaveUnitSnapshot(
+                unitId,
+                Hash(unit.Content),
+                unit.ModifiedUtc,
+                CompatibilityResolver?.Invoke(unitId)));
     }
 
     public Task<Stream> ReadAsync(string unitId, CancellationToken cancellationToken = default)

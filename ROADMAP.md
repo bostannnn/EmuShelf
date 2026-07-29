@@ -539,6 +539,11 @@ emulator configuration, or emulator-owned data.
 - [ ] Establish the review matrix: Windows at 100%, 125%, 150%, and 200% scaling; 900×560 minimum
       desktop window; 1280×800 Gamepad/Deck viewport; light, dark, and follow-system appearances;
       mouse, keyboard, and controller paths.
+- [x] Integrate the Desktop shell into theme-owned window chrome while retaining drag,
+      double-click maximize, caption actions, edge/corner resizing, taskbar identity, and a
+      caption layout that remains inside the live window bounds at high DPI. Separate brand/
+      selection, achievement, information/progress, success, warning, and danger colors, and
+      normalize system and collection artwork inside one sidebar icon frame (2026-07-29).
 
 ### Phase 1 — Make the game-session loop reliable
 
@@ -931,6 +936,15 @@ unchanged unless an item explicitly says otherwise.
       (2026-07-25; Settings hands off explicitly and Quit has its own confirmation).
 - [x] Keep per-game actions in the Y surface; remove redundant Back and Desktop-mode rows because
       B and the global menu own those responsibilities (2026-07-25; Y opens a right-side sheet).
+- [x] Keep the Desktop sidebar and Gamepad platform rail library-focused: hide systems with no
+      database entries by default, retain systems whose files are temporarily unavailable, and
+      expose a persisted **Show empty platforms** override in General Settings. Import and emulator
+      configuration continue to list every supported platform. Membership uses a distinct-system
+      database query, empty active platforms fall back to All Games, and background refreshes retain
+      tentative controller-rail focus (2026-07-29).
+- [x] Make one portable install context-safe: `--gamepad-ui` and `--desktop-ui` are non-persisted
+      shortcut overrides, while an unqualified launch uses the remembered interface mode
+      and concurrent launches serialize settings updates through a portable lock file (2026-07-29).
 
 ### Phase 3 — One focus and input-modality model
 
@@ -1088,24 +1102,27 @@ overwrite rule, conflict backups, and activity log need no new concepts.
 
 ### Phase 1 — Foundation
 
-- [ ] Per-kind opt-in per platform, defaulting to saves only. Cheats and patches are kilobytes and
-      near-always wanted; save states are gigabytes and change every session, and must never become
-      an implicit upload. Settings shows each kind's size on disk before it is enabled.
-- [ ] Per-file units for kinds made of many independent files, so one changed state does not
+- [x] Per-kind opt-in per platform, defaulting to saves only. Emulator cheat and patch roots can
+      contain thousands of bundled database files, while save states can be gigabytes and change
+      every session, so optional kinds participate only in manual Sync all/replace actions. Settings
+      shows each kind's exact resolved path, selected file count, and size before it is enabled.
+- [x] Per-file units for kinds made of many independent files, so one changed state does not
       re-upload a folder. The existing folder unit stays for save data that is only meaningful whole.
-- [ ] A retention rule for states: keep the newest N per game, never delete the local copy, and
-      exclude auto/undo slots (`.state.auto`, DuckStation's resume state, PCSX2's backup slot),
-      which change on every exit and are worth nothing on another machine.
-- [ ] Kind-aware conflict handling. A cheat or patch file is user-edited text where "keep the newer
+- [x] A retention rule for states: sync the newest N per game without deleting older local or cloud
+      copies, and exclude auto/undo slots (`.state.auto`, DuckStation's resume state, PCSX2's backup
+      slot), which change on every exit and are worth nothing on another machine.
+- [x] Kind-aware conflict handling. A cheat or patch file is user-edited text where "keep the newer
       one" is wrong: keep both sides, both readable, and say so — the current timestamp tie-break
       stays right for opaque binary state.
 
 ### Phase 2 — Portable-by-nature kinds (do these first)
 
-- [ ] **Cheats.** DuckStation `cheats/<serial>.cht`, PCSX2 `cheats/<CRC>.pnach`, PPSSPP
+- [x] **Cheats.** DuckStation `cheats/<serial>.cht`, PCSX2 `cheats/<CRC>.pnach`, PPSSPP
       `PSP/Cheats/*.ini`, RetroArch `cheats/`, Dolphin's Gecko/AR sections. Small, text, keyed by
-      game id rather than by machine; the clearest win in this milestone.
-- [ ] **Patches.** PCSX2 `patches/` pnach files and RPCS3 `patches/patch.yml` — the community
+      game id rather than by machine; the clearest win in this milestone. Dolphin's Gecko/AR
+      sections remain excluded because they share the same INI files as the per-game settings the
+      user chose not to sync; copying those files wholesale would also copy machine-bound settings.
+- [x] **Patches.** PCSX2 `patches/` pnach files and RPCS3 `patches/patch.yml` — the community
       patch sets that carry widescreen and performance fixes, and that are pure content with no
       machine-specific paths. Soft patches that live *beside the ROM* (`.ips`/`.bps`/`.ups`) are
       excluded: EmuShelf never writes into the user's game folders.
@@ -1117,16 +1134,16 @@ overwrite rule, conflict backups, and activity log need no new concepts.
 
 ### Phase 3 — Save states, behind a version guard
 
-- [ ] **Save states.** DuckStation `savestates/`, PCSX2 `sstates/*.p2s`, PPSSPP
+- [x] **Save states.** DuckStation `savestates/`, PCSX2 `sstates/*.p2s`, PPSSPP
       `PSP/PPSSPP_STATE/*.ppst`, Dolphin `StateSaves/`, RetroArch `states/*.state`, RPCS3's own
       `.SAVESTAT`. These are the reason the original exclusion existed: a state is bound to the
       emulator build that wrote it, and often to its CPU architecture, so restoring one into a
       different build ranges from a graphical mess to a crash.
-- [ ] Record the writing emulator's version and platform beside each state unit, and refuse to
+- [x] Record the writing emulator's version and CPU architecture beside each state unit, and refuse to
       restore a state whose version does not match the local emulator — surfacing it as "available,
       not restored" rather than silently overwriting or silently skipping. A matching version
       restores normally.
-- [ ] Bandwidth honesty: show the transfer size before the first sync of a platform's states, and
+- [x] Bandwidth honesty: show the transfer size before the first sync of a platform's states, and
       keep them out of the pre-launch pass's critical path — a state is not needed to *start* a
       game the way a memory card is.
 

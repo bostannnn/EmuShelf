@@ -63,7 +63,11 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
                 return null;
 
             var files = EnumerateAllFolderFiles(location.Path, cancellationToken).ToList();
-            return new SaveUnitSnapshot(unitId, HashFolder(files, location.Path, cancellationToken), MaxModifiedUtc(files));
+            return new SaveUnitSnapshot(
+                unitId,
+                HashFolder(files, location.Path, cancellationToken),
+                MaxModifiedUtc(files),
+                _provider.GetCompatibility(unitId));
         }
 
         if (!File.Exists(location.Path))
@@ -72,7 +76,8 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         return new SaveUnitSnapshot(
             unitId,
             HashFile(location.Path, cancellationToken),
-            File.GetLastWriteTimeUtc(location.Path));
+            File.GetLastWriteTimeUtc(location.Path),
+            _provider.GetCompatibility(unitId));
     }
 
     private Stream Read(string unitId, CancellationToken cancellationToken)

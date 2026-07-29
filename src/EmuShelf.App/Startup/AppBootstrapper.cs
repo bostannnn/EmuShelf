@@ -166,6 +166,8 @@ public sealed class AppBootstrapper
             directory,
             configuration.LaunchTarget is FlatpakApplicationTarget,
             configuration.CorePath,
-            configuration.LaunchArguments);
+            configuration.LaunchArguments,
+            executablePath,
+            (configuration.LaunchTarget as FlatpakApplicationTarget)?.AppId);
     }
 }

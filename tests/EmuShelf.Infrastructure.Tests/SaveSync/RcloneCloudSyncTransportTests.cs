@@ -31,13 +31,19 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("composite folder hash")));
         var modified = new DateTimeOffset(2026, 7, 24, 12, 0, 0, TimeSpan.Zero);
 
-        await transport.UploadAsync("pcsx2/Mcd001/SLUS-20552", new MemoryStream(bytes), hash, modified);
+        await transport.UploadAsync(
+            "pcsx2/Mcd001/SLUS-20552",
+            new MemoryStream(bytes),
+            hash,
+            modified,
+            compatibility: "pcsx2-2-4-x64");
         await transport.FlushAsync();
 
         var snapshot = Assert.Single(await transport.ListAsync());
         Assert.Equal("pcsx2/Mcd001/SLUS-20552", snapshot.UnitId);
         Assert.Equal(hash, snapshot.ContentHash);
         Assert.Equal(modified, snapshot.ModifiedUtc);
+        Assert.Equal("pcsx2-2-4-x64", snapshot.Compatibility);
         await using var downloaded = await transport.DownloadAsync(snapshot.UnitId);
         using var result = new MemoryStream();
         await downloaded.CopyToAsync(result);

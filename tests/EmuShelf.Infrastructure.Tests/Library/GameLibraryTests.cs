@@ -109,6 +109,22 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void GetPopulatedSystemIds_ReturnsDistinctSystemsIncludingUnavailableGames()
+    {
+        _library.AddGames([
+            NewGame("playstation", "/g/a.cue", "A"),
+            NewGame("playstation", "/g/b.chd", "B"),
+            NewGame("gamecube", "/g/missing.iso", "Missing") with { IsAvailable = false },
+        ]);
+
+        var populated = _library.GetPopulatedSystemIds();
+
+        Assert.Equal(2, populated.Count);
+        Assert.Contains("playstation", populated);
+        Assert.Contains("gamecube", populated);
+    }
+
+    [Fact]
     public void GetRecentlyAddedGames_LimitsAndOrdersInTheDatabase()
     {
         var oldest = DateTimeOffset.Parse("2026-07-13T10:00:00+03:00");

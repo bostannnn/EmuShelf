@@ -111,7 +111,14 @@ public partial class MainWindow : Window
             GamepadRenameBox.Focus();
         else if (viewModel.FocusedGamepadAchievement is { } achievement)
         {
-            var achievementControl = GamepadAchievementsScroller.GetVisualDescendants()
+            var index = viewModel.GamepadAchievementDetails?.Achievements.IndexOf(achievement) ?? -1;
+            if (index < 0)
+                return;
+
+            var element = GamepadAchievementsRepeater.TryGetElement(index) ??
+                GamepadAchievementsRepeater.GetOrCreateElement(index);
+            GamepadAchievementsRepeater.UpdateLayout();
+            var achievementControl = element as Control ?? element?.GetVisualDescendants()
                 .OfType<Control>()
                 .FirstOrDefault(control => ReferenceEquals(control.DataContext, achievement));
             achievementControl?.BringIntoView();
@@ -124,8 +131,23 @@ public partial class MainWindow : Window
                 .OfType<Button>()
                 .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
             if (focusedOption is not null)
+            {
+                focusedOption.BringIntoView();
                 FocusManager?.Focus(focusedOption, NavigationMethod.Directional);
+            }
         }
+    }
+
+    private static void OnGamepadAchievementAttached(object? sender, VisualTreeAttachmentEventArgs e) =>
+        RequestGamepadAchievementBadge(sender);
+
+    private static void OnGamepadAchievementDataContextChanged(object? sender, EventArgs e) =>
+        RequestGamepadAchievementBadge(sender);
+
+    private static void RequestGamepadAchievementBadge(object? sender)
+    {
+        if (sender is Control { DataContext: AchievementRowViewModel row } && row.Badge is null)
+            _ = row.LoadBadgeAsync(row.BadgeName);
     }
 
     private void RevealGamepadRail()
@@ -171,6 +193,18 @@ public partial class MainWindow : Window
         CloseSearch();
         e.Handled = true;
     }
+
+    // Window chrome remains view wiring: it changes only the host window state and never enters
+    // the library view model. ElementRole preserves native drag/caption semantics where supported.
+    private void OnMinimizeWindowClick(object? sender, RoutedEventArgs e) =>
+        WindowState = WindowState.Minimized;
+
+    private void OnMaximizeRestoreWindowClick(object? sender, RoutedEventArgs e) =>
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+
+    private void OnCloseWindowClick(object? sender, RoutedEventArgs e) => Close();
 
     private void OnSearchKeyDown(object? sender, KeyEventArgs e)
     {

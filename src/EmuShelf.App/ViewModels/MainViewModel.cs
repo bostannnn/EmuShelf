@@ -96,8 +96,10 @@ public partial class MainViewModel : ViewModelBase
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
     private Task _selectedSystemLoad = Task.CompletedTask;
+    private int? _pendingGamepadAchievementFocusId;
 
     public ObservableCollection<GameSystem> Systems { get; }
+    public ObservableCollection<GameSystem> NavigationSystems { get; }
     public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
     public ObservableCollection<GamepadOverlayOptionViewModel> GamepadOverlayOptions { get; } = [];
@@ -168,6 +170,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string LibraryCountText { get; set; } = "0 games";
 
+    [ObservableProperty]
+    public partial bool ShowEmptyPlatforms { get; set; }
+
     /// <summary>True when the current filter yields at least one game (drives the views).</summary>
     [ObservableProperty]
     public partial bool HasGames { get; set; }
@@ -231,6 +236,8 @@ public partial class MainViewModel : ViewModelBase
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
+    public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename);
     public bool IsGamepadAllGamesRailFocused => IsGamepadRailFocused && GamepadRailIndex == 0;
     public bool IsGamepadCollectionsRailFocused => IsGamepadRailFocused && GamepadRailIndex == 1;
     public string GamepadOverlayTitle => GamepadOverlay switch
@@ -310,6 +317,8 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
+    public bool IsStatusProgress => StatusSeverity == StatusSeverity.Progress;
+    public bool IsStatusInfo => StatusSeverity == StatusSeverity.Info;
     /// <summary>
     /// True while an emulator owns the game session, plus a short return guard that absorbs the
     /// controller/key used to close it. Input services poll this directly, so it remains accurate
@@ -445,9 +454,15 @@ public partial class MainViewModel : ViewModelBase
         CurrentTheme = _themeService.Current;
 
         Systems = new ObservableCollection<GameSystem>(systems);
-        GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
-            systems.Select(system => new GamepadPlatformTabViewModel(system)));
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
+        ShowEmptyPlatforms = _libraryViewState.Current.ShowEmptyPlatforms;
+        var populatedSystemIds = ReadPopulatedSystemIds();
+        var navigationSystems = systems
+            .Where(system => ShowEmptyPlatforms || populatedSystemIds.Contains(system.Id))
+            .ToArray();
+        NavigationSystems = new ObservableCollection<GameSystem>(navigationSystems);
+        GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
+            navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
 
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchDebounceMs) };
         _searchDebounce.Tick += (_, _) =>
@@ -500,9 +515,14 @@ public partial class MainViewModel : ViewModelBase
             {
                 // A system id can disappear between launches; fall back rather than open empty.
                 SelectedSystem = state.SelectedSystemId is { } id &&
-                    _systemsById.TryGetValue(id, out var system)
+                    NavigationSystems.FirstOrDefault(candidate => candidate.Id == id) is { } system
                     ? system
-                    : Systems.FirstOrDefault();
+                    : NavigationSystems.FirstOrDefault();
+                if (SelectedSystem is null)
+                {
+                    CurrentLibraryScope = LibraryScope.AllGames;
+                    _selectedSystemLoad = ReloadGamesAsync();
+                }
             }
             else
             {
@@ -525,6 +545,7 @@ public partial class MainViewModel : ViewModelBase
         SortColumn = SortColumn.ToString(),
         SortDescending = SortDescending,
         IsNavigationCollapsed = IsNavigationCollapsed,
+        ShowEmptyPlatforms = ShowEmptyPlatforms,
         Scope = CurrentLibraryScope.ToString(),
         SelectedSystemId = SelectedSystem?.Id,
     };
@@ -536,6 +557,87 @@ public partial class MainViewModel : ViewModelBase
 
         _viewStateSave.Stop();
         _viewStateSave.Start();
+    }
+
+    private HashSet<string> ReadPopulatedSystemIds()
+    {
+        try
+        {
+            // Presence in EmuShelf's library is authoritative. IsAvailable is deliberately not
+            // consulted: disconnecting a Steam Deck SD card must not erase its platforms from nav.
+            return _library.GetPopulatedSystemIds().ToHashSet(StringComparer.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not determine populated platforms: {ex.Message}");
+            return [];
+        }
+    }
+
+    private void RefreshNavigationSystems(IReadOnlySet<string> populatedSystemIds)
+    {
+        var railWasFocused = IsGamepadRailFocused;
+        var focusedSystemId = GamepadRailIndex >= 2 && GamepadRailIndex - 2 < GamepadPlatforms.Count
+            ? GamepadPlatforms[GamepadRailIndex - 2].System.Id
+            : null;
+        var visible = Systems
+            .Where(system => ShowEmptyPlatforms || populatedSystemIds.Contains(system.Id))
+            .ToArray();
+        var navigationChanged = !NavigationSystems.SequenceEqual(visible);
+        if (navigationChanged)
+        {
+            NavigationSystems.Clear();
+            foreach (var system in visible)
+                NavigationSystems.Add(system);
+
+            GamepadPlatforms.Clear();
+            foreach (var system in visible)
+                GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
+        }
+
+        if (!railWasFocused)
+        {
+            GamepadRailIndex = ActiveGamepadRailIndex();
+        }
+        else if (navigationChanged && focusedSystemId is not null)
+        {
+            var focusedSystemIndex = Array.FindIndex(
+                visible,
+                system => string.Equals(system.Id, focusedSystemId, StringComparison.Ordinal));
+            GamepadRailIndex = focusedSystemIndex >= 0
+                ? focusedSystemIndex + 2
+                : Math.Min(GamepadRailIndex, NavigationSystems.Count + 1);
+        }
+        else if (navigationChanged)
+        {
+            GamepadRailIndex = Math.Min(GamepadRailIndex, NavigationSystems.Count + 1);
+        }
+
+        UpdateGamepadPlatformState();
+    }
+
+    private int ActiveGamepadRailIndex() => CurrentLibraryScope switch
+    {
+        LibraryScope.AllGames => 0,
+        LibraryScope.RecentlyAdded => 1,
+        _ when SelectedSystem is not null =>
+            Math.Max(0, NavigationSystems.IndexOf(SelectedSystem) + 2),
+        _ => 0,
+    };
+
+    private async Task SetShowEmptyPlatformsAsync(bool show)
+    {
+        ShowEmptyPlatforms = show;
+        var populatedSystemIds = await Task.Run(ReadPopulatedSystemIds);
+        RefreshNavigationSystems(populatedSystemIds);
+
+        if (!show && CurrentLibraryScope == LibraryScope.System &&
+            SelectedSystem is { } selected && !populatedSystemIds.Contains(selected.Id))
+        {
+            await ShowCollectionAsync(LibraryScope.AllGames);
+        }
+
+        await _libraryViewState.SaveAsync(BuildLibraryViewState());
     }
 
     /// <summary>
@@ -577,8 +679,12 @@ public partial class MainViewModel : ViewModelBase
         _searchDebounce.Start();
     }
 
-    partial void OnStatusSeverityChanged(StatusSeverity value) =>
+    partial void OnStatusSeverityChanged(StatusSeverity value)
+    {
         OnPropertyChanged(nameof(IsStatusError));
+        OnPropertyChanged(nameof(IsStatusProgress));
+        OnPropertyChanged(nameof(IsStatusInfo));
+    }
 
     partial void OnStatusTextChanged(string value)
     {
@@ -663,10 +769,10 @@ public partial class MainViewModel : ViewModelBase
         {
             LibraryScope.AllGames => 0,
             LibraryScope.RecentlyAdded => 1,
-            _ => SelectedSystem is null ? 0 : Systems.IndexOf(SelectedSystem) + 2,
+            _ => SelectedSystem is null ? 0 : NavigationSystems.IndexOf(SelectedSystem) + 2,
         };
         var target = current + direction;
-        if (target < 0 || target > Systems.Count + 1)
+        if (target < 0 || target > NavigationSystems.Count + 1)
             return;
 
         if (target == 0)
@@ -674,7 +780,7 @@ public partial class MainViewModel : ViewModelBase
         else if (target == 1)
             await ShowCollectionAsync(LibraryScope.RecentlyAdded);
         else
-            SelectedSystem = Systems[target - 2];
+            SelectedSystem = NavigationSystems[target - 2];
     }
 
     [RelayCommand]
@@ -822,11 +928,9 @@ public partial class MainViewModel : ViewModelBase
             FocusedGame.DraftTitle = FocusedGame.Title;
             FocusedGame.IsEditingTitle = false;
         }
-        if (GamepadAchievementDetails is not null)
-            GamepadAchievementDetails.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
-        GamepadAchievementDetails?.Dispose();
-        GamepadAchievementDetails = null;
+        DisposeGamepadAchievementDetails();
         FocusedGamepadAchievement = null;
+        _pendingGamepadAchievementFocusId = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
         IsGameActionsOpen = false;
@@ -1016,9 +1120,9 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode)
             return;
 
-        GamepadAchievementDetails?.Dispose();
-        GamepadAchievementDetails = null;
+        DisposeGamepadAchievementDetails();
         FocusedGamepadAchievement = null;
+        _pendingGamepadAchievementFocusId = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = overlay;
         IsGameActionsOpen = overlay == GamepadOverlayKind.Actions; // compatibility for existing bindings/tests
@@ -1039,7 +1143,7 @@ public partial class MainViewModel : ViewModelBase
                 AddDiscSelectionOptions();
                 break;
             case GamepadOverlayKind.RemoveConfirmation:
-                AddOption("Remove from library", ConfirmGamepadRemoveCommand);
+                AddOption("Remove from library", ConfirmGamepadRemoveCommand, true);
                 break;
             case GamepadOverlayKind.CoverDesktopHandoff:
                 AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
@@ -1052,7 +1156,7 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Collections", OpenGamepadCollectionsCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
-                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand);
+                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
                 break;
             case GamepadOverlayKind.DesktopModeConfirmation:
                 AddOption("Switch to Desktop mode", SwitchToDesktopModeCommand);
@@ -1061,7 +1165,7 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Open Settings in Desktop mode", OpenSettingsFromGamepadCommand);
                 break;
             case GamepadOverlayKind.QuitConfirmation:
-                AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand);
+                AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand, true);
                 break;
         }
 
@@ -1081,7 +1185,7 @@ public partial class MainViewModel : ViewModelBase
             AddOption("Achievements", OpenFocusedAchievementsCommand);
         AddOption("Edit title", EditFocusedTitleCommand);
         AddOption("Set cover", SetFocusedCoverCommand);
-        AddOption("Remove", RemoveFocusedGameCommand);
+        AddOption("Remove", RemoveFocusedGameCommand, true);
     }
 
     private void AddDiscSelectionOptions()
@@ -1098,8 +1202,8 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void AddOption(string label, ICommand command) =>
-        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command));
+    private void AddOption(string label, ICommand command, bool isDestructive = false) =>
+        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command, isDestructive));
 
     private void MoveGamepadOverlaySelection(int delta)
     {
@@ -1133,8 +1237,48 @@ public partial class MainViewModel : ViewModelBase
 
     private void HandleGamepadAchievementsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (IsGamepadAchievementsOpen && FocusedGamepadAchievement is null)
+        if (!IsGamepadAchievementsOpen)
+            return;
+
+        if (FocusedGamepadAchievement is { } focused &&
+            GamepadAchievementDetails?.Achievements.Contains(focused) != true)
+        {
+            _pendingGamepadAchievementFocusId = focused.AchievementId;
+            FocusedGamepadAchievement = null;
+        }
+
+        if (FocusedGamepadAchievement is null && _pendingGamepadAchievementFocusId is null &&
+            e.Action == NotifyCollectionChangedAction.Add)
             FocusFirstAchievement();
+    }
+
+    private void HandleGamepadAchievementDetailsPropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (!IsGamepadAchievementsOpen ||
+            e.PropertyName != nameof(AchievementDetailsViewModel.HasAchievements) ||
+            GamepadAchievementDetails is not { } details)
+        {
+            return;
+        }
+
+        var restored = _pendingGamepadAchievementFocusId is { } achievementId
+            ? details.Achievements.FirstOrDefault(row => row.AchievementId == achievementId)
+            : null;
+        FocusedGamepadAchievement = restored ?? details.Achievements.FirstOrDefault();
+        _pendingGamepadAchievementFocusId = null;
+    }
+
+    private void DisposeGamepadAchievementDetails()
+    {
+        if (GamepadAchievementDetails is not { } details)
+            return;
+
+        details.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
+        details.PropertyChanged -= HandleGamepadAchievementDetailsPropertyChanged;
+        details.Dispose();
+        GamepadAchievementDetails = null;
     }
 
     private void NotifyGamepadOverlayState()
@@ -1153,6 +1297,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSettingsHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
+        OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
         OnPropertyChanged(nameof(GamepadOverlayHelpText));
     }
@@ -1252,7 +1397,7 @@ public partial class MainViewModel : ViewModelBase
     private void MoveGamepadFocusRight()
     {
         if (IsGamepadRailFocused)
-            GamepadRailIndex = Math.Min(Systems.Count + 1, GamepadRailIndex + 1);
+            GamepadRailIndex = Math.Min(NavigationSystems.Count + 1, GamepadRailIndex + 1);
         else if (FocusedGame is { } focused)
         {
             var index = Games.IndexOf(focused);
@@ -1274,7 +1419,7 @@ public partial class MainViewModel : ViewModelBase
                 ? 0
                 : CurrentLibraryScope == LibraryScope.RecentlyAdded
                     ? 1
-                    : SelectedSystem is null ? 2 : Math.Max(2, Systems.IndexOf(SelectedSystem) + 2);
+                    : SelectedSystem is null ? 2 : Math.Max(2, NavigationSystems.IndexOf(SelectedSystem) + 2);
             IsGamepadRailFocused = true;
             return;
         }
@@ -1311,8 +1456,9 @@ public partial class MainViewModel : ViewModelBase
             await ShowAllGamesAsync();
         else if (GamepadRailIndex == 1)
             OpenGamepadOverlay(GamepadOverlayKind.Collections);
-        else if (GamepadRailIndex - 2 is var systemIndex && systemIndex >= 0 && systemIndex < Systems.Count)
-            SelectedSystem = Systems[systemIndex];
+        else if (GamepadRailIndex - 2 is var systemIndex &&
+                 systemIndex >= 0 && systemIndex < NavigationSystems.Count)
+            SelectedSystem = NavigationSystems[systemIndex];
 
         IsGamepadRailFocused = false;
     }
@@ -1500,7 +1646,7 @@ public partial class MainViewModel : ViewModelBase
     // Recompute the cover width for the current viewport so a whole number of columns fills the
     // row (no lopsided right gutter), then push it and the shared shelf height to every tile. The
     // shelf height is the tallest cover in the view so a mixed collection stays baseline-aligned.
-    private void UpdateCoverLayout()
+    private void UpdateCoverLayout(bool applyVisibleShelf = true)
     {
         var coverWidth = MinCoverWidth;
         var available = LibraryViewportWidth - GridHorizontalPadding;
@@ -1523,6 +1669,20 @@ public partial class MainViewModel : ViewModelBase
             game => Math.Round(coverWidth / game.CoverAspectRatio));
         foreach (var game in _systemGames)
             game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
+
+        if (applyVisibleShelf)
+            ApplyVisibleCoverShelf(coverWidth);
+    }
+
+    private void ApplyVisibleCoverShelf(double coverWidth)
+    {
+        if (Games.Count == 0)
+            return;
+
+        var shelfCoverHeight = Games.Max(
+            game => Math.Round(coverWidth / game.CoverAspectRatio));
+        foreach (var game in Games)
+            game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
     }
 
     internal async Task ReloadGamesAsync()
@@ -1535,6 +1695,17 @@ public partial class MainViewModel : ViewModelBase
         var generation = ++_loadGeneration;
         try
         {
+            var populatedSystemIds = await Task.Run(ReadPopulatedSystemIds);
+            if (generation != _loadGeneration)
+                return;
+            RefreshNavigationSystems(populatedSystemIds);
+            if (!ShowEmptyPlatforms && scope == LibraryScope.System && system is not null &&
+                !populatedSystemIds.Contains(system.Id))
+            {
+                await ShowCollectionAsync(LibraryScope.AllGames);
+                return;
+            }
+
             var artworkBySystem = (scope == LibraryScope.System && system is not null
                     ? [system.Id]
                     : _systemsById.Keys)
@@ -1612,7 +1783,9 @@ public partial class MainViewModel : ViewModelBase
                 existingGame.Dispose();
             _systemGames.Clear();
             _systemGames.AddRange(games);
-            UpdateCoverLayout();
+            // Games still contains the previous scope here. ApplyFilter replaces it immediately
+            // afterward and performs the authoritative visible-shelf pass.
+            UpdateCoverLayout(applyVisibleShelf: false);
             ApplyFilter();
         }
         catch (Exception ex)
@@ -1870,6 +2043,7 @@ public partial class MainViewModel : ViewModelBase
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         Games.ReplaceAll(SortGames(filtered));
+        ApplyVisibleCoverShelf(GridCoverWidth > 0 ? GridCoverWidth : MinCoverWidth);
 
         HasGames = Games.Count > 0;
         IsLibraryEmpty = _systemGames.Count == 0;
@@ -2613,10 +2787,13 @@ public partial class MainViewModel : ViewModelBase
                     _retroDetails,
                     _retroAccount,
                     _retroBadges,
-                    cached);
+                    cached,
+                    logger: _logger,
+                    deferBadgeLoading: true);
                 OpenGamepadOverlay(GamepadOverlayKind.Achievements);
                 GamepadAchievementDetails = details;
                 details.Achievements.CollectionChanged += HandleGamepadAchievementsChanged;
+                details.PropertyChanged += HandleGamepadAchievementDetailsPropertyChanged;
                 FocusFirstAchievement();
                 _ = details.RefreshIfStaleAsync();
                 return;
@@ -2918,7 +3095,9 @@ public partial class MainViewModel : ViewModelBase
                     RescanAllFromSettingsAsync,
                     FetchMetadataForSystemFromSettingsAsync,
                     FetchAllMetadataFromSettingsAsync,
-                    SyncRpcs3LibraryFromSettingsAsync),
+                    SyncRpcs3LibraryFromSettingsAsync,
+                    () => ShowEmptyPlatforms,
+                    SetShowEmptyPlatformsAsync),
                 _metadataPreferences,
                 _retroAccount is null
                     ? null

@@ -2,6 +2,7 @@
 using System;
 using System.Linq;
 using EmuShelf.App.Startup;
+using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App;
 
@@ -18,7 +19,12 @@ sealed class Program
             Console.WriteLine("EmuShelf");
             return;
         }
-        AppLaunchOptions.GamepadUiRequested = args.Contains("--gamepad-ui", StringComparer.OrdinalIgnoreCase);
+        AppLaunchOptions.InterfaceModeOverride =
+            args.Contains("--gamepad-ui", StringComparer.OrdinalIgnoreCase)
+                ? InterfaceMode.Gamepad
+                : args.Contains("--desktop-ui", StringComparer.OrdinalIgnoreCase)
+                    ? InterfaceMode.Desktop
+                    : null;
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

@@ -23,8 +23,12 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     public int FlushCalls { get; private set; }
 
-    public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
-        _units[unitId] = new StoredUnit(content, Hash(content), modifiedUtc);
+    public void Seed(
+        string unitId,
+        byte[] content,
+        DateTimeOffset modifiedUtc,
+        string? compatibility = null) =>
+        _units[unitId] = new StoredUnit(content, Hash(content), modifiedUtc, compatibility);
 
     public void ReplacePayloadWithoutUpdatingIndex(string unitId, byte[] content)
     {
@@ -41,6 +45,8 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     public byte[] Content(string unitId) => _units[unitId].Content;
 
+    public string? Compatibility(string unitId) => _units[unitId].Compatibility;
+
     public Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(Connected);
 
@@ -49,7 +55,11 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
         Guard();
         ListCalls++;
         IReadOnlyList<SaveUnitSnapshot> snapshots = _units
-            .Select(pair => new SaveUnitSnapshot(pair.Key, pair.Value.Hash, pair.Value.ModifiedUtc))
+            .Select(pair => new SaveUnitSnapshot(
+                pair.Key,
+                pair.Value.Hash,
+                pair.Value.ModifiedUtc,
+                pair.Value.Compatibility))
             .ToList();
         return Task.FromResult(snapshots);
     }
@@ -73,12 +83,13 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
         Stream content,
         string contentHash,
         DateTimeOffset modifiedUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? compatibility = null)
     {
         Guard();
         using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken);
-        _units[unitId] = new StoredUnit(buffer.ToArray(), contentHash, modifiedUtc);
+        _units[unitId] = new StoredUnit(buffer.ToArray(), contentHash, modifiedUtc, compatibility);
         Uploads++;
     }
 
@@ -98,5 +109,9 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     internal static string Hash(byte[] content) => Convert.ToHexString(SHA256.HashData(content));
 
-    private readonly record struct StoredUnit(byte[] Content, string Hash, DateTimeOffset ModifiedUtc);
+    private readonly record struct StoredUnit(
+        byte[] Content,
+        string Hash,
+        DateTimeOffset ModifiedUtc,
+        string? Compatibility = null);
 }

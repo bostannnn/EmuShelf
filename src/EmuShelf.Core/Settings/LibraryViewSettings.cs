@@ -18,6 +18,12 @@ public sealed record LibraryViewSettings
 
     public bool IsNavigationCollapsed { get; init; }
 
+    /// <summary>
+    /// Empty supported platforms are hidden from the library by default, but remain available in
+    /// import and Settings. A game whose file is currently unavailable still counts as a game.
+    /// </summary>
+    public bool ShowEmptyPlatforms { get; init; }
+
     /// <summary>"System", "AllGames", or "RecentlyAdded". Unknown names fall back to "System".</summary>
     public string Scope { get; init; } = "System";
 

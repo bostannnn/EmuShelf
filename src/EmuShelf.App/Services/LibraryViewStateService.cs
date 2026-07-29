@@ -49,12 +49,7 @@ public sealed class LibraryViewStateService : ILibraryViewStateService
     {
         try
         {
-            // Merge against the latest snapshot on every write. The window-layout service writes
-            // its own section of the same file, and at shutdown both run — read-modify-write is
-            // what keeps whichever goes second from dropping the other's change.
-            var latest = _settingsService.Load();
-            _settings = latest with { LibraryView = state };
-            _settingsService.Save(_settings);
+            _settings = _settingsService.Update(latest => latest with { LibraryView = state });
         }
         catch (Exception ex)
         {
