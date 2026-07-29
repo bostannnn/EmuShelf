@@ -50,8 +50,11 @@ jobs:
           if (-not $exe) { throw 'rclone.exe was not found in the downloaded archive' }
           Copy-Item $exe.FullName publish/EmuShelf/rclone.exe
           New-Item -ItemType Directory -Force publish/EmuShelf/ThirdParty/rclone | Out-Null
-          $license = Get-ChildItem $exe.Directory -Filter 'LICENSE*' | Select-Object -First 1
-          if ($license) { Copy-Item $license.FullName publish/EmuShelf/ThirdParty/rclone/LICENSE.txt }
+          # rclone's release archives ship no license file, but we redistribute the binary and
+          # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
+          $tag = $exe.Directory.Name -replace '^rclone-(v[\d.]+)-.*$', '$1'
+          if ($tag -eq $exe.Directory.Name) { throw "Could not derive the rclone version from '$($exe.Directory.Name)'" }
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING" -OutFile publish/EmuShelf/ThirdParty/rclone/LICENSE.txt
       - name: Verify portable payload
         shell: pwsh
         run: |
@@ -104,7 +107,12 @@ jobs:
           rclone_dir="$(dirname "$(find rclone-extract -name rclone -type f | head -n1)")"
           install -m 0755 "$rclone_dir/rclone" publish/EmuShelf/rclone
           mkdir -p publish/EmuShelf/ThirdParty/rclone
-          cp "$rclone_dir"/LICENSE* publish/EmuShelf/ThirdParty/rclone/ 2>/dev/null || true
+          # rclone's release archives ship no license file, but we redistribute the binary and
+          # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
+          tag="$(basename "$rclone_dir" | sed -n 's/^rclone-\(v[0-9.]*\)-.*$/\1/p')"
+          [ -n "$tag" ] || { echo "Could not derive the rclone version from $rclone_dir" >&2; exit 1; }
+          curl -fL -o publish/EmuShelf/ThirdParty/rclone/LICENSE.txt \
+            "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING"
       - name: Build and validate AppImage
         run: |
           curl -L -o /tmp/appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage

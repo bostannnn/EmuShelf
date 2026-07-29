@@ -43,6 +43,23 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task CorruptDownload_DoesNotReplaceLocalOrAdvanceItsBaseline()
+    {
+        _local.Seed(FileCard.UnitId, Bytes("original"), T0);
+        var service = CreateService();
+        await service.SyncAsync(Provider(FileCard));
+        var baseline = _manifests.Current.Get(FileCard.UnitId);
+
+        _remote.Seed(FileCard.UnitId, Bytes("new remote"), T0.AddMinutes(1));
+        _remote.ReplacePayloadWithoutUpdatingIndex(FileCard.UnitId, Bytes("damaged in transit"));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.SyncAsync(Provider(FileCard)));
+
+        Assert.Equal(Bytes("original"), _local.Content(FileCard.UnitId));
+        Assert.Equal(baseline, _manifests.Current.Get(FileCard.UnitId));
+    }
+
+    [Fact]
     public async Task UnchangedSince_LastSync_DoesNothing()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
@@ -54,6 +71,36 @@ public sealed class SaveSyncServiceTests
         Assert.Equal(1, report.Unchanged);
         Assert.Equal(1, _remote.Uploads);
         Assert.Equal(0, _remote.Downloads);
+    }
+
+    [Fact]
+    public async Task MatchingCopies_RepairAStaleBaselineLeftByAnInterruptedCommit()
+    {
+        _local.Seed(FileCard.UnitId, Bytes("initial"), T0);
+        var service = CreateService();
+        await service.SyncAsync(Provider(FileCard));
+
+        // Reproduce a cloud commit that succeeded before the local manifest could be saved: both
+        // copies contain the committed content, while the baseline still describes the old copy.
+        var committedUtc = T0.AddMinutes(1);
+        _local.Seed(FileCard.UnitId, Bytes("committed"), committedUtc);
+        _remote.Seed(FileCard.UnitId, Bytes("committed"), committedUtc);
+
+        var healingPass = await service.SyncAsync(Provider(FileCard));
+
+        Assert.Equal(1, healingPass.Unchanged);
+        Assert.Equal(
+            InMemoryCloudSyncTransport.Hash(Bytes("committed")),
+            _manifests.Current.Get(FileCard.UnitId)?.ContentHash);
+
+        // With the repaired baseline, a later remote-only edit is a download, not a false
+        // two-sided conflict decided by machine clocks.
+        _remote.Seed(FileCard.UnitId, Bytes("remote edit"), committedUtc.AddMinutes(1));
+        var nextPass = await service.SyncAsync(Provider(FileCard));
+
+        Assert.Equal(1, nextPass.Downloaded);
+        Assert.Equal(0, nextPass.Conflicts);
+        Assert.Equal(Bytes("remote edit"), _local.Content(FileCard.UnitId));
     }
 
     [Fact]

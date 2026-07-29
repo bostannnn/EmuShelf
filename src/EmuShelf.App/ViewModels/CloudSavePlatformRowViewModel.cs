@@ -123,7 +123,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
             if (_cloudSaves.GetDetectionAsync is { } detect)
             {
                 var detection = await detect(SystemId, CancellationToken.None);
-                DetectedDirectory = detection?.Directory;
+                DetectedDirectory = detection?.DisplayLocation ?? detection?.Directory;
                 CompatibilityWarning = detection?.Warning;
             }
             else

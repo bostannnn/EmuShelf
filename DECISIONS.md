@@ -2254,3 +2254,120 @@ The same fail-closed rule applies to structurally ambiguous indexes: JSON `null`
 ids are invalid rather than alternate spellings of an empty or last-entry-wins index. Outbox and
 index staging directories contain only files already selected for upload, so those two rclone copies
 use `--ignore-times`; matching size and timestamp cannot skip a write that reconciliation committed.
+
+## 2026-07-28 — Dolphin save locations come from Dolphin, and shared GCI folders stay shared
+
+Dolphin does not have one trustworthy default save folder. Its effective user directory can come
+from an explicit EmuShelf override, the launcher's `-u`/`--user` argument, portable mode, a Flatpak
+sandbox, XDG, the Windows Documents directory, or the macOS application-support directory. The user
+directory is only the start: `Dolphin.ini` can redirect raw memory cards, GCI card folders, and the
+Wii NAND, while `GameSettings/*.ini` can redirect a particular game's GCI folder. Save sync therefore
+reads those files without modifying them and uses Dolphin's defaults only when the corresponding key
+is absent. A per-game device/raw-card/NAND layout that cannot be represented is an explicit skip,
+never a reason to guess a path.
+
+A GCI-folder card is shared by many games, so replacing its directory would delete unrelated saves.
+Each game is instead one file-set unit: every sibling GCI whose embedded game+maker id matches the
+unit. Logical filenames and bytes are hashed in ordinal order and transferred as one deterministic
+archive. Restore validates every incoming GCI's structure and embedded id, displaces only the old
+members of that same unit, and rolls them back if installation does not complete. This keeps unrelated
+GCI files untouched while allowing a game with several GCI entries to reconcile atomically.
+
+Raw GameCube cards remain monolithic units because their allocation tables span every save. Wii sync
+is limited to each disc title's `title/00010000/<title-id>/data` directory; the rest of the NAND,
+including console identity, Miis, channels, and emulator save states, remains local.
+
+## 2026-07-28 — Dolphin card variants keep their filenames, and downloads verify before replacement
+
+Dolphin can select several physical raw-card files for one slot and region by adding its configured
+memory-card-size suffix (for example, `SRAM.USA.251.raw`). The suffix is therefore part of the cloud
+unit id when present; the legacy unsuffixed id remains unchanged. This lets another machine restore
+the payload to the exact filename Dolphin selects instead of silently creating an unused default-size
+card. Multiple variants are independent saves. Slots A and B, however, may not resolve to the same
+raw-card family or GCI folder: distinct cloud identities writing the same local bytes would make the
+last restore win, so that configuration fails closed before any transfer.
+
+Cloud metadata's content hash is now an installation precondition rather than evidence accepted on
+trust. Every downloaded file, folder, and file set is staged, hashed using the same semantic hash as
+its local snapshot, and compared before the live save is moved or replaced. A mismatch leaves the
+live save and manifest baseline unchanged. For Dolphin, Settings validates the configuration and
+shows those effective card/NAND locations while retaining the user directory as the configuration
+root used by the provider.
+
+## 2026-07-28 — Existing payloads make a missing or incomplete cloud catalog a hard stop
+
+An absent `index.json` means “new cloud” only when the remote contains no save payloads. Payloads
+without an index are evidence of an interrupted or collapsed catalog, not permission to rebuild the
+global index from whichever platform happens to sync next. The transport therefore lists the remote
+before accepting a missing index, and every catalog-changing flush refuses to upload or replace the
+index when it can see payloads omitted from the catalog. A pending unit is the sole exception: its
+unindexed payload may be the recoverable result of that same unit's interrupted earlier upload, and
+the current commit makes it visible again.
+
+Manual verification applies the same check in both directions. It still identifies indexed units
+whose payload is missing, but now also stops on payloads the index omitted; automatic reconstruction
+is deliberately deferred until the remote stores enough per-unit metadata to rebuild semantic hashes
+without guessing. Separately, when local and cloud content already match, that agreement repairs an
+older manifest baseline. This closes the interruption window where the cloud commit succeeded but
+the local manifest write did not, preventing a later one-sided edit from becoming a false conflict.
+
+## 2026-07-28 — No pending upload may claim an unindexed cloud payload
+
+The earlier interrupted-upload exception is withdrawn. An unindexed payload with the same unit id as
+a pending local upload is ambiguous: it may be this machine's incomplete transfer, but it may instead
+be a newer save whose catalog entry was lost. Without metadata proving which, overwriting it could
+destroy the only copy. Every unindexed payload is therefore a hard stop, including pending units, and
+recovery remains manual until the remote format can identify and preserve immutable payload versions.
+
+A catalog-changing flush also requires a previously read folder and its `index.json` marker to remain
+visible immediately before the first upload. A missing listing or marker aborts rather than recreating
+the remote from cached state. Catalog-integrity failures retain the cached Drive folder id so the next
+attempt cannot silently switch to a same-named folder; only operational reachability failures clear it.
+The added safety listing makes the former twelve-second launch budget unrealistically tight for known
+healthy Drive timings, so pre-launch sync now receives twenty seconds while post-exit sync remains
+unbounded by the launch budget.
+
+## 2026-07-28 — Immutable per-save commits replace the global catalog as the source of truth
+
+The global `index.json` protocol is retired as an authority because no ordering of “payload then
+index” can make one mutable index safe across interruption and independent PC/Deck writers. Save
+sync v2 stores each upload at an immutable, uniquely named version path and commits it with a unique
+per-unit head marker uploaded afterward. A payload without a marker is an incomplete upload and is
+ignored; retrying creates another safe version. Head markers are never replaced or deleted. Each marker carries a
+per-unit Lamport generation and random tie-breaker, so simultaneous writers converge deterministically
+from one recursive listing while retaining both immutable payloads. Different units cannot erase one
+another, and a marker can never describe bytes from another writer.
+
+Each commit uses a unique top-level remote directory rather than shared `heads/` and `payloads/`
+directories. Google Drive permits duplicate folder names, so concurrent creation of a shared protocol
+tree could split two first-time writers into different same-named folders. Unique commit roots remove
+that distributed directory-creation race; the already pinned Drive save-folder id remains the only
+shared directory identity.
+
+Existing `index.json` entries are migrated in place to generation-zero markers that continue to
+reference their untouched legacy payloads. A readiness marker is written only after every trustworthy
+legacy entry has a v2 marker; after that, normal catalog reads require one listing and ignore the old
+index. A damaged legacy index no longer blocks new v2 commits and is never overwritten or used to
+guess metadata: its payloads remain preserved for manual recovery. A unit whose newest marker has no
+payload is omitted from reconciliation while retaining that marker's generation internally; a machine
+holding the save then uploads generation N+1. EmuShelf does not silently roll active cloud state back
+to an older version, although every older immutable payload remains preserved.
+
+Closing the main window while cloud sync owns its single-flight gate now defers shutdown until that
+operation releases the gate. This keeps the application and rclone lifetime aligned during the
+post-emulator-exit commit. The immutable protocol remains safe under forced process termination, but
+ordinary shutdown no longer creates that interruption deliberately.
+
+## 2026-07-29 — Revert the folder-per-commit cloud format
+
+The v2 format above is withdrawn. Although its immutable markers handled interruption and concurrent
+writers, placing every commit in a unique top-level Google Drive directory made EmuShelf's save root
+visibly noisy and caused unbounded folder accumulation. That storage layout is not acceptable for a
+user-owned cloud folder.
+
+EmuShelf returns to the previously working v1 layout: one `index.json` and stable per-system
+`*.payload` files. The rollback changes no cloud data and performs no cleanup; existing
+`.emushelf-v2-commit-*` directories and `.emushelf-v2-ready` remain untouched until a separately
+reviewed recovery tool can verify their contents before removal. The restored v1 client ignores those
+names and creates no more of them. Any future concurrency design must keep internal state beneath one
+clean folder and must be reviewed as a storage layout before implementation.

@@ -1,6 +1,7 @@
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Storage;
 using EmuShelf.Integrations.Emulators.DuckStation;
+using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.Pcsx2;
 using EmuShelf.Integrations.Emulators.Ppsspp;
 using EmuShelf.Integrations.Emulators.RetroArch;
@@ -22,16 +23,21 @@ namespace EmuShelf.App.Services;
 /// The library's file names (without extension) for this system, evaluated on demand. Providers
 /// whose emulator shares one save folder across systems use it to claim only their own saves.
 /// </param>
+/// <param name="LaunchArguments">The configured launch template, for emulators whose arguments can relocate data.</param>
 public sealed record SaveProviderContext(
     string? DirectoryOverride,
     string? EmulatorDirectory,
     bool IsFlatpak,
     IAppPaths Paths,
     string? CorePath = null,
-    Func<IReadOnlyCollection<string>>? GameFileNames = null);
+    Func<IReadOnlyCollection<string>>? GameFileNames = null,
+    string? LaunchArguments = null);
 
-/// <summary>A provider's resolved save directory plus an optional non-blocking compatibility note.</summary>
-public sealed record SaveProviderDetection(string Directory, string? Warning = null);
+/// <summary>A provider's resolved save directory plus optional display text and compatibility note.</summary>
+public sealed record SaveProviderDetection(
+    string Directory,
+    string? Warning = null,
+    string? DisplayLocation = null);
 
 /// <summary>
 /// One supported save-sync platform. Everything the coordinator and Settings need per platform
@@ -175,6 +181,41 @@ public static class SaveProviderRegistry
                 new SaveProviderDetection(
                     await ((PpssppSaveLocationProvider)provider)
                         .GetSaveDataDirectoryAsync(cancellationToken))),
+
+        new SaveProviderDescriptor(
+            SystemId: "gamecube",
+            DisplayName: "GameCube",
+            SaveShapeDescription: "Dolphin memory cards · configured raw cards or one GCI file set per game",
+            OverridePlaceholder: "Use configured Dolphin, or choose its user data folder",
+            CreateProvider: static context => CreateDolphinProvider("gamecube", context),
+            DetectAsync: static async (provider, cancellationToken) =>
+            {
+                var info = await ((DolphinSaveLocationProvider)provider)
+                    .GetSaveLocationInfoAsync(cancellationToken);
+                return new SaveProviderDetection(
+                    info.UserDirectory,
+                    "Dolphin's configured card type and save paths are followed on each machine. " +
+                    "A raw-card save is portable only when the other machine uses a compatible card in the same slot; " +
+                    "per-game GCI folders are synced independently.",
+                    DescribeDolphinLocations(info));
+            }),
+
+        new SaveProviderDescriptor(
+            SystemId: "wii",
+            DisplayName: "Wii",
+            SaveShapeDescription: "Dolphin Wii title saves · follows the configured NAND root",
+            OverridePlaceholder: "Use configured Dolphin, or choose its user data folder",
+            CreateProvider: static context => CreateDolphinProvider("wii", context),
+            DetectAsync: static async (provider, cancellationToken) =>
+            {
+                var info = await ((DolphinSaveLocationProvider)provider)
+                    .GetSaveLocationInfoAsync(cancellationToken);
+                return new SaveProviderDetection(
+                    info.UserDirectory,
+                    "Game save data is synced per Wii title. Console identity, Mii data, channels, and save states stay local.",
+                    DescribeDolphinLocations(info));
+            }),
+
         // RetroArch serves several systems from one installation, so each row resolves the save
         // directory for its own configured core.
         .. RetroArchPlatform("megadrive", "Mega Drive / Genesis"),
@@ -186,6 +227,31 @@ public static class SaveProviderRegistry
         // as every other core applies.
         .. RetroArchPlatform("dreamcast", "Dreamcast"),
     ];
+
+    private static ISaveLocationProvider? CreateDolphinProvider(
+        string systemId,
+        SaveProviderContext context)
+    {
+        if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
+            string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
+            !context.IsFlatpak)
+        {
+            return null;
+        }
+
+        return new DolphinSaveLocationProvider(
+            systemId,
+            context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+            userDirectoryOverride: context.DirectoryOverride,
+            launchArguments: context.LaunchArguments,
+            isFlatpak: context.IsFlatpak);
+    }
+
+    private static string DescribeDolphinLocations(DolphinSaveLocationInfo info) =>
+        info.SaveLocations.Count == 0
+            ? $"No saves found; Dolphin configuration: {info.UserDirectory}"
+            : string.Join(" • ", info.SaveLocations.Take(3)) +
+              (info.SaveLocations.Count > 3 ? $" • +{info.SaveLocations.Count - 3} more" : string.Empty);
 
     private static IEnumerable<SaveProviderDescriptor> RetroArchPlatform(string systemId, string displayName)
     {

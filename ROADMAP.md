@@ -769,23 +769,34 @@ generalized.
       upload/download, offline/failure-leaves-saves-intact, and cancellation — with rclone faked
       behind the transport interface. Green on macOS + Windows. Never modifies game files or
       emulator config.
-- [x] Harden rclone failure classification without changing the remote format: failed or empty
+- [x] Harden the original v1 rclone failure classification without changing its remote format:
+      failed or empty
       index reads cannot become an empty cloud, operational download failures cannot prune an
       indexed save, verification requires its known `index.json`, and caller cancellation kills
       and awaits the transfer process; reject null/duplicate indexes and make explicitly staged
       outbound copies unconditional (2026-07-28).
+- [ ] Revisit v1 global-catalog damage handling without changing its clean remote layout. The
+      attempted fail-closed guard and later v2 replacement were rolled back; matching local/cloud
+      content still repairs a stale interrupted-commit baseline (2026-07-29).
+- [ ] Design any future concurrency fix inside one clean internal folder. The folder-per-commit v2
+      implementation was reverted because it polluted the user's Drive root and accumulated one
+      visible directory per changed save (2026-07-29).
 
 ### Phase 2 — Generalize to the other emulators
 
-- [ ] **Generalization safety gate.** Replace the PCSX2-only filesystem endpoint with a generic,
+- [x] **Generalization safety gate.** Replace the PCSX2-only filesystem endpoint with a generic,
       provider-resolved endpoint. A provider must explicitly resolve every local or remote unit to
       an allow-listed file, folder, or file set; an unknown unit, inactive card/profile, traversal,
       symlink escape, or layout mismatch fails closed. Preserve the existing `pcsx2/...` unit ids,
-      remote payloads, and manifests so the proven pilot needs no cloud migration.
-- [ ] Add a deterministic **file-set** unit for saves made of several sibling files (notably a
+      remote payloads, and manifests so the proven pilot needs no cloud migration. Completed with
+      provider-resolved file/folder/file-set boundaries and fail-closed incoming file-set content
+      validation (2026-07-28).
+- [x] Add a deterministic **file-set** unit for saves made of several sibling files (notably a
       Dolphin GCI game). Hash ordinal-sorted logical names + bytes, transfer one deterministic ZIP,
       and restore through a rollback-capable replacement. File and folder writes receive the same
-      backup-before-overwrite and cancellation guarantees.
+      backup-before-overwrite and cancellation guarantees. File sets now hash and archive sorted
+      sibling names, replace only their allow-listed members, preserve other units in the shared
+      folder, and roll back a partial replacement (2026-07-28).
 - [x] Generalize orchestration to register multiple `(provider, local endpoint)` pairs, load the
       cloud index + local manifest once, reconcile enabled systems, flush rclone once, and save the
       manifest atomically. Forced upload/download is scoped to one system, never an implicit
@@ -825,12 +836,17 @@ generalized.
       it when several accounts hold saves (2026-07-26). Extended the same day beyond the original
       scope: the bound account's `trophy/<NPWR…>/` sets and the console-wide
       `dev_hdd0/savedata/vmc` PS1/PS2 Classics cards sync as their own unit namespaces.
-- [ ] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
+- [x] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
       global/legacy, `-u`, XDG/Flatpak, macOS, or override) and read custom paths read-only. Sync a
       raw GameCube card as one unit; group GCI files by their embedded game+maker id as a file-set
       unit; sync each Wii disc title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
       Never sync the whole NAND; surface that Mii/console-identity-dependent saves may not be fully
-      portable.
+      portable. Reads `Dolphin.ini` plus relevant `GameSettings/*.ini` overrides, follows configured
+      raw/GCI/NAND paths and slot devices, validates each incoming GCI's embedded game+maker id, and
+      fails closed on per-game or nested layouts it cannot represent safely. Raw card-size filename
+      variants retain distinct portable ids, cross-slot path aliases are rejected, Settings reports
+      effective save roots, and every incoming payload is hash-verified before replacing live data
+      (2026-07-28).
 - [x] **RetroArch last, one verified core adapter at a time:** resolve the effective save path from
       `retroarch.cfg`, core/content-directory/game overrides, save sorting flags, and the configured
       core. Start with the exact cores used by EmuShelf's Mega Drive, DS, GBA, SNES, and Dreamcast

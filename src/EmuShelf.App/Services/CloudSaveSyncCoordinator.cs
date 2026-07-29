@@ -11,7 +11,13 @@ namespace EmuShelf.App.Services;
 /// <summary>Where a system's emulator lives on this machine, as resolved from EmuShelf's own config.</summary>
 /// <param name="Directory">The emulator-derived directory, or null when nothing is configured.</param>
 /// <param name="IsFlatpak">Whether the configured installation is a Flatpak target.</param>
-public sealed record SaveEmulatorInstallation(string? Directory, bool IsFlatpak, string? CorePath = null);
+/// <param name="CorePath">The configured libretro core, when applicable.</param>
+/// <param name="LaunchArguments">The configured launch template, used to honor emulator data-directory switches.</param>
+public sealed record SaveEmulatorInstallation(
+    string? Directory,
+    bool IsFlatpak,
+    string? CorePath = null,
+    string? LaunchArguments = null);
 
 /// <summary>
 /// Composes the save-sync pipeline (registry-provided provider + filesystem endpoint + rclone
@@ -376,7 +382,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
-            ForgetCloudFolderId();
+            ForgetCloudFolderIdAfterOperationalFailure(ex);
             RecordOutcome([systemId], ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
@@ -455,7 +461,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
-            ForgetCloudFolderId();
+            ForgetCloudFolderIdAfterOperationalFailure(ex);
             // Construction failures identify the provider being built, and a runtime failure with
             // one target can only belong to that target. A runtime failure after several targets
             // were staged is ambiguous and remains solely in the global outcome.
@@ -520,7 +526,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             installation?.IsFlatpak == true,
             _paths,
             ResolvePortablePath(installation?.CorePath),
-            _gamesForSystem is null ? null : () => GameFileNames(systemId)));
+            _gamesForSystem is null ? null : () => GameFileNames(systemId),
+            installation?.LaunchArguments));
     }
 
     // File names, not titles: an emulator that names a save after the game file can only be matched
@@ -568,13 +575,21 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
     }
 
-    // A cached folder id can go stale — the folder was moved, renamed, or recreated elsewhere. Any
-    // failed pass drops it, so the next attempt resolves the folder by path again and re-caches it.
-    private void ForgetCloudFolderId()
+    // A cached folder id can go stale — the folder was moved, renamed, or recreated elsewhere. An
+    // operational failure drops it so the next attempt resolves the folder by path again. Catalog
+    // integrity failures deliberately retain it: switching from a stable id to an ambiguous Drive
+    // name after detecting damage could silently select a different folder and bypass the guard.
+    private void ForgetCloudFolderIdAfterOperationalFailure(Exception failure)
     {
-        if (!string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
+        if (ShouldForgetCloudFolderIdAfter(failure) &&
+            !string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
+        {
             Persist(_settings.CloudSaveSync with { CloudFolderId = null });
+        }
     }
+
+    internal static bool ShouldForgetCloudFolderIdAfter(Exception failure) =>
+        failure is not InvalidDataException;
 
     // A pass can succeed and still not have moved a save the user expected. The reasons are already
     // written per unit; the row needs the one line that says how many and why, scoped to the

@@ -249,6 +249,15 @@ public class CloudSaveSyncCoordinatorTests
             context.GetPlatforms().Select(platform => platform.SystemId).ToArray());
     }
 
+    [Fact]
+    public void CatalogIntegrityFailure_RetainsTheStableCloudFolderId()
+    {
+        Assert.False(CloudSaveSyncCoordinator.ShouldForgetCloudFolderIdAfter(
+            new InvalidDataException("catalog is damaged")));
+        Assert.True(CloudSaveSyncCoordinator.ShouldForgetCloudFolderIdAfter(
+            new IOException("folder id is no longer reachable")));
+    }
+
     private static IReadOnlyDictionary<string, string?> Overrides(params (string SystemId, string? Path)[] entries) =>
         entries.ToDictionary(entry => entry.SystemId, entry => entry.Path, StringComparer.Ordinal);
 

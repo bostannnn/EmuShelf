@@ -308,9 +308,11 @@ public sealed class SaveSyncService
         switch (action)
         {
             case SaveSyncAction.None:
-                // Content already agrees. Record a baseline the first time it is observed so a
-                // later edit on one side is attributed correctly instead of read as a conflict.
-                if (baseline is null && localSnapshot is not null && remoteSnapshot is not null)
+                // Content already agrees. Record or repair the baseline so a pass interrupted after
+                // its cloud commit but before its manifest write heals on the next run. Leaving the
+                // older hash here would make the next one-sided edit look like a two-sided conflict.
+                if (localSnapshot is not null && remoteSnapshot is not null &&
+                    (baseline is null || !ContentEquals(baseline.ContentHash, remoteSnapshot.ContentHash)))
                     return manifest.With(NextBaseline(remoteSnapshot, baseline));
                 return manifest;
 
@@ -358,7 +360,12 @@ public sealed class SaveSyncService
         await using var content = await _remote.DownloadAsync(unitId, cancellationToken);
         // Carry the cloud copy's modified time onto the written unit so both sides converge on
         // one timestamp rather than stamping "now" and manufacturing a future false conflict.
-        await local.WriteAsync(unitId, content, remoteSnapshot.ModifiedUtc, cancellationToken);
+        await local.WriteAsync(
+            unitId,
+            content,
+            remoteSnapshot.ContentHash,
+            remoteSnapshot.ModifiedUtc,
+            cancellationToken);
     }
 
     // The endpoint is passed in rather than read from _local: a multi-provider sync reconciles

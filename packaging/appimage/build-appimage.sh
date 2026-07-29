@@ -8,6 +8,10 @@ trap 'rm -rf "$appdir"' EXIT
 
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib"
 cp -a "$publish_dir/." "$appdir/usr/bin/"
+# A publish directory produced on Windows (cross-compiled linux-x64) carries no POSIX
+# permission bits, so restore the exec bit the AppRun entry point and rclone need.
+chmod +x "$appdir/usr/bin/EmuShelf"
+if [ -f "$appdir/usr/bin/rclone" ]; then chmod +x "$appdir/usr/bin/rclone"; fi
 cp packaging/appimage/AppRun "$appdir/AppRun"
 chmod +x "$appdir/AppRun"
 cp packaging/appimage/emushelf.desktop "$appdir/emushelf.desktop"
@@ -22,7 +26,8 @@ cp packaging/appimage/emushelf.svg "$appdir/emushelf.svg"
 for library in libicudata libicui18n libicuuc libICE libSM; do
   path=$(ldconfig -p | awk -v name="$library" '$1 ~ ("^" name "\\.so") { print $NF; exit }')
   if [ -z "${path:-}" ] || [ ! -f "$path" ]; then
-    echo "Required bundled library $library was not found" >&2
+    echo "Required bundled library $library was not found." >&2
+    echo "Install it first: sudo apt-get install -y libice6 libsm6" >&2
     exit 1
   fi
   cp -L "$path" "$appdir/usr/lib/"

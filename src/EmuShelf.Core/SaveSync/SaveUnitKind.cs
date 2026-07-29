@@ -8,4 +8,10 @@ public enum SaveUnitKind
 
     /// <summary>A directory, e.g. one per-game subfolder inside a PCSX2 folder memory card.</summary>
     Folder,
+
+    /// <summary>
+    /// An explicitly allow-listed set of sibling files, e.g. every GCI belonging to one
+    /// GameCube game inside a shared Dolphin card directory.
+    /// </summary>
+    FileSet,
 }

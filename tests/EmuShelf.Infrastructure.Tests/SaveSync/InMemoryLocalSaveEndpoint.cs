@@ -34,12 +34,16 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
     public async Task WriteAsync(
         string unitId,
         Stream content,
+        string expectedContentHash,
         DateTimeOffset modifiedUtc,
         CancellationToken cancellationToken = default)
     {
         using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken);
-        _units[unitId] = new LiveUnit(buffer.ToArray(), modifiedUtc);
+        var bytes = buffer.ToArray();
+        if (!string.Equals(expectedContentHash, Hash(bytes), StringComparison.Ordinal))
+            throw new InvalidDataException("The downloaded save did not match the cloud index and was not installed.");
+        _units[unitId] = new LiveUnit(bytes, modifiedUtc);
     }
 
     public Task BackupLocalAsync(string unitId, string reason, CancellationToken cancellationToken = default)

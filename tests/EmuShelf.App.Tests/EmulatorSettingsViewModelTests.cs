@@ -909,6 +909,25 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_DetectionCanDisplayEffectiveSaveLocationsInsteadOfConfigurationRoot()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            getDetection: (systemId, _) => Task.FromResult<SaveProviderDetection?>(
+                systemId == "gamecube"
+                    ? new SaveProviderDetection(
+                        @"F:\Dolphin\User",
+                        DisplayLocation: @"F:\saves\dolphin\GC\USA • F:\saves\dolphin\SRAM.USA.raw")
+                    : null)));
+        var row = Row(viewModel, "gamecube");
+
+        await row.RefreshDetectedDirectoryAsync();
+
+        Assert.Equal(
+            @"F:\saves\dolphin\GC\USA • F:\saves\dolphin\SRAM.USA.raw",
+            row.DetectedDirectory);
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_DetectionErrorIsVisibleAndDisablesReplaceActions()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(

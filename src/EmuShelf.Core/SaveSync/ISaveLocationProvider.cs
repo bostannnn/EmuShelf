@@ -18,4 +18,11 @@ public interface ISaveLocationProvider
     /// inactive card/profile, an unsupported layout, or any id they cannot materialize safely.
     /// </summary>
     SaveUnitLocation? ResolveUnit(string unitId);
+
+    /// <summary>
+    /// Validates one extracted member of an incoming <see cref="SaveUnitKind.FileSet"/> before
+    /// it is installed into a shared directory. File-set providers must opt in explicitly and
+    /// validate both the unit identity and the file format; other providers remain fail-closed.
+    /// </summary>
+    bool IsIncomingFileSetMemberAllowed(string unitId, string filePath) => false;
 }

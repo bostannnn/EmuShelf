@@ -165,6 +165,7 @@ public sealed class AppBootstrapper
         return new SaveEmulatorInstallation(
             directory,
             configuration.LaunchTarget is FlatpakApplicationTarget,
-            configuration.CorePath);
+            configuration.CorePath,
+            configuration.LaunchArguments);
     }
 }

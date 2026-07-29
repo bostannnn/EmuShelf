@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Builds a Deck-ready AppImage from WSL without writing intermediate build files
-# to the Windows-mounted working tree. Invoke this script from an Ubuntu shell.
+# Builds a Deck-ready AppImage from a native Linux checkout, in place.
+#
+# On Windows, do NOT use this script: run `pwsh packaging/build-linux.ps1` instead. It
+# cross-publishes linux-x64 with the Windows SDK and only shells into WSL for appimagetool,
+# which avoids both copying the tree and compiling across the /mnt/c filesystem.
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
@@ -10,8 +13,16 @@ output_dir="$source_root/artifacts"
 export DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
 export PATH="$DOTNET_ROOT:$HOME/.local/bin:$PATH"
 
+case "$source_root" in
+  /mnt/*)
+    echo "This checkout lives on a Windows mount ($source_root); compiling here is slow." >&2
+    echo "Run 'pwsh packaging/build-linux.ps1' from Windows instead." >&2
+    exit 1
+    ;;
+esac
+
 if ! command -v dotnet >/dev/null 2>&1; then
-  echo "dotnet was not found. Install the .NET 10 SDK in WSL before building." >&2
+  echo "dotnet was not found. Install the .NET 10 SDK before building." >&2
   exit 1
 fi
 
@@ -20,14 +31,7 @@ if ! command -v appimagetool >/dev/null 2>&1; then
   exit 1
 fi
 
-build_root=$(mktemp -d "$HOME/emushelf-appimage.XXXXXX")
-trap 'rm -rf "$build_root"' EXIT
-
-echo "Copying source to WSL workspace: $build_root"
-cp -a "$source_root/." "$build_root/"
-find "$build_root" -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +
-
-cd "$build_root"
+cd "$source_root"
 dotnet test -c Release
 dotnet publish src/EmuShelf.App \
   -c Release \
@@ -37,12 +41,19 @@ dotnet publish src/EmuShelf.App \
   -o publish/EmuShelf
 
 # Bundle rclone so the local AppImage matches the CI artifact; cloud save sync shells out to it.
-curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-linux-amd64.zip
-unzip -o -q rclone.zip -d rclone-extract
-rclone_dir="$(dirname "$(find rclone-extract -name rclone -type f | head -n1)")"
+rclone_staging=$(mktemp -d)
+trap 'rm -rf "$rclone_staging"' EXIT
+curl -L -o "$rclone_staging/rclone.zip" https://downloads.rclone.org/rclone-current-linux-amd64.zip
+unzip -o -q "$rclone_staging/rclone.zip" -d "$rclone_staging/extract"
+rclone_dir="$(dirname "$(find "$rclone_staging/extract" -name rclone -type f | head -n1)")"
 install -m 0755 "$rclone_dir/rclone" publish/EmuShelf/rclone
 mkdir -p publish/EmuShelf/ThirdParty/rclone
-cp "$rclone_dir"/LICENSE* publish/EmuShelf/ThirdParty/rclone/ 2>/dev/null || true
+# rclone's release archives ship no license file, but we redistribute the binary and its MIT
+# terms require the notice, so pull COPYING from the matching upstream tag.
+tag="$(basename "$rclone_dir" | sed -n 's/^rclone-\(v[0-9.]*\)-.*$/\1/p')"
+[ -n "$tag" ] || { echo "Could not derive the rclone version from $rclone_dir" >&2; exit 1; }
+curl -fL -o publish/EmuShelf/ThirdParty/rclone/LICENSE.txt \
+  "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING"
 
 mkdir -p "$output_dir"
 bash packaging/appimage/build-appimage.sh \

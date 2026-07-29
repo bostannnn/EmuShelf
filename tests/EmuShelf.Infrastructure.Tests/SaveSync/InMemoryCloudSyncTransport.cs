@@ -26,6 +26,12 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
     public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
         _units[unitId] = new StoredUnit(content, Hash(content), modifiedUtc);
 
+    public void ReplacePayloadWithoutUpdatingIndex(string unitId, byte[] content)
+    {
+        var stored = _units[unitId];
+        _units[unitId] = stored with { Content = content };
+    }
+
     public bool Has(string unitId) => _units.ContainsKey(unitId);
 
     /// <summary>The unit ids the service announced before transferring anything, in order.</summary>

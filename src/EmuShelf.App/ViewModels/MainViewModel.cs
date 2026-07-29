@@ -47,7 +47,7 @@ public partial class MainViewModel : ViewModelBase
     /// How long a launch may wait for the pre-launch save sync. Long enough for a healthy cloud
     /// round trip, short enough that a throttled provider does not read as a hung launcher.
     /// </summary>
-    private static readonly TimeSpan PreLaunchSyncBudget = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan PreLaunchSyncBudget = TimeSpan.FromSeconds(20);
 
     private readonly IGameLibrary _library;
     private readonly IFolderScanner _scanner;

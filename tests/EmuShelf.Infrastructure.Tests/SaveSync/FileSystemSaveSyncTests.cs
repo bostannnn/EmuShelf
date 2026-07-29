@@ -209,12 +209,29 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         await using var payload = await _endpoint.ReadAsync(unitId);
         Directory.Delete(source, recursive: true);
-        await _endpoint.WriteAsync(unitId, payload, original!.ModifiedUtc);
+        await _endpoint.WriteAsync(unitId, payload, original!.ContentHash, original.ModifiedUtc);
 
         var restored = await _endpoint.SnapshotAsync(unitId);
         Assert.Equal(original, restored);
         Assert.Equal("save payload", await File.ReadAllTextAsync(Path.Combine(source, "save.dat")));
         Assert.Equal("icon payload", await File.ReadAllTextAsync(Path.Combine(source, "nested", "icon.sys")));
+    }
+
+    [Fact]
+    public async Task FileWrite_WithWrongCloudHash_LeavesExistingCardUntouched()
+    {
+        Directory.CreateDirectory(_memoryCardsDirectory);
+        var path = Path.Combine(_memoryCardsDirectory, "Mcd001.ps2");
+        await File.WriteAllTextAsync(path, "original card");
+        await using var payload = new MemoryStream(Encoding.UTF8.GetBytes("corrupt payload"));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => _endpoint.WriteAsync(
+            "pcsx2/Mcd001.ps2",
+            payload,
+            InMemoryLocalSaveEndpoint.Hash(Encoding.UTF8.GetBytes("expected payload")),
+            DateTimeOffset.UtcNow));
+
+        Assert.Equal("original card", await File.ReadAllTextAsync(path));
     }
 
     [Fact]

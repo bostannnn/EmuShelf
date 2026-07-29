@@ -11,5 +11,5 @@ namespace EmuShelf.Core.SaveSync;
 /// save resolves to the same unit on Windows and on a Steam Deck Flatpak layout.
 /// </param>
 /// <param name="DisplayName">Human-readable label for status and conflict messages.</param>
-/// <param name="Kind">Whether the unit is a single file or a directory of files.</param>
+/// <param name="Kind">Whether the unit is a single file, directory, or allow-listed file set.</param>
 public sealed record SaveUnit(string UnitId, string DisplayName, SaveUnitKind Kind);

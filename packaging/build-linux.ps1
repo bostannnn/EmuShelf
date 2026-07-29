@@ -1,15 +1,18 @@
-# Builds the portable Windows release artifact locally, mirroring the `package` job in
-# .github/workflows/build.yml. Run from the repository root:
+# Builds the SteamOS/Linux AppImage from Windows. The .NET SDK cross-publishes linux-x64
+# natively, so only the final AppImage packaging step runs in WSL — no source tree copy and
+# no second toolchain. Run from the repository root:
 #
-#   pwsh packaging/build-windows.ps1
+#   pwsh packaging/build-linux.ps1
 #
-# Close a running EmuShelf.exe first — it locks src/EmuShelf.App/bin and the publish fails.
+# WSL prerequisites (one time, in the Ubuntu distro):
+#   sudo apt-get install -y libice6 libsm6
+#   appimagetool on PATH (~/.local/bin/appimagetool)
 [CmdletBinding()]
 param(
     [string]$Configuration = 'Release',
-    [string]$Runtime = 'win-x64',
-    [string]$PublishDir = 'publish/EmuShelf',
+    [string]$PublishDir = 'publish/EmuShelf-linux',
     [string]$ArtifactDir = 'artifacts',
+    [string]$Distro = 'Ubuntu',
     [switch]$SkipTests
 )
 
@@ -36,6 +39,13 @@ function Resolve-DotnetSdk {
     throw 'No .NET SDK was found. Checked ~/.dotnet and PATH (the PATH dotnet may be runtime-only).'
 }
 
+function Invoke-Wsl {
+    param([string]$Script)
+    # -lc so ~/.local/bin (appimagetool) is on PATH via the login profile.
+    wsl -d $Distro -e bash -lc $Script
+    if ($LASTEXITCODE -ne 0) { throw "WSL command failed: $Script" }
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
@@ -47,14 +57,13 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
     }
 
-    Write-Host "==> Publishing self-contained $Runtime build" -ForegroundColor Cyan
+    Write-Host '==> Cross-publishing self-contained linux-x64 build' -ForegroundColor Cyan
     if (Test-Path $PublishDir) { Remove-Item $PublishDir -Recurse -Force }
     & $dotnet publish src/EmuShelf.App `
         -c $Configuration `
-        -r $Runtime `
+        -r linux-x64 `
         --self-contained true `
-        -p:PublishReadyToRun=true `
-        -p:PublishReadyToRunShowWarnings=true `
+        -p:InvariantGlobalization=false `
         -o $PublishDir
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
 
@@ -63,17 +72,18 @@ try {
     New-Item -ItemType Directory -Force $staging | Out-Null
     try {
         $zip = Join-Path $staging 'rclone.zip'
-        Invoke-WebRequest -Uri 'https://downloads.rclone.org/rclone-current-windows-amd64.zip' -OutFile $zip
+        Invoke-WebRequest -Uri 'https://downloads.rclone.org/rclone-current-linux-amd64.zip' -OutFile $zip
         Expand-Archive $zip -DestinationPath (Join-Path $staging 'extract') -Force
-        $exe = Get-ChildItem (Join-Path $staging 'extract') -Recurse -Filter rclone.exe | Select-Object -First 1
-        if (-not $exe) { throw 'rclone.exe was not found in the downloaded archive' }
-        Copy-Item $exe.FullName (Join-Path $PublishDir 'rclone.exe')
+        $binary = Get-ChildItem (Join-Path $staging 'extract') -Recurse -Filter rclone -File |
+            Select-Object -First 1
+        if (-not $binary) { throw 'rclone was not found in the downloaded archive' }
+        Copy-Item $binary.FullName (Join-Path $PublishDir 'rclone')
         $licenseDir = Join-Path $PublishDir 'ThirdParty/rclone'
         New-Item -ItemType Directory -Force $licenseDir | Out-Null
         # rclone's release archives ship no license file, but we redistribute the binary and
         # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
-        $tag = $exe.Directory.Name -replace '^rclone-(v[\d.]+)-.*$', '$1'
-        if ($tag -eq $exe.Directory.Name) { throw "Could not derive the rclone version from '$($exe.Directory.Name)'" }
+        $tag = $binary.Directory.Name -replace '^rclone-(v[\d.]+)-.*$', '$1'
+        if ($tag -eq $binary.Directory.Name) { throw "Could not derive the rclone version from '$($binary.Directory.Name)'" }
         Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING" `
             -OutFile (Join-Path $licenseDir 'LICENSE.txt')
     }
@@ -83,27 +93,30 @@ try {
 
     Write-Host '==> Verifying portable payload' -ForegroundColor Cyan
     $required = @(
-        'EmuShelf.exe',
-        'rclone.exe',
+        'EmuShelf',
+        'rclone',
         'ThirdParty/rclone/LICENSE.txt',
         'THIRD-PARTY-NOTICES.md',
         'ThirdParty/OpenEmu/LICENSE.txt'
     )
     foreach ($relative in $required) {
-        $path = Join-Path $PublishDir $relative
-        if (-not (Test-Path $path)) { throw "Portable payload is missing $relative" }
+        if (-not (Test-Path (Join-Path $PublishDir $relative))) {
+            throw "Portable payload is missing $relative"
+        }
     }
 
-    Write-Host '==> Creating portable zip and checksum' -ForegroundColor Cyan
     New-Item -ItemType Directory -Force $ArtifactDir | Out-Null
-    $zipPath = Join-Path $ArtifactDir "EmuShelf-$Runtime.zip"
-    if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
-    Compress-Archive -Path $PublishDir -DestinationPath $zipPath
-    $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$hash  EmuShelf-$Runtime.zip" | Set-Content (Join-Path $ArtifactDir "EmuShelf-$Runtime.sha256")
+    $wslRoot = (wsl -d $Distro -e wslpath -a ($root -replace '\\', '/')).Trim()
+    if (-not $wslRoot) { throw "Could not resolve $root inside WSL distro '$Distro'" }
 
-    Get-Item $zipPath, (Join-Path $ArtifactDir "EmuShelf-$Runtime.sha256") |
-        Select-Object Name, @{ n = 'Size'; e = { '{0:N1} MB' -f ($_.Length / 1MB) } }
+    Write-Host '==> Packaging AppImage in WSL' -ForegroundColor Cyan
+    Invoke-Wsl "cd '$wslRoot' && command -v appimagetool >/dev/null || { echo 'appimagetool not on PATH in WSL' >&2; exit 1; }"
+    # appimagetool writes a single ~100 MB file across the mount; the compile never touches it.
+    Invoke-Wsl "cd '$wslRoot' && bash packaging/appimage/build-appimage.sh '$PublishDir' '$ArtifactDir/EmuShelf-linux-x64.AppImage'"
+
+    Write-Host '==> Smoke-testing and checksumming' -ForegroundColor Cyan
+    Invoke-Wsl "cd '$wslRoot/$ArtifactDir' && chmod +x EmuShelf-linux-x64.AppImage && ./EmuShelf-linux-x64.AppImage --appimage-extract-and-run --version"
+    Invoke-Wsl "cd '$wslRoot/$ArtifactDir' && sha256sum EmuShelf-linux-x64.AppImage > EmuShelf-linux-x64.sha256 && sha256sum -c EmuShelf-linux-x64.sha256 && ls -lh EmuShelf-linux-x64.AppImage EmuShelf-linux-x64.sha256"
 }
 finally {
     Pop-Location
