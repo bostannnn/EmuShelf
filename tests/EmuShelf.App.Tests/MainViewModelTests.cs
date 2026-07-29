@@ -1936,32 +1936,74 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task LibrarySelection_TogglesRangesAndSelectsAllInTheCurrentView()
+    public async Task LibrarySelection_UsesOneAnchorAcrossLayoutsAndClearsWhenSearchChanges()
     {
         _library.AddGames(
         [
             new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
             new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
             new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Gamma.cue", Title = "Gamma" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Delta.cue", Title = "Delta" },
         ]);
         var vm = CreateViewModel();
         await vm.ReloadGamesAsync();
 
-        vm.SelectGame(vm.Games[0]);
-        vm.SelectGame(vm.Games[2], toggle: true);
+        vm.SelectGame(vm.Games[1]);
+        Assert.Equal(["Beta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+        Assert.Equal("1 game selected", vm.SelectionSummaryText);
+        Assert.Equal("Remove from library…", vm.SelectionRemovalText);
+
+        var delta = vm.Games.Single(game => game.Title == "Delta");
+        vm.SelectGame(delta, toggle: true);
         Assert.Equal(2, vm.SelectedGameCount);
+        Assert.Equal("Remove 2 selected games…", vm.SelectionRemovalText);
 
         vm.IsGridView = false;
-        vm.SelectGame(vm.Games[1], selectRange: true);
-        Assert.Equal(["Beta", "Gamma"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+        Assert.Equal(["Beta", "Delta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        var gamma = vm.Games.Single(game => game.Title == "Gamma");
+        vm.SelectGame(gamma, selectRange: true, toggle: true);
+        Assert.Equal(["Beta", "Delta", "Gamma"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        var alpha = vm.Games.Single(game => game.Title == "Alpha");
+        vm.SelectGame(alpha, selectRange: true);
+        Assert.Equal(["Alpha", "Beta", "Delta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        vm.SearchText = "Alpha";
+        vm.ApplyFilter();
+        Assert.Equal(0, vm.SelectedGameCount);
+        Assert.False(vm.HasSelectedGames);
+
+        vm.SearchText = string.Empty;
+        vm.ApplyFilter();
 
         vm.SelectAllGamesCommand.Execute(null);
-        Assert.Equal(3, vm.SelectedGameCount);
+        Assert.Equal(4, vm.SelectedGameCount);
         Assert.True(vm.HasSelectedGames);
 
         await vm.ReloadGamesAsync();
         Assert.Equal(0, vm.SelectedGameCount);
         Assert.False(vm.HasSelectedGames);
+    }
+
+    [AvaloniaFact]
+    public async Task RemoveOneSelectedGame_UsesTheNamedSingleGameConfirmation()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+        vm.SelectGame(vm.Games.Single(game => game.Title == "Beta"));
+
+        _dialogs.ConfirmRemoveToReturn = true;
+        await vm.RemoveSelectedGamesCommand.ExecuteAsync(null);
+
+        Assert.Equal("Beta", _dialogs.LastRemoveGameTitle);
+        Assert.Null(_dialogs.LastRemoveGameCount);
+        Assert.Equal(["Alpha"], _library.GetGames(Ps1.Id).Select(game => game.Title));
     }
 
     [AvaloniaFact]

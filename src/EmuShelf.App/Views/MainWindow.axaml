@@ -434,11 +434,11 @@
     </Window.Styles>
 
     <Grid>
-    <Grid IsVisible="{Binding !IsGamepadMode}" RowDefinitions="68,*" ColumnDefinitions="Auto,*">
+    <Grid IsVisible="{Binding !IsGamepadMode}" RowDefinitions="68,Auto,*" ColumnDefinitions="Auto,*">
         <!-- OpenEmu-inspired navigation rail, rebuilt for EmuShelf rather than copied.
              Collapses to a narrow icon rail (NavigationWidth) so the library grid reclaims
              the freed width. -->
-        <Border Grid.RowSpan="2" Grid.Column="0"
+        <Border Grid.RowSpan="3" Grid.Column="0"
                 Width="{Binding NavigationWidth}"
                 Background="{DynamicResource EmuSidebarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}"
@@ -657,10 +657,31 @@
             </Grid>
         </Border>
 
+        <!-- One shared selection surface for both desktop library layouts. -->
+        <Border x:Name="SelectionBar" Grid.Row="1" Grid.Column="1"
+                IsVisible="{Binding HasSelectedGames}"
+                Background="{DynamicResource EmuToolbarBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}"
+                BorderThickness="0,0,0,1" Padding="20,7">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Text="{Binding SelectionSummaryText}"
+                           VerticalAlignment="Center" FontSize="12.5" FontWeight="SemiBold"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <Button Grid.Column="1" Content="Clear"
+                        Command="{Binding ClearSelectionCommand}"
+                        IsEnabled="{Binding !IsBusy}" />
+                <Button x:Name="RemoveSelectionButton" Grid.Column="2"
+                        Content="{Binding SelectionRemovalText}"
+                        Command="{Binding RemoveSelectedGamesCommand}"
+                        IsEnabled="{Binding !IsBusy}"
+                        Foreground="{DynamicResource EmuDangerBrush}" />
+            </Grid>
+        </Border>
+
         <!-- Cover-first library content. -->
-        <Panel Grid.Row="1" Grid.Column="1"
+        <Panel Grid.Row="2" Grid.Column="1"
                Background="{DynamicResource EmuLibraryBrush}">
-            <ScrollViewer IsVisible="{Binding IsGridView}"
+            <ScrollViewer x:Name="LibraryGridScroller" IsVisible="{Binding IsGridView}"
                           SizeChanged="OnLibrarySizeChanged">
                 <ItemsRepeater x:Name="LibraryRepeater" ItemsSource="{Binding Games}"
                                Margin="32,28,28,34">
@@ -677,7 +698,7 @@
                             <StackPanel Width="{Binding CoverWidth}" Spacing="8" Classes="game-tile"
                                         Classes.selected="{Binding IsSelected}"
                                         Classes.unavailable="{Binding !IsAvailable}"
-                                        Tapped="OnGameTapped"
+                                        ContextRequested="OnGameContextRequested"
                                         DoubleTapped="OnGameDoubleTapped">
                                 <StackPanel.ContextMenu>
                                     <ContextMenu>
@@ -702,12 +723,8 @@
                                         <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
                                                   CommandParameter="{Binding}" />
                                         <Separator />
-                                        <MenuItem Header="Remove selected"
+                                        <MenuItem Header="{Binding SelectionRemovalText}"
                                                   Command="{Binding RemoveSelectedCommand}" />
-                                        <Separator />
-                                        <MenuItem Header="Remove from library…"
-                                                  Command="{Binding RemoveCommand}"
-                                                  CommandParameter="{Binding}" />
                                     </ContextMenu>
                                 </StackPanel.ContextMenu>
 
@@ -911,14 +928,14 @@
                         </Button>
                     </Grid>
                 </Border>
-                <ListBox Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
+                <ListBox x:Name="LibraryList" Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
                             <Grid ColumnDefinitions="66,*,150,90,96,92,100" Classes="game-row"
                                   Classes.selected="{Binding IsSelected}"
                                   Classes.unavailable="{Binding !IsAvailable}"
-                                  Tapped="OnGameTapped"
+                                  ContextRequested="OnGameContextRequested"
                                   DoubleTapped="OnGameDoubleTapped">
                                 <Grid.ContextMenu>
                                     <ContextMenu>
@@ -943,12 +960,8 @@
                                         <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
                                                   CommandParameter="{Binding}" />
                                         <Separator />
-                                        <MenuItem Header="Remove selected"
+                                        <MenuItem Header="{Binding SelectionRemovalText}"
                                                   Command="{Binding RemoveSelectedCommand}" />
-                                        <Separator />
-                                        <MenuItem Header="Remove from library…"
-                                                  Command="{Binding RemoveCommand}"
-                                                  CommandParameter="{Binding}" />
                                     </ContextMenu>
                                 </Grid.ContextMenu>
                                 <Border Grid.Column="0"

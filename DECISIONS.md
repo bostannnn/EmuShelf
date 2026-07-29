@@ -2387,6 +2387,20 @@ save-name fields provide stable suffixes so each remains independent even when p
 differ between machines. Empty Wii title `data` directories are not saves and are no longer
 enumerated; existing empty cloud entries remain untouched because save sync does not delete data.
 
+## 2026-07-29 — Desktop selection is view-model-owned and observed before controls consume input
+
+Grid and List use the same `GameViewModel.IsSelected` set, current item, and range anchor. Desktop
+pointer presses are observed in the window's tunnel because `ListBox` may consume a right or left
+press before an item-level handler runs; this keeps normal click, Ctrl/Cmd toggle, Shift replacement
+range, and Ctrl/Cmd+Shift additive range identical in both layouts. A context request independently
+targets an unselected game so keyboard- and pointer-opened menus agree. Changing the search query,
+clicking the empty library canvas, or pressing Escape clears selection; sorting and switching layouts
+do not.
+
+Every game context menu and the contextual selection bar expose the same count-aware removal command.
+One selected game is named in its confirmation; multiple games confirm the count once. Removal still
+deletes only EmuShelf database records and never game files or covers.
+
 ## 2026-07-29 — Dolphin keeps one stable base GCI identity
 
 When a game has several GCI files, the file with the lowest stable internal-name identity keeps the

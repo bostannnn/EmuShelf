@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -55,6 +56,126 @@ public class MainWindowVisualSnapshotTests
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task DesktopPointerSelection_IsSharedByGridListContextMenuAndSelectionBar()
+    {
+        var viewModel = new MainViewModel();
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll(Enumerable.Range(1, 3).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/games/Game {index}.rvz",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1000,
+            Height = 720,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var tiles = window.GetVisualDescendants()
+                .OfType<StackPanel>()
+                .Where(control => control.Classes.Contains("game-tile"))
+                .ToArray();
+            Assert.Equal(3, tiles.Length);
+
+            Click(window, tiles[0]);
+            Assert.Equal(["Game 1"], SelectedTitles(viewModel));
+
+            Click(window, tiles[2], RawInputModifiers.Control);
+            Assert.Equal(["Game 1", "Game 3"], SelectedTitles(viewModel));
+
+            Click(window, tiles[1], RawInputModifiers.Control | RawInputModifiers.Shift);
+            Assert.Equal(["Game 1", "Game 2", "Game 3"], SelectedTitles(viewModel));
+
+            var selectionBar = window.FindControl<Border>("SelectionBar");
+            var removeButton = window.FindControl<Button>("RemoveSelectionButton");
+            Assert.NotNull(selectionBar);
+            Assert.NotNull(removeButton);
+            Assert.True(selectionBar.IsVisible);
+            Assert.Equal("Remove 3 selected games…", removeButton.Content);
+
+            var contextMenu = tiles[0].ContextMenu;
+            Assert.NotNull(contextMenu);
+            contextMenu.Open(tiles[0]);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var destructiveItems = contextMenu.Items
+                .OfType<MenuItem>()
+                .Where(item => item.Header?.ToString()?.StartsWith("Remove", StringComparison.Ordinal) == true)
+                .ToArray();
+            var destructiveItem = Assert.Single(destructiveItems);
+            Assert.Equal("Remove 3 selected games…", destructiveItem.Header);
+            Click(window, destructiveItem);
+            Assert.Equal(["Game 1", "Game 2", "Game 3"], SelectedTitles(viewModel));
+            contextMenu.Close();
+
+            viewModel.IsGridView = false;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var rows = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Where(control => control.Classes.Contains("game-row"))
+                .ToArray();
+            Assert.Equal(3, rows.Length);
+
+            Click(window, rows[1]);
+            Assert.Equal(["Game 2"], SelectedTitles(viewModel));
+            Assert.Equal("Remove from library…", removeButton.Content);
+
+            Click(window, rows[0], button: MouseButton.Right);
+            Assert.Equal(["Game 1"], SelectedTitles(viewModel));
+            rows[0].ContextMenu?.Close();
+
+            var list = rows[0].GetVisualAncestors().OfType<ListBox>().Single();
+            var emptyPoint = list.TranslatePoint(new Point(100, list.Bounds.Height - 8), window);
+            Assert.NotNull(emptyPoint);
+            window.MouseDown(emptyPoint.Value, MouseButton.Left, RawInputModifiers.None);
+            window.MouseUp(emptyPoint.Value, MouseButton.Left, RawInputModifiers.None);
+            Assert.Empty(SelectedTitles(viewModel));
+
+            Click(window, rows[2]);
+            window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Assert.Empty(SelectedTitles(viewModel));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string[] SelectedTitles(MainViewModel viewModel) => viewModel.Games
+            .Where(game => game.IsSelected)
+            .Select(game => game.Title)
+            .ToArray();
+
+        static void Click(
+            MainWindow window,
+            Control control,
+            RawInputModifiers modifiers = RawInputModifiers.None,
+            MouseButton button = MouseButton.Left)
+        {
+            var point = control.TranslatePoint(
+                new Point(Math.Max(1, control.Bounds.Width / 2), Math.Max(1, control.Bounds.Height / 2)),
+                window);
+            Assert.NotNull(point);
+            window.MouseDown(point.Value, button, modifiers);
+            window.MouseUp(point.Value, button, modifiers);
         }
     }
 

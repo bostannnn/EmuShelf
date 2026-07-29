@@ -150,6 +150,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>Context-menu copy supplied by the library's shared selection model.</summary>
+    [ObservableProperty]
+    public partial string SelectionRemovalText { get; set; } = "Remove from library…";
+
     /// <summary>Whether the grid tile shows the achievement/trophy mark (a confirmed RA match).</summary>
     [ObservableProperty]
     public partial bool ShowAchievementMark { get; set; }

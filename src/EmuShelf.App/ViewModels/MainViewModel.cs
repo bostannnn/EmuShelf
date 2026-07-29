@@ -319,6 +319,10 @@ public partial class MainViewModel : ViewModelBase
         _isFrontendSuspended || DateTimeOffset.UtcNow < _gamepadInputGuardUntil;
     public int SelectedGameCount => Games.Count(game => game.IsSelected);
     public bool HasSelectedGames => SelectedGameCount > 0;
+    public string SelectionSummaryText => SelectedGameCount == 1 ? "1 game selected" : $"{SelectedGameCount} games selected";
+    public string SelectionRemovalText => SelectedGameCount <= 1
+        ? "Remove from library…"
+        : $"Remove {SelectedGameCount} selected games…";
     public string LibraryTitle => CurrentLibraryScope switch
     {
         LibraryScope.AllGames => "All Games",
@@ -1413,7 +1417,8 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>
     /// Applies a library item gesture. The view only reports modifier keys; selection state and
-    /// its range anchor remain shared between the grid and list representations.
+    /// its range anchor remain shared between the grid and list representations. Ctrl/Cmd+Shift
+    /// extends a range, while Shift alone replaces the previous selection with that range.
     /// </summary>
     public void SelectGame(GameViewModel game, bool toggle = false, bool selectRange = false)
     {
@@ -1424,23 +1429,29 @@ public partial class MainViewModel : ViewModelBase
         {
             var start = Games.IndexOf(_selectionAnchor);
             var end = Games.IndexOf(game);
-            foreach (var candidate in Games)
-                candidate.IsSelected = false;
+            if (!toggle)
+                DeselectAllGames();
             for (var index = Math.Min(start, end); index <= Math.Max(start, end); index++)
                 Games[index].IsSelected = true;
+            SelectedGame = game;
         }
         else if (toggle)
         {
             game.IsSelected = !game.IsSelected;
+            _selectionAnchor = game;
+            SelectedGame = game.IsSelected ? game : Games.FirstOrDefault(candidate => candidate.IsSelected);
         }
         else
         {
-            foreach (var candidate in Games)
-                candidate.IsSelected = ReferenceEquals(candidate, game);
+            DeselectAllGames();
+            game.IsSelected = true;
+            _selectionAnchor = game;
+            SelectedGame = game;
         }
 
-        _selectionAnchor = game.IsSelected ? game : Games.FirstOrDefault(candidate => candidate.IsSelected);
-        SelectedGame = _selectionAnchor;
+        // Shift without an existing anchor behaves like an ordinary click and establishes one.
+        if (_selectionAnchor is null || !Games.Contains(_selectionAnchor))
+            _selectionAnchor = game;
         NotifySelectionChanged();
     }
 
@@ -1458,20 +1469,31 @@ public partial class MainViewModel : ViewModelBase
         NotifySelectionChanged();
     }
 
+    [RelayCommand]
     private void ClearSelection()
     {
-        foreach (var game in _systemGames)
-            game.IsSelected = false;
+        DeselectAllGames();
 
         _selectionAnchor = null;
         SelectedGame = null;
         NotifySelectionChanged();
     }
 
+    private void DeselectAllGames()
+    {
+        foreach (var game in _systemGames.Concat(Games).Distinct())
+            game.IsSelected = false;
+    }
+
     private void NotifySelectionChanged()
     {
         OnPropertyChanged(nameof(SelectedGameCount));
         OnPropertyChanged(nameof(HasSelectedGames));
+        OnPropertyChanged(nameof(SelectionSummaryText));
+        OnPropertyChanged(nameof(SelectionRemovalText));
+        var removalText = SelectionRemovalText;
+        foreach (var game in _systemGames.Concat(Games).Distinct())
+            game.SelectionRemovalText = removalText;
         RemoveSelectedGamesCommand.NotifyCanExecuteChanged();
     }
 
@@ -1839,6 +1861,8 @@ public partial class MainViewModel : ViewModelBase
     internal void ApplyFilter()
     {
         var query = SearchText.Trim();
+        if (!string.Equals(query, _appliedSearchText, StringComparison.Ordinal))
+            ClearSelection();
         _appliedSearchText = query;
         IEnumerable<GameViewModel> filtered = _systemGames;
         if (query.Length > 0)
@@ -2828,11 +2852,16 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var selectedGames = Games.Where(game => game.IsSelected).ToArray();
-        if (selectedGames.Length == 0 ||
-            !await _dialogs.ConfirmRemoveGamesAsync(selectedGames.Length))
+        if (selectedGames.Length == 0)
         {
             return;
         }
+
+        var confirmed = selectedGames.Length == 1
+            ? await _dialogs.ConfirmRemoveGameAsync(selectedGames[0].Title)
+            : await _dialogs.ConfirmRemoveGamesAsync(selectedGames.Length);
+        if (!confirmed)
+            return;
 
         IsBusy = true;
         try

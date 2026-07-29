@@ -620,9 +620,11 @@ emulator configuration, or emulator-owned data.
       states. Every long-running operation needs a visible owner, useful progress, cancellation
       behavior where supported, completion feedback, and an error state that states what the user
       can do next.
-- [ ] Establish a consistent selection model across grid, list, context menu, keyboard shortcuts,
+- [x] Establish a consistent selection model across grid, list, context menu, keyboard shortcuts,
       and bulk actions. Make primary, secondary, destructive, and disabled controls visually
-      distinct; retain the guarantee that removal affects only EmuShelf records.
+      distinct; retain the guarantee that removal affects only EmuShelf records (2026-07-29;
+      pointer-tunnel selection, additive Ctrl/Cmd+Shift ranges, right-click targeting, Escape/empty-
+      canvas clearing, and one count-aware removal action shared by the contextual bar and menus).
 - [ ] Replace the generic status toast treatment with semantic, accessible notices for progress,
       success, warning, and blocking failure. Messages must remain readable, dismissible when
       appropriate, and never hide the only recovery action.
@@ -664,15 +666,19 @@ Surfaced during the Windows GUI pass (2026-07-19): the library is single-select 
 Remove works one game at a time, so clearing or pruning a library is tedious.
 
 - [x] Add multi-selection to both the cover grid and the list view: Ctrl/Cmd-click to toggle,
-      Shift-click to range-select, and Ctrl/Cmd+A to select every game in the current collection.
+      Shift-click to range-select, Ctrl/Cmd+Shift-click to add a range, and Ctrl/Cmd+A to select
+      every game in the current collection. Right-click first targets an unselected game; clicking
+      the empty canvas or pressing Escape clears selection.
       Keep the selection model in the view model over the existing `IsSelected`/`SelectedGame`
       state; code-behind stays gesture wiring only.
-- [x] Add a bulk "Remove selected" action (context menu + Delete key) with a single confirmation
-      that states the count. Removal touches only EmuShelf's database rows — never the game files
-      or covers — and leaves the selection empty and the view refreshed afterward.
-- [x] Add headless view-model tests for toggle/range/select-all across grid and list, selection
-      surviving (or clearing on) collection reloads, and bulk remove of a mixed available/missing
-      selection. Keep `dotnet build`/`dotnet test` green on macOS and Windows.
+- [x] Add one count-aware removal action to each context menu, a persistent contextual selection
+      bar, and the Delete key, with a single confirmation that names one game or states the selected
+      count. Removal touches only EmuShelf's database rows — never the game files or covers — and
+      leaves the selection empty and the view refreshed afterward.
+- [x] Add headless pointer and view-model tests for click/toggle/replace-range/add-range/select-all,
+      Grid/List switching, right-click targeting, Escape/empty-canvas clearing, search clearing, the
+      contextual bar/menu copy, and bulk remove of a mixed available/missing selection. Keep
+      `dotnet build`/`dotnet test` green on macOS and Windows.
 
 ## M26 — Super Nintendo library (planned)
 

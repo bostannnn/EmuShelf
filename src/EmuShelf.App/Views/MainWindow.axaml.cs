@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -23,6 +24,9 @@ public partial class MainWindow : Window
         // Controller input is supplied by Steam Input as keyboard events. Capture it in the
         // tunnel before a focused game tile consumes Enter/Escape for its own button command.
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        // ListBox handles pointer input internally. Observe it first so Grid and List always feed
+        // the same view-model-owned desktop selection state, including right-click selection.
+        AddHandler(PointerPressedEvent, OnWindowPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -226,6 +230,11 @@ public partial class MainWindow : Window
             viewModel.RemoveSelectedGamesCommand.Execute(null);
             e.Handled = true;
         }
+        else if (e.Key == Key.Escape && viewModel.HasSelectedGames)
+        {
+            viewModel.ClearSelectionCommand.Execute(null);
+            e.Handled = true;
+        }
     }
 
     private void OnGamepadTextInputKeyDown(object? sender, KeyEventArgs e)
@@ -282,15 +291,55 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnGameTapped(object? sender, TappedEventArgs e)
+    private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is Control { DataContext: GameViewModel game } &&
+        if (DataContext is not MainViewModel { IsGamepadMode: false } viewModel ||
+            e.Source is not Control source)
+            return;
+
+        var updateKind = e.GetCurrentPoint(this).Properties.PointerUpdateKind;
+        if (source.DataContext is GameViewModel game)
+        {
+            if (updateKind == PointerUpdateKind.RightButtonPressed)
+            {
+                if (!game.IsSelected)
+                    viewModel.SelectGame(game);
+            }
+            else if (updateKind == PointerUpdateKind.LeftButtonPressed && e.ClickCount == 1 &&
+                     !IsNestedButton(source))
+            {
+                viewModel.SelectGame(
+                    game,
+                    e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta),
+                    e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            }
+            return;
+        }
+
+        if (updateKind != PointerUpdateKind.LeftButtonPressed || !IsLibrarySurface(source))
+            return;
+
+        // Scrollbar interaction is navigation, not a click on the library's empty canvas.
+        if (source is ScrollBar || source.GetVisualAncestors().Any(ancestor => ancestor is ScrollBar))
+            return;
+
+        viewModel.ClearSelectionCommand.Execute(null);
+    }
+
+    private static bool IsNestedButton(Control source) =>
+        source is Button || source.GetVisualAncestors().Any(ancestor => ancestor is Button);
+
+    private bool IsLibrarySurface(Control source) =>
+        ReferenceEquals(source, LibraryGridScroller) || ReferenceEquals(source, LibraryList) ||
+        source.GetVisualAncestors().Any(ancestor =>
+            ReferenceEquals(ancestor, LibraryGridScroller) || ReferenceEquals(ancestor, LibraryList));
+
+    private void OnGameContextRequested(object? sender, ContextRequestedEventArgs e)
+    {
+        if (sender is Control { DataContext: GameViewModel { IsSelected: false } game } &&
             DataContext is MainViewModel viewModel)
         {
-            viewModel.SelectGame(
-                game,
-                e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta),
-                e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            viewModel.SelectGame(game);
         }
     }
 
