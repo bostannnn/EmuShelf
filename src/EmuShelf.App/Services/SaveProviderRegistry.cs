@@ -358,8 +358,7 @@ public static class SaveProviderRegistry
         ISaveLocationProvider saves,
         SaveProviderContext context,
         bool includeCheatsAndPatches,
-        bool includeSaveStates,
-        int stateRetention)
+        bool includeSaveStates)
     {
         var sources = new List<AuxiliaryFileSource>();
         if (includeCheatsAndPatches && descriptor.SupportsCheatsAndPatches)
@@ -382,7 +381,7 @@ public static class SaveProviderRegistry
                 coreVersion,
                 ResolveEmulatorArchitecture(context));
         }
-        return new AuxiliarySyncProvider(saves, sources, compatibility, stateRetention);
+        return new AuxiliarySyncProvider(saves, sources, compatibility);
     }
 
     private static void AddCheatAndPatchSources(
@@ -468,8 +467,7 @@ public static class SaveProviderRegistry
             AuxiliaryContentKind.SaveStates,
             "states",
             root,
-            path => AuxiliarySyncProvider.IsManualState(path) && include(path),
-            StateGroup: AuxiliarySyncProvider.DefaultStateGroup);
+            path => AuxiliarySyncProvider.IsManualState(path) && include(path));
 
     private static Func<CancellationToken, string?> Root(
         Func<CancellationToken, Task<string>> root,

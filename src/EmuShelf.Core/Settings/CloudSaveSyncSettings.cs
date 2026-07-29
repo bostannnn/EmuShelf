@@ -27,9 +27,6 @@ public sealed record SaveLocationSettings
 
     /// <summary>Whether manually initiated syncs include guarded emulator save states.</summary>
     public bool SyncSaveStates { get; init; }
-
-    /// <summary>Maximum manual state slots exposed per game. Local files are never deleted.</summary>
-    public int SaveStateRetention { get; init; } = 3;
 }
 
 /// <summary>
@@ -112,13 +109,11 @@ public sealed record CloudSaveSyncSettings
     public CloudSaveSyncSettings WithOptionalContent(
         string systemId,
         bool syncCheatsAndPatches,
-        bool syncSaveStates,
-        int saveStateRetention) =>
+        bool syncSaveStates) =>
         With(systemId, location => location with
         {
             SyncCheatsAndPatches = syncCheatsAndPatches,
             SyncSaveStates = syncSaveStates,
-            SaveStateRetention = Math.Clamp(saveStateRetention, 1, 10),
         });
 
     /// <summary>Records a successful sync for one system and clears its last error.</summary>

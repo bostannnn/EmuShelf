@@ -48,8 +48,7 @@ internal sealed record AuxiliaryFileSource(
     string Namespace,
     Func<CancellationToken, string?> ResolveRoot,
     Func<string, bool> Include,
-    bool Recursive = true,
-    Func<string, string>? StateGroup = null);
+    bool Recursive = true);
 
 internal sealed record AuxiliaryContentLocation(
     AuxiliaryContentKind Kind,
@@ -70,20 +69,17 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     private readonly ISaveLocationProvider _saves;
     private readonly IReadOnlyList<AuxiliaryFileSource> _sources;
     private readonly StateCompatibility? _compatibility;
-    private readonly int _stateRetention;
     private readonly Dictionary<AuxiliaryFileSource, string?> _resolvedRoots = [];
     private readonly object _rootGate = new();
 
     public AuxiliarySyncProvider(
         ISaveLocationProvider saves,
         IReadOnlyList<AuxiliaryFileSource> sources,
-        StateCompatibility? compatibility,
-        int stateRetention)
+        StateCompatibility? compatibility)
     {
         _saves = saves;
         _sources = sources;
         _compatibility = compatibility;
-        _stateRetention = Math.Clamp(stateRetention, 1, 10);
     }
 
     public string SystemId => _saves.SystemId;
@@ -138,49 +134,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
             .ToArray()).ToList();
 
         foreach (var source in _sources)
-        {
-            var owned = snapshots.Where(snapshot => IsInSourceNamespace(snapshot.UnitId, source)).ToArray();
-            if (source.Kind != AuxiliaryContentKind.SaveStates)
-            {
-                selected.AddRange(owned);
-                continue;
-            }
-
-            var localByGroup = GetLocalStateCandidates(source);
-            foreach (var group in owned.GroupBy(
-                         snapshot => StateGroupFromUnitId(snapshot.UnitId, source),
-                         StringComparer.OrdinalIgnoreCase))
-            {
-                var candidates = group
-                    .Select(snapshot => new RetentionCandidate(snapshot.UnitId, snapshot, snapshot.ModifiedUtc))
-                    .ToDictionary(candidate => candidate.UnitId, StringComparer.Ordinal);
-                if (localByGroup.TryGetValue(group.Key, out var localCandidates))
-                {
-                    foreach (var local in localCandidates)
-                    {
-                        if (candidates.TryGetValue(local.UnitId, out var remoteCandidate))
-                        {
-                            candidates[local.UnitId] = remoteCandidate with
-                            {
-                                ModifiedUtc = remoteCandidate.ModifiedUtc >= local.ModifiedUtc
-                                    ? remoteCandidate.ModifiedUtc
-                                    : local.ModifiedUtc,
-                            };
-                        }
-                        else
-                        {
-                            candidates[local.UnitId] = local;
-                        }
-                    }
-                }
-                selected.AddRange(candidates
-                    .Values
-                    .OrderByDescending(candidate => candidate.ModifiedUtc)
-                    .Take(_stateRetention)
-                    .Where(candidate => candidate.Remote is not null)
-                    .Select(candidate => candidate.Remote!));
-            }
-        }
+            selected.AddRange(snapshots.Where(snapshot => IsInSourceNamespace(snapshot.UnitId, source)));
 
         return selected.DistinctBy(snapshot => snapshot.UnitId, StringComparer.Ordinal).ToArray();
     }
@@ -264,8 +218,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
                     Warning: "The folder does not exist yet.");
             }
 
-            var allFiles = EnumerateCandidates(source, root, cancellationToken, applyStateRetention: false);
-            var files = ApplyStateRetention(source, allFiles);
+            var files = EnumerateCandidates(source, root, cancellationToken);
             var bytes = files.Aggregate(0L, (total, file) => checked(total + new FileInfo(file.Path).Length));
             var compatibility = source.Kind == AuxiliaryContentKind.SaveStates ? _compatibility?.Description : null;
             var warning = source.Kind == AuxiliaryContentKind.SaveStates && _compatibility is null
@@ -275,7 +228,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
                 source.Kind,
                 root,
                 files.Length,
-                allFiles.Length,
+                files.Length,
                 bytes,
                 compatibility,
                 warning);
@@ -289,8 +242,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     private FileCandidate[] EnumerateCandidates(
         AuxiliaryFileSource source,
         string fullRoot,
-        CancellationToken cancellationToken,
-        bool applyStateRetention = true)
+        CancellationToken cancellationToken)
     {
         var search = source.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var files = Directory.EnumerateFiles(fullRoot, "*", search)
@@ -300,19 +252,9 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
                 return path;
             })
             .Where(source.Include)
-            .Select(path => new FileCandidate(path, Path.GetRelativePath(fullRoot, path), File.GetLastWriteTimeUtc(path)))
+            .Select(path => new FileCandidate(path, Path.GetRelativePath(fullRoot, path)))
             .ToArray();
-        return applyStateRetention ? ApplyStateRetention(source, files) : files;
-    }
-
-    private FileCandidate[] ApplyStateRetention(AuxiliaryFileSource source, FileCandidate[] files)
-    {
-        if (source.Kind != AuxiliaryContentKind.SaveStates)
-            return files;
-        return files
-            .GroupBy(file => (source.StateGroup ?? DefaultStateGroup)(file.RelativePath), StringComparer.OrdinalIgnoreCase)
-            .SelectMany(group => group.OrderByDescending(file => file.ModifiedUtc).Take(_stateRetention))
-            .ToArray();
+        return files;
     }
 
     private string Prefix(AuxiliaryFileSource source) =>
@@ -330,52 +272,6 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         var separator = remainder.IndexOf('/');
         value = separator < 0 ? remainder : remainder[..separator];
         return value is "cheats" or "patches" or "states";
-    }
-
-    private string StateGroupFromUnitId(string unitId, AuxiliaryFileSource source)
-    {
-        var remainder = unitId[Prefix(source).Length..];
-        if (!TryDecodeRelativePath(remainder, out var relative))
-            return unitId;
-        return (source.StateGroup ?? DefaultStateGroup)(relative);
-    }
-
-    private IReadOnlyDictionary<string, IReadOnlyList<RetentionCandidate>> GetLocalStateCandidates(
-        AuxiliaryFileSource source)
-    {
-        if (_compatibility is null)
-            return new Dictionary<string, IReadOnlyList<RetentionCandidate>>(StringComparer.OrdinalIgnoreCase);
-        var root = ResolveRoot(source, CancellationToken.None);
-        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
-            return new Dictionary<string, IReadOnlyList<RetentionCandidate>>(StringComparer.OrdinalIgnoreCase);
-        var search = source.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        return Directory.EnumerateFiles(root, "*", search)
-            .Where(source.Include)
-            .GroupBy(
-                path => (source.StateGroup ?? DefaultStateGroup)(Path.GetRelativePath(root, path)),
-                StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                group => group.Key,
-                group => (IReadOnlyList<RetentionCandidate>)group
-                    .Select(path => new RetentionCandidate(
-                        Prefix(source) + EncodeRelativePath(Path.GetRelativePath(root, path)),
-                        null,
-                        File.GetLastWriteTimeUtc(path)))
-                    .ToArray(),
-                StringComparer.OrdinalIgnoreCase);
-    }
-
-    internal static string DefaultStateGroup(string relativePath)
-    {
-        var name = Path.GetFileName(relativePath);
-        var state = name.IndexOf(".state", StringComparison.OrdinalIgnoreCase);
-        if (state > 0)
-            return name[..state];
-        var withoutExtension = Path.GetFileNameWithoutExtension(name);
-        var slotSeparator = withoutExtension.LastIndexOfAny(['_', '-', '.']);
-        if (slotSeparator > 0 && withoutExtension[(slotSeparator + 1)..].All(char.IsAsciiDigit))
-            withoutExtension = withoutExtension[..slotSeparator];
-        return withoutExtension;
     }
 
     internal static bool IsManualState(string path)
@@ -447,10 +343,5 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         return path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison);
     }
 
-    private sealed record FileCandidate(string Path, string RelativePath, DateTimeOffset ModifiedUtc);
-
-    private sealed record RetentionCandidate(
-        string UnitId,
-        SaveUnitSnapshot? Remote,
-        DateTimeOffset ModifiedUtc);
+    private sealed record FileCandidate(string Path, string RelativePath);
 }

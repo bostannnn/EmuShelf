@@ -32,7 +32,7 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task EnumeratesPerFileCheatsAndOnlyNewestManualStates()
+    public async Task EnumeratesPerFileCheatsAndEveryManualState()
     {
         var cheats = Directory.CreateDirectory(Path.Combine(_root, "cheats")).FullName;
         var states = Directory.CreateDirectory(Path.Combine(_root, "states")).FullName;
@@ -50,18 +50,16 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
                     AuxiliaryContentKind.SaveStates,
                     "states",
                     _ => states,
-                    path => AuxiliarySyncProvider.IsManualState(path) && path.Contains(".state", StringComparison.Ordinal),
-                    StateGroup: AuxiliarySyncProvider.DefaultStateGroup),
+                    path => AuxiliarySyncProvider.IsManualState(path) && path.Contains(".state", StringComparison.Ordinal)),
             ],
-            new StateCompatibility("retroarch-1-0-x64", "1.0 · x64"),
-            stateRetention: 2);
+            new StateCompatibility("retroarch-1-0-x64", "1.0 · x64"));
 
         var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains(units, unit => unit.UnitId == "test/cheats/GAME.cht");
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/GAME.state3", StringComparison.Ordinal));
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/GAME.state2", StringComparison.Ordinal));
-        Assert.DoesNotContain(units, unit => unit.UnitId.EndsWith("/GAME.state1", StringComparison.Ordinal));
+        Assert.Contains(units, unit => unit.UnitId.EndsWith("/GAME.state1", StringComparison.Ordinal));
         Assert.DoesNotContain(units, unit => unit.UnitId.Contains(".auto", StringComparison.Ordinal));
     }
 
@@ -75,10 +73,8 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
                 AuxiliaryContentKind.SaveStates,
                 "states",
                 _ => states,
-                _ => true,
-                StateGroup: AuxiliarySyncProvider.DefaultStateGroup)],
-            new StateCompatibility("current", "current"),
-            stateRetention: 3);
+                _ => true)],
+            new StateCompatibility("current", "current"));
 
         var reason = provider.GetRemoteIncompatibilityReason(new SaveUnitSnapshot(
             "test/states/GAME.state",
@@ -90,7 +86,7 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
-    public void RemoteRetentionSelectsNewestStatesPerGameWithoutDeletingOlderEntries()
+    public void RemoteSelectionIncludesEveryStateWithoutDeletingOlderEntries()
     {
         var provider = new AuxiliarySyncProvider(
             new EmptyProvider(),
@@ -98,10 +94,8 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
                 AuxiliaryContentKind.SaveStates,
                 "states",
                 _ => _root,
-                _ => true,
-                StateGroup: AuxiliarySyncProvider.DefaultStateGroup)],
-            new StateCompatibility("current", "current"),
-            stateRetention: 2);
+                _ => true)],
+            new StateCompatibility("current", "current"));
         var snapshots = Enumerable.Range(1, 4)
             .Select(slot => new SaveUnitSnapshot(
                 $"test/states/GAME.state{slot}",
@@ -111,37 +105,8 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
 
         var selected = provider.SelectRemoteUnits(snapshots);
 
-        Assert.Equal(2, selected.Count);
-        Assert.Contains(selected, snapshot => snapshot.UnitId.EndsWith("state4", StringComparison.Ordinal));
-        Assert.Contains(selected, snapshot => snapshot.UnitId.EndsWith("state3", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void RemoteRetentionCountsNewerLocalStatesTowardTheLimit()
-    {
-        var states = Directory.CreateDirectory(Path.Combine(_root, "states-combined")).FullName;
-        WriteState(states, "GAME.state4", 4);
-        var provider = new AuxiliarySyncProvider(
-            new EmptyProvider(),
-            [new(
-                AuxiliaryContentKind.SaveStates,
-                "states",
-                _ => states,
-                _ => true,
-                StateGroup: AuxiliarySyncProvider.DefaultStateGroup)],
-            new StateCompatibility("current", "current"),
-            stateRetention: 2);
-        var snapshots = Enumerable.Range(1, 3)
-            .Select(slot => new SaveUnitSnapshot(
-                $"test/states/GAME.state{slot}",
-                $"hash{slot}",
-                new DateTimeOffset(2026, 1, slot, 0, 0, 0, TimeSpan.Zero)))
-            .ToArray();
-
-        var selected = provider.SelectRemoteUnits(snapshots);
-
-        Assert.Single(selected);
-        Assert.EndsWith("state3", selected[0].UnitId, StringComparison.Ordinal);
+        Assert.Equal(4, selected.Count);
+        Assert.All(snapshots, snapshot => Assert.Contains(snapshot, selected));
     }
 
     [Fact]
@@ -162,11 +127,9 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
                     AuxiliaryContentKind.SaveStates,
                     "states",
                     _ => states,
-                    path => path.Contains(".state", StringComparison.Ordinal),
-                    StateGroup: AuxiliarySyncProvider.DefaultStateGroup),
+                    path => path.Contains(".state", StringComparison.Ordinal)),
             ],
-            new StateCompatibility("current", "1.0 · x64"),
-            stateRetention: 1);
+            new StateCompatibility("current", "1.0 · x64"));
 
         var locations = await provider.GetContentLocationsAsync(TestContext.Current.CancellationToken);
 
@@ -174,7 +137,7 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.Equal(Path.GetFullPath(cheats), cheatLocation.Directory);
         Assert.Equal(1, cheatLocation.EligibleFileCount);
         var stateLocation = Assert.Single(locations, location => location.Kind == AuxiliaryContentKind.SaveStates);
-        Assert.Equal(1, stateLocation.EligibleFileCount);
+        Assert.Equal(2, stateLocation.EligibleFileCount);
         Assert.Equal(2, stateLocation.TotalFileCount);
         Assert.Equal("1.0 · x64", stateLocation.Compatibility);
         var broken = Assert.Single(locations, location => location.Kind == AuxiliaryContentKind.Patches);

@@ -2592,3 +2592,12 @@ unchanged bytes keep that identity after an emulator upgrade, while genuinely ch
 the current identity. This prevents an upgrade from silently certifying an old state as compatible.
 Executable version strings are normalized across packaging formats, and native executables without
 embedded version resources fall back to their bounded `--version` command.
+
+## 2026-07-29 — Manual state sync includes every eligible state
+
+This supersedes the retention rule in the earlier optional-sync decision. Enabling save-state sync
+means every manual state currently present in the resolved folder participates in manual Sync all
+and replace actions. A newest-N selector made the option's meaning incomplete, could hide a usable
+state behind newer incompatible states, and did not reclaim cloud storage because synchronization
+never deletes local or remote files. Automatic, resume, undo, and backup states remain excluded,
+and compatibility checks still prevent states from being restored by a different emulator build.

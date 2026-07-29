@@ -24,8 +24,7 @@ public interface ISaveLocationProvider
     }
 
     /// <summary>
-    /// Selects the owned remote units that should participate in this pass. Optional state
-    /// providers use this to apply retention without deleting older cloud objects.
+    /// Selects the owned remote units that should participate in this pass.
     /// </summary>
     IReadOnlyList<SaveUnitSnapshot> SelectRemoteUnits(IReadOnlyList<SaveUnitSnapshot> snapshots) =>
         snapshots.Where(snapshot => OwnsUnit(snapshot.UnitId)).ToArray();

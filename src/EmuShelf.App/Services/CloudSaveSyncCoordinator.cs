@@ -107,8 +107,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 provider,
                 context,
                 includeCheatsAndPatches: true,
-                includeSaveStates: true,
-                stateRetention: _settings.CloudSaveSync.GetLocation(systemId).SaveStateRetention);
+                includeSaveStates: true);
             optionalSummary = await DescribeOptionalContentAsync(optional, provider, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
@@ -169,13 +168,11 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public void UpdateOptionalContent(
         string systemId,
         bool syncCheatsAndPatches,
-        bool syncSaveStates,
-        int saveStateRetention) =>
+        bool syncSaveStates) =>
         Persist(_settings.CloudSaveSync.WithOptionalContent(
             systemId,
             syncCheatsAndPatches,
-            syncSaveStates,
-            saveStateRetention));
+            syncSaveStates));
 
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
@@ -385,8 +382,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 descriptor.SupportsCheatsAndPatches,
                 descriptor.SupportsSaveStates,
                 location.SyncCheatsAndPatches,
-                location.SyncSaveStates,
-                Math.Clamp(location.SaveStateRetention, 1, 10));
+                location.SyncSaveStates);
         }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
@@ -578,8 +574,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             saves,
             context,
             includeOptionalContent && options.SyncCheatsAndPatches,
-            includeOptionalContent && options.SyncSaveStates,
-            options.SaveStateRetention);
+            includeOptionalContent && options.SyncSaveStates);
     }
 
     private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
@@ -832,8 +827,7 @@ public sealed record CloudSaveSyncPlatformContext(
     bool SupportsCheatsAndPatches = false,
     bool SupportsSaveStates = false,
     bool SyncCheatsAndPatches = false,
-    bool SyncSaveStates = false,
-    int SaveStateRetention = 3);
+    bool SyncSaveStates = false);
 
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view
@@ -854,4 +848,4 @@ public sealed record CloudSaveSyncSettingsContext(
     Action<string, string?> UpdateOverride,
     Func<CancellationToken, Task<bool>> DownloadRcloneAsync,
     Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null,
-    Action<string, bool, bool, int>? UpdateOptionalContent = null);
+    Action<string, bool, bool>? UpdateOptionalContent = null);

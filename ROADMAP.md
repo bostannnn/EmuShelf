@@ -1105,12 +1105,12 @@ overwrite rule, conflict backups, and activity log need no new concepts.
 - [x] Per-kind opt-in per platform, defaulting to saves only. Emulator cheat and patch roots can
       contain thousands of bundled database files, while save states can be gigabytes and change
       every session, so optional kinds participate only in manual Sync all/replace actions. Settings
-      shows each kind's exact resolved path, selected file count, and size before it is enabled.
+      shows each kind's exact resolved path, eligible file count, and size before it is enabled.
 - [x] Per-file units for kinds made of many independent files, so one changed state does not
       re-upload a folder. The existing folder unit stays for save data that is only meaningful whole.
-- [x] A retention rule for states: sync the newest N per game without deleting older local or cloud
-      copies, and exclude auto/undo slots (`.state.auto`, DuckStation's resume state, PCSX2's backup
-      slot), which change on every exit and are worth nothing on another machine.
+- [x] Sync every manual state present without deleting local or cloud copies. Exclude auto/undo slots
+      (`.state.auto`, DuckStation's resume state, PCSX2's backup slot), which change on every exit and
+      are worth nothing on another machine.
 - [x] Kind-aware conflict handling. A cheat or patch file is user-edited text where "keep the newer
       one" is wrong: keep both sides, both readable, and say so — the current timestamp tie-break
       stays right for opaque binary state.

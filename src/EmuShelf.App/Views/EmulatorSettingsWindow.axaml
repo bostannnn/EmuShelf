@@ -482,16 +482,8 @@
                                                               IsChecked="{Binding SyncSaveStates, Mode=TwoWay}"
                                                               IsEnabled="{Binding IsIdle}"
                                                               ToolTip.Tip="Only states from the same emulator version and CPU architecture are restored" />
-                                                    <StackPanel Orientation="Horizontal" Spacing="8"
-                                                                IsVisible="{Binding SupportsSaveStates}">
-                                                        <TextBlock Text="Sync newest states per game"
-                                                                   VerticalAlignment="Center"
-                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                        <NumericUpDown Width="72" Minimum="1" Maximum="10" Increment="1"
-                                                                       Value="{Binding SaveStateRetention, Mode=TwoWay}"
-                                                                       IsEnabled="{Binding IsIdle}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="Older local and cloud states are kept and continue using storage; EmuShelf never deletes them automatically."
+                                                    <TextBlock Text="All manual states in the folder are synced. Automatic, resume, undo, and backup states are excluded."
+                                                               IsVisible="{Binding SupportsSaveStates}"
                                                                FontSize="11" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>

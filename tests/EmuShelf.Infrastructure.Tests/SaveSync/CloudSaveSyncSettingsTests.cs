@@ -120,21 +120,35 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void OptionalContent_IsOptInAndRetentionIsClamped()
+    public void OptionalContent_IsOptIn()
     {
         var defaults = new CloudSaveSyncSettings().GetLocation("playstation2");
         Assert.False(defaults.SyncCheatsAndPatches);
         Assert.False(defaults.SyncSaveStates);
-        Assert.Equal(3, defaults.SaveStateRetention);
 
         var enabled = new CloudSaveSyncSettings().WithOptionalContent(
             "playstation2",
             syncCheatsAndPatches: true,
-            syncSaveStates: true,
-            saveStateRetention: 99).GetLocation("playstation2");
+            syncSaveStates: true).GetLocation("playstation2");
 
         Assert.True(enabled.SyncCheatsAndPatches);
         Assert.True(enabled.SyncSaveStates);
-        Assert.Equal(10, enabled.SaveStateRetention);
+    }
+
+    [Fact]
+    public void RemovedRetentionSetting_DoesNotBreakExistingSettingsFiles()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"SaveLocations\":{\"playstation2\":" +
+            "{\"SyncSaveStates\":true,\"SaveStateRetention\":7}}}}");
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+
+        var loaded = service.Load();
+
+        Assert.True(loaded.CloudSaveSync.GetLocation("playstation2").SyncSaveStates);
+        service.Save(loaded);
+        Assert.DoesNotContain("SaveStateRetention", File.ReadAllText(AppPaths.SettingsFilePath), StringComparison.Ordinal);
     }
 }

@@ -40,7 +40,6 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         SupportsSaveStates = platform.SupportsSaveStates;
         SyncCheatsAndPatches = platform.SyncCheatsAndPatches;
         SyncSaveStates = platform.SyncSaveStates;
-        SaveStateRetention = Math.Clamp(platform.SaveStateRetention, 1, 10);
         _isInitializing = false;
     }
 
@@ -67,9 +66,6 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool SyncSaveStates { get; set; }
-
-    [ObservableProperty]
-    public partial int SaveStateRetention { get; set; } = 3;
 
     [ObservableProperty]
     public partial string OverrideDirectory { get; set; } = string.Empty;
@@ -232,17 +228,6 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         }
     }
 
-    partial void OnSaveStateRetentionChanged(int value)
-    {
-        var clamped = Math.Clamp(value, 1, 10);
-        if (value != clamped)
-        {
-            SaveStateRetention = clamped;
-            return;
-        }
-        PersistOptionalContent();
-    }
-
     private void PersistOptionalContent()
     {
         if (!_isInitializing)
@@ -250,8 +235,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
             _cloudSaves.UpdateOptionalContent?.Invoke(
                 SystemId,
                 SyncCheatsAndPatches,
-                SyncSaveStates,
-                SaveStateRetention);
+                SyncSaveStates);
         }
     }
 
