@@ -1,0 +1,100 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        x:Class="EmuShelf.App.Views.CoverSearchWindow"
+        x:DataType="vm:CoverSearchViewModel"
+        Title="{Binding WindowTitle}"
+        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Width="940" Height="700" MinWidth="700" MinHeight="520"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="24">
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+            <StackPanel Spacing="5">
+                <TextBlock Text="Find a cover" FontSize="22" FontWeight="SemiBold"
+                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Close" Command="{Binding CancelCommand}" />
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="9" Margin="0,0,0,16">
+            <TextBox Grid.Column="0" Text="{Binding SearchText}"
+                     PlaceholderText="Game title" VerticalContentAlignment="Center" />
+            <Button Grid.Column="1" Content="Search web" Classes="accent"
+                    Command="{Binding SearchCommand}" IsDefault="True" />
+            <Button Grid.Column="2" Content="Choose local image…"
+                    Command="{Binding ChooseLocalImageCommand}" />
+        </Grid>
+
+        <Border Grid.Row="2" Background="{DynamicResource EmuLibraryBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                CornerRadius="10" ClipToBounds="True">
+            <Grid>
+                <StackPanel IsVisible="{Binding ShowPrompt}" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Spacing="8" MaxWidth="430">
+                    <TextBlock Text="Search for game covers" FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="Results are suggestions from the web. Nothing changes until you choose one."
+                               TextWrapping="Wrap" TextAlignment="Center"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding ShowLoading}" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Spacing="12" Width="320">
+                    <ProgressBar IsIndeterminate="True" Height="4" />
+                    <TextBlock Text="{Binding StatusText}" TextAlignment="Center" TextWrapping="Wrap"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding ShowNoResults}" HorizontalAlignment="Center"
+                            VerticalAlignment="Center" Spacing="8" MaxWidth="450">
+                    <TextBlock Text="No covers found" FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" TextAlignment="Center"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+
+                <Grid IsVisible="{Binding ShowResults}" RowDefinitions="Auto,*">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="16,12">
+                        <TextBlock Text="{Binding ResultsCountText}" FontWeight="SemiBold" />
+                        <TextBlock Grid.Column="1" Text="{Binding StatusText}"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding Results}" Margin="14,0,14,16">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" ItemWidth="168" ItemHeight="258" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:CoverSearchResultViewModel">
+                                    <Button Command="{Binding SelectCommand}" Margin="6" Padding="8"
+                                            HorizontalContentAlignment="Stretch"
+                                            VerticalContentAlignment="Stretch">
+                                        <Grid RowDefinitions="196,Auto,Auto" RowSpacing="4">
+                                            <Border Background="{DynamicResource EmuCoverWellBrush}"
+                                                    CornerRadius="5" ClipToBounds="True">
+                                                <Image Source="{Binding Preview}" Stretch="Uniform" />
+                                            </Border>
+                                            <TextBlock Grid.Row="1" Text="{Binding ResolutionText}"
+                                                       HorizontalAlignment="Center" FontSize="11"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <TextBlock Grid.Row="2" Text="{Binding SourceText}"
+                                                       HorizontalAlignment="Center" FontSize="10"
+                                                       MaxWidth="148" TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

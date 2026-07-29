@@ -1146,3 +1146,19 @@ overwrite rule, conflict backups, and activity log need no new concepts.
 - [ ] Deliberately out of scope, recorded so it is not revisited: BIOS and firmware images (large,
       static, and the user's own to place), texture packs (gigabytes, already inventoried by M32),
       emulator binaries, and RetroAchievements progress (the server owns it).
+
+## M34 — User-driven web cover picker ✅ (2026-07-29)
+
+- [x] Replace Desktop **Set cover…**'s file-only interaction with a Grimmory-style search dialog:
+      prefill title/platform, show a bounded preview grid with resolution/source host, keep an
+      explicit local-file action, and apply nothing until the user selects a result.
+- [x] Keep unverified web results out of automatic metadata enrichment. Search DuckDuckGo Images
+      only on an explicit user action, retain search rank, use the platform cover ratio only as a
+      light ordering signal, and never guess that a result belongs to a ROM.
+- [x] Route previews and selected images through the bounded artwork path: require HTTPS public
+      addresses on the initial URL and every redirect, cap both compressed bytes and decoded pixel
+      dimensions, decode scaled previews off the UI thread as they arrive, delete staging files,
+      and preserve the accepted portable `Covers/` copy as user-owned artwork.
+- [x] Cover query construction, unsafe/tiny-result rejection, format fallback, picker selection,
+      local-file fallback, portable import, and temporary-file cleanup with deterministic tests;
+      verify the live search-token/results exchange without downloading or redistributing artwork.

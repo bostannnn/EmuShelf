@@ -66,6 +66,29 @@ public class GameCoverServiceTests : IDisposable
         Assert.Equal(timestamp, File.GetLastWriteTimeUtc(imported.ThumbnailPath));
     }
 
+    [Fact]
+    public async Task ImportAsync_RejectsImageWhoseDecodedDimensionsExceedSafetyLimit()
+    {
+        var sourcePath = Path.Combine(_baseDirectory, "oversized.png");
+        using (var output = File.Create(sourcePath))
+        {
+            output.Write([137, 80, 78, 71, 13, 10, 26, 10]);
+            var header = new byte[13];
+            BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(0, 4), 10_000);
+            BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(4, 4), 10_000);
+            header[8] = 8;
+            header[9] = 6;
+            WritePngChunk(output, "IHDR", header);
+        }
+        var service = new GameCoverService(_paths);
+
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => service.ImportAsync(99, sourcePath, TestContext.Current.CancellationToken));
+
+        Assert.Contains("pixel safety limit", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(Directory.EnumerateFiles(_paths.CoversDirectory));
+    }
+
     [AvaloniaFact]
     public async Task DeleteOwnedCoverAsync_RemovesOnlyConfirmedOldAppOwnedCover()
     {

@@ -2711,8 +2711,14 @@ public partial class MainViewModel : ViewModelBase
         if (game is null || IsBusy)
             return;
 
-        var sourcePath = await _dialogs.PickCoverImageAsync(game.Title);
-        if (sourcePath is null)
+        var preferredAspectRatio = _systemsById.TryGetValue(game.SystemId, out var system)
+            ? system.CoverAspectRatio
+            : game.CoverAspectRatio;
+        var pickedCover = await _dialogs.PickGameCoverAsync(new GameCoverPickerContext(
+            game.Title,
+            game.SystemName,
+            preferredAspectRatio));
+        if (pickedCover is null)
             return;
 
         IsBusy = true;
@@ -2720,7 +2726,7 @@ public partial class MainViewModel : ViewModelBase
         var previousCoverPath = game.CoverPath;
         try
         {
-            var imported = await _covers.ImportAsync(game.Id, sourcePath);
+            var imported = await _covers.ImportAsync(game.Id, pickedCover.SourcePath);
             try
             {
                 await Task.Run(() => _library.UpdateCoverPath(game.Id, imported.CoverPath));
@@ -2806,6 +2812,17 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            if (pickedCover.IsTemporary)
+            {
+                try
+                {
+                    File.Delete(pickedCover.SourcePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("Could not remove a downloaded cover staging file.", ex);
+                }
+            }
             IsBusy = false;
         }
     }

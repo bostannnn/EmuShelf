@@ -3,6 +3,16 @@ using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.Services;
 
+public sealed record GameCoverPickerContext(
+    string GameTitle,
+    string SystemName,
+    double PreferredAspectRatio);
+
+public sealed record PickedGameCover(
+    string SourcePath,
+    bool IsTemporary = false,
+    string? SourceUri = null);
+
 /// <summary>
 /// UI interactions the view model needs but can't perform itself (file/folder pickers,
 /// the system-confirmation prompt). Keeps Avalonia dialog types out of the view model.
@@ -24,6 +34,16 @@ public interface IDialogService
 
     /// <summary>Absolute path of a manually selected cover image, or null if cancelled.</summary>
     Task<string?> PickCoverImageAsync(string gameTitle);
+
+    /// <summary>
+    /// Lets the user choose either a local image or an explicit web-search result. Implementations
+    /// without the web picker retain the original local-file behavior.
+    /// </summary>
+    async Task<PickedGameCover?> PickGameCoverAsync(GameCoverPickerContext context)
+    {
+        var path = await PickCoverImageAsync(context.GameTitle);
+        return path is null ? null : new PickedGameCover(path);
+    }
 
     /// <summary>
     /// Absolute path of the OAuth client JSON downloaded from the Google Cloud console, or null if

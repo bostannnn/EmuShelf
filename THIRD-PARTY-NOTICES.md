@@ -126,6 +126,10 @@ the source project's terms and to the rights of their respective publishers.
   addressed by disc id (`https://art.gametdb.com/wii/cover/<region>/<id>.png`), the same
   community source Dolphin uses. Cover images remain subject to GameTDB's terms and to the
   rights of their respective publishers.
+- [DuckDuckGo Images](https://duckduckgo.com/) supplies search-result links only when a user
+  explicitly opens **Set cover…** and searches. EmuShelf bundles no DuckDuckGo code or index and
+  does not apply a result automatically. A selected image remains subject to its hosting site's
+  terms and to the rights of its respective publisher.
 
 ## Bundled tools
 

@@ -1667,11 +1667,35 @@ public class MainViewModelTests : IDisposable
 
         var stored = _library.GetGames(Ps1.Id).Single();
         Assert.Equal("Alpha", _dialogs.LastCoverGameTitle);
+        Assert.Equal("PlayStation", _dialogs.LastCoverPickerContext!.SystemName);
+        Assert.Equal(Ps1.CoverAspectRatio, _dialogs.LastCoverPickerContext.PreferredAspectRatio);
         Assert.NotNull(stored.CoverPath);
         Assert.StartsWith(Path.Combine(_baseDirectory, "Covers"), stored.CoverPath);
         Assert.True(File.Exists(stored.CoverPath));
         Assert.True(File.Exists(sourcePath));
         Assert.True(game.HasCoverImage);
+    }
+
+    [AvaloniaFact]
+    public async Task SetGameCover_RemovesWebSearchStagingFileAfterImport()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var stagingPath = WriteTinyPng("web-cover-staging.png");
+        _dialogs.PickedGameCoverToReturn = new PickedGameCover(
+            stagingPath,
+            IsTemporary: true,
+            SourceUri: "https://covers.example/alpha.png");
+        var vm = CreateViewModel(covers: new GameCoverService(new AppPaths(_baseDirectory)));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        await vm.SetGameCoverCommand.ExecuteAsync(vm.Games.Single());
+
+        var stored = _library.GetGames(Ps1.Id).Single();
+        Assert.NotNull(stored.CoverPath);
+        Assert.True(File.Exists(stored.CoverPath));
+        Assert.False(File.Exists(stagingPath));
     }
 
     [AvaloniaFact]

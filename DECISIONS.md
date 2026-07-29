@@ -2408,3 +2408,29 @@ unsuffixed `dolphin/gc/gci/<slot>/<game-id>` unit and only additional files rece
 the base unit at every file count prevents a one-file cloud entry from becoming an orphan when the
 game creates another save. It also lets another machine reconcile the expanded card without
 downloading the former base file twice under two different local names.
+
+## 2026-07-29 — Web cover search is a user choice, not an automatic Google provider
+
+The requested Grimmory-like flow is implemented as an in-app result picker, but not as a literal
+Google provider. Grimmory's current cover picker uses DuckDuckGo Images rather than Google. Google's
+official Custom Search JSON API now accepts no new customers and is scheduled to end for existing
+customers in 2027; scraping Google Images would replace that dead-end dependency with an unstable,
+unapproved HTML contract. EmuShelf therefore follows Grimmory's interaction and provider choice:
+an explicit DuckDuckGo search with a bounded grid, plus the existing local-file option.
+
+A web result has title similarity but no trustworthy game identity, region, or artwork license, so
+it never enters `MetadataSystemProfile` and is never chosen automatically. The platform cover ratio
+only reorders results within small search-rank bands; it cannot filter a legitimate alternate shape
+or promote a distant result over the search engine's first page. The user-selected image passes
+through the existing content-type, 8 MiB, and signature checks, is imported as a normal user-owned
+cover, and leaves no preview or staging file behind. This keeps automatic exact-id metadata
+conservative while giving unmatched ROMs a practical cover workflow.
+
+The picker treats search-result hosts as untrusted. It accepts HTTPS only, resolves the initial
+image/thumbnail host and every redirect, rejects loopback, private, link-local, and other
+non-public addresses, disables proxy and automatic-redirect behavior for this transport, and pins
+the validated DNS answer to the outbound socket. Downloaded headers must also declare no more than
+40 million pixels or 16,384 pixels on either edge before Avalonia decodes them. Previews use the
+codec's scaled decode off the UI thread and enter the ranked grid independently as each bounded
+download finishes; the selected original receives the same dimension check during normal cover
+import. These checks apply to manual web search without changing trusted automatic metadata hosts.

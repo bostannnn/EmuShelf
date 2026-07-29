@@ -14,12 +14,14 @@ internal sealed class FakeDialogService : IDialogService
     public string? EmulatorExecutableToReturn { get; set; }
     public string? Rpcs3ConfigurationDirectoryToReturn { get; set; }
     public string? CoverImageToReturn { get; set; }
+    public PickedGameCover? PickedGameCoverToReturn { get; set; }
     public bool ConfirmRemoveToReturn { get; set; }
     public bool ConfirmRemoveGamesToReturn { get; set; }
     public MetadataConsentChoice MetadataConsentToReturn { get; set; } =
         MetadataConsentChoice.NotNow;
     public int MetadataConsentPrompts { get; private set; }
     public string? LastCoverGameTitle { get; private set; }
+    public GameCoverPickerContext? LastCoverPickerContext { get; private set; }
     public string? LastRemoveGameTitle { get; private set; }
     public int? LastRemoveGameCount { get; private set; }
     public Exception? SettingsException { get; set; }
@@ -46,6 +48,14 @@ internal sealed class FakeDialogService : IDialogService
     {
         LastCoverGameTitle = gameTitle;
         return Task.FromResult(CoverImageToReturn);
+    }
+    public Task<PickedGameCover?> PickGameCoverAsync(GameCoverPickerContext context)
+    {
+        LastCoverPickerContext = context;
+        LastCoverGameTitle = context.GameTitle;
+        return Task.FromResult(
+            PickedGameCoverToReturn ??
+            (CoverImageToReturn is null ? null : new PickedGameCover(CoverImageToReturn)));
     }
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle)
     {

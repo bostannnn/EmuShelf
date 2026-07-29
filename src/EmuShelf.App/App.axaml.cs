@@ -17,6 +17,7 @@ public partial class App : Application
 {
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
     private HttpClient? _metadataHttpClient;
+    private HttpClient? _webArtworkHttpClient;
     private HttpClient? _retroAchievementsHttpClient;
     private GamepadInputService? _gamepadInput;
 
@@ -79,14 +80,27 @@ public partial class App : Application
                 Timeout = TimeSpan.FromSeconds(30),
             };
             _metadataHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            var artworkDownloader = new RemoteArtworkDownloader(
+                Bootstrapper.Paths,
+                _metadataHttpClient,
+                Bootstrapper.Logger);
+            var publicArtworkPolicy = new PublicArtworkUriPolicy();
+            _webArtworkHttpClient = new HttpClient(
+                PublicArtworkHttpTransport.CreateHandler(publicArtworkPolicy))
+            {
+                Timeout = TimeSpan.FromSeconds(30),
+            };
+            _webArtworkHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            var webArtworkDownloader = new RemoteArtworkDownloader(
+                Bootstrapper.Paths,
+                _webArtworkHttpClient,
+                Bootstrapper.Logger,
+                publicArtworkPolicy);
             var metadataService = new GameMetadataService(
                 Bootstrapper.MetadataStore,
                 Bootstrapper.MetadataProfiles,
                 new LibretroDatCatalog(Bootstrapper.Paths, _metadataHttpClient),
-                new RemoteArtworkDownloader(
-                    Bootstrapper.Paths,
-                    _metadataHttpClient,
-                    Bootstrapper.Logger),
+                artworkDownloader,
                 coverService,
                 Bootstrapper.Logger,
                 new LibretroArtworkTitleIndex(Bootstrapper.Paths, _metadataHttpClient));
@@ -144,7 +158,11 @@ public partial class App : Application
                     Bootstrapper.Logger,
                     retroAchievementsDetails,
                     retroAchievementsAccount,
-                    retroAchievementsBadges),
+                    retroAchievementsBadges,
+                    new DuckDuckGoArtworkSearchProvider(
+                        _metadataHttpClient,
+                        publicArtworkPolicy),
+                    webArtworkDownloader),
                 Bootstrapper.Systems,
                 launchService,
                 Bootstrapper.EmulatorConfigurations,
@@ -196,6 +214,7 @@ public partial class App : Application
             desktop.Exit += (_, _) =>
             {
                 _gamepadInput?.Dispose();
+                _webArtworkHttpClient?.Dispose();
                 _metadataHttpClient?.Dispose();
                 _retroAchievementsHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");
