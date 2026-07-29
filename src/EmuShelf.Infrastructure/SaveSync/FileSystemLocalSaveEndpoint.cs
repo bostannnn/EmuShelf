@@ -15,13 +15,6 @@ namespace EmuShelf.Infrastructure.SaveSync;
 public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
 {
     private static readonly DateTimeOffset ZipTimestamp = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
-    private static StringComparison PathComparison => OperatingSystem.IsWindows()
-        ? StringComparison.OrdinalIgnoreCase
-        : StringComparison.Ordinal;
-    private static StringComparer PathComparer => OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
-
     private readonly ISaveLocationProvider _provider;
     private readonly string _conflictsDirectory;
     private readonly string _transfersDirectory;
@@ -73,17 +66,6 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             return new SaveUnitSnapshot(unitId, HashFolder(files, location.Path, cancellationToken), MaxModifiedUtc(files));
         }
 
-        if (location.Kind == SaveUnitKind.FileSet)
-        {
-            if (!Directory.Exists(location.Path) || location.Files.Count == 0)
-                return null;
-
-            return new SaveUnitSnapshot(
-                unitId,
-                HashFolder(location.Files, location.Path, cancellationToken),
-                MaxModifiedUtc(location.Files));
-        }
-
         if (!File.Exists(location.Path))
             return null;
 
@@ -112,10 +94,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
                 FileShare.None))
             using (var archive = new ZipArchive(archiveStream, ZipArchiveMode.Create, leaveOpen: false))
             {
-                var files = location.Kind == SaveUnitKind.FileSet
-                    ? location.Files
-                    : EnumerateAllFolderFiles(location.Path, cancellationToken);
-                foreach (var file in files)
+                foreach (var file in EnumerateAllFolderFiles(location.Path, cancellationToken))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var relativePath = ToRelativePath(location.Path, file);
@@ -173,12 +152,6 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             return;
         }
 
-        if (location.Kind == SaveUnitKind.FileSet)
-        {
-            WriteFileSet(unitId, location, content, expectedContentHash, modifiedUtc, cancellationToken);
-            return;
-        }
-
         var parentDirectory = Path.GetDirectoryName(location.Path)!;
         var temporaryDirectory = Path.Combine(parentDirectory, "_emushelf-incoming-" + Guid.NewGuid().ToString("N"));
         var displacedDirectory = Path.Combine(parentDirectory, "_emushelf-previous-" + Guid.NewGuid().ToString("N"));
@@ -217,97 +190,6 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         }
     }
 
-    private void WriteFileSet(
-        string unitId,
-        ResolvedUnit location,
-        Stream content,
-        string expectedContentHash,
-        DateTimeOffset modifiedUtc,
-        CancellationToken cancellationToken)
-    {
-        var parentDirectory = Path.GetDirectoryName(location.Path)!;
-        var temporaryDirectory = Path.Combine(parentDirectory, "_emushelf-incoming-" + Guid.NewGuid().ToString("N"));
-        var displacedDirectory = Path.Combine(parentDirectory, "_emushelf-previous-" + Guid.NewGuid().ToString("N"));
-        var displacedFiles = new List<(string Original, string Backup)>();
-        var installedFiles = new List<string>();
-        var completed = false;
-        try
-        {
-            Directory.CreateDirectory(temporaryDirectory);
-            ExtractArchive(content, temporaryDirectory, cancellationToken);
-            var incomingFiles = Directory.EnumerateFiles(temporaryDirectory, "*", SearchOption.AllDirectories)
-                .OrderBy(path => ToRelativePath(temporaryDirectory, path), StringComparer.Ordinal)
-                .ToList();
-            if (incomingFiles.Count == 0 || incomingFiles.Any(path =>
-                    !string.Equals(Path.GetDirectoryName(path), temporaryDirectory, PathComparison)))
-            {
-                throw new InvalidDataException("The file-set archive must contain sibling files only.");
-            }
-            if (incomingFiles.Any(path => !_provider.IsIncomingFileSetMemberAllowed(unitId, path)))
-                throw new InvalidDataException("The incoming archive contains a file that does not belong to this save unit.");
-            EnsureExpectedHash(
-                expectedContentHash,
-                HashFolder(incomingFiles, temporaryDirectory, cancellationToken));
-
-            var currentFiles = location.Files.ToHashSet(PathComparer);
-            foreach (var incoming in incomingFiles)
-            {
-                var destination = Path.Combine(location.Path, Path.GetFileName(incoming));
-                if (File.Exists(destination) && !currentFiles.Contains(destination))
-                {
-                    throw new InvalidDataException(
-                        "The incoming file set would overwrite a file owned by another save unit.");
-                }
-            }
-
-            Directory.CreateDirectory(location.Path);
-            Directory.CreateDirectory(displacedDirectory);
-            foreach (var existing in location.Files)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!File.Exists(existing))
-                    throw new IOException("A file-set member changed while the save was being replaced.");
-                var backup = Path.Combine(displacedDirectory, Path.GetFileName(existing));
-                File.Move(existing, backup);
-                displacedFiles.Add((existing, backup));
-            }
-
-            foreach (var incoming in incomingFiles)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var destination = Path.Combine(location.Path, Path.GetFileName(incoming));
-                File.Move(incoming, destination);
-                installedFiles.Add(destination);
-                File.SetLastWriteTimeUtc(destination, modifiedUtc.UtcDateTime);
-            }
-
-            Directory.Delete(displacedDirectory, recursive: true);
-            displacedFiles.Clear();
-            completed = true;
-        }
-        finally
-        {
-            if (!completed)
-            {
-                foreach (var installed in installedFiles)
-                {
-                    if (File.Exists(installed))
-                        File.Delete(installed);
-                }
-                foreach (var (original, backup) in displacedFiles)
-                {
-                    if (File.Exists(backup) && !File.Exists(original))
-                        File.Move(backup, original);
-                }
-            }
-
-            if (Directory.Exists(temporaryDirectory))
-                Directory.Delete(temporaryDirectory, recursive: true);
-            if (Directory.Exists(displacedDirectory))
-                Directory.Delete(displacedDirectory, recursive: true);
-        }
-    }
-
     private void BackupLocal(string unitId, string reason, CancellationToken cancellationToken)
     {
         var location = Resolve(unitId);
@@ -317,16 +199,6 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         {
             var destination = Path.Combine(backupDirectory, "local");
             CopyDirectory(location.Path, destination, cancellationToken);
-        }
-        else if (location.Kind == SaveUnitKind.FileSet)
-        {
-            var destination = Path.Combine(backupDirectory, "local");
-            Directory.CreateDirectory(destination);
-            foreach (var file in location.Files)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                File.Copy(file, Path.Combine(destination, Path.GetFileName(file)), overwrite: false);
-            }
         }
         else
         {
@@ -339,7 +211,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         var location = Resolve(unitId);
         var backupDirectory = CreateBackupDirectory(unitId);
         WriteReason(backupDirectory, reason);
-        var payloadName = location.Kind is SaveUnitKind.Folder or SaveUnitKind.FileSet
+        var payloadName = location.Kind == SaveUnitKind.Folder
             ? "incoming.zip"
             : Path.GetFileName(location.Path);
         using var target = new FileStream(
@@ -354,7 +226,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
         var approved = _provider.ResolveUnit(unitId) ?? throw new SaveUnitNotResolvableException(unitId);
-        if (approved.Kind is not (SaveUnitKind.File or SaveUnitKind.Folder or SaveUnitKind.FileSet))
+        if (approved.Kind is not (SaveUnitKind.File or SaveUnitKind.Folder))
             throw new ArgumentException("The save unit kind is not supported by the filesystem endpoint.", nameof(unitId));
 
         var root = Path.GetFullPath(approved.RootPath);
@@ -363,30 +235,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             throw new ArgumentException("The provider resolved the save unit outside its approved root.", nameof(unitId));
         EnsureNoLinkedPathBelowRoot(path, root);
 
-        if (approved.Kind != SaveUnitKind.FileSet)
-            return new ResolvedUnit(path, approved.Kind, []);
-
-        var files = new List<string>();
-        var seen = new HashSet<string>(PathComparer);
-        foreach (var candidate in approved.FilePaths ?? [])
-        {
-            var file = Path.GetFullPath(candidate);
-            if (!IsUnderRoot(file, path) ||
-                !string.Equals(Path.GetDirectoryName(file), path, PathComparison) ||
-                !seen.Add(file))
-            {
-                throw new ArgumentException(
-                    "The provider resolved an invalid file-set member.",
-                    nameof(unitId));
-            }
-            EnsureNoLinkedPathBelowRoot(file, root);
-            files.Add(file);
-        }
-
-        return new ResolvedUnit(
-            path,
-            approved.Kind,
-            files.OrderBy(file => Path.GetFileName(file), StringComparer.Ordinal).ToList());
+        return new ResolvedUnit(path, approved.Kind);
     }
 
     private string CreateBackupDirectory(string unitId)
@@ -543,8 +392,5 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         }
     }
 
-    private readonly record struct ResolvedUnit(
-        string Path,
-        SaveUnitKind Kind,
-        IReadOnlyList<string> Files);
+    private readonly record struct ResolvedUnit(string Path, SaveUnitKind Kind);
 }

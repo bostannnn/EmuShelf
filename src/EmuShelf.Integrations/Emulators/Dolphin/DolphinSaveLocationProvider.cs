@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.SaveSync;
 
@@ -6,7 +7,7 @@ namespace EmuShelf.Integrations.Emulators.Dolphin;
 
 /// <summary>
 /// Resolves Dolphin's effective user directory and configured save paths without modifying its
-/// configuration. GameCube raw cards, per-game GCI sets, and Wii disc-title data are exposed as
+/// configuration. GameCube raw cards, individual GCI files, and Wii disc-title data are exposed as
 /// separate allow-listed units; the rest of the NAND and all save states remain outside the model.
 /// </summary>
 public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
@@ -95,24 +96,6 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             : ResolveWiiUnit(unitId);
     }
 
-    public bool IsIncomingFileSetMemberAllowed(string unitId, string filePath)
-    {
-        if (_systemId != "gamecube" ||
-            !unitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal) ||
-            Path.GetExtension(filePath) is not { } extension ||
-            !extension.Equals(".gci", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var parts = unitId["dolphin/gc/gci/".Length..].Split('/', StringSplitOptions.None);
-        return parts is [var slot, var gameId] &&
-               TrySlot(slot, out _) &&
-               IsGameId(gameId) &&
-               TryReadGci(filePath, out var embeddedGameId) &&
-               string.Equals(gameId, embeddedGameId, StringComparison.Ordinal);
-    }
-
     private IReadOnlyList<SaveUnit> GetGameCubeUnits(CancellationToken cancellationToken)
     {
         var state = ReadState(cancellationToken);
@@ -164,7 +147,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         List<SaveUnit> units,
         CancellationToken cancellationToken)
     {
-        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+        var saves = new Dictionary<string, (string Folder, IReadOnlyList<GciFile> Files)>(StringComparer.Ordinal);
         var folders = Regions.Select(region => ResolveGciFolder(state, slot, region))
             .Concat(state.PerGameGciOverrides
                 .Where(pair => pair.Key.Slot == slot)
@@ -176,22 +159,42 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             cancellationToken.ThrowIfCancellationRequested();
             foreach (var group in GetGciFiles(folder, cancellationToken).GroupBy(file => file.GameId))
             {
-                if (owners.TryGetValue(group.Key, out var other) && !PathComparer.Equals(other, folder))
+                if (saves.TryGetValue(group.Key, out var other) && !PathComparer.Equals(other.Folder, folder))
                 {
                     throw new DolphinConfigurationFormatException(
                         $"Dolphin resolves {group.Key} to more than one GCI folder for slot {char.ToUpperInvariant(slot)}.");
                 }
 
-                owners[group.Key] = folder;
+                saves[group.Key] = (folder, group.OrderBy(file => file.Identity, StringComparer.Ordinal).ToList());
             }
         }
 
-        foreach (var gameId in owners.Keys.OrderBy(value => value, StringComparer.Ordinal))
+        foreach (var (gameId, save) in saves.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            units.Add(new SaveUnit(
-                GciUnitId(slot, gameId),
-                $"Card {char.ToUpperInvariant(slot)} — {gameId}",
-                SaveUnitKind.FileSet));
+            if (save.Files.Select(file => file.Identity).Distinct(StringComparer.Ordinal).Count() != save.Files.Count)
+            {
+                throw new DolphinConfigurationFormatException(
+                    $"Dolphin has duplicate GCI identities for {gameId} in slot {char.ToUpperInvariant(slot)}.");
+            }
+
+            if (save.Files.Count == 1)
+            {
+                // Preserve the original per-game id for the common one-file case. Existing cloud
+                // copies created by the brief file-set implementation therefore migrate in place.
+                units.Add(new SaveUnit(
+                    GciUnitId(slot, gameId),
+                    $"Card {char.ToUpperInvariant(slot)} — {gameId}",
+                    SaveUnitKind.File));
+                continue;
+            }
+
+            foreach (var file in save.Files)
+            {
+                units.Add(new SaveUnit(
+                    GciUnitId(slot, gameId, file.Identity),
+                    $"Card {char.ToUpperInvariant(slot)} — {gameId} — {Path.GetFileName(file.Path)}",
+                    SaveUnitKind.File));
+            }
         }
     }
 
@@ -220,8 +223,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             return new SaveUnitLocation(path, Path.GetDirectoryName(path)!, SaveUnitKind.File);
         }
 
-        if (parts is ["gci", var gciSlotText, var gameId] &&
-            TrySlot(gciSlotText, out var gciSlot) && IsGameId(gameId) &&
+        if (TryParseGciUnit(parts, out var gciSlot, out var gameId, out var identity) &&
             GetSlotDevice(state.Configuration, gciSlot) == GciFolderDevice)
         {
             var folder = ResolveGciFolderForGame(state, gciSlot, gameId);
@@ -229,13 +231,25 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
                 return null;
             var files = GetGciFiles(folder, CancellationToken.None)
                 .Where(file => file.GameId == gameId)
-                .Select(file => file.Path)
+                .OrderBy(file => file.Identity, StringComparer.Ordinal)
                 .ToList();
-            return new SaveUnitLocation(
+
+            GciFile? selected;
+            if (identity is null)
+            {
+                if (files.Count > 1)
+                    return null;
+                selected = files.SingleOrDefault();
+            }
+            else
+            {
+                selected = files.SingleOrDefault(file => file.Identity == identity);
+            }
+
+            var path = selected?.Path ?? Path.Combine(
                 folder,
-                Path.GetDirectoryName(folder)!,
-                SaveUnitKind.FileSet,
-                files);
+                identity is null ? $"{gameId}.gci" : $"{gameId}-{identity}.gci");
+            return new SaveUnitLocation(path, folder, SaveUnitKind.File);
         }
 
         return null;
@@ -260,7 +274,9 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         {
             cancellationToken.ThrowIfCancellationRequested();
             var titleId = Path.GetFileName(titleDirectory).ToLowerInvariant();
-            if (!IsHexTitleId(titleId) || !Directory.Exists(Path.Combine(titleDirectory, "data")))
+            var dataDirectory = Path.Combine(titleDirectory, "data");
+            if (!IsHexTitleId(titleId) || !Directory.Exists(dataDirectory) ||
+                !Directory.EnumerateFiles(dataDirectory, "*", SearchOption.AllDirectories).Any())
                 continue;
             units.Add(new SaveUnit(WiiUnitId(titleId), titleId, SaveUnitKind.Folder));
         }
@@ -297,9 +313,11 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         List<string> locations = _systemId == "wii"
             ? [Path.Combine(GetNandRoot(state), "title", "00010000")]
             : units
-                .Select(unit => ResolveGameCubeUnit(state, unit.UnitId))
-                .Where(location => location is not null)
-                .Select(location => location!.Path)
+                .Select(unit => (Unit: unit, Location: ResolveGameCubeUnit(state, unit.UnitId)))
+                .Where(item => item.Location is not null)
+                .Select(item => item.Unit.UnitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal)
+                    ? item.Location!.RootPath
+                    : item.Location!.Path)
                 .Distinct(PathComparer)
                 .OrderBy(path => path, PathComparer)
                 .ToList();
@@ -596,7 +614,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             if ((attributes & FileAttributes.Directory) != 0)
             {
                 throw new DolphinConfigurationFormatException(
-                    "A Dolphin GCI folder contains a nested directory, which cannot be mapped to sibling save sets safely.");
+                    "A Dolphin GCI folder contains a nested directory and cannot be mapped to individual save files safely.");
             }
         }
         var result = new List<GciFile>();
@@ -605,15 +623,16 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
                      .OrderBy(path => path, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (TryReadGci(path, out var gameId))
-                result.Add(new GciFile(Path.GetFullPath(path), gameId));
+            if (TryReadGci(path, out var gameId, out var identity))
+                result.Add(new GciFile(Path.GetFullPath(path), gameId, identity));
         }
         return result;
     }
 
-    private static bool TryReadGci(string path, out string gameId)
+    private static bool TryReadGci(string path, out string gameId, out string identity)
     {
         gameId = string.Empty;
+        identity = string.Empty;
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
@@ -629,6 +648,10 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             if (!IsGameId(id))
                 return false;
             gameId = id;
+            // The internal save name is stable even when Dolphin chooses a different physical
+            // filename on another machine. It distinguishes the uncommon games that own several
+            // sibling GCI files without turning the whole shared card folder into one unit.
+            identity = Convert.ToHexString(SHA256.HashData(header[0x08..0x28]))[..16];
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -859,6 +882,31 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         return false;
     }
 
+    private static bool TryParseGciUnit(
+        string[] parts,
+        out char slot,
+        out string gameId,
+        out string? identity)
+    {
+        slot = '\0';
+        gameId = string.Empty;
+        identity = null;
+        if (parts is ["gci", var slotText, var parsedGameId] &&
+            TrySlot(slotText, out slot) && IsGameId(parsedGameId))
+        {
+            gameId = parsedGameId;
+            return true;
+        }
+        if (parts is ["gci", var identitySlotText, var identityGameId, var parsedIdentity] &&
+            TrySlot(identitySlotText, out slot) && IsGameId(identityGameId) && IsGciIdentity(parsedIdentity))
+        {
+            gameId = identityGameId;
+            identity = parsedIdentity;
+            return true;
+        }
+        return false;
+    }
+
     private static bool IsGameId(string value) =>
         value.Length == 6 && value.All(char.IsAsciiLetterOrDigit);
 
@@ -868,11 +916,16 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
     private static bool IsRawCardVariant(string value) =>
         value.Length > 0 && value.Length <= 10 && value.All(char.IsAsciiDigit);
 
+    private static bool IsGciIdentity(string value) =>
+        value.Length == 16 && value.All(char.IsAsciiHexDigit) && value.All(character => !char.IsAsciiLetter(character) || char.IsUpper(character));
+
     private static string RawUnitId(char slot, string region, string? variant) =>
         variant is null
             ? $"dolphin/gc/raw/{slot}/{region}"
             : $"dolphin/gc/raw/{slot}/{region}/{variant}";
     private static string GciUnitId(char slot, string gameId) => $"dolphin/gc/gci/{slot}/{gameId}";
+    private static string GciUnitId(char slot, string gameId, string identity) =>
+        $"{GciUnitId(slot, gameId)}/{identity}";
     private static string WiiUnitId(string titleId) => $"dolphin/wii/title/00010000/{titleId}";
 
     private static StringComparer PathComparer => OperatingSystem.IsWindows()
@@ -884,7 +937,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         IniDocument Configuration,
         IReadOnlyDictionary<(char Slot, string GameId), string> PerGameGciOverrides);
 
-    private sealed record GciFile(string Path, string GameId);
+    private sealed record GciFile(string Path, string GameId, string Identity);
 
     private sealed record RawCard(string Path, string? Variant);
 

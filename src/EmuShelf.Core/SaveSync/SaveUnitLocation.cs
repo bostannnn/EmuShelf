@@ -8,5 +8,4 @@ namespace EmuShelf.Core.SaveSync;
 public sealed record SaveUnitLocation(
     string Path,
     string RootPath,
-    SaveUnitKind Kind,
-    IReadOnlyList<string>? FilePaths = null);
+    SaveUnitKind Kind);

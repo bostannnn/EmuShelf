@@ -185,7 +185,7 @@ public static class SaveProviderRegistry
         new SaveProviderDescriptor(
             SystemId: "gamecube",
             DisplayName: "GameCube",
-            SaveShapeDescription: "Dolphin memory cards · configured raw cards or one GCI file set per game",
+            SaveShapeDescription: "Dolphin memory cards · configured raw cards or individual GCI files",
             OverridePlaceholder: "Use configured Dolphin, or choose its user data folder",
             CreateProvider: static context => CreateDolphinProvider("gamecube", context),
             DetectAsync: static async (provider, cancellationToken) =>
@@ -196,7 +196,7 @@ public static class SaveProviderRegistry
                     info.UserDirectory,
                     "Dolphin's configured card type and save paths are followed on each machine. " +
                     "A raw-card save is portable only when the other machine uses a compatible card in the same slot; " +
-                    "per-game GCI folders are synced independently.",
+                    "GCI saves are synced as individual files.",
                     DescribeDolphinLocations(info));
             }),
 

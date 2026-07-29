@@ -2371,3 +2371,18 @@ EmuShelf returns to the previously working v1 layout: one `index.json` and stabl
 reviewed recovery tool can verify their contents before removal. The restored v1 client ignores those
 names and creates no more of them. Any future concurrency design must keep internal state beneath one
 clean folder and must be reviewed as a storage layout before implementation.
+
+## 2026-07-29 — Dolphin GCI saves use ordinary file units
+
+The sibling `FileSet` abstraction is withdrawn. A GCI is already a self-contained memory-card file,
+while selectively replacing several siblings inside a shared card directory required a second,
+provider-specific rollback protocol in the generic filesystem endpoint. That extra transaction path
+was not justified by the save format and had a partial-cleanup failure mode that ordinary atomic file
+replacement does not share.
+
+Dolphin now exposes each GCI through the existing file path. The common one-file-per-game case keeps
+the prior `dolphin/gc/gci/<slot>/<game-id>` identity so the cloud copies already created during local
+testing migrate in place on their next upload. If a game owns several GCI files, their internal GCI
+save-name fields provide stable suffixes so each remains independent even when physical filenames
+differ between machines. Empty Wii title `data` directories are not saves and are no longer
+enumerated; existing empty cloud entries remain untouched because save sync does not delete data.

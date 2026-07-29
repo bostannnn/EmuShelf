@@ -96,7 +96,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public async Task GciCards_FollowConfiguredFolderAndGroupSiblingFilesByEmbeddedGameId()
+    public async Task GciCards_FollowConfiguredFolderAndExposeSiblingFilesIndependently()
     {
         var user = Path.Combine(BaseDirectory, "user");
         var cardRoot = Path.Combine(BaseDirectory, "cards");
@@ -111,12 +111,17 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
             $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {usa}\n");
 
         var provider = CreateOverriddenProvider("gamecube", user);
-        var unit = Assert.Single(await provider.GetSaveUnitsAsync());
-        var location = provider.ResolveUnit(unit.UnitId)!;
+        var units = await provider.GetSaveUnitsAsync();
 
-        Assert.Equal(new SaveUnit("dolphin/gc/gci/a/GM8E01", "Card A — GM8E01", SaveUnitKind.FileSet), unit);
-        Assert.Equal(usa, location.Path);
-        Assert.Equal([first, second], location.FilePaths);
+        Assert.Equal(2, units.Count);
+        Assert.All(units, unit =>
+        {
+            Assert.Equal(SaveUnitKind.File, unit.Kind);
+            Assert.StartsWith("dolphin/gc/gci/a/GM8E01/", unit.UnitId, StringComparison.Ordinal);
+        });
+        Assert.Equal(
+            [first, second],
+            units.Select(unit => provider.ResolveUnit(unit.UnitId)!.Path).Order(StringComparer.Ordinal));
     }
 
     [Fact]
@@ -134,7 +139,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
         Assert.Equal("dolphin/gc/gci/a/GZLE01", unit.UnitId);
-        Assert.Equal(folder, provider.ResolveUnit(unit.UnitId)!.Path);
+        Assert.Equal(save, provider.ResolveUnit(unit.UnitId)!.Path);
     }
 
     [Fact]
@@ -227,6 +232,22 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task WiiSaves_IgnoreEmptyTitleDataDirectories()
+    {
+        var user = Path.Combine(BaseDirectory, "user");
+        var nand = Path.Combine(BaseDirectory, "relocated NAND");
+        Directory.CreateDirectory(Path.Combine(nand, "title", "00010000", "52454445", "data"));
+        var populated = Path.Combine(nand, "title", "00010000", "52534d45", "data");
+        Directory.CreateDirectory(populated);
+        await File.WriteAllTextAsync(Path.Combine(populated, "banner.bin"), "save");
+        WriteDolphinIni(user, $"[General]\nNANDRootPath = {nand}\n");
+
+        var unit = Assert.Single(await CreateOverriddenProvider("wii", user).GetSaveUnitsAsync());
+
+        Assert.Equal("dolphin/wii/title/00010000/52534d45", unit.UnitId);
+    }
+
+    [Fact]
     public async Task DetectionInfo_ReportsExternalSaveLocationsAndValidatesConfiguration()
     {
         var user = Path.Combine(BaseDirectory, "user");
@@ -256,30 +277,45 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
             .ResolveUnit("dolphin/gc/gci/a/GM8E01");
 
         Assert.NotNull(location);
-        Assert.Equal(usa, location.Path);
-        Assert.Empty(location.FilePaths!);
+        Assert.Equal(Path.Combine(usa, "GM8E01.gci"), location.Path);
+        Assert.Equal(usa, location.RootPath);
+        Assert.Equal(SaveUnitKind.File, location.Kind);
     }
 
     [Fact]
-    public async Task IncomingGciSet_RejectsAFileWhoseEmbeddedGameIdDoesNotMatchTheUnit()
+    public async Task GciFile_RoundTripsToAnotherConfiguredCardFolder()
     {
-        var user = Path.Combine(BaseDirectory, "user");
-        var usa = Path.Combine(user, "GC", "USA", "Card A");
-        Directory.CreateDirectory(usa);
-        WriteGci(Path.Combine(usa, "metroid.gci"), "GM8E01", 0x55);
-        WriteDolphinIni(user, "[Core]\nSlotA = 8\nSlotB = 255\n");
-        var endpoint = new FileSystemLocalSaveEndpoint(CreateOverriddenProvider("gamecube", user), AppPaths);
-        var source = await endpoint.SnapshotAsync("dolphin/gc/gci/a/GM8E01");
-        await using var payload = await endpoint.ReadAsync("dolphin/gc/gci/a/GM8E01");
+        var sourceUser = Path.Combine(BaseDirectory, "source-user");
+        var sourceFolder = Path.Combine(BaseDirectory, "source-card", "USA");
+        var sourcePath = Path.Combine(sourceFolder, "metroid.gci");
+        WriteGci(sourcePath, "GM8E01", 0x55);
+        WriteDolphinIni(
+            sourceUser,
+            $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {sourceFolder}\n");
+        var sourceEndpoint = new FileSystemLocalSaveEndpoint(
+            CreateOverriddenProvider("gamecube", sourceUser), AppPaths);
+        const string unitId = "dolphin/gc/gci/a/GM8E01";
+        var snapshot = await sourceEndpoint.SnapshotAsync(unitId);
+        await using var payload = await sourceEndpoint.ReadAsync(unitId);
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => endpoint.WriteAsync(
-            "dolphin/gc/gci/a/GZLE01",
+        var targetUser = Path.Combine(BaseDirectory, "target-user");
+        var targetFolder = Path.Combine(BaseDirectory, "target-card", "USA");
+        WriteDolphinIni(
+            targetUser,
+            $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {targetFolder}\n");
+        var targetProvider = CreateOverriddenProvider("gamecube", targetUser);
+        var targetEndpoint = new FileSystemLocalSaveEndpoint(targetProvider, AppPaths);
+
+        await targetEndpoint.WriteAsync(
+            unitId,
             payload,
-            source!.ContentHash,
-            DateTimeOffset.UtcNow));
+            snapshot!.ContentHash,
+            snapshot.ModifiedUtc);
 
-        Assert.False(File.Exists(Path.Combine(usa, "zelda.gci")));
-        Assert.Single(Directory.EnumerateFiles(usa));
+        var targetPath = targetProvider.ResolveUnit(unitId)!.Path;
+        Assert.Equal(Path.Combine(targetFolder, "GM8E01.gci"), targetPath);
+        Assert.Equal(await File.ReadAllBytesAsync(sourcePath), await File.ReadAllBytesAsync(targetPath));
+        Assert.Equal(snapshot.ContentHash, (await targetEndpoint.SnapshotAsync(unitId))!.ContentHash);
     }
 
     [Fact]

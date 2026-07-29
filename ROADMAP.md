@@ -786,17 +786,15 @@ generalized.
 
 - [x] **Generalization safety gate.** Replace the PCSX2-only filesystem endpoint with a generic,
       provider-resolved endpoint. A provider must explicitly resolve every local or remote unit to
-      an allow-listed file, folder, or file set; an unknown unit, inactive card/profile, traversal,
+      an allow-listed file or folder; an unknown unit, inactive card/profile, traversal,
       symlink escape, or layout mismatch fails closed. Preserve the existing `pcsx2/...` unit ids,
       remote payloads, and manifests so the proven pilot needs no cloud migration. Completed with
-      provider-resolved file/folder/file-set boundaries and fail-closed incoming file-set content
-      validation (2026-07-28).
-- [x] Add a deterministic **file-set** unit for saves made of several sibling files (notably a
-      Dolphin GCI game). Hash ordinal-sorted logical names + bytes, transfer one deterministic ZIP,
-      and restore through a rollback-capable replacement. File and folder writes receive the same
-      backup-before-overwrite and cancellation guarantees. File sets now hash and archive sorted
-      sibling names, replace only their allow-listed members, preserve other units in the shared
-      folder, and roll back a partial replacement (2026-07-28).
+      provider-resolved file/folder boundaries (2026-07-29).
+- [x] Keep the generic endpoint limited to ordinary file and folder units. The attempted sibling
+      file-set abstraction for Dolphin GCI saves was removed after review: every GCI is already a
+      self-contained file, and selective shared-directory replacement added disproportionate
+      rollback risk. Single-file games retain their original cloud ids; uncommon multi-file games
+      use the GCI header's internal save identity to distinguish their files (2026-07-29).
 - [x] Generalize orchestration to register multiple `(provider, local endpoint)` pairs, load the
       cloud index + local manifest once, reconcile enabled systems, flush rclone once, and save the
       manifest atomically. Forced upload/download is scoped to one system, never an implicit
@@ -838,11 +836,11 @@ generalized.
       `dev_hdd0/savedata/vmc` PS1/PS2 Classics cards sync as their own unit namespaces.
 - [x] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
       global/legacy, `-u`, XDG/Flatpak, macOS, or override) and read custom paths read-only. Sync a
-      raw GameCube card as one unit; group GCI files by their embedded game+maker id as a file-set
-      unit; sync each Wii disc title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
+      raw GameCube card as one unit; sync each GCI as an ordinary file; sync each non-empty Wii disc
+      title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
       Never sync the whole NAND; surface that Mii/console-identity-dependent saves may not be fully
       portable. Reads `Dolphin.ini` plus relevant `GameSettings/*.ini` overrides, follows configured
-      raw/GCI/NAND paths and slot devices, validates each incoming GCI's embedded game+maker id, and
+      raw/GCI/NAND paths and slot devices, validates local GCI structure and embedded identity, and
       fails closed on per-game or nested layouts it cannot represent safely. Raw card-size filename
       variants retain distinct portable ids, cross-slot path aliases are rejected, Settings reports
       effective save roots, and every incoming payload is hash-verified before replacing live data
