@@ -877,7 +877,7 @@
             <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20">
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
-                    <Grid Classes="list-header" ColumnDefinitions="66,*,150,90,96,92,100">
+                    <Grid Classes="list-header" ColumnDefinitions="84,*,150,90,96,92,100">
                         <Button Grid.Column="1" Classes="sort-header"
                                 Command="{Binding SortByCommand}"
                                 CommandParameter="{x:Static vm:LibrarySortColumn.Title}">
@@ -932,7 +932,7 @@
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
-                            <Grid ColumnDefinitions="66,*,150,90,96,92,100" Classes="game-row"
+                            <Grid ColumnDefinitions="84,*,150,90,96,92,100" Classes="game-row"
                                   Classes.selected="{Binding IsSelected}"
                                   Classes.unavailable="{Binding !IsAvailable}"
                                   ContextRequested="OnGameContextRequested"

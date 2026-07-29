@@ -180,6 +180,67 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task DesktopList_WideCoverDoesNotOverlapTitle()
+    {
+        var viewModel = new MainViewModel { IsGridView = false };
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "snes");
+        viewModel.Games.ReplaceAll([
+            new GameViewModel(
+                new Game
+                {
+                    Id = 1,
+                    SystemId = system.Id,
+                    Path = "/games/Addams Family, The (USA).sfc",
+                    Title = "Addams Family, The (USA)",
+                    IsAvailable = true,
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                system.Name,
+                system.ShortName,
+                system.AccentColor)
+        ]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 900,
+            Height = 620,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var list = window.FindControl<ListBox>("LibraryList");
+            var row = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Single(control => control.Classes.Contains("game-row"));
+            var cover = row.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => ReferenceEquals(control.DataContext, viewModel.Games[0]));
+            var title = row.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Single(control => control.Text == viewModel.Games[0].Title);
+
+            Assert.NotNull(list);
+            Assert.InRange(row.Bounds.Width, 1, list.Bounds.Width);
+            var coverOrigin = cover.TranslatePoint(default, row);
+            var titleOrigin = title.TranslatePoint(default, row);
+            Assert.NotNull(coverOrigin);
+            Assert.NotNull(titleOrigin);
+            Assert.True(
+                coverOrigin.Value.X + cover.Bounds.Width < titleOrigin.Value.X,
+                $"Cover ended at {coverOrigin.Value.X + cover.Bounds.Width}, title began at {titleOrigin.Value.X}.");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task RecycledCoverElement_RequestsReplacementDataContextCover()
     {
         var viewModel = new MainViewModel();
