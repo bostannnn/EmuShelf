@@ -114,11 +114,11 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var units = await provider.GetSaveUnitsAsync();
 
         Assert.Equal(2, units.Count);
-        Assert.All(units, unit =>
-        {
-            Assert.Equal(SaveUnitKind.File, unit.Kind);
-            Assert.StartsWith("dolphin/gc/gci/a/GM8E01/", unit.UnitId, StringComparison.Ordinal);
-        });
+        Assert.All(units, unit => Assert.Equal(SaveUnitKind.File, unit.Kind));
+        Assert.Contains(units, unit => unit.UnitId == "dolphin/gc/gci/a/GM8E01");
+        Assert.Contains(
+            units,
+            unit => unit.UnitId.StartsWith("dolphin/gc/gci/a/GM8E01/", StringComparison.Ordinal));
         Assert.Equal(
             [first, second],
             units.Select(unit => provider.ResolveUnit(unit.UnitId)!.Path).Order(StringComparer.Ordinal));
@@ -316,6 +316,86 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(Path.Combine(targetFolder, "GM8E01.gci"), targetPath);
         Assert.Equal(await File.ReadAllBytesAsync(sourcePath), await File.ReadAllBytesAsync(targetPath));
         Assert.Equal(snapshot.ContentHash, (await targetEndpoint.SnapshotAsync(unitId))!.ContentHash);
+    }
+
+    [Fact]
+    public async Task GciFiles_KeepBaseUnitWhenOneSaveBecomesSeveralAndRoundTripWithoutDuplicates()
+    {
+        var sourceUser = Path.Combine(BaseDirectory, "source-user");
+        var sourceFolder = Path.Combine(BaseDirectory, "source-card", "USA");
+        var firstPath = Path.Combine(sourceFolder, "first.gci");
+        WriteGci(firstPath, "GM8E01", 0x22);
+        WriteDolphinIni(
+            sourceUser,
+            $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {sourceFolder}\n");
+        var sourceProvider = CreateOverriddenProvider("gamecube", sourceUser);
+
+        var originalUnit = Assert.Single(await sourceProvider.GetSaveUnitsAsync());
+        Assert.Equal("dolphin/gc/gci/a/GM8E01", originalUnit.UnitId);
+
+        // 0x11 produces an internal-name identity that sorts before the existing 0x22 file.
+        // This deliberately makes the new file take over the stable base unit.
+        var secondPath = Path.Combine(sourceFolder, "second.gci");
+        WriteGci(secondPath, "GM8E01", 0x11);
+        var expandedUnits = await sourceProvider.GetSaveUnitsAsync();
+        Assert.Equal(2, expandedUnits.Count);
+        Assert.Contains(expandedUnits, unit => unit.UnitId == originalUnit.UnitId);
+
+        var sourceEndpoint = new FileSystemLocalSaveEndpoint(sourceProvider, AppPaths);
+        var targetUser = Path.Combine(BaseDirectory, "target-user");
+        var targetFolder = Path.Combine(BaseDirectory, "target-card", "USA");
+        WriteDolphinIni(
+            targetUser,
+            $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {targetFolder}\n");
+        var originalTargetPath = Path.Combine(targetFolder, "existing.gci");
+        WriteGci(originalTargetPath, "GM8E01", 0x22);
+        var targetProvider = CreateOverriddenProvider("gamecube", targetUser);
+        var targetEndpoint = new FileSystemLocalSaveEndpoint(targetProvider, AppPaths);
+        var siblingUnit = Assert.Single(expandedUnits, unit => unit.UnitId != originalUnit.UnitId);
+
+        Assert.Equal(originalTargetPath, targetProvider.ResolveUnit(originalUnit.UnitId)!.Path);
+        Assert.NotEqual(originalTargetPath, targetProvider.ResolveUnit(siblingUnit.UnitId)!.Path);
+
+        foreach (var unit in expandedUnits.OrderBy(unit => unit.UnitId, StringComparer.Ordinal))
+        {
+            var snapshot = await sourceEndpoint.SnapshotAsync(unit.UnitId);
+            await using var payload = await sourceEndpoint.ReadAsync(unit.UnitId);
+            await targetEndpoint.WriteAsync(
+                unit.UnitId,
+                payload,
+                snapshot!.ContentHash,
+                snapshot.ModifiedUtc);
+        }
+
+        Assert.Equal(
+            expandedUnits.Select(unit => unit.UnitId),
+            (await targetProvider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+
+        // Repeat the transition from two files to three. The new 0xF2 identity sorts before both
+        // existing files, so the former base must become a distinct sibling rather than aliasing
+        // the path that the new base will overwrite.
+        WriteGci(Path.Combine(sourceFolder, "third.gci"), "GM8E01", 0xF2);
+        var threeUnits = await sourceProvider.GetSaveUnitsAsync();
+        var formerBase = Assert.Single(
+            threeUnits,
+            unit => sourceProvider.ResolveUnit(unit.UnitId)!.Path == secondPath);
+        var currentTargetBasePath = targetProvider.ResolveUnit(originalUnit.UnitId)!.Path;
+        Assert.NotEqual(currentTargetBasePath, targetProvider.ResolveUnit(formerBase.UnitId)!.Path);
+
+        foreach (var unit in threeUnits.OrderBy(unit => unit.UnitId, StringComparer.Ordinal))
+        {
+            var snapshot = await sourceEndpoint.SnapshotAsync(unit.UnitId);
+            await using var payload = await sourceEndpoint.ReadAsync(unit.UnitId);
+            await targetEndpoint.WriteAsync(
+                unit.UnitId,
+                payload,
+                snapshot!.ContentHash,
+                snapshot.ModifiedUtc);
+        }
+
+        Assert.Equal(
+            threeUnits.Select(unit => unit.UnitId),
+            (await targetProvider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
     }
 
     [Fact]

@@ -177,18 +177,17 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
                     $"Dolphin has duplicate GCI identities for {gameId} in slot {char.ToUpperInvariant(slot)}.");
             }
 
-            if (save.Files.Count == 1)
-            {
-                // Preserve the original per-game id for the common one-file case. Existing cloud
-                // copies created by the brief file-set implementation therefore migrate in place.
-                units.Add(new SaveUnit(
-                    GciUnitId(slot, gameId),
-                    $"Card {char.ToUpperInvariant(slot)} — {gameId}",
-                    SaveUnitKind.File));
-                continue;
-            }
+            // Keep one deterministic file on the original per-game id at every cardinality. This
+            // lets a one-file cloud entry remain valid when the game later creates sibling saves.
+            var primary = save.Files[0];
+            units.Add(new SaveUnit(
+                GciUnitId(slot, gameId),
+                save.Files.Count == 1
+                    ? $"Card {char.ToUpperInvariant(slot)} — {gameId}"
+                    : $"Card {char.ToUpperInvariant(slot)} — {gameId} — {Path.GetFileName(primary.Path)}",
+                SaveUnitKind.File));
 
-            foreach (var file in save.Files)
+            foreach (var file in save.Files.Skip(1))
             {
                 units.Add(new SaveUnit(
                     GciUnitId(slot, gameId, file.Identity),
@@ -237,13 +236,14 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             GciFile? selected;
             if (identity is null)
             {
-                if (files.Count > 1)
-                    return null;
-                selected = files.SingleOrDefault();
+                selected = files.FirstOrDefault();
             }
             else
             {
-                selected = files.SingleOrDefault(file => file.Identity == identity);
+                // The first local file belongs to the base unit. A remote sibling must never
+                // resolve to that same path: the base may be replaced earlier in the pre-planned
+                // pass when another machine has added an identity that sorts before it.
+                selected = files.Skip(1).SingleOrDefault(file => file.Identity == identity);
             }
 
             var path = selected?.Path ?? Path.Combine(

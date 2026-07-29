@@ -2386,3 +2386,11 @@ testing migrate in place on their next upload. If a game owns several GCI files,
 save-name fields provide stable suffixes so each remains independent even when physical filenames
 differ between machines. Empty Wii title `data` directories are not saves and are no longer
 enumerated; existing empty cloud entries remain untouched because save sync does not delete data.
+
+## 2026-07-29 — Dolphin keeps one stable base GCI identity
+
+When a game has several GCI files, the file with the lowest stable internal-name identity keeps the
+unsuffixed `dolphin/gc/gci/<slot>/<game-id>` unit and only additional files receive suffixes. Keeping
+the base unit at every file count prevents a one-file cloud entry from becoming an orphan when the
+game creates another save. It also lets another machine reconcile the expanded card without
+downloading the former base file twice under two different local names.
