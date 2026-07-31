@@ -20,6 +20,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
     private static readonly IAsyncRelayCommand NoCommand =
         new AsyncRelayCommand(() => Task.CompletedTask);
     private readonly double _defaultCoverAspectRatio;
+    // Landscape platforms (Arcade) keep their canonical frame instead of adopting each cover's own
+    // ratio. Their art is heterogeneous title-screen captures — portrait for vertical-monitor games,
+    // landscape for horizontal — so adopting per-cover ratios makes the shared shelf as tall as the
+    // tallest vertical cover and leaves a large gap above every horizontal one. See ApplyCoverLayout.
+    private readonly bool _usesFixedCoverFrame;
     private readonly IReadOnlyList<GameDisc> _discs;
 
     /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
@@ -268,8 +273,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
         PlatformArtwork = platformArtwork ??
             EmuShelf.App.ViewModels.PlatformArtwork.ForSystem(game.SystemId);
         // The system ratio sizes placeholders until artwork is available. Real artwork supplies
-        // its own ratio so regional packaging is not cropped into a fixed system frame.
+        // its own ratio so regional packaging is not cropped into a fixed system frame — except on
+        // landscape platforms, which hold the canonical frame and crop covers to it instead.
         _defaultCoverAspectRatio = coverAspectRatio;
+        _usesFixedCoverFrame = coverAspectRatio > 1.0;
         CoverAspectRatio = coverAspectRatio;
         // Default to the fixed frame width until the library recomputes it from the viewport.
         ApplyCoverLayout(CoverFrameWidth, Math.Round(CoverFrameWidth / coverAspectRatio));
@@ -344,6 +351,12 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     private void SetCoverAspectRatio(double ratio)
     {
+        // A landscape platform never adopts a cover's own ratio: its canonical frame is the
+        // horizontal title-screen shape, and vertical covers are cropped to it (Stretch=UniformToFill)
+        // rather than stretching the shared shelf to their full height.
+        if (_usesFixedCoverFrame)
+            return;
+
         if (Math.Abs(ratio - CoverAspectRatio) < 0.001)
             return;
 

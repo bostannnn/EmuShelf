@@ -24,6 +24,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string GameBoyColorId = "gbc";
     private const string SuperNintendoId = "snes";
     private const string DreamcastId = "dreamcast";
+    private const string ArcadeId = "arcade";
 
     // v2 was the first version that added verified logical-disc readers for GameCube/Wii CISO,
     // WBFS, and RVZ. It was persisted globally before per-system versions existed, so it remains
@@ -49,6 +50,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     // Not suffixed with the container: the hash is IP.BIN plus the boot executable regardless of
     // how the tracks are packaged, so adding CDI or CHD later must not invalidate stored GDI hashes.
     private const string DreamcastAlgorithm = "rcheevos-2ac45d3-dreamcast-v1";
+    // Arcade is identified by the romset short name, not by archive bytes, so this version never has
+    // to change for a rompath layout (merged/split/non-merged); it advances only if that rule does.
+    private const string ArcadeAlgorithm = "rcheevos-2ac45d3-arcade-v1";
 
     public string GetAlgorithmVersion(Game game) => game.SystemId switch
     {
@@ -62,6 +66,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         GameBoyColorId => GameBoyColorAlgorithm,
         SuperNintendoId => SuperNintendoAlgorithm,
         DreamcastId => DreamcastAlgorithm,
+        ArcadeId => ArcadeAlgorithm,
         _ => LegacyGlobalV2,
     };
 
@@ -137,6 +142,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                     inspected.SourcePath!,
                     cancellationToken),
                 DreamcastId => DreamcastDiscHasher.Hash(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                ArcadeId => HashArcade(
                     inspected.SourcePath!,
                     cancellationToken),
                 _ => throw new UnsupportedDiscLayoutException(
@@ -283,6 +291,16 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 if (canHash)
                     dependencies.AddRange(DreamcastDisc.GetReferencedFiles(sourcePath));
             }
+            else if (game.SystemId == ArcadeId)
+            {
+                // The archive is never opened: the identity is its file name (the FinalBurn Neo set
+                // short id), so only the extension gates hashing. The name-only hash still requires
+                // the file to exist, which the dependency-existence check below enforces.
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension == ".zip";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} is not a FinalBurn Neo romset archive.";
+            }
             else
             {
                 error = "RetroAchievements does not support this EmuShelf system.";
@@ -354,6 +372,25 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
 
         // rcheevos hashes the whole cartridge file for Game Boy Color, exactly as for GBA.
         return WholeFileRomHasher.Hash(path, cancellationToken);
+    }
+
+    private static string HashArcade(string path, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // RetroAchievements identifies an arcade set by the MD5 of its romset short name — the
+        // archive's file name without extension, the same key FinalBurn Neo loads by — not by the
+        // archive's bytes, which differ between merged, split and non-merged rompaths. This matches
+        // rcheevos rc_hash_arcade for FinalBurn Neo arcade sets. FBNeo's non-arcade subsystem folders
+        // (which rcheevos name-prefixes) are out of scope for this arcade-only platform.
+        var setName = Path.GetFileNameWithoutExtension(path);
+        if (string.IsNullOrEmpty(setName))
+        {
+            throw new UnsupportedDiscLayoutException(
+                "This arcade archive has no romset name to identify.");
+        }
+
+        return Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(setName))).ToLowerInvariant();
     }
 
     private static string HashSuperNintendo(string path, CancellationToken cancellationToken)

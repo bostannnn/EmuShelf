@@ -36,8 +36,10 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("megadrive", "rcheevos-2ac45d3-megadrive-v1", 1)]
     [InlineData("nds", "rcheevos-2ac45d3-nds-v1", 18)]
     [InlineData("gba", "rcheevos-2ac45d3-gba-v1", 5)]
+    [InlineData("gbc", "rcheevos-2ac45d3-gbc-v1", 6)]
     [InlineData("snes", "rcheevos-2ac45d3-snes-v1", 3)]
     [InlineData("dreamcast", "rcheevos-2ac45d3-dreamcast-v1", 40)]
+    [InlineData("arcade", "rcheevos-2ac45d3-arcade-v1", 27)]
     public void ExpansionAlgorithmVersionsAndConsoleMappings_AreScopedToVerifiedReaders(
         string systemId,
         string expectedVersion,
@@ -111,6 +113,40 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
             Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
             Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
         }
+    }
+
+    [Fact]
+    public void Identify_ArcadeArchive_HashesRomsetNameWithoutOpeningTheArchive()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        // The bytes are irrelevant: an arcade set is identified by its file name, not its contents.
+        var path = Path.Combine(BaseDirectory, "mslug.zip");
+        File.WriteAllBytes(path, [0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0]);
+        var timestamp = new DateTime(2026, 7, 31, 18, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, timestamp);
+        var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+        var result = _hasher.Identify(Game("arcade", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        // MD5 of the ASCII romset short name "mslug" — the RetroAchievements arcade identifier for
+        // Metal Slug, matching rcheevos rc_hash_arcade.
+        Assert.Equal("b43c8b4ec999588c04dad79bb8bcc745", result.CanonicalHash);
+        Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+        Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void Identify_ArcadeNonArchive_RemainsUnsupported()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var path = Path.Combine(BaseDirectory, "mslug.7z");
+        File.WriteAllBytes(path, [0]);
+
+        var result = _hasher.Identify(Game("arcade", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
     }
 
     [Fact]

@@ -137,6 +137,35 @@ public class GameCoverServiceTests : IDisposable
         viewModel.Dispose();
     }
 
+    [AvaloniaFact]
+    public void GameViewModel_LandscapePlatformKeepsFixedFrameForVerticalCover()
+    {
+        // Arcade art is a mix of vertical and horizontal title screens. A vertical cover must not
+        // stretch the shared shelf to its full height; the frame stays at the platform's landscape
+        // ratio and the image is cropped to it (Stretch=UniformToFill in the tile template).
+        var verticalCover = CreateImage("arcade-vertical.png", new PixelSize(512, 722));
+        var game = new Game
+        {
+            Id = 1,
+            SystemId = "arcade",
+            Path = Path.Combine(_baseDirectory, "mslug.zip"),
+            Title = "Metal Slug",
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var viewModel = new GameViewModel(
+            game,
+            "Arcade",
+            "ARC",
+            "#C0473A",
+            coverAspectRatio: 1.333);
+
+        viewModel.CoverImage = new Bitmap(verticalCover);
+
+        Assert.Equal(1.333, viewModel.CoverAspectRatio, precision: 3);
+        Assert.Equal(Math.Round(viewModel.CoverWidth / 1.333), viewModel.CoverHeight);
+        viewModel.Dispose();
+    }
+
     private string CreateImage(string fileName, PixelSize size)
     {
         var path = Path.Combine(_baseDirectory, fileName);
