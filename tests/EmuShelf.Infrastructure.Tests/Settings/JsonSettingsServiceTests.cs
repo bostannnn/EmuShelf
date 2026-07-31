@@ -92,6 +92,19 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Update_MalformedSettingsFile_DoesNotOverwriteItWithDefaults()
+    {
+        const string malformed = "{ not valid json";
+        File.WriteAllText(AppPaths.SettingsFilePath, malformed);
+        var service = new JsonSettingsService(AppPaths);
+
+        Assert.ThrowsAny<System.Text.Json.JsonException>(() =>
+            service.Update(settings => settings with { Theme = ThemePreference.Dark }));
+
+        Assert.Equal(malformed, File.ReadAllText(AppPaths.SettingsFilePath));
+    }
+
+    [Fact]
     public async Task Update_SerializesIndependentServicesUsingTheSameSettingsFile()
     {
         var firstService = new JsonSettingsService(AppPaths);

@@ -66,6 +66,39 @@ public sealed class LibretroArtworkProviderTests
         Assert.Equal([canonicalTitle, expectedAlias], queries);
     }
 
+    [Fact]
+    public void ArcadeProvider_BuildsTitleThenSnapThenBoxartFromTheDescription()
+    {
+        var candidates = new LibretroArcadeArtworkProvider("FBNeo - Arcade Games")
+            .GetCandidates([], new GameCatalogMatch(
+                "libretro-database", "MSLUG", "Metal Slug - Super Vehicle-001", null));
+
+        Assert.Equal(
+            ["Named_Titles", "Named_Snaps", "Named_Boxarts"],
+            candidates.Select(candidate => candidate.SourceUri.Segments[^2].TrimEnd('/')));
+        Assert.All(candidates, candidate => Assert.Equal(
+            "Metal Slug - Super Vehicle-001.png",
+            Filename(candidate)));
+    }
+
+    [Fact]
+    public void ArcadeProvider_WithoutACatalogMatch_ProducesNoCandidates()
+    {
+        Assert.Empty(new LibretroArcadeArtworkProvider("FBNeo - Arcade Games")
+            .GetCandidates([], null));
+    }
+
+    [Fact]
+    public void ArcadeProvider_SkipsTheFilenameFallbackWhoseTitleIsTheSetShortId()
+    {
+        // The set short id ("mslug") is never a libretro thumbnail filename, so the filename
+        // fallback must not fabricate guaranteed-404 candidates.
+        var candidates = new LibretroArcadeArtworkProvider("FBNeo - Arcade Games")
+            .GetCandidates([], new GameCatalogMatch("filename-fallback", "mslug", "mslug", null));
+
+        Assert.Empty(candidates);
+    }
+
     private static LibretroArtworkProvider Provider() =>
         new("Sony - PlayStation Portable");
 

@@ -18,10 +18,14 @@ public static class KnownMetadataProfiles
         new NintendoDsRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor GameBoyAdvanceExtractor =
         new GameBoyAdvanceRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor GameBoyColorExtractor =
+        new GameBoyColorRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor SuperNintendoExtractor =
         new SuperNintendoRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor DreamcastExtractor =
         new DreamcastIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor ArcadeExtractor =
+        new ArcadeSetIdentifierExtractor();
 
     // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
     // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of
@@ -113,6 +117,27 @@ public static class KnownMetadataProfiles
             [new LibretroArtworkProvider("Sega - Dreamcast")],
             FallbackCatalogKeyKinds: [GameIdentifierKind.Serial],
             ReadRomSerials: true),
+        // Arcade is keyed by the FinalBurn Neo romset short id (the zip basename), resolved to a
+        // human title through the FBNeo DAT's game-name -> description mapping. Two DATs share the
+        // fbneo-split folder: "FBNeo - Arcade Games.dat" is clrmamepro *text* whose game name is the
+        // human title, while "FinalBurn Neo (ClrMame Pro XML, Arcade only).dat" is Logiqx *XML* whose
+        // game name is the short set id and title is a <description> — the only one whose shape the
+        // ArcadeSetName keying and the XML parse path expect. It carries ~7k sets with full ROM
+        // hashes (~10 MB), so it needs a larger size cap than the console text DATs.
+        new(
+            "arcade",
+            GameIdentifierKind.ArcadeSetName,
+            RawCatalog("metadat/fbneo-split/FinalBurn%20Neo%20%28ClrMame%20Pro%20XML%2C%20Arcade%20only%29.dat"),
+            ArcadeExtractor,
+            [new LibretroArcadeArtworkProvider("FBNeo - Arcade Games")],
+            CatalogFormat: DatFormat.LogiqxXml,
+            MaxCatalogBytes: 48L * 1024 * 1024),
+        new(
+            "gbc",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/no-intro/Nintendo%20-%20Game%20Boy%20Color.dat"),
+            GameBoyColorExtractor,
+            [new LibretroArtworkProvider("Nintendo - Game Boy Color")]),
     ];
 
     private static Uri RawCatalog(string path) =>

@@ -23,6 +23,8 @@ public sealed class FileImportRules : IGameImportRules
     private const string DreamcastId = "dreamcast";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
+    private const string ArcadeId = "arcade";
+    private const string GameBoyColorId = "gbc";
 
     private static readonly IReadOnlyDictionary<string, HashSet<string>> ExtensionsBySystem =
         new Dictionary<string, HashSet<string>>
@@ -42,6 +44,9 @@ public sealed class FileImportRules : IGameImportRules
             // layouts need their own read-only normalization contracts before they can join.
             [NintendoDsId] = new(StringComparer.OrdinalIgnoreCase) { ".nds" },
             [GameBoyAdvanceId] = new(StringComparer.OrdinalIgnoreCase) { ".gba" },
+            // The extension is a routing hint only: the reader requires the Game Boy boot logo, a
+            // valid header checksum, and the CGB flag, so an original Game Boy ROM is never accepted.
+            [GameBoyColorId] = new(StringComparer.OrdinalIgnoreCase) { ".gbc", ".gb" },
             // The extension is a routing hint only: the reader requires a valid internal LoROM or
             // HiROM header. Copier formats (.fig/.swc) wait for their own normalization contract.
             [SuperNintendoId] = new(StringComparer.OrdinalIgnoreCase) { ".sfc", ".smc" },
@@ -54,6 +59,11 @@ public sealed class FileImportRules : IGameImportRules
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
+            // FinalBurn Neo loads a romset from a .zip named by the set's short id. No other system
+            // claims .zip, so it routes straight to Arcade; the archive itself is never opened at
+            // import — the zip basename is the identity, resolved to a title later from the DAT.
+            // .7z is deliberately omitted: the framework has no 7z reader and v1 does not add one.
+            [ArcadeId] = new(StringComparer.OrdinalIgnoreCase) { ".zip" },
         };
 
     private static readonly HashSet<string> NintendoExtensions =
@@ -90,6 +100,9 @@ public sealed class FileImportRules : IGameImportRules
             : null;
         var gameBoyAdvanceHeader = ExtensionsBySystem[GameBoyAdvanceId].Contains(extension)
             ? GameBoyAdvanceRomReader.TryRecognize(path)
+            : null;
+        var gameBoyColorHeader = ExtensionsBySystem[GameBoyColorId].Contains(extension)
+            ? GameBoyColorRomReader.TryRecognize(path)
             : null;
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
@@ -148,12 +161,20 @@ public sealed class FileImportRules : IGameImportRules
                 GameBoyAdvanceId => gameBoyAdvanceHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
+                GameBoyColorId => gameBoyColorHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
                 SuperNintendoId => superNintendoHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 DreamcastId => dreamcastImage
                     ? GameFileMatch.Compatible
                     : GameFileMatch.Incompatible,
+                // A .zip is an arcade set unless its basename is a known BIOS/device archive, which
+                // is hidden so neogeo.zip and friends never become a game.
+                ArcadeId => IsArcadeBiosArchive(path)
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
                 _ => MatchSystem(
                     extension,
                     system.Id,
@@ -203,10 +224,14 @@ public sealed class FileImportRules : IGameImportRules
             return NintendoDsRomReader.TryRecognize(path) is not null;
         if (system.Id == GameBoyAdvanceId)
             return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
+        if (system.Id == GameBoyColorId)
+            return GameBoyColorRomReader.TryRecognize(path) is not null;
         if (system.Id == SuperNintendoId)
             return SuperNintendoRomReader.TryRecognize(path) is not null;
         if (system.Id == DreamcastId)
             return DreamcastDisc.TryRecognize(path);
+        if (system.Id == ArcadeId)
+            return ExtensionsBySystem[ArcadeId].Contains(extension) && !IsArcadeBiosArchive(path);
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
@@ -312,6 +337,15 @@ public sealed class FileImportRules : IGameImportRules
                 gameBoyAdvanceEvidence.Sha1,
                 "Game Boy Advance ROM");
 
+        // The Game Boy Color header has no reliable commercial game code, so only the raw SHA-1 is
+        // catalogue evidence — the same shape as Super Nintendo.
+        if (system.Id == GameBoyColorId && GameBoyColorRomReader.TryRead(path) is { } gameBoyColorEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "Game Boy Color header",
+                gameBoyColorEvidence.Sha1,
+                "Game Boy Color ROM");
+
         // The SNES header has no reliable commercial game code, so only the headerless SHA-1 is
         // used as catalogue evidence; the Shift-JIS header title stays out of the display fields.
         if (system.Id == SuperNintendoId && SuperNintendoRomReader.TryRead(path) is { } superNintendoEvidence)
@@ -320,6 +354,22 @@ public sealed class FileImportRules : IGameImportRules
                 "Super Nintendo header",
                 superNintendoEvidence.Sha1,
                 "Super Nintendo ROM");
+
+        // The arcade set id is the zip basename — no file is opened. Storing it now lets metadata
+        // enrichment resolve the title from the DAT without re-deriving the identifier.
+        if (system.Id == ArcadeId)
+        {
+            var setName = Path.GetFileNameWithoutExtension(path);
+            return string.IsNullOrWhiteSpace(setName)
+                ? GameImportMetadata.Empty
+                : new GameImportMetadata(
+                    null,
+                    [new GameIdentifier(
+                        GameIdentifierKind.ArcadeSetName,
+                        setName,
+                        "FBNeo set name",
+                        IsPrimary: true)]);
+        }
 
         // Dreamcast deliberately supplies no import-time evidence. A GDI set's catalogue key is
         // the SHA-1 of a whole data track — up to 1.1 GB per game, and a set can have more than
@@ -368,6 +418,9 @@ public sealed class FileImportRules : IGameImportRules
 
     private GameSystem? FindSystem(string id) =>
         _systems.FirstOrDefault(system => system.Id == id);
+
+    private static bool IsArcadeBiosArchive(string path) =>
+        KnownArcadeBiosSets.Contains(Path.GetFileNameWithoutExtension(path));
 
     private static GameFileMatch MatchNintendoSystem(
         NintendoDiscSystem detected,

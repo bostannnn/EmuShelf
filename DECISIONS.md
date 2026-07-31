@@ -2602,6 +2602,16 @@ state behind newer incompatible states, and did not reclaim cloud storage becaus
 never deletes local or remote files. Automatic, resume, undo, and backup states remain excluded,
 and compatibility checks still prevent states from being restored by a different emulator build.
 
+## 2026-07-29 — Settings writes tolerate transient Windows file locks
+
+Settings forms persist their edited cloud-save paths in one transaction before starting a manual
+operation. Atomic settings replacement uses a unique sibling temporary file and a short bounded
+retry when Windows reports an I/O or access-denied error, since antivirus, indexing, and backup
+software can briefly open the destination without delete sharing. Permanent failures still surface
+to the user, and the existing settings file remains intact when replacement cannot complete. An
+update also fails without writing if the current settings cannot be read or parsed; only a plain
+startup load may fall back to defaults.
+
 ## 2026-07-31 — Cheats and patches are not synced; save states still are
 
 This supersedes the cheat/patch portion of the optional-sync decisions above. The optional cheat
@@ -2721,3 +2731,41 @@ one uniform cell height — cannot represent, reintroducing the overlap. And `Re
 already runs after the load-generation check, while `MovePlatformAsync` reads `NavigationSystems`
 synchronously with no await between the lookup and the index, so a rebuild cannot move the rail
 under a platform switch.
+
+## 2026-07-31 — Arcade is FinalBurn Neo, identified by set name, synced like any RetroArch core
+
+Arcade support is one platform backed by exactly one emulator, the RetroArch `fbneo_libretro` core.
+No MAME, Naomi/Flycast, Atomiswave, or TeknoParrot: each brings its own romset universe, BIOS
+matrix, and failure modes, and the goal is a platform a user can populate and launch, not a
+romset-management tool. BIOS placement and ROM repair stay the user's job and RetroArch's system
+directory, deliberately outside EmuShelf.
+
+A game is identified by the one thing FinalBurn Neo itself keys on — the archive's file name. The
+core loads a set by matching the zip basename to a romset short id (`kof94.zip`), so the basename is
+the identity, and the FBNeo DAT turns that short id into a human title through its game `name` →
+`description` mapping. EmuShelf does not open the zip or hash its contents on the import path:
+content-CRC corroboration would buy marginal certainty at the cost of a zip reader and a CRC-32
+implementation the app does not otherwise need, and an unknown or renamed zip keeps its filename
+title rather than being rejected, because it is the user's file to keep.
+
+The FBNeo DAT is Logiqx XML, not the clrmamepro text the console catalogs use, and it inverts the
+convention: the game `name` attribute is the key and the title lives in a `description` element.
+Rather than add a second catalog and a routing layer, the existing downloader and cache learned a
+streaming XML parse path selected per profile, which skips `isbios`/`isdevice` sets; the catalog
+size cap became per-profile because the arcade DAT carries roughly eight thousand sets with full ROM
+hashes. BIOS archives such as `neogeo` are excluded twice — a small bundled set-name list hides them
+at import, when the DAT is not yet present, and the DAT's `isbios` flag excludes them during
+enrichment.
+
+Clones are listed as their own library entries rather than folded under a parent, because EmuShelf
+is one-file-one-game and the user physically owns whichever zips they have; each clone carries its
+own `description`. Arcade art is landscape because arcade output is 4:3 and box art barely exists for
+it, so the card reuses the wide cover ratio SNES already proved and resolves title screens first,
+then snaps, then the rare boxart, before the bundled placeholder.
+
+Save sync treats arcade as just another RetroArch core. FinalBurn Neo writes battery and NVRAM data
+as `.srm` and its save states as `.state` into RetroArch's save and state folders, named after the
+loaded zip, so the generic RetroArch save descriptor covers it unchanged — one file per game,
+matched by name, with the same per-core-version gating that refuses to restore a state written by a
+different core build. Nothing about arcade needed a bespoke save path, so it reuses the descriptor
+the other RetroArch systems already share.

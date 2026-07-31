@@ -1184,3 +1184,33 @@ overwrite rule, conflict backups, and activity log need no new concepts.
 - [x] Cover query construction, unsafe/tiny-result rejection, format fallback, picker selection,
       local-file fallback, portable import, and temporary-file cleanup with deterministic tests;
       verify the live search-token/results exchange without downloading or redistributing artwork.
+
+## M35 — Arcade (FinalBurn Neo)
+
+Single user-facing **Arcade** platform, launched through the existing RetroArch launcher with the
+user-supplied `fbneo_libretro` core. FinalBurn Neo only — no MAME, Naomi/Flycast, Atomiswave, or
+TeknoParrot. BIOS management and ROM repair/conversion stay out of scope. Builds and the full test
+suite are green on macOS; a real-romset launch on Windows is the remaining acceptance gate.
+
+- [x] Register the `arcade` system (stable id, landscape 4:3 cover ratio) and add it to
+      `RetroArchDefinition` so it launches a `.zip` through `-L {CorePath} {GamePath}`.
+- [x] Import `.zip` under Arcade (suggest-by-extension, user confirms); one zip is one game; the
+      archive is never opened and user files are never modified. `.7z` deferred — no 7z reader.
+- [x] Hide BIOS/device archives (neogeo, pgm, …) at import and in folder scans via a bundled
+      set-name list; the FBNeo DAT's `isbios`/`isdevice` flags are the authoritative filter during
+      enrichment.
+- [x] Recognize sets by zip basename == FBNeo DAT `game name`; canonical title from the
+      `<description>` element; unmatched zips keep a filename title rather than being discarded.
+- [x] Read the FBNeo Arcade DAT (`metadat/fbneo-split`, Logiqx XML) through a streaming XML parse
+      path in `LibretroDatCatalog`, selected per profile, with a raised per-profile size cap for the
+      ~8k-set DAT.
+- [x] Arcade artwork from the libretro `FBNeo - Arcade Games` thumbnails, subfolder order
+      Named_Titles → Named_Snaps → Named_Boxarts, falling back to the bundled Arcade placeholder.
+- [x] Cloud save-sync parity: FBNeo battery/NVRAM `.srm` saves and `.state` save states sync through
+      the generic RetroArch descriptor, matched by zip basename, with the same core-version state
+      gating as the other RetroArch platforms.
+- [x] Deterministic tests: Logiqx-XML parse (name/description/isbios/clone), BIOS hiding, `.zip`
+      routing, arcade artwork candidate order, and save-sync registration. Full suite green on macOS.
+- [ ] Verify on Windows: a real FBNeo romset (e.g. `mslug`, `sf2`) launches through RetroArch with
+      the `fbneo_libretro` core, a BIOS-dependent game surfaces a clean failure when `neogeo.zip` is
+      absent, and saves/states round-trip through cloud sync.

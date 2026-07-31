@@ -15,6 +15,7 @@ public static class RetroAchievementsConsoles
         "megadrive" => 1,
         "snes" => 3,
         "gba" => 5,
+        "gbc" => 6,
         "nds" => 18,
         "psp" => 41,
         "dreamcast" => 40,

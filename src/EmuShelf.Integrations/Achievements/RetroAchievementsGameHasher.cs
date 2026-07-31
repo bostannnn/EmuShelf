@@ -21,6 +21,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string MegaDriveId = "megadrive";
     private const string NintendoDsId = "nds";
     private const string GameBoyAdvanceId = "gba";
+    private const string GameBoyColorId = "gbc";
     private const string SuperNintendoId = "snes";
     private const string DreamcastId = "dreamcast";
 
@@ -43,6 +44,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string MegaDriveAlgorithm = "rcheevos-2ac45d3-megadrive-v1";
     private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
     private const string GameBoyAdvanceAlgorithm = "rcheevos-2ac45d3-gba-v1";
+    private const string GameBoyColorAlgorithm = "rcheevos-2ac45d3-gbc-v1";
     private const string SuperNintendoAlgorithm = "rcheevos-2ac45d3-snes-v1";
     // Not suffixed with the container: the hash is IP.BIN plus the boot executable regardless of
     // how the tracks are packaged, so adding CDI or CHD later must not invalidate stored GDI hashes.
@@ -57,6 +59,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         MegaDriveId => MegaDriveAlgorithm,
         NintendoDsId => NintendoDsAlgorithm,
         GameBoyAdvanceId => GameBoyAdvanceAlgorithm,
+        GameBoyColorId => GameBoyColorAlgorithm,
         SuperNintendoId => SuperNintendoAlgorithm,
         DreamcastId => DreamcastAlgorithm,
         _ => LegacyGlobalV2,
@@ -125,6 +128,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                     inspected.SourcePath!,
                     cancellationToken),
                 GameBoyAdvanceId => HashGameBoyAdvance(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                GameBoyColorId => HashGameBoyColor(
                     inspected.SourcePath!,
                     cancellationToken),
                 SuperNintendoId => HashSuperNintendo(
@@ -251,6 +257,13 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified Game Boy Advance reader.";
             }
+            else if (game.SystemId == GameBoyColorId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension is ".gbc" or ".gb";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified Game Boy Color reader.";
+            }
             else if (game.SystemId == SuperNintendoId)
             {
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
@@ -328,6 +341,18 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 "This Game Boy Advance image is not a supported retail raw cartridge layout.");
         }
 
+        return WholeFileRomHasher.Hash(path, cancellationToken);
+    }
+
+    private static string HashGameBoyColor(string path, CancellationToken cancellationToken)
+    {
+        if (GameBoyColorRomReader.TryRecognize(path) is null)
+        {
+            throw new UnsupportedDiscLayoutException(
+                "This Game Boy Color image is not a supported raw cartridge layout.");
+        }
+
+        // rcheevos hashes the whole cartridge file for Game Boy Color, exactly as for GBA.
         return WholeFileRomHasher.Hash(path, cancellationToken);
     }
 

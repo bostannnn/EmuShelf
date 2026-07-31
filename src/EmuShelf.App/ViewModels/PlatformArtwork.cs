@@ -44,6 +44,7 @@ public static class PlatformArtwork
             ["nintendo-ds"] = "NDS/Images.xcassets/nds_library.imageset/nds_library@2x.png",
             ["gameboy"] = "GameBoy/Images.xcassets/gameboy_library.imageset/gameboy_library@2x.png",
             ["gameboy-color"] = "GameBoy/Images.xcassets/gameboy_library.imageset/gameboy_library@2x.png",
+            ["gbc"] = "GameBoy/Images.xcassets/gameboy_library.imageset/gameboy_library@2x.png",
             ["gameboy-advance"] = "GameBoy Advance/Images.xcassets/gba_library.imageset/gba_library@2x.png",
             ["gba"] = "GameBoy Advance/Images.xcassets/gba_library.imageset/gba_library@2x.png",
             ["virtual-boy"] = "Virtual Boy/Images.xcassets/vb_library.imageset/vb_library@2x.png",

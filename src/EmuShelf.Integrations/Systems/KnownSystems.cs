@@ -32,5 +32,13 @@ public static class KnownSystems
         // The library's default region is US, whose Dreamcast releases use square jewel-case art.
         // Loaded PAL covers replace this with their image ratio.
         new("dreamcast",    "Dreamcast",      "DC",  "#F07C3E", 1.0),
+        // Arcade launches through RetroArch's FinalBurn Neo core. Arcade output is 4:3, and box art
+        // barely exists for it, so the card is landscape and the cover is a title screen / snap
+        // (see LibretroArcadeArtworkProvider) rather than portrait packaging.
+        new("arcade",       "Arcade",         "ARC", "#C0473A", 1.333),
+        // Game Boy Color launches through RetroArch (a Game Boy core such as Gambatte). Its boxes
+        // are small and roughly square, matching the Game Boy Advance frame; a loaded cover's own
+        // dimensions replace this placeholder ratio.
+        new("gbc",          "Game Boy Color", "GBC", "#4FAE9C", 1.0),
     ];
 }

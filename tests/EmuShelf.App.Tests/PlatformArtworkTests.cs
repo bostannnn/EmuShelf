@@ -25,7 +25,7 @@ public class PlatformArtworkTests
     public void ExpansionSystems_HaveStableNavigationIdsAndLicensedArtwork()
     {
         Assert.Equal(
-            ["psp", "megadrive", "nds", "gba", "snes", "dreamcast"],
+            ["psp", "megadrive", "nds", "gba", "snes", "dreamcast", "arcade", "gbc"],
             KnownSystems.All.Skip(5).Select(system => system.Id));
         Assert.All(KnownSystems.All.Skip(5), system =>
             Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
@@ -48,5 +48,13 @@ public class PlatformArtworkTests
         Assert.Equal(
             1.0,
             KnownSystems.All.Single(system => system.Id == "dreamcast").CoverAspectRatio);
+        // Arcade is landscape 4:3 — the card is a title screen / snap, not portrait box art.
+        Assert.Equal(
+            1.333,
+            KnownSystems.All.Single(system => system.Id == "arcade").CoverAspectRatio);
+        // Game Boy Color reuses the square Game Boy family frame.
+        Assert.Equal(
+            1.0,
+            KnownSystems.All.Single(system => system.Id == "gbc").CoverAspectRatio);
     }
 }

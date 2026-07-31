@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using System.Xml;
 using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Storage;
 
@@ -78,16 +79,20 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         CancellationToken cancellationToken)
     {
         var path = Path.Combine(_catalogDirectory, $"{profile.SystemId}.dat");
-        await EnsureCurrentCatalogAsync(profile.CatalogUri, path, cancellationToken);
+        var maxBytes = profile.MaxCatalogBytes ?? MaximumCatalogBytes;
+        await EnsureCurrentCatalogAsync(profile.CatalogUri, path, maxBytes, cancellationToken);
 
         return await Task.Run(
-            () => Parse(path, profile.CatalogKeyKinds, profile.ReadRomSerials),
+            () => profile.CatalogFormat == DatFormat.LogiqxXml
+                ? ParseLogiqxXml(path, profile.CatalogKeyKind)
+                : Parse(path, profile.CatalogKeyKinds, profile.ReadRomSerials),
             cancellationToken);
     }
 
     private async Task EnsureCurrentCatalogAsync(
         Uri uri,
         string path,
+        long maxBytes,
         CancellationToken cancellationToken)
     {
         if (IsCurrent(path))
@@ -98,7 +103,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         try
         {
             if (!IsCurrent(path))
-                await DownloadCatalogAsync(uri, path, cancellationToken);
+                await DownloadCatalogAsync(uri, path, maxBytes, cancellationToken);
         }
         finally
         {
@@ -112,6 +117,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     private async Task DownloadCatalogAsync(
         Uri uri,
         string destinationPath,
+        long maxBytes,
         CancellationToken cancellationToken)
     {
         using var response = await _httpClient.GetAsync(
@@ -119,7 +125,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
         response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength is > MaximumCatalogBytes)
+        if (response.Content.Headers.ContentLength is { } length && length > maxBytes)
             throw new InvalidDataException("The metadata catalog is larger than EmuShelf's safety limit.");
 
         var tempPath = destinationPath + $".{Guid.NewGuid():N}.tmp";
@@ -134,7 +140,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                              81920,
                              FileOptions.Asynchronous))
             {
-                await CopyWithLimitAsync(source, destination, MaximumCatalogBytes, cancellationToken);
+                await CopyWithLimitAsync(source, destination, maxBytes, cancellationToken);
             }
             File.Move(tempPath, destinationPath, overwrite: true);
         }
@@ -259,6 +265,101 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
             pair => (IReadOnlyDictionary<string, CatalogEntry>)pair.Value);
         return new CatalogIndex(readonlyIndexes[distinctKinds[0]], readonlyIndexes);
     }
+
+    // The FinalBurn Neo arcade DAT is Logiqx XML, not clrmamepro text. Its game `name` attribute is
+    // the romset short id (the zip basename FBNeo loads by), and the human title is a `description`
+    // element — the inverse of the console DATs, where the game name *is* the title. BIOS and device
+    // archives (isbios/isdevice, e.g. neogeo) are skipped so they never become library entries.
+    internal static CatalogIndex ParseLogiqxXml(string path, GameIdentifierKind keyKind)
+    {
+        using var stream = File.OpenRead(path);
+        var settings = CreateXmlSettings();
+        using var reader = XmlReader.Create(stream, settings);
+        return ParseLogiqxXml(reader, keyKind);
+    }
+
+    internal static CatalogIndex ParseLogiqxXml(TextReader textReader, GameIdentifierKind keyKind)
+    {
+        var settings = CreateXmlSettings();
+        using var reader = XmlReader.Create(textReader, settings);
+        return ParseLogiqxXml(reader, keyKind);
+    }
+
+    private static XmlReaderSettings CreateXmlSettings() => new()
+    {
+        // The DAT declares a DOCTYPE pointing at logiqx.com; never fetch it.
+        DtdProcessing = DtdProcessing.Ignore,
+        IgnoreComments = true,
+        IgnoreProcessingInstructions = true,
+        IgnoreWhitespace = true,
+        CloseInput = false,
+    };
+
+    private static CatalogIndex ParseLogiqxXml(XmlReader reader, GameIdentifierKind keyKind)
+    {
+        var entries = new Dictionary<string, CatalogEntry>(StringComparer.OrdinalIgnoreCase);
+
+        while (reader.Read())
+        {
+            if (reader.NodeType != XmlNodeType.Element ||
+                (!reader.Name.Equals("game", StringComparison.Ordinal) &&
+                 !reader.Name.Equals("machine", StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var name = reader.GetAttribute("name");
+            var isBios = reader.GetAttribute("isbios");
+            var isDevice = reader.GetAttribute("isdevice");
+            var runnable = reader.GetAttribute("runnable");
+            var description = ReadDescription(reader);
+
+            if (string.IsNullOrWhiteSpace(name) ||
+                IsYes(isBios) ||
+                IsYes(isDevice) ||
+                string.Equals(runnable, "no", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var title = string.IsNullOrWhiteSpace(description) ? name : description.Trim();
+            AddPreferred(entries, NormalizeKey(keyKind, name), new CatalogEntry(title, null));
+        }
+
+        IReadOnlyDictionary<string, CatalogEntry> readonlyEntries = entries;
+        return new CatalogIndex(
+            readonlyEntries,
+            new Dictionary<GameIdentifierKind, IReadOnlyDictionary<string, CatalogEntry>>
+            {
+                [keyKind] = readonlyEntries,
+            });
+    }
+
+    /// <summary>
+    /// Reads the current game element's <c>description</c> child, draining the element's subtree so
+    /// the outer reader is left positioned at the game's end tag.
+    /// </summary>
+    private static string? ReadDescription(XmlReader reader)
+    {
+        if (reader.IsEmptyElement)
+            return null;
+
+        string? description = null;
+        using var sub = reader.ReadSubtree();
+        sub.Read();
+        while (sub.Read())
+        {
+            if (sub.NodeType == XmlNodeType.Element &&
+                sub.Name.Equals("description", StringComparison.Ordinal))
+            {
+                description = sub.ReadElementContentAsString();
+            }
+        }
+        return description;
+    }
+
+    private static bool IsYes(string? value) =>
+        string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
 
     internal static string NormalizeKey(GameIdentifierKind kind, string value)
     {

@@ -114,6 +114,52 @@ public sealed class GameTdbPlayStation3ArtworkProvider : IGameArtworkProvider
     }
 }
 
+/// <summary>
+/// Arcade artwork from the Libretro thumbnail server. Unlike the console provider it does not use
+/// the boxart title index — arcade box art is almost nonexistent — but builds direct candidates
+/// across Named_Titles, then Named_Snaps, then Named_Boxarts, so the downloader takes the first that
+/// exists. The filename is the sanitized FBNeo DAT description, which is exactly how Libretro names
+/// these images. A miss falls through to the bundled Arcade platform placeholder.
+/// </summary>
+public sealed class LibretroArcadeArtworkProvider : IGameArtworkProvider
+{
+    private static readonly string[] Subfolders = ["Named_Titles", "Named_Snaps", "Named_Boxarts"];
+
+    private readonly string _playlistName;
+
+    public string Id => "libretro-thumbnails";
+
+    public LibretroArcadeArtworkProvider(string playlistName)
+    {
+        _playlistName = playlistName;
+    }
+
+    public IReadOnlyList<ArtworkCandidate> GetCandidates(
+        IReadOnlyList<GameIdentifier> identifiers,
+        GameCatalogMatch? match)
+    {
+        // Arcade thumbnails are named after the DAT description. The enrichment coordinator also
+        // probes with a filename fallback whose title is the zip basename (the set short id, e.g.
+        // "mslug"), which is never a thumbnail filename — skip it rather than issue three
+        // guaranteed-404 requests per art-less game.
+        if (match is null ||
+            string.Equals(match.CatalogId, "filename-fallback", StringComparison.Ordinal))
+        {
+            return [];
+        }
+
+        var filename = LibretroArtworkProvider.SanitizeFilename(match.CanonicalTitle) + ".png";
+        return Subfolders
+            .Select(subfolder => new ArtworkCandidate(
+                Id,
+                new Uri(
+                    $"https://thumbnails.libretro.com/{Uri.EscapeDataString(_playlistName)}/" +
+                    $"{subfolder}/{Uri.EscapeDataString(filename)}"),
+                ".png"))
+            .ToArray();
+    }
+}
+
 public sealed class LibretroArtworkProvider : IArtworkTitleIndexProvider
 {
     private const string PspPlaylist = "Sony - PlayStation Portable";

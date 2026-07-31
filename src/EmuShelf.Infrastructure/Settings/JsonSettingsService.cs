@@ -59,7 +59,9 @@ public sealed class JsonSettingsService : ISettingsService
         lock (_sync)
         {
             using var fileLock = AcquireFileLock();
-            var updated = update(LoadCore());
+            // An update must not turn a transient read failure or malformed file into a write of
+            // defaults. Preserve the existing file and let the caller report the failure instead.
+            var updated = update(LoadCore(fallbackToDefaultsOnError: false));
             SaveCore(updated);
             return updated;
         }
@@ -89,7 +91,7 @@ public sealed class JsonSettingsService : ISettingsService
         }
     }
 
-    private AppSettings LoadCore()
+    private AppSettings LoadCore(bool fallbackToDefaultsOnError = true)
     {
         if (!File.Exists(_appPaths.SettingsFilePath))
             return new AppSettings();
@@ -99,7 +101,9 @@ public sealed class JsonSettingsService : ISettingsService
             var json = File.ReadAllText(_appPaths.SettingsFilePath);
             return JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings();
         }
-        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (
+            fallbackToDefaultsOnError &&
+            ex is JsonException or IOException or UnauthorizedAccessException)
         {
             // settings.json is a portable, hand-editable file: a syntax mistake, a transient
             // lock (AV/backup/second instance), or a permissions hiccup shouldn't block startup.

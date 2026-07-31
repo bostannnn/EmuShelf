@@ -253,10 +253,15 @@ public static class SaveProviderRegistry
         .. RetroArchPlatform("snes", "Super Nintendo"),
         .. RetroArchPlatform("nds", "Nintendo DS"),
         .. RetroArchPlatform("gba", "Game Boy Advance"),
+        .. RetroArchPlatform("gbc", "Game Boy Color"),
         // Flycast's shared VMU images live in RetroArch's system directory, outside any save
         // folder; only its per-game VMUs land in the save directory, where the same name matching
         // as every other core applies.
         .. RetroArchPlatform("dreamcast", "Dreamcast"),
+        // FinalBurn Neo writes battery/NVRAM saves (.srm) and save states (.state) into RetroArch's
+        // save and state folders, named after the loaded zip — the same one-file-per-game shape as
+        // every other RetroArch core, so arcade reuses the generic RetroArch descriptor unchanged.
+        .. RetroArchPlatform("arcade", "Arcade"),
     ];
 
     private static ISaveLocationProvider? CreateDolphinProvider(

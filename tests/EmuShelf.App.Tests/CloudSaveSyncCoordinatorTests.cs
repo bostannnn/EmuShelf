@@ -130,6 +130,21 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public void UpdateOverrides_PersistsEveryPathInOneSettingsWrite()
+    {
+        var settings = new FakeSettingsService();
+        var coordinator = CreateCoordinator(settings);
+
+        coordinator.UpdateOverrides(Overrides(
+            ("playstation2", " /portable/pcsx2 "),
+            ("psp", "/portable/ppsspp")));
+
+        Assert.Equal("/portable/pcsx2", settings.Current.CloudSaveSync.GetOverride("playstation2"));
+        Assert.Equal("/portable/ppsspp", settings.Current.CloudSaveSync.GetOverride("psp"));
+        Assert.Equal(1, settings.SaveCalls);
+    }
+
+    [Fact]
     public async Task Detection_SaysSoWhenTheResolvedFolderDoesNotExistOnThisMachine()
     {
         // The quietest possible failure: a platform resolves a path, finds nothing there, and
