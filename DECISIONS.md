@@ -2601,3 +2601,46 @@ and replace actions. A newest-N selector made the option's meaning incomplete, c
 state behind newer incompatible states, and did not reclaim cloud storage because synchronization
 never deletes local or remote files. Automatic, resume, undo, and backup states remain excluded,
 and compatibility checks still prevent states from being restored by a different emulator build.
+
+## 2026-07-31 — Cheats and patches are not synced; save states still are
+
+This supersedes the cheat/patch portion of the optional-sync decisions above. The optional cheat
+and patch namespaces pointed at each emulator's whole cheats/patches folder. On DuckStation and
+PCSX2 that folder holds the community database the emulator ships and can redownload, not files
+the user wrote: one real library staged 4,496 DuckStation `.cht` files averaging 3.4 KB, 579 PCSX2
+cheat files, and 702 `.pnach` patches — 5,917 files per pass, of which 4,496 were one database.
+
+Cost, not principle, decides this. On a per-file-metered provider those thousands of small files
+were the entire wall-clock cost of a sync while carrying 24% of its bytes, so the transfer appeared
+to freeze at 79% — where the large saves end and the small-file tail begins — for tens of minutes.
+The content is identical on every machine and recoverable from the emulator, so syncing it buys
+nothing. Save states stay: they are genuine per-machine user data, and the version guard already
+governs when they may be restored.
+
+The unit-id namespaces `cheats` and `patches` remain excluded from `ISaveLocationProvider.OwnsUnit`
+although nothing writes them any more, so payloads left on a remote by an older build are never
+claimed and resolved as local saves. Sync remains copy-only, so those payloads are not deleted.
+
+## 2026-07-31 — A cloud flush commits in batches
+
+The flush uploaded every staged payload and then wrote `index.json` once. Because the index carries
+the content hash that decides what changed, that made a pass all-or-nothing: an interrupted run
+lost all of its uploads and re-staged the identical set next time, so a large first sync could never
+converge. Payloads are now uploaded in batches bounded by both count and size — either bound alone
+leaves a bad case — and the index is committed after each batch. Payload-before-index ordering is
+unchanged and is what makes a partial commit safe to resume from.
+
+Transfer progress is anchored to saves rather than bytes for the same reason the old percentage
+misled: a byte percentage races through the large saves and then appears stalled for the whole
+small-file tail. The batch's own byte progress is folded in only to keep the bar moving within a
+batch. Missing-payload pruning is applied to the first commit so a later batch's failure cannot
+take it down with it.
+
+## 2026-07-31 — A launch-triggered sync declines rather than queues
+
+`SyncSystemAsync` now takes the sync gate with a zero timeout and returns `AlreadyRunning` when a
+manual pass holds it. A launch-triggered sync is work the user did not ask for; waiting its turn
+spent the whole pre-launch budget on the queue and stalled the post-exit pass, which has no budget,
+behind a manual sync indefinitely. The launch proceeds on the saves already on disk exactly as it
+does when a pass fails, and the manual pass in flight covers that system anyway. Manual syncs are
+now cancellable from Settings, which is safe precisely because the flush commits in batches.

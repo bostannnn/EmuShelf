@@ -106,7 +106,6 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 descriptor,
                 provider,
                 context,
-                includeCheatsAndPatches: true,
                 includeSaveStates: true);
             optionalSummary = await DescribeOptionalContentAsync(optional, provider, cancellationToken);
         }
@@ -115,8 +114,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             // Optional discovery is diagnostic only. It must not turn a valid memory-card/save
             // location into a disabled platform row.
             optionalSummary = (
-                "Optional content could not be inspected.",
-                [new OptionalContentDetection("Optional content", null, 0, 0, 0, Warning: ex.Message)]);
+                "Save states could not be inspected.",
+                [new OptionalContentDetection("Save states", null, 0, 0, 0, Warning: ex.Message)]);
         }
         return detection with
         {
@@ -164,15 +163,19 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public void UpdateOverride(string systemId, string? directory) =>
         Persist(_settings.CloudSaveSync.WithOverride(systemId, directory));
 
-    /// <summary>Persists one platform's opt-in portable content choices.</summary>
-    public void UpdateOptionalContent(
-        string systemId,
-        bool syncCheatsAndPatches,
-        bool syncSaveStates) =>
-        Persist(_settings.CloudSaveSync.WithOptionalContent(
-            systemId,
-            syncCheatsAndPatches,
-            syncSaveStates));
+    /// <summary>Persists all edited platform overrides in one settings transaction.</summary>
+    public void UpdateOverrides(IReadOnlyDictionary<string, string?> overrides)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        var configuration = _settings.CloudSaveSync;
+        foreach (var (systemId, directory) in overrides)
+            configuration = configuration.WithOverride(systemId, directory);
+        Persist(configuration);
+    }
+
+    /// <summary>Persists one platform's opt-in save-state choice.</summary>
+    public void UpdateOptionalContent(string systemId, bool syncSaveStates) =>
+        Persist(_settings.CloudSaveSync.WithOptionalContent(systemId, syncSaveStates));
 
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
@@ -308,7 +311,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         UpdateOverride,
         DownloadRcloneAsync,
         GetDetectionAsync,
-        UpdateOptionalContent);
+        UpdateOptionalContent,
+        UpdateOverrides);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -327,10 +331,22 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             verifyRemote: true);
 
     /// <summary>Reconciles only the save provider associated with one launched system.</summary>
+    /// <remarks>
+    /// Declines rather than queues when another pass holds the gate. A launch-triggered sync is
+    /// work the user did not ask for, and a manual sync can legitimately run for minutes: waiting
+    /// its turn would spend a pre-launch budget entirely on the queue and stall a post-exit pass
+    /// behind it indefinitely. The launch proceeds on the saves already on disk, exactly as it does
+    /// when a pass fails, and the manual sync in flight covers this system anyway.
+    /// </remarks>
     public Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
         CancellationToken cancellationToken = default) =>
-        RunSyncPipelineAsync([systemId], progress: null, $"Automatic sync ({systemId})", cancellationToken);
+        RunSyncPipelineAsync(
+            [systemId],
+            progress: null,
+            $"Automatic sync ({systemId})",
+            cancellationToken,
+            waitForGate: false);
 
     /// <summary>
     /// Checks every indexed save against what the remote actually stores, drops the entries whose
@@ -379,9 +395,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 location.LastSuccessUtc,
                 location.LastError,
                 location.LastNotice,
-                descriptor.SupportsCheatsAndPatches,
                 descriptor.SupportsSaveStates,
-                location.SyncCheatsAndPatches,
                 location.SyncSaveStates);
         }).ToArray();
 
@@ -439,13 +453,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IProgress<SaveSyncProgress>? progress,
         string operationLabel,
         CancellationToken cancellationToken,
-        bool verifyRemote = false)
+        bool verifyRemote = false,
+        bool waitForGate = true)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
 
         var requestedSystemIds = systemIds.Distinct(StringComparer.Ordinal).ToArray();
-        await _gate.WaitAsync(cancellationToken);
+        if (waitForGate)
+            await _gate.WaitAsync(cancellationToken);
+        else if (!await _gate.WaitAsync(0, cancellationToken))
+            return CloudSaveSyncOutcome.AlreadyRunning();
+
         var synced = new List<string>();
         var targets = new List<SaveSyncTarget>();
         string? constructingSystemId = null;
@@ -568,13 +587,11 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         var saves = descriptor.CreateProvider(context);
         if (saves is null)
             return null;
-        var options = configuration.GetLocation(systemId);
         return SaveProviderRegistry.WithOptionalContent(
             descriptor,
             saves,
             context,
-            includeOptionalContent && options.SyncCheatsAndPatches,
-            includeOptionalContent && options.SyncSaveStates);
+            includeOptionalContent && configuration.GetLocation(systemId).SyncSaveStates);
     }
 
     private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
@@ -614,26 +631,16 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
         var inspected = await auxiliary.GetContentLocationsAsync(cancellationToken);
         var locations = inspected.Select(location => new OptionalContentDetection(
-            location.Kind switch
-            {
-                AuxiliaryContentKind.Cheats => "Cheats",
-                AuxiliaryContentKind.Patches => "Patches",
-                _ => "Save states",
-            },
+            "Save states",
             location.Directory,
             location.EligibleFileCount,
             location.TotalFileCount,
             location.EligibleBytes,
             location.Compatibility,
             location.Warning)).ToArray();
-        var contentFiles = locations.Where(location => location.Kind is "Cheats" or "Patches").Sum(location => location.EligibleFileCount);
-        var contentBytes = locations.Where(location => location.Kind is "Cheats" or "Patches").Sum(location => location.EligibleBytes);
-        var states = locations.Where(location => location.Kind == "Save states").Sum(location => location.EligibleFileCount);
-        var stateBytes = locations.Where(location => location.Kind == "Save states").Sum(location => location.EligibleBytes);
-        return (
-            $"Found {contentFiles} cheat/patch file(s) ({FormatBytes(contentBytes)}) and " +
-            $"{states} eligible state(s) ({FormatBytes(stateBytes)}).",
-            locations);
+        var states = locations.Sum(location => location.EligibleFileCount);
+        var stateBytes = locations.Sum(location => location.EligibleBytes);
+        return ($"Found {states} eligible state(s) ({FormatBytes(stateBytes)}).", locations);
 
         static string FormatBytes(long bytes)
         {
@@ -783,6 +790,11 @@ public sealed record CloudSaveSyncOutcome(CloudSaveSyncStatus Status, SaveSyncRe
     public static CloudSaveSyncOutcome Completed(SaveSyncReport report) => new(CloudSaveSyncStatus.Completed, report, null);
 
     public static CloudSaveSyncOutcome Failed(string message) => new(CloudSaveSyncStatus.Failed, null, message);
+
+    public static CloudSaveSyncOutcome AlreadyRunning() => new(
+        CloudSaveSyncStatus.AlreadyRunning,
+        null,
+        "Another cloud sync is already running.");
 }
 
 /// <summary>The outcome category of a cloud save-sync attempt.</summary>
@@ -796,6 +808,12 @@ public enum CloudSaveSyncStatus
 
     /// <summary>The sync was attempted but failed; local saves are untouched.</summary>
     Failed,
+
+    /// <summary>
+    /// Another pass held the sync gate, so this one was declined rather than queued behind it.
+    /// Nothing was attempted and local saves are untouched.
+    /// </summary>
+    AlreadyRunning,
 }
 
 /// <summary>The outcome of a cloud save-sync connect attempt.</summary>
@@ -824,9 +842,7 @@ public sealed record CloudSaveSyncPlatformContext(
     DateTimeOffset? LastSuccessUtc,
     string? LastError,
     string? LastNotice = null,
-    bool SupportsCheatsAndPatches = false,
     bool SupportsSaveStates = false,
-    bool SyncCheatsAndPatches = false,
     bool SyncSaveStates = false);
 
 /// <summary>
@@ -848,4 +864,5 @@ public sealed record CloudSaveSyncSettingsContext(
     Action<string, string?> UpdateOverride,
     Func<CancellationToken, Task<bool>> DownloadRcloneAsync,
     Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null,
-    Action<string, bool, bool>? UpdateOptionalContent = null);
+    Action<string, bool>? UpdateOptionalContent = null,
+    Action<IReadOnlyDictionary<string, string?>>? UpdateOverrides = null);

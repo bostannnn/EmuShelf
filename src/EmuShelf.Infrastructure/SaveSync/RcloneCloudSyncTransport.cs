@@ -24,6 +24,11 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     // One index file describes every unit on the remote so listing is a single request.
     private const string IndexFileName = "index.json";
 
+    // How much one commit batch may carry. Each batch costs one extra index write, so these trade
+    // that fixed overhead against how much work an interrupted pass loses.
+    private const int MaxUnitsPerBatch = 64;
+    private const long MaxBytesPerBatch = 32L * 1024 * 1024;
+
     private readonly string _rclonePath;
     private readonly string _configurationPath;
     private readonly string _remoteName;
@@ -189,7 +194,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     }
 
     public async Task FlushAsync(
-        IProgress<int>? transferProgress = null,
+        IProgress<SaveTransferProgress>? transferProgress = null,
         CancellationToken cancellationToken = default)
     {
         try
@@ -197,65 +202,88 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             if (_outbox is null && _missingPayloads.Count == 0)
                 return;
 
-            // Payloads first, index second, in two separate rclone sessions. In one session rclone
-            // transfers concurrently, so a failure could leave index.json describing a payload that
-            // never arrived — and because the index carries the content hash, the machine that owns
-            // that save then sees "unchanged" and never re-uploads it, while every other machine
-            // fails trying to download it. The index is a commit, so it goes last and only after
-            // the payloads it describes are on the remote.
-            // --no-traverse: the destination holds every save ever synced, and rclone would
-            // otherwise list all of it to decide whether to copy a handful of staged files.
-            if (_outbox is not null && _pendingIndex.Count > 0)
-            {
-                await RunAsync(
-                    ["copy", _outbox, RemoteRoot, "--no-traverse", "--ignore-times"],
-                    Stream.Null,
-                    cancellationToken,
-                    transferProgress: transferProgress);
-            }
-
             var index = new Dictionary<string, SaveUnitSnapshot>(_remoteIndex, StringComparer.Ordinal);
-            foreach (var (unitId, snapshot) in _pendingIndex)
-                index[unitId] = snapshot;
 
             // Entries whose payload was found to be missing are dropped, so the machine that still
             // has the save stops seeing "already on the remote" and uploads it on its next pass.
+            // Applied to the first commit rather than the last: a later batch that fails must not
+            // take the pruning down with it.
             foreach (var unitId in _missingPayloads)
             {
                 if (!_pendingIndex.ContainsKey(unitId))
                     index.Remove(unitId);
             }
 
-            if (_pendingIndex.Count == 0 && _missingPayloads.Count == 0)
+            if (_pendingIndex.Count == 0)
+            {
+                if (_missingPayloads.Count > 0)
+                {
+                    await CommitIndexAsync(index, cancellationToken);
+                    // Adopted, not left behind: the pruned entries are gone from the remote, and a
+                    // caller that reuses this transport without listing again must not still be
+                    // told they are there.
+                    _remoteIndex = index;
+                    _missingPayloads.Clear();
+                }
                 return;
-
-            var entries = index.Values
-                .Select(snapshot => new RemoteUnitMetadata(
-                    snapshot.UnitId,
-                    snapshot.ContentHash,
-                    snapshot.ModifiedUtc,
-                    snapshot.Compatibility))
-                .ToList();
-            var indexDirectory = CreateStagingDirectory("index");
-            try
-            {
-                await File.WriteAllTextAsync(
-                    Path.Combine(indexDirectory, IndexFileName),
-                    JsonSerializer.Serialize(entries, SerializerOptions),
-                    cancellationToken);
-                await RunAsync(
-                    ["copy", indexDirectory, RemoteRoot, "--no-traverse", "--ignore-times"],
-                    Stream.Null,
-                    cancellationToken);
-            }
-            finally
-            {
-                TryDeleteDirectory(indexDirectory);
             }
 
-            _remoteIndex = index;
-            _remoteIndexExists = true;
-            _missingPayloads.Clear();
+            // Payloads first, index second, and never in one rclone session. rclone transfers
+            // concurrently, so a failure could otherwise leave index.json describing a payload that
+            // never arrived — and because the index carries the content hash, the machine that owns
+            // that save then sees "unchanged" and never re-uploads it, while every other machine
+            // fails trying to download it. The index is the commit, so it always follows the
+            // payloads it describes.
+            //
+            // Committed in batches rather than once at the end. A single terminal commit makes the
+            // whole pass all-or-nothing: on a provider that bills per file, a few hundred saves take
+            // long enough that an interrupted run was the normal case, and every interrupted run
+            // threw away all of its uploads and re-staged them from scratch on the next attempt. A
+            // batch that lands stays landed.
+            var batches = PlanUploadBatches();
+            var totalUnits = _pendingIndex.Count;
+            var unitsCommitted = 0;
+            foreach (var batch in batches)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Progress is anchored to units, not bytes. Bytes are what rclone reports, but they
+                // describe this transfer badly: on a per-file-metered provider a thousand small
+                // saves cost far more time than one large one worth the same bytes, so a byte
+                // percentage races ahead and then appears to freeze for the whole small-file tail.
+                // The batch's own byte percentage is folded in only to keep the bar moving within
+                // a batch.
+                var completedBefore = unitsCommitted;
+                var batchProgress = transferProgress is null
+                    ? null
+                    : new Progress<int>(percent =>
+                    {
+                        // The batch's own saves are counted as they upload rather than all at once
+                        // when it commits. Reporting only committed saves would park the count on a
+                        // multiple of the batch size for the whole batch — the same "nothing is
+                        // happening" that the byte percentage already produces.
+                        var within = completedBefore + batch.Count * percent / 100.0;
+                        transferProgress.Report(new SaveTransferProgress(
+                            Math.Min((int)within, totalUnits),
+                            totalUnits,
+                            OverallPercent(within, totalUnits)));
+                    });
+                transferProgress?.Report(new SaveTransferProgress(
+                    completedBefore, totalUnits, OverallPercent(completedBefore, totalUnits)));
+
+                await UploadBatchAsync(batch, batchProgress, cancellationToken);
+                foreach (var unitId in batch)
+                    index[unitId] = _pendingIndex[unitId];
+
+                await CommitIndexAsync(index, cancellationToken);
+                unitsCommitted += batch.Count;
+                // Adopted as each batch commits, so an exception from a later batch leaves this
+                // session's view of the remote matching what the remote actually holds.
+                _remoteIndex = new Dictionary<string, SaveUnitSnapshot>(index, StringComparer.Ordinal);
+                _missingPayloads.Clear();
+                transferProgress?.Report(new SaveTransferProgress(
+                    unitsCommitted, totalUnits, OverallPercent(unitsCommitted, totalUnits)));
+            }
         }
         finally
         {
@@ -272,6 +300,110 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
                 _inbox = null;
             }
         }
+    }
+
+    private static int OverallPercent(double completedUnits, int totalUnits) =>
+        totalUnits <= 0 ? 100 : Math.Clamp((int)(100 * completedUnits / totalUnits), 0, 100);
+
+    /// <summary>
+    /// Groups the staged units into commit batches, bounded by both count and size. Two bounds
+    /// because either alone leaves a bad case: a count bound lets one batch carry several hundred
+    /// megabytes of save states, and a size bound lets one carry thousands of tiny files.
+    /// </summary>
+    private List<List<string>> PlanUploadBatches()
+    {
+        var batches = new List<List<string>>();
+        var current = new List<string>();
+        var currentBytes = 0L;
+        foreach (var unitId in _pendingIndex.Keys.OrderBy(id => id, StringComparer.Ordinal))
+        {
+            if (current.Count >= MaxUnitsPerBatch || (current.Count > 0 && currentBytes >= MaxBytesPerBatch))
+            {
+                batches.Add(current);
+                current = [];
+                currentBytes = 0;
+            }
+
+            current.Add(unitId);
+            currentBytes += StagedSize(unitId);
+        }
+
+        if (current.Count > 0)
+            batches.Add(current);
+        return batches;
+    }
+
+    private long StagedSize(string unitId)
+    {
+        try
+        {
+            var path = Path.Combine(_outbox!, StageRelativePath(unitId + ".payload"));
+            return File.Exists(path) ? new FileInfo(path).Length : 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return 0;
+        }
+    }
+
+    // --files-from: only this batch's payloads, named explicitly.
+    // --no-traverse: the destination holds every save ever synced, and rclone would otherwise list
+    // all of it to decide whether to copy a handful of staged files.
+    // --ignore-times: EmuShelf's own content hash decides what changed, and the provider's
+    // modification times are not a sound basis for skipping a save it asked to upload.
+    private async Task UploadBatchAsync(
+        IReadOnlyList<string> unitIds,
+        IProgress<int>? transferProgress,
+        CancellationToken cancellationToken)
+    {
+        var fileList = Path.Combine(_transfersDirectory, "upload-" + Guid.NewGuid().ToString("N") + ".txt");
+        try
+        {
+            await File.WriteAllLinesAsync(
+                fileList,
+                unitIds.Select(unitId => unitId + ".payload"),
+                cancellationToken);
+            await RunAsync(
+                ["copy", _outbox!, RemoteRoot, "--files-from", fileList, "--no-traverse", "--ignore-times"],
+                Stream.Null,
+                cancellationToken,
+                transferProgress: transferProgress);
+        }
+        finally
+        {
+            TryDeleteFile(fileList);
+        }
+    }
+
+    private async Task CommitIndexAsync(
+        IReadOnlyDictionary<string, SaveUnitSnapshot> index,
+        CancellationToken cancellationToken)
+    {
+        var entries = index.Values
+            .Select(snapshot => new RemoteUnitMetadata(
+                snapshot.UnitId,
+                snapshot.ContentHash,
+                snapshot.ModifiedUtc,
+                snapshot.Compatibility))
+            .ToList();
+        var indexDirectory = CreateStagingDirectory("index");
+        try
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(indexDirectory, IndexFileName),
+                JsonSerializer.Serialize(entries, SerializerOptions),
+                cancellationToken);
+            await RunAsync(
+                ["copy", indexDirectory, RemoteRoot, "--no-traverse", "--ignore-times"],
+                Stream.Null,
+                cancellationToken);
+        }
+        finally
+        {
+            TryDeleteDirectory(indexDirectory);
+        }
+
+        _remoteIndexExists = true;
     }
 
     /// <summary>

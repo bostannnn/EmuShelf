@@ -36,9 +36,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         OverrideDirectory = platform.Override ?? string.Empty;
         LastResultText = DescribeLastResult(platform);
         LastNoticeText = platform.LastNotice;
-        SupportsCheatsAndPatches = platform.SupportsCheatsAndPatches;
         SupportsSaveStates = platform.SupportsSaveStates;
-        SyncCheatsAndPatches = platform.SyncCheatsAndPatches;
         SyncSaveStates = platform.SyncSaveStates;
         _isInitializing = false;
     }
@@ -55,14 +53,9 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     /// <summary>Placeholder shown in the override path box.</summary>
     public string OverridePlaceholder { get; }
 
-    public bool SupportsCheatsAndPatches { get; }
-
     public bool SupportsSaveStates { get; }
 
-    public bool HasOptionalContent => SupportsCheatsAndPatches || SupportsSaveStates;
-
-    [ObservableProperty]
-    public partial bool SyncCheatsAndPatches { get; set; }
+    public bool HasOptionalContent => SupportsSaveStates;
 
     [ObservableProperty]
     public partial bool SyncSaveStates { get; set; }
@@ -191,8 +184,6 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     [RelayCommand]
     private Task ReplaceLocalAsync() => _force(SystemId, SaveSyncDirection.Download);
 
-    partial void OnSyncCheatsAndPatchesChanged(bool value) => PersistOptionalContent();
-
     partial void OnSyncSaveStatesChanged(bool value) => PersistOptionalContent();
 
     private static string? DescribeOptionalContent(SaveProviderDetection? detection)
@@ -231,12 +222,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     private void PersistOptionalContent()
     {
         if (!_isInitializing)
-        {
-            _cloudSaves.UpdateOptionalContent?.Invoke(
-                SystemId,
-                SyncCheatsAndPatches,
-                SyncSaveStates);
-        }
+            _cloudSaves.UpdateOptionalContent?.Invoke(SystemId, SyncSaveStates);
     }
 
     private static string? DescribeLastResult(CloudSaveSyncPlatformContext platform)

@@ -2660,6 +2660,14 @@ public partial class MainViewModel : ViewModelBase
                     $"Cloud save sync failed {(afterExit ? "after" : "before")} launching " +
                     $"game id {game.Id}: {outcome.Message}");
             }
+            else if (outcome.Status == CloudSaveSyncStatus.AlreadyRunning)
+            {
+                // Expected whenever the user starts a game while a manual sync is running. That
+                // pass covers this system too, so there is nothing to repair and nothing to report.
+                _logger.Information(
+                    $"Skipped the {(afterExit ? "post-exit" : "pre-launch")} save sync for game id " +
+                    $"{game.Id}: a cloud sync was already running.");
+            }
             else if (outcome.Status == CloudSaveSyncStatus.NotConfigured)
             {
                 // CanSyncSystem already said this system participates, so reaching NotConfigured

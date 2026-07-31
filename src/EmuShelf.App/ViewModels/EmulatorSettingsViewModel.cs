@@ -31,6 +31,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly TexturePackSettingsContext? _texturePacks;
     private readonly IAppLogger _logger;
+    // Held only for the duration of one cloud operation so the Stop button can reach it.
+    private CancellationTokenSource? _cloudCancellation;
     private bool _synchronizingSharedInstallation;
 
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
@@ -956,6 +958,29 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             startingMessage);
     }
 
+    /// <summary>
+    /// Stops the running sync. The transfer commits in batches, so the batches already on the
+    /// remote stay there and the next pass resumes from them rather than starting over.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCancelCloudSync))]
+    private void CancelCloudSync()
+    {
+        if (_cloudCancellation is not { } cancellation)
+            return;
+
+        CloudStatusText = "Stopping the sync…";
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The operation finished between the button press and this call.
+        }
+    }
+
+    private bool CanCancelCloudSync() => IsCloudBusy && _cloudCancellation is not null;
+
     private async Task RunCloudOperationAsync(
         Func<IProgress<SaveSyncProgress>, CancellationToken, Task<CloudSaveSyncOutcome>> operation,
         string startingMessage)
@@ -963,7 +988,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         if (_cloudSaves is null || IsCloudBusy)
             return;
 
+        using var cancellation = new CancellationTokenSource();
+        _cloudCancellation = cancellation;
         IsCloudBusy = true;
+        CancelCloudSyncCommand.NotifyCanExecuteChanged();
         CloudStatusText = startingMessage;
         CloudSyncProgressCompleted = 0;
         CloudSyncProgressTotal = 0;
@@ -972,13 +1000,21 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         try
         {
             PersistCloudSaveLocations();
-            var outcome = await operation(progress, CancellationToken.None);
+            var outcome = await operation(progress, cancellation.Token);
             CloudStatusText = outcome.Status switch
             {
                 CloudSaveSyncStatus.Completed => DescribeCloudReport(outcome.Report!),
                 CloudSaveSyncStatus.NotConfigured => "Connect Google Drive and configure at least one save platform first.",
+                CloudSaveSyncStatus.AlreadyRunning => "Another cloud sync is already running.",
                 _ => outcome.Message is null ? "Sync failed." : $"Sync failed: {outcome.Message}",
             };
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Stopping is a normal outcome, not a failure: whatever committed before the stop is
+            // on the remote, and saying so is what stops the user re-running it from scratch.
+            CloudStatusText = "Sync stopped. Saves already transferred are in the cloud; " +
+                "the next sync continues from there.";
         }
         catch (Exception ex)
         {
@@ -987,7 +1023,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
         finally
         {
+            _cloudCancellation = null;
             IsCloudBusy = false;
+            CancelCloudSyncCommand.NotifyCanExecuteChanged();
             // A successful sync creates the log after SyncLogPath was first assigned, so notify
             // the view that the previously hidden activity-log link is now available.
             OnPropertyChanged(nameof(HasSyncLog));
@@ -1021,9 +1059,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             IsCloudTransferIndeterminate = progress.TransferPercent is null;
             CloudSyncProgressTotal = 100;
             CloudSyncProgressCompleted = progress.TransferPercent ?? 0;
+            // The count is named as well as the percentage. The percentage alone reads as stalled
+            // whenever the remaining saves are small ones, because they take provider round trips
+            // rather than bandwidth; "142 of 180 saves" keeps moving when the bar does not.
             CloudSyncProgressText = progress.TransferPercent is { } percent
-                ? $"Transferring saves to the cloud — {percent}%"
-                : "Transferring saves to the cloud…";
+                ? $"Transferring saves to the cloud — {percent}% ({progress.Completed} of {progress.Total} saves)"
+                : $"Transferring saves to the cloud — {progress.Total} save(s)…";
             return;
         }
 
@@ -1041,6 +1082,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
         // Typed paths and folder-picker paths follow the same persistence rule. A configured
         // emulator still supplies the default when a platform's box is left empty.
+        if (_cloudSaves.UpdateOverrides is { } updateOverrides)
+        {
+            updateOverrides(CollectOverrides());
+            return;
+        }
+
         foreach (var platform in CloudPlatforms)
             _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
     }

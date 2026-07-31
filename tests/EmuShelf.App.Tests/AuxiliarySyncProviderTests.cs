@@ -32,11 +32,9 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
-    public async Task EnumeratesPerFileCheatsAndEveryManualState()
+    public async Task EnumeratesEveryManualState()
     {
-        var cheats = Directory.CreateDirectory(Path.Combine(_root, "cheats")).FullName;
         var states = Directory.CreateDirectory(Path.Combine(_root, "states")).FullName;
-        File.WriteAllText(Path.Combine(cheats, "GAME.cht"), "cheat");
         WriteState(states, "GAME.state1", 1);
         WriteState(states, "GAME.state2", 2);
         WriteState(states, "GAME.state3", 3);
@@ -44,23 +42,35 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
 
         var provider = new AuxiliarySyncProvider(
             new EmptyProvider(),
-            [
-                new(AuxiliaryContentKind.Cheats, "cheats", _ => cheats, path => path.EndsWith(".cht")),
-                new(
-                    AuxiliaryContentKind.SaveStates,
-                    "states",
-                    _ => states,
-                    path => AuxiliarySyncProvider.IsManualState(path) && path.Contains(".state", StringComparison.Ordinal)),
-            ],
+            [new(
+                "states",
+                _ => states,
+                path => AuxiliarySyncProvider.IsManualState(path) && path.Contains(".state", StringComparison.Ordinal))],
             new StateCompatibility("retroarch-1-0-x64", "1.0 · x64"));
 
         var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains(units, unit => unit.UnitId == "test/cheats/GAME.cht");
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/GAME.state3", StringComparison.Ordinal));
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/GAME.state2", StringComparison.Ordinal));
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/GAME.state1", StringComparison.Ordinal));
         Assert.DoesNotContain(units, unit => unit.UnitId.Contains(".auto", StringComparison.Ordinal));
+    }
+
+    // The cheats and patches namespaces were removed because they pointed at each emulator's whole
+    // cheats folder, which on DuckStation and PCSX2 is the shipped community database. A remote
+    // still holding those payloads from an older build must not be claimed by the state provider:
+    // it owns "states" and nothing else.
+    [Fact]
+    public void RetiredCheatAndPatchNamespacesAreNotClaimed()
+    {
+        var provider = new AuxiliarySyncProvider(
+            new EmptyProvider(),
+            [new("states", _ => _root, _ => true)],
+            new StateCompatibility("current", "current"));
+
+        Assert.False(provider.OwnsUnit("test/cheats/GAME.cht"));
+        Assert.False(provider.OwnsUnit("test/patches/GAME.pnach"));
+        Assert.True(provider.OwnsUnit("test/states/GAME.state1"));
     }
 
     [Fact]
@@ -69,11 +79,7 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         var states = Directory.CreateDirectory(Path.Combine(_root, "states")).FullName;
         var provider = new AuxiliarySyncProvider(
             new EmptyProvider(),
-            [new(
-                AuxiliaryContentKind.SaveStates,
-                "states",
-                _ => states,
-                _ => true)],
+            [new("states", _ => states, _ => true)],
             new StateCompatibility("current", "current"));
 
         var reason = provider.GetRemoteIncompatibilityReason(new SaveUnitSnapshot(
@@ -90,11 +96,7 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     {
         var provider = new AuxiliarySyncProvider(
             new EmptyProvider(),
-            [new(
-                AuxiliaryContentKind.SaveStates,
-                "states",
-                _ => _root,
-                _ => true)],
+            [new("states", _ => _root, _ => true)],
             new StateCompatibility("current", "current"));
         var snapshots = Enumerable.Range(1, 4)
             .Select(slot => new SaveUnitSnapshot(
@@ -112,36 +114,26 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     [Fact]
     public async Task ContentLocations_ReportExactRootsAndKeepOneBrokenSourceAdvisory()
     {
-        var cheats = Directory.CreateDirectory(Path.Combine(_root, "cheats-inspected")).FullName;
         var states = Directory.CreateDirectory(Path.Combine(_root, "states-inspected")).FullName;
-        File.WriteAllText(Path.Combine(cheats, "GAME.cht"), "cheat");
         WriteState(states, "GAME.state1", 1);
         WriteState(states, "GAME.state2", 2);
 
         var provider = new AuxiliarySyncProvider(
             new EmptyProvider(),
             [
-                new(AuxiliaryContentKind.Cheats, "cheats", _ => cheats, path => path.EndsWith(".cht")),
-                new(AuxiliaryContentKind.Patches, "patches", _ => throw new IOException("patch config unreadable"), _ => true),
-                new(
-                    AuxiliaryContentKind.SaveStates,
-                    "states",
-                    _ => states,
-                    path => path.Contains(".state", StringComparison.Ordinal)),
+                new("states", _ => states, path => path.Contains(".state", StringComparison.Ordinal)),
+                new("states", _ => throw new IOException("state config unreadable"), _ => true),
             ],
             new StateCompatibility("current", "1.0 · x64"));
 
         var locations = await provider.GetContentLocationsAsync(TestContext.Current.CancellationToken);
 
-        var cheatLocation = Assert.Single(locations, location => location.Kind == AuxiliaryContentKind.Cheats);
-        Assert.Equal(Path.GetFullPath(cheats), cheatLocation.Directory);
-        Assert.Equal(1, cheatLocation.EligibleFileCount);
-        var stateLocation = Assert.Single(locations, location => location.Kind == AuxiliaryContentKind.SaveStates);
+        var stateLocation = Assert.Single(locations, location => location.Directory is not null);
+        Assert.Equal(Path.GetFullPath(states), stateLocation.Directory);
         Assert.Equal(2, stateLocation.EligibleFileCount);
         Assert.Equal(2, stateLocation.TotalFileCount);
         Assert.Equal("1.0 · x64", stateLocation.Compatibility);
-        var broken = Assert.Single(locations, location => location.Kind == AuxiliaryContentKind.Patches);
-        Assert.Null(broken.Directory);
+        var broken = Assert.Single(locations, location => location.Directory is null);
         Assert.Contains("unreadable", broken.Warning, StringComparison.OrdinalIgnoreCase);
     }
 

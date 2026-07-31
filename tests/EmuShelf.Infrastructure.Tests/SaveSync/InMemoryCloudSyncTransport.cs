@@ -94,7 +94,7 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
     }
 
     public Task FlushAsync(
-        IProgress<int>? transferProgress = null,
+        IProgress<SaveTransferProgress>? transferProgress = null,
         CancellationToken cancellationToken = default)
     {
         FlushCalls++;

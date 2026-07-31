@@ -89,6 +89,63 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task LocalBackend_ALargeFlushCommitsTheIndexPerBatchRatherThanOnceAtTheEnd()
+    {
+        // Regression: the flush uploaded every payload and then wrote index.json once. Because the
+        // index carries the content hash that decides what changed, that made a pass all-or-nothing
+        // — an interrupted run lost all of its uploads and re-staged the identical set next time, so
+        // a large first sync never converged.
+        //
+        // Committing per batch is what makes an interrupted pass resumable, and it is asserted
+        // structurally rather than by cancelling mid-flight: against a local backend every batch
+        // finishes in milliseconds, so a cancellation aimed between two batches would land wherever
+        // the scheduler happened to be. Each batch costs exactly two rclone copies — its payloads,
+        // then the index that commits them — so the invocation count proves the commit granularity,
+        // and payload-before-index ordering (covered separately) makes each of those commits safe.
+        var rclonePath = Environment.GetEnvironmentVariable("EMUSHELF_TEST_RCLONE_PATH");
+        if (string.IsNullOrWhiteSpace(rclonePath) || !File.Exists(rclonePath))
+            return;
+
+        var remoteRoot = Path.Combine(BaseDirectory, "batched-remote");
+        Directory.CreateDirectory(AppPaths.SettingsDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(AppPaths.SettingsDirectory, "rclone.conf"),
+            "[testlocal]\ntype = local\n");
+        var cloudFolder = Path.GetFullPath(remoteRoot).Replace('\\', '/');
+        var transport = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+
+        // Comfortably more than one batch, so there is more than one commit to observe.
+        const int unitCount = 150;
+        for (var index = 0; index < unitCount; index++)
+        {
+            var unitId = $"duckstation/states/GAME{index:000}.sav";
+            await transport.UploadAsync(
+                unitId,
+                new MemoryStream(Encoding.UTF8.GetBytes(unitId)),
+                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(unitId))),
+                new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
+        }
+
+        var reports = new List<SaveTransferProgress>();
+        await transport.FlushAsync(new InlineProgress<SaveTransferProgress>(reports.Add));
+
+        // Two copies per batch, and more than one batch: the index was committed as the pass went.
+        var copies = transport.Timings.Count(timing => timing.StartsWith("rclone copy", StringComparison.Ordinal));
+        Assert.True(copies >= 4, $"expected at least two batched commits, saw {copies} rclone copies");
+        Assert.Equal(0, copies % 2);
+
+        // Everything arrived, and every index entry's payload is really on the remote.
+        var reader = new RcloneCloudSyncTransport(AppPaths, "testlocal", cloudFolder, rclonePath);
+        Assert.Equal(unitCount, (await reader.ListAsync()).Count);
+        Assert.Empty(await reader.FindMissingPayloadsAsync());
+
+        // Progress was reported in saves, not only as a byte percentage, and reached the total.
+        Assert.All(reports, report => Assert.Equal(unitCount, report.TotalUnits));
+        Assert.Equal(unitCount, reports[^1].CompletedUnits);
+        Assert.Equal(100, reports[^1].Percent);
+    }
+
+    [Fact]
     public async Task LocalBackend_AnIndexEntryWithNoPayloadIsReportedAndThenPrunedFromTheIndex()
     {
         // Regression: a flush that uploaded index.json alongside the payloads could commit an entry
@@ -244,6 +301,12 @@ public sealed class RcloneCloudSyncTransportTests : TempAppDirectoryTestBase
         await using var stream = await transport.DownloadAsync(unitId);
         using var reader = new StreamReader(stream);
         return await reader.ReadToEndAsync();
+    }
+
+    /// <summary>Reports on the calling thread, so a test can act on a report the moment it happens.</summary>
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 
     [Fact]

@@ -405,7 +405,7 @@
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. In-game saves sync before launch and after exit. Cheats, patches, and version-guarded save states are optional and included only in manual Sync all or Replace actions. Close externally launched emulators before manual sync. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
+                                               Text="Sync emulator-owned in-game saves between machines through your own Google Drive. In-game saves sync before launch and after exit. Version-guarded save states are optional and included only in manual Sync all or Replace actions. Cheats and patches are not synced: on most emulators that folder holds the community database the emulator ships and can redownload, not your own files. Close externally launched emulators before manual sync. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
                                 </StackPanel>
 
                                 <Border IsVisible="{Binding IsRcloneMissing}"
@@ -472,11 +472,6 @@
                                                 </Grid>
                                                 <StackPanel Margin="54,0,0,0" Spacing="7"
                                                             IsVisible="{Binding HasOptionalContent}">
-                                                    <CheckBox Content="Sync cheats and patches"
-                                                              IsVisible="{Binding SupportsCheatsAndPatches}"
-                                                              IsChecked="{Binding SyncCheatsAndPatches, Mode=TwoWay}"
-                                                              IsEnabled="{Binding IsIdle}"
-                                                              ToolTip.Tip="Includes emulator-owned cheat and patch files in manual Sync all and Replace actions; files beside games are never touched" />
                                                     <CheckBox Content="Sync save states during manual Sync all"
                                                               IsVisible="{Binding SupportsSaveStates}"
                                                               IsChecked="{Binding SyncSaveStates, Mode=TwoWay}"
@@ -579,9 +574,15 @@
                                 </StackPanel>
 
                                 <StackPanel IsVisible="{Binding HasCloudSyncProgress}" Spacing="5">
-                                    <TextBlock Text="{Binding CloudSyncProgressText}"
-                                               FontSize="11" TextTrimming="CharacterEllipsis"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <TextBlock Grid.Column="0" Text="{Binding CloudSyncProgressText}"
+                                                   FontSize="11" TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <Button Grid.Column="1" Content="Stop"
+                                                Command="{Binding CancelCloudSyncCommand}"
+                                                ToolTip.Tip="Stop the sync; saves already transferred stay in the cloud and the next sync continues from there" />
+                                    </Grid>
                                     <ProgressBar Minimum="0"
                                                  Maximum="{Binding CloudSyncProgressTotal}"
                                                  Value="{Binding CloudSyncProgressCompleted}"

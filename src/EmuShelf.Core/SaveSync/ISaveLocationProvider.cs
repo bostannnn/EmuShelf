@@ -13,6 +13,11 @@ public interface ISaveLocationProvider
     /// Whether this provider owns a unit from the cloud index. Providers with optional namespaces
     /// override this so disabled content remains visible in the cloud without being downloaded.
     /// </summary>
+    /// <remarks>
+    /// <c>cheats</c> and <c>patches</c> are still excluded although nothing writes them any more: a
+    /// remote written by an older build holds those payloads, and a save provider that started
+    /// claiming them would try to resolve every one of them to a local save path.
+    /// </remarks>
     bool OwnsUnit(string unitId)
     {
         if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))

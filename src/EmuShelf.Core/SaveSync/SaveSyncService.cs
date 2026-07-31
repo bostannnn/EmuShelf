@@ -217,13 +217,15 @@ public sealed class SaveSyncService
 
         progress.Report(new SaveSyncProgress(
             unitCount, unitCount, "Transferring to the cloud", SaveSyncAction.Upload, SaveSyncPhase.Transferring));
-        var transferProgress = new Progress<int>(percent => progress.Report(new SaveSyncProgress(
-            unitCount,
-            unitCount,
+        // The counts here are the transfer's own — how many saves it is actually sending — not the
+        // reconciliation's unit count, most of which needed no transfer at all.
+        var transferProgress = new Progress<SaveTransferProgress>(transfer => progress.Report(new SaveSyncProgress(
+            transfer.CompletedUnits,
+            transfer.TotalUnits,
             "Transferring to the cloud",
             SaveSyncAction.Upload,
             SaveSyncPhase.Transferring,
-            percent)));
+            transfer.Percent)));
         await _remote.FlushAsync(transferProgress, cancellationToken);
     }
 

@@ -4,13 +4,6 @@ using EmuShelf.Core.SaveSync;
 
 namespace EmuShelf.App.Services;
 
-internal enum AuxiliaryContentKind
-{
-    Cheats,
-    Patches,
-    SaveStates,
-}
-
 internal sealed record StateCompatibility(string Key, string Description)
 {
     public static StateCompatibility? Create(
@@ -44,14 +37,11 @@ internal sealed record StateCompatibility(string Key, string Description)
 }
 
 internal sealed record AuxiliaryFileSource(
-    AuxiliaryContentKind Kind,
     string Namespace,
     Func<CancellationToken, string?> ResolveRoot,
-    Func<string, bool> Include,
-    bool Recursive = true);
+    Func<string, bool> Include);
 
 internal sealed record AuxiliaryContentLocation(
-    AuxiliaryContentKind Kind,
     string? Directory,
     int EligibleFileCount,
     int TotalFileCount,
@@ -60,9 +50,9 @@ internal sealed record AuxiliaryContentLocation(
     string? Warning = null);
 
 /// <summary>
-/// Adds allow-listed, per-file optional content to an established save provider. Optional
-/// namespaces do not change existing save ids; state compatibility is an optional field in the
-/// existing cloud index entries.
+/// Adds allow-listed, per-file save states to an established save provider. The state namespace
+/// does not change existing save ids; state compatibility is an optional field in the existing
+/// cloud index entries.
 /// </summary>
 internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 {
@@ -86,13 +76,11 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 
     public string UnitIdPrefix => _saves.UnitIdPrefix;
 
-    public bool HasStateSource => _sources.Any(source => source.Kind == AuxiliaryContentKind.SaveStates);
-
     public bool HasStateCompatibility => _compatibility is not null;
 
     /// <summary>
-    /// Resolves each optional root independently for Settings. An optional source is advisory: a
-    /// missing or unreadable cheats folder must never hide an otherwise valid save-card location.
+    /// Resolves each state root independently for Settings. An optional source is advisory: a
+    /// missing or unreadable state folder must never hide an otherwise valid save-card location.
     /// </summary>
     public async Task<IReadOnlyList<AuxiliaryContentLocation>> GetContentLocationsAsync(
         CancellationToken cancellationToken = default)
@@ -173,9 +161,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     private IReadOnlyList<SaveUnit> Enumerate(AuxiliaryFileSource source, CancellationToken cancellationToken)
     {
         var root = ResolveRoot(source, cancellationToken);
-        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
-            return [];
-        if (source.Kind == AuxiliaryContentKind.SaveStates && _compatibility is null)
+        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root) || _compatibility is null)
             return [];
 
         var fullRoot = Path.GetFullPath(root);
@@ -185,7 +171,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
             .Select(file => new SaveUnit(
                 Prefix(source) +
                 EncodeRelativePath(file.RelativePath),
-                $"{Path.GetFileName(file.Path)} — {KindName(source.Kind)}",
+                $"{Path.GetFileName(file.Path)} — save state",
                 SaveUnitKind.File))
             .ToArray();
     }
@@ -198,44 +184,32 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
             if (string.IsNullOrWhiteSpace(resolved))
             {
                 return new AuxiliaryContentLocation(
-                    source.Kind,
                     null,
                     0,
                     0,
                     0,
-                    Warning: "The emulator configuration does not expose a safe folder for this content.");
+                    Warning: "The emulator configuration does not expose a safe folder for save states.");
             }
 
             var root = Path.GetFullPath(resolved);
             if (!Directory.Exists(root))
-            {
-                return new AuxiliaryContentLocation(
-                    source.Kind,
-                    root,
-                    0,
-                    0,
-                    0,
-                    Warning: "The folder does not exist yet.");
-            }
+                return new AuxiliaryContentLocation(root, 0, 0, 0, Warning: "The folder does not exist yet.");
 
             var files = EnumerateCandidates(source, root, cancellationToken);
             var bytes = files.Aggregate(0L, (total, file) => checked(total + new FileInfo(file.Path).Length));
-            var compatibility = source.Kind == AuxiliaryContentKind.SaveStates ? _compatibility?.Description : null;
-            var warning = source.Kind == AuxiliaryContentKind.SaveStates && _compatibility is null
-                ? "The emulator/core version could not be detected, so states will not be synced."
-                : null;
             return new AuxiliaryContentLocation(
-                source.Kind,
                 root,
                 files.Length,
                 files.Length,
                 bytes,
-                compatibility,
-                warning);
+                _compatibility?.Description,
+                _compatibility is null
+                    ? "The emulator/core version could not be detected, so states will not be synced."
+                    : null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
         {
-            return new AuxiliaryContentLocation(source.Kind, null, 0, 0, 0, Warning: ex.Message);
+            return new AuxiliaryContentLocation(null, 0, 0, 0, Warning: ex.Message);
         }
     }
 
@@ -244,8 +218,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         string fullRoot,
         CancellationToken cancellationToken)
     {
-        var search = source.Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var files = Directory.EnumerateFiles(fullRoot, "*", search)
+        var files = Directory.EnumerateFiles(fullRoot, "*", SearchOption.AllDirectories)
             .Select(path =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -271,7 +244,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         var remainder = unitId[UnitIdPrefix.Length..];
         var separator = remainder.IndexOf('/');
         value = separator < 0 ? remainder : remainder[..separator];
-        return value is "cheats" or "patches" or "states";
+        return value is "states";
     }
 
     internal static bool IsManualState(string path)
@@ -302,15 +275,8 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         return resolved;
     }
 
-    private bool IsStateUnit(string unitId) => _sources.Any(source =>
-        source.Kind == AuxiliaryContentKind.SaveStates && IsInSourceNamespace(unitId, source));
-
-    private static string KindName(AuxiliaryContentKind kind) => kind switch
-    {
-        AuxiliaryContentKind.Cheats => "cheat",
-        AuxiliaryContentKind.Patches => "patch",
-        _ => "save state",
-    };
+    private bool IsStateUnit(string unitId) =>
+        _sources.Any(source => IsInSourceNamespace(unitId, source));
 
     private static string EncodeRelativePath(string path) => string.Join('/', path
         .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries)

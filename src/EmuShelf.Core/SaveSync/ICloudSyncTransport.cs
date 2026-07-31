@@ -46,8 +46,14 @@ public interface ICloudSyncTransport
     /// save. Called once at the end of a sync.
     ///
     /// This is where a sync that moves real data spends its time, so implementations report the
-    /// transfer's progress as a 0-100 percentage when the provider tells them; a caller that does
-    /// not care passes null.
+    /// transfer's progress as it goes; a caller that does not care passes null.
+    ///
+    /// Implementations that can commit incrementally should: a flush that only becomes durable at
+    /// the very end makes every interrupted pass lose all of its uploads and re-send them next
+    /// time, which on a slow provider is the difference between a sync that converges and one that
+    /// never does.
     /// </summary>
-    Task FlushAsync(IProgress<int>? transferProgress = null, CancellationToken cancellationToken = default);
+    Task FlushAsync(
+        IProgress<SaveTransferProgress>? transferProgress = null,
+        CancellationToken cancellationToken = default);
 }

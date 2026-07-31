@@ -79,7 +79,6 @@ public sealed record SaveProviderDescriptor(
     string OverridePlaceholder,
     Func<SaveProviderContext, ISaveLocationProvider?> CreateProvider,
     Func<ISaveLocationProvider, CancellationToken, Task<SaveProviderDetection>> DetectAsync,
-    bool SupportsCheatsAndPatches = false,
     bool SupportsSaveStates = false);
 
 /// <summary>The supported save-sync platforms, in the order Settings presents them.</summary>
@@ -126,7 +125,6 @@ public static class SaveProviderRegistry
                         : "Cards are synced per slot and card type. A machine whose DuckStation uses a different card " +
                           "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
             },
-            SupportsCheatsAndPatches: true,
             SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
@@ -147,7 +145,6 @@ public static class SaveProviderRegistry
                 new SaveProviderDetection(
                     await ((Pcsx2SaveLocationProvider)provider)
                         .GetMemoryCardsDirectoryAsync(cancellationToken)),
-            SupportsCheatsAndPatches: true,
             SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
@@ -185,7 +182,6 @@ public static class SaveProviderRegistry
                           $"EmuShelf syncs {profile}; choose another account's folder above to sync that one instead."
                         : null);
             },
-            SupportsCheatsAndPatches: true,
             SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
@@ -213,7 +209,6 @@ public static class SaveProviderRegistry
                 new SaveProviderDetection(
                     await ((PpssppSaveLocationProvider)provider)
                         .GetSaveDataDirectoryAsync(cancellationToken)),
-            SupportsCheatsAndPatches: true,
             SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
@@ -341,7 +336,6 @@ public static class SaveProviderRegistry
                           "will not find them until you do.") +
                     perGame + duplicates);
             },
-            SupportsCheatsAndPatches: true,
             SupportsSaveStates: true);
     }
 
@@ -353,74 +347,38 @@ public static class SaveProviderRegistry
     public static IReadOnlyList<string> SystemIds { get; } = All.Select(descriptor => descriptor.SystemId).ToArray();
 
     /// <summary>Adds the optional, per-file namespaces selected for one platform.</summary>
+    /// <remarks>
+    /// Save states only. Cheats and patches were carried here too, sourced from each emulator's
+    /// whole cheats/patches folder — which on DuckStation and PCSX2 is the community database the
+    /// emulator ships and can redownload, not anything the user wrote. That put ~5,900 files
+    /// averaging a few KB each into every manual sync, and on a per-file-metered provider those
+    /// files, not the saves, were the entire cost of the pass. They are not user data and are no
+    /// longer synced; see DECISIONS.md.
+    /// </remarks>
     internal static ISaveLocationProvider WithOptionalContent(
         SaveProviderDescriptor descriptor,
         ISaveLocationProvider saves,
         SaveProviderContext context,
-        bool includeCheatsAndPatches,
         bool includeSaveStates)
     {
+        if (!includeSaveStates || !descriptor.SupportsSaveStates)
+            return saves;
+
         var sources = new List<AuxiliaryFileSource>();
-        if (includeCheatsAndPatches && descriptor.SupportsCheatsAndPatches)
-            AddCheatAndPatchSources(saves, sources);
-        if (includeSaveStates && descriptor.SupportsSaveStates)
-            AddStateSources(saves, sources);
+        AddStateSources(saves, sources);
         if (sources.Count == 0)
             return saves;
 
-        StateCompatibility? compatibility = null;
-        if (includeSaveStates)
-        {
-            var coreVersion = ResolveCoreVersion(context);
-            var emulatorVersion = saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion)
-                ? null
-                : ResolveEmulatorVersion(context);
-            compatibility = StateCompatibility.Create(
-                EmulatorId(saves),
-                emulatorVersion,
-                coreVersion,
-                ResolveEmulatorArchitecture(context));
-        }
+        var coreVersion = ResolveCoreVersion(context);
+        var emulatorVersion = saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion)
+            ? null
+            : ResolveEmulatorVersion(context);
+        var compatibility = StateCompatibility.Create(
+            EmulatorId(saves),
+            emulatorVersion,
+            coreVersion,
+            ResolveEmulatorArchitecture(context));
         return new AuxiliarySyncProvider(saves, sources, compatibility);
-    }
-
-    private static void AddCheatAndPatchSources(
-        ISaveLocationProvider provider,
-        ICollection<AuxiliaryFileSource> sources)
-    {
-        switch (provider)
-        {
-            case DuckStationSaveLocationProvider duckStation:
-                sources.Add(Source(AuxiliaryContentKind.Cheats, "cheats", Root(duckStation.GetUserDirectoryAsync, "cheats"), ".cht"));
-                sources.Add(Source(AuxiliaryContentKind.Patches, "patches", Root(duckStation.GetUserDirectoryAsync, "patches"), ".cht"));
-                break;
-            case Pcsx2SaveLocationProvider pcsx2:
-                sources.Add(Source(AuxiliaryContentKind.Cheats, "cheats", token => Content(pcsx2, token).Cheats, ".pnach"));
-                sources.Add(Source(AuxiliaryContentKind.Patches, "patches", token => Content(pcsx2, token).Patches, ".pnach"));
-                break;
-            case PpssppSaveLocationProvider ppsspp:
-                sources.Add(Source(
-                    AuxiliaryContentKind.Cheats,
-                    "cheats",
-                    token => Path.Combine(Await(ppsspp.GetMemoryStickDirectoryAsync(token)), "PSP", "Cheats"),
-                    ".ini"));
-                break;
-            case Rpcs3SaveLocationProvider rpcs3:
-                sources.Add(new AuxiliaryFileSource(
-                    AuxiliaryContentKind.Patches,
-                    "patches",
-                    token => Content(rpcs3, token).Patches,
-                    path => Path.GetFileName(path).Equals("patch.yml", StringComparison.OrdinalIgnoreCase),
-                    Recursive: false));
-                break;
-            case RetroArchSaveLocationProvider retroArch:
-                sources.Add(Source(
-                    AuxiliaryContentKind.Cheats,
-                    "cheats",
-                    token => Await(retroArch.GetContentDirectoriesAsync(token)).Cheats,
-                    ".cht"));
-                break;
-        }
     }
 
     private static void AddStateSources(
@@ -453,21 +411,10 @@ public static class SaveProviderRegistry
             sources.Add(source);
     }
 
-    private static AuxiliaryFileSource Source(
-        AuxiliaryContentKind kind,
-        string unitNamespace,
-        Func<CancellationToken, string?> root,
-        params string[] extensions) =>
-        new(kind, unitNamespace, root, path => HasExtension(path, extensions));
-
     private static AuxiliaryFileSource State(
         Func<CancellationToken, string?> root,
         Func<string, bool> include) =>
-        new(
-            AuxiliaryContentKind.SaveStates,
-            "states",
-            root,
-            path => AuxiliarySyncProvider.IsManualState(path) && include(path));
+        new("states", root, path => AuxiliarySyncProvider.IsManualState(path) && include(path));
 
     private static Func<CancellationToken, string?> Root(
         Func<CancellationToken, Task<string>> root,

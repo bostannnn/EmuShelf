@@ -123,16 +123,29 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     public void OptionalContent_IsOptIn()
     {
         var defaults = new CloudSaveSyncSettings().GetLocation("playstation2");
-        Assert.False(defaults.SyncCheatsAndPatches);
         Assert.False(defaults.SyncSaveStates);
 
-        var enabled = new CloudSaveSyncSettings().WithOptionalContent(
-            "playstation2",
-            syncCheatsAndPatches: true,
-            syncSaveStates: true).GetLocation("playstation2");
+        var enabled = new CloudSaveSyncSettings()
+            .WithOptionalContent("playstation2", syncSaveStates: true)
+            .GetLocation("playstation2");
 
-        Assert.True(enabled.SyncCheatsAndPatches);
         Assert.True(enabled.SyncSaveStates);
+    }
+
+    // Cheats and patches are no longer synced, so the flag is gone from the record. A settings file
+    // written by a build that had it must still load, and must not disturb the state opt-in beside it.
+    [Fact]
+    public void RemovedCheatsAndPatchesSetting_DoesNotBreakExistingSettingsFiles()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"SaveLocations\":{\"playstation2\":" +
+            "{\"SyncCheatsAndPatches\":true,\"SyncSaveStates\":true}}}}");
+
+        var loaded = new JsonSettingsService(AppPaths).Load();
+
+        Assert.True(loaded.CloudSaveSync.GetLocation("playstation2").SyncSaveStates);
     }
 
     [Fact]
