@@ -130,7 +130,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 SuperNintendoId => HashSuperNintendo(
                     inspected.SourcePath!,
                     cancellationToken),
-                DreamcastId => DreamcastGdiHasher.Hash(
+                DreamcastId => DreamcastDiscHasher.Hash(
                     inspected.SourcePath!,
                     cancellationToken),
                 _ => throw new UnsupportedDiscLayoutException(
@@ -261,13 +261,14 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
             else if (game.SystemId == DreamcastId)
             {
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-                canHash = extension == ".gdi" && DreamcastGdiReader.TryRecognize(sourcePath);
+                canHash = DreamcastDisc.IsSupportedExtension(extension) &&
+                          DreamcastDisc.TryRecognize(sourcePath);
                 if (!canHash)
-                    error = extension == ".gdi"
-                        ? "This GDI set does not have a verified Dreamcast data track."
+                    error = DreamcastDisc.IsSupportedExtension(extension)
+                        ? "This image does not have a verified Dreamcast data track."
                         : $"{extension.ToUpperInvariant()} needs a verified Dreamcast track reader.";
                 if (canHash)
-                    dependencies.AddRange(DreamcastGdiReader.GetReferencedFiles(sourcePath));
+                    dependencies.AddRange(DreamcastDisc.GetReferencedFiles(sourcePath));
             }
             else
             {

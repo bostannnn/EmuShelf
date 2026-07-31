@@ -2644,3 +2644,38 @@ spent the whole pre-launch budget on the queue and stalled the post-exit pass, w
 behind a manual sync indefinitely. The launch proceeds on the saves already on disk exactly as it
 does when a pass fails, and the manual pass in flight covers that system anyway. Manual syncs are
 now cancellable from Settings, which is safe precisely because the flush commits in batches.
+
+## 2026-07-31 — Dreamcast accepts CHD by reading the container's own track table
+
+CHD joins `.gdi` as a supported Dreamcast packaging. The earlier decision deferred it until a
+logical-track reader existed with parity fixtures; this is that reader. A CHD is accepted only when
+its metadata declares a track layout and a declared data track really begins with the
+`SEGA SEGAKATANA` IP.BIN marker, so the extension — shared with PlayStation, PS2, and PSP — is
+never treated as evidence. A validated Dreamcast image now vetoes the PlayStation systems for that
+file exactly as PARAM.SFO evidence already vetoed them for PSP.
+
+Three properties of chdman's GD-ROM layout drive the reader, each verified by round-tripping real
+discs back to GDI sets with chdman 0.249 and requiring identical reads:
+
+- A track's declared `FRAMES` accumulate into the next track's disc address, which is what lands
+  the high-density track on LBA 45000. `PAD` is the tail of that extent the dump never stored.
+- Every track is stored on a four-frame boundary, so a track whose extent is not a multiple of four
+  shifts each later track's physical position away from its disc address. In the committed fixture,
+  as on a real disc, track 03 addresses 45000 but lives at frame 45004.
+- The low-density area opens with an IP.BIN copy of its own. The boot header is the first one at or
+  past LBA 45000, mirroring the GDI reader's choice of track 03 over track 01; a Dreamcast disc
+  pressed as a plain CD has no such area and keeps its single header.
+
+Each frame's user data is located from the track's declared type (`MODE1_RAW` and the rest), not
+from the frame's content. The content heuristic the PlayStation reader uses cannot recognize a
+sync-stripped frame past 99 minutes, where the encoder's own minutes field stops being valid BCD —
+and a GD-ROM is 122 minutes long, so most of every disc is past that point. The heuristic itself is
+unchanged, so no PlayStation hash is invalidated.
+
+A Dreamcast CHD is catalogued by its IP.BIN product number alone. Redump's SHA-1 covers a track
+file's raw 2352-byte frames, and this reader deliberately does not regenerate the sync and ECC
+bytes the CD codecs strip, so a hash taken from a CHD could not match the catalogue. The serial
+fallback already exists for GDI sets and stays disabled for images whose own name or folder labels
+a translation, patch, or hack. The RetroAchievements algorithm version is unchanged: the hash is
+IP.BIN plus the boot executable however the disc is packaged, so a GDI set converted to CHD keeps
+its stored hash.

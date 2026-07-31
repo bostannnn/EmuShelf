@@ -889,6 +889,11 @@ generalized.
 - [x] Add strict `.gdi` descriptor discovery for complete, read-only Dreamcast track sets. The
       primary track must validate its IP.BIN marker; loose tracks, CDI, and CHD remain unsupported
       until their logical-track behavior has parity fixtures.
+- [x] Add `.chd` support on the same terms: the container's own track table places the
+      high-density area, a declared data track must validate its IP.BIN marker, and a validated
+      image rules out the PlayStation systems that share the extension. Import, folder scanning,
+      metadata, and the rcheevos hash all reach it through one reader, so a GDI set and a CHD of
+      the same disc identify and hash identically. CDI remains unsupported.
 - [x] Register Dreamcast as a RetroArch/core system and retain its existing licensed navigation
       artwork. Use a portrait `0.708` (width÷height) cover frame matching representative 512×722
       Libretro box art, so downloaded covers and the missing-art placeholder have the same ratio.

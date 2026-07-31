@@ -21,7 +21,7 @@ public static class KnownMetadataProfiles
     private static readonly IGameIdentifierExtractor SuperNintendoExtractor =
         new SuperNintendoRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor DreamcastExtractor =
-        new DreamcastGdiIdentifierExtractor();
+        new DreamcastIdentifierExtractor();
 
     // Cover repos are fetched through the jsDelivr CDN rather than raw.githubusercontent.com:
     // GitHub's raw host enforces a per-IP anonymous rate limit that a whole library's worth of

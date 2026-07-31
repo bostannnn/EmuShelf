@@ -294,7 +294,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Collection(
             profile.ArtworkProviders,
             provider => Assert.Equal("libretro-thumbnails", provider.Id));
-        Assert.IsType<DreamcastGdiIdentifierExtractor>(profile.IdentifierExtractor);
+        Assert.IsType<DreamcastIdentifierExtractor>(profile.IdentifierExtractor);
         // An unreadable path yields no evidence rather than a filename guess.
         Assert.Empty(profile.IdentifierExtractor.Extract(
             NewGame("dreamcast", Path.Combine(BaseDirectory, "absent.gdi"))));
