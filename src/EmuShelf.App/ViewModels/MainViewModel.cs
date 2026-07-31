@@ -90,6 +90,7 @@ public partial class MainViewModel : ViewModelBase
     private bool _isFrontendSuspended;
     private DateTimeOffset _gamepadInputGuardUntil;
     private string _appliedSearchText = string.Empty;
+    private string? _displayedScopeKey;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
@@ -183,6 +184,10 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool IsSearchEmpty { get; set; }
+
+    /// <summary>True between a scope change and its games arriving; suppresses the empty states.</summary>
+    [ObservableProperty]
+    public partial bool IsLibraryLoading { get; set; }
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
@@ -295,16 +300,31 @@ public partial class MainViewModel : ViewModelBase
     private const double MinCoverWidth = 188;
     private const double MaxCoverWidth = 232;
     private const double CoverColumnSpacing = 28;    // matches UniformGridLayout MinColumnSpacing
-    private const double GridHorizontalPadding = 60; // ItemsRepeater Margin left(32) + right(28)
 
-    /// <summary>Current width of the library grid area; the cover width is derived from it.</summary>
+    // Each mode measures a different element, so each has its own inset. Desktop measures the
+    // ScrollViewer, and the ItemsRepeater inside it carries Margin 32/28 that the measurement
+    // still includes. Gamepad measures its own ScrollViewer, whose Margin is already excluded
+    // from its arranged size, and its repeater adds none — so there is nothing left to subtract.
+    // Sharing one constant between them silently mis-sized whichever mode it did not describe.
+    private const double DesktopGridHorizontalPadding = 60;
+    private const double GamepadGridHorizontalPadding = 0;
+
+    /// <summary>Current width of the desktop library grid area.</summary>
     [ObservableProperty]
     public partial double LibraryViewportWidth { get; set; }
 
-    /// <summary>Cover width computed for the current viewport. The grid layout uses it as the
-    /// uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
+    /// <summary>Cover width computed for the active mode's viewport. The grid layout uses it as
+    /// the uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
     [ObservableProperty]
     public partial double GridCoverWidth { get; set; }
+
+    // Only one mode is on screen at a time, so exactly one viewport is authoritative. Reading the
+    // active one — rather than letting whichever view last raised SizeChanged win — is what keeps
+    // a mode switch from sizing tiles for the mode that is no longer visible.
+    private double ActiveViewportWidth => IsGamepadMode ? GamepadViewportWidth : LibraryViewportWidth;
+
+    private double ActiveGridHorizontalPadding =>
+        IsGamepadMode ? GamepadGridHorizontalPadding : DesktopGridHorizontalPadding;
 
     partial void OnLibraryViewportWidthChanged(double value) => UpdateCoverLayout();
 
@@ -1485,9 +1505,9 @@ public partial class MainViewModel : ViewModelBase
         if (value <= 0)
             return;
 
-        LibraryViewportWidth = value;
-        GamepadColumnCount = Math.Max(1, (int)((Math.Max(0, value - GridHorizontalPadding) + CoverColumnSpacing) /
-                                               (GridCoverWidth + CoverColumnSpacing)));
+        // Deliberately does not write LibraryViewportWidth: that field is the desktop's, and
+        // overwriting it made the desktop grid inherit the gamepad viewport after a mode switch.
+        UpdateCoverLayout();
     }
 
     private void UpdateGamepadPlatformState()
@@ -1549,6 +1569,12 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsGamepadModeChanged(bool value)
     {
+        // The newly visible mode has its own viewport and inset, so the covers have to be re-sized
+        // for it here. Waiting for that view's SizeChanged is not enough: if its width has not
+        // changed since it was last shown, the event never comes and the tiles keep the other
+        // mode's dimensions.
+        UpdateCoverLayout();
+
         if (value)
         {
             IsGamepadControllerInputActive = true;
@@ -1649,18 +1675,27 @@ public partial class MainViewModel : ViewModelBase
     private void UpdateCoverLayout(bool applyVisibleShelf = true)
     {
         var coverWidth = MinCoverWidth;
-        var available = LibraryViewportWidth - GridHorizontalPadding;
+        var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
         if (available >= MinCoverWidth)
         {
-            var columns = Math.Max(
-                1,
-                (int)((available + CoverColumnSpacing) / (MinCoverWidth + CoverColumnSpacing)));
+            var columns = ColumnsThatFit(available, MinCoverWidth);
             coverWidth = Math.Floor((available - (columns - 1) * CoverColumnSpacing) / columns);
             coverWidth = Math.Clamp(coverWidth, MinCoverWidth, MaxCoverWidth);
         }
 
         // Drives the layout's cell width; the view sets UniformGridLayout.MinItemWidth from it.
         GridCoverWidth = coverWidth;
+
+        // D-pad up/down steps a whole row, so this must be the number of columns the layout
+        // actually renders. It is derived from the same width and inset the cells are sized from:
+        // when the two disagreed by one, Up/Down landed on the wrong tile and the reveal scrolled
+        // to it, which read as the grid jumping and games vanishing.
+        if (IsGamepadMode && GamepadViewportWidth > 0)
+        {
+            GamepadColumnCount = ColumnsThatFit(
+                Math.Max(0, GamepadViewportWidth - GamepadGridHorizontalPadding),
+                coverWidth);
+        }
 
         if (_systemGames.Count == 0)
             return;
@@ -1673,6 +1708,14 @@ public partial class MainViewModel : ViewModelBase
         if (applyVisibleShelf)
             ApplyVisibleCoverShelf(coverWidth);
     }
+
+    /// <summary>
+    /// How many cells of <paramref name="itemWidth"/> fit in <paramref name="available"/>, matching
+    /// UniformGridLayout's own arithmetic so the view model and the layout never disagree.
+    /// </summary>
+    private static int ColumnsThatFit(double available, double itemWidth) => Math.Max(
+        1,
+        (int)((available + CoverColumnSpacing) / (itemWidth + CoverColumnSpacing)));
 
     private void ApplyVisibleCoverShelf(double coverWidth)
     {
@@ -1693,6 +1736,16 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var generation = ++_loadGeneration;
+
+        // The rail, the title and the count all move to the new platform the instant the selection
+        // changes, but the games behind them only arrive two awaits later. Drop the outgoing
+        // platform's tiles now so that gap shows an empty grid rather than one platform's library
+        // sitting under another platform's name. A reload of the scope already on screen (an
+        // availability pass, a rescan) keeps its tiles, so refreshes do not flash.
+        var scopeKey = DescribeScope(scope, system);
+        if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
+            BeginScopeChange();
+
         try
         {
             var populatedSystemIds = await Task.Run(ReadPopulatedSystemIds);
@@ -1787,12 +1840,41 @@ public partial class MainViewModel : ViewModelBase
             // afterward and performs the authoritative visible-shelf pass.
             UpdateCoverLayout(applyVisibleShelf: false);
             ApplyFilter();
+            _displayedScopeKey = scopeKey;
+            IsLibraryLoading = false;
         }
         catch (Exception ex)
         {
             _logger.Error("Could not load the current library view.", ex);
             SetStatus($"Could not load library: {ex.Message}", StatusSeverity.Error);
+            // Only the newest load may lower the flag; an older one failing must not un-blank a
+            // view that a newer load is still filling.
+            if (generation == _loadGeneration)
+                IsLibraryLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Identifies what the library is showing, so a reload can tell "the user moved to a different
+    /// platform" from "re-read the platform already on screen".
+    /// </summary>
+    private static string DescribeScope(LibraryScope scope, GameSystem? system) =>
+        scope == LibraryScope.System ? $"system:{system?.Id}" : scope.ToString();
+
+    /// <summary>
+    /// Empties the visible grid for an incoming scope. The empty-library and no-results panels are
+    /// suppressed meanwhile: nothing is known yet, and claiming the platform is empty before it has
+    /// been read is its own wrong answer. <see cref="ApplyFilter"/> restores all of it.
+    /// </summary>
+    private void BeginScopeChange()
+    {
+        IsLibraryLoading = true;
+        ClearSelection();
+        FocusedGame = null;
+        Games.Clear();
+        HasGames = false;
+        IsLibraryEmpty = false;
+        IsSearchEmpty = false;
     }
 
     // Resolves each game's achievement presentation from the cached links + progress and the

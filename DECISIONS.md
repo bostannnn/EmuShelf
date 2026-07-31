@@ -2679,3 +2679,45 @@ fallback already exists for GDI sets and stays disabled for images whose own nam
 a translation, patch, or hack. The RetroAchievements algorithm version is unchanged: the hash is
 IP.BIN plus the boot executable however the disc is packaged, so a GDI set converted to CHD keeps
 its stored hash.
+
+## 2026-07-29 — Each library mode owns its cover sizing, and a scope change empties the grid first
+
+Two faults reported together from a Steam Deck: switching desktop → Gamepad produced crowded,
+overlapping tiles with games that "straight up disappear", and LB/RB sometimes showed one
+platform's games under another platform's name. They turned out to be independent, and the second
+made the first look worse.
+
+Cover sizing was one set of state serving two grids. `LibraryViewportWidth`, `GridCoverWidth` and a
+single `GridHorizontalPadding` were shared, and the Gamepad viewport was assigned *into*
+`LibraryViewportWidth`, so whichever grid last raised `SizeChanged` defined the size for the grid
+that was actually on screen. The inset was wrong for one of them by construction: the desktop
+measures a ScrollViewer whose ItemsRepeater carries a 32/28 margin inside it, while the Gamepad
+ScrollViewer's own margin is already excluded from its arranged size and its repeater adds none —
+so the 60px was subtracted from a width that never contained it.
+
+Each mode now has its own viewport and its own inset, and the cover width is derived from whichever
+is active. The consequence that mattered was not the cover width but `GamepadColumnCount`: D-pad
+up/down steps a whole row, and the stride was computed from the mismatched numbers. Tests across
+four viewport widths show it disagreed with the rendered column count at *every* one, which is why
+Up/Down landed on the wrong tile and the reveal scrolled the grid to it.
+
+The second fault was a visible window, not bad data. The rail, title and count move to the new
+platform the instant the selection changes; `Games` was only replaced two awaits later, and the
+code already said so ("Games still contains the previous scope here"). A scope change now empties
+the visible grid before the first await, and the empty-library and no-results panels are suppressed
+until the read completes — claiming a platform is empty before reading it is its own wrong answer.
+Re-reading the scope already on screen deliberately keeps its tiles, so availability passes and
+rescans do not flash.
+
+Related: the cover crossfade now cuts rather than fades when a virtualized tile is recycled onto a
+different game. The fade is there to soften a cover arriving from disk; on recycling it dissolved
+the previous game's artwork over the incoming tile, which during fast LB/RB read as the wrong
+artwork appearing and made the stale window above considerably more visible.
+
+Two things deliberately left alone after checking them. The Gamepad tile's fixed 58px title row
+does not clip: the title is already `MaxLines="2"` with ellipsis, which cannot exceed it, and
+making the row a minimum would give tiles variable heights that `UniformGridLayout` — which derives
+one uniform cell height — cannot represent, reintroducing the overlap. And `RefreshNavigationSystems`
+already runs after the load-generation check, while `MovePlatformAsync` reads `NavigationSystems`
+synchronously with no await between the lookup and the index, so a rebuild cannot move the rail
+under a platform switch.

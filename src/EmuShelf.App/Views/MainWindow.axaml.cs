@@ -51,6 +51,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        // A mode switch re-sizes the covers for the newly visible viewport without either grid
+        // necessarily raising SizeChanged, so the cell width has to follow the value itself.
+        if (e.PropertyName is nameof(MainViewModel.GridCoverWidth) &&
+            _gamepadViewModel is { } sizingViewModel)
+        {
+            ApplyCellWidth(sizingViewModel);
+            return;
+        }
+
         if (e.PropertyName is not (nameof(MainViewModel.SelectedSystem) or
             nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.IsGamepadRailFocused) or
             nameof(MainViewModel.GamepadRailIndex) or nameof(MainViewModel.GamepadOverlay) or
@@ -398,8 +407,7 @@ public partial class MainWindow : Window
             return;
 
         viewModel.LibraryViewportWidth = e.NewSize.Width;
-        if (LibraryRepeater.Layout is UniformGridLayout layout)
-            layout.MinItemWidth = viewModel.GridCoverWidth;
+        ApplyCellWidth(viewModel);
     }
 
     private void OnGamepadLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
@@ -408,8 +416,22 @@ public partial class MainWindow : Window
             return;
 
         viewModel.GamepadViewportWidth = e.NewSize.Width;
-        if (GamepadRepeater.Layout is UniformGridLayout layout)
-            layout.MinItemWidth = viewModel.GridCoverWidth;
+        ApplyCellWidth(viewModel);
+    }
+
+    // Both grids take their cell width from the one cover width the view model computed for the
+    // mode that is on screen. Applying it to both — rather than only to whichever grid raised
+    // SizeChanged — means the visible grid's cells can never be left sized for the other mode,
+    // which is what produced overlapping tiles and a column pushed off the edge after a switch.
+    private void ApplyCellWidth(MainViewModel viewModel)
+    {
+        if (viewModel.GridCoverWidth <= 0)
+            return;
+
+        if (LibraryRepeater.Layout is UniformGridLayout desktopLayout)
+            desktopLayout.MinItemWidth = viewModel.GridCoverWidth;
+        if (GamepadRepeater.Layout is UniformGridLayout gamepadLayout)
+            gamepadLayout.MinItemWidth = viewModel.GridCoverWidth;
     }
 
     // View wiring only: virtualization decides when a cover control is realized; the
@@ -420,7 +442,43 @@ public partial class MainWindow : Window
     // A virtualized element may remain attached while ItemsRepeater gives it a new
     // data context after a collection reset. Request the replacement game's cover too.
     private void OnGameCoverDataContextChanged(object? sender, EventArgs e)
-        => RequestGameCover(sender);
+    {
+        SnapCoverLayers(sender);
+        RequestGameCover(sender);
+    }
+
+    /// <summary>
+    /// Cuts the cover crossfade for one recycling.
+    ///
+    /// The fade exists to soften a cover arriving from disk. Recycling is not that: the control is
+    /// being handed a different game, and animating it dissolves the previous game's artwork over
+    /// the incoming tile. During fast scrolling or a run of LB/RB that reads as the wrong art
+    /// briefly appearing. Dropping the transitions here lets the class bindings that follow this
+    /// event apply as a straight cut; they are restored once that has happened, so the next real
+    /// cover load still fades.
+    /// </summary>
+    private static void SnapCoverLayers(object? sender)
+    {
+        if (sender is not Control root)
+            return;
+
+        foreach (var layer in root.GetSelfAndVisualDescendants().OfType<Control>())
+        {
+            if (!layer.Classes.Contains("cover-image") && !layer.Classes.Contains("cover-placeholder"))
+                continue;
+
+            var transitions = layer.Transitions;
+            if (transitions is null)
+                continue;
+
+            layer.Transitions = null;
+            // Loaded runs after the bindings this event precedes, so the opacity change lands
+            // while the transitions are detached and is applied instantly.
+            Dispatcher.UIThread.Post(
+                () => layer.Transitions ??= transitions,
+                DispatcherPriority.Loaded);
+        }
+    }
 
     private static void RequestGameCover(object? sender)
     {
