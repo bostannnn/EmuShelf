@@ -144,6 +144,27 @@ public class ScreenScraperClientTests
     }
 
     [Fact]
+    public async Task KnownDailyQuota_PreventsTheHttpRequest()
+    {
+        var requestCount = 0;
+        using var httpClient = new HttpClient(new StubHandler(_ =>
+        {
+            requestCount++;
+            return JsonResponse(GameFixture());
+        }));
+        var coordinator = new ScreenScraperRequestCoordinator();
+        coordinator.ObserveQuota(new ScreenScraperQuota(3, 100, 100, 1, 50, null));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials, coordinator);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
+
+        Assert.Equal(ScreenScraperRequestStatus.DailyQuotaExceeded, result.Status);
+        Assert.Equal(0, requestCount);
+    }
+
+    [Fact]
     public async Task MetadataMapper_SelectsConfiguredRegionsLanguagesAndHdMedia()
     {
         using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));

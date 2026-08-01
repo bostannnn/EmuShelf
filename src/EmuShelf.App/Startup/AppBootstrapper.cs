@@ -46,6 +46,11 @@ public sealed class AppBootstrapper
     public IGameDetailsStore GameDetailsStore { get; }
     public IGameScrapeProviderRegistry ScrapeProviders { get; }
     public IScreenScraperCredentialStore ScreenScraperCredentialStore { get; }
+    public IGameFileFingerprintStore GameFileFingerprintStore { get; }
+    public IScreenScraperFingerprintService ScreenScraperFingerprints { get; }
+    public ScreenScraperRequestCoordinator ScreenScraperRequests { get; }
+    public IScreenScraperClient? ScreenScraperClient { get; }
+    public IScreenScraperPreviewService? ScreenScraperPreview { get; }
     public IRetroAchievementsStore RetroAchievementsStore { get; }
     public IRetroAchievementsReadStore RetroAchievementsReadStore { get; }
     public IRetroAchievementsProgressStore RetroAchievementsProgressStore { get; }
@@ -108,6 +113,23 @@ public sealed class AppBootstrapper
         GameDetailsStore = new SqliteGameDetailsStore(database, PathResolver);
         ScrapeProviders = new GameScrapeProviderRegistry(KnownScrapeProviders.All);
         ScreenScraperCredentialStore = ScreenScraperCredentialStoreFactory.Create(Paths, Logger);
+        GameFileFingerprintStore = new SqliteGameFileFingerprintStore(database, PathResolver);
+        ScreenScraperFingerprints = new ScreenScraperFingerprintService(GameFileFingerprintStore);
+        ScreenScraperRequests = new ScreenScraperRequestCoordinator();
+        if (ScreenScraperDeveloperCredentialSource.TryLoadFromEnvironment(out var developerCredentials))
+        {
+            ScreenScraperClient = new ScreenScraperClient(
+                new HttpClient { Timeout = TimeSpan.FromSeconds(45) },
+                developerCredentials!,
+                ScreenScraperRequests);
+            ScreenScraperPreview = new ScreenScraperPreviewService(
+                MetadataStore,
+                GameDetailsStore,
+                ScreenScraperCredentialStore,
+                ScreenScraperFingerprints,
+                ScreenScraperClient,
+                KnownScreenScraperProfiles.All);
+        }
         var retroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
         RetroAchievementsStore = retroAchievementsStore;
         RetroAchievementsReadStore = retroAchievementsStore;

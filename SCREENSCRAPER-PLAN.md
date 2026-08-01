@@ -7,7 +7,7 @@ Implemented foundation (2026-08-01):
 - capability-aware registry and independent toggles for built-in enrichment, ScreenScraper, and
   DuckDuckGo artwork search;
 - on-demand metadata values, localized descriptions, media assets, provider matches, and
-  field/selection provenance, persisted by SQLite schema v13 without expanding the hot `Game`
+  field/selection provenance, persisted without expanding the hot `Game`
   projection;
 - ScreenScraper settings for all NeoStation-equivalent data fields and the initial box-front,
   screenshot, wheel, and fanart media set;
@@ -17,10 +17,19 @@ Implemented foundation (2026-08-01):
 - DPAPI-protected ScreenScraper account storage on Windows and session-only storage on other
   platforms; developer credentials are environment-provisioned and remain absent from source,
   settings, SQLite, and logs.
+- SQLite schema v14 provider-scoped fingerprint caching; CRC32, MD5, and SHA-1 are calculated in
+  one cancellable whole-file pass only for explicitly supported raw formats, then invalidated by
+  portable path, byte size, or last-write changes;
+- one request coordinator that starts at a single connection, adopts returned `maxthreads` within
+  an EmuShelf ceiling, blocks known daily/failed-lookup exhaustion before HTTP, and carries
+  rate-limit cooldown across callers;
+- a single-game preview service that combines cached evidence, exact API results, metadata/media
+  candidates, existing details, match provenance, and quota state without applying library data.
 
 Still gated on the requested developer approval: validate the provisional system mapping against
 `systemesListe.php`, capture sanitized real response variants, record the approved attribution and
-caching terms, and enable any live composition/UI path. No live request is made at startup.
+caching terms, and expose the live composition through UI. The live client is composed only when
+all three developer environment values are present and still makes no request at startup.
 
 Date researched: 2026-08-01
 

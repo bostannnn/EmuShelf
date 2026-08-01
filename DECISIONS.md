@@ -2956,3 +2956,24 @@ other platforms. Developer credentials come from the build/development environme
 committed or stored in settings/SQLite/logs. The provisional version-1 system mapping and fixture
 parser may be developed without secrets, but live activation, attribution/caching behavior, and
 release provisioning remain gated on ScreenScraper's written approval.
+
+## 2026-08-01 — ScreenScraper fingerprints describe their byte scope; containers are never guessed
+
+A hash algorithm name is not enough evidence that the hashed bytes match ScreenScraper's ROM
+identity. EmuShelf therefore caches provider-scoped fingerprints with their source path, whole-file
+scope, byte size, last-write value, CRC32, MD5, SHA-1, and calculation time. All three hashes are
+calculated in one cancellable read after explicit consent. A cache entry is reused only while its
+portable path, size, timestamp, and scope still match; game files are opened read-only and their
+bytes/timestamps are verified unchanged by tests.
+
+Only an explicit per-system extension allowlist enters the whole-file path. Text playlists and
+descriptors, CHD/CSO/RVZ/WBFS and similar compressed containers, arcade ZIPs, Dreamcast GDI sets,
+and PS3 directories are rejected rather than hashed as if their container bytes were canonical ROM
+bytes. Those formats wait for a documented logical-content or approved serial rule. Preview may
+persist this fingerprint cache, but it never applies metadata, media, or a provider match.
+
+ScreenScraper requests share one process-wide coordinator. It begins at one active request, adopts
+the returned account `maxthreads` only up to EmuShelf's safety ceiling, locally reserves requests so
+parallel callers cannot overshoot a known remaining daily allowance, stops before HTTP on exhausted
+daily/failed-lookup quotas, and carries a 429 cooldown to queued callers. Single-game and future
+batch flows must use this same gate rather than maintaining separate counters.

@@ -121,3 +121,45 @@ public interface IScreenScraperClient
         ScreenScraperGameRequest request,
         CancellationToken cancellationToken = default);
 }
+
+public enum ScreenScraperPreviewStatus
+{
+    Success,
+    ProviderDisabled,
+    NotConnected,
+    LibraryGameMissing,
+    UnsupportedSystem,
+    FingerprintConsentRequired,
+    UnsupportedFormat,
+    SourceMissing,
+    SourceChanged,
+    FingerprintFailed,
+    ProviderFailure,
+}
+
+public sealed record ScreenScraperGamePreview(
+    long GameId,
+    GameProviderMatch Match,
+    IReadOnlyList<GameMetadataValue> Metadata,
+    IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> Media,
+    GameDetails ExistingDetails,
+    ScreenScraperQuota? Quota,
+    ScreenScraperFingerprintStatus FingerprintStatus);
+
+public sealed record ScreenScraperPreviewResult(
+    ScreenScraperPreviewStatus Status,
+    ScreenScraperGamePreview? Preview,
+    ScreenScraperRequestStatus? RequestStatus,
+    string? Error)
+{
+    public bool IsSuccess => Status == ScreenScraperPreviewStatus.Success && Preview is not null;
+}
+
+public interface IScreenScraperPreviewService
+{
+    Task<ScreenScraperPreviewResult> PreviewAsync(
+        long gameId,
+        Settings.ScreenScraperSettings settings,
+        bool allowFingerprinting,
+        CancellationToken cancellationToken = default);
+}

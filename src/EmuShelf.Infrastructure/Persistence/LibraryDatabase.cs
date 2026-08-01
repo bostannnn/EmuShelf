@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 13;
+    private const int CurrentSchemaVersion = 14;
 
     private readonly IAppPaths _appPaths;
 
@@ -126,7 +126,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 13)
+        {
             ApplyMigrationV13(connection);
+            version = 13;
+        }
+
+        if (version < 14)
+            ApplyMigrationV14(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -632,6 +638,34 @@ public sealed class LibraryDatabase
             );
 
             UPDATE SchemaVersion SET Version = 13;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV14(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS GameFileFingerprints (
+                GameId INTEGER NOT NULL,
+                ProviderId TEXT NOT NULL COLLATE NOCASE,
+                SourcePath TEXT NOT NULL,
+                Scope INTEGER NOT NULL,
+                FileSize INTEGER NOT NULL,
+                LastWriteUnixMilliseconds INTEGER NOT NULL,
+                Crc32 TEXT NOT NULL,
+                Md5 TEXT NOT NULL,
+                Sha1 TEXT NOT NULL,
+                ComputedUnixMilliseconds INTEGER NOT NULL,
+                PRIMARY KEY (GameId, ProviderId),
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+
+            UPDATE SchemaVersion SET Version = 14;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

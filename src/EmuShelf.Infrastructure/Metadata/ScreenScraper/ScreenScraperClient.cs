@@ -12,13 +12,16 @@ public sealed class ScreenScraperClient : IScreenScraperClient
 
     private readonly HttpClient _httpClient;
     private readonly ScreenScraperDeveloperCredentials _developerCredentials;
+    private readonly ScreenScraperRequestCoordinator _requestCoordinator;
 
     public ScreenScraperClient(
         HttpClient httpClient,
-        ScreenScraperDeveloperCredentials developerCredentials)
+        ScreenScraperDeveloperCredentials developerCredentials,
+        ScreenScraperRequestCoordinator? requestCoordinator = null)
     {
         _httpClient = httpClient;
         _developerCredentials = developerCredentials;
+        _requestCoordinator = requestCoordinator ?? new ScreenScraperRequestCoordinator();
         ValidateDeveloperCredentials(developerCredentials);
     }
 
@@ -84,6 +87,17 @@ public sealed class ScreenScraperClient : IScreenScraperClient
         CancellationToken cancellationToken)
         where T : class
     {
+        var admission = await _requestCoordinator.EnterAsync(cancellationToken);
+        if (admission.Lease is null)
+        {
+            return new ScreenScraperResult<T>(
+                admission.Status,
+                null,
+                _requestCoordinator.LatestQuota,
+                StatusMessage(admission.Status));
+        }
+
+        using var lease = admission.Lease;
         var uri = BuildUri(endpoint, userCredentials, requestParameters);
         try
         {
@@ -96,8 +110,15 @@ public sealed class ScreenScraperClient : IScreenScraperClient
                 cancellationToken);
 
             var mappedStatus = MapStatusCode(response.StatusCode);
+            _requestCoordinator.ObserveStatus(mappedStatus, GetRetryAfter(response));
             if (mappedStatus != ScreenScraperRequestStatus.Success)
-                return new ScreenScraperResult<T>(mappedStatus, null, null, StatusMessage(mappedStatus));
+            {
+                return new ScreenScraperResult<T>(
+                    mappedStatus,
+                    null,
+                    _requestCoordinator.LatestQuota,
+                    StatusMessage(mappedStatus));
+            }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
@@ -122,6 +143,7 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             var quota = responseElement.TryGetProperty("ssuser", out var user)
                 ? ParseQuota(user)
                 : null;
+            _requestCoordinator.ObserveQuota(quota);
             return new ScreenScraperResult<T>(
                 ScreenScraperRequestStatus.Success,
                 data,
@@ -322,6 +344,18 @@ public sealed class ScreenScraperClient : IScreenScraperClient
         ScreenScraperRequestStatus.FailedLookupQuotaExceeded => "The ScreenScraper failed-lookup quota was reached.",
         _ => "ScreenScraper is temporarily unavailable.",
     };
+
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
+    {
+        if (response.Headers.RetryAfter?.Delta is { } delta)
+            return delta;
+        if (response.Headers.RetryAfter?.Date is { } date)
+        {
+            var delay = date - DateTimeOffset.UtcNow;
+            return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
+        }
+        return null;
+    }
 
     private static bool HeaderSucceeded(JsonElement root)
     {
