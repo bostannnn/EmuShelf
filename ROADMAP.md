@@ -1016,7 +1016,24 @@ or launch flow, and the host already owns time/status UI.
    in-window, sectioned Gamepad surface over the existing settings view model. Land General,
    RetroAchievements, Saves, and Texture Packs first; then emulator paths/arguments. Use the
    controller-safe text-entry path for text and keep an explicit OS file-picker handoff only where
-   selecting a native executable or folder is unavoidable.
+   selecting a native executable or folder is unavoidable. The complete Desktop field audit and
+   first in-window slice landed on 2026-08-01: LB/RB changes among those four sections, D-pad owns
+   stable per-section row focus, A edits or activates, B safely cancels or returns, and Save is one
+   Up press from each section's initial row. Text and secrets use focused, masked in-window entry
+   with an automatic host-OSK request where supported and an explicit keyboard/Steam+X fallback;
+   native pickers remain limited to real file/folder selection. The surface reuses the existing
+   settings view model and services, including persistence and destructive-operation confirmation.
+   A populated-library review rejected the initial generic-card presentation on the same day. The
+   replacement is a full-height, proportional two-pane screen with a persistent section rail,
+   pinned Save action, equal-width virtualized rows, recognizable ON/OFF switches, left/right
+   choices, edit/choose affordances, ordinary actions, and visually separate destructive actions.
+   Section and Save actions fill the rail width; START invokes the existing Save command directly,
+   while Up then A remains a tested controller route. General uses Desktop's field wording and
+   values, and real Desktop/Gamepad windows now enforce identical visible mutating-field ids across
+   all four sections so a controller-only field or a missing Desktop field fails validation.
+   Geometry and focus-reveal coverage now exercises real Avalonia windows at 1280x800, 1280x720,
+   and the reported 2048x1152 viewport. Emulator paths/arguments and RPCS3 library maintenance
+   remain the next Phase 2 slice.
 3. **Controller cover search using the existing DuckDuckGo provider.** Reuse M34's explicit,
    bounded `DuckDuckGoArtworkSearchProvider` and safe preview/download pipeline in a Gamepad
    candidate grid. Search and selection stay user-driven; unverified results never enter automatic
@@ -1025,7 +1042,16 @@ or launch flow, and the host already owns time/status UI.
 4. **Full portable themes.** Move beyond Light/Dark plus one accent to complete palettes covering
    backgrounds, panels, text, borders, selection, and focus. Provide a controller-native theme
    gallery and portable `Themes/` import, while A/B/X/Y semantic colors remain stable across every
-   palette.
+   palette. The palette-swap engine and first complete set landed on 2026-08-01: `ThemeCatalog`
+   enumerates System/Light/Dark plus full Nord, OLED, and Cyberpunk palettes, each a flat resource
+   dictionary that redefines every `EmuXxxBrush` token (verified by rendering OLED and Cyberpunk with
+   no hardcoded colour leaking through). `AppThemeService` swaps the active palette as an override
+   dictionary and sets the base `ThemeVariant`; all consumers already use `DynamicResource`, so a swap
+   re-colours the UI live. A controller-native theme gallery is a Themes page in Gamepad Settings, and
+   the Desktop Settings gallery lists the same catalog, so appearance is changeable in both modes. The
+   default accent moved from red to rose so selection/focus no longer reads as the danger colour, and
+   the focused game gained a thicker ring, a themed accent glow, and a subtle lift. Portable `Themes/`
+   import and Fluent per-theme accent chrome remain the open work for this item.
 5. **ScreenScraper.fr integration.** Treat ScreenScraper as a separate authenticated metadata
    provider project, not as the first implementation of the Gamepad picker. Add secure user
    credentials, application/developer credentials, platform-id mapping, hash-first matching with

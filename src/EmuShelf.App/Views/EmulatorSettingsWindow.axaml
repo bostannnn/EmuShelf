@@ -29,6 +29,21 @@
         <Style Selector="ToggleButton.platform-header:checked /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
         </Style>
+        <Style Selector="Button.theme-card">
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="Button.theme-card:pointerover">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+        </Style>
+        <Style Selector="Button.theme-card.selected">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
@@ -78,6 +93,7 @@
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                         </StackPanel>
                         <ToggleSwitch Grid.Column="1"
+                                      AutomationProperties.AutomationId="general.empty-platforms"
                                       OnContent="Show empty" OffContent="Hide empty"
                                       IsChecked="{Binding ShowEmptyPlatforms, Mode=TwoWay}"
                                       VerticalAlignment="Center" />
@@ -98,6 +114,7 @@
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                         </StackPanel>
                         <Button Grid.Row="0" Grid.Column="1" Content="Rescan all consoles"
+                                AutomationProperties.AutomationId="general.rescan"
                                 Command="{Binding RescanAllCommand}"
                                 IsEnabled="{Binding CanRescanAll}"
                                 VerticalAlignment="Center" />
@@ -123,6 +140,7 @@
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                         </StackPanel>
                         <ToggleSwitch Grid.Row="0" Grid.Column="1"
+                                      AutomationProperties.AutomationId="general.metadata-auto"
                                       OnContent="Automatic" OffContent="Manual"
                                       IsChecked="{Binding AutomaticallyFetchMetadataAfterImport, Mode=TwoWay}"
                                       VerticalAlignment="Center" />
@@ -136,6 +154,7 @@
                                              Padding="0" />
                         </StackPanel>
                         <Button Grid.Row="1" Grid.Column="1"
+                                AutomationProperties.AutomationId="general.fetch-metadata"
                                 Content="Fetch missing metadata"
                                 Command="{Binding FetchAllMetadataCommand}"
                                 IsEnabled="{Binding CanFetchAllMetadata}" />
@@ -385,6 +404,7 @@
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     </StackPanel>
                                     <Button x:Name="RefreshRetroAchievementsMatchesButton"
+                                            AutomationProperties.AutomationId="retro.refresh"
                                             Grid.Column="1" Content="Refresh matches"
                                             IsVisible="{Binding HasRetroAchievementsMatchRefresh}"
                                             VerticalAlignment="Center"
@@ -392,6 +412,7 @@
                                             IsEnabled="{Binding CanRefreshRetroAchievementsMatches}"
                                             ToolTip.Tip="Refresh RetroAchievements catalogues and retry every known game match. Unchanged ROMs are not rehashed." />
                                     <Button Grid.Column="2" Content="Disconnect" VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="retro.disconnect"
                                             Command="{Binding DisconnectRetroAchievementsCommand}"
                                             IsEnabled="{Binding !IsRetroAchievementsBusy}" />
                                 </Grid>
@@ -401,6 +422,7 @@
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding RetroAchievementsUsername, Mode=TwoWay}"
+                                             AutomationProperties.AutomationId="retro.username"
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="Your RetroAchievements username" />
@@ -408,6 +430,7 @@
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding RetroAchievementsApiKey, Mode=TwoWay}"
+                                             AutomationProperties.AutomationId="retro.api-key"
                                              PasswordChar="●"
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
@@ -418,6 +441,7 @@
                                                          Padding="0" VerticalAlignment="Center"
                                                          HorizontalAlignment="Left" />
                                         <Button Grid.Column="1" Content="Connect" Classes="accent"
+                                                AutomationProperties.AutomationId="retro.connect"
                                                 Command="{Binding ConnectRetroAchievementsCommand}"
                                                 IsEnabled="{Binding !IsRetroAchievementsBusy}" />
                                     </Grid>
@@ -468,6 +492,7 @@
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <StackPanel Orientation="Horizontal" Spacing="10">
                                             <Button Content="Download rclone" Classes="accent"
+                                                    AutomationProperties.AutomationId="saves.rclone"
                                                     Command="{Binding DownloadRcloneCommand}"
                                                     IsEnabled="{Binding !IsDownloadingRclone}" />
                                             <HyperlinkButton Content="Or get it manually"
@@ -500,18 +525,22 @@
                                                 </Grid>
                                                 <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="54,0,0,0">
                                                     <TextBox Grid.Column="0" Text="{Binding OverrideDirectory, Mode=TwoWay}"
+                                                             AutomationProperties.AutomationId="{Binding FolderFieldId}"
                                                              Background="{DynamicResource EmuInputBrush}"
                                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                                              PlaceholderText="{Binding OverridePlaceholder}" />
                                                     <Button Grid.Column="1" Content="Browse…"
+                                                            AutomationProperties.AutomationId="{Binding FolderFieldId}"
                                                             Command="{Binding PickDirectoryCommand}"
                                                             IsEnabled="{Binding IsIdle}" />
                                                     <Button Grid.Column="2" Content="Replace cloud"
+                                                            AutomationProperties.AutomationId="{Binding ReplaceCloudFieldId}"
                                                             IsVisible="{Binding IsCloudConnected}"
                                                             Command="{Binding ReplaceCloudCommand}"
                                                             IsEnabled="{Binding CanReplace}"
                                                             ToolTip.Tip="Replace only this platform's cloud saves; overwritten cloud copies are backed up" />
                                                     <Button Grid.Column="3" Content="Replace local"
+                                                            AutomationProperties.AutomationId="{Binding ReplaceLocalFieldId}"
                                                             IsVisible="{Binding IsCloudConnected}"
                                                             Command="{Binding ReplaceLocalCommand}"
                                                             IsEnabled="{Binding CanReplace}"
@@ -520,6 +549,7 @@
                                                 <StackPanel Margin="54,0,0,0" Spacing="7"
                                                             IsVisible="{Binding HasOptionalContent}">
                                                     <CheckBox Content="Automatically sync save states"
+                                                              AutomationProperties.AutomationId="{Binding SaveStatesFieldId}"
                                                               IsVisible="{Binding SupportsSaveStates}"
                                                               IsChecked="{Binding SyncSaveStates, Mode=TwoWay}"
                                                               IsEnabled="{Binding IsIdle}"
@@ -569,6 +599,7 @@
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding CloudRemoteName, Mode=TwoWay}"
+                                             AutomationProperties.AutomationId="saves.remote"
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="emushelf-gdrive" />
@@ -576,6 +607,7 @@
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding CloudFolder, Mode=TwoWay}"
+                                             AutomationProperties.AutomationId="saves.cloud-folder"
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="EmuShelf/Saves" />
@@ -587,6 +619,7 @@
                                                Text="Without your own client, rclone's shared Google client is used — it is rate limited, which shows up as a slow sync before a game starts, and Google retires it during 2026. Import the OAuth client JSON from Google Cloud console → Credentials → Download JSON. The secret goes straight to rclone; EmuShelf stores only the client id." />
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <Button Content="Import client JSON…"
+                                                AutomationProperties.AutomationId="saves.oauth-json"
                                                 Command="{Binding ImportGoogleClientCommand}"
                                                 IsEnabled="{Binding !IsCloudBusy}" />
                                         <TextBlock Text="{Binding CloudClientId}" VerticalAlignment="Center"
@@ -597,6 +630,7 @@
                                                IsVisible="{Binding HasCloudClientStatus}" FontSize="11"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <Button Content="Connect Google Drive" Classes="accent"
+                                            AutomationProperties.AutomationId="saves.connect"
                                             HorizontalAlignment="Left"
                                             Command="{Binding ConnectCloudCommand}"
                                             IsEnabled="{Binding !IsCloudBusy}" />
@@ -611,10 +645,12 @@
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         </StackPanel>
                                         <Button Grid.Column="1" Content="Disconnect" VerticalAlignment="Center"
+                                                AutomationProperties.AutomationId="saves.disconnect"
                                                 Command="{Binding DisconnectCloudCommand}"
                                                 IsEnabled="{Binding !IsCloudBusy}" />
                                     </Grid>
                                     <Button Content="Sync all now" Classes="accent"
+                                            AutomationProperties.AutomationId="saves.sync"
                                             HorizontalAlignment="Left"
                                             Command="{Binding SyncCloudNowCommand}"
                                             IsEnabled="{Binding !IsCloudBusy}" />
@@ -627,6 +663,7 @@
                                                    VerticalAlignment="Center"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <Button Grid.Column="1" Content="Stop"
+                                                AutomationProperties.AutomationId="saves.stop"
                                                 Command="{Binding CancelCloudSyncCommand}"
                                                 ToolTip.Tip="Stop the sync; saves already transferred stay in the cloud and the next sync continues from there" />
                                     </Grid>
@@ -682,6 +719,7 @@
                                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Rescan" Classes="accent"
+                                            AutomationProperties.AutomationId="textures.rescan"
                                             VerticalAlignment="Top"
                                             Command="{Binding RescanTexturePacksCommand}"
                                             IsEnabled="{Binding !IsTexturePackBusy}" />
@@ -715,14 +753,17 @@
                                                 <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8"
                                                       Margin="54,0,0,0">
                                                     <TextBox Grid.Column="0" Text="{Binding DirectoryOverride, Mode=TwoWay}"
+                                                             AutomationProperties.AutomationId="{Binding FolderFieldId}"
                                                              IsReadOnly="True"
                                                              Background="{DynamicResource EmuInputBrush}"
                                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                                              PlaceholderText="{Binding OverridePlaceholder}" />
                                                     <Button Grid.Column="1" Content="Browse..."
+                                                            AutomationProperties.AutomationId="{Binding FolderFieldId}"
                                                             Command="{Binding $parent[Window].((vm:EmulatorSettingsViewModel)DataContext).BrowseTextureOverrideCommand}"
                                                             CommandParameter="{Binding}" />
                                                     <Button Grid.Column="2" Content="Use detected"
+                                                            AutomationProperties.AutomationId="{Binding DetectedFieldId}"
                                                             Command="{Binding $parent[Window].((vm:EmulatorSettingsViewModel)DataContext).ClearTextureOverrideCommand}"
                                                             CommandParameter="{Binding}" />
                                                     <Button Grid.Column="3" Content="Open folder"
@@ -748,12 +789,14 @@
                                                FontSize="11"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                              AutomationProperties.AutomationId="textures.emulator-filter"
                                               ItemsSource="{Binding TextureEmulatorFilters}"
                                               SelectedItem="{Binding TextureEmulatorFilter, Mode=TwoWay}" />
                                     <TextBlock Grid.Column="2" Text="Status" VerticalAlignment="Center"
                                                FontSize="11"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <ComboBox Grid.Column="3" HorizontalAlignment="Stretch"
+                                              AutomationProperties.AutomationId="textures.status-filter"
                                               ItemsSource="{Binding TextureStatusFilters}"
                                               SelectedItem="{Binding TextureStatusFilter, Mode=TwoWay}" />
                                 </Grid>
@@ -763,13 +806,22 @@
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                            Text="No texture packs to show. Use Rescan after configuring an emulator, or change the filters above." />
 
-                                <ItemsControl ItemsSource="{Binding TexturePackEntries}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:TexturePackEntryViewModel">
-                                            <Border Background="{DynamicResource EmuInputBrush}"
-                                                    BorderBrush="{DynamicResource EmuBorderBrush}"
-                                                    BorderThickness="1" CornerRadius="6"
-                                                    Padding="12" Margin="0,0,0,8">
+                                <!-- The per-pack inventory can be hundreds of entries; the totals above are
+                                     what most users need. Keep the full list collapsed and reveal it on
+                                     demand, and virtualize it so an expanded large library stays responsive. -->
+                                <Expander IsVisible="{Binding !HasNoTexturePacks}" IsExpanded="False"
+                                          HorizontalAlignment="Stretch"
+                                          HorizontalContentAlignment="Stretch">
+                                    <Expander.Header>
+                                        <TextBlock Text="{Binding TexturePackEntries.Count, StringFormat='Installed pack details ({0})'}"
+                                                   FontWeight="SemiBold" />
+                                    </Expander.Header>
+                                    <ListBox ItemsSource="{Binding TexturePackEntries}"
+                                             MaxHeight="620" HorizontalAlignment="Stretch"
+                                             Background="Transparent"
+                                             BorderThickness="0">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:TexturePackEntryViewModel">
                                                 <StackPanel Spacing="3">
                                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
                                                         <TextBlock Grid.Column="0" Text="{Binding PackKey}"
@@ -785,14 +837,81 @@
                                                                IsVisible="{Binding HasMatchedGames}"
                                                                FontSize="11" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                    <TextBlock Text="{Binding EmulatorName}" FontSize="11"
-                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                     <TextBlock Text="{Binding SourcePath}"
                                                                FontFamily="Monospace" FontSize="11"
                                                                TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
-                                            </Border>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Expander>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsThemesSection}" Spacing="4">
+                        <Border Background="{DynamicResource EmuCardBrush}"
+                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                BorderThickness="1" CornerRadius="10" Padding="18">
+                            <StackPanel Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Appearance" FontSize="16" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                    <TextBlock Text="Pick a theme. It applies instantly and is shared with Gamepad mode."
+                                               FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding ThemeChoices}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ThemeChoiceViewModel">
+                                            <Button Classes="theme-card"
+                                                    Classes.selected="{Binding IsSelected}"
+                                                    Width="212"
+                                                    Command="{Binding SelectCommand}">
+                                                <StackPanel Spacing="10">
+                                                    <Border CornerRadius="9" Height="96" ClipToBounds="True"
+                                                            Background="{Binding PreviewBackground}"
+                                                            BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                            BorderThickness="1">
+                                                        <Grid Margin="12" RowDefinitions="Auto,*,Auto" RowSpacing="8">
+                                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                <Ellipse Width="6" Height="6" Fill="{Binding PreviewAccent}" />
+                                                                <Ellipse Width="6" Height="6" Fill="{Binding PreviewText}" Opacity="0.4" />
+                                                            </StackPanel>
+                                                            <Grid Grid.Row="1" ColumnDefinitions="*,2.2*,*" ColumnSpacing="6">
+                                                                <Border Background="{Binding PreviewSurface}" CornerRadius="5" />
+                                                                <Border Grid.Column="1" Background="{Binding PreviewSurface}" CornerRadius="5">
+                                                                    <Border Width="26" Height="26" CornerRadius="13"
+                                                                            Background="{Binding PreviewAccent}"
+                                                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                </Border>
+                                                                <Border Grid.Column="2" Background="{Binding PreviewSurface}" CornerRadius="5" />
+                                                            </Grid>
+                                                            <Border Grid.Row="2" Width="22" Height="6" CornerRadius="3"
+                                                                    HorizontalAlignment="Left"
+                                                                    Background="{Binding PreviewAccent}" />
+                                                        </Grid>
+                                                    </Border>
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                                                   VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                                        <Border Grid.Column="1" IsVisible="{Binding IsSelected}"
+                                                                Width="22" Height="22" CornerRadius="11"
+                                                                Background="{DynamicResource EmuAccentBrush}">
+                                                            <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                                        </Border>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </Button>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

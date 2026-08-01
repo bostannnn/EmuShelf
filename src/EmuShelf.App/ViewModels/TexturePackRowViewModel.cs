@@ -80,6 +80,10 @@ public partial class TexturePackRowViewModel : ObservableObject
 
     public string SystemId { get; }
 
+    public string FolderFieldId => $"textures.{SystemId}.folder";
+
+    public string DetectedFieldId => $"textures.{SystemId}.detected";
+
     public string DisplayName { get; }
 
     public string OverridePlaceholder { get; }

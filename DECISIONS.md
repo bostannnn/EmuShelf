@@ -2932,3 +2932,195 @@ Up/Down do nothing when the corresponding cell is absent from a partial final ro
 retains the same badge still issues a layout revision because its position and recycled visual may
 have changed even though its object identity did not. Pointer selection enters the same logical
 focus path as controller selection, keeping the badge ring and detail card synchronized.
+
+## 2026-08-01 — Gamepad Settings projects the existing settings model
+
+The controller surface is a navigation adapter over `EmulatorSettingsViewModel`, not a second
+settings store. General, RetroAchievements, Saves, and Texture Packs are projected into stable row
+keys, with remembered focus per section and the same commands, child view models, validation, and
+portable persistence used by Desktop. Save is placed at the start of each virtualized section but
+initial focus remains on the first setting, making Save one Up press away without displacing the
+normal reading order. B cancels an active edit or confirmation first, then closes Settings without
+saving and restores focus to the Settings menu item.
+
+The first slice intentionally excludes emulator executable paths, arguments, cores, library-root
+management, and RPCS3 library maintenance. Those fields were audited with the rest of Desktop
+Settings but remain the next Phase 2 slice; cover search, themes, and ScreenScraper remain Phases 3,
+4, and 5 respectively. Texture-pack operations stay observational and limited to existing rescan,
+filter, picker, and clear services; opening the host file manager remains Desktop-only. EmuShelf
+still never edits emulator-owned texture configuration or pack contents.
+
+## 2026-08-01 — Controller text entry uses an optional host-keyboard capability
+
+Text and secret rows enter a focused in-window editor whose draft is committed only with A and
+discarded with B. Secret values remain masked in both the row and editor, and the draft is cleared
+after either outcome; the underlying settings view model continues to own secure persistence.
+Opening an editor requests an on-screen keyboard through a Core capability. The Windows adapter
+best-effort launches the system touch keyboard or OSK, while unsupported hosts retain an explicit
+hardware-keyboard or Steam+X path instead of adding a Steamworks dependency without its required
+lifecycle. This interface leaves room for a native Steam/Deck implementation later and keeps all
+platform-specific process behavior outside the cross-platform view model.
+
+Native dialogs are used only for values whose meaning is an actual file or folder. All choices,
+toggles, actions, text, secrets, and destructive confirmations remain controller-owned inside the
+Gamepad window; destructive rows always focus the non-destructive choice first.
+
+## 2026-08-01 — Gamepad Settings control shape communicates behavior
+
+A real populated-library screenshot rejected the initial Settings presentation even though its
+focus and containment assertions passed. Giving every field the same variably sized card plus a
+small `TOGGLE`, `ACTION`, or `FILE` badge hid how the field worked and allowed virtualized children
+to keep their desired widths. Geometry containment alone is therefore not visual acceptance.
+
+The replacement uses a full-height proportional section rail and one equal-width virtualized
+content column. Boolean fields render as conventional ON/OFF tracks with a moving checked/cleared
+thumb; choices render between directional chevrons; text, secret, file, and folder fields show their
+current value beside an explicit A Edit/Choose affordance; ordinary and destructive commands use
+distinct action treatments. This follows the reference's interaction vocabulary without copying
+its branding, type, icons, clock, or exact composition.
+
+The Save row remains first in the logical D-pad order, so Up from the initial setting still reaches
+it, but it is now rendered as a pinned action at the bottom of the section rail rather than as a
+generic content card. This supersedes only the visual-placement portion of the earlier projection
+decision. The repeater receives an explicit viewport-derived cross-axis width, and viewport resize
+re-reveals logical focus. Real-window tests cover 1280x800, 1280x720, and 2048x1152 so a fixed-size
+desktop dialog cannot satisfy the Gamepad geometry contract again.
+
+## 2026-08-01 — Desktop and Gamepad Settings parity is executable
+
+Gamepad Settings does not add preferences and does not own a second persistent settings object.
+`AutomaticallyFetchMetadataAfterImport`, including its metadata consent and persistence behavior,
+was already a Desktop field; both surfaces read and mutate the same `EmulatorSettingsViewModel`
+property and use its existing `IMetadataPreferencesService` save path.
+
+Every mutating control in General, RetroAchievements, Saves, and Texture Packs now carries the same
+stable field id in the Desktop window and the Gamepad row projection. A real-window test collects
+the effectively visible Desktop ids in each connection state and compares them with the complete
+controller projection. The controller list remains virtualized, so a second assertion checks that
+each realized row exposes its field id without requiring off-screen rows to be materialized.
+Read-only status/inventory content and external browser or file-manager links are deliberately not
+counted as settings mutations.
+
+The final control vocabulary uses reference-sized two-state tracks with a moving check/clear thumb,
+large circular edit/action targets, full-width section selections, and a full-width pinned Save
+action. It borrows the reference's conventional behavior without copying its typeface, branding,
+clock, theme system, or exact composition. START is a direct Save-and-close route; Up from a
+section's initial field followed by A remains an equivalent tested route, and B still exits without
+saving. This supersedes the earlier text-labelled action-capsule presentation.
+
+## 2026-08-01 — Full palettes swap an override dictionary; tokens stay `DynamicResource`
+
+The appearance system moved from Light/Dark theme-dictionaries plus a single accent to complete
+named palettes. `ThemePreference` gained `Oled`, `Cyberpunk`, and `Nord`; it still serializes as a
+string, so existing `System`/`Light`/`Dark` settings files keep parsing and no migration is needed.
+`ThemeCatalog` (Core) is the single source of built-in themes — id, display name, dark/light, and
+four preview-swatch hex colors — consumed by both the Desktop appearance menu and the controller
+theme gallery so a theme added there appears in both modes.
+
+Each extra palette is a flat `ResourceDictionary` under `Styles/Palettes/` that redefines every
+`EmuXxxBrush` token plus an `EmuFocusGlow` box-shadow. `AppThemeService` sets the base `ThemeVariant`
+(so stock Fluent chrome stays legible) and appends the selected palette last in the application's
+merged dictionaries, where its top-level tokens win over the base `EmuShelfTheme` set; System/Light/
+Dark append no override. Because every consumer already binds tokens with `DynamicResource`, swapping
+the dictionary re-colors the whole UI live. Built-in themes are an enum rather than a `Themes/` import
+because the roadmap defers a portable import format until the token contract is proven stable — which
+this work does by rendering OLED and Cyberpunk with no hardcoded color leaking through. A/B/X/Y and
+the green Play action remain fixed brushes outside every palette.
+
+## 2026-08-01 — Accent is separated from danger; the focused game is raised, not alarmed
+
+A populated-library review found the Gamepad UI read as a wall of alarm-red: the accent (`#EF4855`)
+was the same hue as the danger color, so selection, focus, section highlights, toggles, and every
+destructive action all looked like errors. The default accent moved to rose (`#F15C93` dark,
+`#D23A76` light), distinct from the unchanged red danger brush, so selection and focus read as brand
+rather than warning. Destructive settings rows now look ordinary until focused — the danger cue is
+the tinted action circle plus the existing confirmation gate, not a red title on every row — and the
+toggle thumb lost its busy ×/✓ pair for a plain sliding thumb.
+
+The focused game gained presence to match NeoStation's reference: a thicker accent ring, a
+theme-colored `EmuFocusGlow` halo, and a subtle non-layout scale so the selected cover lifts off the
+shelf without moving its neighbours. The glow is a themed `BoxShadows` resource, so it takes the
+active palette's accent.
+
+## 2026-08-01 — The controller theme gallery is a gamepad-only page with shared choices
+
+Theme selection previously lived only in the Desktop toolbar, so Gamepad mode could not change it —
+a parity gap. Gamepad Settings gained a Themes page presenting a NeoStation-style gallery: a
+three-column grid of cards, each rendering a miniature app window from that theme's own swatches,
+with the applied theme marked and the focused card carrying the strong-focus border. It is a
+gamepad-only page rather than a `SettingsSection` because appearance is not part of the settings
+model; the executable Desktop/Gamepad parity test therefore still compares only the four model
+sections. Both surfaces project the same `ThemeChoice` instances and apply through one path, so a
+change in either mode updates the other and persists once.
+
+Read-only texture-pack inventory is now bounded in Gamepad Settings: a large real library rendered
+as an endless wall of near-identical cards, so the controller list shows a capped, filterable window
+with a count and points at the filters and Desktop for the rest, and read-only rows (inventory,
+logs, connected account) render as a flat list instead of solid action-button cards. The full
+inventory remains browsable in Desktop; this is inventory display, not a settings field, so it does
+not affect executable parity.
+
+## 2026-08-01 — Focus frames the cover from outside; Gamepad Settings is grouped by platform
+
+A real zoomed render showed the earlier focus ring painting on top of the cover's dark edge read as
+a faint glow "behind" the art rather than a selection. The focus ring now sits 5px outside the cover
+on every side (negative margin, larger corner radius) so it reads unambiguously as a frame around the
+artwork, keeps the theme-colored `EmuFocusGlow`, and stays the topmost tile layer. The earlier
+non-layout scale-up was removed: the frame plus glow already give couch-distance presence, and the
+transform muddied where the border sat. Geometry tests now assert the frame is exactly 10px larger
+than the cover frame.
+
+Gamepad Settings gained the Desktop settings hierarchy. Saves and Texture Packs are grouped under
+non-focusable platform headers (platform artwork plus name); the platform's rows are indented beneath
+their header and carry the same platform artwork as their leading icon, so membership is unmistakable.
+Member labels drop the redundant platform-name prefix because the header carries it — the stable field
+ids (Keys) are unchanged, so executable Desktop/Gamepad parity still holds. Generic rows (General,
+maintenance, filters) show a category glyph in the same leading-icon slot; read-only inventory rows
+stay icon-free so a long list reads lightly. D-pad navigation and post-rebuild focus targeting skip
+header rows, and the geometry suite covers the indent width and that focus never lands on a header.
+
+## 2026-08-01 — Selector is an on-cover frame; inventories collapse; settings gain a rail column
+
+Rendering the focus frame against a real opaque cover (not the placeholder covers the tests used)
+showed the "outside the cover" negative-margin ring was clipped left/right by the tile width while
+top/bottom overflowed into the taller shelf cell — so selection looked broken on real artwork. The
+selector is now a 5px accent border drawn at the cover bounds (topmost tile layer, no overflow, so it
+can never be clipped) plus the themed glow; a real-cover regression test captures this. Lesson:
+gamepad-tile visuals must be verified with an opaque cover, not only the missing-artwork placeholder.
+
+The texture-pack inventory is collapsed by default in both modes because a real library holds
+hundreds of packs and the matched/attention totals are what a user needs. Gamepad shows an
+"N installed packs" control that reveals a bounded list on A; Desktop moves the full list into a
+collapsed Expander backed by a virtualizing ListBox so an expanded large library stays responsive.
+The gamepad reveal control is a view-state row excluded from executable Desktop/Gamepad parity.
+
+Gamepad Settings navigation added a left-rail focus column so the vertical section list responds to
+the D-pad, not only LB/RB. Left steps from the content into the rail; on the rail Up/Down move
+sections live and Right/A return to the content; LB/RB remain a shortcut from either column. Values
+change with A (or Right), NeoStation-style, which frees Left/Right for column movement; the active
+column is shown by filling the selected rail item and dimming the inactive content pane. The theme
+gallery integrates the same way — Left from its first column steps out to the rail.
+
+## 2026-08-01 — Themes is a real settings section in both modes; selector hardened
+
+The Desktop settings window now has its own Themes section, not only the toolbar menu, so it matches
+Gamepad settings — appearance is selectable from the settings surface in both modes. `SettingsSection`
+gained `Themes`; `EmulatorSettingsViewModel` adds it (and exposes the shared `ThemeChoice` list) only
+when the host supplies theme choices, and renders the same swatch gallery the Gamepad gallery uses.
+Gamepad continues to present themes as its dedicated gallery page and therefore excludes both Themes
+and the Desktop-only Emulators slice from its projected row sections. Emulators paths/arguments remain
+the one section that is still Desktop-only, pending the deferred Gamepad emulator-settings work.
+
+The read-only pack inventory Expander on Desktop was too small and narrow; it now stretches to the
+content width with a much taller virtualized list. The focused-cover selector was thickened to a 6px
+accent border, and — because the corner bleed reported on real hardware does not reproduce under the
+headless Skia renderer — the cover art is now clipped with a larger corner radius than the focus ring
+so the art corners are pulled inside the ring regardless of GPU anti-aliasing.
+
+## 2026-08-01 — Desktop theme selection lives in Settings
+
+The Desktop toolbar theme flyout was removed after Themes became a complete Settings section. Keeping
+both entry points duplicated the same catalog and crowded the small group of global toolbar actions;
+the gear is now the single Desktop configuration entry point. Gamepad mode retains its controller-native
+Themes page, and both settings surfaces continue to share the same theme-choice instances and persistence
+path so selection state stays synchronized.

@@ -19,6 +19,7 @@ public enum SettingsSection
     RetroAchievements,
     Saves,
     TexturePacks,
+    Themes,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
@@ -48,6 +49,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
+    [NotifyPropertyChangedFor(nameof(IsThemesSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
@@ -55,6 +57,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
+    public bool IsThemesSection => SelectedSection == SettingsSection.Themes;
+
+    /// <summary>Appearance choices shown as a Themes section so Desktop and Gamepad settings both
+    /// expose theme selection; empty when the host did not provide them.</summary>
+    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
+
+    public bool HasThemes => ThemeChoices.Count > 0;
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -239,7 +248,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IAppLogger? logger = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null)
+        TexturePackSettingsContext? texturePacks = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -249,6 +259,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
         _logger = logger ?? NullAppLogger.Instance;
+        ThemeChoices = themeChoices ?? [];
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
         if (retroAchievements is not null)
@@ -257,6 +268,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             sections.Add(SettingsSection.Saves);
         if (texturePacks is not null)
             sections.Add(SettingsSection.TexturePacks);
+        if (HasThemes)
+            sections.Add(SettingsSection.Themes);
         Sections = sections;
         if (texturePacks is not null)
             ApplyTexturePackInventory();

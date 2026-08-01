@@ -16,6 +16,7 @@ public partial class MainWindow : Window
 {
     private MainViewModel? _gamepadViewModel;
     private Point? _lastGamepadPointerPosition;
+    private int _requestedSettingsTextEntryRevision = -1;
 
     public MainWindow()
     {
@@ -65,6 +66,9 @@ public partial class MainWindow : Window
             nameof(MainViewModel.GamepadOverlaySelectionIndex) or nameof(MainViewModel.GamepadOverlayTitle) or
             nameof(MainViewModel.FocusedGamepadAchievement) or
             nameof(MainViewModel.GamepadAchievementLayoutRevision) or
+            nameof(MainViewModel.GamepadSettingsFocusRevision) or
+            nameof(MainViewModel.IsGamepadSettingsTextEntryOpen) or
+            nameof(MainViewModel.IsGamepadSettingsConfirmationOpen) or
             nameof(MainViewModel.IsGamepadControllerInputActive)))
         {
             return;
@@ -169,7 +173,75 @@ public partial class MainWindow : Window
         if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
             return;
 
-        if (viewModel.IsGamepadSearchOpen)
+        if (viewModel.IsGamepadSettingsTextEntryOpen && viewModel.GamepadSettings is { } textSettings)
+        {
+            var textBox = textSettings.IsSecretEntry
+                ? GamepadSettingsSecretBox
+                : GamepadSettingsTextBox;
+            FocusManager?.Focus(textBox, NavigationMethod.Directional);
+            if (_requestedSettingsTextEntryRevision != textSettings.TextEntryRevision)
+            {
+                _requestedSettingsTextEntryRevision = textSettings.TextEntryRevision;
+                Dispatcher.UIThread.Post(textSettings.RequestOnScreenKeyboard, DispatcherPriority.Loaded);
+            }
+        }
+        else if (viewModel.IsGamepadSettingsConfirmationOpen && viewModel.GamepadSettings is { } confirmationSettings)
+        {
+            var button = confirmationSettings.IsConfirmChoiceSelected
+                ? GamepadSettingsConfirmButton
+                : GamepadSettingsKeepButton;
+            FocusManager?.Focus(button, NavigationMethod.Directional);
+        }
+        else if (viewModel.IsGamepadSettingsOpen &&
+            viewModel.GamepadSettings is { IsRailFocused: true })
+        {
+            // The section rail owns focus; the dimmed content keeps no active control.
+        }
+        else if (viewModel.IsGamepadSettingsOpen && viewModel.GamepadSettings is { IsThemesSection: true })
+        {
+            if (viewModel.IsGamepadControllerInputActive)
+            {
+                var card = GamepadThemeGallery.GetVisualDescendants()
+                    .OfType<Button>()
+                    .FirstOrDefault(button =>
+                        button.DataContext is ThemeChoiceViewModel choice && choice.IsFocused);
+                if (card is not null)
+                {
+                    card.BringIntoView();
+                    FocusManager?.Focus(card, NavigationMethod.Directional);
+                }
+            }
+        }
+        else if (viewModel.IsGamepadSettingsOpen && viewModel.GamepadSettings?.FocusedRow is { } settingsRow)
+        {
+            if (settingsRow.IsSaveRow)
+            {
+                if (viewModel.IsGamepadControllerInputActive)
+                    FocusManager?.Focus(GamepadSettingsSaveButton, NavigationMethod.Directional);
+                return;
+            }
+
+            var index = viewModel.GamepadSettings.Rows.IndexOf(settingsRow);
+            if (index < 0)
+                return;
+
+            GamepadSettingsScroller.UpdateLayout();
+            GamepadSettingsRows.UpdateLayout();
+            var element = GamepadSettingsRows.TryGetElement(index) ?? GamepadSettingsRows.GetOrCreateElement(index);
+            if (element is null)
+            {
+                if (attempt < 5)
+                    Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
+                return;
+            }
+            element.BringIntoView();
+            var rowButton = element as Button ?? element.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(button => ReferenceEquals(button.DataContext, settingsRow));
+            if (viewModel.IsGamepadControllerInputActive && rowButton is not null)
+                FocusManager?.Focus(rowButton, NavigationMethod.Directional);
+        }
+        else if (viewModel.IsGamepadSearchOpen)
             GamepadSearchBox.Focus();
         else if (viewModel.IsGamepadRenameOpen)
             GamepadRenameBox.Focus();
@@ -374,7 +446,15 @@ public partial class MainWindow : Window
 
         if (e.Key == Key.Escape)
         {
-            viewModel.BackFromGamepadOverlayCommand.Execute(null);
+            if (viewModel.IsGamepadSettingsOpen && viewModel.GamepadSettings is { } settings)
+                settings.Dispatch(GamepadAction.Cancel);
+            else
+                viewModel.BackFromGamepadOverlayCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && viewModel.IsGamepadSettingsOpen && viewModel.GamepadSettings is { } settings)
+        {
+            settings.Dispatch(GamepadAction.Confirm);
             e.Handled = true;
         }
         else if (e.Key == Key.Enter && viewModel.IsGamepadRenameOpen)
@@ -511,6 +591,14 @@ public partial class MainWindow : Window
 
     private void OnGamepadAchievementsSizeChanged(object? sender, SizeChangedEventArgs e) =>
         Dispatcher.UIThread.Post(SyncGamepadAchievementColumnCountFromLayout, DispatcherPriority.Loaded);
+
+    private void OnGamepadSettingsScrollerSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        // StackLayout otherwise measures each virtualized child at its desired width. One explicit
+        // cross-axis width keeps every controller setting in the same aligned column.
+        GamepadSettingsRows.Width = Math.Max(0, e.NewSize.Width - 18);
+        Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(), DispatcherPriority.Loaded);
+    }
 
     // Both grids take their cell width from the one cover width the view model computed for the
     // mode that is on screen. Applying it to both — rather than only to whichever grid raised

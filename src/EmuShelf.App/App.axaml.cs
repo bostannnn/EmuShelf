@@ -185,7 +185,8 @@ public partial class App : Application
                 Bootstrapper.CloudSaveSync,
                 applicationLifetime: new ApplicationLifetimeService(desktop),
                 texturePacks: Bootstrapper.TexturePacks,
-                libraryViewState: libraryViewState);
+                libraryViewState: libraryViewState,
+                onScreenKeyboard: new PlatformOnScreenKeyboardService());
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

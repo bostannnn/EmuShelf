@@ -13,6 +13,7 @@ using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
@@ -57,6 +58,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IAppThemeService _themeService;
     private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IApplicationLifetimeService? _applicationLifetime;
+    private readonly IOnScreenKeyboardService _onScreenKeyboard;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
     private readonly IMetadataPreferencesService _metadataPreferences;
@@ -190,6 +192,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
 
+    /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
+    /// theme gallery projects the same instances so both modes stay in lock-step.</summary>
+    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
+
     [ObservableProperty]
     public partial GameViewModel? SelectedGame { get; set; }
 
@@ -212,6 +218,9 @@ public partial class MainViewModel : ViewModelBase
     public partial GamepadOverlayKind GamepadOverlay { get; set; }
 
     [ObservableProperty]
+    public partial GamepadSettingsViewModel? GamepadSettings { get; set; }
+
+    [ObservableProperty]
     public partial int GamepadOverlaySelectionIndex { get; set; }
 
     [ObservableProperty]
@@ -221,7 +230,8 @@ public partial class MainViewModel : ViewModelBase
     public partial AchievementRowViewModel? FocusedGamepadAchievement { get; set; }
 
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
-    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename;
+    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename ||
+        IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadAchievementsOpen => GamepadOverlay == GamepadOverlayKind.Achievements;
     public bool IsGamepadSearchOpen => GamepadOverlay == GamepadOverlayKind.Search;
     public bool IsGamepadCollectionsOpen => GamepadOverlay == GamepadOverlayKind.Collections;
@@ -230,14 +240,23 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
+    public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
+    public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
+    public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
+    public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
-    public bool IsGamepadSettingsHandoffOpen => GamepadOverlay == GamepadOverlayKind.SettingsDesktopHandoff;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
-        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename);
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
+         GamepadOverlayKind.Settings);
+    public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
+         GamepadOverlayKind.Settings);
+    public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
@@ -248,14 +267,15 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.SystemMenu => "Menu",
+        GamepadOverlayKind.Settings => "Settings",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
-        GamepadOverlayKind.SettingsDesktopHandoff => "Open Settings?",
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
     };
     public string GamepadOverlayHelpText => GamepadOverlay switch
     {
         GamepadOverlayKind.Achievements => "D-pad Browse   X Refresh   B Back",
+        GamepadOverlayKind.Settings => "LB/RB Sections   D-pad Rows   A Select   B Cancel",
         GamepadOverlayKind.Search => "Steam + X Keyboard   B Back",
         GamepadOverlayKind.Rename => "A Save   B Back",
         _ => "D-pad Choose   A Select   B Back",
@@ -336,9 +356,6 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnLibraryViewportWidthChanged(double value) => UpdateCoverLayout();
 
-    public bool IsSystemTheme => CurrentTheme == ThemePreference.System;
-    public bool IsLightTheme => CurrentTheme == ThemePreference.Light;
-    public bool IsDarkTheme => CurrentTheme == ThemePreference.Dark;
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
@@ -384,13 +401,6 @@ public partial class MainViewModel : ViewModelBase
         : SelectedSystem?.Id == "playstation3"
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
         : "Add game files or a dedicated folder to begin building this shelf.";
-    public string ThemeDescription => CurrentTheme switch
-    {
-        ThemePreference.Light => "Light appearance",
-        ThemePreference.Dark => "Dark appearance",
-        _ => "Follow system appearance",
-    };
-
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -436,7 +446,8 @@ public partial class MainViewModel : ViewModelBase
         IGameSaveSyncService? gameSaveSync = null,
         IApplicationLifetimeService? applicationLifetime = null,
         TexturePackCoordinator? texturePacks = null,
-        ILibraryViewStateService? libraryViewState = null)
+        ILibraryViewStateService? libraryViewState = null,
+        IOnScreenKeyboardService? onScreenKeyboard = null)
     {
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _library = library;
@@ -451,6 +462,7 @@ public partial class MainViewModel : ViewModelBase
         _themeService = themeService ?? new NullAppThemeService();
         _interfaceModeService = interfaceModeService;
         _applicationLifetime = applicationLifetime;
+        _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         IsGamepadMode = interfaceModeService?.Current == InterfaceMode.Gamepad;
         if (_interfaceModeService is not null)
         {
@@ -479,7 +491,15 @@ public partial class MainViewModel : ViewModelBase
         _texturePacks = texturePacks;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
+        // Build the theme choices before assigning CurrentTheme: the generated setter fires
+        // OnCurrentThemeChanged, which reads ThemeChoices, whenever the saved theme differs from the
+        // System default.
+        ThemeChoices = ThemeCatalog.All
+            .Select(theme => new ThemeChoiceViewModel(theme, SetThemeAsync))
+            .ToArray();
         CurrentTheme = _themeService.Current;
+        foreach (var choice in ThemeChoices)
+            choice.IsSelected = choice.Id == CurrentTheme;
 
         Systems = new ObservableCollection<GameSystem>(systems);
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
@@ -887,8 +907,25 @@ public partial class MainViewModel : ViewModelBase
         OpenGamepadOverlay(GamepadOverlayKind.DesktopModeConfirmation);
 
     [RelayCommand]
-    private void RequestSettingsFromGamepad() =>
-        OpenGamepadOverlay(GamepadOverlayKind.SettingsDesktopHandoff);
+    private async Task RequestSettingsFromGamepadAsync()
+    {
+        if (!IsGamepadMode || IsBusy)
+            return;
+
+        try
+        {
+            CloseGamepadSettingsProjection();
+            var settings = await CreateSettingsViewModelAsync();
+            GamepadSettings = new GamepadSettingsViewModel(
+                settings, _onScreenKeyboard, ThemeChoices, SetThemeAsync);
+            OpenGamepadOverlay(GamepadOverlayKind.Settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not open Gamepad settings.", ex);
+            SetStatus($"Could not open Settings: {ex.Message}", StatusSeverity.Error);
+        }
+    }
 
     [RelayCommand]
     private void RequestQuitFromGamepad() =>
@@ -967,6 +1004,8 @@ public partial class MainViewModel : ViewModelBase
             FocusedGame.IsEditingTitle = false;
         }
         DisposeGamepadAchievementDetails();
+        if (closingOverlay == GamepadOverlayKind.Settings)
+            CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
@@ -977,6 +1016,12 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void BackFromGamepadOverlay()
     {
+        if (IsGamepadSettingsOpen)
+        {
+            OnGamepadSettingsCloseRequested(false);
+            return;
+        }
+
         var returnOverlay = GamepadOverlay switch
         {
             GamepadOverlayKind.Rename or
@@ -984,7 +1029,6 @@ public partial class MainViewModel : ViewModelBase
             GamepadOverlayKind.RemoveConfirmation or
             GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
             GamepadOverlayKind.DesktopModeConfirmation or
-            GamepadOverlayKind.SettingsDesktopHandoff or
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
             _ => GamepadOverlayKind.None,
         };
@@ -1047,6 +1091,9 @@ public partial class MainViewModel : ViewModelBase
         // Desktop-mode switch.
         if (IsGamepadInputSuspended)
             return true;
+
+        if (IsGamepadSettingsOpen && GamepadSettings is { } settings)
+            return settings.Dispatch(action);
 
         if (GamepadOverlayOwnsTextInput)
             return DispatchTextOverlayAction(action);
@@ -1202,11 +1249,10 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
                 break;
+            case GamepadOverlayKind.Settings:
+                break;
             case GamepadOverlayKind.DesktopModeConfirmation:
                 AddOption("Switch to Desktop mode", SwitchToDesktopModeCommand);
-                break;
-            case GamepadOverlayKind.SettingsDesktopHandoff:
-                AddOption("Open Settings in Desktop mode", OpenSettingsFromGamepadCommand);
                 break;
             case GamepadOverlayKind.QuitConfirmation:
                 AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand, true);
@@ -1342,11 +1388,16 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
-        OnPropertyChanged(nameof(IsGamepadSettingsHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
+        OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
+        OnPropertyChanged(nameof(ShowsGamepadOverlayChromeTitle));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
         OnPropertyChanged(nameof(GamepadOverlayHelpText));
     }
@@ -1371,14 +1422,6 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         await SetInterfaceModeAsync(InterfaceMode.Desktop);
-    }
-
-    [RelayCommand]
-    private async Task OpenSettingsFromGamepadAsync()
-    {
-        CloseGamepadOverlay();
-        await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        await OpenSettingsAsync();
     }
 
     [RelayCommand]
@@ -1513,10 +1556,8 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnCurrentThemeChanged(ThemePreference value)
     {
-        OnPropertyChanged(nameof(IsSystemTheme));
-        OnPropertyChanged(nameof(IsLightTheme));
-        OnPropertyChanged(nameof(IsDarkTheme));
-        OnPropertyChanged(nameof(ThemeDescription));
+        foreach (var choice in ThemeChoices)
+            choice.IsSelected = choice.Id == value;
     }
 
     partial void OnSelectedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
@@ -3316,40 +3357,137 @@ public partial class MainViewModel : ViewModelBase
                 Systems,
                 _emulators,
                 _emulatorConfigurations,
-                new LibraryMaintenanceActions(
-                    RescanSystemFromSettingsAsync,
-                    RescanAllFromSettingsAsync,
-                    FetchMetadataForSystemFromSettingsAsync,
-                    FetchAllMetadataFromSettingsAsync,
-                    SyncRpcs3LibraryFromSettingsAsync,
-                    () => ShowEmptyPlatforms,
-                    SetShowEmptyPlatformsAsync,
-                    new LibraryFolderManagementActions(
-                        GetLibraryFoldersForSettings,
-                        AddLibraryFolderFromSettingsAsync,
-                        ChangeLibraryFolderFromSettingsAsync,
-                        ForgetLibraryFolderFromSettingsAsync)),
+                CreateLibraryMaintenanceActions(),
                 _metadataPreferences,
-                _retroAccount is null
-                    ? null
-                    : new RetroAchievementsSettingsContext(
-                        _retroAccount.Account,
-                        _retroAccount.IsConnected,
-                        ConnectRetroAchievementsAsync,
-                        DisconnectRetroAchievementsAsync,
-                        RefreshRetroAchievementsMatchesAsync),
+                CreateRetroAchievementsSettingsContext(),
                 _cloudSaveSync?.CreateSettingsContext(),
-                // Titles come from the whole library, not the visible collection: a Dolphin pack
-                // must still name the GameCube game it matched while the user is viewing PS1.
-                _texturePacks?.CreateSettingsContext(
-                    BuildLibraryTitleLookup,
-                    RefreshTexturePacksAsync));
+                CreateTexturePackSettingsContext(),
+                ThemeChoices);
         }
         catch (Exception ex)
         {
             _logger.Error("Could not open emulator settings.", ex);
             SetStatus($"Could not open emulator settings: {ex.Message}", StatusSeverity.Error);
         }
+    }
+
+    private async Task<EmulatorSettingsViewModel> CreateSettingsViewModelAsync()
+    {
+        var configured = await Task.Run(() => Systems.ToDictionary(
+            system => system.Id,
+            system => _emulatorConfigurations.Get(system.Id),
+            StringComparer.Ordinal));
+        return new EmulatorSettingsViewModel(
+            Systems,
+            _emulators,
+            configured,
+            _emulatorConfigurations,
+            _dialogs,
+            CreateLibraryMaintenanceActions(),
+            _metadataPreferences,
+            _logger,
+            CreateRetroAchievementsSettingsContext(),
+            _cloudSaveSync?.CreateSettingsContext(),
+            CreateTexturePackSettingsContext(),
+            ThemeChoices);
+    }
+
+    private LibraryMaintenanceActions CreateLibraryMaintenanceActions() => new(
+        RescanSystemFromSettingsAsync,
+        RescanAllFromSettingsAsync,
+        FetchMetadataForSystemFromSettingsAsync,
+        FetchAllMetadataFromSettingsAsync,
+        SyncRpcs3LibraryFromSettingsAsync,
+        () => ShowEmptyPlatforms,
+        SetShowEmptyPlatformsAsync,
+        new LibraryFolderManagementActions(
+            GetLibraryFoldersForSettings,
+            AddLibraryFolderFromSettingsAsync,
+            ChangeLibraryFolderFromSettingsAsync,
+            ForgetLibraryFolderFromSettingsAsync));
+
+    private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>
+        _retroAccount is null
+            ? null
+            : new RetroAchievementsSettingsContext(
+                _retroAccount.Account,
+                _retroAccount.IsConnected,
+                ConnectRetroAchievementsAsync,
+                DisconnectRetroAchievementsAsync,
+                RefreshRetroAchievementsMatchesAsync);
+
+    private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
+        // Titles come from the whole library, not the visible collection: a Dolphin pack must
+        // still name the GameCube game it matched while the user is viewing PS1.
+        _texturePacks?.CreateSettingsContext(
+            BuildLibraryTitleLookup,
+            RefreshTexturePacksAsync);
+
+    private void OnGamepadSettingsCloseRequested(bool saved)
+    {
+        if (!IsGamepadSettingsOpen && GamepadSettings is null)
+            return;
+
+        CloseGamepadSettingsProjection();
+        if (!IsGamepadMode)
+            return;
+
+        OpenGamepadOverlay(GamepadOverlayKind.SystemMenu);
+        var settingsIndex = GamepadOverlayOptions.ToList().FindIndex(option => option.Label == "Settings");
+        if (settingsIndex >= 0)
+            GamepadOverlaySelectionIndex = settingsIndex;
+        if (saved)
+            SetStatus("Settings saved.");
+    }
+
+    private void OnGamepadSettingsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GamepadSettingsViewModel.FocusRevision) or
+            nameof(GamepadSettingsViewModel.FocusedRowIndex) or
+            nameof(GamepadSettingsViewModel.SelectedSection) or
+            nameof(GamepadSettingsViewModel.IsTextEntryOpen) or
+            nameof(GamepadSettingsViewModel.IsConfirmationOpen) or
+            nameof(GamepadSettingsViewModel.IsConfirmChoiceSelected) or
+            nameof(GamepadSettingsViewModel.TextEntryRevision))
+        {
+            OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+            OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+            OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+            OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+        }
+    }
+
+    partial void OnGamepadSettingsChanged(
+        GamepadSettingsViewModel? oldValue,
+        GamepadSettingsViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.CloseRequested -= OnGamepadSettingsCloseRequested;
+            oldValue.PropertyChanged -= OnGamepadSettingsPropertyChanged;
+        }
+        if (newValue is not null)
+        {
+            newValue.CloseRequested += OnGamepadSettingsCloseRequested;
+            newValue.PropertyChanged += OnGamepadSettingsPropertyChanged;
+        }
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+    }
+
+    private void CloseGamepadSettingsProjection()
+    {
+        if (GamepadSettings is not { } settings)
+            return;
+
+        settings.Dispose();
+        GamepadSettings = null;
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
     // Connect pipeline: validate the account, identify the existing library, resolve hashes

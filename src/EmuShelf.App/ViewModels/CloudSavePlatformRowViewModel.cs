@@ -44,6 +44,14 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     /// <summary>The stable system id this row configures.</summary>
     public string SystemId { get; }
 
+    public string FolderFieldId => $"saves.{SystemId}.folder";
+
+    public string SaveStatesFieldId => $"saves.{SystemId}.states";
+
+    public string ReplaceCloudFieldId => $"saves.{SystemId}.replace-cloud";
+
+    public string ReplaceLocalFieldId => $"saves.{SystemId}.replace-local";
+
     /// <summary>The platform name, e.g. <c>PlayStation 2</c>.</summary>
     public string DisplayName { get; }
 

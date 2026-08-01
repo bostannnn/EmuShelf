@@ -125,7 +125,8 @@ internal sealed class NullDialogService : IDialogService
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null) => Task.CompletedTask;
+        TexturePackSettingsContext? texturePacks = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null) => Task.CompletedTask;
     public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
         Task.CompletedTask;
 }

@@ -31,6 +31,11 @@ public class TexturePackViewTests
         {
             Dispatcher.UIThread.RunJobs();
 
+            // The per-pack list is collapsed by default to keep large libraries readable; expand it.
+            var expander = window.GetVisualDescendants().OfType<Expander>().Single();
+            expander.IsExpanded = true;
+            Dispatcher.UIThread.RunJobs();
+
             // The pack list rendered the entry the fake context supplied.
             var packText = window.GetVisualDescendants()
                 .OfType<TextBlock>()

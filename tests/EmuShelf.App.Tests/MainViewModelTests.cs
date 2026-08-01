@@ -1223,21 +1223,22 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task GamepadMenu_SettingsHandsOffToDesktopAndQuitRequiresConfirmation()
+    public async Task GamepadMenu_SettingsStaysInWindowAndQuitRequiresConfirmation()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
         var lifetime = new RecordingApplicationLifetimeService();
         var vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
 
-        vm.RequestSettingsFromGamepadCommand.Execute(null);
-        Assert.Equal(GamepadOverlayKind.SettingsDesktopHandoff, vm.GamepadOverlay);
-        Assert.Equal(
-            ["Open Settings in Desktop mode"],
-            vm.GamepadOverlayOptions.Select(option => option.Label));
+        await vm.RequestSettingsFromGamepadCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.Settings, vm.GamepadOverlay);
+        Assert.Empty(vm.GamepadOverlayOptions);
+        Assert.NotNull(vm.GamepadSettings);
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
+        Assert.Equal(0, _dialogs.SettingsShown);
 
-        await vm.OpenSettingsFromGamepadCommand.ExecuteAsync(null);
-        Assert.Equal(InterfaceMode.Desktop, mode.Current);
-        Assert.Equal(1, _dialogs.SettingsShown);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal("Settings", vm.GamepadOverlayOptions[vm.GamepadOverlaySelectionIndex].Label);
 
         mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
         vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
@@ -1765,6 +1766,8 @@ public class MainViewModelTests : IDisposable
 
         Assert.Equal(1, _dialogs.SettingsShown);
         Assert.NotNull(_dialogs.MaintenanceActions?.RescanSystem);
+        Assert.Same(vm.ThemeChoices, _dialogs.ThemeChoices);
+        Assert.Equal(ThemeCatalog.All.Count, _dialogs.ThemeChoices!.Count);
     }
 
     [AvaloniaFact]
@@ -1845,6 +1848,20 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Constructor_WithSavedNonSystemTheme_MarksThatThemeSelectedWithoutThrowing()
+    {
+        // Regression: a saved theme other than System fires OnCurrentThemeChanged during construction,
+        // which reads ThemeChoices — so the collection must exist before CurrentTheme is assigned.
+        var vm = CreateViewModel(themes: new RecordingThemeService(ThemePreference.Dark));
+
+        Assert.Equal(ThemePreference.Dark, vm.CurrentTheme);
+        Assert.True(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.Dark).IsSelected);
+        Assert.All(
+            vm.ThemeChoices.Where(choice => choice.Id != ThemePreference.Dark),
+            choice => Assert.False(choice.IsSelected));
+    }
+
+    [AvaloniaFact]
     public async Task SetTheme_AppliesAndUpdatesSelectionState()
     {
         var themes = new RecordingThemeService();
@@ -1853,8 +1870,9 @@ public class MainViewModelTests : IDisposable
         await vm.SetThemeCommand.ExecuteAsync(ThemePreference.Dark);
 
         Assert.Equal(ThemePreference.Dark, themes.Current);
-        Assert.True(vm.IsDarkTheme);
-        Assert.False(vm.IsSystemTheme);
+        Assert.Equal(ThemePreference.Dark, vm.CurrentTheme);
+        Assert.True(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.Dark).IsSelected);
+        Assert.False(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.System).IsSelected);
         Assert.Equal("Appearance set to dark", vm.StatusText);
     }
 
@@ -2617,9 +2635,10 @@ public class MainViewModelTests : IDisposable
         }
     }
 
-    private sealed class RecordingThemeService : IAppThemeService
+    private sealed class RecordingThemeService(
+        ThemePreference initial = ThemePreference.System) : IAppThemeService
     {
-        public ThemePreference Current { get; private set; } = ThemePreference.System;
+        public ThemePreference Current { get; private set; } = initial;
 
         public Task SetThemeAsync(
             ThemePreference preference,
