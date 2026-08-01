@@ -1268,17 +1268,9 @@
                         <Button x:Name="GamepadAllGamesTab" Classes="gamepad-platform"
                                 Classes.controller-input="{Binding IsGamepadControllerInputActive}"
                                 Command="{Binding ShowAllGamesCommand}"
-                                Classes.selected="{Binding IsAllGamesSelected}" Classes.focused="{Binding IsGamepadAllGamesRailFocused}"
+                                Classes.selected="{Binding IsAllGamesSelected}"
                                 MinHeight="54" Padding="22,10">
                             <TextBlock Text="All Games" VerticalAlignment="Center" />
-                        </Button>
-                        <Button x:Name="GamepadCollectionsTab" Classes="gamepad-platform"
-                                Classes.controller-input="{Binding IsGamepadControllerInputActive}"
-                                Classes.selected="{Binding IsRecentlyAddedSelected}"
-                                Classes.focused="{Binding IsGamepadCollectionsRailFocused}"
-                                MinHeight="54" Padding="22,10"
-                                Command="{Binding OpenGamepadCollectionsCommand}">
-                            <TextBlock Text="Collections" VerticalAlignment="Center" />
                         </Button>
                         <ItemsControl ItemsSource="{Binding GamepadPlatforms}">
                             <ItemsControl.ItemsPanel>
@@ -1288,7 +1280,7 @@
                                 <DataTemplate x:DataType="vm:GamepadPlatformTabViewModel">
                                     <Button Classes="gamepad-platform"
                                             Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                            Classes.selected="{Binding IsActive}" Classes.focused="{Binding IsRailFocused}" MinHeight="54" Padding="18,10"
+                                            Classes.selected="{Binding IsActive}" MinHeight="54" Padding="18,10"
                                             Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).SelectPlatformCommand}"
                                             CommandParameter="{Binding System}">
                                         <Grid ColumnDefinitions="26,*" ColumnSpacing="9">

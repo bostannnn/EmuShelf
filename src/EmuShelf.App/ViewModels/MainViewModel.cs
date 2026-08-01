@@ -243,8 +243,6 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename);
-    public bool IsGamepadAllGamesRailFocused => IsGamepadRailFocused && GamepadRailIndex == 0;
-    public bool IsGamepadCollectionsRailFocused => IsGamepadRailFocused && GamepadRailIndex == 1;
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
@@ -269,16 +267,22 @@ public partial class MainViewModel : ViewModelBase
     };
 
     [ObservableProperty]
-    public partial bool IsGamepadRailFocused { get; set; }
-
-    /// <summary>Logical rail cursor: All Games, Collections, then each platform tab.</summary>
-    [ObservableProperty]
-    public partial int GamepadRailIndex { get; set; }
-
-    [ObservableProperty]
     public partial double GamepadViewportWidth { get; set; }
 
     public int GamepadColumnCount { get; private set; } = 1;
+
+    /// <summary>
+    /// The view that lays the grid out reports the true rendered column count here, and it wins over
+    /// the width arithmetic in <see cref="UpdateCoverLayout"/>. That arithmetic can be momentarily
+    /// stale relative to the real layout, and a too-small count made Right/Left navigation clamp
+    /// partway across a row ("stuck at the second column"). The arithmetic remains the fallback for
+    /// before the grid has laid out (and for headless tests with no view).
+    /// </summary>
+    internal void SetRenderedGamepadColumnCount(int columns)
+    {
+        if (columns >= 1)
+            GamepadColumnCount = columns;
+    }
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
@@ -596,15 +600,10 @@ public partial class MainViewModel : ViewModelBase
 
     private void RefreshNavigationSystems(IReadOnlySet<string> populatedSystemIds)
     {
-        var railWasFocused = IsGamepadRailFocused;
-        var focusedSystemId = GamepadRailIndex >= 2 && GamepadRailIndex - 2 < GamepadPlatforms.Count
-            ? GamepadPlatforms[GamepadRailIndex - 2].System.Id
-            : null;
         var visible = Systems
             .Where(system => ShowEmptyPlatforms || populatedSystemIds.Contains(system.Id))
             .ToArray();
-        var navigationChanged = !NavigationSystems.SequenceEqual(visible);
-        if (navigationChanged)
+        if (!NavigationSystems.SequenceEqual(visible))
         {
             NavigationSystems.Clear();
             foreach (var system in visible)
@@ -615,35 +614,8 @@ public partial class MainViewModel : ViewModelBase
                 GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
         }
 
-        if (!railWasFocused)
-        {
-            GamepadRailIndex = ActiveGamepadRailIndex();
-        }
-        else if (navigationChanged && focusedSystemId is not null)
-        {
-            var focusedSystemIndex = Array.FindIndex(
-                visible,
-                system => string.Equals(system.Id, focusedSystemId, StringComparison.Ordinal));
-            GamepadRailIndex = focusedSystemIndex >= 0
-                ? focusedSystemIndex + 2
-                : Math.Min(GamepadRailIndex, NavigationSystems.Count + 1);
-        }
-        else if (navigationChanged)
-        {
-            GamepadRailIndex = Math.Min(GamepadRailIndex, NavigationSystems.Count + 1);
-        }
-
         UpdateGamepadPlatformState();
     }
-
-    private int ActiveGamepadRailIndex() => CurrentLibraryScope switch
-    {
-        LibraryScope.AllGames => 0,
-        LibraryScope.RecentlyAdded => 1,
-        _ when SelectedSystem is not null =>
-            Math.Max(0, NavigationSystems.IndexOf(SelectedSystem) + 2),
-        _ => 0,
-    };
 
     private async Task SetShowEmptyPlatformsAsync(bool show)
     {
@@ -781,26 +753,37 @@ public partial class MainViewModel : ViewModelBase
             SelectedSystem = system;
     }
 
-    // LB/RB walk the same order the controller rail shows — All Games, Collections, then each
-    // system — so Collections is reachable by shoulder buttons instead of being stepped over.
+    // LB/RB cycle one ordered list the rail mirrors — All Games, then each system — and wrap at
+    // both ends. Collections and Recently Added are not platforms; they live in the Start menu and
+    // the Collections overlay respectively, so they are not stops on this cycle.
     private async Task MovePlatformAsync(int direction)
     {
-        var current = CurrentLibraryScope switch
-        {
-            LibraryScope.AllGames => 0,
-            LibraryScope.RecentlyAdded => 1,
-            _ => SelectedSystem is null ? 0 : NavigationSystems.IndexOf(SelectedSystem) + 2,
-        };
-        var target = current + direction;
-        if (target < 0 || target > NavigationSystems.Count + 1)
-            return;
+        var count = NavigationSystems.Count + 1; // [All Games, systems…]
+        if (count <= 1)
+            return; // Only All Games exists; nothing to cycle to.
+
+        var current = CurrentPlatformCycleIndex();
+        // From an off-list scope (e.g. Recently Added) the first press returns to All Games rather
+        // than stepping past it, so a controller can never dead-end away from the cycle.
+        var target = current < 0 ? 0 : ((current + direction) % count + count) % count;
 
         if (target == 0)
-            await ShowCollectionAsync(LibraryScope.AllGames);
-        else if (target == 1)
-            await ShowCollectionAsync(LibraryScope.RecentlyAdded);
+            await ShowAllGamesAsync();
         else
-            SelectedSystem = NavigationSystems[target - 2];
+            SelectedSystem = NavigationSystems[target - 1];
+    }
+
+    // Position in the LB/RB cycle for the current scope, or -1 when the scope is not on the cycle.
+    private int CurrentPlatformCycleIndex()
+    {
+        if (CurrentLibraryScope == LibraryScope.AllGames)
+            return 0;
+        if (CurrentLibraryScope == LibraryScope.System && SelectedSystem is not null &&
+            NavigationSystems.IndexOf(SelectedSystem) is >= 0 and var systemIndex)
+        {
+            return systemIndex + 1;
+        }
+        return -1;
     }
 
     [RelayCommand]
@@ -1096,18 +1079,11 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NextPlatform:
                 NextPlatformCommand.Execute(null);
                 return true;
-            case GamepadAction.Confirm when IsGamepadRailFocused:
-                ActivateGamepadRailCommand.Execute(null);
-                return true;
             case GamepadAction.Confirm:
                 LaunchFocusedGameCommand.Execute(null);
                 return true;
             case GamepadAction.Cancel:
-                if (IsGamepadRailFocused)
-                {
-                    IsGamepadRailFocused = false;
-                    RestoreFocusedGame();
-                }
+                // Nothing to back out of at the top level; swallow B/Escape so it can't bubble.
                 return true;
             case GamepadAction.Search:
                 OpenGamepadSearchCommand.Execute(null);
@@ -1397,33 +1373,28 @@ public partial class MainViewModel : ViewModelBase
         if (index < 0)
             index = 0;
         FocusedGame = Games[Math.Clamp(index + delta, 0, Games.Count - 1)];
-        IsGamepadRailFocused = false;
     }
 
+    // The d-pad/stick move only inside the cover grid; platforms are switched by LB/RB. Each
+    // direction clamps at the grid edge rather than escaping into the rail or wrapping rows.
     [RelayCommand]
     private void MoveGamepadFocusLeft()
     {
-        if (IsGamepadRailFocused)
-            GamepadRailIndex = Math.Max(0, GamepadRailIndex - 1);
-        else if (FocusedGame is { } focused)
-        {
-            var index = Games.IndexOf(focused);
-            if (index > 0 && index % GamepadColumnCount != 0)
-                FocusedGame = Games[index - 1];
-        }
+        if (FocusedGame is not { } focused)
+            return;
+        var index = Games.IndexOf(focused);
+        if (index > 0 && index % GamepadColumnCount != 0)
+            FocusedGame = Games[index - 1];
     }
 
     [RelayCommand]
     private void MoveGamepadFocusRight()
     {
-        if (IsGamepadRailFocused)
-            GamepadRailIndex = Math.Min(NavigationSystems.Count + 1, GamepadRailIndex + 1);
-        else if (FocusedGame is { } focused)
-        {
-            var index = Games.IndexOf(focused);
-            if (index >= 0 && index + 1 < Games.Count && index % GamepadColumnCount < GamepadColumnCount - 1)
-                FocusedGame = Games[index + 1];
-        }
+        if (FocusedGame is not { } focused)
+            return;
+        var index = Games.IndexOf(focused);
+        if (index >= 0 && index + 1 < Games.Count && index % GamepadColumnCount < GamepadColumnCount - 1)
+            FocusedGame = Games[index + 1];
     }
 
     [RelayCommand]
@@ -1434,15 +1405,7 @@ public partial class MainViewModel : ViewModelBase
 
         var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
         if (index < GamepadColumnCount)
-        {
-            GamepadRailIndex = CurrentLibraryScope == LibraryScope.AllGames
-                ? 0
-                : CurrentLibraryScope == LibraryScope.RecentlyAdded
-                    ? 1
-                    : SelectedSystem is null ? 2 : Math.Max(2, NavigationSystems.IndexOf(SelectedSystem) + 2);
-            IsGamepadRailFocused = true;
-            return;
-        }
+            return; // Top row: stay put. Platforms are reached with LB/RB, not by moving up.
 
         FocusedGame = Games[index - GamepadColumnCount];
     }
@@ -1453,34 +1416,10 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode || Games.Count == 0)
             return;
 
-        if (IsGamepadRailFocused)
-        {
-            IsGamepadRailFocused = false;
-            RestoreFocusedGame();
-            return;
-        }
-
         var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
         var target = index + GamepadColumnCount;
         if (target < Games.Count)
             FocusedGame = Games[target];
-    }
-
-    [RelayCommand]
-    private async Task ActivateGamepadRailAsync()
-    {
-        if (!IsGamepadRailFocused)
-            return;
-
-        if (GamepadRailIndex == 0)
-            await ShowAllGamesAsync();
-        else if (GamepadRailIndex == 1)
-            OpenGamepadOverlay(GamepadOverlayKind.Collections);
-        else if (GamepadRailIndex - 2 is var systemIndex &&
-                 systemIndex >= 0 && systemIndex < NavigationSystems.Count)
-            SelectedSystem = NavigationSystems[systemIndex];
-
-        IsGamepadRailFocused = false;
     }
 
     private string FocusScopeKey() => CurrentLibraryScope switch
@@ -1510,20 +1449,13 @@ public partial class MainViewModel : ViewModelBase
         UpdateCoverLayout();
     }
 
+    // The rail is a passive indicator of the current scope: at most one platform tab is active,
+    // and the All Games tab tracks CurrentLibraryScope on its own.
     private void UpdateGamepadPlatformState()
     {
         foreach (var platform in GamepadPlatforms)
             platform.IsActive = CurrentLibraryScope == LibraryScope.System &&
                                 string.Equals(platform.System.Id, SelectedSystem?.Id, StringComparison.Ordinal);
-        UpdateGamepadRailFocus();
-    }
-
-    private void UpdateGamepadRailFocus()
-    {
-        OnPropertyChanged(nameof(IsGamepadAllGamesRailFocused));
-        OnPropertyChanged(nameof(IsGamepadCollectionsRailFocused));
-        for (var index = 0; index < GamepadPlatforms.Count; index++)
-            GamepadPlatforms[index].IsRailFocused = IsGamepadRailFocused && index + 2 == GamepadRailIndex;
     }
 
     partial void OnCurrentThemeChanged(ThemePreference value)
@@ -1553,10 +1485,6 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnGamepadOverlaySelectionIndexChanged(int value) => UpdateGamepadOverlayOptionFocus();
 
-    partial void OnGamepadRailIndexChanged(int value) => UpdateGamepadRailFocus();
-
-    partial void OnIsGamepadRailFocusedChanged(bool value) => UpdateGamepadRailFocus();
-
     partial void OnFocusedGamepadAchievementChanged(
         AchievementRowViewModel? oldValue,
         AchievementRowViewModel? newValue)
@@ -1569,6 +1497,14 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsGamepadModeChanged(bool value)
     {
+        // Entering Gamepad mode before its grid has ever been measured would leave GamepadColumnCount
+        // at its default of 1, so row-wise Up/Down would step a single tile (behaving like Left/Right)
+        // and the reveal could strand the selector off-screen. Seed the gamepad viewport from the
+        // desktop's so a real column count exists on entry; the gamepad grid's own SizeChanged still
+        // corrects it once it lays out.
+        if (value && GamepadViewportWidth <= 0 && LibraryViewportWidth > 0)
+            GamepadViewportWidth = LibraryViewportWidth;
+
         // The newly visible mode has its own viewport and inset, so the covers have to be re-sized
         // for it here. Waiting for that view's SizeChanged is not enough: if its width has not
         // changed since it was last shown, the event never comes and the tiles keep the other

@@ -126,6 +126,23 @@ public class GamepadLibraryLayoutTests : IDisposable
     }
 
     /// <summary>
+    /// Regression: entering Gamepad mode before its grid was ever measured left GamepadColumnCount
+    /// at its default of 1, so row-wise Up/Down stepped a single tile and the selector could land
+    /// off-screen. Entry now seeds the gamepad viewport from the desktop's so a real column count
+    /// exists immediately.
+    /// </summary>
+    [AvaloniaFact]
+    public void EnteringGamepadModeSeedsAColumnCountFromTheDesktopViewport()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.LibraryViewportWidth = 1600; // desktop measured; the gamepad grid never was.
+
+        viewModel.IsGamepadMode = true;
+
+        Assert.True(viewModel.GamepadColumnCount > 1);
+    }
+
+    /// <summary>
     /// Regression: the rail and title moved to the new platform immediately while Games kept the
     /// old platform's tiles until the load finished two awaits later, so a GBA game could be seen
     /// under the PlayStation tab.

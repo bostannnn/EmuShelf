@@ -82,6 +82,18 @@ public class GamepadNavigationControllerTests
     }
 
     [Fact]
+    public void Poll_DiagonalLeftStick_FiresOnlyTheDominantAxis()
+    {
+        _controller.Poll(Connected(), 0);
+
+        // A diagonal push past the dead zone on both axes resolves to the larger one, so one flick
+        // moves a single grid cell instead of a row and a column at once.
+        Assert.Equal([GamepadAction.NavigateRight], _controller.Poll(Connected(x: 0.9f, y: -0.6f), 16));
+        _controller.Poll(Connected(), 32);
+        Assert.Equal([GamepadAction.NavigateDown], _controller.Poll(Connected(x: -0.6f, y: 0.9f), 48));
+    }
+
+    [Fact]
     public void Poll_Disconnect_ResetsStateAndSuppressesPhantomPressOnReconnect()
     {
         _controller.Poll(Connected(), 0);

@@ -2769,3 +2769,65 @@ loaded zip, so the generic RetroArch save descriptor covers it unchanged — one
 matched by name, with the same per-core-version gating that refuses to restore a state written by a
 different core build. Nothing about arcade needed a bespoke save path, so it reuses the descriptor
 the other RetroArch systems already share.
+
+## 2026-07-31 — Gamepad rail is a passive LB/RB indicator, not a D-pad target
+
+The controller library had two focus planes — the cover grid and the platform rail — bridged by
+"D-pad Up from the top row enters the rail." That let the grid selector climb out of the grid, and
+it exposed a deeper defect: three code paths owned three disagreeing index spaces. LB/RB walked
+`[All Games, Recently Added, systems…]`, the rail tabs were `[All Games, Collections, systems…]`,
+and Up-into-rail mapped the Recently Added *scope* onto the Collections *tab* (whose highlight even
+bound to `IsRecentlyAddedSelected`). So shoulder input could land on a scope with no lit tab, and
+Collections was unreachable by the bumpers at all.
+
+The rail is now a **passive indicator**: the d-pad/stick move only inside the cover grid (Up on the
+top row clamps), and platforms are switched solely by **LB/RB**, which cycle **one** ordered list —
+`[All Games, systems…]` — with wrap at both ends. This eliminates the third (up-into-rail) index
+space rather than reconciling it: the rail no longer owns an index, it just reflects
+`IsAllGamesSelected` / platform `IsActive`. Collections and Recently Added are not platforms, so
+they are off the cycle — Collections lives in the Start menu, Recently Added in the Collections
+overlay. From an off-list scope the first bumper press snaps to All Games so a controller can never
+dead-end. `IsGamepadRailFocused`, `GamepadRailIndex`, and their reveal/focus plumbing were deleted.
+
+Two selector-disappearance races were fixed alongside: entering Gamepad mode now seeds the gamepad
+viewport from the desktop's so `GamepadColumnCount` is never left at its default of 1 (which made
+row-wise Up/Down step a single tile), and `RevealFocusedGame` retries on the next layout pass when
+the target tile is not yet realized, so the ring is never stranded on an off-screen tile. The left
+stick also resolves a diagonal push to its dominant axis so one flick moves a single cell.
+
+The grid column count is now reported by the **view**, which actually lays the grid out, rather than
+trusted from width arithmetic alone. The arithmetic (`UpdateCoverLayout`) can be momentarily stale
+relative to the real layout, and a too-small count made Left/Right clamp partway across a row —
+"stuck at the second column." The window reads the true count from the realized tiles' rows (the
+most-populated realized row) after every layout and reports it through
+`SetRenderedGamepadColumnCount`; the arithmetic stays as the pre-layout fallback and for headless
+tests with no view.
+
+## 2026-07-31 — Library connections get a busy timeout so overlapping read/write don't blank the grid
+
+The library grid could go blank after rapid platform switching and stay blank until relaunch.
+Root cause: `LibraryDatabase.CreateConnection` opened SQLite with the default rollback journal and
+a `busy_timeout` of 0. The app reads the library on background threads (a platform switch loads the
+new scope) while other work writes it (availability passes, RetroAchievements, save sync). With a
+zero busy timeout a reader that overlaps a writer fails with `SQLITE_BUSY` immediately; the reload's
+`catch` swallowed that and left the grid empty (the outgoing tiles were already dropped for the
+scope change). Making Left/Right platform switching wrap around increased switch frequency and made
+the collision easy to hit.
+
+Every connection now sets `PRAGMA busy_timeout = 5000`, so a reader waits for a short concurrent
+write instead of throwing. Chosen over switching the database to WAL: the busy timeout is a one-line,
+side-effect-free change, while WAL adds `-wal`/`-shm` sidecar files that complicate the "portable
+Data/ folder is safe to move while idle" rule the no-pooling connection policy exists to protect.
+
+## 2026-07-31 — A Gamepad launch maximizes on its first switch to Desktop
+
+Switching to Desktop mode on a device that launched straight into Gamepad (a Steam Deck / TV) opened
+a small floating 1240×800 window — the default restored size — which reads as a "weird size" on a
+handheld. `WindowInterfaceModeService` used to capture the transient startup window as the "desktop
+state" and restore it.
+
+It now distinguishes a real desktop session from none. A Desktop launch records its window and a
+trip through Gamepad restores it exactly (maximized stays maximized — the existing guarantee). A
+Gamepad launch records no desktop state, so the first return to Desktop maximizes instead of
+restoring the startup window; after that the user's chosen desktop window is remembered normally.
+Desktop-PC behavior is unchanged.

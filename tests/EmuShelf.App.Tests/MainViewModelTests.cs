@@ -879,37 +879,31 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.FocusedGame.IsEditingTitle);
         Assert.Equal("Gamepad actions", vm.FocusedGame.DraftTitle);
 
+        // The d-pad stays inside the cover grid: Up on the only (top-row) tile keeps focus there
+        // instead of climbing into the platform rail. Platforms are switched with LB/RB.
+        var focusedBeforeUp = vm.FocusedGame;
         vm.MoveGamepadFocusUpCommand.Execute(null);
-        vm.MoveGamepadFocusRightCommand.Execute(null);
-        Assert.Equal(2, vm.GamepadRailIndex);
-        Assert.True(vm.GamepadPlatforms[0].IsRailFocused);
+        Assert.Same(focusedBeforeUp, vm.FocusedGame);
     }
 
     [AvaloniaFact]
-    public async Task BackgroundReload_PreservesTentativeGamepadRailFocus()
+    public async Task PlatformShoulderButtons_FromOffListScope_SnapToAllGames()
     {
-        var ps1Path = Path.Combine(_baseDirectory, "RailPs1.cue");
-        var gameCubePath = Path.Combine(_baseDirectory, "RailGameCube.iso");
-        File.WriteAllText(ps1Path, "FILE \"RailPs1.bin\" BINARY");
-        File.WriteAllText(gameCubePath, "gamecube");
-        _library.AddGames([
-            new Game { SystemId = Ps1.Id, Path = ps1Path, Title = "Rail PS1", DateAdded = DateTimeOffset.UtcNow },
-            new Game { SystemId = GameCube.Id, Path = gameCubePath, Title = "Rail GameCube", DateAdded = DateTimeOffset.UtcNow },
-        ]);
+        var path = Path.Combine(_baseDirectory, "OffList.cue");
+        File.WriteAllText(path, "FILE \"OffList.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Off list", DateAdded = DateTimeOffset.UtcNow }]);
         var vm = CreateViewModel();
         vm.IsGamepadMode = true;
         vm.SelectedSystem = Ps1;
         await vm.ReloadGamesAsync();
-        vm.FocusedGame = Assert.Single(vm.Games);
-        vm.MoveGamepadFocusUpCommand.Execute(null);
-        vm.MoveGamepadFocusRightCommand.Execute(null);
-        var tentativeIndex = vm.GamepadRailIndex;
 
-        await vm.ReloadGamesAsync();
+        // Recently Added is not a stop on the LB/RB cycle; from there the next press returns to
+        // All Games rather than dead-ending.
+        await vm.ShowGamepadRecentlyAddedCommand.ExecuteAsync(null);
+        Assert.Equal(LibraryScope.RecentlyAdded, vm.CurrentLibraryScope);
 
-        Assert.True(vm.IsGamepadRailFocused);
-        Assert.Equal(tentativeIndex, vm.GamepadRailIndex);
-        Assert.True(vm.GamepadPlatforms[tentativeIndex - 2].IsRailFocused);
+        await vm.NextPlatformCommand.ExecuteAsync(null);
+        Assert.True(vm.IsAllGamesSelected);
     }
 
     [AvaloniaFact]
@@ -994,41 +988,42 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task ShoulderButtons_StepThroughCollectionsInRailOrderWithoutWrapping()
+    public async Task ShoulderButtons_CycleAllGamesAndSystemsWithWrapSkippingRecentlyAdded()
     {
-        // Regression: LB/RB walked All Games -> systems and stepped over the Collections tab.
-        var path = Path.Combine(_baseDirectory, "Rail.cue");
-        File.WriteAllText(path, "FILE \"Rail.bin\" BINARY");
-        _library.AddGames([new Game
-        {
-            SystemId = Ps1.Id,
-            Path = path,
-            Title = "Rail",
-            DateAdded = DateTimeOffset.UtcNow,
-        }]);
+        // Option A: LB/RB cycle one ordered list — All Games, then each system — and wrap at both
+        // ends. Recently Added is not a stop (it lives in the Collections overlay), so shoulder
+        // input steps straight from All Games to the first system.
+        var ps1Path = Path.Combine(_baseDirectory, "RailPs1.cue");
+        var gameCubePath = Path.Combine(_baseDirectory, "RailGameCube.iso");
+        File.WriteAllText(ps1Path, "FILE \"RailPs1.bin\" BINARY");
+        File.WriteAllText(gameCubePath, "gamecube");
+        _library.AddGames([
+            new Game { SystemId = Ps1.Id, Path = ps1Path, Title = "Rail PS1", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = gameCubePath, Title = "Rail GameCube", DateAdded = DateTimeOffset.UtcNow },
+        ]);
         var vm = CreateViewModel();
         vm.IsGamepadMode = true;
-        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        await vm.ShowAllGamesCommand.ExecuteAsync(null); // also populates NavigationSystems + GamepadPlatforms
         Assert.True(vm.IsAllGamesSelected);
+        Assert.Equal(2, vm.NavigationSystems.Count);
 
-        // Forward: All Games -> Collections -> first system.
+        // RB steps All Games -> first system; Recently Added is never a stop, and the rail marks
+        // exactly one active tab.
         await vm.NextPlatformCommand.ExecuteAsync(null);
-        Assert.True(vm.IsRecentlyAddedSelected);
-        Assert.Null(vm.SelectedSystem);
+        Assert.Equal(vm.NavigationSystems[0].Id, vm.SelectedSystem?.Id);
+        Assert.False(vm.IsRecentlyAddedSelected);
+        Assert.Single(vm.GamepadPlatforms, platform => platform.IsActive);
 
+        // RB again to the last system, then RB wraps back to All Games (no platform tab active).
         await vm.NextPlatformCommand.ExecuteAsync(null);
-        Assert.Same(vm.Systems[0], vm.SelectedSystem);
-
-        // Backward returns through Collections rather than jumping to All Games.
-        await vm.PreviousPlatformCommand.ExecuteAsync(null);
-        Assert.True(vm.IsRecentlyAddedSelected);
-
-        await vm.PreviousPlatformCommand.ExecuteAsync(null);
+        Assert.Equal(vm.NavigationSystems[1].Id, vm.SelectedSystem?.Id);
+        await vm.NextPlatformCommand.ExecuteAsync(null);
         Assert.True(vm.IsAllGamesSelected);
+        Assert.DoesNotContain(vm.GamepadPlatforms, platform => platform.IsActive);
 
-        // No wrap at the start.
+        // LB from All Games wraps to the last system.
         await vm.PreviousPlatformCommand.ExecuteAsync(null);
-        Assert.True(vm.IsAllGamesSelected);
+        Assert.Equal(vm.NavigationSystems[^1].Id, vm.SelectedSystem?.Id);
     }
 
     [AvaloniaFact]
@@ -1213,6 +1208,51 @@ public class MainViewModelTests : IDisposable
         vm.FocusedGame = vm.Games[2];
         vm.MoveGamepadFocusDownCommand.Execute(null);
         Assert.Same(vm.Games[2], vm.FocusedGame);
+
+        // Up on the top row clamps and never escapes into the platform rail.
+        vm.FocusedGame = vm.Games[1];
+        vm.MoveGamepadFocusUpCommand.Execute(null);
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+    }
+
+    /// <summary>
+    /// Regression: Right/Left clamp on GamepadColumnCount, and a too-small width estimate (e.g. the
+    /// default of 1 before the grid is measured) trapped the selector partway across a row — "stuck
+    /// at the second column." The view reports the true rendered column count, which navigation must
+    /// then honor.
+    /// </summary>
+    [AvaloniaFact]
+    public void RenderedColumnCountReportedByTheViewDrivesGridNavigation()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 8).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Game {index + 1}.cue",
+                Title = $"Game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+
+        // Arithmetic never ran (no viewport), so the count is the stale default of 1 that would trap
+        // Right at the first column.
+        Assert.Equal(1, vm.GamepadColumnCount);
+        vm.FocusedGame = vm.Games[1];
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+
+        // Once the view reports the real four columns, Right and Down step correctly.
+        vm.SetRenderedGamepadColumnCount(4);
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Same(vm.Games[2], vm.FocusedGame);
+        vm.MoveGamepadFocusDownCommand.Execute(null);
+        Assert.Same(vm.Games[6], vm.FocusedGame);
     }
 
     [AvaloniaFact]

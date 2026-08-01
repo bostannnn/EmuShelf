@@ -15,9 +15,6 @@ public partial class GamepadPlatformTabViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsActive { get; set; }
 
-    [ObservableProperty]
-    public partial bool IsRailFocused { get; set; }
-
     public GamepadPlatformTabViewModel(GameSystem system)
     {
         System = system;

@@ -36,9 +36,14 @@ public sealed class LibraryDatabase
         }.ToString();
         var connection = new SqliteConnection(connectionString);
         connection.Open();
-        using var foreignKeys = connection.CreateCommand();
-        foreignKeys.CommandText = "PRAGMA foreign_keys = ON;";
-        foreignKeys.ExecuteNonQuery();
+        using var pragmas = connection.CreateCommand();
+        // busy_timeout: the app reads the library on background threads (a platform switch, an
+        // availability pass) while other work writes it (availability updates, RetroAchievements,
+        // save sync). With the default rollback journal a reader that overlaps a writer fails with
+        // SQLITE_BUSY *immediately*; rapid platform switching then threw mid-load and left the grid
+        // blank until relaunch. A busy timeout makes the reader wait for the writer instead.
+        pragmas.CommandText = "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;";
+        pragmas.ExecuteNonQuery();
         return connection;
     }
 

@@ -61,8 +61,7 @@ public partial class MainWindow : Window
         }
 
         if (e.PropertyName is not (nameof(MainViewModel.SelectedSystem) or
-            nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.IsGamepadRailFocused) or
-            nameof(MainViewModel.GamepadRailIndex) or nameof(MainViewModel.GamepadOverlay) or
+            nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.GamepadOverlay) or
             nameof(MainViewModel.GamepadOverlaySelectionIndex) or nameof(MainViewModel.GamepadOverlayTitle) or
             nameof(MainViewModel.FocusedGamepadAchievement) or
             nameof(MainViewModel.IsGamepadControllerInputActive)))
@@ -78,7 +77,9 @@ public partial class MainWindow : Window
     // View-focused coordination only: the view model owns which game is focused; this window scrolls
     // that game's tile into view. The target row may not be realized yet under virtualization, so it
     // is realized on demand and laid out before being brought into view.
-    private void RevealFocusedGame()
+    private void RevealFocusedGame() => RevealFocusedGame(0);
+
+    private void RevealFocusedGame(int attempt)
     {
         if (_gamepadViewModel is not { IsGamepadMode: true } viewModel ||
             viewModel.FocusedGame is not { } focused)
@@ -92,13 +93,18 @@ public partial class MainWindow : Window
 
         var element = GamepadRepeater.TryGetElement(index) ?? GamepadRepeater.GetOrCreateElement(index);
         if (element is null)
+        {
+            // The tile isn't realized yet (virtualization/layout not settled). Retry on the next
+            // layout pass, bounded, so the selector ring is never left bound to an off-screen tile.
+            if (attempt < 5)
+                Dispatcher.UIThread.Post(() => RevealFocusedGame(attempt + 1), DispatcherPriority.Loaded);
             return;
+        }
 
         GamepadRepeater.UpdateLayout();
+        SyncGamepadColumnCountFromLayout();
         element.BringIntoView();
-        if (viewModel.IsGamepadControllerInputActive &&
-            !viewModel.HasGamepadOverlay &&
-            !viewModel.IsGamepadRailFocused)
+        if (viewModel.IsGamepadControllerInputActive && !viewModel.HasGamepadOverlay)
         {
             var gameButton = element as Button ?? element.GetVisualDescendants()
                 .OfType<Button>()
@@ -106,6 +112,31 @@ public partial class MainWindow : Window
             if (gameButton is not null)
                 FocusManager?.Focus(gameButton, NavigationMethod.Directional);
         }
+    }
+
+    // The view lays the grid out, so it — not width arithmetic — is the source of truth for how many
+    // columns are on screen. A momentarily stale, too-small count made Right/Left clamp partway across
+    // a row ("stuck at the second column"); reading the realized tiles' rows corrects it regardless of
+    // what made the arithmetic disagree. Runs off a settled layout (after UpdateLayout / on resize).
+    private void SyncGamepadColumnCountFromLayout()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel || viewModel.Games.Count == 0)
+            return;
+
+        // The most-populated realized row is the true column count: virtualization always keeps at
+        // least one full row realized (only the final row may be short), so its width is authoritative
+        // even when the grid is scrolled.
+        var rowCounts = new Dictionary<int, int>();
+        for (var index = 0; index < viewModel.Games.Count; index++)
+        {
+            if (GamepadRepeater.TryGetElement(index) is not { } element)
+                continue;
+            var row = (int)Math.Round(element.Bounds.Y);
+            rowCounts[row] = rowCounts.TryGetValue(row, out var count) ? count + 1 : 1;
+        }
+
+        if (rowCounts.Count > 0)
+            viewModel.SetRenderedGamepadColumnCount(rowCounts.Values.Max());
     }
 
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
@@ -159,31 +190,19 @@ public partial class MainWindow : Window
             _ = row.LoadBadgeAsync(row.BadgeName);
     }
 
+    // The rail is a passive indicator: keep the active tab scrolled into view so the current
+    // platform is visible after an LB/RB change. It never takes keyboard focus.
     private void RevealGamepadRail()
     {
         if (_gamepadViewModel is null || !_gamepadViewModel.IsGamepadMode)
             return;
 
-        Control? tab = _gamepadViewModel.IsGamepadRailFocused
-            ? _gamepadViewModel.GamepadRailIndex switch
-            {
-                0 => GamepadAllGamesTab,
-                1 => GamepadCollectionsTab,
-                _ => GamepadRailScroller.GetVisualDescendants()
-                    .OfType<Button>()
-                    .FirstOrDefault(button => button.DataContext is GamepadPlatformTabViewModel { IsRailFocused: true }),
-            }
-            : _gamepadViewModel.IsAllGamesSelected
-                ? GamepadAllGamesTab
-                : GamepadRailScroller.GetVisualDescendants()
-                    .OfType<Button>()
-                    .FirstOrDefault(button => button.DataContext is GamepadPlatformTabViewModel { IsActive: true });
-        if (tab is null)
-            return;
-
-        tab.BringIntoView();
-        if (_gamepadViewModel.IsGamepadRailFocused)
-            FocusManager?.Focus(tab, NavigationMethod.Directional);
+        Control? tab = _gamepadViewModel.IsAllGamesSelected
+            ? GamepadAllGamesTab
+            : GamepadRailScroller.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(button => button.DataContext is GamepadPlatformTabViewModel { IsActive: true });
+        tab?.BringIntoView();
     }
 
     private void OnOpenSearchClick(object? sender, RoutedEventArgs e)
@@ -417,6 +436,9 @@ public partial class MainWindow : Window
 
         viewModel.GamepadViewportWidth = e.NewSize.Width;
         ApplyCellWidth(viewModel);
+        // Correct the column count from the freshly relaid grid, so the first Left/Right after a
+        // resize or first show can't clamp against a stale width estimate.
+        Dispatcher.UIThread.Post(SyncGamepadColumnCountFromLayout, DispatcherPriority.Loaded);
     }
 
     // Both grids take their cell width from the one cover width the view model computed for the

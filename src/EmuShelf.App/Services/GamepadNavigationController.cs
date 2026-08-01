@@ -63,10 +63,11 @@ public sealed class GamepadNavigationController
                 actions.Add(action);
         }
 
-        HandleDirection(IsUp(reading), GamepadAction.NavigateUp, timestampMs, actions);
-        HandleDirection(IsDown(reading), GamepadAction.NavigateDown, timestampMs, actions);
-        HandleDirection(IsLeft(reading), GamepadAction.NavigateLeft, timestampMs, actions);
-        HandleDirection(IsRight(reading), GamepadAction.NavigateRight, timestampMs, actions);
+        var stick = StickDirections(reading);
+        HandleDirection(reading.Buttons.HasFlag(GamepadButtons.DpadUp) || stick.Up, GamepadAction.NavigateUp, timestampMs, actions);
+        HandleDirection(reading.Buttons.HasFlag(GamepadButtons.DpadDown) || stick.Down, GamepadAction.NavigateDown, timestampMs, actions);
+        HandleDirection(reading.Buttons.HasFlag(GamepadButtons.DpadLeft) || stick.Left, GamepadAction.NavigateLeft, timestampMs, actions);
+        HandleDirection(reading.Buttons.HasFlag(GamepadButtons.DpadRight) || stick.Right, GamepadAction.NavigateRight, timestampMs, actions);
 
         _previousButtons = reading.Buttons;
         return actions;
@@ -107,15 +108,25 @@ public sealed class GamepadNavigationController
         _directionNextRepeat.Clear();
     }
 
-    private static bool IsUp(GamepadReading reading) =>
-        reading.Buttons.HasFlag(GamepadButtons.DpadUp) || reading.LeftStickY < -StickDeadZone;
+    /// <summary>
+    /// Resolves the left stick to at most one axis. When a diagonal push crosses the dead zone on
+    /// both axes, only the larger-magnitude one survives, so one flick steps a single grid cell
+    /// instead of jumping a row and a column at once. The d-pad is handled separately and unchanged.
+    /// </summary>
+    private static (bool Up, bool Down, bool Left, bool Right) StickDirections(GamepadReading reading)
+    {
+        var x = reading.LeftStickX;
+        var y = reading.LeftStickY;
+        var horizontal = Math.Abs(x) > StickDeadZone;
+        var vertical = Math.Abs(y) > StickDeadZone;
+        if (horizontal && vertical)
+        {
+            if (Math.Abs(x) >= Math.Abs(y))
+                vertical = false;
+            else
+                horizontal = false;
+        }
 
-    private static bool IsDown(GamepadReading reading) =>
-        reading.Buttons.HasFlag(GamepadButtons.DpadDown) || reading.LeftStickY > StickDeadZone;
-
-    private static bool IsLeft(GamepadReading reading) =>
-        reading.Buttons.HasFlag(GamepadButtons.DpadLeft) || reading.LeftStickX < -StickDeadZone;
-
-    private static bool IsRight(GamepadReading reading) =>
-        reading.Buttons.HasFlag(GamepadButtons.DpadRight) || reading.LeftStickX > StickDeadZone;
+        return (vertical && y < 0, vertical && y > 0, horizontal && x < 0, horizontal && x > 0);
+    }
 }
