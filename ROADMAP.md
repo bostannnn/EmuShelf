@@ -1005,9 +1005,13 @@ or launch flow, and the host already owns time/status UI.
    D-pad navigation, X refresh, and Y cycling Default/Points/Unlocked first/Recently unlocked
    ordering. Sorting atomically replaces the visible rows and keeps the selector in its physical
    grid slot, so the badge under the selector changes without the ring chasing the previously
-   selected badge across the screen. Community unlock-percentage sorting remains deferred until
-   that data has an explicit API and portable-cache field. Real-controller tuning remains part of
-   the M31 acceptance pass above.
+   selected badge across the screen. A real 86-badge compositor regression replaced collection
+   Reset with a fresh immutable item-source snapshot, delays manual realization until the viewport
+   is measured, and verifies the top-left cell after every sort mode. Achievement D-pad movement
+   now clamps at real row edges/missing final-row cells; filtering always restores layout even when
+   the same badge survives, and pointer selection updates the same logical focus as the controller.
+   Community unlock-percentage sorting remains deferred until that data has an explicit API and
+   portable-cache field. Real-controller tuning remains part of the M31 acceptance pass above.
 2. **Settings entirely on the controller.** Replace the Settings-to-Desktop handoff with an
    in-window, sectioned Gamepad surface over the existing settings view model. Land General,
    RetroAchievements, Saves, and Texture Packs first; then emulator paths/arguments. Use the

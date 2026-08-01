@@ -1,4 +1,3 @@
-using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -220,24 +219,25 @@ public class AchievementDetailsWindowTests
     {
         var earnedAt = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
         var viewModel = CreateFilterAndSortViewModel(earnedAt);
-        var collectionChanges = new List<NotifyCollectionChangedAction>();
-        viewModel.VisibleAchievements.CollectionChanged +=
-            (_, args) => collectionChanges.Add(args.Action);
+        var previousSnapshot = viewModel.VisibleAchievements;
 
         viewModel.SelectedSort = AchievementDisplaySort.Points;
+        Assert.NotSame(previousSnapshot, viewModel.VisibleAchievements);
+        previousSnapshot = viewModel.VisibleAchievements;
         Assert.Equal(["Second", "Third", "Fourth", "First"],
             viewModel.VisibleAchievements.Select(row => row.Title));
 
         viewModel.SelectedSort = AchievementDisplaySort.UnlockedFirst;
+        Assert.NotSame(previousSnapshot, viewModel.VisibleAchievements);
+        previousSnapshot = viewModel.VisibleAchievements;
         Assert.Equal(["First", "Third", "Second", "Fourth"],
             viewModel.VisibleAchievements.Select(row => row.Title));
 
         viewModel.SelectedSort = AchievementDisplaySort.RecentlyUnlocked;
+        Assert.NotSame(previousSnapshot, viewModel.VisibleAchievements);
         Assert.Equal(["Third", "First", "Second", "Fourth"],
             viewModel.VisibleAchievements.Select(row => row.Title));
         Assert.Equal("Recently unlocked", viewModel.SortText);
-        Assert.Equal(3, collectionChanges.Count);
-        Assert.All(collectionChanges, action => Assert.Equal(NotifyCollectionChangedAction.Reset, action));
 
         viewModel.Dispose();
     }

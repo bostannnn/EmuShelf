@@ -162,7 +162,9 @@ public partial class MainWindow : Window
     }
 
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
-    private void RevealGamepadOverlayFocus()
+    private void RevealGamepadOverlayFocus() => RevealGamepadOverlayFocus(0);
+
+    private void RevealGamepadOverlayFocus(int attempt)
     {
         if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
             return;
@@ -177,14 +179,43 @@ public partial class MainWindow : Window
             if (index < 0)
                 return;
 
+            // Do not manually realize the anchor before the overlay has a final viewport. On the
+            // real compositor that can reserve cell 0 during the first measure, then place item 0
+            // in cell 1 and leave a permanent top-left hole.
+            GamepadAchievementsScroller.UpdateLayout();
+            GamepadAchievementsRepeater.UpdateLayout();
+            if (GamepadAchievementsScroller.Bounds.Width <= 0 ||
+                GamepadAchievementsScroller.Bounds.Height <= 0)
+            {
+                if (attempt < 5)
+                {
+                    Dispatcher.UIThread.Post(
+                        () => RevealGamepadOverlayFocus(attempt + 1),
+                        DispatcherPriority.Loaded);
+                }
+                return;
+            }
+
             var element = GamepadAchievementsRepeater.TryGetElement(index) ??
                 GamepadAchievementsRepeater.GetOrCreateElement(index);
             GamepadAchievementsRepeater.UpdateLayout();
+            if (element is null || element.Bounds.Width <= 0 || element.Bounds.Height <= 0)
+            {
+                if (attempt < 5)
+                {
+                    Dispatcher.UIThread.Post(
+                        () => RevealGamepadOverlayFocus(attempt + 1),
+                        DispatcherPriority.Loaded);
+                }
+                return;
+            }
+
             SyncGamepadAchievementColumnCountFromLayout();
-            var achievementControl = element as Control ?? element?.GetVisualDescendants()
+            var achievementControl = element as Control ?? element.GetVisualDescendants()
                 .OfType<Control>()
                 .FirstOrDefault(control => ReferenceEquals(control.DataContext, achievement));
             achievementControl?.BringIntoView();
+            Dispatcher.UIThread.Post(SyncGamepadAchievementColumnCountFromLayout, DispatcherPriority.Loaded);
             if (viewModel.IsGamepadControllerInputActive && achievementControl is not null)
                 FocusManager?.Focus(achievementControl, NavigationMethod.Directional);
         }
@@ -206,6 +237,20 @@ public partial class MainWindow : Window
 
     private static void OnGamepadAchievementDataContextChanged(object? sender, EventArgs e) =>
         RequestGamepadAchievementBadge(sender);
+
+    private void OnGamepadAchievementPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: AchievementRowViewModel achievement } ||
+            DataContext is not MainViewModel viewModel ||
+            e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
+        {
+            return;
+        }
+
+        viewModel.NotifyGamepadPointerInput();
+        viewModel.FocusGamepadAchievementCommand.Execute(achievement);
+        e.Handled = true;
+    }
 
     private static void RequestGamepadAchievementBadge(object? sender)
     {

@@ -1751,6 +1751,7 @@
                                                 <Border Classes="gamepad-achievement"
                                                         Classes.focused="{Binding IsFocused}"
                                                         Focusable="True"
+                                                        PointerPressed="OnGamepadAchievementPointerPressed"
                                                         AttachedToVisualTree="OnGamepadAchievementAttached"
                                                         DataContextChanged="OnGamepadAchievementDataContextChanged">
                                                     <Grid Classes="gamepad-achievement-badge"

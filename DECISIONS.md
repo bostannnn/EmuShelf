@@ -2917,3 +2917,18 @@ The visible achievement collection is replaced with one Reset notification. Clea
 rows individually exposed Avalonia's virtualized `ItemsRepeater` to empty and partially rebuilt
 lists, allowing recycled tiles to keep stale positions during repeated sorts. One atomic replacement
 gives layout, focus reveal, and column recount a single final ordering to process.
+
+## 2026-08-01 — Fresh achievement sources supersede collection Reset after real-compositor review
+
+The single-Reset approach above removed partial lists but did not fully solve Avalonia's real-window
+virtualization state: an 86-achievement grid could retain a stale anchor and reserve row 1, column 1
+without realizing its badge. Each filter/sort now publishes a new fixed row snapshot as the
+`ItemsRepeater` source. Focus realization also waits until the scroll viewport has non-zero final
+geometry before calling `GetOrCreateElement`; requesting an anchor during the overlay's first measure
+can itself create the leading hole this change prevents.
+
+Achievement navigation follows the library grid's spatial contract: Left/Right never wrap rows and
+Up/Down do nothing when the corresponding cell is absent from a partial final row. A filter that
+retains the same badge still issues a layout revision because its position and recycled visual may
+have changed even though its object identity did not. Pointer selection enters the same logical
+focus path as controller selection, keeping the badge ring and detail card synchronized.

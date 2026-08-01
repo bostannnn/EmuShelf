@@ -809,18 +809,37 @@ public class MainWindowVisualSnapshotTests
             Assert.True(achievementTiles.Length >= 18);
             Assert.All(achievementTiles, tile => Assert.Equal(tile.Bounds.Width, tile.Bounds.Height, 1));
             Assert.Equal("First victory", viewModel.FocusedGamepadAchievement.Title);
+            var achievementRepeater = window.FindControl<ItemsRepeater>("GamepadAchievementsRepeater");
+            Assert.NotNull(achievementRepeater);
+            var pointerTarget = Assert.IsAssignableFrom<Control>(achievementRepeater.TryGetElement(1));
+            var pointerPosition = pointerTarget.TranslatePoint(
+                new Point(pointerTarget.Bounds.Width / 2, pointerTarget.Bounds.Height / 2),
+                window);
+            Assert.NotNull(pointerPosition);
+            window.MouseDown(pointerPosition.Value, MouseButton.Left, RawInputModifiers.None);
+            window.MouseUp(pointerPosition.Value, MouseButton.Left, RawInputModifiers.None);
+            await PumpAsync();
+            Assert.Same(viewModel.GamepadAchievementDetails.VisibleAchievements[1],
+                viewModel.FocusedGamepadAchievement);
+            Assert.False(viewModel.IsGamepadControllerInputActive);
+
+            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[7];
             viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
+            await PumpAsync();
             Assert.Equal(AchievementDisplayFilter.Locked, viewModel.GamepadAchievementDetails.SelectedFilter);
             Assert.Equal(17, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
+            Assert.Equal(8, viewModel.FocusedGamepadAchievement?.AchievementId);
+            Assert.Same(viewModel.FocusedGamepadAchievement, achievementRepeater.TryGetElement(0)?.DataContext);
             viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
+            await PumpAsync();
             Assert.Equal(AchievementDisplayFilter.Unlocked, viewModel.GamepadAchievementDetails.SelectedFilter);
             Assert.Equal(7, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
-            await PumpAsync();
+            // This broad visual fixture injects details directly instead of opening through the
+            // production command, so mirror the production focus fallback after filtering out id 8.
+            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[0];
             var focusedGridIndex = viewModel.GamepadAchievementDetails.VisibleAchievements
                 .IndexOf(viewModel.FocusedGamepadAchievement!);
             Assert.Equal(0, focusedGridIndex);
-            var achievementRepeater = window.FindControl<ItemsRepeater>("GamepadAchievementsRepeater");
-            Assert.NotNull(achievementRepeater);
 
             foreach (var expectedSort in new[]
                      {
@@ -992,6 +1011,125 @@ public class MainWindowVisualSnapshotTests
         {
             window.Close();
             Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadAchievements_LargeVirtualizedGridStartsInTheTopLeftCell()
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "nds");
+        var game = new GameViewModel(
+            new Game
+            {
+                Id = 86,
+                SystemId = system.Id,
+                Path = "/games/large-achievement-set.nds",
+                Title = "Large achievement set",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio);
+        game.ApplyAchievementLink(8600);
+        var achievements = Enumerable.Range(1, 86)
+            .Select(index => new RetroAchievementsAchievement(
+                index,
+                $"Achievement {index}",
+                $"Complete challenge {index}.",
+                5 + index % 4 * 5,
+                "",
+                index,
+                index <= 7 ? DateTimeOffset.UtcNow.AddDays(-index) : null,
+                null))
+            .ToArray();
+        var snapshot = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(8600, game.Title, 86, 7, 0, achievements),
+            DateTimeOffset.UtcNow);
+        var viewModel = new MainViewModel(
+            new EmptyGameLibrary(),
+            new NullFolderScanner(),
+            new NoImportRules(),
+            new AlwaysAvailableChecker(),
+            new NullDialogService(),
+            KnownSystems.All,
+            retroAccount: new SnapshotAccount(),
+            retroDetails: new SnapshotDetailsService(snapshot))
+        {
+            IsGamepadMode = true,
+            HasGames = true,
+            IsLibraryEmpty = false,
+            FocusedGame = game,
+        };
+        viewModel.Games.Add(game);
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await viewModel.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+            await PumpAsync();
+
+            var badgePaths = new[] { "playstation2.png", "playstation3.png", "psp.png", "wii.png" };
+            for (var index = 0; index < viewModel.GamepadAchievementDetails!.Achievements.Count; index++)
+            {
+                using var stream = AssetLoader.Open(new Uri(
+                    $"avares://EmuShelf/Assets/PlatformConsoleArt/{badgePaths[index % badgePaths.Length]}"));
+                viewModel.GamepadAchievementDetails.Achievements[index].Badge = new Bitmap(stream);
+            }
+            await PumpAsync();
+
+            var repeater = window.FindControl<ItemsRepeater>("GamepadAchievementsRepeater");
+            Assert.NotNull(repeater);
+            AssertTopLeftCellIsOccupied(repeater, achievements.Length);
+
+            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[7];
+            var revisionBeforeFilter = viewModel.GamepadAchievementLayoutRevision;
+            viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
+            await PumpAsync();
+            Assert.Equal(AchievementDisplayFilter.Locked, viewModel.GamepadAchievementDetails.SelectedFilter);
+            Assert.Equal(8, viewModel.FocusedGamepadAchievement?.AchievementId);
+            Assert.Equal(0, viewModel.GamepadAchievementDetails.VisibleAchievements
+                .IndexOf(viewModel.FocusedGamepadAchievement!));
+            Assert.Equal(revisionBeforeFilter + 1, viewModel.GamepadAchievementLayoutRevision);
+            Assert.Same(viewModel.FocusedGamepadAchievement, repeater.TryGetElement(0)?.DataContext);
+            AssertTopLeftCellIsOccupied(repeater, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
+
+            viewModel.DispatchGamepadAction(GamepadAction.PreviousPlatform);
+            await PumpAsync();
+            Assert.Equal(AchievementDisplayFilter.All, viewModel.GamepadAchievementDetails.SelectedFilter);
+
+            for (var cycle = 0; cycle < Enum.GetValues<AchievementDisplaySort>().Length; cycle++)
+            {
+                viewModel.DispatchGamepadAction(GamepadAction.Actions);
+                await PumpAsync();
+                AssertTopLeftCellIsOccupied(repeater, achievements.Length);
+            }
+
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR"),
+                "emushelf-gamepad-achievements-large-1280x800.png");
+        }
+        finally
+        {
+            viewModel.CloseGamepadOverlayCommand.Execute(null);
+            window.Close();
+        }
+
+        static void AssertTopLeftCellIsOccupied(ItemsRepeater repeater, int count)
+        {
+            var realized = Enumerable.Range(0, count)
+                .Select(repeater.TryGetElement)
+                .Where(element => element is not null)
+                .Cast<Control>()
+                .ToArray();
+            Assert.True(realized.Length > 12);
+            var first = repeater.TryGetElement(0);
+            Assert.NotNull(first);
+            Assert.Equal(realized.Min(element => element.Bounds.X), first.Bounds.X, 1);
+            Assert.Equal(realized.Min(element => element.Bounds.Y), first.Bounds.Y, 1);
         }
     }
 

@@ -893,8 +893,21 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
         Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
         Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+
+        vm.SetRenderedGamepadAchievementColumnCount(3);
+        vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails!.VisibleAchievements[1];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails.VisibleAchievements[3];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        vm.SetRenderedGamepadAchievementColumnCount(2);
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
         Assert.Equal(AchievementDisplayFilter.Locked, vm.GamepadAchievementDetails!.SelectedFilter);
@@ -905,19 +918,20 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(AchievementDisplayFilter.Unlocked, vm.GamepadAchievementDetails.SelectedFilter);
         Assert.Equal([1, 3], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
         Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        var revisionBeforeSort = vm.GamepadAchievementLayoutRevision;
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
         Assert.Equal(AchievementDisplaySort.Points, vm.GamepadAchievementDetails.SelectedSort);
         Assert.Equal([3, 1], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
         Assert.Equal(3, vm.FocusedGamepadAchievement?.AchievementId);
         Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
-        Assert.Equal(1, vm.GamepadAchievementLayoutRevision);
+        Assert.Equal(revisionBeforeSort + 1, vm.GamepadAchievementLayoutRevision);
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
         Assert.Equal(AchievementDisplaySort.UnlockedFirst, vm.GamepadAchievementDetails.SelectedSort);
         Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
         Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
-        Assert.Equal(2, vm.GamepadAchievementLayoutRevision);
+        Assert.Equal(revisionBeforeSort + 2, vm.GamepadAchievementLayoutRevision);
     }
 
     [AvaloniaFact]

@@ -149,9 +149,14 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     private readonly bool _deferBadgeLoading;
     private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _lifetime = new();
+    private IList<AchievementRowViewModel> _visibleAchievements = Array.Empty<AchievementRowViewModel>();
 
     public ObservableCollection<AchievementRowViewModel> Achievements { get; } = [];
-    public BulkObservableCollection<AchievementRowViewModel> VisibleAchievements { get; } = [];
+    public IList<AchievementRowViewModel> VisibleAchievements
+    {
+        get => _visibleAchievements;
+        private set => SetProperty(ref _visibleAchievements, value);
+    }
 
     [ObservableProperty]
     public partial AchievementDisplayFilter SelectedFilter { get; set; } = AchievementDisplayFilter.All;
@@ -435,12 +440,11 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
                 .ThenBy(row => row.AchievementId),
         };
 
-        // ItemsRepeater must see one complete ordering. Clear + one Add per row makes the
-        // virtualized grid render a succession of partial lists and can leave recycled elements
-        // at stale positions after repeated controller sorting.
-        VisibleAchievements.ReplaceAll(rows);
+        // Publish a new immutable snapshot instead of mutating the active ItemsRepeater source.
+        // A collection Reset can retain a stale virtualization anchor in a real compositor and
+        // leave the first cell reserved but unrealized after repeated sorting.
+        VisibleAchievements = rows.ToArray();
 
-        OnPropertyChanged(nameof(VisibleAchievements));
         OnPropertyChanged(nameof(HasVisibleAchievements));
         OnPropertyChanged(nameof(HasFilteredEmptyState));
         OnPropertyChanged(nameof(FilterEmptyStateText));
@@ -518,7 +522,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
             return;
         _details.DetailsRefreshed -= HandleDetailsRefreshed;
         _lifetime.Cancel();
-        VisibleAchievements.Clear();
+        VisibleAchievements = Array.Empty<AchievementRowViewModel>();
         foreach (var row in Achievements)
             row.Dispose();
         _lifetime.Dispose();

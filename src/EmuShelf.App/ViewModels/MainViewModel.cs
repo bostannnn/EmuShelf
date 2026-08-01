@@ -899,7 +899,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadAchievementsOpen)
         {
-            MoveFocusedAchievement(-GamepadAchievementColumnCount);
+            MoveFocusedAchievementVertical(-1);
             return;
         }
 
@@ -911,7 +911,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadAchievementsOpen)
         {
-            MoveFocusedAchievement(GamepadAchievementColumnCount);
+            MoveFocusedAchievementVertical(1);
             return;
         }
 
@@ -937,10 +937,16 @@ public partial class MainViewModel : ViewModelBase
             ? null
             : details.VisibleAchievements[Math.Min(focusedIndex, details.VisibleAchievements.Count - 1)];
 
-        // A collection Reset can recycle the element even when the row occupying this slot did
-        // not change. Always request one post-layout reveal and column recount after the final list.
-        GamepadAchievementLayoutRevision++;
-        OnPropertyChanged(nameof(GamepadAchievementLayoutRevision));
+    }
+
+    [RelayCommand]
+    private void FocusGamepadAchievement(AchievementRowViewModel? achievement)
+    {
+        if (IsGamepadAchievementsOpen && achievement is not null &&
+            GamepadAchievementDetails?.VisibleAchievements.Contains(achievement) == true)
+        {
+            FocusedGamepadAchievement = achievement;
+        }
     }
 
     [RelayCommand]
@@ -1093,10 +1099,10 @@ public partial class MainViewModel : ViewModelBase
                 CycleGamepadAchievementSortCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateLeft when IsGamepadAchievementsOpen:
-                MoveFocusedAchievement(-1);
+                MoveFocusedAchievementHorizontal(-1);
                 return true;
             case GamepadAction.NavigateRight when IsGamepadAchievementsOpen:
-                MoveFocusedAchievement(1);
+                MoveFocusedAchievementHorizontal(1);
                 return true;
             case GamepadAction.NavigateUp:
                 MoveGamepadOverlayUpCommand.Execute(null);
@@ -1264,13 +1270,34 @@ public partial class MainViewModel : ViewModelBase
         FocusedGamepadAchievement = GamepadAchievementDetails?.VisibleAchievements.FirstOrDefault();
     }
 
-    private void MoveFocusedAchievement(int delta)
+    private void MoveFocusedAchievementHorizontal(int direction)
     {
         var rows = GamepadAchievementDetails?.VisibleAchievements;
         if (rows is not { Count: > 0 })
             return;
         var index = FocusedGamepadAchievement is null ? 0 : rows.IndexOf(FocusedGamepadAchievement);
-        FocusedGamepadAchievement = rows[Math.Clamp(index + delta, 0, rows.Count - 1)];
+        if (index < 0)
+            index = 0;
+        var column = index % GamepadAchievementColumnCount;
+        var target = index + Math.Sign(direction);
+        if (target >= 0 && target < rows.Count &&
+            (direction < 0 ? column > 0 : column < GamepadAchievementColumnCount - 1))
+        {
+            FocusedGamepadAchievement = rows[target];
+        }
+    }
+
+    private void MoveFocusedAchievementVertical(int direction)
+    {
+        var rows = GamepadAchievementDetails?.VisibleAchievements;
+        if (rows is not { Count: > 0 })
+            return;
+        var index = FocusedGamepadAchievement is null ? 0 : rows.IndexOf(FocusedGamepadAchievement);
+        if (index < 0)
+            index = 0;
+        var target = index + Math.Sign(direction) * GamepadAchievementColumnCount;
+        if (target >= 0 && target < rows.Count)
+            FocusedGamepadAchievement = rows[target];
     }
 
     private void HandleGamepadAchievementDetailsPropertyChanged(
@@ -1289,6 +1316,8 @@ public partial class MainViewModel : ViewModelBase
             ? details.VisibleAchievements.FirstOrDefault(row => row.AchievementId == achievementId) ??
               details.VisibleAchievements.FirstOrDefault()
             : details.VisibleAchievements.FirstOrDefault();
+        GamepadAchievementLayoutRevision++;
+        OnPropertyChanged(nameof(GamepadAchievementLayoutRevision));
     }
 
     private void DisposeGamepadAchievementDetails()
