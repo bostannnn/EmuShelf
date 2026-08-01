@@ -2932,3 +2932,27 @@ Up/Down do nothing when the corresponding cell is absent from a partial final ro
 retains the same badge still issues a layout revision because its position and recycled visual may
 have changed even though its object identity did not. Pointer selection enters the same logical
 focus path as controller selection, keeping the badge ring and detail card synchronized.
+
+## 2026-08-01 — Rich scraping is capability-aware, provenance-first, and kept off the hot grid
+
+ScreenScraper is not an implementation of the artwork-only DuckDuckGo picker. Built-in exact
+enrichment, authenticated ScreenScraper data/media, and unverified DuckDuckGo image search share a
+provider registry and settings family, while capability and trust descriptors prevent an
+unverified web result from entering automatic metadata work. ScreenScraper remains disabled until
+an account is connected; DuckDuckGo remains manual-only.
+
+The library's `Game` record stays the small projection loaded by the virtualized shelf. SQLite v13
+stores title, developer, publisher, genre, locale-keyed descriptions, release date, players,
+rating, box front, screenshot, wheel, fanart, provider matches, and per-value provenance in
+on-demand detail tables. Fill-missing is conservative; a provider refresh may update only values
+owned by that same provider. User edits and user media selections are never replaced by provider
+refreshes. Selected box front will continue to project into the existing cover path when the apply
+coordinator lands.
+
+ScreenScraper automatic lookups require a hash plus byte size unless a confirmed provider game id
+is being reapplied; serial-only exceptions wait for written provider approval per system. User
+credentials use a separate DPAPI-protected portable blob on Windows and session-only memory on
+other platforms. Developer credentials come from the build/development environment and are never
+committed or stored in settings/SQLite/logs. The provisional version-1 system mapping and fixture
+parser may be developed without secrets, but live activation, attribution/caching behavior, and
+release provisioning remain gated on ScreenScraper's written approval.

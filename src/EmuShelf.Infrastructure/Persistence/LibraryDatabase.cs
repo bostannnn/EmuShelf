@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 12;
+    private const int CurrentSchemaVersion = 13;
 
     private readonly IAppPaths _appPaths;
 
@@ -120,7 +120,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 12)
+        {
             ApplyMigrationV12(connection);
+            version = 12;
+        }
+
+        if (version < 13)
+            ApplyMigrationV13(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -552,6 +558,80 @@ public sealed class LibraryDatabase
                 ON GameDiscSelections (GameId);
 
             UPDATE SchemaVersion SET Version = 12;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV13(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            CREATE TABLE IF NOT EXISTS GameMetadataValues (
+                GameId INTEGER NOT NULL,
+                Field INTEGER NOT NULL,
+                Locale TEXT NOT NULL DEFAULT '',
+                Value TEXT NOT NULL,
+                Origin INTEGER NOT NULL,
+                ProviderId TEXT NULL,
+                ProviderItemId TEXT NULL,
+                SourceUri TEXT NULL,
+                UpdatedUnixMilliseconds INTEGER NOT NULL,
+                PRIMARY KEY (GameId, Field, Locale),
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS IX_GameMetadataValues_Provider
+                ON GameMetadataValues (ProviderId);
+
+            CREATE TABLE IF NOT EXISTS GameMediaAssets (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                GameId INTEGER NOT NULL,
+                Kind INTEGER NOT NULL,
+                LocalPath TEXT NOT NULL COLLATE NOCASE,
+                IsSelected INTEGER NOT NULL DEFAULT 0,
+                SelectionOrigin INTEGER NULL,
+                Origin INTEGER NOT NULL,
+                ProviderId TEXT NULL,
+                ProviderItemId TEXT NULL,
+                SourceUri TEXT NULL,
+                Region TEXT NULL,
+                Language TEXT NULL,
+                FileExtension TEXT NOT NULL,
+                Width INTEGER NULL,
+                Height INTEGER NULL,
+                Crc32 TEXT NULL,
+                Md5 TEXT NULL,
+                Sha1 TEXT NULL,
+                UpdatedUnixMilliseconds INTEGER NOT NULL,
+                UNIQUE (GameId, Kind, LocalPath),
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS IX_GameMediaAssets_GameKind
+                ON GameMediaAssets (GameId, Kind);
+            CREATE UNIQUE INDEX IF NOT EXISTS UX_GameMediaAssets_Selected
+                ON GameMediaAssets (GameId, Kind)
+                WHERE IsSelected = 1;
+
+            CREATE TABLE IF NOT EXISTS GameProviderMatches (
+                GameId INTEGER NOT NULL,
+                ProviderId TEXT NOT NULL COLLATE NOCASE,
+                ProviderSystemId TEXT NULL,
+                SystemMappingVersion INTEGER NULL,
+                ProviderGameId TEXT NULL,
+                ProviderRomId TEXT NULL,
+                MatchMethod INTEGER NOT NULL,
+                EvidenceValue TEXT NULL,
+                Status INTEGER NOT NULL,
+                LastAttemptUnixMilliseconds INTEGER NOT NULL,
+                LastError TEXT NULL,
+                PRIMARY KEY (GameId, ProviderId),
+                FOREIGN KEY (GameId) REFERENCES Games (Id) ON DELETE CASCADE
+            );
+
+            UPDATE SchemaVersion SET Version = 13;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

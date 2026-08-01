@@ -1033,6 +1033,10 @@ or launch flow, and the host already owns time/status UI.
    and provenance, and explicit single-game/batch consent. Feed its metadata and media variants
    into the same controller scraper UI only after deterministic fixtures and provider-failure
    isolation are in place. ScreenScraper account sharing and quota workarounds are never supported.
+   Foundation landed on the isolated `codex/screenscraper-planning` branch: provider capabilities
+   and toggles, schema-v13 detail/media/provenance storage, secure account storage, all supported
+   system mappings, and a fixture-backed typed API client. Live composition, attribution/caching
+   policy, real-response fixtures, and mapping verification wait for approved developer access.
 
 ## M32 — Installed texture-pack inventory (in progress)
 

@@ -1,4 +1,5 @@
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Infrastructure.Settings;
 
 namespace EmuShelf.Infrastructure.Tests.Settings;
@@ -20,6 +21,11 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.Equal(ThemePreference.System, settings.Theme);
         Assert.False(settings.AutomaticallyFetchMetadataAfterImport);
         Assert.False(settings.MetadataConsentPromptShown);
+        Assert.True(settings.Scraping.BuiltInCatalog.Enabled);
+        Assert.False(settings.Scraping.ScreenScraper.Enabled);
+        Assert.False(settings.Scraping.ScreenScraper.AutomaticallyScrapeAfterImport);
+        Assert.True(settings.Scraping.DuckDuckGoArtwork.Enabled);
+        Assert.Contains(GameMediaKind.Fanart, settings.Scraping.ScreenScraper.MediaKinds);
     }
 
     [Fact]
@@ -31,6 +37,19 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
             Theme = ThemePreference.Dark,
             AutomaticallyFetchMetadataAfterImport = true,
             MetadataConsentPromptShown = true,
+            Scraping = new ScrapingSettings
+            {
+                DuckDuckGoArtwork = new ScrapeProviderSettings { Enabled = false },
+                ScreenScraper = new ScreenScraperSettings
+                {
+                    Enabled = true,
+                    AutomaticallyScrapeAfterImport = true,
+                    PreferredLanguage = "fr",
+                    RegionPriority = ["fr", "eu", "wor"],
+                    MetadataFields = [GameMetadataField.Description, GameMetadataField.Genre],
+                    MediaKinds = [GameMediaKind.BoxFront, GameMediaKind.Wheel],
+                },
+            },
         };
 
         service.Save(settings);
@@ -39,6 +58,17 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.Equal(ThemePreference.Dark, loaded.Theme);
         Assert.True(loaded.AutomaticallyFetchMetadataAfterImport);
         Assert.True(loaded.MetadataConsentPromptShown);
+        Assert.False(loaded.Scraping.DuckDuckGoArtwork.Enabled);
+        Assert.True(loaded.Scraping.ScreenScraper.Enabled);
+        Assert.True(loaded.Scraping.ScreenScraper.AutomaticallyScrapeAfterImport);
+        Assert.Equal("fr", loaded.Scraping.ScreenScraper.PreferredLanguage);
+        Assert.Equal(["fr", "eu", "wor"], loaded.Scraping.ScreenScraper.RegionPriority);
+        Assert.Equal(
+            [GameMetadataField.Description, GameMetadataField.Genre],
+            loaded.Scraping.ScreenScraper.MetadataFields);
+        Assert.Equal(
+            [GameMediaKind.BoxFront, GameMediaKind.Wheel],
+            loaded.Scraping.ScreenScraper.MediaKinds);
     }
 
     [Fact]

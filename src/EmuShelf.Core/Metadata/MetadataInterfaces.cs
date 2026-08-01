@@ -85,3 +85,20 @@ public interface IGameMetadataStore
 
     void RecordAttempt(GameMetadataAttempt attempt);
 }
+
+/// <summary>
+/// On-demand game details, media choices, and provider matches. These records stay out of the
+/// hot <see cref="Game"/> library projection so adding rich scraping does not slow the grid.
+/// </summary>
+public interface IGameDetailsStore
+{
+    GameDetails GetDetails(long gameId);
+
+    bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode);
+
+    GameMediaAsset SaveMedia(GameMediaAsset media);
+
+    bool SelectMedia(long gameId, GameMediaKind kind, long mediaId);
+
+    void UpsertProviderMatch(GameProviderMatch match);
+}

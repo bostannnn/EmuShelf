@@ -25,6 +25,9 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         Assert.Contains("ExternalLibrarySources", GetTableNames(database));
         Assert.Contains("GameIdentifiers", GetTableNames(database));
         Assert.Contains("GameMetadata", GetTableNames(database));
+        Assert.Contains("GameMetadataValues", GetTableNames(database));
+        Assert.Contains("GameMediaAssets", GetTableNames(database));
+        Assert.Contains("GameProviderMatches", GetTableNames(database));
         Assert.Contains("RetroAchievementGameLinks", GetTableNames(database));
         Assert.Contains("RetroAchievementProgress", GetTableNames(database));
         Assert.Contains("RetroAchievementProgressSync", GetTableNames(database));
@@ -62,7 +65,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
         command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(12L, (long)command.ExecuteScalar()!);
+        Assert.Equal(13L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]
@@ -186,7 +189,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         using var check = database.CreateConnection();
         using var version = check.CreateCommand();
         version.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(12L, (long)version.ExecuteScalar()!);
+        Assert.Equal(13L, (long)version.ExecuteScalar()!);
 
         using var origins = check.CreateCommand();
         origins.CommandText = "SELECT TitleOrigin, CoverOrigin FROM Games LIMIT 1;";
