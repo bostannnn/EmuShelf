@@ -1214,3 +1214,17 @@ suite are green on macOS; a real-romset launch on Windows is the remaining accep
 - [ ] Verify on Windows: a real FBNeo romset (e.g. `mslug`, `sf2`) launches through RetroArch with
       the `fbneo_libretro` core, a BIOS-dependent game surfaces a clean failure when `neogeo.zip` is
       absent, and saves/states round-trip through cloud sync.
+
+## M36 — Automatic save states and visible library folders
+
+- [x] Automatically synchronize opted-in, version-guarded save states before launch and after
+      emulator exit. Ordinary battery/memory-card saves commit first, and launch waits for the
+      complete pass rather than abandoning it after a fixed application-level budget.
+- [x] Show every remembered ROM folder in its platform's emulator-settings row, including missing
+      folders, and allow the user to add, change, forget, and rescan roots without touching game
+      files. Keep RPCS3 on its explicit emulator-owned library workflow.
+- [x] Preserve library records when a remembered root moves by rebasing games whose relative paths
+      are present in the replacement scan; retain unmatched games as unavailable and reject path
+      conflicts atomically.
+- [x] Deterministic view-model, persistence, launch-lifecycle, and save-provider tests; full build
+      and test suite green.

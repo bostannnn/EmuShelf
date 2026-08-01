@@ -35,6 +35,12 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public void RemoveGames(IReadOnlyList<long> gameIds) { }
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null) => [];
     public void AddLibraryFolder(string systemId, string folderPath) { }
+    public LibraryFolderChangeResult ReplaceLibraryFolder(
+        long folderId,
+        string systemId,
+        string replacementPath,
+        IReadOnlyDictionary<long, string> verifiedGamePaths) => new(0);
+    public void RemoveLibraryFolder(long folderId, string systemId) { }
 }
 
 internal sealed class NullFolderScanner : IFolderScanner

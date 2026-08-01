@@ -15,6 +15,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private readonly IAppLogger _logger;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _rescanLibrary;
     private readonly Func<EmulatorSettingsRowViewModel, Task>? _syncLibrary;
+    private readonly LibraryFolderManagementActions? _folderActions;
+    private readonly Func<Func<Task<string>>, Action<string>, Task>? _runFolderMaintenance;
     private readonly string _homeDirectory;
 
     public string SystemId { get; }
@@ -44,6 +46,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public ObservableCollection<LibretroCoreOption> AvailableCores { get; } = [];
     public ObservableCollection<LibretroCoreOption> FilteredCores { get; } = [];
     public ObservableCollection<string> AvailableFlatpakApplicationIds { get; } = [];
+    public ObservableCollection<LibraryFolderRowViewModel> LibraryFolders { get; } = [];
     public string ExecutableDescription => IsExecutableShared
         ? "Shared executable"
         : "Executable";
@@ -89,6 +92,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanRescan))]
     [NotifyPropertyChangedFor(nameof(CanSyncLibrary))]
+    [NotifyPropertyChangedFor(nameof(CanManageLibraryFolders))]
     [NotifyCanExecuteChangedFor(nameof(RescanLibraryCommand))]
     [NotifyCanExecuteChangedFor(nameof(SyncLibraryCommand))]
     public partial bool IsMaintenanceBlocked { get; set; }
@@ -102,6 +106,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public bool HasSyncLibrary => _syncLibrary is not null;
     public bool CanSyncLibrary => HasSyncLibrary && !IsMaintenanceBlocked;
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
+    public bool HasFolderManagement => _folderActions is not null;
+    public bool HasRememberedFolders => LibraryFolders.Count > 0;
+    public bool CanManageLibraryFolders => HasFolderManagement && !IsMaintenanceBlocked;
 
     public EmulatorSettingsRowViewModel(
         GameSystem system,
@@ -114,12 +121,16 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         string? emulatorInstallationId = null,
         bool isExecutableShared = false,
         IAppLogger? logger = null,
-        string? homeDirectory = null)
+        string? homeDirectory = null,
+        LibraryFolderManagementActions? folderActions = null,
+        Func<Func<Task<string>>, Action<string>, Task>? runFolderMaintenance = null)
     {
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
         _rescanLibrary = rescanLibrary;
         _syncLibrary = syncLibrary;
+        _folderActions = folderActions;
+        _runFolderMaintenance = runFolderMaintenance;
         _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         SystemId = system.Id;
         SystemName = system.Name;
@@ -145,6 +156,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         CorePath = configuration?.CorePath ?? string.Empty;
         RefreshAvailableCores();
         IsExpanded = isExpanded;
+        RefreshLibraryFolders();
     }
 
     partial void OnExecutablePathChanged(string value)
@@ -320,6 +332,83 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanSyncLibrary))]
     private Task SyncLibraryAsync() =>
         _syncLibrary?.Invoke(this) ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private async Task AddLibraryFolderAsync()
+    {
+        if (!CanManageLibraryFolders || _folderActions is null)
+            return;
+        var path = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        await RunFolderActionAsync(() => _folderActions.Add(SystemId, path));
+    }
+
+    private async Task ChangeLibraryFolderAsync(LibraryFolderRowViewModel? folder)
+    {
+        if (!CanManageLibraryFolders || _folderActions is null || folder is null)
+            return;
+        var path = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+        await RunFolderActionAsync(() => _folderActions.Change(SystemId, folder.Id, path));
+    }
+
+    private Task ForgetLibraryFolderAsync(LibraryFolderRowViewModel? folder) =>
+        !CanManageLibraryFolders || _folderActions is null || folder is null
+            ? Task.CompletedTask
+            : RunFolderActionAsync(() => _folderActions.Forget(SystemId, folder.Id));
+
+    private async Task RunFolderActionAsync(Func<Task<string>> action)
+    {
+        async Task<string> RunAndRefreshAsync()
+        {
+            var result = await action();
+            RefreshLibraryFolders();
+            return result;
+        }
+
+        if (_runFolderMaintenance is not null)
+        {
+            await _runFolderMaintenance(
+                RunAndRefreshAsync,
+                message => MaintenanceStatusText = message);
+            return;
+        }
+
+        IsMaintenanceBlocked = true;
+        try
+        {
+            MaintenanceStatusText = await RunAndRefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not manage remembered folders for {SystemName}.", ex);
+            MaintenanceStatusText = $"Folder change failed: {ex.Message}";
+        }
+        finally
+        {
+            IsMaintenanceBlocked = false;
+        }
+    }
+
+    private void RefreshLibraryFolders()
+    {
+        LibraryFolders.Clear();
+        if (_folderActions is not null)
+        {
+            foreach (var folder in _folderActions.Get(SystemId))
+            {
+                var row = new LibraryFolderRowViewModel(
+                    folder,
+                    ChangeLibraryFolderAsync,
+                    ForgetLibraryFolderAsync);
+                LibraryFolders.Add(row);
+                _ = row.RefreshAvailabilityAsync();
+            }
+        }
+        OnPropertyChanged(nameof(HasRememberedFolders));
+    }
 
     public EmulatorConfiguration ToConfiguration() => new(
         SystemId,

@@ -364,15 +364,20 @@ public static class SaveProviderRegistry
         SaveProviderDescriptor descriptor,
         ISaveLocationProvider saves,
         SaveProviderContext context,
-        bool includeSaveStates)
+        bool includeSaveStates,
+        bool includeBaseSaves = true)
     {
         if (!includeSaveStates || !descriptor.SupportsSaveStates)
-            return saves;
+            return includeBaseSaves
+                ? saves
+                : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
         var sources = new List<AuxiliaryFileSource>();
         AddStateSources(saves, sources);
         if (sources.Count == 0)
-            return saves;
+            return includeBaseSaves
+                ? saves
+                : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
         var coreVersion = ResolveCoreVersion(context);
         var emulatorVersion = saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion)
@@ -383,7 +388,7 @@ public static class SaveProviderRegistry
             emulatorVersion,
             coreVersion,
             ResolveEmulatorArchitecture(context));
-        return new AuxiliarySyncProvider(saves, sources, compatibility);
+        return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves);
     }
 
     private static void AddStateSources(

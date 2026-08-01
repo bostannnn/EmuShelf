@@ -328,25 +328,69 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             // machine that owns a save learns that its upload never arrived — it never downloads
             // its own save, so a broken entry would otherwise stay broken until another machine
             // tripped over it.
-            verifyRemote: true);
+            verifyRemote: true,
+            contentScope: SyncContentScope.All);
 
     /// <summary>Reconciles only the save provider associated with one launched system.</summary>
     /// <remarks>
     /// Declines rather than queues when another pass holds the gate. A launch-triggered sync is
-    /// work the user did not ask for, and a manual sync can legitimately run for minutes: waiting
-    /// its turn would spend a pre-launch budget entirely on the queue and stall a post-exit pass
-    /// behind it indefinitely. The launch proceeds on the saves already on disk, exactly as it does
-    /// when a pass fails, and the manual sync in flight covers this system anyway.
+    /// work the user did not ask for, and a manual sync can legitimately run for minutes. Ordinary
+    /// saves commit before the optional state phase, so a state failure cannot strand a reconciled
+    /// memory-card save in staging. The launch lifecycle itself supplies cancellation; there is no
+    /// shorter application-level pre-launch budget.
     /// </remarks>
-    public Task<CloudSaveSyncOutcome> SyncSystemAsync(
+    public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
-        CancellationToken cancellationToken = default) =>
-        RunSyncPipelineAsync(
-            [systemId],
-            progress: null,
-            $"Automatic sync ({systemId})",
-            cancellationToken,
-            waitForGate: false);
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return CloudSaveSyncOutcome.NotConfigured();
+        if (!await _gate.WaitAsync(0, cancellationToken))
+            return CloudSaveSyncOutcome.AlreadyRunning();
+
+        try
+        {
+            var saves = await RunSyncPipelineAsync(
+                [systemId],
+                progress: null,
+                $"Automatic saves ({systemId})",
+                cancellationToken,
+                gateAlreadyHeld: true,
+                contentScope: SyncContentScope.SavesOnly,
+                recordOutcome: false);
+            if (saves.Status != CloudSaveSyncStatus.Completed ||
+                !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
+            {
+                RecordAutomaticOutcome(systemId, saves);
+                return saves;
+            }
+
+            var states = await RunSyncPipelineAsync(
+                [systemId],
+                progress: null,
+                $"Automatic save states ({systemId})",
+                cancellationToken,
+                gateAlreadyHeld: true,
+                contentScope: SyncContentScope.SaveStatesOnly,
+                recordOutcome: false);
+            if (states.Status != CloudSaveSyncStatus.Completed)
+            {
+                RecordAutomaticOutcome(
+                    systemId,
+                    states.Status == CloudSaveSyncStatus.Failed ? states : saves);
+                return states;
+            }
+
+            var combined = CloudSaveSyncOutcome.Completed(new SaveSyncReport(
+                saves.Report!.Results.Concat(states.Report!.Results).ToArray()));
+            RecordAutomaticOutcome(systemId, combined);
+            return combined;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     /// <summary>
     /// Checks every indexed save against what the remote actually stores, drops the entries whose
@@ -405,7 +449,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IProgress<SaveSyncProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var target = CreateTarget(systemId, includeOptionalContent: true);
+        var target = CreateTarget(systemId, SyncContentScope.All);
         if (!IsConfigured || target is null)
             return CloudSaveSyncOutcome.NotConfigured();
 
@@ -454,16 +498,24 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         string operationLabel,
         CancellationToken cancellationToken,
         bool verifyRemote = false,
-        bool waitForGate = true)
+        bool waitForGate = true,
+        bool gateAlreadyHeld = false,
+        SyncContentScope contentScope = SyncContentScope.SavesOnly,
+        bool recordOutcome = true)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
 
         var requestedSystemIds = systemIds.Distinct(StringComparer.Ordinal).ToArray();
-        if (waitForGate)
-            await _gate.WaitAsync(cancellationToken);
-        else if (!await _gate.WaitAsync(0, cancellationToken))
-            return CloudSaveSyncOutcome.AlreadyRunning();
+        var ownsGate = false;
+        if (!gateAlreadyHeld)
+        {
+            if (waitForGate)
+                await _gate.WaitAsync(cancellationToken);
+            else if (!await _gate.WaitAsync(0, cancellationToken))
+                return CloudSaveSyncOutcome.AlreadyRunning();
+            ownsGate = true;
+        }
 
         var synced = new List<string>();
         var targets = new List<SaveSyncTarget>();
@@ -473,7 +525,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             foreach (var systemId in requestedSystemIds)
             {
                 constructingSystemId = systemId;
-                if (CreateTarget(systemId, includeOptionalContent: verifyRemote) is { } target)
+                if (CreateTarget(systemId, contentScope) is { } target)
                 {
                     targets.Add(target);
                     synced.Add(systemId);
@@ -510,7 +562,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             var report = await service.SyncAllAsync(targets, progress, cancellationToken);
             elapsed.Stop();
             await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
-            RecordOutcome(synced, error: null, report);
+            if (recordOutcome)
+                RecordOutcome(synced, error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
         }
         catch (OperationCanceledException)
@@ -528,14 +581,23 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             // were staged is ambiguous and remains solely in the global outcome.
             var failedSystemId = constructingSystemId ??
                 (targets.Count == 1 ? targets[0].Provider.SystemId : null);
-            if (failedSystemId is not null)
+            if (recordOutcome && failedSystemId is not null)
                 RecordOutcome([failedSystemId], ex.Message);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
         finally
         {
-            _gate.Release();
+            if (ownsGate)
+                _gate.Release();
         }
+    }
+
+    private void RecordAutomaticOutcome(string systemId, CloudSaveSyncOutcome outcome)
+    {
+        if (outcome.Status == CloudSaveSyncStatus.Completed)
+            RecordOutcome([systemId], error: null, report: outcome.Report);
+        else if (outcome.Status == CloudSaveSyncStatus.Failed)
+            RecordOutcome([systemId], outcome.Message);
     }
 
     private RcloneCloudSyncTransport CreateTransport() => new(
@@ -572,13 +634,15 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
     }
 
-    private ISaveLocationProvider? CreateProvider(string systemId, bool includeOptionalContent = false) =>
-        CreateProvider(systemId, _settings.CloudSaveSync, includeOptionalContent);
+    private ISaveLocationProvider? CreateProvider(
+        string systemId,
+        SyncContentScope contentScope = SyncContentScope.SavesOnly) =>
+        CreateProvider(systemId, _settings.CloudSaveSync, contentScope);
 
     private ISaveLocationProvider? CreateProvider(
         string systemId,
         CloudSaveSyncSettings configuration,
-        bool includeOptionalContent)
+        SyncContentScope contentScope)
     {
         if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
             return null;
@@ -591,7 +655,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             descriptor,
             saves,
             context,
-            includeOptionalContent && configuration.GetLocation(systemId).SyncSaveStates);
+            contentScope != SyncContentScope.SavesOnly &&
+                configuration.GetLocation(systemId).SyncSaveStates,
+            includeBaseSaves: contentScope != SyncContentScope.SaveStatesOnly);
     }
 
     private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
@@ -665,10 +731,19 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    private SaveSyncTarget? CreateTarget(string systemId, bool includeOptionalContent = false) =>
-        CreateProvider(systemId, includeOptionalContent) is not { } provider
+    private SaveSyncTarget? CreateTarget(
+        string systemId,
+        SyncContentScope contentScope = SyncContentScope.SavesOnly) =>
+        CreateProvider(systemId, contentScope) is not { } provider
             ? null
             : new SaveSyncTarget(provider, new FileSystemLocalSaveEndpoint(provider, _paths));
+
+    private enum SyncContentScope
+    {
+        SavesOnly,
+        SaveStatesOnly,
+        All,
+    }
 
     // Per-system outcomes let Settings show each platform's own state rather than one shared
     // message. A failure keeps the previous success time so "last synced" does not vanish.

@@ -621,6 +621,143 @@ public sealed class GameLibrary : IGameLibrary
         command.ExecuteNonQuery();
     }
 
+    public LibraryFolderChangeResult ReplaceLibraryFolder(
+        long folderId,
+        string systemId,
+        string replacementPath,
+        IReadOnlyDictionary<long, string> verifiedGamePaths)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(replacementPath);
+        ArgumentNullException.ThrowIfNull(verifiedGamePaths);
+
+        var replacementRoot = Path.GetFullPath(replacementPath);
+        var replacementStorable = _pathResolver.ToStorablePath(replacementRoot);
+
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        var originalRoot = GetFolderPath(connection, transaction, folderId, systemId);
+
+        using (var duplicate = connection.CreateCommand())
+        {
+            duplicate.Transaction = transaction;
+            duplicate.CommandText =
+                "SELECT 1 FROM LibraryFolders WHERE SystemId = $systemId AND Path = $path AND Id <> $id LIMIT 1;";
+            duplicate.Parameters.AddWithValue("$systemId", systemId);
+            duplicate.Parameters.AddWithValue("$path", replacementStorable);
+            duplicate.Parameters.AddWithValue("$id", folderId);
+            if (duplicate.ExecuteScalar() is not null)
+                throw new InvalidOperationException("That folder is already remembered for this platform.");
+        }
+
+        var rebases = new List<(long Id, string Path)>();
+        using (var games = connection.CreateCommand())
+        {
+            games.Transaction = transaction;
+            games.CommandText = "SELECT Id, Path FROM Games WHERE SystemId = $systemId;";
+            games.Parameters.AddWithValue("$systemId", systemId);
+            using var reader = games.ExecuteReader();
+            while (reader.Read())
+            {
+                var currentPath = _pathResolver.ToAbsolutePath(reader.GetString(1));
+                var gameId = reader.GetInt64(0);
+                if (!TryRelativePath(originalRoot, currentPath, out _) ||
+                    !verifiedGamePaths.TryGetValue(gameId, out var verifiedPath))
+                    continue;
+                var candidate = Path.GetFullPath(verifiedPath);
+                if (!TryRelativePath(replacementRoot, candidate, out _))
+                    throw new InvalidOperationException("A verified replacement path is outside the replacement folder.");
+                rebases.Add((gameId, candidate));
+            }
+        }
+
+        using (var conflict = connection.CreateCommand())
+        {
+            conflict.Transaction = transaction;
+            conflict.CommandText = "SELECT Id FROM Games WHERE Path = $path AND Id <> $id LIMIT 1;";
+            var path = conflict.Parameters.Add("$path", SqliteType.Text);
+            var id = conflict.Parameters.Add("$id", SqliteType.Integer);
+            foreach (var rebase in rebases)
+            {
+                path.Value = _pathResolver.ToStorablePath(rebase.Path);
+                id.Value = rebase.Id;
+                if (conflict.ExecuteScalar() is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot change the folder because '{rebase.Path}' is already owned by another library entry.");
+                }
+            }
+        }
+
+        using (var updateGame = connection.CreateCommand())
+        {
+            updateGame.Transaction = transaction;
+            updateGame.CommandText = "UPDATE Games SET Path = $path, IsAvailable = 1 WHERE Id = $id;";
+            var path = updateGame.Parameters.Add("$path", SqliteType.Text);
+            var id = updateGame.Parameters.Add("$id", SqliteType.Integer);
+            foreach (var rebase in rebases)
+            {
+                path.Value = _pathResolver.ToStorablePath(rebase.Path);
+                id.Value = rebase.Id;
+                updateGame.ExecuteNonQuery();
+            }
+        }
+
+        using (var updateFolder = connection.CreateCommand())
+        {
+            updateFolder.Transaction = transaction;
+            updateFolder.CommandText =
+                "UPDATE LibraryFolders SET Path = $path WHERE Id = $id AND SystemId = $systemId;";
+            updateFolder.Parameters.AddWithValue("$path", replacementStorable);
+            updateFolder.Parameters.AddWithValue("$id", folderId);
+            updateFolder.Parameters.AddWithValue("$systemId", systemId);
+            updateFolder.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+        return new LibraryFolderChangeResult(rebases.Count);
+    }
+
+    public void RemoveLibraryFolder(long folderId, string systemId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "DELETE FROM LibraryFolders WHERE Id = $id AND SystemId = $systemId;";
+        command.Parameters.AddWithValue("$id", folderId);
+        command.Parameters.AddWithValue("$systemId", systemId);
+        command.ExecuteNonQuery();
+    }
+
+    private string GetFolderPath(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long folderId,
+        string systemId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "SELECT Path FROM LibraryFolders WHERE Id = $id AND SystemId = $systemId;";
+        command.Parameters.AddWithValue("$id", folderId);
+        command.Parameters.AddWithValue("$systemId", systemId);
+        return command.ExecuteScalar() is string path
+            ? _pathResolver.ToAbsolutePath(path)
+            : throw new InvalidOperationException("That remembered folder no longer exists.");
+    }
+
+    private static bool TryRelativePath(string root, string path, out string relativePath)
+    {
+        relativePath = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return relativePath != "." &&
+            !Path.IsPathRooted(relativePath) &&
+            relativePath != ".." &&
+            !relativePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+            !relativePath.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
     private Game ReadGame(SqliteDataReader reader) => new()
     {
         Id = reader.GetInt64(0),

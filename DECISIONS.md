@@ -2831,3 +2831,30 @@ trip through Gamepad restores it exactly (maximized stays maximized — the exis
 Gamepad launch records no desktop state, so the first return to Desktop maximizes instead of
 restoring the startup window; after that the user's chosen desktop window is remembered normally.
 Desktop-PC behavior is unchanged.
+
+## 2026-08-01 — Opted-in save states follow the complete launch lifecycle
+
+The manual-only restriction on save states is superseded. A user who enables state sync expects a
+state written on one machine to be available before play on another, so enabled manual states now
+reconcile before launch and after an EmuShelf-tracked emulator exits. The emulator/core-version and
+CPU-architecture guard remains authoritative, and automatic/resume/undo/backup slots remain
+excluded.
+
+There is no application-level pre-launch time budget. Launch waits for synchronization to complete;
+an operational failure is still advisory and launches with the data then on disk. Ordinary battery
+and memory-card saves commit in a first phase before the state phase, so a later state failure cannot
+strand a successfully reconciled critical save in local staging. A launch-triggered pass continues
+to decline immediately when another sync owns the single-flight gate.
+
+## 2026-08-01 — Remembered library roots are managed per platform without owning game files
+
+File-based systems can own more than one recursive scan root. Emulator Settings shows those roots
+as library configuration, but changing or forgetting a root changes only EmuShelf's database and
+never moves or deletes ROMs. A replacement root is scanned before it is committed. Existing game
+records beneath the old root keep their ids, titles, covers, and metadata only when a stable
+identifier read from the replacement matches persisted evidence for the old entry; a matching
+relative filename is not sufficient. Unverified records remain and become unavailable, while the
+replacement is imported as a separate game. A destination path already owned by another game
+aborts the replacement atomically.
+
+RPCS3 is excluded because its `games.yml` remains the source of truth for the PlayStation 3 library.

@@ -32,6 +32,9 @@ public partial class MainViewModel : ViewModelBase
     private const int SearchDebounceMs = 250;
     private const int ViewStateSaveDebounceMs = 500;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
+    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
 
     /// <summary>How long a completed action's result stays on screen before dismissing itself.</summary>
     private static readonly TimeSpan InfoStatusLifetime = TimeSpan.FromSeconds(5);
@@ -42,12 +45,6 @@ public partial class MainViewModel : ViewModelBase
     /// still clears itself, because a stale error on a working library is its own kind of wrong.
     /// </summary>
     private static readonly TimeSpan ErrorStatusLifetime = TimeSpan.FromSeconds(15);
-
-    /// <summary>
-    /// How long a launch may wait for the pre-launch save sync. Long enough for a healthy cloud
-    /// round trip, short enough that a throttled provider does not read as a hung launcher.
-    /// </summary>
-    private static readonly TimeSpan PreLaunchSyncBudget = TimeSpan.FromSeconds(20);
 
     private readonly IGameLibrary _library;
     private readonly IFolderScanner _scanner;
@@ -2265,6 +2262,108 @@ public partial class MainViewModel : ViewModelBase
         return StatusText;
     }
 
+    private IReadOnlyList<LibraryFolder> GetLibraryFoldersForSettings(string systemId) =>
+        _library.GetLibraryFolders(systemId);
+
+    private async Task<string> AddLibraryFolderFromSettingsAsync(string systemId, string folderPath)
+    {
+        if (IsBusy)
+            return "Library work is already in progress.";
+        var system = Systems.FirstOrDefault(candidate => candidate.Id == systemId);
+        if (system is null || system.Id == "playstation3")
+            return "That platform does not use remembered folders.";
+
+        IsBusy = true;
+        try
+        {
+            var selection = await _scanner.ScanAsync(folderPath, system);
+            await Task.Run(() => _library.AddLibraryFolder(systemId, folderPath));
+            var imported = await ReconcileImportAsync(system, selection);
+            await UpdateAvailabilityAsync();
+            await ReloadGamesAsync();
+            await MaybeStartMetadataForImportAsync(imported.AddedGameIds);
+            return imported.AddedCount == 1
+                ? "Folder remembered — added 1 game."
+                : $"Folder remembered — added {imported.AddedCount} games.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not add a remembered folder for {systemId}.", ex);
+            return $"Could not add folder: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task<string> ChangeLibraryFolderFromSettingsAsync(
+        string systemId,
+        long folderId,
+        string replacementPath)
+    {
+        if (IsBusy)
+            return "Library work is already in progress.";
+        var system = Systems.FirstOrDefault(candidate => candidate.Id == systemId);
+        if (system is null || system.Id == "playstation3")
+            return "That platform does not use remembered folders.";
+
+        IsBusy = true;
+        try
+        {
+            // Scan first: an unreadable or invalid replacement must leave both the remembered root
+            // and every existing game path unchanged.
+            var selection = await _scanner.ScanAsync(replacementPath, system);
+            var preparedEntries = await PrepareImportEntriesAsync(system, selection.EntryPaths);
+            var verifiedGamePaths = await FindVerifiedRelocationsAsync(
+                folderId,
+                system,
+                replacementPath,
+                preparedEntries);
+            var changed = await Task.Run(() => _library.ReplaceLibraryFolder(
+                folderId,
+                systemId,
+                replacementPath,
+                verifiedGamePaths));
+            var imported = await ReconcileImportAsync(system, selection, preparedEntries);
+            await UpdateAvailabilityAsync();
+            await ReloadGamesAsync();
+            await MaybeStartMetadataForImportAsync(imported.AddedGameIds);
+
+            var details = new List<string>();
+            if (changed.RebasedGameCount > 0)
+                details.Add($"{changed.RebasedGameCount} existing game path(s) updated");
+            if (imported.AddedCount > 0)
+                details.Add($"{imported.AddedCount} new game(s) added");
+            return details.Count == 0
+                ? "Folder changed — no library entries changed."
+                : "Folder changed — " + string.Join(", ", details) + ".";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not change a remembered folder for {systemId}.", ex);
+            return $"Could not change folder: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task<string> ForgetLibraryFolderFromSettingsAsync(string systemId, long folderId)
+    {
+        try
+        {
+            await Task.Run(() => _library.RemoveLibraryFolder(folderId, systemId));
+            return "Folder forgotten. Existing games and files were not removed.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not forget a remembered folder for {systemId}.", ex);
+            return $"Could not forget folder: {ex.Message}";
+        }
+    }
+
     private IEnumerable<GameSystem> NonRpcs3Systems() =>
         Systems.Where(system => system.Id != "playstation3");
 
@@ -2399,14 +2498,18 @@ public partial class MainViewModel : ViewModelBase
         GameSystem system,
         GameEntrySelection selection)
     {
+        var preparedEntries = await PrepareImportEntriesAsync(system, selection.EntryPaths);
+        return await ReconcileImportAsync(system, selection, preparedEntries);
+    }
+
+    private async Task<GameImportResult> ReconcileImportAsync(
+        GameSystem system,
+        GameEntrySelection selection,
+        IReadOnlyList<PreparedImportEntry> preparedEntries)
+    {
         if (selection.EntryPaths.Count == 0 && selection.SuppressedPaths.Count == 0)
             return GameImportResult.Empty;
 
-        var preparedEntries = await Task.Run(() => selection.EntryPaths
-            .Select(path => new PreparedImportEntry(
-                path,
-                _importRules.ReadImportMetadata(path, system)))
-            .ToArray());
         var now = DateTimeOffset.Now;
         var games = preparedEntries.Select(entry => new Game
         {
@@ -2425,6 +2528,65 @@ public partial class MainViewModel : ViewModelBase
         await PersistImportEvidenceAsync(system.Id, preparedEntries);
 
         return result;
+    }
+
+    private Task<PreparedImportEntry[]> PrepareImportEntriesAsync(
+        GameSystem system,
+        IReadOnlyList<string> entryPaths) =>
+        Task.Run(() => entryPaths
+            .Select(path => new PreparedImportEntry(
+                path,
+                _importRules.ReadImportMetadata(path, system)))
+            .ToArray());
+
+    private Task<IReadOnlyDictionary<long, string>> FindVerifiedRelocationsAsync(
+        long folderId,
+        GameSystem system,
+        string replacementPath,
+        IReadOnlyList<PreparedImportEntry> preparedEntries) => Task.Run(() =>
+    {
+        if (_metadataStore is null)
+            return (IReadOnlyDictionary<long, string>)new Dictionary<long, string>();
+
+        var originalRoot = _library.GetLibraryFolders(system.Id)
+            .Single(folder => folder.Id == folderId)
+            .Path;
+        var replacementRoot = Path.GetFullPath(replacementPath);
+        var replacements = preparedEntries.ToDictionary(
+            entry => Path.GetFullPath(entry.Path),
+            entry => entry,
+            PathComparer);
+        var verified = new Dictionary<long, string>();
+
+        foreach (var game in _library.GetGames(system.Id))
+        {
+            if (!TryGetRelativePath(originalRoot, game.Path, out var relativePath))
+                continue;
+            var candidate = Path.GetFullPath(Path.Combine(replacementRoot, relativePath));
+            if (!replacements.TryGetValue(candidate, out var replacement) ||
+                !IdentifiersMatch(_metadataStore.GetIdentifiers(game.Id), replacement.Metadata.Identifiers))
+            {
+                continue;
+            }
+            verified[game.Id] = candidate;
+        }
+
+        return verified;
+    });
+
+    private static bool IdentifiersMatch(
+        IReadOnlyList<GameIdentifier> stored,
+        IReadOnlyList<GameIdentifier> replacement) =>
+        stored.Any(left => replacement.Any(right =>
+            left.Kind == right.Kind &&
+            string.Equals(left.Value, right.Value, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool TryGetRelativePath(string root, string path, out string relativePath)
+    {
+        relativePath = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return relativePath != ".." &&
+               !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+               !Path.IsPathRooted(relativePath);
     }
 
     private async Task PersistImportEvidenceAsync(
@@ -2659,19 +2821,11 @@ public partial class MainViewModel : ViewModelBase
                 : $"Syncing saves before launching {game.Title}…",
             StatusSeverity.Progress);
 
-        // Before a launch the user is waiting on a cloud round trip they did not ask for, and a
-        // provider having a slow minute must not become a slow minute for the game. The pass is
-        // given a budget; past it, the launch proceeds with the saves already on disk, exactly as
-        // it does when a pre-launch sync fails. After exit nothing is blocked, so it runs out.
-        using var budget = afterExit ? null : new CancellationTokenSource(PreLaunchSyncBudget);
-        using var linked = budget is null
-            ? null
-            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, budget.Token);
         try
         {
             var outcome = await _gameSaveSync.SyncSystemAsync(
                 game.SystemId,
-                linked?.Token ?? cancellationToken);
+                cancellationToken);
             if (outcome.Status == CloudSaveSyncStatus.Failed)
             {
                 _logger.Warning(
@@ -2697,16 +2851,6 @@ public partial class MainViewModel : ViewModelBase
                     "the system was reported as syncable. Saves were not synchronized.");
             }
             return outcome;
-        }
-        catch (OperationCanceledException) when (budget?.IsCancellationRequested == true &&
-            !cancellationToken.IsCancellationRequested)
-        {
-            _logger.Warning(
-                $"The pre-launch save sync for game id {game.Id} exceeded " +
-                $"{PreLaunchSyncBudget.TotalSeconds:0} seconds and was left to the post-exit pass; " +
-                "the saves already on disk were used.");
-            return CloudSaveSyncOutcome.Failed(
-                $"the cloud did not answer within {PreLaunchSyncBudget.TotalSeconds:0} seconds");
         }
         catch (OperationCanceledException)
         {
@@ -3123,7 +3267,12 @@ public partial class MainViewModel : ViewModelBase
                     FetchAllMetadataFromSettingsAsync,
                     SyncRpcs3LibraryFromSettingsAsync,
                     () => ShowEmptyPlatforms,
-                    SetShowEmptyPlatformsAsync),
+                    SetShowEmptyPlatformsAsync,
+                    new LibraryFolderManagementActions(
+                        GetLibraryFoldersForSettings,
+                        AddLibraryFolderFromSettingsAsync,
+                        ChangeLibraryFolderFromSettingsAsync,
+                        ForgetLibraryFolderFromSettingsAsync)),
                 _metadataPreferences,
                 _retroAccount is null
                     ? null

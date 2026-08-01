@@ -10,3 +10,6 @@ public sealed record LibraryFolder
     public required string SystemId { get; init; }
     public required string Path { get; init; }
 }
+
+/// <summary>The database-only result of replacing one remembered recursive scan root.</summary>
+public sealed record LibraryFolderChangeResult(int RebasedGameCount);

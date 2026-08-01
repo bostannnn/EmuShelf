@@ -1530,6 +1530,31 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_WaitsForTheCompletePreLaunchSyncWithoutAnApplicationBudget()
+    {
+        var events = new List<string>();
+        var sync = new BlockingGameSaveSyncService(events);
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished"),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines-wait.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        var launch = vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        await sync.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["sync:psp"], events);
+        sync.Complete();
+        await launch;
+
+        Assert.Equal(["sync:psp", "launch"], events);
+    }
+
+    [AvaloniaFact]
     public async Task LaunchGame_PreLaunchSyncFailureWarnsButStillLaunchesAndRetriesAfterExit()
     {
         var events = new List<string>();
@@ -1658,6 +1683,34 @@ public class MainViewModelTests : IDisposable
 
         Assert.Equal(1, _dialogs.SettingsShown);
         Assert.NotNull(_dialogs.MaintenanceActions?.RescanSystem);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsFolderChange_DoesNotGiveDifferentRomTheOldGamesIdentity()
+    {
+        var oldRoot = Path.Combine(_baseDirectory, "old-roms");
+        var newRoot = Path.Combine(_baseDirectory, "new-roms");
+        Directory.CreateDirectory(oldRoot);
+        Directory.CreateDirectory(newRoot);
+        var oldPath = Path.Combine(oldRoot, "Alpha.game");
+        var newPath = Path.Combine(newRoot, "Alpha.game");
+        File.WriteAllText(oldPath, "ORIGINAL-ID");
+        File.WriteAllText(newPath, "DIFFERENT-ID");
+        var rules = new FileContentIdentityImportRules(Ps1);
+        _dialogs.FolderToReturn = oldRoot;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(importRules: rules, metadataStore: _metadataStore);
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        var original = Assert.Single(_library.GetGames(Ps1.Id));
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        var folder = Assert.Single(_dialogs.MaintenanceActions!.Folders!.Get(Ps1.Id));
+
+        await _dialogs.MaintenanceActions.Folders.Change(Ps1.Id, folder.Id, newRoot);
+
+        var games = _library.GetGames(Ps1.Id);
+        Assert.Equal(2, games.Count);
+        Assert.Contains(games, game => game.Id == original.Id && game.Path == oldPath);
+        Assert.Contains(games, game => game.Id != original.Id && game.Path == newPath);
     }
 
     [AvaloniaFact]
@@ -2280,6 +2333,32 @@ public class MainViewModelTests : IDisposable
                 : GameImportMetadata.Empty;
     }
 
+    private sealed class FileContentIdentityImportRules(GameSystem system) : IGameImportRules
+    {
+        public GameFileAnalysis AnalyzeFile(string path) => new(
+            path,
+            [system],
+            new Dictionary<string, GameFileMatch> { [system.Id] = GameFileMatch.Compatible });
+
+        public bool IsFolderCandidate(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id;
+
+        public GameEntrySelection SelectGameEntries(
+            IReadOnlyList<string> candidates,
+            GameSystem candidateSystem) => new(candidates, []);
+
+        public GameImportMetadata ReadImportMetadata(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id
+                ? new GameImportMetadata(
+                    null,
+                    [new GameIdentifier(
+                        GameIdentifierKind.DiscId,
+                        File.ReadAllText(path),
+                        "test",
+                        true)])
+                : GameImportMetadata.Empty;
+    }
+
     private sealed class FailingOnceMetadataStore(IGameMetadataStore inner) : IGameMetadataStore
     {
         private bool _shouldFail = true;
@@ -2363,6 +2442,26 @@ public class MainViewModelTests : IDisposable
             var index = Math.Min(_nextOutcome++, outcomes.Length - 1);
             return Task.FromResult(outcomes[index]);
         }
+    }
+
+    private sealed class BlockingGameSaveSyncService(List<string> events) : IGameSaveSyncService
+    {
+        private readonly TaskCompletionSource _complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool CanSyncSystem(string systemId) => systemId == "psp";
+
+        public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
+            string systemId,
+            CancellationToken cancellationToken = default)
+        {
+            events.Add($"sync:{systemId}");
+            Started.TrySetResult();
+            await _complete.Task.WaitAsync(cancellationToken);
+            return CloudSaveSyncOutcome.Completed(new SaveSyncReport([]));
+        }
+
+        public void Complete() => _complete.TrySetResult();
     }
 
     private sealed class BlockingLaunchService : IEmulatorLaunchService

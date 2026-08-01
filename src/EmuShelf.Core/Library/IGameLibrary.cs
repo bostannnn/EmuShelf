@@ -72,4 +72,17 @@ public interface IGameLibrary
 
     /// <summary>Remembers a folder for a system if that exact folder isn't already tracked.</summary>
     void AddLibraryFolder(string systemId, string folderPath);
+
+    /// <summary>
+    /// Replaces one remembered root and applies caller-verified game-id-to-path relocations.
+    /// No game files are moved or modified.
+    /// </summary>
+    LibraryFolderChangeResult ReplaceLibraryFolder(
+        long folderId,
+        string systemId,
+        string replacementPath,
+        IReadOnlyDictionary<long, string> verifiedGamePaths);
+
+    /// <summary>Forgets one rescan root without removing games or touching their files.</summary>
+    void RemoveLibraryFolder(long folderId, string systemId);
 }

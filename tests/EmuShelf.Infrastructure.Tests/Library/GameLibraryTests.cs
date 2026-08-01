@@ -284,6 +284,102 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void ReplaceLibraryFolder_RebasesRecognizedRelativePathsAndPreservesGameIdentity()
+    {
+        var oldRoot = Path.Combine(BaseDirectory, "Old", "PS1");
+        var newRoot = Path.Combine(BaseDirectory, "New", "PS1");
+        var oldGame = Path.Combine(oldRoot, "RPGs", "Alpha.cue");
+        var oldUnmatched = Path.Combine(oldRoot, "Beta.cue");
+        var newGame = Path.Combine(newRoot, "RPGs", "Alpha.cue");
+        var cover = Path.Combine(AppPaths.CoversDirectory, "alpha.png");
+        _library.AddLibraryFolder("playstation", oldRoot);
+        _library.AddGames([
+            NewGame("playstation", oldGame, "Custom Alpha") with { CoverPath = cover },
+            NewGame("playstation", oldUnmatched, "Beta"),
+        ]);
+        var original = _library.GetGames("playstation").Single(game => game.Title == "Custom Alpha");
+        var folder = _library.GetLibraryFolders("playstation").Single();
+
+        var result = _library.ReplaceLibraryFolder(
+            folder.Id,
+            "playstation",
+            newRoot,
+            new Dictionary<long, string> { [original.Id] = newGame });
+
+        var updated = _library.GetGames("playstation").Single(game => game.Title == "Custom Alpha");
+        Assert.Equal(1, result.RebasedGameCount);
+        Assert.Equal(original.Id, updated.Id);
+        Assert.Equal(newGame, updated.Path);
+        Assert.Equal(cover, updated.CoverPath);
+        Assert.Contains(_library.GetGames("playstation"), game => game.Path == oldUnmatched);
+        Assert.Equal(newRoot, _library.GetLibraryFolders("playstation").Single().Path);
+    }
+
+    [Fact]
+    public void ReplaceLibraryFolder_PathConflictLeavesFolderAndGamesUnchanged()
+    {
+        var oldRoot = Path.Combine(BaseDirectory, "Old");
+        var newRoot = Path.Combine(BaseDirectory, "New");
+        var oldGame = Path.Combine(oldRoot, "Alpha.cue");
+        var target = Path.Combine(newRoot, "Alpha.cue");
+        _library.AddLibraryFolder("playstation", oldRoot);
+        _library.AddGames([
+            NewGame("playstation", oldGame, "Old Alpha"),
+            NewGame("playstation", target, "Existing Alpha"),
+        ]);
+        var folder = _library.GetLibraryFolders("playstation").Single();
+
+        var error = Assert.Throws<InvalidOperationException>(() => _library.ReplaceLibraryFolder(
+            folder.Id,
+            "playstation",
+            newRoot,
+            new Dictionary<long, string>
+            {
+                [_library.GetGames("playstation").Single(game => game.Path == oldGame).Id] = target,
+            }));
+
+        Assert.Contains("already owned", error.Message);
+        Assert.Equal(oldRoot, _library.GetLibraryFolders("playstation").Single().Path);
+        Assert.Contains(_library.GetGames("playstation"), game => game.Path == oldGame);
+    }
+
+    [Fact]
+    public void ReplaceLibraryFolder_DoesNotRebaseSameRelativePathWithoutVerifiedIdentity()
+    {
+        var oldRoot = Path.Combine(BaseDirectory, "Old");
+        var newRoot = Path.Combine(BaseDirectory, "New");
+        var oldGame = Path.Combine(oldRoot, "Alpha.cue");
+        _library.AddLibraryFolder("playstation", oldRoot);
+        _library.AddGames([NewGame("playstation", oldGame, "Curated Alpha")]);
+        var folder = _library.GetLibraryFolders("playstation").Single();
+
+        var result = _library.ReplaceLibraryFolder(
+            folder.Id,
+            "playstation",
+            newRoot,
+            new Dictionary<long, string>());
+
+        Assert.Equal(0, result.RebasedGameCount);
+        Assert.Equal(oldGame, _library.GetGames("playstation").Single().Path);
+        Assert.Equal(newRoot, _library.GetLibraryFolders("playstation").Single().Path);
+    }
+
+    [Fact]
+    public void RemoveLibraryFolder_ForgetsOnlyTheRoot()
+    {
+        var root = Path.Combine(BaseDirectory, "Roms");
+        var gamePath = Path.Combine(root, "Alpha.cue");
+        _library.AddLibraryFolder("playstation", root);
+        _library.AddGames([NewGame("playstation", gamePath, "Alpha")]);
+        var folder = _library.GetLibraryFolders("playstation").Single();
+
+        _library.RemoveLibraryFolder(folder.Id, "playstation");
+
+        Assert.Empty(_library.GetLibraryFolders("playstation"));
+        Assert.Equal(gamePath, _library.GetGames("playstation").Single().Path);
+    }
+
+    [Fact]
     public void ReconcileExternalLibrary_RetainsProvenanceAndMarksAbsentSourceEntriesUnavailable()
     {
         var source = new ExternalLibrarySource(

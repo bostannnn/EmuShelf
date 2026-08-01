@@ -59,17 +59,20 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     private readonly ISaveLocationProvider _saves;
     private readonly IReadOnlyList<AuxiliaryFileSource> _sources;
     private readonly StateCompatibility? _compatibility;
+    private readonly bool _includeBaseSaves;
     private readonly Dictionary<AuxiliaryFileSource, string?> _resolvedRoots = [];
     private readonly object _rootGate = new();
 
     public AuxiliarySyncProvider(
         ISaveLocationProvider saves,
         IReadOnlyList<AuxiliaryFileSource> sources,
-        StateCompatibility? compatibility)
+        StateCompatibility? compatibility,
+        bool includeBaseSaves = true)
     {
         _saves = saves;
         _sources = sources;
         _compatibility = compatibility;
+        _includeBaseSaves = includeBaseSaves;
     }
 
     public string SystemId => _saves.SystemId;
@@ -95,12 +98,14 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     }
 
     public string? GetCompatibility(string unitId) =>
-        IsStateUnit(unitId) ? _compatibility?.Key : _saves.GetCompatibility(unitId);
+        IsStateUnit(unitId)
+            ? _compatibility?.Key
+            : _includeBaseSaves ? _saves.GetCompatibility(unitId) : null;
 
     public string? GetRemoteIncompatibilityReason(SaveUnitSnapshot remoteSnapshot)
     {
         if (!IsStateUnit(remoteSnapshot.UnitId))
-            return _saves.GetRemoteIncompatibilityReason(remoteSnapshot);
+            return _includeBaseSaves ? _saves.GetRemoteIncompatibilityReason(remoteSnapshot) : null;
         return _compatibility is not null &&
                string.Equals(remoteSnapshot.Compatibility, _compatibility.Key, StringComparison.Ordinal)
             ? null
@@ -112,14 +117,16 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     {
         if (TryGetOptionalNamespace(unitId, out _))
             return _sources.Any(source => IsInSourceNamespace(unitId, source));
-        return _saves.OwnsUnit(unitId);
+        return _includeBaseSaves && _saves.OwnsUnit(unitId);
     }
 
     public IReadOnlyList<SaveUnitSnapshot> SelectRemoteUnits(IReadOnlyList<SaveUnitSnapshot> snapshots)
     {
-        var selected = _saves.SelectRemoteUnits(snapshots
-            .Where(snapshot => !TryGetOptionalNamespace(snapshot.UnitId, out _))
-            .ToArray()).ToList();
+        var selected = _includeBaseSaves
+            ? _saves.SelectRemoteUnits(snapshots
+                .Where(snapshot => !TryGetOptionalNamespace(snapshot.UnitId, out _))
+                .ToArray()).ToList()
+            : [];
 
         foreach (var source in _sources)
             selected.AddRange(snapshots.Where(snapshot => IsInSourceNamespace(snapshot.UnitId, source)));
@@ -129,7 +136,9 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 
     public async Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default)
     {
-        var units = (await _saves.GetSaveUnitsAsync(cancellationToken)).ToList();
+        var units = _includeBaseSaves
+            ? (await _saves.GetSaveUnitsAsync(cancellationToken)).ToList()
+            : [];
         foreach (var source in _sources)
             units.AddRange(await Task.Run(() => Enumerate(source, cancellationToken), cancellationToken));
         return units;
@@ -138,7 +147,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     public SaveUnitLocation? ResolveUnit(string unitId)
     {
         if (!TryGetOptionalNamespace(unitId, out _))
-            return _saves.ResolveUnit(unitId);
+            return _includeBaseSaves ? _saves.ResolveUnit(unitId) : null;
 
         var source = _sources.FirstOrDefault(candidate => IsInSourceNamespace(unitId, candidate));
         if (source is null)

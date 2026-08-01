@@ -56,6 +56,31 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.DoesNotContain(units, unit => unit.UnitId.Contains(".auto", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task StateOnlyProviderDoesNotClaimOrEnumerateBaseSaves()
+    {
+        var states = Directory.CreateDirectory(Path.Combine(_root, "states-only")).FullName;
+        WriteState(states, "GAME.state1", 1);
+        var provider = new AuxiliarySyncProvider(
+            new OneSaveProvider(),
+            [new("states", _ => states, _ => true)],
+            new StateCompatibility("current", "current"),
+            includeBaseSaves: false);
+
+        var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        var selected = provider.SelectRemoteUnits([
+            new SaveUnitSnapshot("test/card", "card", DateTimeOffset.UtcNow),
+            new SaveUnitSnapshot("test/states/GAME.state1", "state", DateTimeOffset.UtcNow, "current"),
+        ]);
+
+        Assert.Single(units);
+        Assert.StartsWith("test/states/", units[0].UnitId);
+        Assert.False(provider.OwnsUnit("test/card"));
+        Assert.Single(selected);
+        Assert.StartsWith("test/states/", selected[0].UnitId);
+        Assert.Null(provider.ResolveUnit("test/card"));
+    }
+
     // The cheats and patches namespaces were removed because they pointed at each emulator's whole
     // cheats folder, which on DuckStation and PCSX2 is the shipped community database. A remote
     // still holding those payloads from an older build must not be claimed by the state provider:
@@ -157,5 +182,18 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SaveUnit>>([]);
         public SaveUnitLocation? ResolveUnit(string unitId) => null;
+    }
+
+    private sealed class OneSaveProvider : ISaveLocationProvider
+    {
+        public string SystemId => "test";
+        public string UnitIdPrefix => "test/";
+        public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SaveUnit>>([new("test/card", "Card", SaveUnitKind.File)]);
+        public SaveUnitLocation? ResolveUnit(string unitId) =>
+            unitId == "test/card" ? new SaveUnitLocation(Path.Combine(Path.GetTempPath(), "card"), Path.GetTempPath(), SaveUnitKind.File) : null;
+        public bool OwnsUnit(string unitId) => unitId == "test/card";
+        public IReadOnlyList<SaveUnitSnapshot> SelectRemoteUnits(IReadOnlyList<SaveUnitSnapshot> snapshots) =>
+            snapshots.Where(snapshot => OwnsUnit(snapshot.UnitId)).ToArray();
     }
 }

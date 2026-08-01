@@ -22,7 +22,7 @@ public sealed record SaveLocationSettings
     /// </summary>
     public string? LastNotice { get; init; }
 
-    /// <summary>Whether manually initiated syncs include guarded emulator save states.</summary>
+    /// <summary>Whether automatic and manual syncs include guarded emulator save states.</summary>
     public bool SyncSaveStates { get; init; }
 }
 

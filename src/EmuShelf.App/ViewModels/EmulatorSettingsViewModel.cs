@@ -323,7 +323,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 isExpanded: false,
                 emulatorInstallationId: installationId,
                 isExecutableShared: isShared,
-                logger: _logger);
+                logger: _logger,
+                folderActions: system.Id == "playstation3" ? null : maintenance?.Folders,
+                runFolderMaintenance: (action, report) => RunMaintenanceAsync(
+                    action,
+                    "Updating remembered folders…",
+                    report));
         }).ToArray();
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
         foreach (var row in Rows)
