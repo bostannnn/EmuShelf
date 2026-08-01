@@ -982,6 +982,47 @@ unchanged unless an item explicitly says otherwise.
       verify Windows fullscreen and real Steam Deck/Gaming Mode focus, OSK, emulator return, and
       menu behavior before marking M31 complete.
 
+### Approved couch-first continuation (2026-08-01)
+
+This product sequence builds on the hardened M31 shell without copying NeoStation branding,
+artwork, or source. The target is a complete living-room interface, not a larger or reduced Desktop
+layout. The reference mockup's clock is deliberately excluded: it does not help library navigation
+or launch flow, and the host already owns time/status UI.
+
+1. **Focused-game presence.** Replace the thin command-only footer with a persistent dock for the
+   focused title: platform, large title, availability/disc context, a prominent **A Play** action,
+   and a RetroAchievements count plus progress bar when a confirmed achievement set exists. Add
+   fixed semantic colors for A/B/X/Y and a stronger focused-cover shadow while keeping the existing
+   per-platform cover ratios and virtualized shelf. The initial dock, semantic prompts, projection
+   tests, and 1280×800 render check landed on 2026-08-01. The screenshot-led refinement then made
+   achievement and Play surfaces a shared 60px height, removed the redundant percentage and
+   "Available" copy, showed the actual launch filename, and added subtle depth to every cover. A
+   further populated-library review replaced the two-row 126px footer with one 104px information
+   row: only game identity, a custom clipped achievement track, and Play remain persistent. The
+   library count and direct-shortcut legend now live in Menu; overlays retain only their contextual
+   hints. Real-controller tuning remains part of the M31 acceptance pass above.
+2. **Settings entirely on the controller.** Replace the Settings-to-Desktop handoff with an
+   in-window, sectioned Gamepad surface over the existing settings view model. Land General,
+   RetroAchievements, Saves, and Texture Packs first; then emulator paths/arguments. Use the
+   controller-safe text-entry path for text and keep an explicit OS file-picker handoff only where
+   selecting a native executable or folder is unavoidable.
+3. **Controller cover search using the existing DuckDuckGo provider.** Reuse M34's explicit,
+   bounded `DuckDuckGoArtworkSearchProvider` and safe preview/download pipeline in a Gamepad
+   candidate grid. Search and selection stay user-driven; unverified results never enter automatic
+   metadata enrichment. Retain **Use local image** as a secondary, clearly labelled Desktop/file
+   picker handoff.
+4. **Full portable themes.** Move beyond Light/Dark plus one accent to complete palettes covering
+   backgrounds, panels, text, borders, selection, and focus. Provide a controller-native theme
+   gallery and portable `Themes/` import, while A/B/X/Y semantic colors remain stable across every
+   palette.
+5. **ScreenScraper.fr integration.** Treat ScreenScraper as a separate authenticated metadata
+   provider project, not as the first implementation of the Gamepad picker. Add secure user
+   credentials, application/developer credentials, platform-id mapping, hash-first matching with
+   title search fallback, locale/region preferences, quota/concurrency handling, cached attribution
+   and provenance, and explicit single-game/batch consent. Feed its metadata and media variants
+   into the same controller scraper UI only after deterministic fixtures and provider-failure
+   isolation are in place. ScreenScraper account sharing and quota workarounds are never supported.
+
 ## M32 — Installed texture-pack inventory (in progress)
 
 Inventory replacement-texture packs owned by Dolphin, PCSX2, DuckStation, and PPSSPP, match them

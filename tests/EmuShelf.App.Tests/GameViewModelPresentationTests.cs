@@ -1,0 +1,75 @@
+using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Library;
+
+namespace EmuShelf.App.Tests;
+
+public sealed class GameViewModelPresentationTests
+{
+    [Fact]
+    public void AchievementProgress_ProjectsCompactCountAndBarRatio()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true,
+            ColumnText: "3/62",
+            Tooltip: "3 of 62 unlocked."));
+
+        Assert.Equal("3/62", viewModel.GamepadAchievementCountText);
+        Assert.Equal(3d / 62d, viewModel.GamepadAchievementProgressRatio, 8);
+        Assert.Equal("sample.chd", viewModel.GamepadSubtitle);
+    }
+
+    [Theory]
+    [InlineData("—")]
+    [InlineData("invalid")]
+    [InlineData("0/0")]
+    public void AchievementProgress_UsesHonestUnavailableStateWhenCountsAreMissing(string columnText)
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true,
+            ColumnText: columnText,
+            Tooltip: "Progress has not loaded."));
+
+        Assert.Equal("—/—", viewModel.GamepadAchievementCountText);
+        Assert.Equal(0, viewModel.GamepadAchievementProgressRatio);
+    }
+
+    [Fact]
+    public void GamepadSubtitle_TracksTheSourceSelectedForMultiDiscLaunch()
+    {
+        var disc1 = CreateModel(1, "/games/Sample Game (Disc 1).chd");
+        var disc2 = CreateModel(2, "/games/Sample Game (Disc 2).chd");
+        var viewModel = new GameViewModel(
+            disc1,
+            "PlayStation 2",
+            "PS2",
+            "#4657D7",
+            discs: [new GameDisc(1, disc1), new GameDisc(2, disc2)],
+            selectedDisc: new GameDisc(1, disc1));
+
+        viewModel.SetSelectedDisc(new GameDisc(2, disc2));
+
+        Assert.Equal("Sample Game (Disc 2).chd · Disc 2 selected", viewModel.GamepadSubtitle);
+    }
+
+    private static GameViewModel CreateGame() => new(
+        CreateModel(1, "/games/sample.chd"),
+        "PlayStation 2",
+        "PS2",
+        "#4657D7");
+
+    private static Game CreateModel(long id, string path) =>
+        new()
+        {
+            Id = id,
+            SystemId = "playstation2",
+            Path = path,
+            Title = "Sample Game",
+            IsAvailable = true,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+}

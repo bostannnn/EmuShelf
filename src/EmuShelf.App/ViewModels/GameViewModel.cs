@@ -180,6 +180,31 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// exists but progress hasn't loaded, otherwise the number of unlocked achievements.</summary>
     public int AchievementSortKey { get; private set; } = -1;
 
+    /// <summary>Couch-distance achievement copy for the focused-game dock.</summary>
+    public string GamepadAchievementCountText =>
+        TryGetAchievementProgress(out var awarded, out var total)
+            ? $"{awarded}/{total}"
+            : "—/—";
+
+    public double GamepadAchievementProgressRatio =>
+        TryGetAchievementProgress(out var awarded, out var total)
+            ? Math.Clamp(awarded / (double)total, 0, 1)
+            : 0;
+
+    /// <summary>The actual source that A will launch, kept compact for the focused-game dock.</summary>
+    public string GamepadSubtitle
+    {
+        get
+        {
+            var trimmedPath = LaunchModel.Path.TrimEnd(
+                System.IO.Path.DirectorySeparatorChar,
+                System.IO.Path.AltDirectorySeparatorChar);
+            var fileName = System.IO.Path.GetFileName(trimmedPath);
+            var source = string.IsNullOrWhiteSpace(fileName) ? LaunchModel.Title : fileName;
+            return ShowsSelectedDisc ? $"{source} · {SelectedDiscText}" : source;
+        }
+    }
+
     /// <summary>Applies a resolved achievement presentation from the display state machine.</summary>
     public void ApplyAchievementsDisplay(RetroAchievementsDisplay display)
     {
@@ -187,6 +212,23 @@ public partial class GameViewModel : ObservableObject, IDisposable
         AchievementsColumnText = display.ColumnText;
         AchievementsTooltip = display.Tooltip;
         AchievementSortKey = ComputeAchievementSortKey(display);
+    }
+
+    partial void OnAchievementsColumnTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(GamepadAchievementCountText));
+        OnPropertyChanged(nameof(GamepadAchievementProgressRatio));
+    }
+
+    private bool TryGetAchievementProgress(out int awarded, out int total)
+    {
+        awarded = 0;
+        total = 0;
+        var slash = AchievementsColumnText.IndexOf('/');
+        return slash > 0 &&
+               int.TryParse(AchievementsColumnText.AsSpan(0, slash), out awarded) &&
+               int.TryParse(AchievementsColumnText.AsSpan(slash + 1), out total) &&
+               awarded >= 0 && total > 0;
     }
 
     private static int ComputeAchievementSortKey(RetroAchievementsDisplay display)
@@ -310,6 +352,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowsSelectedDisc));
         OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
+        OnPropertyChanged(nameof(GamepadSubtitle));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
         foreach (var option in DiscOptions)
             option.IsCurrent = option.Disc.Game.Id == selectedDisc.Game.Id;

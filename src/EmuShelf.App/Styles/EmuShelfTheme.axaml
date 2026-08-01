@@ -70,4 +70,11 @@
             <SolidColorBrush x:Key="EmuDangerBrush" Color="#FF6673" />
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
+
+    <!-- Controller semantics stay fixed when Phase 4 adds complete user-selectable palettes. -->
+    <SolidColorBrush x:Key="EmuGamepadAButtonBrush" Color="#57CF8C" />
+    <SolidColorBrush x:Key="EmuGamepadBButtonBrush" Color="#F06A94" />
+    <SolidColorBrush x:Key="EmuGamepadXButtonBrush" Color="#66A8FF" />
+    <SolidColorBrush x:Key="EmuGamepadYButtonBrush" Color="#F0BD55" />
+    <SolidColorBrush x:Key="EmuGamepadButtonTextBrush" Color="#101217" />
 </ResourceDictionary>

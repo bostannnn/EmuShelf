@@ -636,6 +636,10 @@ public class MainWindowVisualSnapshotTests
         viewModel.IsLibraryEmpty = false;
         viewModel.LibraryCountText = "4 games";
         viewModel.FocusedGame = viewModel.Games[0];
+        viewModel.FocusedGame.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true,
+            ColumnText: "3/62",
+            Tooltip: "3 of 62 unlocked."));
 
         Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
         var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
@@ -656,9 +660,48 @@ public class MainWindowVisualSnapshotTests
                 .ToArray();
             Assert.DoesNotContain(titleBaselines, value => value is null);
             Assert.InRange(titleBaselines.Max()!.Value - titleBaselines.Min()!.Value, 0, 1);
-            Assert.True(window.GetVisualDescendants()
-                .OfType<Border>()
-                .Count(control => control.Classes.Contains("gamepad-key") && control.IsVisible) >= 7);
+            var focusedDock = window.FindControl<Border>("GamepadFocusedDock");
+            var achievementWidget = window.FindControl<Border>("GamepadAchievementWidget");
+            var achievementTrack = window.FindControl<Border>("GamepadAchievementTrack");
+            var achievementFill = window.FindControl<Border>("GamepadAchievementFill");
+            var playButton = window.FindControl<Button>("GamepadPlayButton");
+            var subtitle = window.FindControl<TextBlock>("GamepadFocusedSubtitle");
+            Assert.NotNull(focusedDock);
+            Assert.NotNull(achievementWidget);
+            Assert.NotNull(achievementTrack);
+            Assert.NotNull(achievementFill);
+            Assert.NotNull(playButton);
+            Assert.NotNull(subtitle);
+            Assert.True(focusedDock.IsVisible);
+            Assert.True(achievementWidget.IsVisible);
+            Assert.True(playButton.IsVisible);
+            Assert.Single(
+                focusedDock.GetVisualDescendants().OfType<Border>(),
+                control => control.Classes.Contains("gamepad-key"));
+            Assert.Equal(122, achievementTrack.Bounds.Width, 1);
+            Assert.Equal(4, achievementTrack.Bounds.Height, 1);
+            Assert.Equal(3d / 62d, Assert.IsType<ScaleTransform>(achievementFill.RenderTransform).ScaleX, 8);
+            Assert.Equal("Final Fantasy X (Disc 2).chd · Disc 2 selected", subtitle.Text);
+            Assert.InRange(focusedDock.Bounds.Height, 102, 106);
+            Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
+            Assert.InRange(playButton.Bounds.Height, 59, 61);
+            var widgetOrigin = achievementWidget.TranslatePoint(default, window);
+            var playOrigin = playButton.TranslatePoint(default, window);
+            var trackOrigin = achievementTrack.TranslatePoint(default, achievementWidget);
+            Assert.NotNull(widgetOrigin);
+            Assert.NotNull(playOrigin);
+            Assert.NotNull(trackOrigin);
+            Assert.Equal(playOrigin.Value.Y, widgetOrigin.Value.Y, 1);
+            Assert.True(trackOrigin.Value.X >= 0);
+            Assert.True(trackOrigin.Value.Y >= 0);
+            Assert.True(trackOrigin.Value.X + achievementTrack.Bounds.Width <= achievementWidget.Bounds.Width);
+            Assert.True(trackOrigin.Value.Y + achievementTrack.Bounds.Height <= achievementWidget.Bounds.Height);
+            Assert.Contains(focusedDock.GetVisualDescendants().OfType<Border>(),
+                control => control.Classes.Contains("action-a"));
+            Assert.DoesNotContain(focusedDock.GetVisualDescendants().OfType<Border>(),
+                control => control.Classes.Contains("action-b") ||
+                           control.Classes.Contains("action-x") ||
+                           control.Classes.Contains("action-y"));
             if (outputDirectory is not null)
             {
                 Directory.CreateDirectory(outputDirectory);
@@ -700,6 +743,13 @@ public class MainWindowVisualSnapshotTests
             viewModel.OpenGamepadMenuCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 500);
+            var systemMenuShortcuts = window.FindControl<Grid>("GamepadSystemMenuShortcuts");
+            Assert.NotNull(systemMenuShortcuts);
+            Assert.True(systemMenuShortcuts.IsVisible);
+            Assert.Contains(systemMenuShortcuts.GetVisualDescendants().OfType<Border>(),
+                control => control.IsVisible && control.Classes.Contains("action-x"));
+            Assert.Contains(systemMenuShortcuts.GetVisualDescendants().OfType<Border>(),
+                control => control.IsVisible && control.Classes.Contains("action-y"));
             Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Quit EmuShelf").IsDestructive);
             viewModel.RequestDesktopModeFromGamepadCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-desktop-confirmation-1280x800.png");
@@ -714,6 +764,101 @@ public class MainWindowVisualSnapshotTests
         {
             window.Close();
             Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task RenderGamepadLibraryAtLivingRoomResolution()
+    {
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var systems = KnownSystems.All.Take(10).ToArray();
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+        viewModel.GamepadPlatforms.Clear();
+        foreach (var system in systems)
+            viewModel.GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
+
+        var games = Enumerable.Range(0, 18)
+            .Select(index =>
+            {
+                var system = systems[index % systems.Length];
+                return new GameViewModel(
+                    new Game
+                    {
+                        Id = index + 1,
+                        SystemId = system.Id,
+                        Path = $"/Games/{system.Id}/Sample Game {index + 1}.bin",
+                        Title = $"Sample Game {index + 1}",
+                        IsAvailable = true,
+                        DateAdded = DateTimeOffset.UtcNow,
+                    },
+                    system.Name,
+                    system.ShortName,
+                    system.AccentColor,
+                    coverAspectRatio: system.CoverAspectRatio);
+            })
+            .ToArray();
+        const double coverWidth = 202;
+        var shelfHeight = games.Max(game => Math.Round(coverWidth / game.CoverAspectRatio));
+        foreach (var game in games)
+            game.ApplyCoverLayout(coverWidth, shelfHeight);
+        games[6].ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true,
+            ColumnText: "12/50",
+            Tooltip: "12 of 50 unlocked."));
+        viewModel.Games.ReplaceAll(games);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.LibraryCountText = "18 games";
+        viewModel.FocusedGame = games[6];
+
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow { DataContext = viewModel, Width = 1920, Height = 1080 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+
+            var platformButtons = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.Classes.Contains("gamepad-platform"))
+                .ToArray();
+            Assert.Equal(systems.Length + 1, platformButtons.Length);
+            Assert.All(platformButtons, button => Assert.InRange(button.Bounds.Height, 53, 55));
+
+            var achievementWidget = window.FindControl<Border>("GamepadAchievementWidget");
+            var playButton = window.FindControl<Button>("GamepadPlayButton");
+            var focusedDock = window.FindControl<Border>("GamepadFocusedDock");
+            var libraryScroller = window.FindControl<ScrollViewer>("GamepadLibraryScroller");
+            Assert.NotNull(achievementWidget);
+            Assert.NotNull(playButton);
+            Assert.NotNull(focusedDock);
+            Assert.NotNull(libraryScroller);
+            Assert.Equal(ScrollBarVisibility.Hidden, libraryScroller.VerticalScrollBarVisibility);
+            Assert.InRange(focusedDock.Bounds.Height, 102, 106);
+            Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
+            Assert.InRange(playButton.Bounds.Height, 59, 61);
+
+            var widgetOrigin = achievementWidget.TranslatePoint(default, window);
+            var playOrigin = playButton.TranslatePoint(default, window);
+            var dockOrigin = focusedDock.TranslatePoint(default, window);
+            Assert.NotNull(widgetOrigin);
+            Assert.NotNull(playOrigin);
+            Assert.NotNull(dockOrigin);
+            Assert.Equal(playOrigin.Value.Y, widgetOrigin.Value.Y, 1);
+            Assert.True(dockOrigin.Value.Y + focusedDock.Bounds.Height <= window.Bounds.Height + 1);
+
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-1920x1080.png",
+                new PixelSize(1920, 1080));
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
         }
     }
 
@@ -1056,7 +1201,7 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Control>()
                 .Where(control => control.Classes.Contains("gamepad-game") ||
                                   control.Classes.Contains("gamepad-platform") ||
-                                  control.Classes.Contains("gamepad-footer-action"))
+                                  control.Classes.Contains("gamepad-play-action"))
                 .ToArray();
             Assert.NotEmpty(shelfFocusSurfaces);
             Assert.All(shelfFocusSurfaces, control => Assert.Null(control.FocusAdorner));

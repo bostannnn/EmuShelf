@@ -2858,3 +2858,35 @@ replacement is imported as a separate game. A destination path already owned by 
 aborts the replacement atomically.
 
 RPCS3 is excluded because its `games.yml` remains the source of truth for the PlayStation 3 library.
+
+## 2026-08-01 — Gamepad redesign has no clock; DuckDuckGo precedes ScreenScraper
+
+The NeoStation-inspired Gamepad work borrows couch-first information hierarchy and complete
+controller workflows, not branding, artwork, or source. The reference mockup's clock is excluded
+because it consumes persistent navigation space without advancing a library task. The existing
+explicit DuckDuckGo cover search is the first Gamepad scraper backend because it is already bounded,
+user-driven, and isolated from automatic metadata enrichment. ScreenScraper.fr is a later Phase 5
+provider: its application and user credentials, quotas, platform mapping, metadata provenance,
+regional media selection, and batch behavior require a separate reviewed integration rather than a
+silent replacement of the current cover picker. Fixed A/B/X/Y semantic colors remain independent of
+future full-palette themes so controller prompts retain their meaning.
+
+## 2026-08-01 — Reference screenshots govern Gamepad proportions, not the HTML mockup
+
+The interactive HTML artifact remains a list of product ideas only. It is not a dimensional or
+styling specification. Phase 1 is reviewed against the actual EmuShelf render and the supplied
+NeoStation screenshot: related dock controls share one 60px height, achievement progress is a
+compact count-plus-bar pill without a separate percentage, and the focused title shows its real
+launch filename instead of redundant format/"Available" labels. EmuShelf keeps its own platform
+rail, rectangular per-system artwork, and bottom controller hints rather than copying NeoStation's
+square-card grid or left action rail.
+
+## 2026-08-01 — The base Gamepad footer is information, not a controller legend
+
+A populated-library comparison showed that equal control heights alone did not make the footer
+clean: the persistent Menu/count/prompt row still competed with the focused-game information and
+actions. The base shelf therefore uses one 104px row containing only platform/title/source,
+achievement progress when available, and Play. LB/RB remains visible on the platform rail. The
+library count and direct X/Y shortcut legend move into the system Menu, while modal overlays keep
+their own contextual controls. Achievement progress uses a fixed clipped track rather than the
+theme's generic stretching ProgressBar template so its geometry remains stable at couch layouts.
