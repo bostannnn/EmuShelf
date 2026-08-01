@@ -1000,7 +1000,14 @@ or launch flow, and the host already owns time/status UI.
    further populated-library review replaced the two-row 126px footer with one 104px information
    row: only game identity, a custom clipped achievement track, and Play remain persistent. The
    library count and direct-shortcut legend now live in Menu; overlays retain only their contextual
-   hints. Real-controller tuning remains part of the M31 acceptance pass above.
+   hints. The achievements overlay now follows the same focused hierarchy: a selected-achievement
+   detail card beside a virtualized square-badge grid, All/Locked/Unlocked tabs on LB/RB, spatial
+   D-pad navigation, X refresh, and Y cycling Default/Points/Unlocked first/Recently unlocked
+   ordering. Sorting atomically replaces the visible rows and keeps the selector in its physical
+   grid slot, so the badge under the selector changes without the ring chasing the previously
+   selected badge across the screen. Community unlock-percentage sorting remains deferred until
+   that data has an explicit API and portable-cache field. Real-controller tuning remains part of
+   the M31 acceptance pass above.
 2. **Settings entirely on the controller.** Replace the Settings-to-Desktop handoff with an
    in-window, sectioned Gamepad surface over the existing settings view model. Land General,
    RetroAchievements, Saves, and Texture Packs first; then emulator paths/arguments. Use the

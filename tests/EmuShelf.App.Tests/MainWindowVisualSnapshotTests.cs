@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -578,6 +579,44 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task GamepadEmptyLibrary_ExposesMenuWithoutOfferingGameActions()
+    {
+        var viewModel = new MainViewModel
+        {
+            IsGamepadMode = true,
+            HasGames = false,
+            IsLibraryEmpty = true,
+        };
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1280,
+            Height = 800,
+        };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            var menuButton = window.FindControl<Button>("GamepadEmptyMenuButton");
+            Assert.NotNull(menuButton);
+            Assert.True(menuButton.IsVisible);
+
+            Assert.NotNull(menuButton.Command);
+            menuButton.Command.Execute(menuButton.CommandParameter);
+            await PumpAsync();
+
+            Assert.Equal(GamepadOverlayKind.SystemMenu, viewModel.GamepadOverlay);
+            var actionsShortcut = window.FindControl<StackPanel>("GamepadSystemMenuActionsShortcut");
+            Assert.NotNull(actionsShortcut);
+            Assert.False(actionsShortcut.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task RenderGamepadLibraryAtDeckResolution()
     {
         var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
@@ -681,7 +720,7 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(122, achievementTrack.Bounds.Width, 1);
             Assert.Equal(4, achievementTrack.Bounds.Height, 1);
             Assert.Equal(3d / 62d, Assert.IsType<ScaleTransform>(achievementFill.RenderTransform).ScaleX, 8);
-            Assert.Equal("Final Fantasy X (Disc 2).chd · Disc 2 selected", subtitle.Text);
+            Assert.Equal("Final Fantasy X (Disc 2).chd", subtitle.Text);
             Assert.InRange(focusedDock.Bounds.Height, 102, 106);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
@@ -720,19 +759,113 @@ public class MainWindowVisualSnapshotTests
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-disc-selection-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 440);
             AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
+            var achievementRows = Enumerable.Range(1, 24)
+                .Select(index => new RetroAchievementsAchievement(
+                    index,
+                    index == 1 ? "First victory" : $"Achievement {index}",
+                    index == 1 ? "Win your first match without using a continue." : $"Complete challenge {index}.",
+                    5 + index % 4 * 5,
+                    $"badge-{index}",
+                    index,
+                    index <= 7 ? DateTimeOffset.UtcNow.AddDays(-index) : null,
+                    index <= 3 ? DateTimeOffset.UtcNow.AddDays(-index) : null))
+                .ToArray();
             var achievementSnapshot = new RetroAchievementsDetailsSnapshot(
-                new RetroAchievementsGameDetails(7, "PlayStation 2 sample game", 2, 1, 1,
-                [
-                    new RetroAchievementsAchievement(1, "First victory", "Win your first match.", 5, "", 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow),
-                    new RetroAchievementsAchievement(2, "Collector", "Find every hidden item.", 10, "", 2, null, null),
-                ]),
+                new RetroAchievementsGameDetails(7, "PlayStation 2 sample game", 24, 7, 3, achievementRows),
                 DateTimeOffset.UtcNow);
             viewModel.GamepadAchievementDetails = new AchievementDetailsViewModel(
                 "PlayStation 2 sample game", 7, new SnapshotDetailsService(achievementSnapshot), new SnapshotAccount(), cached: achievementSnapshot);
+            var badgePaths = new[]
+            {
+                "playstation2.png",
+                "playstation3.png",
+                "psp.png",
+                "wii.png",
+            };
+            for (var index = 0; index < viewModel.GamepadAchievementDetails.Achievements.Count; index++)
+            {
+                using var stream = AssetLoader.Open(new Uri(
+                    $"avares://EmuShelf/Assets/PlatformConsoleArt/{badgePaths[index % badgePaths.Length]}"));
+                viewModel.GamepadAchievementDetails.Achievements[index].Badge = new Bitmap(stream);
+            }
             viewModel.GamepadOverlay = GamepadOverlayKind.Achievements;
-            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.Achievements[0];
+            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[0];
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-achievements-1280x800.png");
-            AssertGamepadOverlayHeightBelow(window, 620);
+            var achievementOverlay = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("gamepad-overlay"));
+            Assert.InRange(achievementOverlay.Bounds.Width, 1080, 1120);
+            Assert.InRange(achievementOverlay.Bounds.Height, 620, 640);
+            var achievementTabs = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(control => control.Classes.Contains("gamepad-achievement-tab"))
+                .ToArray();
+            Assert.Equal(3, achievementTabs.Length);
+            Assert.All(achievementTabs, tab => Assert.Equal(42, tab.Bounds.Height, 1));
+            var achievementTiles = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(control => control.Classes.Contains("gamepad-achievement"))
+                .ToArray();
+            Assert.True(achievementTiles.Length >= 18);
+            Assert.All(achievementTiles, tile => Assert.Equal(tile.Bounds.Width, tile.Bounds.Height, 1));
+            Assert.Equal("First victory", viewModel.FocusedGamepadAchievement.Title);
+            viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
+            Assert.Equal(AchievementDisplayFilter.Locked, viewModel.GamepadAchievementDetails.SelectedFilter);
+            Assert.Equal(17, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
+            viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
+            Assert.Equal(AchievementDisplayFilter.Unlocked, viewModel.GamepadAchievementDetails.SelectedFilter);
+            Assert.Equal(7, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
+            await PumpAsync();
+            var focusedGridIndex = viewModel.GamepadAchievementDetails.VisibleAchievements
+                .IndexOf(viewModel.FocusedGamepadAchievement!);
+            Assert.Equal(0, focusedGridIndex);
+            var achievementRepeater = window.FindControl<ItemsRepeater>("GamepadAchievementsRepeater");
+            Assert.NotNull(achievementRepeater);
+
+            foreach (var expectedSort in new[]
+                     {
+                         AchievementDisplaySort.Points,
+                         AchievementDisplaySort.UnlockedFirst,
+                         AchievementDisplaySort.RecentlyUnlocked,
+                         AchievementDisplaySort.Default,
+                     })
+            {
+                viewModel.DispatchGamepadAction(GamepadAction.Actions);
+                await PumpAsync();
+
+                Assert.Equal(expectedSort, viewModel.GamepadAchievementDetails.SelectedSort);
+                Assert.Equal(
+                    focusedGridIndex,
+                    viewModel.GamepadAchievementDetails.VisibleAchievements
+                        .IndexOf(viewModel.FocusedGamepadAchievement!));
+                Assert.Single(
+                    viewModel.GamepadAchievementDetails.VisibleAchievements,
+                    row => row.IsFocused);
+
+                if (expectedSort == AchievementDisplaySort.Points)
+                {
+                    await SaveGamepadOverlaySnapshotAsync(
+                        window,
+                        outputDirectory,
+                        "emushelf-gamepad-achievements-sorted-1280x800.png");
+                }
+
+                var positions = new HashSet<(int X, int Y)>();
+                for (var index = 0;
+                     index < viewModel.GamepadAchievementDetails.VisibleAchievements.Count;
+                     index++)
+                {
+                    var element = achievementRepeater.TryGetElement(index);
+                    Assert.NotNull(element);
+                    Assert.Same(
+                        viewModel.GamepadAchievementDetails.VisibleAchievements[index],
+                        element.DataContext);
+                    Assert.Equal(element.Bounds.Width, element.Bounds.Height, 1);
+                    Assert.True(positions.Add(
+                        ((int)Math.Round(element.Bounds.X), (int)Math.Round(element.Bounds.Y))),
+                        $"achievement index {index} overlaps another sorted grid element");
+                }
+            }
             viewModel.OpenGamepadSearchCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-search-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 460);
@@ -984,14 +1117,13 @@ public class MainWindowVisualSnapshotTests
                 .OfType<ScrollBar>()
                 .Single(control => control.Orientation == Orientation.Vertical);
             Assert.InRange(cards.Length, 1, achievements.Length - 1);
-            Assert.InRange(scrollBar.Bounds.Width, 6, 10);
+            Assert.Equal(ScrollBarVisibility.Hidden, scroller.VerticalScrollBarVisibility);
+            Assert.Equal(0, scrollBar.Bounds.Width, 1);
             var cardOrigin = cards[0].TranslatePoint(default, scroller);
-            var scrollBarOrigin = scrollBar.TranslatePoint(default, scroller);
             Assert.NotNull(cardOrigin);
-            Assert.NotNull(scrollBarOrigin);
             Assert.True(
-                cardOrigin.Value.X + cards[0].Bounds.Width + 6 <= scrollBarOrigin.Value.X,
-                "achievement cards should stop before the dedicated scrollbar gutter");
+                cardOrigin.Value.X >= 0 && cardOrigin.Value.X + cards[0].Bounds.Width <= scroller.Bounds.Width + 1,
+                "achievement cards should remain inside the clipped scroller viewport");
             await SaveGamepadOverlaySnapshotAsync(
                 window,
                 Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR"),

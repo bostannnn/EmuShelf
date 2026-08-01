@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -191,6 +192,56 @@ public class AchievementDetailsWindowTests
         viewModel.Dispose();
     }
 
+    [Fact]
+    public void GamepadFilters_PartitionAchievementsAndExposeCounts()
+    {
+        var earnedAt = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+        var viewModel = CreateFilterAndSortViewModel(earnedAt);
+
+        Assert.Equal(["First", "Second", "Third", "Fourth"],
+            viewModel.VisibleAchievements.Select(row => row.Title));
+        Assert.Equal("All  4", viewModel.AllFilterText);
+        Assert.Equal("Locked  2", viewModel.LockedFilterText);
+        Assert.Equal("Unlocked  2", viewModel.UnlockedFilterText);
+
+        viewModel.ShowLockedAchievementsCommand.Execute(null);
+        Assert.True(viewModel.IsLockedFilterSelected);
+        Assert.Equal(["Second", "Fourth"], viewModel.VisibleAchievements.Select(row => row.Title));
+
+        viewModel.CycleFilterCommand.Execute(1);
+        Assert.True(viewModel.IsUnlockedFilterSelected);
+        Assert.Equal(["First", "Third"], viewModel.VisibleAchievements.Select(row => row.Title));
+
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void GamepadSorts_UseOnlyCachedDeterministicFields()
+    {
+        var earnedAt = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+        var viewModel = CreateFilterAndSortViewModel(earnedAt);
+        var collectionChanges = new List<NotifyCollectionChangedAction>();
+        viewModel.VisibleAchievements.CollectionChanged +=
+            (_, args) => collectionChanges.Add(args.Action);
+
+        viewModel.SelectedSort = AchievementDisplaySort.Points;
+        Assert.Equal(["Second", "Third", "Fourth", "First"],
+            viewModel.VisibleAchievements.Select(row => row.Title));
+
+        viewModel.SelectedSort = AchievementDisplaySort.UnlockedFirst;
+        Assert.Equal(["First", "Third", "Second", "Fourth"],
+            viewModel.VisibleAchievements.Select(row => row.Title));
+
+        viewModel.SelectedSort = AchievementDisplaySort.RecentlyUnlocked;
+        Assert.Equal(["Third", "First", "Second", "Fourth"],
+            viewModel.VisibleAchievements.Select(row => row.Title));
+        Assert.Equal("Recently unlocked", viewModel.SortText);
+        Assert.Equal(3, collectionChanges.Count);
+        Assert.All(collectionChanges, action => Assert.Equal(NotifyCollectionChangedAction.Reset, action));
+
+        viewModel.Dispose();
+    }
+
     [AvaloniaFact]
     public async Task UnexpectedRefreshFailure_LeavesAUsefulUncachedState()
     {
@@ -255,6 +306,26 @@ public class AchievementDetailsWindowTests
             DetailsRefreshed?.Invoke(snapshot);
         }
         public void Clear() { }
+    }
+
+    private static AchievementDetailsViewModel CreateFilterAndSortViewModel(DateTimeOffset earnedAt)
+    {
+        var cached = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                1234,
+                "Game",
+                4,
+                2,
+                2,
+                [
+                    new RetroAchievementsAchievement(1, "First", "", 5, "", 1, earnedAt.AddDays(-2), null),
+                    new RetroAchievementsAchievement(2, "Second", "", 25, "", 2, null, null),
+                    new RetroAchievementsAchievement(3, "Third", "", 10, "", 3, earnedAt, earnedAt),
+                    new RetroAchievementsAchievement(4, "Fourth", "", 10, "", 4, null, null),
+                ]),
+            earnedAt);
+        return new AchievementDetailsViewModel(
+            "Game", 1234, new FakeDetailsService(), new FakeAccount(), cached: cached);
     }
 
     private sealed class FakeAccount(bool isConnected = true) : IRetroAchievementsAccountService

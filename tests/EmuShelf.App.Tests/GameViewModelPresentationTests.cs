@@ -1,3 +1,4 @@
+using Avalonia.Media;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
@@ -48,19 +49,21 @@ public sealed class GameViewModelPresentationTests
             "PlayStation 2",
             "PS2",
             "#4657D7",
+            platformArtwork: new DrawingImage(),
             discs: [new GameDisc(1, disc1), new GameDisc(2, disc2)],
             selectedDisc: new GameDisc(1, disc1));
 
         viewModel.SetSelectedDisc(new GameDisc(2, disc2));
 
-        Assert.Equal("Sample Game (Disc 2).chd · Disc 2 selected", viewModel.GamepadSubtitle);
+        Assert.Equal("Sample Game (Disc 2).chd", viewModel.GamepadSubtitle);
     }
 
     private static GameViewModel CreateGame() => new(
         CreateModel(1, "/games/sample.chd"),
         "PlayStation 2",
         "PS2",
-        "#4657D7");
+        "#4657D7",
+        platformArtwork: new DrawingImage());
 
     private static Game CreateModel(long id, string path) =>
         new()

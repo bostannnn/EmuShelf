@@ -209,7 +209,7 @@
         <!-- Gamepad controls draw one explicit logical-focus treatment. Keep native Avalonia
              focus for routing/accessibility, but suppress Fluent's second focus-adorners: on
              Linux/SteamOS that extra compositor layer can render as black corner rectangles. -->
-        <Style Selector="Button.gamepad-game, Button.gamepad-platform, Button.gamepad-modal-option, Button.gamepad-play-action, Border.gamepad-achievement">
+        <Style Selector="Button.gamepad-game, Button.gamepad-platform, Button.gamepad-modal-option, Button.gamepad-play-action, Button.gamepad-empty-action, Button.gamepad-achievement-tab, Button.gamepad-achievement-command, Border.gamepad-achievement">
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.gamepad-game.focused">
@@ -357,6 +357,15 @@
             <Setter Property="Background" Value="#25000000" />
             <Setter Property="BorderBrush" Value="#38000000" />
         </Style>
+        <Style Selector="Button.gamepad-empty-action">
+            <Setter Property="Height" Value="50" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
         <Style Selector="Border.gamepad-dock-pill">
             <Setter Property="Width" Value="196" />
             <Setter Property="Height" Value="60" />
@@ -380,6 +389,43 @@
             <Setter Property="Margin" Value="0,0,30,0" />
             <Setter Property="Width" Value="460" />
         </Style>
+        <Style Selector="Border.gamepad-overlay.achievements">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Width" Value="1120" />
+            <Setter Property="Height" Value="640" />
+        </Style>
+        <Style Selector="Button.gamepad-achievement-tab, Button.gamepad-achievement-command">
+            <Setter Property="Height" Value="42" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="CornerRadius" Value="21" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.gamepad-achievement-tab.selected">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <Style Selector="Border.gamepad-achievement-detail">
+            <Setter Property="Padding" Value="18" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Border.gamepad-achievement">
+            <Setter Property="Width" Value="100" />
+            <Setter Property="Height" Value="100" />
+            <Setter Property="Padding" Value="6" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource EmuCoverWellBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
         <Style Selector="ItemsControl.gamepad-overlay-options">
             <Setter Property="VerticalAlignment" Value="Bottom" />
         </Style>
@@ -389,6 +435,10 @@
         <Style Selector="Border.gamepad-achievement.focused">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BoxShadow" Value="0 10 26 0 #62000000" />
+        </Style>
+        <Style Selector="Grid.gamepad-achievement-badge.locked">
+            <Setter Property="Opacity" Value="0.48" />
         </Style>
         <!-- Fluent scrollbars overlay their content. Gamepad cards reserve a gutter so the
              thumb reads as scrolling chrome instead of a broken right-hand card border. -->
@@ -1446,6 +1496,14 @@
             <TextBlock Text="No games are available in this view. Use Menu to switch to Desktop mode and add games."
                        FontSize="17" TextWrapping="Wrap" TextAlignment="Center"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            <Button x:Name="GamepadEmptyMenuButton"
+                    Classes="gamepad-empty-action" HorizontalAlignment="Center"
+                    Command="{Binding OpenGamepadMenuCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                    <Border Classes="gamepad-key"><TextBlock Text="Start" /></Border>
+                    <TextBlock Text="Menu" VerticalAlignment="Center" />
+                </StackPanel>
+            </Button>
         </StackPanel>
         <StackPanel Grid.Row="1" IsVisible="{Binding IsSearchEmpty}"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
@@ -1552,88 +1610,191 @@
             <!-- The panel is the overlay's height budget: it keeps a margin off the screen edges,
                  and the overlay's MaxHeight tracks it so a 720p or windowed viewport shrinks the
                  sheet instead of clipping it. Height is the preferred size, not the actual one. -->
-            <Panel x:Name="GamepadOverlayHost" Margin="0,36">
+            <Panel x:Name="GamepadOverlayHost" Margin="36">
             <Border Classes="gamepad-overlay" Classes.system-menu="{Binding IsGamepadSystemMenuOpen}"
                     Classes.side-sheet="{Binding IsGameActionsOpen}"
+                    Classes.achievements="{Binding IsGamepadAchievementsOpen}"
                     VerticalAlignment="Center"
                     MaxHeight="{Binding #GamepadOverlayHost.Bounds.Height}"
+                    MaxWidth="{Binding #GamepadOverlayHost.Bounds.Width}"
                     Padding="28" CornerRadius="16" Background="{DynamicResource EmuPopoverBrush}"
                     BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="2">
                 <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
                     <Grid>
-                        <StackPanel IsVisible="{Binding IsGamepadAchievementsOpen}" Spacing="5">
-                            <TextBlock Text="{Binding GamepadAchievementDetails.GameTitle}"
-                                       FontSize="26" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
-                            <TextBlock IsVisible="{Binding GamepadAchievementDetails.HasAchievements}"
-                                       Text="{Binding GamepadAchievementDetails.ProgressAndPointsText}"
-                                       FontSize="16" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                            <TextBlock IsVisible="{Binding GamepadAchievementDetails.HasAchievements}"
-                                       Text="{Binding GamepadAchievementDetails.LastRefreshText}"
-                                       FontSize="13" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                            <TextBlock IsVisible="{Binding GamepadAchievementDetails.HasStatus}"
-                                       Text="{Binding GamepadAchievementDetails.StatusText}"
-                                       FontSize="13" TextWrapping="Wrap"
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                        </StackPanel>
+                        <Grid IsVisible="{Binding IsGamepadAchievementsOpen}"
+                              ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                                <TextBlock Text="Achievements" FontSize="26" FontWeight="Bold" />
+                                <TextBlock Text="{Binding GamepadAchievementDetails.GameTitle}"
+                                           FontSize="14" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </StackPanel>
+                            <Border Grid.Column="1" Padding="16,9" CornerRadius="21"
+                                    VerticalAlignment="Center"
+                                    Background="{DynamicResource EmuFormatPillBrush}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <PathIcon Width="17" Height="17"
+                                              Data="{StaticResource AchievementTrophyGeometry}"
+                                              Foreground="{DynamicResource EmuAchievementBrush}" />
+                                    <TextBlock Text="{Binding GamepadAchievementDetails.ProgressAndPointsText}"
+                                               VerticalAlignment="Center" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Button Grid.Column="2" Classes="gamepad-achievement-command"
+                                    Command="{Binding GamepadAchievementDetails.RefreshCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border Classes="gamepad-key action-x"><TextBlock Text="X" /></Border>
+                                    <TextBlock Text="Refresh" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
                         <TextBlock IsVisible="{Binding !IsGamepadAchievementsOpen}" Text="{Binding GamepadOverlayTitle}"
                                    FontSize="24" FontWeight="Bold" TextWrapping="Wrap"
                                    MaxLines="2" TextTrimming="CharacterEllipsis" />
                     </Grid>
 
                     <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="18">
-                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadAchievementsOpen}">
-                        <ScrollViewer x:Name="GamepadAchievementsScroller"
-                                      Classes="gamepad-scroll"
-                                      IsVisible="{Binding GamepadAchievementDetails.HasAchievements}"
-                                      MaxHeight="420"
-                                      VerticalScrollBarVisibility="Auto">
-                            <ItemsRepeater x:Name="GamepadAchievementsRepeater"
-                                           Margin="0,0,18,0"
-                                           ItemsSource="{Binding GamepadAchievementDetails.Achievements}">
-                                <ItemsRepeater.Layout>
-                                    <StackLayout Spacing="10" />
-                                </ItemsRepeater.Layout>
-                                <ItemsRepeater.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:AchievementRowViewModel">
-                                        <Border Classes="gamepad-achievement" Classes.focused="{Binding IsFocused}" Focusable="True"
-                                                Padding="14" CornerRadius="10" BorderThickness="2"
-                                                AttachedToVisualTree="OnGamepadAchievementAttached"
-                                                DataContextChanged="OnGamepadAchievementDataContextChanged"
-                                                BorderBrush="{DynamicResource EmuBorderBrush}">
-                                            <Grid ColumnDefinitions="64,*" ColumnSpacing="14">
-                                                <Border Width="58" Height="58" CornerRadius="8" Background="{DynamicResource EmuCoverWellBrush}">
-                                                    <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill" />
+                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadAchievementsOpen}"
+                              RowDefinitions="Auto,*" RowSpacing="16">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Classes="gamepad-achievement-tab"
+                                            Classes.selected="{Binding GamepadAchievementDetails.IsAllFilterSelected}"
+                                            Content="{Binding GamepadAchievementDetails.AllFilterText}"
+                                            Command="{Binding GamepadAchievementDetails.ShowAllAchievementsCommand}" />
+                                    <Button Classes="gamepad-achievement-tab"
+                                            Classes.selected="{Binding GamepadAchievementDetails.IsLockedFilterSelected}"
+                                            Content="{Binding GamepadAchievementDetails.LockedFilterText}"
+                                            Command="{Binding GamepadAchievementDetails.ShowLockedAchievementsCommand}" />
+                                    <Button Classes="gamepad-achievement-tab"
+                                            Classes.selected="{Binding GamepadAchievementDetails.IsUnlockedFilterSelected}"
+                                            Content="{Binding GamepadAchievementDetails.UnlockedFilterText}"
+                                            Command="{Binding GamepadAchievementDetails.ShowUnlockedAchievementsCommand}" />
+                                </StackPanel>
+                                <Button Grid.Column="2" Classes="gamepad-achievement-command"
+                                        Command="{Binding CycleGamepadAchievementSortCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Classes="gamepad-key action-y"><TextBlock Text="Y" /></Border>
+                                        <TextBlock Text="Sort:" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding GamepadAchievementDetails.SortText}"
+                                                   VerticalAlignment="Center" FontWeight="Bold" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <Grid Grid.Row="1" ColumnDefinitions="330,*" ColumnSpacing="24"
+                                  IsVisible="{Binding GamepadAchievementDetails.HasVisibleAchievements}">
+                                <Border Classes="gamepad-achievement-detail">
+                                    <Grid>
+                                        <StackPanel IsVisible="{Binding HasFocusedGamepadAchievement}"
+                                                    Spacing="10">
+                                            <Grid ColumnDefinitions="96,*" ColumnSpacing="14">
+                                                <Border Width="96" Height="96" CornerRadius="15"
+                                                        HorizontalAlignment="Left"
+                                                        Background="{DynamicResource EmuCoverWellBrush}">
+                                                    <Grid Classes="gamepad-achievement-badge"
+                                                          Classes.locked="{Binding FocusedGamepadAchievement.IsLocked}">
+                                                        <PathIcon Width="32" Height="32"
+                                                                  IsVisible="{Binding !FocusedGamepadAchievement.HasBadge}"
+                                                                  Data="{StaticResource AchievementTrophyGeometry}"
+                                                                  Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                        <Image Source="{Binding FocusedGamepadAchievement.Badge}"
+                                                               IsVisible="{Binding FocusedGamepadAchievement.HasBadge}"
+                                                               Stretch="UniformToFill" />
+                                                    </Grid>
                                                 </Border>
-                                                <StackPanel Grid.Column="1" Spacing="3">
-                                                    <Grid ColumnDefinitions="*,Auto"><TextBlock Text="{Binding Title}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock Grid.Column="1" Text="{Binding PointsText}" Foreground="{DynamicResource EmuTextSecondaryBrush}" /></Grid>
-                                                    <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                    <TextBlock Text="{Binding UnlockStateText}" FontSize="13" FontWeight="Bold" />
-                                                    <TextBlock Text="{Binding EarnedText}" FontSize="13" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                <StackPanel Grid.Column="1" Spacing="5"
+                                                            VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.Title}"
+                                                               FontSize="21" FontWeight="Bold"
+                                                               TextWrapping="Wrap" MaxLines="2"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.Description}"
+                                                               FontSize="14" TextWrapping="Wrap" MaxLines="3"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </StackPanel>
                                             </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsRepeater.ItemTemplate>
-                            </ItemsRepeater>
-                        </ScrollViewer>
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <Border Padding="10,5" CornerRadius="12"
+                                                        Background="{DynamicResource EmuFormatPillBrush}">
+                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.PointsText}"
+                                                               FontWeight="SemiBold" />
+                                                </Border>
+                                                <Border Padding="10,5" CornerRadius="12"
+                                                        Background="{DynamicResource EmuFormatPillBrush}">
+                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.UnlockStateText}"
+                                                               FontWeight="SemiBold" />
+                                                </Border>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding FocusedGamepadAchievement.EarnedText}"
+                                                       FontSize="13"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
 
-                        <Border Grid.RowSpan="2"
-                                IsVisible="{Binding !GamepadAchievementDetails.HasAchievements}"
-                                HorizontalAlignment="Center" VerticalAlignment="Center"
-                                MaxWidth="390" Padding="24,20" CornerRadius="12"
-                                Background="{DynamicResource EmuCardBrush}"
-                                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
-                            <StackPanel Spacing="10">
-                                <ProgressBar IsVisible="{Binding GamepadAchievementDetails.IsRefreshing}"
-                                             IsIndeterminate="True" Height="4" />
-                                <TextBlock Text="{Binding GamepadAchievementDetails.EmptyStateTitle}"
-                                           FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
-                                <TextBlock Text="{Binding GamepadAchievementDetails.EmptyStateDescription}"
-                                           FontSize="14" TextWrapping="Wrap" TextAlignment="Center"
-                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                            </StackPanel>
-                        </Border>
+                                <ScrollViewer x:Name="GamepadAchievementsScroller" Grid.Column="1"
+                                              Classes="gamepad-scroll"
+                                              SizeChanged="OnGamepadAchievementsSizeChanged"
+                                              VerticalScrollBarVisibility="Hidden"
+                                              HorizontalScrollBarVisibility="Disabled">
+                                    <ItemsRepeater x:Name="GamepadAchievementsRepeater"
+                                                   ItemsSource="{Binding GamepadAchievementDetails.VisibleAchievements}">
+                                        <ItemsRepeater.Layout>
+                                            <UniformGridLayout MinItemWidth="100"
+                                                               MinColumnSpacing="12" MinRowSpacing="12" />
+                                        </ItemsRepeater.Layout>
+                                        <ItemsRepeater.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                                                <Border Classes="gamepad-achievement"
+                                                        Classes.focused="{Binding IsFocused}"
+                                                        Focusable="True"
+                                                        AttachedToVisualTree="OnGamepadAchievementAttached"
+                                                        DataContextChanged="OnGamepadAchievementDataContextChanged">
+                                                    <Grid Classes="gamepad-achievement-badge"
+                                                          Classes.locked="{Binding IsLocked}">
+                                                        <PathIcon Width="30" Height="30"
+                                                                  IsVisible="{Binding !HasBadge}"
+                                                                  Data="{StaticResource AchievementTrophyGeometry}"
+                                                                  Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                        <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}"
+                                                               Stretch="UniformToFill" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsRepeater.ItemTemplate>
+                                    </ItemsRepeater>
+                                </ScrollViewer>
+                            </Grid>
+
+                            <Border Grid.Row="1"
+                                    IsVisible="{Binding GamepadAchievementDetails.HasFilteredEmptyState}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    Padding="24,20" CornerRadius="12"
+                                    Background="{DynamicResource EmuCardBrush}"
+                                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+                                <TextBlock Text="{Binding GamepadAchievementDetails.FilterEmptyStateText}"
+                                           FontSize="18" FontWeight="SemiBold" />
+                            </Border>
+
+                            <Border Grid.Row="1"
+                                    IsVisible="{Binding !GamepadAchievementDetails.HasAchievements}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                    MaxWidth="390" Padding="24,20" CornerRadius="12"
+                                    Background="{DynamicResource EmuCardBrush}"
+                                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+                                <StackPanel Spacing="10">
+                                    <ProgressBar IsVisible="{Binding GamepadAchievementDetails.IsRefreshing}"
+                                                 IsIndeterminate="True" Height="4" />
+                                    <TextBlock Text="{Binding GamepadAchievementDetails.EmptyStateTitle}"
+                                               FontSize="18" FontWeight="SemiBold" TextAlignment="Center" />
+                                    <TextBlock Text="{Binding GamepadAchievementDetails.EmptyStateDescription}"
+                                               FontSize="14" TextWrapping="Wrap" TextAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
                         </Grid>
 
                         <Grid x:Name="GamepadSystemMenuShortcuts"
@@ -1648,7 +1809,9 @@
                                     <Border Classes="gamepad-key action-x"><TextBlock Text="X" /></Border>
                                     <TextBlock Text="Search" />
                                 </StackPanel>
-                                <StackPanel Classes="gamepad-hint" Orientation="Horizontal">
+                                <StackPanel x:Name="GamepadSystemMenuActionsShortcut"
+                                            Classes="gamepad-hint" Orientation="Horizontal"
+                                            IsVisible="{Binding HasGames}">
                                     <Border Classes="gamepad-key action-y"><TextBlock Text="Y" /></Border>
                                     <TextBlock Text="Actions" />
                                 </StackPanel>
@@ -1732,8 +1895,12 @@
                         </StackPanel>
                         <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
                                     IsVisible="{Binding IsGamepadAchievementsOpen}">
-                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <Border Classes="gamepad-key"><TextBlock Text="LB/RB" /></Border>
+                            <TextBlock Text="Filter" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="D-pad" /></Border>
                             <TextBlock Text="Browse" />
+                            <Border Classes="gamepad-key action-y" Margin="8,0,0,0"><TextBlock Text="Y" /></Border>
+                            <TextBlock Text="Sort" />
                             <Border Classes="gamepad-key action-x" Margin="8,0,0,0"><TextBlock Text="X" /></Border>
                             <TextBlock Text="Refresh" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>

@@ -9,6 +9,21 @@ using EmuShelf.Core.Diagnostics;
 
 namespace EmuShelf.App.ViewModels;
 
+public enum AchievementDisplayFilter
+{
+    All,
+    Locked,
+    Unlocked,
+}
+
+public enum AchievementDisplaySort
+{
+    Default,
+    Points,
+    UnlockedFirst,
+    RecentlyUnlocked,
+}
+
 /// <summary>Presentation state for a single display-ordered RetroAchievements achievement.</summary>
 public partial class AchievementRowViewModel : ObservableObject, IDisposable
 {
@@ -21,8 +36,12 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
     public string EarnedText { get; }
     public string UnlockStateText { get; }
     public bool IsUnlocked { get; }
+    public bool IsLocked => !IsUnlocked;
     public bool IsHardcore { get; }
     public string BadgeName { get; }
+    public int Points { get; }
+    public int DisplayOrder { get; }
+    public DateTimeOffset? EarnedAt { get; }
 
     [ObservableProperty]
     public partial Bitmap? Badge { get; set; }
@@ -42,16 +61,19 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         AchievementId = achievement.AchievementId;
         Title = achievement.Title;
         Description = achievement.Description;
+        Points = achievement.Points;
+        DisplayOrder = achievement.DisplayOrder;
         PointsText = achievement.Points == 1 ? "1 point" : $"{achievement.Points} points";
         IsUnlocked = achievement.IsEarned;
         IsHardcore = achievement.IsHardcore;
         BadgeName = achievement.BadgeName;
+        EarnedAt = achievement.DateEarnedHardcore ?? achievement.DateEarned;
         UnlockStateText = achievement.IsHardcore
             ? "Hardcore"
             : achievement.IsEarned
                 ? "Softcore"
                 : "Locked";
-        EarnedText = (achievement.DateEarned ?? achievement.DateEarnedHardcore) is { } earned
+        EarnedText = EarnedAt is { } earned
             ? $"Earned {earned.ToLocalTime():d MMM yyyy}"
             : "Not earned";
 
@@ -129,6 +151,13 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     private readonly CancellationTokenSource _lifetime = new();
 
     public ObservableCollection<AchievementRowViewModel> Achievements { get; } = [];
+    public BulkObservableCollection<AchievementRowViewModel> VisibleAchievements { get; } = [];
+
+    [ObservableProperty]
+    public partial AchievementDisplayFilter SelectedFilter { get; set; } = AchievementDisplayFilter.All;
+
+    [ObservableProperty]
+    public partial AchievementDisplaySort SelectedSort { get; set; } = AchievementDisplaySort.Default;
 
     [ObservableProperty]
     public partial string GameTitle { get; set; }
@@ -166,6 +195,29 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         : "Not refreshed yet";
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
     public bool HasAchievements => Achievements.Count > 0;
+    public bool HasVisibleAchievements => VisibleAchievements.Count > 0;
+    public bool HasFilteredEmptyState => HasAchievements && !HasVisibleAchievements;
+    public int LockedCount => Math.Max(0, TotalCount - UnlockedCount);
+    public string AllFilterText => $"All  {TotalCount}";
+    public string LockedFilterText => $"Locked  {LockedCount}";
+    public string UnlockedFilterText => $"Unlocked  {UnlockedCount}";
+    public bool IsAllFilterSelected => SelectedFilter == AchievementDisplayFilter.All;
+    public bool IsLockedFilterSelected => SelectedFilter == AchievementDisplayFilter.Locked;
+    public bool IsUnlockedFilterSelected => SelectedFilter == AchievementDisplayFilter.Unlocked;
+    public string SortText => SelectedSort switch
+    {
+        AchievementDisplaySort.Default => "Default",
+        AchievementDisplaySort.Points => "Points",
+        AchievementDisplaySort.UnlockedFirst => "Unlocked first",
+        AchievementDisplaySort.RecentlyUnlocked => "Recently unlocked",
+        _ => "Default",
+    };
+    public string FilterEmptyStateText => SelectedFilter switch
+    {
+        AchievementDisplayFilter.Locked => "No locked achievements",
+        AchievementDisplayFilter.Unlocked => "No unlocked achievements yet",
+        _ => "No achievements available",
+    };
     public string EmptyStateTitle => HasLoadedSnapshot
         ? "No achievements available"
         : IsRefreshing
@@ -218,6 +270,32 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
 
     [RelayCommand]
     private Task RefreshAsync() => RefreshCoreAsync(manual: true);
+
+    [RelayCommand]
+    private void ShowAllAchievements() => SelectedFilter = AchievementDisplayFilter.All;
+
+    [RelayCommand]
+    private void ShowLockedAchievements() => SelectedFilter = AchievementDisplayFilter.Locked;
+
+    [RelayCommand]
+    private void ShowUnlockedAchievements() => SelectedFilter = AchievementDisplayFilter.Unlocked;
+
+    [RelayCommand]
+    private void CycleFilter(int delta)
+    {
+        var filters = Enum.GetValues<AchievementDisplayFilter>();
+        var next = ((int)SelectedFilter + delta) % filters.Length;
+        if (next < 0)
+            next += filters.Length;
+        SelectedFilter = filters[next];
+    }
+
+    [RelayCommand]
+    private void CycleSort()
+    {
+        var sorts = Enum.GetValues<AchievementDisplaySort>();
+        SelectedSort = sorts[((int)SelectedSort + 1) % sorts.Length];
+    }
 
     [RelayCommand]
     private void Close() => CloseRequested?.Invoke();
@@ -319,11 +397,53 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         TotalPoints = snapshot.Details.TotalPoints;
         LastRefreshedAt = snapshot.LastRefreshedAt;
         HasLoadedSnapshot = true;
+        RebuildVisibleAchievements();
         OnPropertyChanged(nameof(ProgressMaximum));
         OnPropertyChanged(nameof(ProgressText));
         OnPropertyChanged(nameof(PointsText));
         OnPropertyChanged(nameof(LastRefreshText));
         OnPropertyChanged(nameof(HasAchievements));
+        OnPropertyChanged(nameof(HasFilteredEmptyState));
+    }
+
+    private void RebuildVisibleAchievements()
+    {
+        IEnumerable<AchievementRowViewModel> rows = SelectedFilter switch
+        {
+            AchievementDisplayFilter.Locked => Achievements.Where(row => row.IsLocked),
+            AchievementDisplayFilter.Unlocked => Achievements.Where(row => row.IsUnlocked),
+            _ => Achievements,
+        };
+
+        rows = SelectedSort switch
+        {
+            AchievementDisplaySort.Points => rows
+                .OrderByDescending(row => row.Points)
+                .ThenBy(row => row.DisplayOrder)
+                .ThenBy(row => row.AchievementId),
+            AchievementDisplaySort.UnlockedFirst => rows
+                .OrderByDescending(row => row.IsUnlocked)
+                .ThenBy(row => row.DisplayOrder)
+                .ThenBy(row => row.AchievementId),
+            AchievementDisplaySort.RecentlyUnlocked => rows
+                .OrderBy(row => row.IsUnlocked ? 0 : 1)
+                .ThenByDescending(row => row.EarnedAt)
+                .ThenBy(row => row.DisplayOrder)
+                .ThenBy(row => row.AchievementId),
+            _ => rows
+                .OrderBy(row => row.DisplayOrder)
+                .ThenBy(row => row.AchievementId),
+        };
+
+        // ItemsRepeater must see one complete ordering. Clear + one Add per row makes the
+        // virtualized grid render a succession of partial lists and can leave recycled elements
+        // at stale positions after repeated controller sorting.
+        VisibleAchievements.ReplaceAll(rows);
+
+        OnPropertyChanged(nameof(VisibleAchievements));
+        OnPropertyChanged(nameof(HasVisibleAchievements));
+        OnPropertyChanged(nameof(HasFilteredEmptyState));
+        OnPropertyChanged(nameof(FilterEmptyStateText));
     }
 
     private void HandleDetailsRefreshed(RetroAchievementsDetailsSnapshot snapshot)
@@ -344,12 +464,18 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(ProgressText));
         OnPropertyChanged(nameof(ProgressAndPointsText));
+        OnPropertyChanged(nameof(LockedCount));
+        OnPropertyChanged(nameof(LockedFilterText));
+        OnPropertyChanged(nameof(UnlockedFilterText));
     }
     partial void OnTotalCountChanged(int value)
     {
         OnPropertyChanged(nameof(ProgressMaximum));
         OnPropertyChanged(nameof(ProgressText));
         OnPropertyChanged(nameof(ProgressAndPointsText));
+        OnPropertyChanged(nameof(LockedCount));
+        OnPropertyChanged(nameof(AllFilterText));
+        OnPropertyChanged(nameof(LockedFilterText));
     }
     partial void OnEarnedPointsChanged(int value)
     {
@@ -373,6 +499,18 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(EmptyStateTitle));
         OnPropertyChanged(nameof(EmptyStateDescription));
     }
+    partial void OnSelectedFilterChanged(AchievementDisplayFilter value)
+    {
+        OnPropertyChanged(nameof(IsAllFilterSelected));
+        OnPropertyChanged(nameof(IsLockedFilterSelected));
+        OnPropertyChanged(nameof(IsUnlockedFilterSelected));
+        RebuildVisibleAchievements();
+    }
+    partial void OnSelectedSortChanged(AchievementDisplaySort value)
+    {
+        OnPropertyChanged(nameof(SortText));
+        RebuildVisibleAchievements();
+    }
 
     public void Dispose()
     {
@@ -380,6 +518,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
             return;
         _details.DetailsRefreshed -= HandleDetailsRefreshed;
         _lifetime.Cancel();
+        VisibleAchievements.Clear();
         foreach (var row in Achievements)
             row.Dispose();
         _lifetime.Dispose();

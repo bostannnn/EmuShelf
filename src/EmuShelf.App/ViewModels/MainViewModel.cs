@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -94,7 +93,6 @@ public partial class MainViewModel : ViewModelBase
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
     private Task _selectedSystemLoad = Task.CompletedTask;
-    private int? _pendingGamepadAchievementFocusId;
 
     public ObservableCollection<GameSystem> Systems { get; }
     public ObservableCollection<GameSystem> NavigationSystems { get; }
@@ -267,6 +265,9 @@ public partial class MainViewModel : ViewModelBase
     public partial double GamepadViewportWidth { get; set; }
 
     public int GamepadColumnCount { get; private set; } = 1;
+    public int GamepadAchievementColumnCount { get; private set; } = 1;
+    public int GamepadAchievementLayoutRevision { get; private set; }
+    public bool HasFocusedGamepadAchievement => FocusedGamepadAchievement is not null;
 
     /// <summary>
     /// The view that lays the grid out reports the true rendered column count here, and it wins over
@@ -279,6 +280,12 @@ public partial class MainViewModel : ViewModelBase
     {
         if (columns >= 1)
             GamepadColumnCount = columns;
+    }
+
+    internal void SetRenderedGamepadAchievementColumnCount(int columns)
+    {
+        if (columns >= 1)
+            GamepadAchievementColumnCount = columns;
     }
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
@@ -892,7 +899,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadAchievementsOpen)
         {
-            MoveFocusedAchievement(-1);
+            MoveFocusedAchievement(-GamepadAchievementColumnCount);
             return;
         }
 
@@ -904,11 +911,36 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadAchievementsOpen)
         {
-            MoveFocusedAchievement(1);
+            MoveFocusedAchievement(GamepadAchievementColumnCount);
             return;
         }
 
         MoveGamepadOverlaySelection(1);
+    }
+
+    [RelayCommand]
+    private void CycleGamepadAchievementSort()
+    {
+        if (!IsGamepadAchievementsOpen || GamepadAchievementDetails is not { } details)
+            return;
+
+        // Sorting a controller grid should keep the selector in the same physical slot. Following
+        // the old achievement id makes the ring jump across the screen as that badge moves.
+        var focusedIndex = FocusedGamepadAchievement is { } focused
+            ? details.VisibleAchievements.IndexOf(focused)
+            : 0;
+        focusedIndex = Math.Max(0, focusedIndex);
+
+        details.CycleSortCommand.Execute(null);
+
+        FocusedGamepadAchievement = details.VisibleAchievements.Count == 0
+            ? null
+            : details.VisibleAchievements[Math.Min(focusedIndex, details.VisibleAchievements.Count - 1)];
+
+        // A collection Reset can recycle the element even when the row occupying this slot did
+        // not change. Always request one post-layout reveal and column recount after the final list.
+        GamepadAchievementLayoutRevision++;
+        OnPropertyChanged(nameof(GamepadAchievementLayoutRevision));
     }
 
     [RelayCommand]
@@ -930,7 +962,6 @@ public partial class MainViewModel : ViewModelBase
         }
         DisposeGamepadAchievementDetails();
         FocusedGamepadAchievement = null;
-        _pendingGamepadAchievementFocusId = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
         IsGameActionsOpen = false;
@@ -1049,8 +1080,23 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.Menu:
                 OpenGamepadMenuCommand.Execute(null);
                 return true;
+            case GamepadAction.PreviousPlatform when IsGamepadAchievementsOpen:
+                GamepadAchievementDetails?.CycleFilterCommand.Execute(-1);
+                return true;
+            case GamepadAction.NextPlatform when IsGamepadAchievementsOpen:
+                GamepadAchievementDetails?.CycleFilterCommand.Execute(1);
+                return true;
             case GamepadAction.Search when IsGamepadAchievementsOpen:
                 GamepadAchievementDetails?.RefreshCommand.Execute(null);
+                return true;
+            case GamepadAction.Actions when IsGamepadAchievementsOpen:
+                CycleGamepadAchievementSortCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateLeft when IsGamepadAchievementsOpen:
+                MoveFocusedAchievement(-1);
+                return true;
+            case GamepadAction.NavigateRight when IsGamepadAchievementsOpen:
+                MoveFocusedAchievement(1);
                 return true;
             case GamepadAction.NavigateUp:
                 MoveGamepadOverlayUpCommand.Execute(null);
@@ -1115,7 +1161,6 @@ public partial class MainViewModel : ViewModelBase
 
         DisposeGamepadAchievementDetails();
         FocusedGamepadAchievement = null;
-        _pendingGamepadAchievementFocusId = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = overlay;
         IsGameActionsOpen = overlay == GamepadOverlayKind.Actions; // compatibility for existing bindings/tests
@@ -1216,33 +1261,16 @@ public partial class MainViewModel : ViewModelBase
 
     private void FocusFirstAchievement()
     {
-        FocusedGamepadAchievement = GamepadAchievementDetails?.Achievements.FirstOrDefault();
+        FocusedGamepadAchievement = GamepadAchievementDetails?.VisibleAchievements.FirstOrDefault();
     }
 
     private void MoveFocusedAchievement(int delta)
     {
-        var rows = GamepadAchievementDetails?.Achievements;
+        var rows = GamepadAchievementDetails?.VisibleAchievements;
         if (rows is not { Count: > 0 })
             return;
         var index = FocusedGamepadAchievement is null ? 0 : rows.IndexOf(FocusedGamepadAchievement);
         FocusedGamepadAchievement = rows[Math.Clamp(index + delta, 0, rows.Count - 1)];
-    }
-
-    private void HandleGamepadAchievementsChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        if (!IsGamepadAchievementsOpen)
-            return;
-
-        if (FocusedGamepadAchievement is { } focused &&
-            GamepadAchievementDetails?.Achievements.Contains(focused) != true)
-        {
-            _pendingGamepadAchievementFocusId = focused.AchievementId;
-            FocusedGamepadAchievement = null;
-        }
-
-        if (FocusedGamepadAchievement is null && _pendingGamepadAchievementFocusId is null &&
-            e.Action == NotifyCollectionChangedAction.Add)
-            FocusFirstAchievement();
     }
 
     private void HandleGamepadAchievementDetailsPropertyChanged(
@@ -1250,17 +1278,17 @@ public partial class MainViewModel : ViewModelBase
         System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (!IsGamepadAchievementsOpen ||
-            e.PropertyName != nameof(AchievementDetailsViewModel.HasAchievements) ||
+            e.PropertyName != nameof(AchievementDetailsViewModel.VisibleAchievements) ||
             GamepadAchievementDetails is not { } details)
         {
             return;
         }
 
-        var restored = _pendingGamepadAchievementFocusId is { } achievementId
-            ? details.Achievements.FirstOrDefault(row => row.AchievementId == achievementId)
-            : null;
-        FocusedGamepadAchievement = restored ?? details.Achievements.FirstOrDefault();
-        _pendingGamepadAchievementFocusId = null;
+        var focusedId = FocusedGamepadAchievement?.AchievementId;
+        FocusedGamepadAchievement = focusedId is { } achievementId
+            ? details.VisibleAchievements.FirstOrDefault(row => row.AchievementId == achievementId) ??
+              details.VisibleAchievements.FirstOrDefault()
+            : details.VisibleAchievements.FirstOrDefault();
     }
 
     private void DisposeGamepadAchievementDetails()
@@ -1268,7 +1296,6 @@ public partial class MainViewModel : ViewModelBase
         if (GamepadAchievementDetails is not { } details)
             return;
 
-        details.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
         details.PropertyChanged -= HandleGamepadAchievementDetailsPropertyChanged;
         details.Dispose();
         GamepadAchievementDetails = null;
@@ -1490,6 +1517,7 @@ public partial class MainViewModel : ViewModelBase
             oldValue.IsFocused = false;
         if (newValue is not null)
             newValue.IsFocused = true;
+        OnPropertyChanged(nameof(HasFocusedGamepadAchievement));
     }
 
     partial void OnIsGamepadModeChanged(bool value)
@@ -2962,7 +2990,6 @@ public partial class MainViewModel : ViewModelBase
                     deferBadgeLoading: true);
                 OpenGamepadOverlay(GamepadOverlayKind.Achievements);
                 GamepadAchievementDetails = details;
-                details.Achievements.CollectionChanged += HandleGamepadAchievementsChanged;
                 details.PropertyChanged += HandleGamepadAchievementDetailsPropertyChanged;
                 FocusFirstAchievement();
                 _ = details.RefreshIfStaleAsync();

@@ -853,6 +853,74 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadAchievements_ControllerCyclesFiltersSortAndGridFocus()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadAchievementNavigation.cue");
+        File.WriteAllText(path, "FILE \"GamepadAchievementNavigation.bin\" BINARY");
+        _library.AddGames([new Game
+        {
+            SystemId = Ps1.Id,
+            Path = path,
+            Title = "Achievement navigation",
+            DateAdded = DateTimeOffset.UtcNow,
+        }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var earnedAt = DateTimeOffset.UtcNow;
+        var cached = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                4321,
+                "Achievement navigation",
+                4,
+                2,
+                2,
+                [
+                    new RetroAchievementsAchievement(1, "First", "", 5, "", 1, earnedAt, null),
+                    new RetroAchievementsAchievement(2, "Second", "", 25, "", 2, null, null),
+                    new RetroAchievementsAchievement(3, "Third", "", 10, "", 3, earnedAt, earnedAt),
+                    new RetroAchievementsAchievement(4, "Fourth", "", 10, "", 4, null, null),
+                ]),
+            earnedAt);
+        var vm = CreateViewModel(
+            retroAchievementsRead: new StaticRetroAchievementsReadStore(gameId, 4321),
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: new RecordingRetroAchievementsDetailsService(cached));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+        vm.SetRenderedGamepadAchievementColumnCount(2);
+
+        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.Equal(AchievementDisplayFilter.Locked, vm.GamepadAchievementDetails!.SelectedFilter);
+        Assert.Equal([2, 4], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.Equal(AchievementDisplayFilter.Unlocked, vm.GamepadAchievementDetails.SelectedFilter);
+        Assert.Equal([1, 3], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
+        Assert.Equal(AchievementDisplaySort.Points, vm.GamepadAchievementDetails.SelectedSort);
+        Assert.Equal([3, 1], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal(3, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
+        Assert.Equal(1, vm.GamepadAchievementLayoutRevision);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
+        Assert.Equal(AchievementDisplaySort.UnlockedFirst, vm.GamepadAchievementDetails.SelectedSort);
+        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
+        Assert.Equal(2, vm.GamepadAchievementLayoutRevision);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadActions_UseModalNavigationAndCoverHandsOffToDesktopInsteadOfPicker()
     {
         var path = Path.Combine(_baseDirectory, "GamepadActions.cue");

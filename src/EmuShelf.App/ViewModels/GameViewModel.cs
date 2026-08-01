@@ -201,7 +201,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
                 System.IO.Path.AltDirectorySeparatorChar);
             var fileName = System.IO.Path.GetFileName(trimmedPath);
             var source = string.IsNullOrWhiteSpace(fileName) ? LaunchModel.Title : fileName;
-            return ShowsSelectedDisc ? $"{source} · {SelectedDiscText}" : source;
+            return source;
         }
     }
 

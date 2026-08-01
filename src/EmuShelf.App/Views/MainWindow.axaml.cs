@@ -64,6 +64,7 @@ public partial class MainWindow : Window
             nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.GamepadOverlay) or
             nameof(MainViewModel.GamepadOverlaySelectionIndex) or nameof(MainViewModel.GamepadOverlayTitle) or
             nameof(MainViewModel.FocusedGamepadAchievement) or
+            nameof(MainViewModel.GamepadAchievementLayoutRevision) or
             nameof(MainViewModel.IsGamepadControllerInputActive)))
         {
             return;
@@ -139,6 +140,27 @@ public partial class MainWindow : Window
             viewModel.SetRenderedGamepadColumnCount(rowCounts.Values.Max());
     }
 
+    private void SyncGamepadAchievementColumnCountFromLayout()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadAchievementsOpen: true } viewModel ||
+            viewModel.GamepadAchievementDetails?.VisibleAchievements is not { Count: > 0 } achievements)
+        {
+            return;
+        }
+
+        var rowCounts = new Dictionary<int, int>();
+        for (var index = 0; index < achievements.Count; index++)
+        {
+            if (GamepadAchievementsRepeater.TryGetElement(index) is not { } element)
+                continue;
+            var row = (int)Math.Round(element.Bounds.Y);
+            rowCounts[row] = rowCounts.TryGetValue(row, out var count) ? count + 1 : 1;
+        }
+
+        if (rowCounts.Count > 0)
+            viewModel.SetRenderedGamepadAchievementColumnCount(rowCounts.Values.Max());
+    }
+
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
     private void RevealGamepadOverlayFocus()
     {
@@ -151,13 +173,14 @@ public partial class MainWindow : Window
             GamepadRenameBox.Focus();
         else if (viewModel.FocusedGamepadAchievement is { } achievement)
         {
-            var index = viewModel.GamepadAchievementDetails?.Achievements.IndexOf(achievement) ?? -1;
+            var index = viewModel.GamepadAchievementDetails?.VisibleAchievements.IndexOf(achievement) ?? -1;
             if (index < 0)
                 return;
 
             var element = GamepadAchievementsRepeater.TryGetElement(index) ??
                 GamepadAchievementsRepeater.GetOrCreateElement(index);
             GamepadAchievementsRepeater.UpdateLayout();
+            SyncGamepadAchievementColumnCountFromLayout();
             var achievementControl = element as Control ?? element?.GetVisualDescendants()
                 .OfType<Control>()
                 .FirstOrDefault(control => ReferenceEquals(control.DataContext, achievement));
@@ -440,6 +463,9 @@ public partial class MainWindow : Window
         // resize or first show can't clamp against a stale width estimate.
         Dispatcher.UIThread.Post(SyncGamepadColumnCountFromLayout, DispatcherPriority.Loaded);
     }
+
+    private void OnGamepadAchievementsSizeChanged(object? sender, SizeChangedEventArgs e) =>
+        Dispatcher.UIThread.Post(SyncGamepadAchievementColumnCountFromLayout, DispatcherPriority.Loaded);
 
     // Both grids take their cell width from the one cover width the view model computed for the
     // mode that is on screen. Applying it to both — rather than only to whichever grid raised

@@ -2890,3 +2890,30 @@ achievement progress when available, and Play. LB/RB remains visible on the plat
 library count and direct X/Y shortcut legend move into the system Menu, while modal overlays keep
 their own contextual controls. Achievement progress uses a fixed clipped track rather than the
 theme's generic stretching ProgressBar template so its geometry remains stable at couch layouts.
+
+## 2026-08-01 — Achievement sorting is cache-backed; community rarity is deferred
+
+The controller achievement browser offers All, Locked, and Unlocked filters plus Default, Points,
+Unlocked first, and Recently unlocked ordering. Every choice is derived from fields already stored
+in the portable achievement-detail cache, so it remains deterministic and useful offline. LB/RB
+owns the three filters, D-pad owns the badge grid, X refreshes, and Y cycles ordering; the selected
+badge's title, description, points, state, and earned date stay visible in one detail card rather
+than repeating full text under every grid item.
+
+RetroAchievements community unlock percentage is not currently represented by
+`RetroAchievementsAchievement` or the cache schema. EmuShelf will not infer it from the connected
+user's progress or label another field as rarity. Percentage/rarity sorting waits for a reviewed API
+field, cache migration, stale/offline semantics, and fixtures proving the value's meaning.
+
+## 2026-08-01 — Achievement sorting preserves the selector's slot, not badge identity
+
+Reordering an achievement grid changes what occupies each spatial position. The controller
+selector therefore remains at the same visible index and the detail card updates to the newly
+occupying achievement; following the old achievement id would make the focus ring jump around the
+screen after every Y press. Filtering retains its separate identity-or-first behavior because its
+purpose is to remove whole classes of rows rather than reorder the same set.
+
+The visible achievement collection is replaced with one Reset notification. Clearing it and adding
+rows individually exposed Avalonia's virtualized `ItemsRepeater` to empty and partially rebuilt
+lists, allowing recycled tiles to keep stale positions during repeated sorts. One atomic replacement
+gives layout, focus reveal, and column recount a single final ordering to process.
