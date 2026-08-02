@@ -1,0 +1,18 @@
+# The repository stores text files with LF. Cross-platform (Windows/macOS) editing without a
+# .gitattributes previously flipped many files to CRLF, which made git mark every line changed.
+# text=auto lets git detect text vs binary; eol=lf pins detected text files to LF in the repo.
+* text=auto eol=lf
+
+# Known-binary assets: never normalize or diff these as text.
+*.png binary
+*.ico binary
+*.pdf binary
+*.docx binary
+*.chd binary
+*.iso binary
+*.bin binary
+*.so binary
+*.dll binary
+*.dylib binary
+*.exe binary
+*.zip binary
