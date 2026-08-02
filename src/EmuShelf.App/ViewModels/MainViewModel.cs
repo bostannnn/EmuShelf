@@ -316,6 +316,10 @@ public partial class MainViewModel : ViewModelBase
     // clipped" reports were unreproducible off-device: the fault is compositor/virtualization timing.
     internal void LogGamepadGridFault(string detail) => _logger.Warning($"Gamepad grid: {detail}");
 
+    // Always-on (per user action, not per frame) so a single Deck run captures the exact geometry when
+    // navigation misbehaves — the earlier fault-only logging stayed silent while Left was blocked.
+    internal void LogGamepadGrid(string detail) => _logger.Information($"Gamepad grid: {detail}");
+
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
     public double NavigationWidth => IsNavigationCollapsed ? 72 : 246;

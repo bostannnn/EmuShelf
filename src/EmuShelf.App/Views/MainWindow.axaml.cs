@@ -274,6 +274,41 @@ public partial class MainWindow : Window
             viewModel.SetRenderedGamepadColumnCount(rowCounts.Values.Max());
     }
 
+    // Runs immediately before a directional move: refreshes the column count from the realized layout
+    // (the fix — nav then uses what is on screen, not a stale width estimate) and logs the exact
+    // geometry (the diagnostic — one Deck run shows why a move is blocked or the selector is missing).
+    private void PrepareGamepadNavigation(GamepadAction action)
+    {
+        SyncGamepadColumnCountFromLayout();
+        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel || viewModel.FocusedGame is not { } focused)
+            return;
+
+        var index = viewModel.Games.IndexOf(focused);
+        var columns = viewModel.GamepadColumnCount;
+        var column = columns > 0 && index >= 0 ? index % columns : -1;
+
+        // The realized width of the focused tile's own row — the ground truth the column count must
+        // match (unless the focused tile sits in the short final row).
+        var focusedRowRealized = 0;
+        if (index >= 0 && GamepadRepeater.TryGetElement(index) is { } focusedElement)
+        {
+            var focusedRow = (int)Math.Round(focusedElement.Bounds.Y);
+            for (var i = 0; i < viewModel.Games.Count; i++)
+            {
+                if (GamepadRepeater.TryGetElement(i) is { } element &&
+                    (int)Math.Round(element.Bounds.Y) == focusedRow)
+                {
+                    focusedRowRealized++;
+                }
+            }
+        }
+
+        viewModel.LogGamepadGrid(
+            $"nav {action}: index={index}/{viewModel.Games.Count}, columns={columns}, column={column}, " +
+            $"focusedRowRealized={focusedRowRealized}, viewportW={viewModel.GamepadViewportWidth:F0}, " +
+            $"coverW={viewModel.GridCoverWidth:F0}, selectorVisible={GamepadSelectorRing.IsVisible}");
+    }
+
     private void SyncGamepadAchievementColumnCountFromLayout()
     {
         if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadAchievementsOpen: true } viewModel ||
@@ -522,8 +557,22 @@ public partial class MainWindow : Window
         {
             // Steam Input delivers controller buttons as these keys; map them to the same logical
             // actions native pad input produces and route both through the one view-model dispatcher.
-            if (MapKeyToGamepadAction(e) is { } action && viewModel.DispatchGamepadAction(action))
-                e.Handled = true;
+            if (MapKeyToGamepadAction(e) is { } action)
+            {
+                // Grid navigation is index%columns math, so the column count must match what is
+                // actually on screen at the moment of the move. Refresh it from the realized layout
+                // (and log the geometry) right before dispatching a directional action, so a stale or
+                // over-estimated count can't make a mid-row tile read as column 0 (Left then does
+                // nothing while Right/Up/Down work).
+                if (action is GamepadAction.NavigateLeft or GamepadAction.NavigateRight or
+                    GamepadAction.NavigateUp or GamepadAction.NavigateDown)
+                {
+                    PrepareGamepadNavigation(action);
+                }
+
+                if (viewModel.DispatchGamepadAction(action))
+                    e.Handled = true;
+            }
             return;
         }
 
