@@ -94,19 +94,29 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         CancellationToken cancellationToken = default)
     {
         var descriptor = SaveProviderRegistry.Find(systemId);
-        if (descriptor is null || CreateBaseProvider(systemId) is not { } provider)
+        if (descriptor is null)
+            return null;
+
+        // Everything below reads the emulator's own configuration, its version resources and binary
+        // architecture, and the save/state folders — often on a slow external drive. The Saves
+        // section resolves every platform at once when it opens, so this must stay off the UI thread;
+        // running it inline froze the window for a few seconds each time. Provider construction reads
+        // the RetroArch core info file, so it is off-thread too.
+        var provider = await Task.Run(() => CreateBaseProvider(systemId), cancellationToken);
+        if (provider is null)
             return null;
 
         var detection = await descriptor.DetectAsync(provider, cancellationToken);
-        var context = CreateProviderContext(systemId, _settings.CloudSaveSync);
         var optionalSummary = (Summary: (string?)null, Locations: (IReadOnlyList<OptionalContentDetection>)[]);
         try
         {
-            var optional = SaveProviderRegistry.WithOptionalContent(
-                descriptor,
-                provider,
-                context,
-                includeSaveStates: true);
+            var optional = await Task.Run(
+                () => SaveProviderRegistry.WithOptionalContent(
+                    descriptor,
+                    provider,
+                    CreateProviderContext(systemId, _settings.CloudSaveSync),
+                    includeSaveStates: true),
+                cancellationToken);
             optionalSummary = await DescribeOptionalContentAsync(optional, provider, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)

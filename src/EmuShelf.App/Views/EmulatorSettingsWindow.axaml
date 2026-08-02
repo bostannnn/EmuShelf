@@ -507,7 +507,11 @@
                                 <ItemsControl ItemsSource="{Binding CloudPlatforms}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate x:DataType="vm:CloudSavePlatformRowViewModel">
-                                            <StackPanel Spacing="14" Margin="0,0,0,14">
+                                            <!-- Grouped per platform: a Saves block (folder + its detected
+                                                 path/warning + replace actions) then a visually separated
+                                                 Save states block (toggle + folder + its detected path), so
+                                                 each control sits next to the text that describes it. -->
+                                            <StackPanel Spacing="12" Margin="0,0,0,18">
                                                 <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
                                                     <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
                                                             Background="{DynamicResource EmuPlaceholderMedallionBrush}">
@@ -523,31 +527,58 @@
                                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     </StackPanel>
                                                 </Grid>
-                                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8" Margin="54,0,0,0">
-                                                    <TextBox Grid.Column="0" Text="{Binding OverrideDirectory, Mode=TwoWay}"
-                                                             AutomationProperties.AutomationId="{Binding FolderFieldId}"
-                                                             Background="{DynamicResource EmuInputBrush}"
-                                                             BorderBrush="{DynamicResource EmuBorderBrush}"
-                                                             PlaceholderText="{Binding OverridePlaceholder}" />
-                                                    <Button Grid.Column="1" Content="Browse…"
-                                                            AutomationProperties.AutomationId="{Binding FolderFieldId}"
-                                                            Command="{Binding PickDirectoryCommand}"
-                                                            IsEnabled="{Binding IsIdle}" />
-                                                    <Button Grid.Column="2" Content="Replace cloud"
-                                                            AutomationProperties.AutomationId="{Binding ReplaceCloudFieldId}"
-                                                            IsVisible="{Binding IsCloudConnected}"
-                                                            Command="{Binding ReplaceCloudCommand}"
-                                                            IsEnabled="{Binding CanReplace}"
-                                                            ToolTip.Tip="Replace only this platform's cloud saves; overwritten cloud copies are backed up" />
-                                                    <Button Grid.Column="3" Content="Replace local"
-                                                            AutomationProperties.AutomationId="{Binding ReplaceLocalFieldId}"
-                                                            IsVisible="{Binding IsCloudConnected}"
-                                                            Command="{Binding ReplaceLocalCommand}"
-                                                            IsEnabled="{Binding CanReplace}"
-                                                            ToolTip.Tip="Replace only this platform's local saves; overwritten local copies are backed up" />
-                                                </Grid>
+
+                                                <!-- Saves group -->
+                                                <StackPanel Margin="54,0,0,0" Spacing="7">
+                                                    <TextBlock Text="SAVES" FontSize="10" FontWeight="SemiBold"
+                                                               LetterSpacing="0.7"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="8">
+                                                        <TextBox Grid.Column="0" Text="{Binding OverrideDirectory, Mode=TwoWay}"
+                                                                 AutomationProperties.AutomationId="{Binding FolderFieldId}"
+                                                                 Background="{DynamicResource EmuInputBrush}"
+                                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                                 PlaceholderText="{Binding OverridePlaceholder}" />
+                                                        <Button Grid.Column="1" Content="Browse…"
+                                                                AutomationProperties.AutomationId="{Binding FolderFieldId}"
+                                                                Command="{Binding PickDirectoryCommand}"
+                                                                IsEnabled="{Binding IsIdle}" />
+                                                        <Button Grid.Column="2" Content="Replace cloud"
+                                                                AutomationProperties.AutomationId="{Binding ReplaceCloudFieldId}"
+                                                                IsVisible="{Binding IsCloudConnected}"
+                                                                Command="{Binding ReplaceCloudCommand}"
+                                                                IsEnabled="{Binding CanReplace}"
+                                                                ToolTip.Tip="Replace only this platform's cloud saves; overwritten cloud copies are backed up" />
+                                                        <Button Grid.Column="3" Content="Replace local"
+                                                                AutomationProperties.AutomationId="{Binding ReplaceLocalFieldId}"
+                                                                IsVisible="{Binding IsCloudConnected}"
+                                                                Command="{Binding ReplaceLocalCommand}"
+                                                                IsEnabled="{Binding CanReplace}"
+                                                                ToolTip.Tip="Replace only this platform's local saves; overwritten local copies are backed up" />
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding DetectedDirectory, StringFormat='Syncing {0}'}"
+                                                               IsVisible="{Binding HasDetectedDirectory}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                    <TextBlock Text="{Binding CompatibilityWarning}"
+                                                               IsVisible="{Binding HasCompatibilityWarning}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding DetectionErrorText}"
+                                                               IsVisible="{Binding HasDetectionError}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuDangerBrush}" />
+                                                </StackPanel>
+
+                                                <!-- Save states group, separated from Saves so its folder and
+                                                     detected path stay together instead of interleaving. -->
                                                 <StackPanel Margin="54,0,0,0" Spacing="7"
                                                             IsVisible="{Binding HasOptionalContent}">
+                                                    <Border Height="1" Margin="0,3,0,3"
+                                                            Background="{DynamicResource EmuBorderBrush}" />
+                                                    <TextBlock Text="SAVE STATES" FontSize="10" FontWeight="SemiBold"
+                                                               LetterSpacing="0.7"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <CheckBox Content="Automatically sync save states"
                                                               AutomationProperties.AutomationId="{Binding SaveStatesFieldId}"
                                                               IsVisible="{Binding SupportsSaveStates}"
@@ -558,9 +589,9 @@
                                                                IsVisible="{Binding SupportsSaveStates}"
                                                                FontSize="11" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                    <!-- Save states get their own detected folder + manual override,
-                                                         mirroring the save folder above, so a mis-detected state
-                                                         folder can be corrected the same way. -->
+                                                    <!-- Save states get their own folder override, mirroring the
+                                                         save folder above, so a mis-detected state folder can be
+                                                         corrected the same way. -->
                                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"
                                                           IsVisible="{Binding SyncSaveStates}">
                                                         <TextBox Grid.Column="0" Text="{Binding StateOverrideDirectory, Mode=TwoWay}"
@@ -573,37 +604,23 @@
                                                                 Command="{Binding PickStateDirectoryCommand}"
                                                                 IsEnabled="{Binding IsIdle}" />
                                                     </Grid>
+                                                    <TextBlock Text="{Binding OptionalContentSummary}"
+                                                               IsVisible="{Binding HasOptionalContentSummary}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
-                                                <TextBlock Margin="54,0,0,0"
-                                                           Text="{Binding DetectedDirectory, StringFormat='Syncing {0}'}"
-                                                           IsVisible="{Binding HasDetectedDirectory}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                <TextBlock Margin="54,0,0,0"
-                                                           Text="{Binding CompatibilityWarning}"
-                                                           IsVisible="{Binding HasCompatibilityWarning}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                <TextBlock Margin="54,0,0,0"
-                                                           Text="{Binding OptionalContentSummary}"
-                                                           IsVisible="{Binding HasOptionalContentSummary}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                <TextBlock Margin="54,0,0,0"
-                                                           Text="{Binding DetectionErrorText}"
-                                                           IsVisible="{Binding HasDetectionError}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource EmuDangerBrush}" />
-                                                <TextBlock Margin="54,0,0,0"
-                                                           Text="{Binding LastResultText}"
-                                                           IsVisible="{Binding HasLastResult}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                <TextBlock Margin="54,0,0,0"
-                                                           Text="{Binding LastNoticeText}"
-                                                           IsVisible="{Binding HasLastNotice}"
-                                                           FontSize="11" TextWrapping="Wrap"
-                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+
+                                                <!-- Platform-level sync outcome -->
+                                                <StackPanel Margin="54,0,0,0" Spacing="7">
+                                                    <TextBlock Text="{Binding LastResultText}"
+                                                               IsVisible="{Binding HasLastResult}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                    <TextBlock Text="{Binding LastNoticeText}"
+                                                               IsVisible="{Binding HasLastNotice}"
+                                                               FontSize="11" TextWrapping="Wrap"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                </StackPanel>
                                             </StackPanel>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
