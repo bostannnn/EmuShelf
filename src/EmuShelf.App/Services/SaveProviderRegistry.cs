@@ -367,7 +367,8 @@ public static class SaveProviderRegistry
         ISaveLocationProvider saves,
         SaveProviderContext context,
         bool includeSaveStates,
-        bool includeBaseSaves = true)
+        bool includeBaseSaves = true,
+        IReadOnlyCollection<string>? gameStateKeys = null)
     {
         if (!includeSaveStates || !descriptor.SupportsSaveStates)
             return includeBaseSaves
@@ -400,7 +401,7 @@ public static class SaveProviderRegistry
             emulatorVersion,
             coreVersion,
             ResolveEmulatorArchitecture(context));
-        return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves);
+        return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves, gameStateKeys);
     }
 
     private static void AddStateSources(

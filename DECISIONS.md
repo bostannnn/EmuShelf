@@ -3188,3 +3188,47 @@ dock widget kept showing the pre-unlock count ("0/9") even though the overlay al
 the achievement display for every loaded tile linked to that RA game (re-reading the same local
 stores the reload path uses, no network), marshaled to the UI thread. The dock widget and grid mark
 now update as soon as fresh progress is cached, whether from the overlay or the post-exit pass.
+
+## 2026-08-02 — State-compatibility versions never launch the emulator; Flatpak falls back to the build commit
+
+A second Steam Deck pass surfaced a modal "Unknown parameter: --version" dialog every time Saves
+settings opened. Version detection for save-state compatibility launched the configured emulator
+with `--version`; GUI emulators (DuckStation, PCSX2, RPCS3, Dolphin) treat an unknown argument as a
+fatal error and pop a dialog rather than printing a version — and the process never exits on its own,
+so it also blocked detection until a 5s kill. The subprocess is removed entirely. A binary with no
+embedded version resource (a typical Linux build) now keys compatibility off a stable file-length
+token (`exelen{bytes}` / `corelen{bytes}` via one shared helper) — identical per build across
+machines, different across builds — so nothing is ever run to read a version.
+
+The same pass found Flatpak PCSX2 reporting "the emulator/core version could not be detected, so
+states will not be synced": many Flathub emulators publish no `--show-version` string, which
+resolved compatibility to null and dropped every state. `flatpak info` now falls back to
+`--show-commit` (always present for an installed app, stable per build) when the version is empty, so
+compatibility resolves and states sync. Architecture still comes from `--show-arch` / the binary.
+
+## 2026-08-02 — A launch/exit state sync is scoped to the launched game
+
+This supersedes the launch/exit portion of "Manual state sync includes every eligible state"
+(2026-07-29). Because states live in one folder per emulator (not per game), launching any PS2 game
+made the launch/exit pass hash and sync *every* PS2 game's states — dozens of ~15 MB PCSX2 states,
+so the pass read GB on each launch and the first sync uploaded everything. The launch/exit state
+phase is now scoped to the launched game: `MainViewModel` builds the game's keys (its ROM file stem,
+how RetroArch names states, plus the serials/disc/title/arcade ids the metadata store extracted, how
+DuckStation, PCSX2, PPSSPP, Dolphin, and RPCS3 name them) and passes them to `SyncSystemAsync`;
+`AuxiliarySyncProvider` includes only states whose normalized file name contains a key, for both
+local enumeration and remote selection. Matching is deliberately fuzzy alphanumeric-contains: a
+false positive only syncs an extra state, and a game whose id is unknown simply isn't auto-synced on
+launch. A **manual Sync all passes no keys and still reconciles every state**, so nothing is ever
+permanently excluded — it is the exact escape hatch. Regular battery/memory-card saves are never
+scoped.
+
+## 2026-08-02 — Gamepad grid hardening: cover backstop and full-tile reveal
+
+Two Steam Deck grid faults beyond the cover-frame fix. Covers load off per-element
+AttachedToVisualTree / DataContextChanged events, which race during rapid LB/RB recycling and could
+leave a tile an empty cell; after the grid lays out, the view now requests the cover for every
+realized tile as a settle-time backstop (LoadCover is idempotent, so already-loaded/loading tiles
+are skipped). And on the Deck's short grid viewport a tall portrait tile (cover + title ≈ 324px)
+could be revealed bottom-aligned with its cover clipped ("half the cover"); after BringIntoView the
+view nudges the scroll, in content coordinates, so the whole focused tile stays inside the viewport,
+scrolling only when it is actually clipped.

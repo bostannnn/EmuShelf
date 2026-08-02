@@ -233,6 +233,42 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/game.p2s", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task StateScoping_LimitsLaunchSyncToTheLaunchedGamesStates()
+    {
+        // Regression for "launching Bully syncs every game's states": on a launch/exit pass the state
+        // phase is scoped to the launched game's keys (its file stem + serials). RetroArch names
+        // states after the ROM (Bully.state), PCSX2 after the serial (SLUS-21269 (...).p2s); both
+        // match, another game's state does not. A manual Sync all passes no keys and takes everything.
+        var states = Directory.CreateDirectory(Path.Combine(_root, "scoped-states")).FullName;
+        WriteState(states, "Bully.state", 1);
+        WriteState(states, "Bully.state1", 2);
+        WriteState(states, "SLUS-21269 (ABCD1234).00.p2s", 3);
+        WriteState(states, "OtherGame.state", 4);
+
+        AuxiliarySyncProvider Build(IReadOnlyCollection<string>? keys) => new(
+            new EmptyProvider(),
+            [new("states", _ => states, path =>
+                path.Contains(".state", StringComparison.Ordinal) ||
+                path.EndsWith(".p2s", StringComparison.Ordinal))],
+            new StateCompatibility("current", "1.0 · x64"),
+            includeBaseSaves: false,
+            stateGameKeys: keys);
+
+        var scoped = (await Build(["Bully", "SLUS-21269"])
+            .GetSaveUnitsAsync(TestContext.Current.CancellationToken))
+            .Select(unit => unit.UnitId)
+            .ToArray();
+        Assert.Contains(scoped, id => id.EndsWith("/Bully.state", StringComparison.Ordinal));
+        Assert.Contains(scoped, id => id.EndsWith("/Bully.state1", StringComparison.Ordinal));
+        Assert.Contains(scoped, id => id.Contains("SLUS-21269", StringComparison.Ordinal));
+        Assert.DoesNotContain(scoped, id => id.Contains("OtherGame", StringComparison.OrdinalIgnoreCase));
+
+        // Manual Sync all (no keys) still takes every state.
+        var unscoped = await Build(null).GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(4, unscoped.Count);
+    }
+
     // A minimal little-endian x86-64 ELF header, enough for the architecture reader to identify it.
     private static string WriteElfCore(string path)
     {

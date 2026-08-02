@@ -2634,7 +2634,8 @@ public class MainViewModelTests : IDisposable
 
         public Task<CloudSaveSyncOutcome> SyncSystemAsync(
             string systemId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
         {
             events.Add($"sync:{systemId}");
             var index = Math.Min(_nextOutcome++, outcomes.Length - 1);
@@ -2651,7 +2652,8 @@ public class MainViewModelTests : IDisposable
 
         public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
             string systemId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
         {
             events.Add($"sync:{systemId}");
             Started.TrySetResult();

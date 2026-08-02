@@ -353,10 +353,16 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// saves commit before the optional state phase, so a state failure cannot strand a reconciled
     /// memory-card save in staging. The launch lifecycle itself supplies cancellation; there is no
     /// shorter application-level pre-launch budget.
+    ///
+    /// <paramref name="launchStateKeys"/> scopes the state phase to the launched game (its file
+    /// stem, serials, and disc ids) so launching one game no longer hashes and syncs every game's
+    /// states in a shared folder. Regular saves are never scoped, and a manual Sync all passes no
+    /// keys so it still covers every state.
     /// </remarks>
     public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<string>? launchStateKeys = null)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
@@ -387,7 +393,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 cancellationToken,
                 gateAlreadyHeld: true,
                 contentScope: SyncContentScope.SaveStatesOnly,
-                recordOutcome: false);
+                recordOutcome: false,
+                stateGameKeys: launchStateKeys);
             if (states.Status != CloudSaveSyncStatus.Completed)
             {
                 RecordAutomaticOutcome(
@@ -517,7 +524,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         bool waitForGate = true,
         bool gateAlreadyHeld = false,
         SyncContentScope contentScope = SyncContentScope.SavesOnly,
-        bool recordOutcome = true)
+        bool recordOutcome = true,
+        IReadOnlyCollection<string>? stateGameKeys = null)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
@@ -541,7 +549,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             foreach (var systemId in requestedSystemIds)
             {
                 constructingSystemId = systemId;
-                if (CreateTarget(systemId, contentScope) is { } target)
+                if (CreateTarget(systemId, contentScope, stateGameKeys) is { } target)
                 {
                     targets.Add(target);
                     synced.Add(systemId);
@@ -652,13 +660,15 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     private ISaveLocationProvider? CreateProvider(
         string systemId,
-        SyncContentScope contentScope = SyncContentScope.SavesOnly) =>
-        CreateProvider(systemId, _settings.CloudSaveSync, contentScope);
+        SyncContentScope contentScope = SyncContentScope.SavesOnly,
+        IReadOnlyCollection<string>? stateGameKeys = null) =>
+        CreateProvider(systemId, _settings.CloudSaveSync, contentScope, stateGameKeys);
 
     private ISaveLocationProvider? CreateProvider(
         string systemId,
         CloudSaveSyncSettings configuration,
-        SyncContentScope contentScope)
+        SyncContentScope contentScope,
+        IReadOnlyCollection<string>? stateGameKeys = null)
     {
         if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
             return null;
@@ -673,7 +683,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             context,
             contentScope != SyncContentScope.SavesOnly &&
                 configuration.GetLocation(systemId).SyncSaveStates,
-            includeBaseSaves: contentScope != SyncContentScope.SaveStatesOnly);
+            includeBaseSaves: contentScope != SyncContentScope.SaveStatesOnly,
+            gameStateKeys: stateGameKeys);
     }
 
     private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
@@ -750,8 +761,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     private SaveSyncTarget? CreateTarget(
         string systemId,
-        SyncContentScope contentScope = SyncContentScope.SavesOnly) =>
-        CreateProvider(systemId, contentScope) is not { } provider
+        SyncContentScope contentScope = SyncContentScope.SavesOnly,
+        IReadOnlyCollection<string>? stateGameKeys = null) =>
+        CreateProvider(systemId, contentScope, stateGameKeys) is not { } provider
             ? null
             : new SaveSyncTarget(provider, new FileSystemLocalSaveEndpoint(provider, _paths));
 

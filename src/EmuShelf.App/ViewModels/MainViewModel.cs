@@ -2976,7 +2976,8 @@ public partial class MainViewModel : ViewModelBase
         {
             var outcome = await _gameSaveSync.SyncSystemAsync(
                 game.SystemId,
-                cancellationToken);
+                cancellationToken,
+                LaunchStateKeysFor(game));
             if (outcome.Status == CloudSaveSyncStatus.Failed)
             {
                 _logger.Warning(
@@ -3014,6 +3015,35 @@ public partial class MainViewModel : ViewModelBase
                 ex);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
+    }
+
+    // Keys that scope a launch/exit state sync to just the launched game, so launching one game no
+    // longer hashes and syncs every game's states in a shared folder. The game's ROM file stem
+    // covers RetroArch (it names states after the ROM); the stored serials/disc/title/arcade ids
+    // cover DuckStation, PCSX2, PPSSPP, Dolphin, and RPCS3 (they name states after those). If none
+    // are known, the state phase has nothing to match and stays out of the way; a manual Sync all
+    // passes no keys and still covers every state.
+    private IReadOnlyCollection<string> LaunchStateKeysFor(Game game)
+    {
+        var keys = new List<string>();
+        var stem = System.IO.Path.GetFileNameWithoutExtension(game.Path);
+        if (!string.IsNullOrWhiteSpace(stem))
+            keys.Add(stem);
+
+        if (_metadataStore is not null)
+        {
+            foreach (var identifier in _metadataStore.GetIdentifiers(game.Id))
+            {
+                if (identifier.Kind is GameIdentifierKind.Serial or GameIdentifierKind.DiscId
+                        or GameIdentifierKind.TitleId or GameIdentifierKind.ArcadeSetName &&
+                    !string.IsNullOrWhiteSpace(identifier.Value))
+                {
+                    keys.Add(identifier.Value);
+                }
+            }
+        }
+
+        return keys;
     }
 
     private static string DescribeLaunchAndSaveSync(

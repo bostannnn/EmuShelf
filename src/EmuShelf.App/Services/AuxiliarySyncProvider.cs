@@ -60,19 +60,63 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     private readonly IReadOnlyList<AuxiliaryFileSource> _sources;
     private readonly StateCompatibility? _compatibility;
     private readonly bool _includeBaseSaves;
+    private readonly IReadOnlyList<string>? _stateGameKeys;
     private readonly Dictionary<AuxiliaryFileSource, string?> _resolvedRoots = [];
     private readonly object _rootGate = new();
 
+    /// <param name="stateGameKeys">
+    /// When set, state files are scoped to one game: only states whose name contains one of these
+    /// keys (a launched game's file-stem, serials, and disc ids, normalized) participate. This is the
+    /// launch/exit pass — it stops launching one game from hashing and syncing every game's states.
+    /// A manual "Sync all" passes none, so it still covers every state.
+    /// </param>
     public AuxiliarySyncProvider(
         ISaveLocationProvider saves,
         IReadOnlyList<AuxiliaryFileSource> sources,
         StateCompatibility? compatibility,
-        bool includeBaseSaves = true)
+        bool includeBaseSaves = true,
+        IReadOnlyCollection<string>? stateGameKeys = null)
     {
         _saves = saves;
         _sources = sources;
         _compatibility = compatibility;
         _includeBaseSaves = includeBaseSaves;
+        var normalizedKeys = stateGameKeys
+            ?.Select(NormalizeStateKey)
+            .Where(key => key.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        _stateGameKeys = normalizedKeys is { Length: > 0 } ? normalizedKeys : null;
+    }
+
+    // Alphanumeric-only, upper-cased, so a save-state file name matches a game key regardless of the
+    // separators an emulator uses (spaces, dashes, underscores, dots, region parentheses). This is
+    // deliberately fuzzy contains-matching: a false positive only syncs an extra state, while the
+    // manual Sync all remains the exact escape hatch.
+    private static string NormalizeStateKey(string value) =>
+        new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
+
+    private bool MatchesStateGame(string fileName)
+    {
+        if (_stateGameKeys is null)
+            return true;
+        var normalized = NormalizeStateKey(fileName);
+        foreach (var key in _stateGameKeys)
+            if (normalized.Contains(key, StringComparison.Ordinal))
+                return true;
+        return false;
+    }
+
+    private bool MatchesRemoteStateGame(string unitId, AuxiliaryFileSource source)
+    {
+        if (_stateGameKeys is null)
+            return true;
+        var prefix = Prefix(source);
+        if (!unitId.StartsWith(prefix, StringComparison.Ordinal))
+            return true;
+        // If the id cannot be decoded we cannot tell which game it belongs to, so do not exclude it.
+        return !TryDecodeRelativePath(unitId[prefix.Length..], out var relativePath)
+            || MatchesStateGame(Path.GetFileName(relativePath));
     }
 
     public string SystemId => _saves.SystemId;
@@ -129,7 +173,9 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
             : [];
 
         foreach (var source in _sources)
-            selected.AddRange(snapshots.Where(snapshot => IsInSourceNamespace(snapshot.UnitId, source)));
+            selected.AddRange(snapshots.Where(snapshot =>
+                IsInSourceNamespace(snapshot.UnitId, source) &&
+                MatchesRemoteStateGame(snapshot.UnitId, source)));
 
         return selected.DistinctBy(snapshot => snapshot.UnitId, StringComparer.Ordinal).ToArray();
     }
@@ -174,7 +220,8 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
             return [];
 
         var fullRoot = Path.GetFullPath(root);
-        var files = EnumerateCandidates(source, fullRoot, cancellationToken);
+        var files = EnumerateCandidates(source, fullRoot, cancellationToken)
+            .Where(file => MatchesStateGame(Path.GetFileName(file.Path)));
 
         return files.OrderBy(file => file.RelativePath, StringComparer.Ordinal)
             .Select(file => new SaveUnit(
