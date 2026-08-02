@@ -3289,3 +3289,40 @@ to load it," never data loss. The prior behaviour's worst case was the feature s
 Diagnostics were extended to make a residual mismatch self-evident: the launch/exit state pass now logs
 the resolved `compatibilityKey` (two machines must print the same key to restore) and every distinct
 skip reason, to `Logs/EmuShelf-YYYY-MM-DD.log`.
+
+## 2026-08-02 — The gamepad grid is deterministic: reserved gutter, overlay selector, geometry reveal
+
+Real Steam Deck use surfaced three grid faults. Investigation (with adversarial verification) placed
+each precisely, and the fix makes the grid's focus and sizing deterministic instead of dependent on
+virtualization/compositor timing that the headless renderer can't reproduce.
+
+- **The selector sometimes vanished.** The accent focus ring was a `Border` *inside* the virtualized
+  item template (`IsVisible="{Binding IsFocused}"`), so it only existed while its tile was realized.
+  When focus moved to a row outside the realized window and the reveal stranded (it gave up silently
+  after five attempts, or a rapid d-pad repeat pre-empted it), no realized tile carried the ring and
+  the selector disappeared entirely. The ring is now a single **overlay** (`GamepadSelectorRing`) that
+  lives outside the `ItemsRepeater`, in the shared scroller content, positioned by the view from the
+  focused cover's geometry. It can never be virtualized away or occluded, and it scrolls glued to the
+  cover because it shares the content. It prefers the realized cover's real bounds and falls back to
+  computed geometry, so it is drawn the instant focus moves.
+- **The right column's cover/glow clipped.** The cover width was packed to fill the row to the
+  sub-pixel remainder with zero side inset, so the edge tile's focus glow (which blurs ~30px past the
+  cover) fell into a 0–4px gutter and was shaved by the scroller's clip; a stale cell width right after
+  a mode/platform switch could also push a whole column past the edge. The gamepad grid now reserves a
+  `GamepadGridSideGutter` (40px, > the glow radius) on each side — mirrored by the repeater's `Margin`
+  and subtracted in the column arithmetic — so the focused tile's glow always has room and the column
+  count is derived from the true content region.
+- **Reveal is now deterministic.** Instead of `BringIntoView` plus a manual nudge that read a possibly
+  stale element rectangle, the target scroll offset is computed from the focused index, the column
+  count, and the uniform row height, clamped to keep a full glow radius of clearance. This can't be
+  lost to a competing layout pass or a fast d-pad repeat — the mechanisms behind the strand.
+
+The `staggered/unpolished` perception was investigated and is **not** a bug: rows are uniform height,
+and the ragged tops are covers of different per-platform aspect ratios bottom-aligned on the shared
+shelf (the mandated OpenEmu-style framing, DECISIONS 2026-07-17/08-02). It is left as designed.
+
+Virtualization, asynchronous cover loading, and per-platform cover ratios are preserved. Because the
+residual timing faults cannot be reproduced off-device, a **fault-only** diagnostic (`LogGamepadGridFault`)
+logs to `Logs/EmuShelf-*.log` when the focused tile fails to realize, the selector cannot be placed, or
+the arithmetic and rendered column counts disagree — so a single Deck run pinpoints any remainder
+without flooding the log on every d-pad move.

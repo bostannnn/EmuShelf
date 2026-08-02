@@ -89,13 +89,18 @@ public class GamepadLibraryLayoutTests : IDisposable
         viewModel.LibraryViewportWidth = 1600;
         viewModel.GamepadViewportWidth = 1176;
 
-        var desktopWidth = viewModel.GridCoverWidth;
+        var desktopWidth = viewModel.GridCoverWidth;   // desktop mode is active
         viewModel.IsGamepadMode = true;
-        var gamepadWidth = viewModel.GridCoverWidth;
-        viewModel.IsGamepadMode = false;
+        var gamepadWidth = viewModel.GridCoverWidth;   // now sized from the gamepad viewport
 
-        Assert.NotEqual(desktopWidth, gamepadWidth);
-        // Switching back restores the desktop sizing rather than keeping the gamepad's.
+        // Independence is what the regression is about, not that the two numbers happen to differ:
+        // changing one mode's viewport moves only that mode's cover width. Narrowing the gamepad
+        // viewport must change the gamepad cover width...
+        viewModel.GamepadViewportWidth = 900;
+        Assert.NotEqual(gamepadWidth, viewModel.GridCoverWidth);
+
+        // ...and switching back restores the desktop sizing, untouched by any gamepad-side change.
+        viewModel.IsGamepadMode = false;
         Assert.Equal(desktopWidth, viewModel.GridCoverWidth);
     }
 
@@ -115,12 +120,14 @@ public class GamepadLibraryLayoutTests : IDisposable
         viewModel.IsGamepadMode = true;
         viewModel.GamepadViewportWidth = viewportWidth;
 
-        // UniformGridLayout fits floor((available + spacing) / (itemWidth + spacing)) columns,
-        // measured against the same viewport, because the gamepad grid adds no inset of its own.
+        // UniformGridLayout fits floor((available + spacing) / (itemWidth + spacing)) columns. The
+        // gamepad grid reserves a side gutter on each edge (so the focus glow never clips), so the
+        // available width is the viewport minus both gutters — the same region the cover width fills.
         const double spacing = 28;
+        var available = viewportWidth - 2 * MainViewModel.GamepadGridSideGutterPixels;
         var expected = Math.Max(
             1,
-            (int)((viewportWidth + spacing) / (viewModel.GridCoverWidth + spacing)));
+            (int)((available + spacing) / (viewModel.GridCoverWidth + spacing)));
 
         Assert.Equal(expected, viewModel.GamepadColumnCount);
     }

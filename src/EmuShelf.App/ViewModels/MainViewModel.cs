@@ -308,6 +308,14 @@ public partial class MainViewModel : ViewModelBase
             GamepadAchievementColumnCount = columns;
     }
 
+    // Diagnostics for the Steam Deck library grid. The view calls this ONLY on a fault condition —
+    // the focused tile could not be realized or positioned, or the arithmetic and rendered column
+    // counts disagree — so a single Deck run leaves a precise trail in Logs/EmuShelf-*.log (which
+    // machine, focused index, columns arithmetic-vs-rendered, reveal target, selector state) without
+    // flooding the log on every d-pad move. This is why the earlier "selector vanishes / column
+    // clipped" reports were unreproducible off-device: the fault is compositor/virtualization timing.
+    internal void LogGamepadGridFault(string detail) => _logger.Warning($"Gamepad grid: {detail}");
+
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
     public double NavigationWidth => IsNavigationCollapsed ? 72 : 246;
@@ -331,11 +339,21 @@ public partial class MainViewModel : ViewModelBase
 
     // Each mode measures a different element, so each has its own inset. Desktop measures the
     // ScrollViewer, and the ItemsRepeater inside it carries Margin 32/28 that the measurement
-    // still includes. Gamepad measures its own ScrollViewer, whose Margin is already excluded
-    // from its arranged size, and its repeater adds none — so there is nothing left to subtract.
-    // Sharing one constant between them silently mis-sized whichever mode it did not describe.
+    // still includes. Gamepad measures its own ScrollViewer, whose Margin is already excluded from
+    // its arranged size; its repeater carries a deliberate side gutter (GamepadGridSideGutter each
+    // side) so the focused tile's accent glow — which blurs ~30px past the cover — is never shaved
+    // by the scroller's clip on the edge columns. The column arithmetic subtracts both gutters so a
+    // whole number of covers fills the region between them with no lopsided edge.
     private const double DesktopGridHorizontalPadding = 60;
-    private const double GamepadGridHorizontalPadding = 0;
+    // The reserved gutter on each side of the gamepad grid, mirrored by the ItemsRepeater's Margin
+    // in MainWindow.axaml. Must exceed the EmuFocusGlow blur radius (~30px) so edge-column focus
+    // never clips. The view reads it via GamepadGridSideGutterPixels to place the selector overlay.
+    internal const double GamepadGridSideGutter = 40;
+    private const double GamepadGridHorizontalPadding = 2 * GamepadGridSideGutter;
+
+    /// <summary>The per-side gutter (logical px) reserved inside the gamepad grid scroller, so the
+    /// view's deterministic selector/reveal geometry uses the same value the layout is sized from.</summary>
+    internal static double GamepadGridSideGutterPixels => GamepadGridSideGutter;
 
     /// <summary>Current width of the desktop library grid area.</summary>
     [ObservableProperty]

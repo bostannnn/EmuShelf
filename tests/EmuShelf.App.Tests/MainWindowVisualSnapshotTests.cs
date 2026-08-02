@@ -1569,9 +1569,15 @@ public class MainWindowVisualSnapshotTests
             var hoverRing = shortButton.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-hover-ring"));
-            var focusRing = shortButton.GetVisualDescendants()
+            // The controller focus ring is no longer a per-tile layer, so it can never appear inside a
+            // hovered non-focused tile: it is the single GamepadSelectorRing overlay, positioned over
+            // whichever tile is focused. Assert it is absent from this hovered short tile, and take the
+            // external overlay for the focus assertions below.
+            Assert.Empty(shortButton.GetVisualDescendants()
                 .OfType<Border>()
-                .Single(border => border.Classes.Contains("gamepad-focus-ring"));
+                .Where(border => border.Classes.Contains("gamepad-focus-ring")));
+            var focusRing = window.FindControl<Border>("GamepadSelectorRing");
+            Assert.NotNull(focusRing);
             viewModel.NotifyGamepadPointerInput();
             var pseudoClasses = (IPseudoClasses)shortButton.Classes;
             pseudoClasses.Add(":pointerover");
@@ -1579,7 +1585,6 @@ public class MainWindowVisualSnapshotTests
 
             Assert.False(viewModel.IsGamepadControllerInputActive);
             Assert.Equal(1, hoverRing.Opacity);
-            Assert.False(focusRing.IsVisible);
             Assert.Equal(shortGame.CoverHeight, coverFrame.Bounds.Height, 1);
             Assert.Equal(coverFrame.Bounds.Height, hoverRing.Bounds.Height, 1);
             Assert.True(

@@ -1523,7 +1523,8 @@
                       IsVisible="{Binding HasGames}"
                       SizeChanged="OnGamepadLibrarySizeChanged"
                       IsHitTestVisible="{Binding !HasGamepadOverlay}">
-            <ItemsRepeater x:Name="GamepadRepeater" ItemsSource="{Binding Games}">
+            <Grid>
+              <ItemsRepeater x:Name="GamepadRepeater" ItemsSource="{Binding Games}" Margin="40,0,40,0">
                 <ItemsRepeater.Layout>
                     <UniformGridLayout MinItemWidth="188" MinColumnSpacing="28" MinRowSpacing="28" />
                 </ItemsRepeater.Layout>
@@ -1607,13 +1608,9 @@
                                     <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
                                             CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
                                             BorderThickness="2" />
-                                    <!-- The focus frame is the topmost tile layer, drawn at the cover
-                                         bounds so it never overflows the tile (horizontal overflow was
-                                         being clipped by the tile width). A 5px accent border over the
-                                         cover edge plus the themed glow reads clearly on real artwork. -->
-                                    <Border Classes="gamepad-focus-ring" IsVisible="{Binding IsFocused}" IsHitTestVisible="False"
-                                            CornerRadius="10" BorderBrush="{DynamicResource EmuAccentBrush}"
-                                            BorderThickness="6" BoxShadow="{DynamicResource EmuFocusGlow}" />
+                                    <!-- The controller focus ring is no longer a per-tile layer (it
+                                         vanished whenever its tile was virtualized away). It is now the
+                                         GamepadSelectorRing overlay above, positioned to this cover. -->
                                   </Panel>
                                 </Grid>
                                 <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding Title}"
@@ -1625,7 +1622,18 @@
                         </Button>
                     </DataTemplate>
                 </ItemsRepeater.ItemTemplate>
-            </ItemsRepeater>
+              </ItemsRepeater>
+              <!-- The selector lives OUTSIDE the virtualized items, in this shared content Grid, so it
+                   scrolls with them yet can never be virtualized away or occluded by a cover. The view
+                   positions it (Canvas.Left/Top + size) from the focused cover's geometry, so it is
+                   always drawn wherever focus is — the fix for "the selector sometimes disappears". -->
+              <Canvas x:Name="GamepadSelectorLayer" IsHitTestVisible="False" ClipToBounds="False">
+                  <Border x:Name="GamepadSelectorRing" Classes="gamepad-focus-ring" IsVisible="False"
+                          IsHitTestVisible="False" CornerRadius="10"
+                          BorderBrush="{DynamicResource EmuAccentBrush}"
+                          BorderThickness="6" BoxShadow="{DynamicResource EmuFocusGlow}" />
+              </Canvas>
+            </Grid>
         </ScrollViewer>
         <StackPanel Grid.Row="1" IsVisible="{Binding IsLibraryEmpty}"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="520">
