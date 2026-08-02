@@ -3232,3 +3232,24 @@ are skipped). And on the Deck's short grid viewport a tall portrait tile (cover 
 could be revealed bottom-aligned with its cover clipped ("half the cover"); after BringIntoView the
 view nudges the scroll, in content coordinates, so the whole focused tile stays inside the viewport,
 scrolling only when it is actually clipped.
+
+## 2026-08-02 — RetroArch save-state compatibility keys on the core, not the frontend
+
+Real cross-machine testing showed states uploaded from a Steam Deck never restored on Windows:
+Google Drive held them, but the Windows launch marked each "written by a different emulator version"
+and skipped it. Cause: the state-compatibility key mixed in the RetroArch *frontend* version
+(`ResolveEmulatorVersion`), and two machines almost never run the identical RetroArch build — so the
+Deck key and the Windows key differed even when the core was byte-identical.
+
+A libretro save state is produced by the core, so its portability depends on the core (name +
+version) and CPU architecture, not the frontend. The RetroArch key is now
+`retroarch:<coreId> | <arch> | <coreVersion> | <coreVersion>` with the frontend version removed. The
+core's published `display_version` (from its info file) is platform-independent, so a state made on
+Linux restores on Windows for the same core version; the file-length token remains a within-platform
+fallback only for when the info file is absent (a `.so` and a `.dll` differ in length, so cross-OS
+restore then needs the info file present on both). Standalone emulators (DuckStation, PCSX2, …) keep
+keying on their own version — that is the correct guard, since their states are version-specific.
+
+Consequence: states already uploaded under the old key keep it (an unchanged state retains its
+recorded compatibility, by design), so a fresh state must be made after both machines update before
+cross-machine restore is observable; new states carry the new, matching key.

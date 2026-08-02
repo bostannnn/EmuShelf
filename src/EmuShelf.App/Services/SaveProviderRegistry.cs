@@ -256,6 +256,7 @@ public static class SaveProviderRegistry
         .. RetroArchPlatform("nds", "Nintendo DS"),
         .. RetroArchPlatform("gba", "Game Boy Advance"),
         .. RetroArchPlatform("gbc", "Game Boy Color"),
+        .. RetroArchPlatform("nes", "Nintendo Entertainment System"),
         // Flycast's shared VMU images live in RetroArch's system directory, outside any save
         // folder; only its per-game VMUs land in the save directory, where the same name matching
         // as every other core applies.
@@ -382,25 +383,37 @@ public static class SaveProviderRegistry
                 ? saves
                 : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
-        var coreVersion = ResolveCoreVersion(context);
-        if (saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion))
+        var architecture = ResolveEmulatorArchitecture(context);
+        StateCompatibility? compatibility;
+        if (saves is RetroArchSaveLocationProvider)
         {
-            // A libretro state is written by the core, so the core identity is the compatibility key.
-            // When the core's info file (its display_version) is not present — common on a Flatpak
-            // RetroArch or a core dropped in beside EmuShelf — fall back to a token derived from the
-            // core file itself so state sync is not silently disabled. It is stable per build and
-            // identical across machines, and a different build yields a different token, so the
-            // "only restore a state written by the same build" guard still holds. Without this the
-            // whole state compatibility resolves to null and every state is dropped with no upload.
-            coreVersion = ResolveCoreFileToken(context);
+            // A libretro save state is produced by the core, not by the RetroArch frontend, so its
+            // portability depends on the core (name + version) and CPU architecture. Deliberately
+            // exclude the frontend version: two machines almost never run the same RetroArch build,
+            // and keying on it made every state "written by a different emulator version" on the
+            // other machine even when the core was identical — states uploaded from the Deck never
+            // restored on Windows. The core's published display_version is platform-independent, so a
+            // state made on Linux restores on Windows for the same core version. A file-length token
+            // is only a within-platform fallback for when the core info file is absent (that token
+            // differs between a .so and a .dll, so cross-OS restore then needs the info file present).
+            var coreId = RetroArchCoreId(context.CorePath);
+            var coreVersion = ResolveCoreVersion(context) ?? ResolveCoreFileToken(context);
+            compatibility = StateCompatibility.Create(
+                $"retroarch:{coreId}",
+                coreVersion,
+                coreVersion,
+                architecture);
         }
-        var emulatorVersion = ResolveEmulatorVersion(context)
-            ?? (saves is RetroArchSaveLocationProvider ? coreVersion : null);
-        var compatibility = StateCompatibility.Create(
-            EmulatorId(saves),
-            emulatorVersion,
-            coreVersion,
-            ResolveEmulatorArchitecture(context));
+        else
+        {
+            // A standalone emulator's states are tied to its own version; two machines must run the
+            // same build to restore, which is the correct guard for DuckStation/PCSX2/etc.
+            compatibility = StateCompatibility.Create(
+                EmulatorId(saves),
+                ResolveEmulatorVersion(context),
+                coreVersion: null,
+                architecture);
+        }
         return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves, gameStateKeys);
     }
 
@@ -450,6 +463,16 @@ public static class SaveProviderRegistry
     // so it stands in for the core version without a content hash on the launch path.
     private static string? ResolveCoreFileToken(SaveProviderContext context) =>
         FileLengthToken("core", context.CorePath);
+
+    // The libretro core's stable short id (the file name without the _libretro suffix), so the state
+    // compatibility key names the exact core across machines and never collides between cores.
+    private static string RetroArchCoreId(string? corePath)
+    {
+        if (string.IsNullOrWhiteSpace(corePath))
+            return "core";
+        return Path.GetFileNameWithoutExtension(corePath)
+            .Replace("_libretro", string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
 
     private static AuxiliaryFileSource State(
         Func<CancellationToken, string?> root,

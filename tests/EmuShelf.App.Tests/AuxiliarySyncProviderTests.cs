@@ -234,6 +234,46 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
+    public void RetroArchStateCompat_IgnoresFrontendVersionSoStatesRestoreCrossMachine()
+    {
+        // Regression for "states upload from the Deck but never restore on Windows": a libretro state
+        // is produced by the core, so its compatibility key must depend on the core + architecture,
+        // not the RetroArch frontend version. Two machines almost never run the same RetroArch build,
+        // and keying on it marked every state "written by a different emulator version". Same core =>
+        // same key regardless of which frontend produced it.
+        Directory.CreateDirectory(_root);
+        var core = WriteElfCore(Path.Combine(_root, "genesis_plus_gx_libretro.so"));
+        var deckFrontend = Path.Combine(_root, "retroarch-deck");
+        File.WriteAllBytes(deckFrontend, new byte[100]);
+        var windowsFrontend = Path.Combine(_root, "retroarch-win.exe");
+        File.WriteAllBytes(windowsFrontend, new byte[500]);
+        var descriptor = SaveProviderRegistry.Find("megadrive")!;
+
+        string? KeyFor(string frontend)
+        {
+            var context = new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: _root,
+                IsFlatpak: false,
+                Paths: new AppPaths(_root),
+                CorePath: core,
+                ExecutablePath: frontend,
+                StateDirectoryOverride: _root);
+            var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+                descriptor,
+                descriptor.CreateProvider(context)!,
+                context,
+                includeSaveStates: true,
+                includeBaseSaves: false);
+            return provider.GetCompatibility("retroarch/megadrive/states/game.state");
+        }
+
+        var deckKey = KeyFor(deckFrontend);
+        Assert.NotNull(deckKey);
+        Assert.Equal(deckKey, KeyFor(windowsFrontend));
+    }
+
+    [Fact]
     public async Task StateScoping_LimitsLaunchSyncToTheLaunchedGamesStates()
     {
         // Regression for "launching Bully syncs every game's states": on a launch/exit pass the state
