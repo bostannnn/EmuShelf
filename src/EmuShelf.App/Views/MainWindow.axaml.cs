@@ -108,6 +108,7 @@ public partial class MainWindow : Window
 
         GamepadRepeater.UpdateLayout();
         SyncGamepadColumnCountFromLayout();
+        RequestVisibleGamepadCovers();
         element.BringIntoView();
         EnsureGamepadTileFullyVisible(element);
         if (viewModel.IsGamepadControllerInputActive && !viewModel.HasGamepadOverlay)
@@ -117,6 +118,23 @@ public partial class MainWindow : Window
                 .FirstOrDefault(button => ReferenceEquals(button.DataContext, focused));
             if (gameButton is not null)
                 FocusManager?.Focus(gameButton, NavigationMethod.Directional);
+        }
+    }
+
+    // Covers load off per-element attach/data-context events, which race during rapid LB/RB
+    // recycling — a tile handed a new game while detached, or whose event was missed, can stay blank
+    // ("empty spaces instead of game covers"). This is the settle-time backstop: once the grid has
+    // laid out, request the cover for every realized tile. LoadCover is idempotent (a tile that
+    // already has, or is loading, its cover is skipped), so this only fills the ones that were missed.
+    private void RequestVisibleGamepadCovers()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
+            return;
+
+        for (var index = 0; index < viewModel.Games.Count; index++)
+        {
+            if (GamepadRepeater.TryGetElement(index) is { } element)
+                RequestGameCover(element);
         }
     }
 
