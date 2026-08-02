@@ -11,7 +11,7 @@ public static class RetroArchDefinition
     public static EmulatorDefinition Instance { get; } = new(
         "retroarch",
         "RetroArch",
-        ["megadrive", "nds", "gba", "snes", "dreamcast", "arcade", "gbc"],
+        ["megadrive", "nds", "gba", "snes", "nes", "dreamcast", "arcade", "gbc"],
         "-L \"{CorePath}\" \"{GamePath}\"",
         RequiresCorePath: true,
         SharesDefaultInstallation: true,

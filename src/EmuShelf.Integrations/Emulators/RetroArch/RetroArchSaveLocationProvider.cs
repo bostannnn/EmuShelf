@@ -36,6 +36,10 @@ public sealed record RetroArchCore(string CoreId, string FileName, string? Name)
         ["fbneo"] = "FinalBurn Neo",
         ["gambatte"] = "Gambatte",
         ["sameboy"] = "SameBoy",
+        ["mesen"] = "Mesen",
+        ["fceumm"] = "FCEUmm",
+        ["nestopia"] = "Nestopia UE",
+        ["quicknes"] = "QuickNES",
     };
 
     /// <summary>Identifies the configured core, reading RetroArch's info entry when it is present.</summary>

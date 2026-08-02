@@ -16,6 +16,7 @@ public static class RetroAchievementsConsoles
         "snes" => 3,
         "gba" => 5,
         "gbc" => 6,
+        "nes" => 7,
         "arcade" => 27,
         "nds" => 18,
         "psp" => 41,

@@ -7,8 +7,8 @@ namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
 /// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
-/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Super Nintendo, Dreamcast, GameCube,
-/// and Wii. PS3 remains
+/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Game Boy Color, NES, Super Nintendo,
+/// Dreamcast, GameCube, Wii, and Arcade. PS3 remains
 /// directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
@@ -25,6 +25,7 @@ public sealed class FileImportRules : IGameImportRules
     private const string WiiId = "wii";
     private const string ArcadeId = "arcade";
     private const string GameBoyColorId = "gbc";
+    private const string NesId = "nes";
 
     private static readonly IReadOnlyDictionary<string, HashSet<string>> ExtensionsBySystem =
         new Dictionary<string, HashSet<string>>
@@ -47,6 +48,9 @@ public sealed class FileImportRules : IGameImportRules
             // The extension is a routing hint only: the reader requires the Game Boy boot logo, a
             // valid header checksum, and the CGB flag, so an original Game Boy ROM is never accepted.
             [GameBoyColorId] = new(StringComparer.OrdinalIgnoreCase) { ".gbc", ".gb" },
+            // The extension is a routing hint only: the reader requires the iNES "NES\x1A" magic and a
+            // length that fits the PRG/CHR banks the header declares, so a renamed file is rejected.
+            [NesId] = new(StringComparer.OrdinalIgnoreCase) { ".nes" },
             // The extension is a routing hint only: the reader requires a valid internal LoROM or
             // HiROM header. Copier formats (.fig/.swc) wait for their own normalization contract.
             [SuperNintendoId] = new(StringComparer.OrdinalIgnoreCase) { ".sfc", ".smc" },
@@ -103,6 +107,9 @@ public sealed class FileImportRules : IGameImportRules
             : null;
         var gameBoyColorHeader = ExtensionsBySystem[GameBoyColorId].Contains(extension)
             ? GameBoyColorRomReader.TryRecognize(path)
+            : null;
+        var nesHeader = ExtensionsBySystem[NesId].Contains(extension)
+            ? NesRomReader.TryRecognize(path)
             : null;
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
@@ -162,6 +169,9 @@ public sealed class FileImportRules : IGameImportRules
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 GameBoyColorId => gameBoyColorHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                NesId => nesHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 SuperNintendoId => superNintendoHeader is null
@@ -226,6 +236,8 @@ public sealed class FileImportRules : IGameImportRules
             return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
         if (system.Id == GameBoyColorId)
             return GameBoyColorRomReader.TryRecognize(path) is not null;
+        if (system.Id == NesId)
+            return NesRomReader.TryRecognize(path) is not null;
         if (system.Id == SuperNintendoId)
             return SuperNintendoRomReader.TryRecognize(path) is not null;
         if (system.Id == DreamcastId)
@@ -345,6 +357,16 @@ public sealed class FileImportRules : IGameImportRules
                 "Game Boy Color header",
                 gameBoyColorEvidence.Sha1,
                 "Game Boy Color ROM");
+
+        // The iNES header has no reliable commercial game code, so only the SHA-1 is catalogue
+        // evidence. Unlike SNES this keeps the 16-byte header, because the No-Intro NES set is keyed
+        // by the whole headered file; RetroAchievements strips the header in its own hasher instead.
+        if (system.Id == NesId && NesRomReader.TryRead(path) is { } nesEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "NES header",
+                nesEvidence.Sha1,
+                "NES ROM");
 
         // The SNES header has no reliable commercial game code, so only the headerless SHA-1 is
         // used as catalogue evidence; the Shift-JIS header title stays out of the display fields.

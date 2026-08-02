@@ -22,6 +22,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string NintendoDsId = "nds";
     private const string GameBoyAdvanceId = "gba";
     private const string GameBoyColorId = "gbc";
+    private const string NesId = "nes";
     private const string SuperNintendoId = "snes";
     private const string DreamcastId = "dreamcast";
     private const string ArcadeId = "arcade";
@@ -46,6 +47,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string NintendoDsAlgorithm = "rcheevos-2ac45d3-nds-v1";
     private const string GameBoyAdvanceAlgorithm = "rcheevos-2ac45d3-gba-v1";
     private const string GameBoyColorAlgorithm = "rcheevos-2ac45d3-gbc-v1";
+    // NES strips the 16-byte iNES header, then MD5s only the PRG + CHR the header declares — its own
+    // reader, not the whole-file cartridge hash used for Mega Drive / GBA / GBC.
+    private const string NesAlgorithm = "rcheevos-2ac45d3-nes-v1";
     private const string SuperNintendoAlgorithm = "rcheevos-2ac45d3-snes-v1";
     // Not suffixed with the container: the hash is IP.BIN plus the boot executable regardless of
     // how the tracks are packaged, so adding CDI or CHD later must not invalidate stored GDI hashes.
@@ -64,6 +68,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         NintendoDsId => NintendoDsAlgorithm,
         GameBoyAdvanceId => GameBoyAdvanceAlgorithm,
         GameBoyColorId => GameBoyColorAlgorithm,
+        NesId => NesAlgorithm,
         SuperNintendoId => SuperNintendoAlgorithm,
         DreamcastId => DreamcastAlgorithm,
         ArcadeId => ArcadeAlgorithm,
@@ -136,6 +141,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                     inspected.SourcePath!,
                     cancellationToken),
                 GameBoyColorId => HashGameBoyColor(
+                    inspected.SourcePath!,
+                    cancellationToken),
+                NesId => HashNes(
                     inspected.SourcePath!,
                     cancellationToken),
                 SuperNintendoId => HashSuperNintendo(
@@ -272,6 +280,13 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified Game Boy Color reader.";
             }
+            else if (game.SystemId == NesId)
+            {
+                var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+                canHash = extension == ".nes";
+                if (!canHash)
+                    error = $"{extension.ToUpperInvariant()} needs a verified NES reader.";
+            }
             else if (game.SystemId == SuperNintendoId)
             {
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
@@ -391,6 +406,18 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         }
 
         return Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(setName))).ToLowerInvariant();
+    }
+
+    private static string HashNes(string path, CancellationToken cancellationToken)
+    {
+        if (NesRomReader.TryRecognize(path) is null)
+        {
+            throw new UnsupportedDiscLayoutException(
+                "This NES image is not a supported iNES cartridge layout.");
+        }
+
+        // rcheevos skips the iNES header and hashes the PRG + CHR ROM (see NesRomHasher).
+        return NesRomHasher.Hash(path, cancellationToken);
     }
 
     private static string HashSuperNintendo(string path, CancellationToken cancellationToken)

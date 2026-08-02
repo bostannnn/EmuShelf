@@ -20,6 +20,8 @@ public static class KnownMetadataProfiles
         new GameBoyAdvanceRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor GameBoyColorExtractor =
         new GameBoyColorRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor NesExtractor =
+        new NesRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor SuperNintendoExtractor =
         new SuperNintendoRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor DreamcastExtractor =
@@ -103,6 +105,13 @@ public static class KnownMetadataProfiles
             RawCatalog("metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat"),
             GameBoyAdvanceExtractor,
             [new LibretroArtworkProvider("Nintendo - Game Boy Advance")]),
+        // NES is keyed by the SHA-1 of the whole headered file, the form the No-Intro NES set uses.
+        new(
+            "nes",
+            GameIdentifierKind.Sha1,
+            RawCatalog("metadat/no-intro/Nintendo%20-%20Nintendo%20Entertainment%20System.dat"),
+            NesExtractor,
+            [new LibretroArtworkProvider("Nintendo - Nintendo Entertainment System")]),
         new(
             "snes",
             GameIdentifierKind.Sha1,

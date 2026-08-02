@@ -25,6 +25,10 @@ public static class KnownSystems
         new("megadrive",    "Mega Drive / Genesis", "MD", "#3A6D74", 0.708),
         new("nds",          "Nintendo DS",   "DS",  "#7580B9", 1.115),
         new("gba",          "Game Boy Advance", "GBA", "#7065A7", 1.0),
+        // NES launches through RetroArch (an FCEUmm / Nestopia / Mesen core). The North-American
+        // cardboard boxes are portrait, so the placeholder frame is portrait like the disc systems;
+        // a loaded cover's own dimensions replace this ratio.
+        new("nes",          "Nintendo Entertainment System", "NES", "#9B7E6B", 0.72),
         // SNES box art is the wide North-American cardboard box: representative Libretro scans are
         // 512×357 (1.434), so unlike the portrait disc systems a SNES cover is short and wide. The
         // frame stays under the 266px disc shelf, bottom-aligned like the other short covers.
