@@ -3326,3 +3326,27 @@ residual timing faults cannot be reproduced off-device, a **fault-only** diagnos
 logs to `Logs/EmuShelf-*.log` when the focused tile fails to realize, the selector cannot be placed, or
 the arithmetic and rendered column counts disagree — so a single Deck run pinpoints any remainder
 without flooding the log on every d-pad move.
+
+## 2026-08-03 — State architecture falls back to the host; grid nav trusts the rendered column count
+
+Real Steam Deck logs (with the diagnostics above) settled two things the RetroArch fix had left open.
+
+- **PCSX2 states never left the Deck** because `ResolveEmulatorArchitecture` returned null: a Deck
+  Flatpak/AppImage/wrapper PCSX2 exposes no binary whose header `ReadBinaryArchitecture` can parse, and
+  `flatpak --show-arch` wasn't available/usable, so `StateCompatibility.Create` returned null and every
+  state was silently dropped (`compatibilityKey=(none)` in the log). The emulator runs on *this*
+  machine, so the host's own architecture (`RuntimeInformation.OSArchitecture`) is a sound fallback — a
+  machine can't run a foreign-arch emulator natively. Both Deck and Windows now resolve `x64`, and since
+  a Flatpak PCSX2 publishes no version (→ `unk`), the Deck key `st1|pcsx2|x64|unk:` matches Windows'
+  `st1|pcsx2|x64|auth:2.7.469` via the unknown-version rule, so states cross. (A misconfiguration where
+  PCSX2's location points at the *memcards* subfolder still can't derive the state folder — that stays a
+  user-facing error with the `StateDirectoryOverride` escape hatch, not a silent drop.)
+
+- **The grid "can't move left from a mid-row tile" while Right/Up/Down work** is the exact signature of
+  `GamepadColumnCount` being larger than the rendered columns (so `index % columns == 0` wrongly). The
+  count is now refreshed from the realized layout (`SyncGamepadColumnCountFromLayout`) *immediately
+  before* each directional move, so nav math matches what's on screen rather than a width estimate that
+  can go stale. The same pre-move hook logs the full geometry (index, columns, computed column, the
+  focused row's realized width, viewport/cover widths, selector visibility) at Information level — the
+  earlier fault-only logging stayed silent while the bug happened, so this is promoted to always-on per
+  keypress (user-paced, not per-frame).

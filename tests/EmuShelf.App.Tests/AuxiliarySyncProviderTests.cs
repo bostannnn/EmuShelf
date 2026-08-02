@@ -234,6 +234,39 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
+    public void StandaloneState_FallsBackToHostArchitectureWhenTheEmulatorBinaryIsUnreadable()
+    {
+        // Regression for "PCSX2 states never upload from the Steam Deck": the emulator's architecture
+        // could not be read (a Flatpak/wrapper with no parseable binary and no --show-arch), so
+        // compatibility resolved to null and every state was silently dropped (compatibilityKey=none in
+        // the Deck log). The emulator runs on THIS machine, so the host architecture is a sound fallback:
+        // compatibility must resolve, and the key must carry a real architecture, not "(none)".
+        Directory.CreateDirectory(_root);
+        var stateDir = Path.Combine(_root, "pcsx2-states");
+        Directory.CreateDirectory(stateDir);
+        WriteState(stateDir, "game.p2s", 1);
+
+        var descriptor = SaveProviderRegistry.Find("playstation2")!;
+        var context = new SaveProviderContext(
+            DirectoryOverride: null,
+            EmulatorDirectory: _root,
+            IsFlatpak: false,
+            Paths: new AppPaths(_root),
+            ExecutablePath: Path.Combine(_root, "unreadable-binary"), // no parseable architecture
+            StateDirectoryOverride: stateDir);
+        var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            descriptor.CreateProvider(context)!,
+            context,
+            includeSaveStates: true,
+            includeBaseSaves: false);
+
+        Assert.True(provider.HasStateCompatibility);
+        Assert.StartsWith("st1|pcsx2|", provider.StateCompatibilityKey);
+        Assert.DoesNotContain("(none)", provider.StateCompatibilityKey);
+    }
+
+    [Fact]
     public void RetroArchStateCompat_IgnoresFrontendVersionSoStatesRestoreCrossMachine()
     {
         // Regression for "states upload from the Deck but never restore on Windows": a libretro state

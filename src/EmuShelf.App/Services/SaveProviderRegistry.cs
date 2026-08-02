@@ -2,6 +2,7 @@ using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Storage;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Dolphin;
@@ -565,14 +566,32 @@ public static class SaveProviderRegistry
         {
             return executableArchitecture;
         }
-        if (!context.IsFlatpak || string.IsNullOrWhiteSpace(context.FlatpakApplicationId))
-            return null;
-        return FlatpakArchitectures.GetOrAdd(
-            context.FlatpakApplicationId,
-            applicationId => new Lazy<string?>(
-                () => NormalizeArchitecture(ReadFlatpakInfoRaw(applicationId, "--show-arch")),
-                true)).Value;
+        if (context.IsFlatpak && !string.IsNullOrWhiteSpace(context.FlatpakApplicationId) &&
+            FlatpakArchitectures.GetOrAdd(
+                context.FlatpakApplicationId,
+                applicationId => new Lazy<string?>(
+                    () => NormalizeArchitecture(ReadFlatpakInfoRaw(applicationId, "--show-arch")),
+                    true)).Value is { } flatpakArchitecture)
+        {
+            return flatpakArchitecture;
+        }
+
+        // The emulator runs on THIS machine, so when its binary/Flatpak architecture can't be read the
+        // host's own architecture is a sound proxy — a machine cannot run a foreign-arch emulator
+        // natively. Without this, a Flatpak/AppImage/wrapper-script emulator whose arch is unreadable
+        // resolved to null, which made StateCompatibility.Create return null and silently dropped every
+        // save state: on the Steam Deck, PCSX2 uploaded and restored nothing for exactly this reason.
+        return HostArchitecture();
     }
+
+    private static string HostArchitecture() => RuntimeInformation.OSArchitecture switch
+    {
+        Architecture.X64 => "x64",
+        Architecture.Arm64 => "arm64",
+        Architecture.X86 => "x86",
+        Architecture.Arm => "arm",
+        var other => other.ToString().ToLowerInvariant(),
+    };
 
     internal static string? ReadBinaryArchitecture(string path)
     {
