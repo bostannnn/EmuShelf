@@ -3253,3 +3253,39 @@ keying on their own version — that is the correct guard, since their states ar
 Consequence: states already uploaded under the old key keep it (an unchanged state retains its
 recorded compatibility, by design), so a fresh state must be made after both machines update before
 cross-machine restore is observable; new states carry the new, matching key.
+
+## 2026-08-02 — State compatibility is a structured, provenance-aware identity, not an opaque hash
+
+Real Deck↔Windows testing showed the core-keying fix above was necessary but not sufficient: states
+still did not restore. Two residual causes, both because the compatibility "version" could be an
+OS-specific token that two machines never agree on.
+
+- **RetroArch, no info file.** When the core's `display_version` is unavailable (a bare core dropped
+  beside EmuShelf, a Flatpak with no `info/` dir — the common Deck setup), the key fell back to a
+  core **file-length** token. A `.so` (Deck) and a `.dll` (Windows) of the same core have different
+  byte lengths, so the keys differed and Windows rejected every Deck state. It also broke
+  *asymmetrically*: one machine reading `display_version` while the other fell back never matched.
+- **Standalone (PCSX2), Flatpak.** A Flatpak that publishes no version fell back to a `commit<hash>`
+  token, which can never equal a native build's `2.x` version resource — so Deck-Flatpak → Windows
+  PCSX2 states were a guaranteed skip.
+
+The compatibility value is now a **structured, parseable** string —
+`st1|<emulatorId|retroarch:coreId>|<arch>|<auth|unk>:<version>` — compared component-wise rather than
+by exact-string/hash equality. Rule: the emulator/core **id and CPU architecture must always match**;
+the build **version is enforced only when BOTH machines recorded an *authoritative* one** (a core
+`display_version`, an executable version resource, a Flatpak's published version). When either side's
+version is unknown, the state is compatible on id+arch alone. The OS-specific length/commit tokens are
+removed entirely — an unavailable version is recorded as *unknown*, not substituted. This lets a
+bare-core Deck state restore on a Windows `.dll` of the same core (both x64, unknown version), lets a
+Flatpak-PCSX2 state reach a native Windows PCSX2, and still keeps two genuinely different *known*
+versions apart. Keys uploaded before this format are opaque slug-hashes: they fall back to exact-match,
+so a fresh state is still required to cross machines (as already documented above).
+
+This is safe to be permissive: sync never deletes, `SaveSyncService` backs up the losing copy before
+any overwrite, and RetroArch/PCSX2 both validate a state's own embedded version tag on load and refuse
+a genuinely incompatible one — so the worst case of an over-permissive match is "the emulator declines
+to load it," never data loss. The prior behaviour's worst case was the feature silently doing nothing.
+
+Diagnostics were extended to make a residual mismatch self-evident: the launch/exit state pass now logs
+the resolved `compatibilityKey` (two machines must print the same key to restore) and every distinct
+skip reason, to `Logs/EmuShelf-YYYY-MM-DD.log`.

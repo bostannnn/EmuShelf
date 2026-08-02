@@ -388,31 +388,26 @@ public static class SaveProviderRegistry
         if (saves is RetroArchSaveLocationProvider)
         {
             // A libretro save state is produced by the core, not by the RetroArch frontend, so its
-            // portability depends on the core (name + version) and CPU architecture. Deliberately
-            // exclude the frontend version: two machines almost never run the same RetroArch build,
-            // and keying on it made every state "written by a different emulator version" on the
-            // other machine even when the core was identical — states uploaded from the Deck never
-            // restored on Windows. The core's published display_version is platform-independent, so a
-            // state made on Linux restores on Windows for the same core version. A file-length token
-            // is only a within-platform fallback for when the core info file is absent (that token
-            // differs between a .so and a .dll, so cross-OS restore then needs the info file present).
+            // portability depends on the core (id + version) and CPU architecture. The core's published
+            // display_version is platform-independent, so a state made on Linux restores on Windows for
+            // the same core version. When the info file is absent (a bare core dropped beside EmuShelf,
+            // a Flatpak with no info dir) the version is deliberately left UNKNOWN rather than standing
+            // in an OS-specific token: a .so and a .dll differ in byte length, so a length token made
+            // every Deck state read as a different version on Windows. An unknown-version state restores
+            // on any machine running the same core id on the same architecture, and the emulator refuses
+            // a genuinely incompatible state on load.
             var coreId = RetroArchCoreId(context.CorePath);
-            var coreVersion = ResolveCoreVersion(context) ?? ResolveCoreFileToken(context);
-            compatibility = StateCompatibility.Create(
-                $"retroarch:{coreId}",
-                coreVersion,
-                coreVersion,
-                architecture);
+            var coreVersion = NormalizeVersion(ResolveCoreVersion(context));
+            compatibility = StateCompatibility.Create($"retroarch:{coreId}", coreVersion, architecture);
         }
         else
         {
-            // A standalone emulator's states are tied to its own version; two machines must run the
-            // same build to restore, which is the correct guard for DuckStation/PCSX2/etc.
-            compatibility = StateCompatibility.Create(
-                EmulatorId(saves),
-                ResolveEmulatorVersion(context),
-                coreVersion: null,
-                architecture);
+            // A standalone emulator's state format is tied to its build, so enforce an equal version —
+            // but only when both machines can read a real, comparable one. A Flatpak that publishes no
+            // version, or a native binary with no version resource, records an unknown version and syncs
+            // on emulator id + architecture, so a Deck state reaches Windows and the emulator's own
+            // savestate version tag adjudicates on load (rather than being silently dropped in transit).
+            compatibility = StateCompatibility.Create(EmulatorId(saves), ResolveEmulatorVersion(context), architecture);
         }
         return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves, gameStateKeys);
     }
@@ -457,12 +452,6 @@ public static class SaveProviderRegistry
 
         sources.Add(source);
     }
-
-    // A stable per-build identity for a libretro core when its info file has no display_version.
-    // The byte length is identical for the same build on every machine and differs across builds,
-    // so it stands in for the core version without a content hash on the launch path.
-    private static string? ResolveCoreFileToken(SaveProviderContext context) =>
-        FileLengthToken("core", context.CorePath);
 
     // The libretro core's stable short id (the file name without the _libretro suffix), so the state
     // compatibility key names the exact core across machines and never collides between cores.
@@ -524,14 +513,13 @@ public static class SaveProviderRegistry
 
     private static string? ReadFlatpakVersion(string applicationId)
     {
-        // Prefer a published version string; but many Flathub emulators (PCSX2 among them) leave it
-        // empty, which previously read as "version could not be detected" and disabled state sync.
-        // The build commit is always present for an installed Flatpak and is stable per build, so it
-        // is a sound compatibility key when no version is published.
-        if (FirstVersion(ReadFlatpakInfoRaw(applicationId, "--show-version")) is { } version)
-            return version;
-        var commit = ReadFlatpakInfoRaw(applicationId, "--show-commit");
-        return string.IsNullOrWhiteSpace(commit) ? null : "commit" + commit[..Math.Min(commit.Length, 12)];
+        // Only a real, published version is authoritative for cross-machine state compatibility. Many
+        // Flathub emulators (PCSX2 among them) publish none; the build commit is NOT used as a stand-in,
+        // because it is unique to the Flatpak build and can never equal a native build's version — that
+        // made every Deck-Flatpak state read as a different version on Windows. With no published
+        // version the state keys on emulator id + architecture instead (unknown version), so it still
+        // reaches the other machine, which the emulator's own savestate version tag then adjudicates.
+        return FirstVersion(ReadFlatpakInfoRaw(applicationId, "--show-version"));
     }
 
     private static string? ReadFlatpakInfoRaw(string applicationId, string option)
@@ -667,37 +655,18 @@ public static class SaveProviderRegistry
         try
         {
             var info = FileVersionInfo.GetVersionInfo(executablePath);
-            if (FirstVersion(info.ProductVersion, info.FileVersion) is { } embedded)
-                return embedded;
+            return FirstVersion(info.ProductVersion, info.FileVersion);
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or System.ComponentModel.Win32Exception)
         {
             // AppImages and other native Unix executables commonly have no Windows-style version
-            // resource; fall through to the file token below.
-        }
-
-        // Deliberately never launch the emulator to read a version. GUI emulators (DuckStation,
-        // PCSX2, RPCS3, Dolphin) treat an unknown argument as a fatal error and pop a modal dialog
-        // rather than printing a version — on the Steam Deck that surfaced as
-        // "Unknown parameter: --version" every time Saves settings opened, and the process never
-        // exited on its own. A Linux binary usually has no embedded version resource, so key
-        // save-state compatibility off a stable token from the file itself instead (see below).
-        return FileLengthToken("exe", executablePath);
-    }
-
-    // A stable per-build identity for a binary when no readable version is available: its byte
-    // length is identical for the same build on every machine and differs across builds, which is
-    // exactly what state-compatibility needs, and reads nothing but the file's metadata.
-    private static string? FileLengthToken(string prefix, string? path)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            return null;
-        try
-        {
-            return $"{prefix}len{new FileInfo(path).Length}";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
+            // resource. That is not an authoritative version, so it is left unknown rather than
+            // substituted by a file-length token: the length differs across OS/packaging and would
+            // wrongly gate a cross-machine restore. The state then keys on emulator id + architecture.
+            //
+            // The emulator is deliberately never launched to read a version — GUI emulators treat an
+            // unknown argument as a fatal error and pop a modal dialog ("Unknown parameter: --version"
+            // on the Steam Deck), and the process never exits on its own.
             return null;
         }
     }

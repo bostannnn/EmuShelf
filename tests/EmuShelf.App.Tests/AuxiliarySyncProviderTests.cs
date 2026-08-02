@@ -167,10 +167,10 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     public async Task RetroArchStates_ResolveViaOverrideAndCoreBinaryWhenNoInfoFileExists()
     {
         // Regression for "arcade save state not synced": the RetroArch state folder is overridable
-        // 1:1 with the save folder (#5), and state compatibility resolves from the core binary alone
-        // — its architecture plus a length token standing in for a missing info-file version — so a
-        // state is not silently dropped (compatibility null -> zero units) when the core's .info is
-        // absent, which is common on a Steam Deck Flatpak RetroArch or a core dropped in beside it.
+        // 1:1 with the save folder (#5), and state compatibility resolves from the core binary's
+        // architecture alone (the version is left unknown) when the core's .info file is absent — so a
+        // state is not silently dropped (compatibility null -> zero units), which is common on a Steam
+        // Deck Flatpak RetroArch or a bare core dropped in beside it.
         Directory.CreateDirectory(_root);
         var stateDir = Path.Combine(_root, "chosen-states");
         Directory.CreateDirectory(stateDir);
@@ -204,8 +204,8 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         // Regression for the "Unknown parameter: --version" dialog: a GUI emulator with no embedded
         // version resource (a Linux binary) must still resolve state compatibility without being run.
         // Here the fake executable is not a launchable program, so if version resolution tried to
-        // start it with --version this would fail (compatibility null); instead the binary's length
-        // and architecture key it, so states resolve and no process is ever started.
+        // start it with --version this would fail (compatibility null); instead the binary's
+        // architecture keys it (version left unknown), so states resolve and no process is ever started.
         Directory.CreateDirectory(_root);
         var stateDir = Path.Combine(_root, "pcsx2-states");
         Directory.CreateDirectory(stateDir);
@@ -274,6 +274,77 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
+    public void RetroArchStateCompat_IgnoresCoreFileLengthSoDeckSoRestoresOnWindowsDll()
+    {
+        // The exact reported failure: a state uploaded from the Deck (a .so core, no info file) never
+        // restored on Windows (a .dll core of the same id). The previous fix keyed the missing version
+        // off the core file's byte length, which necessarily differs between a .so and a .dll, so the
+        // two keys mismatched and every Deck state was skipped. The identity now keys on core id + CPU
+        // architecture (both identical), leaving the version unknown, so the state restores cross-OS.
+        Directory.CreateDirectory(_root);
+        var deckCore = WriteElfCore(Path.Combine(_root, "genesis_plus_gx_libretro.so"));
+        var windowsCore = WriteElfCore(Path.Combine(_root, "genesis_plus_gx_libretro.dll"), padTo: 4096);
+        Assert.NotEqual(new FileInfo(deckCore).Length, new FileInfo(windowsCore).Length);
+        var descriptor = SaveProviderRegistry.Find("megadrive")!;
+
+        string? KeyFor(string corePath)
+        {
+            var context = new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: _root,
+                IsFlatpak: false,
+                Paths: new AppPaths(_root),
+                CorePath: corePath,
+                StateDirectoryOverride: _root);
+            var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+                descriptor,
+                descriptor.CreateProvider(context)!,
+                context,
+                includeSaveStates: true,
+                includeBaseSaves: false);
+            return provider.GetCompatibility("retroarch/megadrive/states/game.state");
+        }
+
+        var deckKey = KeyFor(deckCore);
+        var windowsKey = KeyFor(windowsCore);
+        Assert.NotNull(deckKey);
+        Assert.NotNull(windowsKey);
+        Assert.True(StateCompatibility.AreCompatible(windowsKey!, deckKey!));
+    }
+
+    [Fact]
+    public void StateCompat_UnknownVersionMatchesOnCoreAndArch_KnownVersionsAreGuarded()
+    {
+        var deck = StateCompatibility.Create("retroarch:genesis_plus_gx", null, "x64")!;
+        var windows = StateCompatibility.Create("retroarch:genesis_plus_gx", null, "x64")!;
+        // Unknown version on both -> compatible on same id + arch (the Deck<->Windows bare-core case).
+        Assert.True(StateCompatibility.AreCompatible(windows.Key, deck.Key));
+
+        // Asymmetric info-file availability: one side reads display_version, the other cannot. Still
+        // restores — an unknown version never blocks a known one.
+        var known = StateCompatibility.Create("retroarch:genesis_plus_gx", "1.7.4", "x64")!;
+        Assert.True(StateCompatibility.AreCompatible(known.Key, deck.Key));
+        Assert.True(StateCompatibility.AreCompatible(deck.Key, known.Key));
+
+        // Two real, different versions keep the same-build guard; equal versions match.
+        var v220 = StateCompatibility.Create("pcsx2", "2.2.0", "x64")!;
+        var v240 = StateCompatibility.Create("pcsx2", "2.4.0", "x64")!;
+        Assert.False(StateCompatibility.AreCompatible(v220.Key, v240.Key));
+        Assert.True(StateCompatibility.AreCompatible(v220.Key, StateCompatibility.Create("pcsx2", "2.2.0", "x64")!.Key));
+
+        // Architecture and core id are always hard gates, even when the version is unknown.
+        Assert.False(StateCompatibility.AreCompatible(
+            deck.Key, StateCompatibility.Create("retroarch:genesis_plus_gx", null, "arm64")!.Key));
+        Assert.False(StateCompatibility.AreCompatible(
+            deck.Key, StateCompatibility.Create("retroarch:snes9x", null, "x64")!.Key));
+
+        // Legacy opaque keys (uploaded before this format) keep exact-match behaviour.
+        Assert.True(StateCompatibility.AreCompatible("retroarch-1-0-x64-abc123", "retroarch-1-0-x64-abc123"));
+        Assert.False(StateCompatibility.AreCompatible("retroarch-1-0-x64-abc123", "retroarch-1-0-x64-def456"));
+        Assert.False(StateCompatibility.AreCompatible(deck.Key, "retroarch-1-0-x64-abc123"));
+    }
+
+    [Fact]
     public async Task StateScoping_LimitsLaunchSyncToTheLaunchedGamesStates()
     {
         // Regression for "launching Bully syncs every game's states": on a launch/exit pass the state
@@ -310,9 +381,10 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     // A minimal little-endian x86-64 ELF header, enough for the architecture reader to identify it.
-    private static string WriteElfCore(string path)
+    // padTo lets a test create two cores that read as the same architecture but differ in byte length.
+    private static string WriteElfCore(string path, int padTo = 20)
     {
-        var bytes = new byte[20];
+        var bytes = new byte[Math.Max(20, padTo)];
         bytes[0] = 0x7f;
         bytes[1] = (byte)'E';
         bytes[2] = (byte)'L';

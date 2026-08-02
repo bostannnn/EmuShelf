@@ -1,39 +1,93 @@
-using System.Security.Cryptography;
-using System.Text;
 using EmuShelf.Core.SaveSync;
 
 namespace EmuShelf.App.Services;
 
+/// <summary>
+/// Identifies which emulator/core build a save state was written by, as a structured string carried
+/// verbatim in the cloud index. A save state's portability depends on the emulator (or libretro core)
+/// identity, the CPU architecture, and — when it can be read authoritatively — the build version.
+/// When no real version is available (a bare libretro core with no info file, a Flatpak that publishes
+/// none), the identity is deliberately version-agnostic: the state still syncs and restores on any
+/// machine running the same id on the same architecture, and the emulator itself refuses a genuinely
+/// incompatible state on load (sync never deletes, so nothing is lost). This is what lets a state made
+/// on a Steam Deck restore on Windows for the same core on x64.
+/// </summary>
 internal sealed record StateCompatibility(string Key, string Description)
 {
+    // A parseable, versioned identity: st1|<emulatorId>|<arch>|<provenance>:<version>. provenance is
+    // "auth" (an authoritative build version was read) or "unk" (none was available). The tag lets a
+    // reader tell a structured key from a legacy opaque one and compare them component-wise.
+    private const string FormatTag = "st1";
+
+    /// <param name="emulatorId">The emulator or "retroarch:&lt;coreId&gt;" identity.</param>
+    /// <param name="authoritativeVersion">
+    /// A real, cross-machine-comparable build version (a core's display_version, an executable's
+    /// version resource, a Flatpak's published version), or null when only OS-specific tokens exist.
+    /// </param>
+    /// <param name="architecture">The CPU architecture the state runs on; required.</param>
     public static StateCompatibility? Create(
         string emulatorId,
-        string? version,
-        string? coreVersion = null,
-        string? architecture = null)
+        string? authoritativeVersion,
+        string? architecture)
     {
-        if (string.IsNullOrWhiteSpace(version) || string.IsNullOrWhiteSpace(architecture))
+        if (string.IsNullOrWhiteSpace(emulatorId) || string.IsNullOrWhiteSpace(architecture))
             return null;
 
-        architecture = architecture.Trim().ToLowerInvariant();
-        var rawIdentity = string.Join('|', new[] { emulatorId, architecture, version, coreVersion }
-            .OfType<string>()
-            .Where(value => !string.IsNullOrWhiteSpace(value)));
-        var readable = Slug(rawIdentity);
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawIdentity)))[..12].ToLowerInvariant();
-        return new StateCompatibility($"{readable}-{hash}", $"{version} · {architecture}");
+        architecture = Sanitize(architecture.Trim().ToLowerInvariant());
+        var version = string.IsNullOrWhiteSpace(authoritativeVersion) ? null : Sanitize(authoritativeVersion.Trim());
+        var provenance = version is null ? "unk" : "auth";
+        var key = string.Join('|', FormatTag, Sanitize(emulatorId), architecture, provenance + ":" + (version ?? string.Empty));
+        var description = version is null ? $"unknown version · {architecture}" : $"{version} · {architecture}";
+        return new StateCompatibility(key, description);
     }
 
-    private static string Slug(string value)
+    /// <summary>
+    /// Whether a state written under <paramref name="remoteKey"/> can be restored on a machine whose
+    /// current identity is <paramref name="localKey"/>. Same emulator/core id and CPU architecture are
+    /// always required; the build version is enforced only when BOTH sides recorded an authoritative
+    /// one, so an unknown-version state (bare core, unversioned Flatpak) restores across machines while
+    /// two known-but-different versions are still kept apart. Keys that predate this format (or are
+    /// otherwise unparseable) fall back to exact-string equality, so already-uploaded legacy states
+    /// keep their prior, stricter behavior.
+    /// </summary>
+    public static bool AreCompatible(string localKey, string? remoteKey)
     {
-        var result = new string(value.ToLowerInvariant()
-            .Select(character => char.IsAsciiLetterOrDigit(character) ? character : '-')
-            .ToArray());
-        while (result.Contains("--", StringComparison.Ordinal))
-            result = result.Replace("--", "-", StringComparison.Ordinal);
-        var trimmed = result.Trim('-');
-        return trimmed[..Math.Min(trimmed.Length, 48)];
+        if (string.IsNullOrEmpty(remoteKey))
+            return false;
+        if (Parse(localKey) is not { } local || Parse(remoteKey) is not { } remote)
+            return string.Equals(localKey, remoteKey, StringComparison.Ordinal);
+        if (!string.Equals(local.EmulatorId, remote.EmulatorId, StringComparison.Ordinal) ||
+            !string.Equals(local.Architecture, remote.Architecture, StringComparison.Ordinal))
+            return false;
+        // Both known and equal, or at least one unknown: compatible. Both known and different: not.
+        if (local.Version is not null && remote.Version is not null)
+            return string.Equals(local.Version, remote.Version, StringComparison.Ordinal);
+        return true;
     }
+
+    private static Identity? Parse(string? key)
+    {
+        if (string.IsNullOrEmpty(key))
+            return null;
+        var parts = key.Split('|');
+        if (parts.Length != 4 || !string.Equals(parts[0], FormatTag, StringComparison.Ordinal))
+            return null;
+        var separator = parts[3].IndexOf(':');
+        if (separator < 0)
+            return null;
+        var provenance = parts[3][..separator];
+        var version = parts[3][(separator + 1)..];
+        return new Identity(
+            parts[1],
+            parts[2],
+            string.Equals(provenance, "auth", StringComparison.Ordinal) && version.Length > 0 ? version : null);
+    }
+
+    // The fields are '|'-joined and one is ':'-split, so strip those and line breaks from any component.
+    private static string Sanitize(string value) =>
+        new(value.Select(character => character is '|' or ':' or '\r' or '\n' ? '_' : character).ToArray());
+
+    private sealed record Identity(string EmulatorId, string Architecture, string? Version);
 }
 
 internal sealed record AuxiliaryFileSource(
@@ -126,6 +180,13 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     public bool HasStateCompatibility => _compatibility is not null;
 
     /// <summary>
+    /// This machine's resolved state-compatibility key, or null when none could be built. Exposed for
+    /// diagnostics: logging it on both machines makes a cross-machine mismatch (the #1 reason a state
+    /// uploads but does not restore) directly readable instead of only inferable from a skip reason.
+    /// </summary>
+    public string? StateCompatibilityKey => _compatibility?.Key;
+
+    /// <summary>
     /// Resolves each state root independently for Settings. An optional source is advisory: a
     /// missing or unreadable state folder must never hide an otherwise valid save-card location.
     /// </summary>
@@ -151,7 +212,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         if (!IsStateUnit(remoteSnapshot.UnitId))
             return _includeBaseSaves ? _saves.GetRemoteIncompatibilityReason(remoteSnapshot) : null;
         return _compatibility is not null &&
-               string.Equals(remoteSnapshot.Compatibility, _compatibility.Key, StringComparison.Ordinal)
+               StateCompatibility.AreCompatible(_compatibility.Key, remoteSnapshot.Compatibility)
             ? null
             : "This save state was written by a different emulator version or CPU architecture. " +
               "It remains available in the cloud and was not restored.";

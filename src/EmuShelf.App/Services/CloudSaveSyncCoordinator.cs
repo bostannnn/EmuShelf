@@ -382,10 +382,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             if (saves.Status != CloudSaveSyncStatus.Completed ||
                 !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
             {
+                if (saves.Status == CloudSaveSyncStatus.Completed &&
+                    !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
+                {
+                    _logger.Information(
+                        $"Save-state sync skipped for '{systemId}': the platform's " +
+                        "'Automatically sync save states' toggle is off on this machine.");
+                }
                 RecordAutomaticOutcome(systemId, saves);
                 return saves;
             }
 
+            await LogStatePhaseDiagnosticsAsync(systemId, launchStateKeys);
             var states = await RunSyncPipelineAsync(
                 [systemId],
                 progress: null,
@@ -395,6 +403,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 contentScope: SyncContentScope.SaveStatesOnly,
                 recordOutcome: false,
                 stateGameKeys: launchStateKeys);
+            LogStatePhaseResult(systemId, states);
             if (states.Status != CloudSaveSyncStatus.Completed)
             {
                 RecordAutomaticOutcome(
@@ -412,6 +421,70 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         {
             _gate.Release();
         }
+    }
+
+    // Names the failing gate when launch-time save-state sync appears to do nothing. Writes to the
+    // portable app log (Logs/EmuShelf-*.log). Best-effort: diagnostics must never fail a sync.
+    private async Task LogStatePhaseDiagnosticsAsync(string systemId, IReadOnlyCollection<string>? keys)
+    {
+        try
+        {
+            var keyText = keys is { Count: > 0 }
+                ? string.Join(", ", keys)
+                : "(none — this pass reconciles every state for the platform)";
+            var provider = CreateProvider(systemId, SyncContentScope.SaveStatesOnly, keys);
+            var auxiliary = provider as AuxiliarySyncProvider;
+            var compatible = auxiliary?.HasStateCompatibility;
+            // The exact key, logged on both machines: two machines must print the SAME key for a state
+            // to restore. A different key here is the direct signature of the cross-machine mismatch
+            // that leaves states uploaded-but-not-restored.
+            var compatibilityKey = auxiliary?.StateCompatibilityKey ?? "(none)";
+            var localCount = provider is null ? 0 : (await provider.GetSaveUnitsAsync()).Count;
+            _logger.Information(
+                $"Save-state sync for '{systemId}': keys=[{keyText}]; " +
+                $"compatibilityDetected={compatible?.ToString() ?? "n/a"}; compatibilityKey={compatibilityKey}; " +
+                $"localStatesMatched={localCount}. " +
+                (compatible == false
+                    ? "compatibilityDetected=false means the emulator/core version or CPU architecture " +
+                      "could not be read, so states are neither uploaded nor restored — check the emulator " +
+                      "and core are configured. "
+                    : string.Empty) +
+                (localCount == 0 && compatible != false
+                    ? "localStatesMatched=0 while the folder has states means the launched game's name/serial " +
+                      "did not match the state file names (or the state folder is wrong). "
+                    : string.Empty));
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
+        {
+            _logger.Information($"Save-state sync diagnostics for '{systemId}' were unavailable: {ex.Message}");
+        }
+    }
+
+    private void LogStatePhaseResult(string systemId, CloudSaveSyncOutcome outcome)
+    {
+        if (outcome.Report is not { } report)
+        {
+            _logger.Information($"Save-state sync for '{systemId}' did not complete: {outcome.Status}.");
+            return;
+        }
+
+        var skipped = report.Skipped;
+        // Enumerate every distinct skip reason (capped), not just the first: on a launch pass several
+        // states can skip for different reasons (a version mismatch and a name-scope miss at once), and
+        // seeing only the first hides the others.
+        var skippedDetail = string.Empty;
+        if (skipped.Count > 0)
+        {
+            var reasons = skipped
+                .GroupBy(result => result.Reason, StringComparer.Ordinal)
+                .Select(group => $"{group.Count()}× {group.Key}")
+                .Take(5);
+            skippedDetail = " Skip reasons: " + string.Join(" | ", reasons);
+        }
+        _logger.Information(
+            $"Save-state sync for '{systemId}' result: {report.Uploaded} uploaded, {report.Downloaded} downloaded, " +
+            $"{report.Unchanged} already in sync, {skipped.Count} skipped.{skippedDetail}");
     }
 
     /// <summary>
