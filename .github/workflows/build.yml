@@ -3,11 +3,24 @@ name: Build
 on:
   push:
     branches: [main]
+    tags: ['v*']
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer push to the same branch/PR/tag cancels the previous in-flight run so we
+# don't pay for stale builds. Each tag ref is unique, so releases are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -21,17 +34,34 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
       - run: dotnet build -c Release
       - run: dotnet test -c Release --no-build
 
   package:
     needs: build
+    # Packaging is expensive; skip it on PRs (build + test still gate them) and only
+    # produce artifacts on pushes to main, version tags, and manual runs.
+    if: github.event_name != 'pull_request'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
       - name: Publish self-contained Windows build
         run: >-
           dotnet publish src/EmuShelf.App
@@ -86,12 +116,20 @@ jobs:
 
   package-appimage:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
       - name: Install AppImage bundling dependencies
         # build-appimage.sh copies the resolved libICE/libSM (and libicu) from the runner via
         # ldconfig, so they must be installed here for the bundle step to find them.
@@ -129,3 +167,84 @@ jobs:
           path: artifacts/
           if-no-files-found: error
           retention-days: 14
+
+  package-macos:
+    needs: build
+    if: github.event_name != 'pull_request'
+    # macos-latest runners are Apple Silicon, so we build the arm64 slice. Intel Macs
+    # would need a second osx-x64 artifact (or a universal binary) — see the PR notes.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+      - name: Publish self-contained macOS build
+        run: >-
+          dotnet publish src/EmuShelf.App -c Release -r osx-arm64 --self-contained true
+          -p:InvariantGlobalization=false -o publish/mac
+      - name: Bundle rclone (cloud save sync)
+        run: |
+          curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-osx-arm64.zip
+          unzip -o rclone.zip -d rclone-extract
+          rclone_dir="$(dirname "$(find rclone-extract -name rclone -type f | head -n1)")"
+          install -m 0755 "$rclone_dir/rclone" publish/mac/rclone
+          mkdir -p publish/mac/ThirdParty/rclone
+          # rclone's release archives ship no license file, but we redistribute the binary and
+          # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
+          tag="$(basename "$rclone_dir" | sed -n 's/^rclone-\(v[0-9.]*\)-.*$/\1/p')"
+          [ -n "$tag" ] || { echo "Could not derive the rclone version from $rclone_dir" >&2; exit 1; }
+          curl -fL -o publish/mac/ThirdParty/rclone/LICENSE.txt \
+            "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING"
+      - name: Assemble .app bundle
+        run: |
+          chmod +x packaging/macos/build-macos-app.sh
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then version="${GITHUB_REF_NAME#v}"; else version="0.0.0-dev"; fi
+          mkdir -p artifacts
+          packaging/macos/build-macos-app.sh publish/mac artifacts/EmuShelf.app "$version"
+      - name: Verify portable payload
+        run: |
+          app="artifacts/EmuShelf.app/Contents/MacOS"
+          for f in EmuShelf rclone THIRD-PARTY-NOTICES.md ThirdParty/OpenEmu/LICENSE.txt ThirdParty/rclone/LICENSE.txt; do
+            if [ ! -e "$app/$f" ]; then echo "Portable payload is missing $f"; exit 1; fi
+          done
+          test -x "$app/EmuShelf" || { echo "EmuShelf is not executable"; exit 1; }
+      - name: Package .app and checksum
+        run: |
+          # ditto preserves the bundle's permissions and symlinks (plain zip does not).
+          ditto -c -k --sequesterRsrc --keepParent artifacts/EmuShelf.app artifacts/EmuShelf-macos-arm64.zip
+          rm -rf artifacts/EmuShelf.app
+          ( cd artifacts && shasum -a 256 EmuShelf-macos-arm64.zip > EmuShelf-macos-arm64.sha256 )
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EmuShelf-macos-arm64
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    # On a version tag (vX.Y.Z), collect every platform artifact and publish a
+    # GitHub Release so builds are permanent and downloadable, not 14-day artifacts.
+    needs: [package, package-appimage, package-macos]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
