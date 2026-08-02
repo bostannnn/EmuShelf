@@ -788,6 +788,39 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task FocusedGameWidget_UpdatesWhenAchievementDetailsRefresh()
+    {
+        // #6: unlocking an achievement is reflected by a details refresh (from the achievements
+        // overlay or the post-exit pass). The focused-game dock widget must pick that up, not only a
+        // later full reload — previously the widget kept showing the pre-unlock count ("0/9").
+        var path = Path.Combine(_baseDirectory, "WidgetAchievements.cue");
+        File.WriteAllText(path, "FILE \"WidgetAchievements.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Widget game", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        const int raGameId = 9001;
+        var readStore = new MutableRetroAchievementsReadStore(gameId, raGameId);
+        var details = new RecordingRetroAchievementsDetailsService();
+        var vm = CreateViewModel(
+            retroAchievementsRead: readStore,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: details);
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        // The set is confirmed but no progress has loaded, so the widget shows the em dash.
+        Assert.Equal("—/—", vm.FocusedGame!.GamepadAchievementCountText);
+
+        // The unlock lands in the store, then a details refresh announces it.
+        readStore.SetProgress(raGameId, awarded: 1, total: 9);
+        details.Publish(new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(raGameId, "Widget game", 9, 1, 0, []),
+            DateTimeOffset.UtcNow));
+
+        Assert.Equal("1/9", vm.FocusedGame.GamepadAchievementCountText);
+        Assert.True(vm.FocusedGame.ShowAchievementMark);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadAchievements_StayInTheMainOverlayAndNeverRequestDesktopDialog()
     {
         var path = Path.Combine(_baseDirectory, "GamepadAchievements.cue");
@@ -1138,6 +1171,71 @@ public class MainViewModelTests : IDisposable
         // One shared shelf, tall enough for the tallest cover, keeps the grid rows aligned.
         Assert.Equal(ps1.ShelfCoverHeight, cube.ShelfCoverHeight);
         Assert.Equal(Math.Max(ps1.CoverHeight, cube.CoverHeight), ps1.ShelfCoverHeight);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadCovers_KeepCanonicalFrameWhenOffRatioArtworkLoads()
+    {
+        // Regression for the "covers only take half their space" report: a cover fills its
+        // platform's canonical frame (UniformToFill) instead of adopting its own bitmap ratio, so a
+        // single tall/off-ratio scan can never balloon the shared shelf and shrink every other cover.
+        var firstPath = Path.Combine(_baseDirectory, "ShelfCubeA.iso");
+        File.WriteAllText(firstPath, "x");
+        var secondPath = Path.Combine(_baseDirectory, "ShelfCubeB.iso");
+        File.WriteAllText(secondPath, "y");
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Shelf GC A", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Shelf GC B", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        var first = vm.Games.Single(game => game.Title == "Shelf GC A");
+        var second = vm.Games.Single(game => game.Title == "Shelf GC B");
+        var ratioBefore = first.CoverAspectRatio;
+        var shelfBefore = first.ShelfCoverHeight;
+        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+
+        // A very tall, narrow bitmap: under the reverted per-cover-ratio behavior this stretched the
+        // shared shelf to ~7x the cover width and rendered every other tile at a fraction of it.
+        first.CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+
+        Assert.Equal(ratioBefore, first.CoverAspectRatio, precision: 5);
+        Assert.Equal(shelfBefore, first.ShelfCoverHeight);
+        Assert.Equal(shelfBefore, second.ShelfCoverHeight);
+        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadColumnCount_SurvivesAnAsyncCoverLoad()
+    {
+        // Regression for "the selector can't move right / gets stuck": the view reports the true
+        // rendered column count and it must win over width arithmetic. A cover finishing loading used
+        // to re-run the whole cover layout (via per-cover ratio adoption) and reset the count to the
+        // width estimate mid-navigation, which clamped Right partway across a row.
+        var firstPath = Path.Combine(_baseDirectory, "ColsCubeA.iso");
+        File.WriteAllText(firstPath, "x");
+        var secondPath = Path.Combine(_baseDirectory, "ColsCubeB.iso");
+        File.WriteAllText(secondPath, "y");
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Cols GC A", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Cols GC B", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        vm.SetRenderedGamepadColumnCount(5);
+        Assert.Equal(5, vm.GamepadColumnCount);
+
+        vm.Games[0].CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+
+        Assert.Equal(5, vm.GamepadColumnCount);
     }
 
     [AvaloniaFact]
@@ -2754,6 +2852,33 @@ public class MainViewModelTests : IDisposable
 
         public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() =>
             new Dictionary<int, RetroAchievementsProgressSnapshot>();
+    }
+
+    private sealed class MutableRetroAchievementsReadStore(long localGameId, int retroAchievementsGameId)
+        : IRetroAchievementsReadStore
+    {
+        private readonly Dictionary<int, RetroAchievementsProgressSnapshot> _progress = new();
+
+        public void SetProgress(int raGameId, int awarded, int total) =>
+            _progress[raGameId] = new RetroAchievementsProgressSnapshot(
+                new RetroAchievementsGameProgress(raGameId, total, awarded, 0), DateTimeOffset.UtcNow);
+
+        public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks() =>
+            new Dictionary<long, RetroAchievementsGameLink>
+            {
+                [localGameId] = new RetroAchievementsGameLink(
+                    localGameId,
+                    RetroAchievementsIdentificationStatus.Hashed,
+                    "hash",
+                    "algorithm",
+                    "fingerprint",
+                    retroAchievementsGameId,
+                    true,
+                    DateTimeOffset.UtcNow,
+                    null),
+            };
+
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() => _progress;
     }
 
     private sealed class RecordingRetroAchievementsMatchingService : IRetroAchievementsMatchingService

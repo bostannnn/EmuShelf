@@ -1048,9 +1048,9 @@
                                     </ContextMenu>
                                 </StackPanel.ContextMenu>
 
-                                <!-- The platform ratio frames placeholders. Once artwork loads, its own
-                                     dimensions size the frame, preserving regional package shapes while
-                                     tiles remain bottom-aligned on the shared mixed-library shelf. -->
+                                <!-- One canonical frame per platform sizes the cover and the placeholder
+                                     alike; real artwork fills it (UniformToFill) so a system's tiles are
+                                     uniform and bottom-align on the shared mixed-library shelf. -->
                                 <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
                                 <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                        VerticalAlignment="Bottom">

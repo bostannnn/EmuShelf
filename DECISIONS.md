@@ -3124,3 +3124,67 @@ both entry points duplicated the same catalog and crowded the small group of glo
 the gear is now the single Desktop configuration entry point. Gamepad mode retains its controller-native
 Themes page, and both settings surfaces continue to share the same theme-choice instances and persistence
 path so selection state stays synchronized.
+
+## 2026-08-02 — Covers fill one canonical per-platform frame again (Steam Deck grid fixes)
+
+Steam Deck testing reported three grid faults together: covers rendering at roughly half their
+expected height with empty space above, intermittent blank tiles, and the controller selector
+sometimes unable to move right / "stuck". They share one cause.
+
+Commit `232229b` (2026-07-25) had quietly reversed the 2026-07-17 "one canonical frame per platform"
+decision: `GameViewModel` began adopting each loaded bitmap's own aspect ratio (`SetCoverAspectRatio`,
+raising `CoverAspectRatioChanged`). Two consequences followed on a real mixed-provider library:
+
+- The shared cover shelf is `max(cover height)` across the view, and covers bottom-align in it. Once
+  tiles adopt their own ratios, a single tall or off-ratio scan balloons the shelf and every other
+  cover renders at a fraction of it — the "covers only take half their space" report.
+- Every cover finishing its async load fired `CoverAspectRatioChanged → UpdateCoverLayout()`, which
+  re-applied layout to all tiles and **recomputed `GamepadColumnCount` from width arithmetic**,
+  clobbering the authoritative rendered column count the view reports. A momentarily-low arithmetic
+  count made Right/Left clamp partway across a row (the 2026-07-31 "stuck at second column" fix,
+  re-broken), and the constant relayout churn as covers streamed in surfaced as blank/again-blank
+  tiles.
+
+The fix restores the documented behavior: `CoverAspectRatio` is the platform's canonical frame for
+the whole session, set once at construction, and the real cover fills it (`UniformToFill`, already in
+the tile templates), cropping at most the ~2px of outer bleed the 2026-07-17 decision accepted. A
+cover load now only toggles `HasCoverImage`; it never resizes the shelf or re-runs the column-count
+arithmetic. `SetCoverAspectRatio`, the `CoverAspectRatioChanged` event, and its `UpdateCoverLayout`
+subscription were removed. Arcade already used a fixed landscape frame, so its behavior is unchanged;
+now every platform behaves the same way it does. Regression tests assert an off-ratio cover load
+leaves a tile's canonical frame and the shared shelf untouched, and that a cover load no longer
+resets the rendered gamepad column count.
+
+## 2026-08-02 — Save states get their own detected folder and override, 1:1 with saves
+
+Steam Deck testing found arcade (RetroArch/FinalBurn Neo) save states were not syncing: a state was
+made and the post-exit pass reported "no saves were found to sync". Two gaps, now closed.
+
+- **Silent compatibility drop.** `AuxiliarySyncProvider` only enumerates states when a
+  `StateCompatibility` can be built, and for a RetroArch core that requires the core's
+  `display_version` from its `info/*.info` file. On a Flatpak RetroArch, or when the core file is
+  dropped in beside EmuShelf, that info file is often absent, so compatibility resolved to null and
+  every state was silently dropped with no upload. A libretro state is written by the core, so the
+  core identity is the compatibility key: when `display_version` is unavailable, EmuShelf now falls
+  back to a stable token derived from the core file's byte length (identical for the same build on
+  every machine, different across builds). Architecture still comes from the core binary. So state
+  sync resolves whenever the core file exists, while the "only restore a state from the same build"
+  guard is preserved.
+
+- **No way to correct the folder.** Save states now have their own detected-folder display and manual
+  override, mirroring the save folder exactly: `SaveLocationSettings.StateDirectoryOverride`,
+  `CloudSaveSyncSettings.GetStateOverride`/`WithStateOverride`, a `StateDirectoryOverride` on
+  `SaveProviderContext` that replaces the resolved state root in `AddStateSources`, and a second
+  path box + Browse button under the "Automatically sync save states" toggle in Settings. It persists
+  the same way the save override does (immediately on Browse, and in the Settings Save batch).
+
+## 2026-08-02 — The focused-game achievement widget follows a details refresh
+
+RetroAchievements progress that arrives from a detail refresh — opening the achievements overlay, or
+the one post-exit refresh — writes the account's new unlock count to the progress store, but only a
+full library reload re-applied it to a tile. So after unlocking an achievement the Gamepad focused-game
+dock widget kept showing the pre-unlock count ("0/9") even though the overlay already reflected it.
+`MainViewModel` now subscribes to `IRetroAchievementsDetailsService.DetailsRefreshed` and re-applies
+the achievement display for every loaded tile linked to that RA game (re-reading the same local
+stores the reload path uses, no network), marshaled to the UI thread. The dock widget and grid mark
+now update as soon as fresh progress is cached, whether from the overlay or the post-exit pass.

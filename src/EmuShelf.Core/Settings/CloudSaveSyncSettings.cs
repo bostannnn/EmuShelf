@@ -9,6 +9,13 @@ public sealed record SaveLocationSettings
     /// <summary>An explicit save location chosen by the user, or null to derive it from the emulator.</summary>
     public string? DirectoryOverride { get; init; }
 
+    /// <summary>
+    /// An explicit save-state folder chosen by the user, or null to derive it from the emulator.
+    /// Mirrors <see cref="DirectoryOverride"/> for save states so a mis-detected state folder can be
+    /// corrected the same way a save folder can.
+    /// </summary>
+    public string? StateDirectoryOverride { get; init; }
+
     /// <summary>When this system last synchronized successfully, or null if it never has.</summary>
     public DateTimeOffset? LastSuccessUtc { get; init; }
 
@@ -89,6 +96,14 @@ public sealed record CloudSaveSyncSettings
             ? location.DirectoryOverride
             : null;
 
+    /// <summary>The explicit save-state folder override for one system, or null when none is set.</summary>
+    public string? GetStateOverride(string systemId) =>
+        SafeSaveLocations.TryGetValue(systemId, out var location) &&
+        location is not null &&
+        !string.IsNullOrWhiteSpace(location.StateDirectoryOverride)
+            ? location.StateDirectoryOverride
+            : null;
+
     /// <summary>The stored state for one system, or an empty record when it has none yet.</summary>
     public SaveLocationSettings GetLocation(string systemId) =>
         SafeSaveLocations.TryGetValue(systemId, out var location) && location is not null
@@ -100,6 +115,13 @@ public sealed record CloudSaveSyncSettings
     {
         var trimmed = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim();
         return With(systemId, location => location with { DirectoryOverride = trimmed });
+    }
+
+    /// <summary>Replaces one system's save-state folder override, leaving its other state intact.</summary>
+    public CloudSaveSyncSettings WithStateOverride(string systemId, string? directory)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim();
+        return With(systemId, location => location with { StateDirectoryOverride = trimmed });
     }
 
     /// <summary>Updates optional content without changing the platform's save location or result.</summary>

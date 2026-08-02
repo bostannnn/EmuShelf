@@ -485,6 +485,13 @@ public partial class MainViewModel : ViewModelBase
         _retroMatching = retroMatching;
         _retroProgress = retroProgress;
         _retroDetails = retroDetails;
+        // A details refresh (opening the achievements overlay, or the post-exit refresh) writes the
+        // account's new unlock count to the progress store, but only a full reload re-applied it to a
+        // tile. So the focused-game dock widget kept showing the pre-unlock count ("0/9") after an
+        // unlock the overlay already reflected. Re-apply the affected tiles' display when fresh
+        // details arrive so the widget and grid mark update without a reload.
+        if (_retroDetails is not null)
+            _retroDetails.DetailsRefreshed += OnAchievementDetailsRefreshed;
         _retroRefresh = retroRefresh;
         _retroBadges = retroBadges;
         _cloudSaveSync = cloudSaveSync;
@@ -1844,7 +1851,6 @@ public partial class MainViewModel : ViewModelBase
                         titleSet.DisplayTitle,
                         titleSet.SelectionKey,
                         LaunchSelectedDiscFromLibraryAsync);
-                    viewModel.CoverAspectRatioChanged += OnGameCoverAspectRatioChanged;
                     viewModels.Add(viewModel);
                 }
 
@@ -1906,6 +1912,55 @@ public partial class MainViewModel : ViewModelBase
         HasGames = false;
         IsLibraryEmpty = false;
         IsSearchEmpty = false;
+    }
+
+    // A just-refreshed detail carries the account's current unlocks. Re-apply the display for every
+    // loaded tile linked to that RA game so the focused-game widget and grid mark reflect a new
+    // unlock immediately, whether the refresh came from the post-exit pass or from opening the
+    // achievements overlay. This never touches the network: it re-reads the local stores the reload
+    // path already uses. Marshaled to the UI thread because the details service raises this from the
+    // request continuation.
+    private void OnAchievementDetailsRefreshed(RetroAchievementsDetailsSnapshot snapshot)
+    {
+        if (_retroAchievementsRead is null)
+            return;
+
+        if (Dispatcher.UIThread.CheckAccess())
+            ApplyRefreshedAchievementDisplay(snapshot.Details.GameId);
+        else
+            Dispatcher.UIThread.Post(() => ApplyRefreshedAchievementDisplay(snapshot.Details.GameId));
+    }
+
+    private void ApplyRefreshedAchievementDisplay(int retroAchievementsGameId)
+    {
+        if (_retroAchievementsRead is null)
+            return;
+
+        try
+        {
+            var affected = _systemGames
+                .Where(game => game.RetroAchievementsGameId == retroAchievementsGameId)
+                .ToArray();
+            if (affected.Length == 0)
+                return;
+
+            var links = _retroAchievementsRead.GetAllLinks();
+            var progress = _retroAchievementsRead.GetAllProgress();
+            var connected = _retroAccount?.IsConnected ?? false;
+            foreach (var game in affected)
+            {
+                links.TryGetValue(game.Id, out var link);
+                RetroAchievementsProgressSnapshot? snapshot = null;
+                if (link?.RetroAchievementsGameId is { } raGameId)
+                    progress.TryGetValue(raGameId, out snapshot);
+                game.ApplyAchievementsDisplay(
+                    RetroAchievementsDisplay.For(game.SystemId, connected, link, snapshot));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not apply refreshed RetroAchievements progress to the library.", ex);
+        }
     }
 
     // Resolves each game's achievement presentation from the cached links + progress and the
@@ -2107,8 +2162,6 @@ public partial class MainViewModel : ViewModelBase
             game.IsCoverLoading = false;
         }
     }
-
-    private void OnGameCoverAspectRatioChanged(object? sender, EventArgs e) => UpdateCoverLayout();
 
     // Sets the sort column, toggling ascending/descending when the same column is chosen again.
     [RelayCommand]

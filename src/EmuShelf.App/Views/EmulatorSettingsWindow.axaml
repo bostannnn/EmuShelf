@@ -558,6 +558,21 @@
                                                                IsVisible="{Binding SupportsSaveStates}"
                                                                FontSize="11" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                    <!-- Save states get their own detected folder + manual override,
+                                                         mirroring the save folder above, so a mis-detected state
+                                                         folder can be corrected the same way. -->
+                                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                                                          IsVisible="{Binding SyncSaveStates}">
+                                                        <TextBox Grid.Column="0" Text="{Binding StateOverrideDirectory, Mode=TwoWay}"
+                                                                 AutomationProperties.AutomationId="{Binding StateFolderFieldId}"
+                                                                 Background="{DynamicResource EmuInputBrush}"
+                                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                                 PlaceholderText="Use the detected save-state folder, or choose one" />
+                                                        <Button Grid.Column="1" Content="Browse…"
+                                                                AutomationProperties.AutomationId="{Binding StateFolderFieldId}"
+                                                                Command="{Binding PickStateDirectoryCommand}"
+                                                                IsEnabled="{Binding IsIdle}" />
+                                                    </Grid>
                                                 </StackPanel>
                                                 <TextBlock Margin="54,0,0,0"
                                                            Text="{Binding DetectedDirectory, StringFormat='Syncing {0}'}"

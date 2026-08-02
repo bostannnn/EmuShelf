@@ -27,6 +27,7 @@ namespace EmuShelf.App.Services;
 /// whose emulator shares one save folder across systems use it to claim only their own saves.
 /// </param>
 /// <param name="LaunchArguments">The configured launch template, for emulators whose arguments can relocate data.</param>
+/// <param name="StateDirectoryOverride">The user's explicit save-state folder, or null to derive it.</param>
 public sealed record SaveProviderContext(
     string? DirectoryOverride,
     string? EmulatorDirectory,
@@ -36,7 +37,8 @@ public sealed record SaveProviderContext(
     Func<IReadOnlyCollection<string>>? GameFileNames = null,
     string? LaunchArguments = null,
     string? ExecutablePath = null,
-    string? FlatpakApplicationId = null);
+    string? FlatpakApplicationId = null,
+    string? StateDirectoryOverride = null);
 
 /// <summary>A provider's resolved save directory plus optional display text and compatibility note.</summary>
 public sealed record SaveProviderDetection(
@@ -373,16 +375,26 @@ public static class SaveProviderRegistry
                 : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
         var sources = new List<AuxiliaryFileSource>();
-        AddStateSources(saves, sources);
+        AddStateSources(saves, sources, context.StateDirectoryOverride);
         if (sources.Count == 0)
             return includeBaseSaves
                 ? saves
                 : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
         var coreVersion = ResolveCoreVersion(context);
-        var emulatorVersion = saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion)
-            ? null
-            : ResolveEmulatorVersion(context);
+        if (saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion))
+        {
+            // A libretro state is written by the core, so the core identity is the compatibility key.
+            // When the core's info file (its display_version) is not present — common on a Flatpak
+            // RetroArch or a core dropped in beside EmuShelf — fall back to a token derived from the
+            // core file itself so state sync is not silently disabled. It is stable per build and
+            // identical across machines, and a different build yields a different token, so the
+            // "only restore a state written by the same build" guard still holds. Without this the
+            // whole state compatibility resolves to null and every state is dropped with no upload.
+            coreVersion = ResolveCoreFileToken(context);
+        }
+        var emulatorVersion = ResolveEmulatorVersion(context)
+            ?? (saves is RetroArchSaveLocationProvider ? coreVersion : null);
         var compatibility = StateCompatibility.Create(
             EmulatorId(saves),
             emulatorVersion,
@@ -393,7 +405,8 @@ public static class SaveProviderRegistry
 
     private static void AddStateSources(
         ISaveLocationProvider provider,
-        ICollection<AuxiliaryFileSource> sources)
+        ICollection<AuxiliaryFileSource> sources,
+        string? stateOverride)
     {
         AuxiliaryFileSource? source = provider switch
         {
@@ -417,8 +430,35 @@ public static class SaveProviderRegistry
                 path => Path.GetFileName(path).Contains(".state", StringComparison.OrdinalIgnoreCase)),
             _ => null,
         };
-        if (source is not null)
-            sources.Add(source);
+        if (source is null)
+            return;
+
+        // An explicit save-state folder wins over whatever the emulator configuration resolves to,
+        // exactly like the base-save override — the escape hatch for a mis-detected state folder.
+        if (!string.IsNullOrWhiteSpace(stateOverride))
+        {
+            var full = Path.GetFullPath(stateOverride);
+            source = source with { ResolveRoot = _ => full };
+        }
+
+        sources.Add(source);
+    }
+
+    // A stable per-build identity for a libretro core when its info file has no display_version.
+    // The byte length is identical for the same build on every machine and differs across builds,
+    // so it stands in for the core version without a content hash on the launch path.
+    private static string? ResolveCoreFileToken(SaveProviderContext context)
+    {
+        if (string.IsNullOrWhiteSpace(context.CorePath) || !File.Exists(context.CorePath))
+            return null;
+        try
+        {
+            return $"corelen{new FileInfo(context.CorePath).Length}";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     private static AuxiliaryFileSource State(

@@ -1,5 +1,6 @@
 using EmuShelf.App.Services;
 using EmuShelf.Core.SaveSync;
+using EmuShelf.Infrastructure.Storage;
 
 namespace EmuShelf.App.Tests;
 
@@ -160,6 +161,56 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.Equal("1.0 · x64", stateLocation.Compatibility);
         var broken = Assert.Single(locations, location => location.Directory is null);
         Assert.Contains("unreadable", broken.Warning, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RetroArchStates_ResolveViaOverrideAndCoreBinaryWhenNoInfoFileExists()
+    {
+        // Regression for "arcade save state not synced": the RetroArch state folder is overridable
+        // 1:1 with the save folder (#5), and state compatibility resolves from the core binary alone
+        // — its architecture plus a length token standing in for a missing info-file version — so a
+        // state is not silently dropped (compatibility null -> zero units) when the core's .info is
+        // absent, which is common on a Steam Deck Flatpak RetroArch or a core dropped in beside it.
+        Directory.CreateDirectory(_root);
+        var stateDir = Path.Combine(_root, "chosen-states");
+        Directory.CreateDirectory(stateDir);
+        WriteState(stateDir, "spiderman.state", 1);
+        var corePath = WriteElfCore(Path.Combine(_root, "fbneo_libretro.so"));
+
+        var descriptor = SaveProviderRegistry.Find("arcade")!;
+        var context = new SaveProviderContext(
+            DirectoryOverride: null,
+            EmulatorDirectory: _root,
+            IsFlatpak: false,
+            Paths: new AppPaths(_root),
+            CorePath: corePath,
+            StateDirectoryOverride: stateDir);
+        var saves = descriptor.CreateProvider(context)!;
+        var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            saves,
+            context,
+            includeSaveStates: true,
+            includeBaseSaves: false);
+
+        Assert.True(provider.HasStateCompatibility);
+        var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(units, unit => unit.UnitId.EndsWith("/spiderman.state", StringComparison.Ordinal));
+    }
+
+    // A minimal little-endian x86-64 ELF header, enough for the architecture reader to identify it.
+    private static string WriteElfCore(string path)
+    {
+        var bytes = new byte[20];
+        bytes[0] = 0x7f;
+        bytes[1] = (byte)'E';
+        bytes[2] = (byte)'L';
+        bytes[3] = (byte)'F';
+        bytes[4] = 0x02; // EI_CLASS = 64-bit
+        bytes[5] = 0x01; // EI_DATA = little-endian
+        bytes[18] = 0x3e; // e_machine = EM_X86_64 (62)
+        File.WriteAllBytes(path, bytes);
+        return path;
     }
 
     private static void WriteState(string directory, string name, int day)

@@ -1101,13 +1101,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         // Typed paths and folder-picker paths follow the same persistence rule. A configured
         // emulator still supplies the default when a platform's box is left empty.
         if (_cloudSaves.UpdateOverrides is { } updateOverrides)
-        {
             updateOverrides(CollectOverrides());
-            return;
-        }
+        else
+            foreach (var platform in CloudPlatforms)
+                _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
 
-        foreach (var platform in CloudPlatforms)
-            _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
+        // Save-state folders persist the same way as save folders, so a typed state path is not
+        // lost when the picker was not used.
+        if (_cloudSaves.UpdateStateOverride is { } updateStateOverride)
+            foreach (var platform in CloudPlatforms)
+                updateStateOverride(platform.SystemId, platform.NormalizedStateOverride);
     }
 
     /// <summary>The per-platform overrides as typed, keyed by system id for the connect call.</summary>

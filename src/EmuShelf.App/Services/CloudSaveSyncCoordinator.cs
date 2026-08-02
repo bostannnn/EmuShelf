@@ -177,6 +177,10 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public void UpdateOptionalContent(string systemId, bool syncSaveStates) =>
         Persist(_settings.CloudSaveSync.WithOptionalContent(systemId, syncSaveStates));
 
+    /// <summary>Persists one system's save-state folder override without changing the connection state.</summary>
+    public void UpdateStateOverride(string systemId, string? directory) =>
+        Persist(_settings.CloudSaveSync.WithStateOverride(systemId, directory));
+
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
     /// persists the connection. Only the non-secret remote name and folder are stored — the OAuth
@@ -312,7 +316,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         DownloadRcloneAsync,
         GetDetectionAsync,
         UpdateOptionalContent,
-        UpdateOverrides);
+        UpdateOverrides,
+        UpdateStateOverride);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -440,7 +445,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 location.LastError,
                 location.LastNotice,
                 descriptor.SupportsSaveStates,
-                location.SyncSaveStates);
+                location.SyncSaveStates,
+                location.StateDirectoryOverride);
         }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
@@ -682,7 +688,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             _gamesForSystem is null ? null : () => GameFileNames(systemId),
             installation?.LaunchArguments,
             ResolvePortablePath(installation?.ExecutablePath),
-            installation?.FlatpakApplicationId);
+            installation?.FlatpakApplicationId,
+            ResolvePortablePath(configuration.GetStateOverride(systemId)));
     }
 
     private static async Task<(string? Summary, IReadOnlyList<OptionalContentDetection> Locations)> DescribeOptionalContentAsync(
@@ -918,7 +925,8 @@ public sealed record CloudSaveSyncPlatformContext(
     string? LastError,
     string? LastNotice = null,
     bool SupportsSaveStates = false,
-    bool SyncSaveStates = false);
+    bool SyncSaveStates = false,
+    string? StateOverride = null);
 
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view
@@ -940,4 +948,5 @@ public sealed record CloudSaveSyncSettingsContext(
     Func<CancellationToken, Task<bool>> DownloadRcloneAsync,
     Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null,
     Action<string, bool>? UpdateOptionalContent = null,
-    Action<IReadOnlyDictionary<string, string?>>? UpdateOverrides = null);
+    Action<IReadOnlyDictionary<string, string?>>? UpdateOverrides = null,
+    Action<string, string?>? UpdateStateOverride = null);

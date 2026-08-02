@@ -132,6 +132,32 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         Assert.True(enabled.SyncSaveStates);
     }
 
+    [Fact]
+    public void SaveStateOverride_RoundTripsAndIsIndependentOfTheSaveFolder()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+        var configuration = new CloudSaveSyncSettings { Enabled = true, RemoteName = "gdrive" }
+            .WithOverride("arcade", "/home/deck/retroarch/saves")
+            .WithStateOverride("arcade", "/home/deck/retroarch/states")
+            .WithOptionalContent("arcade", syncSaveStates: true);
+
+        service.Save(new AppSettings { CloudSaveSync = configuration });
+        var loaded = service.Load().CloudSaveSync;
+
+        Assert.Equal(configuration, loaded);
+        // The two folders are independent, mirroring the save-folder override 1:1 for save states.
+        Assert.Equal("/home/deck/retroarch/saves", loaded.GetOverride("arcade"));
+        Assert.Equal("/home/deck/retroarch/states", loaded.GetStateOverride("arcade"));
+        Assert.True(loaded.GetLocation("arcade").SyncSaveStates);
+
+        // Clearing one leaves the other and the opt-in intact.
+        var cleared = loaded.WithStateOverride("arcade", null);
+        Assert.Null(cleared.GetStateOverride("arcade"));
+        Assert.Equal("/home/deck/retroarch/saves", cleared.GetOverride("arcade"));
+        Assert.True(cleared.GetLocation("arcade").SyncSaveStates);
+    }
+
     // Cheats and patches are no longer synced, so the flag is gone from the record. A settings file
     // written by a build that had it must still load, and must not disturb the state opt-in beside it.
     [Fact]
