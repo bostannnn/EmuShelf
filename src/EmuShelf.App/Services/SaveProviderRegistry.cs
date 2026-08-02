@@ -447,19 +447,8 @@ public static class SaveProviderRegistry
     // A stable per-build identity for a libretro core when its info file has no display_version.
     // The byte length is identical for the same build on every machine and differs across builds,
     // so it stands in for the core version without a content hash on the launch path.
-    private static string? ResolveCoreFileToken(SaveProviderContext context)
-    {
-        if (string.IsNullOrWhiteSpace(context.CorePath) || !File.Exists(context.CorePath))
-            return null;
-        try
-        {
-            return $"corelen{new FileInfo(context.CorePath).Length}";
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
+    private static string? ResolveCoreFileToken(SaveProviderContext context) =>
+        FileLengthToken("core", context.CorePath);
 
     private static AuxiliaryFileSource State(
         Func<CancellationToken, string?> root,
@@ -510,9 +499,18 @@ public static class SaveProviderRegistry
     }
 
     private static string? ReadFlatpakVersion(string applicationId)
-        => ReadFlatpakInfo(applicationId, "--show-version", normalizeVersion: true);
+    {
+        // Prefer a published version string; but many Flathub emulators (PCSX2 among them) leave it
+        // empty, which previously read as "version could not be detected" and disabled state sync.
+        // The build commit is always present for an installed Flatpak and is stable per build, so it
+        // is a sound compatibility key when no version is published.
+        if (FirstVersion(ReadFlatpakInfoRaw(applicationId, "--show-version")) is { } version)
+            return version;
+        var commit = ReadFlatpakInfoRaw(applicationId, "--show-commit");
+        return string.IsNullOrWhiteSpace(commit) ? null : "commit" + commit[..Math.Min(commit.Length, 12)];
+    }
 
-    private static string? ReadFlatpakInfo(string applicationId, string option, bool normalizeVersion)
+    private static string? ReadFlatpakInfoRaw(string applicationId, string option)
     {
         try
         {
@@ -535,7 +533,7 @@ public static class SaveProviderRegistry
             if (process.ExitCode != 0)
                 return null;
             var output = process.StandardOutput.ReadToEnd().Trim();
-            return normalizeVersion ? FirstVersion(output) : NormalizeArchitecture(output);
+            return string.IsNullOrWhiteSpace(output) ? null : output;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
@@ -560,7 +558,7 @@ public static class SaveProviderRegistry
         return FlatpakArchitectures.GetOrAdd(
             context.FlatpakApplicationId,
             applicationId => new Lazy<string?>(
-                () => ReadFlatpakInfo(applicationId, "--show-arch", normalizeVersion: false),
+                () => NormalizeArchitecture(ReadFlatpakInfoRaw(applicationId, "--show-arch")),
                 true)).Value;
     }
 
@@ -651,33 +649,30 @@ public static class SaveProviderRegistry
         catch (Exception ex) when (ex is IOException or ArgumentException or System.ComponentModel.Win32Exception)
         {
             // AppImages and other native Unix executables commonly have no Windows-style version
-            // resource. Their own version command below is the authoritative fallback.
+            // resource; fall through to the file token below.
         }
 
+        // Deliberately never launch the emulator to read a version. GUI emulators (DuckStation,
+        // PCSX2, RPCS3, Dolphin) treat an unknown argument as a fatal error and pop a modal dialog
+        // rather than printing a version — on the Steam Deck that surfaced as
+        // "Unknown parameter: --version" every time Saves settings opened, and the process never
+        // exited on its own. A Linux binary usually has no embedded version resource, so key
+        // save-state compatibility off a stable token from the file itself instead (see below).
+        return FileLengthToken("exe", executablePath);
+    }
+
+    // A stable per-build identity for a binary when no readable version is available: its byte
+    // length is identical for the same build on every machine and differs across builds, which is
+    // exactly what state-compatibility needs, and reads nothing but the file's metadata.
+    private static string? FileLengthToken(string prefix, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return null;
         try
         {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = executablePath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                ArgumentList = { "--version" },
-            });
-            if (process is null)
-                return null;
-            if (!process.WaitForExit(5000))
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit();
-                return null;
-            }
-            if (process.ExitCode != 0)
-                return null;
-            return FirstVersion(process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
+            return $"{prefix}len{new FileInfo(path).Length}";
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return null;
         }

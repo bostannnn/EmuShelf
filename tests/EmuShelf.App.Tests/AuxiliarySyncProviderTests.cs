@@ -198,6 +198,41 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.Contains(units, unit => unit.UnitId.EndsWith("/spiderman.state", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task DirectExecutableStates_ResolveWithoutLaunchingTheEmulator()
+    {
+        // Regression for the "Unknown parameter: --version" dialog: a GUI emulator with no embedded
+        // version resource (a Linux binary) must still resolve state compatibility without being run.
+        // Here the fake executable is not a launchable program, so if version resolution tried to
+        // start it with --version this would fail (compatibility null); instead the binary's length
+        // and architecture key it, so states resolve and no process is ever started.
+        Directory.CreateDirectory(_root);
+        var stateDir = Path.Combine(_root, "pcsx2-states");
+        Directory.CreateDirectory(stateDir);
+        WriteState(stateDir, "game.p2s", 1);
+        var executable = WriteElfCore(Path.Combine(_root, "pcsx2"));
+
+        var descriptor = SaveProviderRegistry.Find("playstation2")!;
+        var context = new SaveProviderContext(
+            DirectoryOverride: null,
+            EmulatorDirectory: _root,
+            IsFlatpak: false,
+            Paths: new AppPaths(_root),
+            ExecutablePath: executable,
+            StateDirectoryOverride: stateDir);
+        var saves = descriptor.CreateProvider(context)!;
+        var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            saves,
+            context,
+            includeSaveStates: true,
+            includeBaseSaves: false);
+
+        Assert.True(provider.HasStateCompatibility);
+        var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(units, unit => unit.UnitId.EndsWith("/game.p2s", StringComparison.Ordinal));
+    }
+
     // A minimal little-endian x86-64 ELF header, enough for the architecture reader to identify it.
     private static string WriteElfCore(string path)
     {

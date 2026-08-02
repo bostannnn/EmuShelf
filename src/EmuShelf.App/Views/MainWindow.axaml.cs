@@ -109,6 +109,7 @@ public partial class MainWindow : Window
         GamepadRepeater.UpdateLayout();
         SyncGamepadColumnCountFromLayout();
         element.BringIntoView();
+        EnsureGamepadTileFullyVisible(element);
         if (viewModel.IsGamepadControllerInputActive && !viewModel.HasGamepadOverlay)
         {
             var gameButton = element as Button ?? element.GetVisualDescendants()
@@ -117,6 +118,28 @@ public partial class MainWindow : Window
             if (gameButton is not null)
                 FocusManager?.Focus(gameButton, NavigationMethod.Directional);
         }
+    }
+
+    // BringIntoView reveals an element with the minimum scroll, which on the Deck's short grid
+    // viewport can leave a tall portrait tile (cover + title ≈ 324px) bottom-aligned with the top of
+    // its cover clipped — the "I can only see half of the selected cover" report. This guarantees the
+    // whole focused tile (plus a small margin) sits inside the scroller, scrolling only when it is
+    // actually clipped. Content coordinates: element.Bounds.Y is the tile's position inside the
+    // repeater, and Offset.Y is how far that content is scrolled.
+    private void EnsureGamepadTileFullyVisible(Control element)
+    {
+        var viewport = GamepadLibraryScroller.Viewport.Height;
+        if (viewport <= 0 || element.Bounds.Height <= 0)
+            return;
+
+        const double margin = 14;
+        var top = element.Bounds.Y;
+        var bottom = top + element.Bounds.Height;
+        var offsetY = GamepadLibraryScroller.Offset.Y;
+        if (top < offsetY + margin)
+            GamepadLibraryScroller.Offset = GamepadLibraryScroller.Offset.WithY(Math.Max(0, top - margin));
+        else if (bottom > offsetY + viewport - margin)
+            GamepadLibraryScroller.Offset = GamepadLibraryScroller.Offset.WithY(bottom - viewport + margin);
     }
 
     // The view lays the grid out, so it — not width arithmetic — is the source of truth for how many
