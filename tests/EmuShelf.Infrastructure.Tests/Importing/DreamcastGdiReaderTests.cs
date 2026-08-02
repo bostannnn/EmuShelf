@@ -337,7 +337,7 @@ public class DreamcastGdiReaderTests : TempAppDirectoryTestBase
     }
 
     private static IReadOnlyList<GameIdentifier> Extract(string gdi) =>
-        new DreamcastGdiIdentifierExtractor().Extract(NewGame(gdi));
+        new DreamcastIdentifierExtractor().Extract(NewGame(gdi));
 
     private static Game NewGame(string gdi) => new()
     {

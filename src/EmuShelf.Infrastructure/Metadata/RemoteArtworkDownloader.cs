@@ -11,14 +11,17 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
     private readonly HttpClient _httpClient;
     private readonly string _downloadDirectory;
     private readonly IAppLogger _logger;
+    private readonly IRemoteArtworkUriPolicy? _uriPolicy;
 
     public RemoteArtworkDownloader(
         IAppPaths paths,
         HttpClient httpClient,
-        IAppLogger? logger = null)
+        IAppLogger? logger = null,
+        IRemoteArtworkUriPolicy? uriPolicy = null)
     {
         _httpClient = httpClient;
         _logger = logger ?? NullAppLogger.Instance;
+        _uriPolicy = uriPolicy;
         _downloadDirectory = Path.Combine(paths.CacheDirectory, "Metadata", "Downloads");
         Directory.CreateDirectory(_downloadDirectory);
     }
@@ -54,6 +57,11 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
             catch (HttpRequestException ex)
             {
                 LogCandidateFailure(candidate, "request failed", ex);
+                continue;
+            }
+            catch (InvalidDataException ex)
+            {
+                LogCandidateFailure(candidate, "address was blocked by the web-cover safety policy", ex);
                 continue;
             }
 
@@ -179,10 +187,7 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
         const int maxAttempts = 3;
         for (var attempt = 1; ; attempt++)
         {
-            var response = await _httpClient.GetAsync(
-                uri,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
+            var response = await GetFollowingRedirectsAsync(uri, cancellationToken);
             if (attempt >= maxAttempts || !IsThrottled(response.StatusCode))
                 return response;
 
@@ -194,6 +199,49 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
             await Task.Delay(delay, cancellationToken);
         }
     }
+
+    private async Task<HttpResponseMessage> GetFollowingRedirectsAsync(
+        Uri initialUri,
+        CancellationToken cancellationToken)
+    {
+        const int maximumRedirects = 5;
+        var uri = initialUri;
+        for (var redirect = 0; ; redirect++)
+        {
+            if (_uriPolicy is not null && !await _uriPolicy.IsAllowedAsync(uri, cancellationToken))
+                throw new InvalidDataException($"Artwork address is not publicly routable: {uri}");
+
+            var response = await _httpClient.GetAsync(
+                uri,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            if (!IsRedirect(response.StatusCode))
+                return response;
+
+            if (redirect >= maximumRedirects || response.Headers.Location is null)
+            {
+                response.Dispose();
+                throw new HttpRequestException("The artwork host returned too many redirects.");
+            }
+
+            var nextUri = response.Headers.Location.IsAbsoluteUri
+                ? response.Headers.Location
+                : Uri.TryCreate(uri, response.Headers.Location, out var resolvedUri)
+                    ? resolvedUri
+                    : null;
+            response.Dispose();
+            if (nextUri is null)
+                throw new HttpRequestException("The artwork host returned an invalid redirect address.");
+            uri = nextUri;
+        }
+    }
+
+    private static bool IsRedirect(HttpStatusCode statusCode) => statusCode is
+        HttpStatusCode.MovedPermanently or
+        HttpStatusCode.Found or
+        HttpStatusCode.SeeOther or
+        HttpStatusCode.TemporaryRedirect or
+        HttpStatusCode.PermanentRedirect;
 
     private static bool IsThrottled(HttpStatusCode statusCode) =>
         statusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.ServiceUnavailable;

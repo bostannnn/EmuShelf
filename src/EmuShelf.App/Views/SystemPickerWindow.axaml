@@ -4,8 +4,10 @@
         x:Class="EmuShelf.App.Views.SystemPickerWindow"
         x:DataType="sys:GameSystem"
         Title="Assign system"
+        Icon="avares://EmuShelf/Assets/emushelf.ico"
         Width="360" SizeToContent="Height"
         CanResize="False"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
         WindowStartupLocation="CenterOwner">
 
     <StackPanel Margin="20" Spacing="14">

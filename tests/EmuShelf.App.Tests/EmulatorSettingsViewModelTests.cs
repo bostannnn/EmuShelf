@@ -3,6 +3,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Integrations.Emulators;
@@ -24,7 +25,7 @@ public class EmulatorSettingsViewModelTests
         bool? closeResult = null;
         viewModel.CloseRequested += saved => closeResult = saved;
 
-        Assert.Equal(11, viewModel.Rows.Count);
+        Assert.Equal(14, viewModel.Rows.Count);
         Assert.Equal("Dolphin", gameCube.EmulatorName);
         Assert.Equal("Dolphin", wii.EmulatorName);
         Assert.Equal(gameCube.DefaultLaunchArguments, wii.DefaultLaunchArguments);
@@ -338,6 +339,144 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task EmulatorRow_ListsAndManagesEveryRememberedFolder()
+    {
+        var first = Path.Combine(Path.GetTempPath(), "emushelf-roms-first");
+        var second = Path.Combine(Path.GetTempPath(), "emushelf-roms-second");
+        var replacement = Path.Combine(Path.GetTempPath(), "emushelf-roms-replacement");
+        var added = Path.Combine(Path.GetTempPath(), "emushelf-roms-added");
+        var folders = new List<LibraryFolder>
+        {
+            new() { Id = 1, SystemId = "playstation", Path = first },
+            new() { Id = 2, SystemId = "playstation", Path = second },
+        };
+        var nextId = 3L;
+        var maintenance = new LibraryMaintenanceActions(
+            _ => Task.FromResult("unused"),
+            () => Task.FromResult("unused"),
+            Folders: new LibraryFolderManagementActions(
+                systemId => folders.Where(folder => folder.SystemId == systemId).ToArray(),
+                (systemId, path) =>
+                {
+                    folders.Add(new LibraryFolder { Id = nextId++, SystemId = systemId, Path = path });
+                    return Task.FromResult("Folder remembered.");
+                },
+                (systemId, id, path) =>
+                {
+                    var index = folders.FindIndex(folder => folder.Id == id && folder.SystemId == systemId);
+                    folders[index] = folders[index] with { Path = path };
+                    return Task.FromResult("Folder changed.");
+                },
+                (systemId, id) =>
+                {
+                    folders.RemoveAll(folder => folder.Id == id && folder.SystemId == systemId);
+                    return Task.FromResult("Folder forgotten.");
+                }));
+        var viewModel = CreateViewModel(maintenance);
+        var row = viewModel.Rows.Single(candidate => candidate.SystemId == "playstation");
+
+        Assert.Equal([first, second], row.LibraryFolders.Select(folder => folder.Path));
+        _dialogs.FolderToReturn = replacement;
+        await row.LibraryFolders[0].ChangeCommand.ExecuteAsync(null);
+        Assert.Equal(replacement, row.LibraryFolders[0].Path);
+
+        _dialogs.FolderToReturn = added;
+        await row.AddLibraryFolderCommand.ExecuteAsync(null);
+        Assert.Equal(3, row.LibraryFolders.Count);
+        await row.LibraryFolders.Single(folder => folder.Path == second).ForgetCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(row.LibraryFolders, folder => folder.Path == second);
+    }
+
+    [AvaloniaFact]
+    public async Task FolderOperation_BlocksTheWholeSettingsDialogUntilItFinishes()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var maintenance = new LibraryMaintenanceActions(
+            _ => Task.FromResult("unused"),
+            () => Task.FromResult("unused"),
+            Folders: new LibraryFolderManagementActions(
+                _ => [],
+                async (_, _) =>
+                {
+                    started.SetResult();
+                    await release.Task;
+                    return "Folder remembered.";
+                },
+                (_, _, _) => Task.FromResult("unused"),
+                (_, _) => Task.FromResult("unused")));
+        var viewModel = CreateViewModel(maintenance);
+        var row = viewModel.Rows.Single(candidate => candidate.SystemId == "playstation");
+        _dialogs.FolderToReturn = Path.Combine(Path.GetTempPath(), "emushelf-busy-folder");
+
+        var operation = row.AddLibraryFolderCommand.ExecuteAsync(null);
+        await started.Task;
+
+        Assert.True(viewModel.IsWorking);
+        Assert.All(viewModel.Rows, candidate => Assert.True(candidate.IsMaintenanceBlocked));
+
+        release.SetResult();
+        await operation;
+
+        Assert.False(viewModel.IsWorking);
+        Assert.All(viewModel.Rows, candidate => Assert.False(candidate.IsMaintenanceBlocked));
+    }
+
+    [AvaloniaFact]
+    public async Task LibraryFolderAvailability_IsNotCheckedInTheConstructor()
+    {
+        using var started = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var calls = 0;
+        var row = new LibraryFolderRowViewModel(
+            new LibraryFolder { Id = 1, SystemId = "playstation", Path = "/slow/share" },
+            _ => Task.CompletedTask,
+            _ => Task.CompletedTask,
+            _ =>
+            {
+                Interlocked.Increment(ref calls);
+                started.Set();
+                release.Wait();
+                return true;
+            });
+
+        Assert.Equal(0, calls);
+        Assert.Equal("Checking…", row.AvailabilityText);
+
+        var refresh = row.RefreshAvailabilityAsync();
+        Assert.True(started.Wait(TimeSpan.FromSeconds(2)));
+        Assert.False(refresh.IsCompleted);
+        release.Set();
+        await refresh;
+
+        Assert.Equal(1, calls);
+        Assert.True(row.Exists);
+        Assert.Equal("Available", row.AvailabilityText);
+    }
+
+    [AvaloniaFact]
+    public async Task GeneralSettings_LoadAndSaveEmptyPlatformVisibility()
+    {
+        bool? saved = null;
+        var maintenance = new LibraryMaintenanceActions(
+            _ => Task.FromResult("unused"),
+            () => Task.FromResult("unused"),
+            GetShowEmptyPlatforms: () => true,
+            SetShowEmptyPlatforms: value =>
+            {
+                saved = value;
+                return Task.CompletedTask;
+            });
+        var viewModel = CreateViewModel(maintenance);
+
+        Assert.True(viewModel.ShowEmptyPlatforms);
+        viewModel.ShowEmptyPlatforms = false;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(saved);
+    }
+
+    [AvaloniaFact]
     public async Task PlayStation3Row_ExposesTheExplicitRpcs3LibrarySyncOnly()
     {
         var calls = 0;
@@ -354,6 +493,7 @@ public class EmulatorSettingsViewModelTests
         var playStation2 = viewModel.Rows.Single(row => row.SystemId == "playstation2");
 
         Assert.True(playStation3.HasSyncLibrary);
+        Assert.False(playStation3.HasFolderManagement);
         Assert.True(playStation3.CanSyncLibrary);
         Assert.False(playStation3.HasRescanLibrary);
         Assert.False(playStation2.HasSyncLibrary);
@@ -624,11 +764,12 @@ public class EmulatorSettingsViewModelTests
     public async Task CloudSaves_Connect_Success_MarksConnectedAndPassesOverridesBySystemId()
     {
         var calls = new List<(string Remote, string Folder, IReadOnlyDictionary<string, string?> Overrides)>();
-        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(connect: (remote, folder, overrides, _) =>
-        {
-            calls.Add((remote, folder, overrides));
-            return Task.FromResult(CloudSaveSyncConnectResult.Connected);
-        }));
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            connect: (remote, folder, overrides, _, _, _) =>
+            {
+                calls.Add((remote, folder, overrides));
+                return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+            }));
         viewModel.CloudRemoteName = "my-drive";
         viewModel.CloudFolder = "Saves";
         Row(viewModel, "playstation2").OverrideDirectory = "/pcsx2";
@@ -647,10 +788,75 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_ImportedGoogleClientJson_IsPassedToTheConnectFlow()
+    {
+        // The point of importing is that the user copies nothing: the file Google hands them is
+        // enough, and the secret goes straight through to rclone without EmuShelf storing it.
+        var path = Path.Combine(Path.GetTempPath(), $"client_secret_{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(
+            path,
+            """
+            {"installed":{"client_id":"test-id.apps.googleusercontent.com","project_id":"emushelf-test",
+            "client_secret":"test-secret","redirect_uris":["http://localhost"]}}
+            """,
+            TestContext.Current.CancellationToken);
+        var calls = new List<(string? ClientId, string? ClientSecret)>();
+        var dialogs = new FakeDialogService { GoogleClientJsonPath = path };
+        try
+        {
+            var viewModel = CreateViewModel(
+                dialogs: dialogs,
+                cloudSaves: CreateCloudContext(connect: (_, _, _, _, clientId, clientSecret) =>
+                {
+                    calls.Add((clientId, clientSecret));
+                    return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+                }));
+
+            await viewModel.ImportGoogleClientCommand.ExecuteAsync(null);
+
+            Assert.Equal("test-id.apps.googleusercontent.com", viewModel.CloudClientId);
+            Assert.Contains("emushelf-test", viewModel.CloudClientStatusText);
+            Assert.DoesNotContain("test-secret", viewModel.CloudClientStatusText);
+
+            await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+            var call = Assert.Single(calls);
+            Assert.Equal("test-id.apps.googleusercontent.com", call.ClientId);
+            Assert.Equal("test-secret", call.ClientSecret);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_ImportedFileWithoutCredentials_ReportsWhatToDownload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"not-a-client-{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, """{"hello":"world"}""", TestContext.Current.CancellationToken);
+        try
+        {
+            var viewModel = CreateViewModel(
+                dialogs: new FakeDialogService { GoogleClientJsonPath = path },
+                cloudSaves: CreateCloudContext());
+
+            await viewModel.ImportGoogleClientCommand.ExecuteAsync(null);
+
+            Assert.Empty(viewModel.CloudClientId);
+            Assert.Contains("Download JSON", viewModel.CloudClientStatusText);
+        }
+        finally
+        {
+            try { File.Delete(path); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_Connect_RcloneMissing_StaysDisconnected()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
-            connect: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
+            connect: (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.RcloneMissing)));
 
         await viewModel.ConnectCloudCommand.ExecuteAsync(null);
 
@@ -843,6 +1049,25 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_DetectionCanDisplayEffectiveSaveLocationsInsteadOfConfigurationRoot()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            getDetection: (systemId, _) => Task.FromResult<SaveProviderDetection?>(
+                systemId == "gamecube"
+                    ? new SaveProviderDetection(
+                        @"F:\Dolphin\User",
+                        DisplayLocation: @"F:\saves\dolphin\GC\USA • F:\saves\dolphin\SRAM.USA.raw")
+                    : null)));
+        var row = Row(viewModel, "gamecube");
+
+        await row.RefreshDetectedDirectoryAsync();
+
+        Assert.Equal(
+            @"F:\saves\dolphin\GC\USA • F:\saves\dolphin\SRAM.USA.raw",
+            row.DetectedDirectory);
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_DetectionErrorIsVisibleAndDisablesReplaceActions()
     {
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
@@ -907,7 +1132,8 @@ public class EmulatorSettingsViewModelTests
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null,
-        TexturePackSettingsContext? texturePacks = null) => new(
+        TexturePackSettingsContext? texturePacks = null,
+        FakeDialogService? dialogs = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         configured ?? KnownSystems.All.ToDictionary(
@@ -915,7 +1141,7 @@ public class EmulatorSettingsViewModelTests
             _ => (EmulatorConfiguration?)null,
             StringComparer.Ordinal),
         _configurations,
-        _dialogs,
+        dialogs ?? _dialogs,
         maintenance,
         retroAchievements: retroAchievements,
         cloudSaves: cloudSaves,
@@ -923,7 +1149,7 @@ public class EmulatorSettingsViewModelTests
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,
-        Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>>? connect = null,
+        Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, string?, string?, Task<CloudSaveSyncConnectResult>>? connect = null,
         Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? syncNow = null,
         Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
         Action<string, string?>? updateOverride = null,
@@ -955,7 +1181,7 @@ public class EmulatorSettingsViewModelTests
             getPlatforms ?? (() => platforms),
             (systemId, _) => Task.FromResult<string?>(
                 systemId == "psp" ? "/ppsspp/PSP/SAVEDATA" : "/pcsx2/memcards"),
-            connect ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
+            connect ?? ((_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)),
             _ => Task.CompletedTask,
             syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),

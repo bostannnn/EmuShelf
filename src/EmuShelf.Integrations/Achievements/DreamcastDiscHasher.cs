@@ -5,18 +5,18 @@ using EmuShelf.Integrations.Importing;
 namespace EmuShelf.Integrations.Achievements;
 
 /// <summary>
-/// rcheevos Dreamcast GDI hash: the complete 256-byte IP.BIN header followed by the bytes of
-/// the boot executable named at IP.BIN offset 96. It intentionally never hashes a descriptor or
-/// guessed track bytes.
+/// rcheevos Dreamcast hash: the complete 256-byte IP.BIN header followed by the bytes of the boot
+/// executable named at IP.BIN offset 96. It intentionally never hashes a descriptor, a container
+/// header, or guessed track bytes, so a GDI set and a CHD of the same disc hash identically.
 /// </summary>
-internal static class DreamcastGdiHasher
+internal static class DreamcastDiscHasher
 {
     public static string Hash(string path, CancellationToken cancellationToken)
     {
-        using var disc = DreamcastGdiReader.OpenDataTrack(path);
-        var ipBin = new byte[256];
+        using var disc = DreamcastDisc.OpenDataTrack(path);
+        var ipBin = new byte[DreamcastIpBin.HeaderBytes];
         if (disc.ReadSector((uint)disc.FirstTrackSector, ipBin) != ipBin.Length ||
-            !ipBin.AsSpan(0, 16).SequenceEqual("SEGA SEGAKATANA "u8))
+            !DreamcastIpBin.HasMarker(ipBin))
             throw new InvalidDataException("The Dreamcast data track has no readable IP.BIN.");
 
         var end = 96;

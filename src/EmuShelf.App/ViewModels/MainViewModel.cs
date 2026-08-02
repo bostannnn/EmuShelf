@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
@@ -14,6 +13,7 @@ using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
@@ -30,7 +30,21 @@ namespace EmuShelf.App.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
+    private const int ViewStateSaveDebounceMs = 500;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
+    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
+        ? StringComparer.OrdinalIgnoreCase
+        : StringComparer.Ordinal;
+
+    /// <summary>How long a completed action's result stays on screen before dismissing itself.</summary>
+    private static readonly TimeSpan InfoStatusLifetime = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Failures get noticeably longer than a result does. The toast is the only place a failed
+    /// import or launch is reported, so it has to outlast a glance away from the screen — but it
+    /// still clears itself, because a stale error on a working library is its own kind of wrong.
+    /// </summary>
+    private static readonly TimeSpan ErrorStatusLifetime = TimeSpan.FromSeconds(15);
 
     private readonly IGameLibrary _library;
     private readonly IFolderScanner _scanner;
@@ -44,6 +58,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IAppThemeService _themeService;
     private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IApplicationLifetimeService? _applicationLifetime;
+    private readonly IOnScreenKeyboardService _onScreenKeyboard;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
     private readonly IMetadataPreferencesService _metadataPreferences;
@@ -63,12 +78,17 @@ public partial class MainViewModel : ViewModelBase
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
     private readonly DispatcherTimer _searchDebounce;
+    private readonly DispatcherTimer _statusDismiss;
+    private readonly DispatcherTimer _viewStateSave;
+    private readonly ILibraryViewStateService _libraryViewState;
+    private bool _isRestoringViewState;
     private readonly List<GameViewModel> _systemGames = [];
     private readonly HashSet<long> _deferredCoverLoads = [];
     private GameViewModel? _selectionAnchor;
     private bool _isFrontendSuspended;
     private DateTimeOffset _gamepadInputGuardUntil;
     private string _appliedSearchText = string.Empty;
+    private string? _displayedScopeKey;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
@@ -77,6 +97,7 @@ public partial class MainViewModel : ViewModelBase
     private Task _selectedSystemLoad = Task.CompletedTask;
 
     public ObservableCollection<GameSystem> Systems { get; }
+    public ObservableCollection<GameSystem> NavigationSystems { get; }
     public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
     public ObservableCollection<GamepadOverlayOptionViewModel> GamepadOverlayOptions { get; } = [];
@@ -110,8 +131,19 @@ public partial class MainViewModel : ViewModelBase
     private string SortGlyph(LibrarySortColumn column) =>
         SortColumn == column ? (SortDescending ? "▼" : "▲") : string.Empty;
 
-    partial void OnSortColumnChanged(LibrarySortColumn value) => NotifySortGlyphs();
-    partial void OnSortDescendingChanged(bool value) => NotifySortGlyphs();
+    partial void OnSortColumnChanged(LibrarySortColumn value)
+    {
+        NotifySortGlyphs();
+        ScheduleLibraryViewStateSave();
+    }
+
+    partial void OnSortDescendingChanged(bool value)
+    {
+        NotifySortGlyphs();
+        ScheduleLibraryViewStateSave();
+    }
+
+    partial void OnIsGridViewChanged(bool value) => ScheduleLibraryViewStateSave();
 
     private void NotifySortGlyphs()
     {
@@ -126,11 +158,18 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
+    /// <summary>Drives both how long the toast lives and the colour of its leading dot.</summary>
+    [ObservableProperty]
+    public partial StatusSeverity StatusSeverity { get; set; } = StatusSeverity.Info;
+
     [ObservableProperty]
     public partial bool IsSearchOpen { get; set; }
 
     [ObservableProperty]
     public partial string LibraryCountText { get; set; } = "0 games";
+
+    [ObservableProperty]
+    public partial bool ShowEmptyPlatforms { get; set; }
 
     /// <summary>True when the current filter yields at least one game (drives the views).</summary>
     [ObservableProperty]
@@ -143,11 +182,19 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsSearchEmpty { get; set; }
 
+    /// <summary>True between a scope change and its games arriving; suppresses the empty states.</summary>
+    [ObservableProperty]
+    public partial bool IsLibraryLoading { get; set; }
+
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
+
+    /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
+    /// theme gallery projects the same instances so both modes stay in lock-step.</summary>
+    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
 
     [ObservableProperty]
     public partial GameViewModel? SelectedGame { get; set; }
@@ -171,6 +218,9 @@ public partial class MainViewModel : ViewModelBase
     public partial GamepadOverlayKind GamepadOverlay { get; set; }
 
     [ObservableProperty]
+    public partial GamepadSettingsViewModel? GamepadSettings { get; set; }
+
+    [ObservableProperty]
     public partial int GamepadOverlaySelectionIndex { get; set; }
 
     [ObservableProperty]
@@ -180,7 +230,8 @@ public partial class MainViewModel : ViewModelBase
     public partial AchievementRowViewModel? FocusedGamepadAchievement { get; set; }
 
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
-    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename;
+    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename ||
+        IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadAchievementsOpen => GamepadOverlay == GamepadOverlayKind.Achievements;
     public bool IsGamepadSearchOpen => GamepadOverlay == GamepadOverlayKind.Search;
     public bool IsGamepadCollectionsOpen => GamepadOverlay == GamepadOverlayKind.Collections;
@@ -189,14 +240,23 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
+    public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
+    public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
+    public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
+    public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
-    public bool IsGamepadSettingsHandoffOpen => GamepadOverlay == GamepadOverlayKind.SettingsDesktopHandoff;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
-    public bool IsGamepadAllGamesRailFocused => IsGamepadRailFocused && GamepadRailIndex == 0;
-    public bool IsGamepadCollectionsRailFocused => IsGamepadRailFocused && GamepadRailIndex == 1;
+    public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
+         GamepadOverlayKind.Settings);
+    public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
+         GamepadOverlayKind.Settings);
+    public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
@@ -207,30 +267,54 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.SystemMenu => "Menu",
+        GamepadOverlayKind.Settings => "Settings",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
-        GamepadOverlayKind.SettingsDesktopHandoff => "Open Settings?",
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
     };
     public string GamepadOverlayHelpText => GamepadOverlay switch
     {
         GamepadOverlayKind.Achievements => "D-pad Browse   X Refresh   B Back",
+        GamepadOverlayKind.Settings => "LB/RB Sections   D-pad Rows   A Select   B Cancel",
         GamepadOverlayKind.Search => "Steam + X Keyboard   B Back",
         GamepadOverlayKind.Rename => "A Save   B Back",
         _ => "D-pad Choose   A Select   B Back",
     };
 
     [ObservableProperty]
-    public partial bool IsGamepadRailFocused { get; set; }
-
-    /// <summary>Logical rail cursor: All Games, Collections, then each platform tab.</summary>
-    [ObservableProperty]
-    public partial int GamepadRailIndex { get; set; }
-
-    [ObservableProperty]
     public partial double GamepadViewportWidth { get; set; }
 
     public int GamepadColumnCount { get; private set; } = 1;
+    public int GamepadAchievementColumnCount { get; private set; } = 1;
+    public int GamepadAchievementLayoutRevision { get; private set; }
+    public bool HasFocusedGamepadAchievement => FocusedGamepadAchievement is not null;
+
+    /// <summary>
+    /// The view that lays the grid out reports the true rendered column count here, and it wins over
+    /// the width arithmetic in <see cref="UpdateCoverLayout"/>. That arithmetic can be momentarily
+    /// stale relative to the real layout, and a too-small count made Right/Left navigation clamp
+    /// partway across a row ("stuck at the second column"). The arithmetic remains the fallback for
+    /// before the grid has laid out (and for headless tests with no view).
+    /// </summary>
+    internal void SetRenderedGamepadColumnCount(int columns)
+    {
+        if (columns >= 1)
+            GamepadColumnCount = columns;
+    }
+
+    internal void SetRenderedGamepadAchievementColumnCount(int columns)
+    {
+        if (columns >= 1)
+            GamepadAchievementColumnCount = columns;
+    }
+
+    // Diagnostics for the Steam Deck library grid. The view calls this ONLY on a fault condition —
+    // the focused tile could not be realized or positioned, or the arithmetic and rendered column
+    // counts disagree — so a single Deck run leaves a precise trail in Logs/EmuShelf-*.log (which
+    // machine, focused index, columns arithmetic-vs-rendered, reveal target, selector state) without
+    // flooding the log on every d-pad move. This is why the earlier "selector vanishes / column
+    // clipped" reports were unreproducible off-device: the fault is compositor/virtualization timing.
+    internal void LogGamepadGridFault(string detail) => _logger.Warning($"Gamepad grid: {detail}");
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
@@ -244,6 +328,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(NavigationWidth));
         OnPropertyChanged(nameof(IsNavigationExpanded));
+        ScheduleLibraryViewStateSave();
     }
 
     // Grid cover sizing: covers grow from a 188px floor up to a cap so a whole number of columns
@@ -251,25 +336,52 @@ public partial class MainViewModel : ViewModelBase
     private const double MinCoverWidth = 188;
     private const double MaxCoverWidth = 232;
     private const double CoverColumnSpacing = 28;    // matches UniformGridLayout MinColumnSpacing
-    private const double GridHorizontalPadding = 60; // ItemsRepeater Margin left(32) + right(28)
 
-    /// <summary>Current width of the library grid area; the cover width is derived from it.</summary>
+    // Each mode measures a different element, so each has its own inset. Desktop measures the
+    // ScrollViewer, and the ItemsRepeater inside it carries Margin 32/28 that the measurement
+    // still includes. Gamepad measures its own ScrollViewer, whose Margin is already excluded from
+    // its arranged size; its repeater carries a deliberate side gutter (GamepadGridSideGutter each
+    // side) so the focused tile's accent glow — which blurs ~30px past the cover — is never shaved
+    // by the scroller's clip on the edge columns. The column arithmetic subtracts both gutters so a
+    // whole number of covers fills the region between them with no lopsided edge.
+    private const double DesktopGridHorizontalPadding = 60;
+    // The reserved gutter on each side of the gamepad grid, mirrored by the ItemsRepeater's Margin
+    // in MainWindow.axaml. Must exceed the EmuFocusGlow blur radius (~30px) so edge-column focus
+    // never clips. The view reads it via GamepadGridSideGutterPixels to place the selector overlay.
+    internal const double GamepadGridSideGutter = 40;
+    private const double GamepadGridHorizontalPadding = 2 * GamepadGridSideGutter;
+
+    /// <summary>The per-side gutter (logical px) reserved inside the gamepad grid scroller, so the
+    /// view's deterministic selector/reveal geometry uses the same value the layout is sized from.</summary>
+    internal static double GamepadGridSideGutterPixels => GamepadGridSideGutter;
+
+    /// <summary>Current width of the desktop library grid area.</summary>
     [ObservableProperty]
     public partial double LibraryViewportWidth { get; set; }
 
-    /// <summary>Cover width computed for the current viewport. The grid layout uses it as the
-    /// uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
+    /// <summary>Cover width computed for the active mode's viewport. The grid layout uses it as
+    /// the uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
     [ObservableProperty]
     public partial double GridCoverWidth { get; set; }
 
+    // Only one mode is on screen at a time, so exactly one viewport is authoritative. Reading the
+    // active one — rather than letting whichever view last raised SizeChanged win — is what keeps
+    // a mode switch from sizing tiles for the mode that is no longer visible.
+    private double ActiveViewportWidth => IsGamepadMode ? GamepadViewportWidth : LibraryViewportWidth;
+
+    private double ActiveGridHorizontalPadding =>
+        IsGamepadMode ? GamepadGridHorizontalPadding : DesktopGridHorizontalPadding;
+
     partial void OnLibraryViewportWidthChanged(double value) => UpdateCoverLayout();
 
-    public bool IsSystemTheme => CurrentTheme == ThemePreference.System;
-    public bool IsLightTheme => CurrentTheme == ThemePreference.Light;
-    public bool IsDarkTheme => CurrentTheme == ThemePreference.Dark;
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
+
+    /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
+    public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
+    public bool IsStatusProgress => StatusSeverity == StatusSeverity.Progress;
+    public bool IsStatusInfo => StatusSeverity == StatusSeverity.Info;
     /// <summary>
     /// True while an emulator owns the game session, plus a short return guard that absorbs the
     /// controller/key used to close it. Input services poll this directly, so it remains accurate
@@ -279,6 +391,10 @@ public partial class MainViewModel : ViewModelBase
         _isFrontendSuspended || DateTimeOffset.UtcNow < _gamepadInputGuardUntil;
     public int SelectedGameCount => Games.Count(game => game.IsSelected);
     public bool HasSelectedGames => SelectedGameCount > 0;
+    public string SelectionSummaryText => SelectedGameCount == 1 ? "1 game selected" : $"{SelectedGameCount} games selected";
+    public string SelectionRemovalText => SelectedGameCount <= 1
+        ? "Remove from library…"
+        : $"Remove {SelectedGameCount} selected games…";
     public string LibraryTitle => CurrentLibraryScope switch
     {
         LibraryScope.AllGames => "All Games",
@@ -303,13 +419,6 @@ public partial class MainViewModel : ViewModelBase
         : SelectedSystem?.Id == "playstation3"
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
         : "Add game files or a dedicated folder to begin building this shelf.";
-    public string ThemeDescription => CurrentTheme switch
-    {
-        ThemePreference.Light => "Light appearance",
-        ThemePreference.Dark => "Dark appearance",
-        _ => "Follow system appearance",
-    };
-
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -354,8 +463,11 @@ public partial class MainViewModel : ViewModelBase
         CloudSaveSyncCoordinator? cloudSaveSync = null,
         IGameSaveSyncService? gameSaveSync = null,
         IApplicationLifetimeService? applicationLifetime = null,
-        TexturePackCoordinator? texturePacks = null)
+        TexturePackCoordinator? texturePacks = null,
+        ILibraryViewStateService? libraryViewState = null,
+        IOnScreenKeyboardService? onScreenKeyboard = null)
     {
+        _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _library = library;
         _scanner = scanner;
         _importRules = importRules;
@@ -368,14 +480,18 @@ public partial class MainViewModel : ViewModelBase
         _themeService = themeService ?? new NullAppThemeService();
         _interfaceModeService = interfaceModeService;
         _applicationLifetime = applicationLifetime;
+        _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         IsGamepadMode = interfaceModeService?.Current == InterfaceMode.Gamepad;
         if (_interfaceModeService is not null)
         {
             _interfaceModeService.ModeChanged += (_, mode) =>
             {
                 IsGamepadMode = mode == InterfaceMode.Gamepad;
-                if (IsGamepadMode)
-                    IsGridView = true;
+                // Gamepad mode renders tiles, so it forces a grid. Returning to Desktop puts the
+                // user's own view choice back: leaving the forced grid in place would both strand
+                // a list-view user in a grid and, on their next unrelated change, persist that
+                // grid over the preference they never changed.
+                IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
             };
         }
         _metadataService = metadataService ?? new NullGameMetadataService();
@@ -387,18 +503,39 @@ public partial class MainViewModel : ViewModelBase
         _retroMatching = retroMatching;
         _retroProgress = retroProgress;
         _retroDetails = retroDetails;
+        // A details refresh (opening the achievements overlay, or the post-exit refresh) writes the
+        // account's new unlock count to the progress store, but only a full reload re-applied it to a
+        // tile. So the focused-game dock widget kept showing the pre-unlock count ("0/9") after an
+        // unlock the overlay already reflected. Re-apply the affected tiles' display when fresh
+        // details arrive so the widget and grid mark update without a reload.
+        if (_retroDetails is not null)
+            _retroDetails.DetailsRefreshed += OnAchievementDetailsRefreshed;
         _retroRefresh = retroRefresh;
         _retroBadges = retroBadges;
         _cloudSaveSync = cloudSaveSync;
         _texturePacks = texturePacks;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
+        // Build the theme choices before assigning CurrentTheme: the generated setter fires
+        // OnCurrentThemeChanged, which reads ThemeChoices, whenever the saved theme differs from the
+        // System default.
+        ThemeChoices = ThemeCatalog.All
+            .Select(theme => new ThemeChoiceViewModel(theme, SetThemeAsync))
+            .ToArray();
         CurrentTheme = _themeService.Current;
+        foreach (var choice in ThemeChoices)
+            choice.IsSelected = choice.Id == CurrentTheme;
 
         Systems = new ObservableCollection<GameSystem>(systems);
-        GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
-            systems.Select(system => new GamepadPlatformTabViewModel(system)));
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
+        ShowEmptyPlatforms = _libraryViewState.Current.ShowEmptyPlatforms;
+        var populatedSystemIds = ReadPopulatedSystemIds();
+        var navigationSystems = systems
+            .Where(system => ShowEmptyPlatforms || populatedSystemIds.Contains(system.Id))
+            .ToArray();
+        NavigationSystems = new ObservableCollection<GameSystem>(navigationSystems);
+        GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
+            navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
 
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchDebounceMs) };
         _searchDebounce.Tick += (_, _) =>
@@ -407,7 +544,155 @@ public partial class MainViewModel : ViewModelBase
             ApplyFilter();
         };
 
-        SelectedSystem = Systems.FirstOrDefault();
+        _statusDismiss = new DispatcherTimer();
+        _statusDismiss.Tick += (_, _) =>
+        {
+            _statusDismiss.Stop();
+            StatusText = string.Empty;
+        };
+
+        // Selecting a platform moves several of these properties at once. Coalesce them into one
+        // write so a click on the sidebar is not three settings-file round trips.
+        _viewStateSave = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(ViewStateSaveDebounceMs) };
+        _viewStateSave.Tick += (_, _) =>
+        {
+            _viewStateSave.Stop();
+            _ = _libraryViewState.SaveAsync(BuildLibraryViewState());
+        };
+
+        RestoreLibraryViewState();
+    }
+
+    /// <summary>
+    /// Puts the library back the way it was left. Restoring assigns the same properties the user
+    /// normally drives, so the save is suppressed for the duration — otherwise the first launch
+    /// after an upgrade would write defaults over a perfectly good remembered view.
+    /// </summary>
+    private void RestoreLibraryViewState()
+    {
+        var state = _libraryViewState.Current;
+        _isRestoringViewState = true;
+        try
+        {
+            IsGridView = state.IsGridView;
+            SortColumn = Enum.TryParse<LibrarySortColumn>(state.SortColumn, out var column)
+                ? column
+                : LibrarySortColumn.Title;
+            SortDescending = state.SortDescending;
+            IsNavigationCollapsed = state.IsNavigationCollapsed;
+
+            var scope = Enum.TryParse<LibraryScope>(state.Scope, out var parsed)
+                ? parsed
+                : LibraryScope.System;
+            if (scope == LibraryScope.System)
+            {
+                // A system id can disappear between launches; fall back rather than open empty.
+                SelectedSystem = state.SelectedSystemId is { } id &&
+                    NavigationSystems.FirstOrDefault(candidate => candidate.Id == id) is { } system
+                    ? system
+                    : NavigationSystems.FirstOrDefault();
+                if (SelectedSystem is null)
+                {
+                    CurrentLibraryScope = LibraryScope.AllGames;
+                    _selectedSystemLoad = ReloadGamesAsync();
+                }
+            }
+            else
+            {
+                CurrentLibraryScope = scope;
+                _selectedSystemLoad = ReloadGamesAsync();
+            }
+        }
+        finally
+        {
+            _isRestoringViewState = false;
+        }
+    }
+
+    /// <summary>The snapshot the debounced save writes. Internal so tests can assert it directly.</summary>
+    internal LibraryViewSettings BuildLibraryViewState() => new()
+    {
+        // Gamepad mode forces a grid to render its tiles, which is not a statement about what the
+        // user wants on the desktop. Keep the stored desktop preference while that mode is active.
+        IsGridView = IsGamepadMode ? _libraryViewState.Current.IsGridView : IsGridView,
+        SortColumn = SortColumn.ToString(),
+        SortDescending = SortDescending,
+        IsNavigationCollapsed = IsNavigationCollapsed,
+        ShowEmptyPlatforms = ShowEmptyPlatforms,
+        Scope = CurrentLibraryScope.ToString(),
+        SelectedSystemId = SelectedSystem?.Id,
+    };
+
+    private void ScheduleLibraryViewStateSave()
+    {
+        if (_isRestoringViewState)
+            return;
+
+        _viewStateSave.Stop();
+        _viewStateSave.Start();
+    }
+
+    private HashSet<string> ReadPopulatedSystemIds()
+    {
+        try
+        {
+            // Presence in EmuShelf's library is authoritative. IsAvailable is deliberately not
+            // consulted: disconnecting a Steam Deck SD card must not erase its platforms from nav.
+            return _library.GetPopulatedSystemIds().ToHashSet(StringComparer.Ordinal);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not determine populated platforms: {ex.Message}");
+            return [];
+        }
+    }
+
+    private void RefreshNavigationSystems(IReadOnlySet<string> populatedSystemIds)
+    {
+        var visible = Systems
+            .Where(system => ShowEmptyPlatforms || populatedSystemIds.Contains(system.Id))
+            .ToArray();
+        if (!NavigationSystems.SequenceEqual(visible))
+        {
+            NavigationSystems.Clear();
+            foreach (var system in visible)
+                NavigationSystems.Add(system);
+
+            GamepadPlatforms.Clear();
+            foreach (var system in visible)
+                GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
+        }
+
+        UpdateGamepadPlatformState();
+    }
+
+    private async Task SetShowEmptyPlatformsAsync(bool show)
+    {
+        ShowEmptyPlatforms = show;
+        var populatedSystemIds = await Task.Run(ReadPopulatedSystemIds);
+        RefreshNavigationSystems(populatedSystemIds);
+
+        if (!show && CurrentLibraryScope == LibraryScope.System &&
+            SelectedSystem is { } selected && !populatedSystemIds.Contains(selected.Id))
+        {
+            await ShowCollectionAsync(LibraryScope.AllGames);
+        }
+
+        await _libraryViewState.SaveAsync(BuildLibraryViewState());
+    }
+
+    /// <summary>
+    /// Writes a pending view change immediately instead of waiting out the debounce. Called as the
+    /// window closes: switching to list view and quitting straight away is well under the debounce
+    /// interval, and without this the change the user just made is the one change never saved.
+    /// </summary>
+    internal void FlushPendingLibraryViewStateSave()
+    {
+        if (!_viewStateSave.IsEnabled)
+            return;
+
+        _viewStateSave.Stop();
+        _libraryViewState.Save(BuildLibraryViewState());
     }
 
     partial void OnSelectedSystemChanged(GameSystem? value)
@@ -416,6 +701,7 @@ public partial class MainViewModel : ViewModelBase
             CurrentLibraryScope = LibraryScope.System;
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
+        ScheduleLibraryViewStateSave();
         _selectedSystemLoad = ReloadGamesAsync();
     }
 
@@ -425,6 +711,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsRecentlyAddedSelected));
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
+        ScheduleLibraryViewStateSave();
     }
 
     partial void OnSearchTextChanged(string value)
@@ -433,8 +720,54 @@ public partial class MainViewModel : ViewModelBase
         _searchDebounce.Start();
     }
 
-    partial void OnStatusTextChanged(string value) =>
+    partial void OnStatusSeverityChanged(StatusSeverity value)
+    {
+        OnPropertyChanged(nameof(IsStatusError));
+        OnPropertyChanged(nameof(IsStatusProgress));
+        OnPropertyChanged(nameof(IsStatusInfo));
+    }
+
+    partial void OnStatusTextChanged(string value)
+    {
         OnPropertyChanged(nameof(HasStatusMessage));
+        ScheduleStatusDismiss();
+    }
+
+    /// <summary>
+    /// The single entry point for the library toast. Severity is set first so the dismiss timer
+    /// that <see cref="OnStatusTextChanged"/> starts is already looking at the new message's kind.
+    /// </summary>
+    private void SetStatus(string text, StatusSeverity severity = StatusSeverity.Info)
+    {
+        StatusSeverity = severity;
+        StatusText = text;
+    }
+
+    /// <summary>
+    /// How long the current message has left before it dismisses itself, or <see cref="TimeSpan.Zero"/>
+    /// if it never will. Progress messages get no countdown at all: the operation producing them
+    /// replaces the text with its own result (or an error) when it finishes, and a scan that goes
+    /// quiet for five seconds must not look like it stopped.
+    /// </summary>
+    internal TimeSpan StatusDismissDelay => !HasStatusMessage
+        ? TimeSpan.Zero
+        : StatusSeverity switch
+        {
+            StatusSeverity.Progress => TimeSpan.Zero,
+            StatusSeverity.Error => ErrorStatusLifetime,
+            _ => InfoStatusLifetime,
+        };
+
+    private void ScheduleStatusDismiss()
+    {
+        _statusDismiss.Stop();
+        var lifetime = StatusDismissDelay;
+        if (lifetime <= TimeSpan.Zero)
+            return;
+
+        _statusDismiss.Interval = lifetime;
+        _statusDismiss.Start();
+    }
 
     [RelayCommand]
     private void ClearSearch()
@@ -469,26 +802,37 @@ public partial class MainViewModel : ViewModelBase
             SelectedSystem = system;
     }
 
-    // LB/RB walk the same order the controller rail shows — All Games, Collections, then each
-    // system — so Collections is reachable by shoulder buttons instead of being stepped over.
+    // LB/RB cycle one ordered list the rail mirrors — All Games, then each system — and wrap at
+    // both ends. Collections and Recently Added are not platforms; they live in the Start menu and
+    // the Collections overlay respectively, so they are not stops on this cycle.
     private async Task MovePlatformAsync(int direction)
     {
-        var current = CurrentLibraryScope switch
-        {
-            LibraryScope.AllGames => 0,
-            LibraryScope.RecentlyAdded => 1,
-            _ => SelectedSystem is null ? 0 : Systems.IndexOf(SelectedSystem) + 2,
-        };
-        var target = current + direction;
-        if (target < 0 || target > Systems.Count + 1)
-            return;
+        var count = NavigationSystems.Count + 1; // [All Games, systems…]
+        if (count <= 1)
+            return; // Only All Games exists; nothing to cycle to.
+
+        var current = CurrentPlatformCycleIndex();
+        // From an off-list scope (e.g. Recently Added) the first press returns to All Games rather
+        // than stepping past it, so a controller can never dead-end away from the cycle.
+        var target = current < 0 ? 0 : ((current + direction) % count + count) % count;
 
         if (target == 0)
-            await ShowCollectionAsync(LibraryScope.AllGames);
-        else if (target == 1)
-            await ShowCollectionAsync(LibraryScope.RecentlyAdded);
+            await ShowAllGamesAsync();
         else
-            SelectedSystem = Systems[target - 2];
+            SelectedSystem = NavigationSystems[target - 1];
+    }
+
+    // Position in the LB/RB cycle for the current scope, or -1 when the scope is not on the cycle.
+    private int CurrentPlatformCycleIndex()
+    {
+        if (CurrentLibraryScope == LibraryScope.AllGames)
+            return 0;
+        if (CurrentLibraryScope == LibraryScope.System && SelectedSystem is not null &&
+            NavigationSystems.IndexOf(SelectedSystem) is >= 0 and var systemIndex)
+        {
+            return systemIndex + 1;
+        }
+        return -1;
     }
 
     [RelayCommand]
@@ -588,8 +932,25 @@ public partial class MainViewModel : ViewModelBase
         OpenGamepadOverlay(GamepadOverlayKind.DesktopModeConfirmation);
 
     [RelayCommand]
-    private void RequestSettingsFromGamepad() =>
-        OpenGamepadOverlay(GamepadOverlayKind.SettingsDesktopHandoff);
+    private async Task RequestSettingsFromGamepadAsync()
+    {
+        if (!IsGamepadMode || IsBusy)
+            return;
+
+        try
+        {
+            CloseGamepadSettingsProjection();
+            var settings = await CreateSettingsViewModelAsync();
+            GamepadSettings = new GamepadSettingsViewModel(
+                settings, _onScreenKeyboard, ThemeChoices, SetThemeAsync);
+            OpenGamepadOverlay(GamepadOverlayKind.Settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not open Gamepad settings.", ex);
+            SetStatus($"Could not open Settings: {ex.Message}", StatusSeverity.Error);
+        }
+    }
 
     [RelayCommand]
     private void RequestQuitFromGamepad() =>
@@ -600,7 +961,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadAchievementsOpen)
         {
-            MoveFocusedAchievement(-1);
+            MoveFocusedAchievementVertical(-1);
             return;
         }
 
@@ -612,11 +973,42 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadAchievementsOpen)
         {
-            MoveFocusedAchievement(1);
+            MoveFocusedAchievementVertical(1);
             return;
         }
 
         MoveGamepadOverlaySelection(1);
+    }
+
+    [RelayCommand]
+    private void CycleGamepadAchievementSort()
+    {
+        if (!IsGamepadAchievementsOpen || GamepadAchievementDetails is not { } details)
+            return;
+
+        // Sorting a controller grid should keep the selector in the same physical slot. Following
+        // the old achievement id makes the ring jump across the screen as that badge moves.
+        var focusedIndex = FocusedGamepadAchievement is { } focused
+            ? details.VisibleAchievements.IndexOf(focused)
+            : 0;
+        focusedIndex = Math.Max(0, focusedIndex);
+
+        details.CycleSortCommand.Execute(null);
+
+        FocusedGamepadAchievement = details.VisibleAchievements.Count == 0
+            ? null
+            : details.VisibleAchievements[Math.Min(focusedIndex, details.VisibleAchievements.Count - 1)];
+
+    }
+
+    [RelayCommand]
+    private void FocusGamepadAchievement(AchievementRowViewModel? achievement)
+    {
+        if (IsGamepadAchievementsOpen && achievement is not null &&
+            GamepadAchievementDetails?.VisibleAchievements.Contains(achievement) == true)
+        {
+            FocusedGamepadAchievement = achievement;
+        }
     }
 
     [RelayCommand]
@@ -636,10 +1028,9 @@ public partial class MainViewModel : ViewModelBase
             FocusedGame.DraftTitle = FocusedGame.Title;
             FocusedGame.IsEditingTitle = false;
         }
-        if (GamepadAchievementDetails is not null)
-            GamepadAchievementDetails.Achievements.CollectionChanged -= HandleGamepadAchievementsChanged;
-        GamepadAchievementDetails?.Dispose();
-        GamepadAchievementDetails = null;
+        DisposeGamepadAchievementDetails();
+        if (closingOverlay == GamepadOverlayKind.Settings)
+            CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
@@ -650,6 +1041,12 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void BackFromGamepadOverlay()
     {
+        if (IsGamepadSettingsOpen)
+        {
+            OnGamepadSettingsCloseRequested(false);
+            return;
+        }
+
         var returnOverlay = GamepadOverlay switch
         {
             GamepadOverlayKind.Rename or
@@ -657,7 +1054,6 @@ public partial class MainViewModel : ViewModelBase
             GamepadOverlayKind.RemoveConfirmation or
             GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
             GamepadOverlayKind.DesktopModeConfirmation or
-            GamepadOverlayKind.SettingsDesktopHandoff or
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
             _ => GamepadOverlayKind.None,
         };
@@ -692,7 +1088,7 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        StatusText = "Cover selection is available in Desktop mode.";
+        SetStatus("Cover selection is available in Desktop mode.");
     }
 
     [RelayCommand]
@@ -720,6 +1116,9 @@ public partial class MainViewModel : ViewModelBase
         // Desktop-mode switch.
         if (IsGamepadInputSuspended)
             return true;
+
+        if (IsGamepadSettingsOpen && GamepadSettings is { } settings)
+            return settings.Dispatch(action);
 
         if (GamepadOverlayOwnsTextInput)
             return DispatchTextOverlayAction(action);
@@ -759,8 +1158,23 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.Menu:
                 OpenGamepadMenuCommand.Execute(null);
                 return true;
+            case GamepadAction.PreviousPlatform when IsGamepadAchievementsOpen:
+                GamepadAchievementDetails?.CycleFilterCommand.Execute(-1);
+                return true;
+            case GamepadAction.NextPlatform when IsGamepadAchievementsOpen:
+                GamepadAchievementDetails?.CycleFilterCommand.Execute(1);
+                return true;
             case GamepadAction.Search when IsGamepadAchievementsOpen:
                 GamepadAchievementDetails?.RefreshCommand.Execute(null);
+                return true;
+            case GamepadAction.Actions when IsGamepadAchievementsOpen:
+                CycleGamepadAchievementSortCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateLeft when IsGamepadAchievementsOpen:
+                MoveFocusedAchievementHorizontal(-1);
+                return true;
+            case GamepadAction.NavigateRight when IsGamepadAchievementsOpen:
+                MoveFocusedAchievementHorizontal(1);
                 return true;
             case GamepadAction.NavigateUp:
                 MoveGamepadOverlayUpCommand.Execute(null);
@@ -786,18 +1200,11 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NextPlatform:
                 NextPlatformCommand.Execute(null);
                 return true;
-            case GamepadAction.Confirm when IsGamepadRailFocused:
-                ActivateGamepadRailCommand.Execute(null);
-                return true;
             case GamepadAction.Confirm:
                 LaunchFocusedGameCommand.Execute(null);
                 return true;
             case GamepadAction.Cancel:
-                if (IsGamepadRailFocused)
-                {
-                    IsGamepadRailFocused = false;
-                    RestoreFocusedGame();
-                }
+                // Nothing to back out of at the top level; swallow B/Escape so it can't bubble.
                 return true;
             case GamepadAction.Search:
                 OpenGamepadSearchCommand.Execute(null);
@@ -830,8 +1237,7 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode)
             return;
 
-        GamepadAchievementDetails?.Dispose();
-        GamepadAchievementDetails = null;
+        DisposeGamepadAchievementDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = overlay;
@@ -853,7 +1259,7 @@ public partial class MainViewModel : ViewModelBase
                 AddDiscSelectionOptions();
                 break;
             case GamepadOverlayKind.RemoveConfirmation:
-                AddOption("Remove from library", ConfirmGamepadRemoveCommand);
+                AddOption("Remove from library", ConfirmGamepadRemoveCommand, true);
                 break;
             case GamepadOverlayKind.CoverDesktopHandoff:
                 AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
@@ -866,16 +1272,15 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Collections", OpenGamepadCollectionsCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
-                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand);
+                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
+                break;
+            case GamepadOverlayKind.Settings:
                 break;
             case GamepadOverlayKind.DesktopModeConfirmation:
                 AddOption("Switch to Desktop mode", SwitchToDesktopModeCommand);
                 break;
-            case GamepadOverlayKind.SettingsDesktopHandoff:
-                AddOption("Open Settings in Desktop mode", OpenSettingsFromGamepadCommand);
-                break;
             case GamepadOverlayKind.QuitConfirmation:
-                AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand);
+                AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand, true);
                 break;
         }
 
@@ -895,7 +1300,7 @@ public partial class MainViewModel : ViewModelBase
             AddOption("Achievements", OpenFocusedAchievementsCommand);
         AddOption("Edit title", EditFocusedTitleCommand);
         AddOption("Set cover", SetFocusedCoverCommand);
-        AddOption("Remove", RemoveFocusedGameCommand);
+        AddOption("Remove", RemoveFocusedGameCommand, true);
     }
 
     private void AddDiscSelectionOptions()
@@ -912,8 +1317,8 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void AddOption(string label, ICommand command) =>
-        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command));
+    private void AddOption(string label, ICommand command, bool isDestructive = false) =>
+        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command, isDestructive));
 
     private void MoveGamepadOverlaySelection(int delta)
     {
@@ -933,22 +1338,67 @@ public partial class MainViewModel : ViewModelBase
 
     private void FocusFirstAchievement()
     {
-        FocusedGamepadAchievement = GamepadAchievementDetails?.Achievements.FirstOrDefault();
+        FocusedGamepadAchievement = GamepadAchievementDetails?.VisibleAchievements.FirstOrDefault();
     }
 
-    private void MoveFocusedAchievement(int delta)
+    private void MoveFocusedAchievementHorizontal(int direction)
     {
-        var rows = GamepadAchievementDetails?.Achievements;
+        var rows = GamepadAchievementDetails?.VisibleAchievements;
         if (rows is not { Count: > 0 })
             return;
         var index = FocusedGamepadAchievement is null ? 0 : rows.IndexOf(FocusedGamepadAchievement);
-        FocusedGamepadAchievement = rows[Math.Clamp(index + delta, 0, rows.Count - 1)];
+        if (index < 0)
+            index = 0;
+        var column = index % GamepadAchievementColumnCount;
+        var target = index + Math.Sign(direction);
+        if (target >= 0 && target < rows.Count &&
+            (direction < 0 ? column > 0 : column < GamepadAchievementColumnCount - 1))
+        {
+            FocusedGamepadAchievement = rows[target];
+        }
     }
 
-    private void HandleGamepadAchievementsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    private void MoveFocusedAchievementVertical(int direction)
     {
-        if (IsGamepadAchievementsOpen && FocusedGamepadAchievement is null)
-            FocusFirstAchievement();
+        var rows = GamepadAchievementDetails?.VisibleAchievements;
+        if (rows is not { Count: > 0 })
+            return;
+        var index = FocusedGamepadAchievement is null ? 0 : rows.IndexOf(FocusedGamepadAchievement);
+        if (index < 0)
+            index = 0;
+        var target = index + Math.Sign(direction) * GamepadAchievementColumnCount;
+        if (target >= 0 && target < rows.Count)
+            FocusedGamepadAchievement = rows[target];
+    }
+
+    private void HandleGamepadAchievementDetailsPropertyChanged(
+        object? sender,
+        System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (!IsGamepadAchievementsOpen ||
+            e.PropertyName != nameof(AchievementDetailsViewModel.VisibleAchievements) ||
+            GamepadAchievementDetails is not { } details)
+        {
+            return;
+        }
+
+        var focusedId = FocusedGamepadAchievement?.AchievementId;
+        FocusedGamepadAchievement = focusedId is { } achievementId
+            ? details.VisibleAchievements.FirstOrDefault(row => row.AchievementId == achievementId) ??
+              details.VisibleAchievements.FirstOrDefault()
+            : details.VisibleAchievements.FirstOrDefault();
+        GamepadAchievementLayoutRevision++;
+        OnPropertyChanged(nameof(GamepadAchievementLayoutRevision));
+    }
+
+    private void DisposeGamepadAchievementDetails()
+    {
+        if (GamepadAchievementDetails is not { } details)
+            return;
+
+        details.PropertyChanged -= HandleGamepadAchievementDetailsPropertyChanged;
+        details.Dispose();
+        GamepadAchievementDetails = null;
     }
 
     private void NotifyGamepadOverlayState()
@@ -963,10 +1413,16 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
-        OnPropertyChanged(nameof(IsGamepadSettingsHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
+        OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
+        OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
+        OnPropertyChanged(nameof(ShowsGamepadOverlayChromeTitle));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
         OnPropertyChanged(nameof(GamepadOverlayHelpText));
     }
@@ -991,14 +1447,6 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         await SetInterfaceModeAsync(InterfaceMode.Desktop);
-    }
-
-    [RelayCommand]
-    private async Task OpenSettingsFromGamepadAsync()
-    {
-        CloseGamepadOverlay();
-        await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        await OpenSettingsAsync();
     }
 
     [RelayCommand]
@@ -1046,33 +1494,28 @@ public partial class MainViewModel : ViewModelBase
         if (index < 0)
             index = 0;
         FocusedGame = Games[Math.Clamp(index + delta, 0, Games.Count - 1)];
-        IsGamepadRailFocused = false;
     }
 
+    // The d-pad/stick move only inside the cover grid; platforms are switched by LB/RB. Each
+    // direction clamps at the grid edge rather than escaping into the rail or wrapping rows.
     [RelayCommand]
     private void MoveGamepadFocusLeft()
     {
-        if (IsGamepadRailFocused)
-            GamepadRailIndex = Math.Max(0, GamepadRailIndex - 1);
-        else if (FocusedGame is { } focused)
-        {
-            var index = Games.IndexOf(focused);
-            if (index > 0 && index % GamepadColumnCount != 0)
-                FocusedGame = Games[index - 1];
-        }
+        if (FocusedGame is not { } focused)
+            return;
+        var index = Games.IndexOf(focused);
+        if (index > 0 && index % GamepadColumnCount != 0)
+            FocusedGame = Games[index - 1];
     }
 
     [RelayCommand]
     private void MoveGamepadFocusRight()
     {
-        if (IsGamepadRailFocused)
-            GamepadRailIndex = Math.Min(Systems.Count + 1, GamepadRailIndex + 1);
-        else if (FocusedGame is { } focused)
-        {
-            var index = Games.IndexOf(focused);
-            if (index >= 0 && index + 1 < Games.Count && index % GamepadColumnCount < GamepadColumnCount - 1)
-                FocusedGame = Games[index + 1];
-        }
+        if (FocusedGame is not { } focused)
+            return;
+        var index = Games.IndexOf(focused);
+        if (index >= 0 && index + 1 < Games.Count && index % GamepadColumnCount < GamepadColumnCount - 1)
+            FocusedGame = Games[index + 1];
     }
 
     [RelayCommand]
@@ -1083,15 +1526,7 @@ public partial class MainViewModel : ViewModelBase
 
         var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
         if (index < GamepadColumnCount)
-        {
-            GamepadRailIndex = CurrentLibraryScope == LibraryScope.AllGames
-                ? 0
-                : CurrentLibraryScope == LibraryScope.RecentlyAdded
-                    ? 1
-                    : SelectedSystem is null ? 2 : Math.Max(2, Systems.IndexOf(SelectedSystem) + 2);
-            IsGamepadRailFocused = true;
-            return;
-        }
+            return; // Top row: stay put. Platforms are reached with LB/RB, not by moving up.
 
         FocusedGame = Games[index - GamepadColumnCount];
     }
@@ -1102,33 +1537,10 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode || Games.Count == 0)
             return;
 
-        if (IsGamepadRailFocused)
-        {
-            IsGamepadRailFocused = false;
-            RestoreFocusedGame();
-            return;
-        }
-
         var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
         var target = index + GamepadColumnCount;
         if (target < Games.Count)
             FocusedGame = Games[target];
-    }
-
-    [RelayCommand]
-    private async Task ActivateGamepadRailAsync()
-    {
-        if (!IsGamepadRailFocused)
-            return;
-
-        if (GamepadRailIndex == 0)
-            await ShowAllGamesAsync();
-        else if (GamepadRailIndex == 1)
-            OpenGamepadOverlay(GamepadOverlayKind.Collections);
-        else if (GamepadRailIndex - 2 is var systemIndex && systemIndex >= 0 && systemIndex < Systems.Count)
-            SelectedSystem = Systems[systemIndex];
-
-        IsGamepadRailFocused = false;
     }
 
     private string FocusScopeKey() => CurrentLibraryScope switch
@@ -1153,33 +1565,24 @@ public partial class MainViewModel : ViewModelBase
         if (value <= 0)
             return;
 
-        LibraryViewportWidth = value;
-        GamepadColumnCount = Math.Max(1, (int)((Math.Max(0, value - GridHorizontalPadding) + CoverColumnSpacing) /
-                                               (GridCoverWidth + CoverColumnSpacing)));
+        // Deliberately does not write LibraryViewportWidth: that field is the desktop's, and
+        // overwriting it made the desktop grid inherit the gamepad viewport after a mode switch.
+        UpdateCoverLayout();
     }
 
+    // The rail is a passive indicator of the current scope: at most one platform tab is active,
+    // and the All Games tab tracks CurrentLibraryScope on its own.
     private void UpdateGamepadPlatformState()
     {
         foreach (var platform in GamepadPlatforms)
             platform.IsActive = CurrentLibraryScope == LibraryScope.System &&
                                 string.Equals(platform.System.Id, SelectedSystem?.Id, StringComparison.Ordinal);
-        UpdateGamepadRailFocus();
-    }
-
-    private void UpdateGamepadRailFocus()
-    {
-        OnPropertyChanged(nameof(IsGamepadAllGamesRailFocused));
-        OnPropertyChanged(nameof(IsGamepadCollectionsRailFocused));
-        for (var index = 0; index < GamepadPlatforms.Count; index++)
-            GamepadPlatforms[index].IsRailFocused = IsGamepadRailFocused && index + 2 == GamepadRailIndex;
     }
 
     partial void OnCurrentThemeChanged(ThemePreference value)
     {
-        OnPropertyChanged(nameof(IsSystemTheme));
-        OnPropertyChanged(nameof(IsLightTheme));
-        OnPropertyChanged(nameof(IsDarkTheme));
-        OnPropertyChanged(nameof(ThemeDescription));
+        foreach (var choice in ThemeChoices)
+            choice.IsSelected = choice.Id == value;
     }
 
     partial void OnSelectedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
@@ -1201,10 +1604,6 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnGamepadOverlaySelectionIndexChanged(int value) => UpdateGamepadOverlayOptionFocus();
 
-    partial void OnGamepadRailIndexChanged(int value) => UpdateGamepadRailFocus();
-
-    partial void OnIsGamepadRailFocusedChanged(bool value) => UpdateGamepadRailFocus();
-
     partial void OnFocusedGamepadAchievementChanged(
         AchievementRowViewModel? oldValue,
         AchievementRowViewModel? newValue)
@@ -1213,10 +1612,25 @@ public partial class MainViewModel : ViewModelBase
             oldValue.IsFocused = false;
         if (newValue is not null)
             newValue.IsFocused = true;
+        OnPropertyChanged(nameof(HasFocusedGamepadAchievement));
     }
 
     partial void OnIsGamepadModeChanged(bool value)
     {
+        // Entering Gamepad mode before its grid has ever been measured would leave GamepadColumnCount
+        // at its default of 1, so row-wise Up/Down would step a single tile (behaving like Left/Right)
+        // and the reveal could strand the selector off-screen. Seed the gamepad viewport from the
+        // desktop's so a real column count exists on entry; the gamepad grid's own SizeChanged still
+        // corrects it once it lays out.
+        if (value && GamepadViewportWidth <= 0 && LibraryViewportWidth > 0)
+            GamepadViewportWidth = LibraryViewportWidth;
+
+        // The newly visible mode has its own viewport and inset, so the covers have to be re-sized
+        // for it here. Waiting for that view's SizeChanged is not enough: if its width has not
+        // changed since it was last shown, the event never comes and the tiles keep the other
+        // mode's dimensions.
+        UpdateCoverLayout();
+
         if (value)
         {
             IsGamepadControllerInputActive = true;
@@ -1231,7 +1645,8 @@ public partial class MainViewModel : ViewModelBase
 
     /// <summary>
     /// Applies a library item gesture. The view only reports modifier keys; selection state and
-    /// its range anchor remain shared between the grid and list representations.
+    /// its range anchor remain shared between the grid and list representations. Ctrl/Cmd+Shift
+    /// extends a range, while Shift alone replaces the previous selection with that range.
     /// </summary>
     public void SelectGame(GameViewModel game, bool toggle = false, bool selectRange = false)
     {
@@ -1242,23 +1657,29 @@ public partial class MainViewModel : ViewModelBase
         {
             var start = Games.IndexOf(_selectionAnchor);
             var end = Games.IndexOf(game);
-            foreach (var candidate in Games)
-                candidate.IsSelected = false;
+            if (!toggle)
+                DeselectAllGames();
             for (var index = Math.Min(start, end); index <= Math.Max(start, end); index++)
                 Games[index].IsSelected = true;
+            SelectedGame = game;
         }
         else if (toggle)
         {
             game.IsSelected = !game.IsSelected;
+            _selectionAnchor = game;
+            SelectedGame = game.IsSelected ? game : Games.FirstOrDefault(candidate => candidate.IsSelected);
         }
         else
         {
-            foreach (var candidate in Games)
-                candidate.IsSelected = ReferenceEquals(candidate, game);
+            DeselectAllGames();
+            game.IsSelected = true;
+            _selectionAnchor = game;
+            SelectedGame = game;
         }
 
-        _selectionAnchor = game.IsSelected ? game : Games.FirstOrDefault(candidate => candidate.IsSelected);
-        SelectedGame = _selectionAnchor;
+        // Shift without an existing anchor behaves like an ordinary click and establishes one.
+        if (_selectionAnchor is null || !Games.Contains(_selectionAnchor))
+            _selectionAnchor = game;
         NotifySelectionChanged();
     }
 
@@ -1276,35 +1697,44 @@ public partial class MainViewModel : ViewModelBase
         NotifySelectionChanged();
     }
 
+    [RelayCommand]
     private void ClearSelection()
     {
-        foreach (var game in _systemGames)
-            game.IsSelected = false;
+        DeselectAllGames();
 
         _selectionAnchor = null;
         SelectedGame = null;
         NotifySelectionChanged();
     }
 
+    private void DeselectAllGames()
+    {
+        foreach (var game in _systemGames.Concat(Games).Distinct())
+            game.IsSelected = false;
+    }
+
     private void NotifySelectionChanged()
     {
         OnPropertyChanged(nameof(SelectedGameCount));
         OnPropertyChanged(nameof(HasSelectedGames));
+        OnPropertyChanged(nameof(SelectionSummaryText));
+        OnPropertyChanged(nameof(SelectionRemovalText));
+        var removalText = SelectionRemovalText;
+        foreach (var game in _systemGames.Concat(Games).Distinct())
+            game.SelectionRemovalText = removalText;
         RemoveSelectedGamesCommand.NotifyCanExecuteChanged();
     }
 
     // Recompute the cover width for the current viewport so a whole number of columns fills the
     // row (no lopsided right gutter), then push it and the shared shelf height to every tile. The
     // shelf height is the tallest cover in the view so a mixed collection stays baseline-aligned.
-    private void UpdateCoverLayout()
+    private void UpdateCoverLayout(bool applyVisibleShelf = true)
     {
         var coverWidth = MinCoverWidth;
-        var available = LibraryViewportWidth - GridHorizontalPadding;
+        var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
         if (available >= MinCoverWidth)
         {
-            var columns = Math.Max(
-                1,
-                (int)((available + CoverColumnSpacing) / (MinCoverWidth + CoverColumnSpacing)));
+            var columns = ColumnsThatFit(available, MinCoverWidth);
             coverWidth = Math.Floor((available - (columns - 1) * CoverColumnSpacing) / columns);
             coverWidth = Math.Clamp(coverWidth, MinCoverWidth, MaxCoverWidth);
         }
@@ -1312,12 +1742,45 @@ public partial class MainViewModel : ViewModelBase
         // Drives the layout's cell width; the view sets UniformGridLayout.MinItemWidth from it.
         GridCoverWidth = coverWidth;
 
+        // D-pad up/down steps a whole row, so this must be the number of columns the layout
+        // actually renders. It is derived from the same width and inset the cells are sized from:
+        // when the two disagreed by one, Up/Down landed on the wrong tile and the reveal scrolled
+        // to it, which read as the grid jumping and games vanishing.
+        if (IsGamepadMode && GamepadViewportWidth > 0)
+        {
+            GamepadColumnCount = ColumnsThatFit(
+                Math.Max(0, GamepadViewportWidth - GamepadGridHorizontalPadding),
+                coverWidth);
+        }
+
         if (_systemGames.Count == 0)
             return;
 
         var shelfCoverHeight = _systemGames.Max(
             game => Math.Round(coverWidth / game.CoverAspectRatio));
         foreach (var game in _systemGames)
+            game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
+
+        if (applyVisibleShelf)
+            ApplyVisibleCoverShelf(coverWidth);
+    }
+
+    /// <summary>
+    /// How many cells of <paramref name="itemWidth"/> fit in <paramref name="available"/>, matching
+    /// UniformGridLayout's own arithmetic so the view model and the layout never disagree.
+    /// </summary>
+    private static int ColumnsThatFit(double available, double itemWidth) => Math.Max(
+        1,
+        (int)((available + CoverColumnSpacing) / (itemWidth + CoverColumnSpacing)));
+
+    private void ApplyVisibleCoverShelf(double coverWidth)
+    {
+        if (Games.Count == 0)
+            return;
+
+        var shelfCoverHeight = Games.Max(
+            game => Math.Round(coverWidth / game.CoverAspectRatio));
+        foreach (var game in Games)
             game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
     }
 
@@ -1329,8 +1792,29 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var generation = ++_loadGeneration;
+
+        // The rail, the title and the count all move to the new platform the instant the selection
+        // changes, but the games behind them only arrive two awaits later. Drop the outgoing
+        // platform's tiles now so that gap shows an empty grid rather than one platform's library
+        // sitting under another platform's name. A reload of the scope already on screen (an
+        // availability pass, a rescan) keeps its tiles, so refreshes do not flash.
+        var scopeKey = DescribeScope(scope, system);
+        if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
+            BeginScopeChange();
+
         try
         {
+            var populatedSystemIds = await Task.Run(ReadPopulatedSystemIds);
+            if (generation != _loadGeneration)
+                return;
+            RefreshNavigationSystems(populatedSystemIds);
+            if (!ShowEmptyPlatforms && scope == LibraryScope.System && system is not null &&
+                !populatedSystemIds.Contains(system.Id))
+            {
+                await ShowCollectionAsync(LibraryScope.AllGames);
+                return;
+            }
+
             var artworkBySystem = (scope == LibraryScope.System && system is not null
                     ? [system.Id]
                     : _systemsById.Keys)
@@ -1385,7 +1869,6 @@ public partial class MainViewModel : ViewModelBase
                         titleSet.DisplayTitle,
                         titleSet.SelectionKey,
                         LaunchSelectedDiscFromLibraryAsync);
-                    viewModel.CoverAspectRatioChanged += OnGameCoverAspectRatioChanged;
                     viewModels.Add(viewModel);
                 }
 
@@ -1408,13 +1891,93 @@ public partial class MainViewModel : ViewModelBase
                 existingGame.Dispose();
             _systemGames.Clear();
             _systemGames.AddRange(games);
-            UpdateCoverLayout();
+            // Games still contains the previous scope here. ApplyFilter replaces it immediately
+            // afterward and performs the authoritative visible-shelf pass.
+            UpdateCoverLayout(applyVisibleShelf: false);
             ApplyFilter();
+            _displayedScopeKey = scopeKey;
+            IsLibraryLoading = false;
         }
         catch (Exception ex)
         {
             _logger.Error("Could not load the current library view.", ex);
-            StatusText = $"Could not load library: {ex.Message}";
+            SetStatus($"Could not load library: {ex.Message}", StatusSeverity.Error);
+            // Only the newest load may lower the flag; an older one failing must not un-blank a
+            // view that a newer load is still filling.
+            if (generation == _loadGeneration)
+                IsLibraryLoading = false;
+        }
+    }
+
+    /// <summary>
+    /// Identifies what the library is showing, so a reload can tell "the user moved to a different
+    /// platform" from "re-read the platform already on screen".
+    /// </summary>
+    private static string DescribeScope(LibraryScope scope, GameSystem? system) =>
+        scope == LibraryScope.System ? $"system:{system?.Id}" : scope.ToString();
+
+    /// <summary>
+    /// Empties the visible grid for an incoming scope. The empty-library and no-results panels are
+    /// suppressed meanwhile: nothing is known yet, and claiming the platform is empty before it has
+    /// been read is its own wrong answer. <see cref="ApplyFilter"/> restores all of it.
+    /// </summary>
+    private void BeginScopeChange()
+    {
+        IsLibraryLoading = true;
+        ClearSelection();
+        FocusedGame = null;
+        Games.Clear();
+        HasGames = false;
+        IsLibraryEmpty = false;
+        IsSearchEmpty = false;
+    }
+
+    // A just-refreshed detail carries the account's current unlocks. Re-apply the display for every
+    // loaded tile linked to that RA game so the focused-game widget and grid mark reflect a new
+    // unlock immediately, whether the refresh came from the post-exit pass or from opening the
+    // achievements overlay. This never touches the network: it re-reads the local stores the reload
+    // path already uses. Marshaled to the UI thread because the details service raises this from the
+    // request continuation.
+    private void OnAchievementDetailsRefreshed(RetroAchievementsDetailsSnapshot snapshot)
+    {
+        if (_retroAchievementsRead is null)
+            return;
+
+        if (Dispatcher.UIThread.CheckAccess())
+            ApplyRefreshedAchievementDisplay(snapshot.Details.GameId);
+        else
+            Dispatcher.UIThread.Post(() => ApplyRefreshedAchievementDisplay(snapshot.Details.GameId));
+    }
+
+    private void ApplyRefreshedAchievementDisplay(int retroAchievementsGameId)
+    {
+        if (_retroAchievementsRead is null)
+            return;
+
+        try
+        {
+            var affected = _systemGames
+                .Where(game => game.RetroAchievementsGameId == retroAchievementsGameId)
+                .ToArray();
+            if (affected.Length == 0)
+                return;
+
+            var links = _retroAchievementsRead.GetAllLinks();
+            var progress = _retroAchievementsRead.GetAllProgress();
+            var connected = _retroAccount?.IsConnected ?? false;
+            foreach (var game in affected)
+            {
+                links.TryGetValue(game.Id, out var link);
+                RetroAchievementsProgressSnapshot? snapshot = null;
+                if (link?.RetroAchievementsGameId is { } raGameId)
+                    progress.TryGetValue(raGameId, out snapshot);
+                game.ApplyAchievementsDisplay(
+                    RetroAchievementsDisplay.For(game.SystemId, connected, link, snapshot));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not apply refreshed RetroAchievements progress to the library.", ex);
         }
     }
 
@@ -1609,7 +2172,7 @@ public partial class MainViewModel : ViewModelBase
                     return;
                 }
                 _logger.Warning($"Could not load the cover for game id {game.Id}.", ex);
-                StatusText = $"Could not load cover for {game.Title}: {ex.Message}";
+                SetStatus($"Could not load cover for {game.Title}: {ex.Message}", StatusSeverity.Error);
             }
         }
         finally
@@ -1617,8 +2180,6 @@ public partial class MainViewModel : ViewModelBase
             game.IsCoverLoading = false;
         }
     }
-
-    private void OnGameCoverAspectRatioChanged(object? sender, EventArgs e) => UpdateCoverLayout();
 
     // Sets the sort column, toggling ascending/descending when the same column is chosen again.
     [RelayCommand]
@@ -1657,6 +2218,8 @@ public partial class MainViewModel : ViewModelBase
     internal void ApplyFilter()
     {
         var query = SearchText.Trim();
+        if (!string.Equals(query, _appliedSearchText, StringComparison.Ordinal))
+            ClearSelection();
         _appliedSearchText = query;
         IEnumerable<GameViewModel> filtered = _systemGames;
         if (query.Length > 0)
@@ -1664,6 +2227,7 @@ public partial class MainViewModel : ViewModelBase
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         Games.ReplaceAll(SortGames(filtered));
+        ApplyVisibleCoverShelf(GridCoverWidth > 0 ? GridCoverWidth : MinCoverWidth);
 
         HasGames = Games.Count > 0;
         IsLibraryEmpty = _systemGames.Count == 0;
@@ -1684,10 +2248,13 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var previousStatus = StatusText;
+        var previousSeverity = StatusSeverity;
         IsBusy = true;
         try
         {
-            StatusText = paths.Count == 1 ? "Inspecting game…" : $"Inspecting {paths.Count} files…";
+            SetStatus(
+                paths.Count == 1 ? "Inspecting game…" : $"Inspecting {paths.Count} files…",
+                StatusSeverity.Progress);
             var analyses = await Task.Run(() => paths
                 .Select(_importRules.AnalyzeFile)
                 .ToList());
@@ -1702,13 +2269,13 @@ public partial class MainViewModel : ViewModelBase
             var system = await _dialogs.PickSystemAsync(Systems, suggested);
             if (system is null)
             {
-                StatusText = previousStatus;
+                SetStatus(previousStatus, previousSeverity);
                 return;
             }
 
             if (system.Id == "playstation3")
             {
-                StatusText = "PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.";
+                SetStatus("PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.");
                 return;
             }
 
@@ -1727,18 +2294,18 @@ public partial class MainViewModel : ViewModelBase
             var selection = await Task.Run(() => _importRules.SelectGameEntries(accepted, system));
             var importResult = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
-            StatusText = BuildAddGamesStatus(
+            SetStatus(BuildAddGamesStatus(
                 importResult.AddedCount,
                 incompatible,
                 unsupported,
                 confirmedUnrecognized,
-                system.Name);
+                system.Name));
             await MaybeStartMetadataForImportAsync(importResult.AddedGameIds);
         }
         catch (Exception ex)
         {
             _logger.Error("Game import failed.", ex);
-            StatusText = $"Import failed: {ex.Message}";
+            SetStatus($"Import failed: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -1799,7 +2366,7 @@ public partial class MainViewModel : ViewModelBase
 
         if (system.Id == "playstation3")
         {
-            StatusText = "PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.";
+            SetStatus("PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.");
             return;
         }
 
@@ -1807,22 +2374,22 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var progress = new Progress<ScanProgress>(p =>
-                StatusText = $"Scanning {system.Name}… {p.CandidatesFound} found");
+                SetStatus($"Scanning {system.Name}… {p.CandidatesFound} found", StatusSeverity.Progress));
 
             var selection = await _scanner.ScanAsync(folder, system, progress);
             await Task.Run(() => _library.AddLibraryFolder(system.Id, folder));
 
             var importResult = await ReconcileImportAsync(system, selection);
             await ShowSystemAsync(system);
-            StatusText = importResult.AddedCount == 1
+            SetStatus(importResult.AddedCount == 1
                 ? "Added 1 game from folder"
-                : $"Added {importResult.AddedCount} games from folder";
+                : $"Added {importResult.AddedCount} games from folder");
             await MaybeStartMetadataForImportAsync(importResult.AddedGameIds);
         }
         catch (Exception ex)
         {
             _logger.Error($"Folder scan failed for system {system.Id}.", ex);
-            StatusText = $"Scan failed: {ex.Message}";
+            SetStatus($"Scan failed: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -1835,7 +2402,7 @@ public partial class MainViewModel : ViewModelBase
     {
         if (SelectedSystem?.Id == "playstation3")
         {
-            StatusText = "Use Settings to sync the explicitly selected RPCS3 library.";
+            SetStatus("Use Settings to sync the explicitly selected RPCS3 library.");
             return Task.CompletedTask;
         }
 
@@ -1864,6 +2431,108 @@ public partial class MainViewModel : ViewModelBase
         return StatusText;
     }
 
+    private IReadOnlyList<LibraryFolder> GetLibraryFoldersForSettings(string systemId) =>
+        _library.GetLibraryFolders(systemId);
+
+    private async Task<string> AddLibraryFolderFromSettingsAsync(string systemId, string folderPath)
+    {
+        if (IsBusy)
+            return "Library work is already in progress.";
+        var system = Systems.FirstOrDefault(candidate => candidate.Id == systemId);
+        if (system is null || system.Id == "playstation3")
+            return "That platform does not use remembered folders.";
+
+        IsBusy = true;
+        try
+        {
+            var selection = await _scanner.ScanAsync(folderPath, system);
+            await Task.Run(() => _library.AddLibraryFolder(systemId, folderPath));
+            var imported = await ReconcileImportAsync(system, selection);
+            await UpdateAvailabilityAsync();
+            await ReloadGamesAsync();
+            await MaybeStartMetadataForImportAsync(imported.AddedGameIds);
+            return imported.AddedCount == 1
+                ? "Folder remembered — added 1 game."
+                : $"Folder remembered — added {imported.AddedCount} games.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not add a remembered folder for {systemId}.", ex);
+            return $"Could not add folder: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task<string> ChangeLibraryFolderFromSettingsAsync(
+        string systemId,
+        long folderId,
+        string replacementPath)
+    {
+        if (IsBusy)
+            return "Library work is already in progress.";
+        var system = Systems.FirstOrDefault(candidate => candidate.Id == systemId);
+        if (system is null || system.Id == "playstation3")
+            return "That platform does not use remembered folders.";
+
+        IsBusy = true;
+        try
+        {
+            // Scan first: an unreadable or invalid replacement must leave both the remembered root
+            // and every existing game path unchanged.
+            var selection = await _scanner.ScanAsync(replacementPath, system);
+            var preparedEntries = await PrepareImportEntriesAsync(system, selection.EntryPaths);
+            var verifiedGamePaths = await FindVerifiedRelocationsAsync(
+                folderId,
+                system,
+                replacementPath,
+                preparedEntries);
+            var changed = await Task.Run(() => _library.ReplaceLibraryFolder(
+                folderId,
+                systemId,
+                replacementPath,
+                verifiedGamePaths));
+            var imported = await ReconcileImportAsync(system, selection, preparedEntries);
+            await UpdateAvailabilityAsync();
+            await ReloadGamesAsync();
+            await MaybeStartMetadataForImportAsync(imported.AddedGameIds);
+
+            var details = new List<string>();
+            if (changed.RebasedGameCount > 0)
+                details.Add($"{changed.RebasedGameCount} existing game path(s) updated");
+            if (imported.AddedCount > 0)
+                details.Add($"{imported.AddedCount} new game(s) added");
+            return details.Count == 0
+                ? "Folder changed — no library entries changed."
+                : "Folder changed — " + string.Join(", ", details) + ".";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not change a remembered folder for {systemId}.", ex);
+            return $"Could not change folder: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task<string> ForgetLibraryFolderFromSettingsAsync(string systemId, long folderId)
+    {
+        try
+        {
+            await Task.Run(() => _library.RemoveLibraryFolder(folderId, systemId));
+            return "Folder forgotten. Existing games and files were not removed.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not forget a remembered folder for {systemId}.", ex);
+            return $"Could not forget folder: {ex.Message}";
+        }
+    }
+
     private IEnumerable<GameSystem> NonRpcs3Systems() =>
         Systems.Where(system => system.Id != "playstation3");
 
@@ -1884,20 +2553,20 @@ public partial class MainViewModel : ViewModelBase
         IsBusy = true;
         try
         {
-            StatusText = "Reading the RPCS3 game list…";
+            SetStatus("Reading the RPCS3 game list…", StatusSeverity.Progress);
             var source = new Rpcs3LibrarySource(configurationDirectory);
             var result = await new ExternalLibrarySyncService(_library).SyncAsync(source);
             var playStation3 = Systems.FirstOrDefault(system => system.Id == "playstation3");
             if (playStation3 is not null)
                 await ShowSystemAsync(playStation3);
 
-            StatusText = BuildRpcs3SyncStatus(result);
+            SetStatus(BuildRpcs3SyncStatus(result));
             return StatusText;
         }
         catch (Rpcs3LibraryFormatException ex)
         {
             _logger.Warning($"RPCS3 library sync was rejected: {ex.Message}");
-            StatusText = $"RPCS3 library sync failed: {ex.Message}";
+            SetStatus($"RPCS3 library sync failed: {ex.Message}", StatusSeverity.Error);
             return StatusText;
         }
         catch (ExternalLibrarySourceConflictException ex)
@@ -1905,13 +2574,13 @@ public partial class MainViewModel : ViewModelBase
             // Expected, recoverable condition: an entry collides with another game's path. The
             // reconciliation left the library unchanged, so surface the actionable message plainly.
             _logger.Warning($"RPCS3 library sync stopped on a path conflict: {ex.Message}");
-            StatusText = $"RPCS3 library sync stopped: {ex.Message}";
+            SetStatus($"RPCS3 library sync stopped: {ex.Message}", StatusSeverity.Error);
             return StatusText;
         }
         catch (Exception ex)
         {
             _logger.Error("RPCS3 library sync failed.", ex);
-            StatusText = $"RPCS3 library sync failed: {ex.Message}";
+            SetStatus($"RPCS3 library sync failed: {ex.Message}", StatusSeverity.Error);
             return StatusText;
         }
         finally
@@ -1955,7 +2624,7 @@ public partial class MainViewModel : ViewModelBase
                 foreach (var folder in folders)
                 {
                     var progress = new Progress<ScanProgress>(p =>
-                        StatusText = $"Rescanning {system.Name}… {p.CandidatesFound} found");
+                        SetStatus($"Rescanning {system.Name}… {p.CandidatesFound} found", StatusSeverity.Progress));
                     var selection = await _scanner.ScanAsync(folder.Path, system, progress);
                     var importResult = await ReconcileImportAsync(system, selection);
                     total += importResult.AddedCount;
@@ -1968,7 +2637,7 @@ public partial class MainViewModel : ViewModelBase
                 await ShowSystemAsync(systemToShow);
             else
                 await ReloadGamesAsync();
-            StatusText = total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)";
+            SetStatus(total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)");
             if (addedIds.Count > 0)
             {
                 // A remembered-folder rescan is another import path. Only its newly discovered
@@ -1986,7 +2655,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Library rescan failed.", ex);
-            StatusText = $"Rescan failed: {ex.Message}";
+            SetStatus($"Rescan failed: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -1998,14 +2667,18 @@ public partial class MainViewModel : ViewModelBase
         GameSystem system,
         GameEntrySelection selection)
     {
+        var preparedEntries = await PrepareImportEntriesAsync(system, selection.EntryPaths);
+        return await ReconcileImportAsync(system, selection, preparedEntries);
+    }
+
+    private async Task<GameImportResult> ReconcileImportAsync(
+        GameSystem system,
+        GameEntrySelection selection,
+        IReadOnlyList<PreparedImportEntry> preparedEntries)
+    {
         if (selection.EntryPaths.Count == 0 && selection.SuppressedPaths.Count == 0)
             return GameImportResult.Empty;
 
-        var preparedEntries = await Task.Run(() => selection.EntryPaths
-            .Select(path => new PreparedImportEntry(
-                path,
-                _importRules.ReadImportMetadata(path, system)))
-            .ToArray());
         var now = DateTimeOffset.Now;
         var games = preparedEntries.Select(entry => new Game
         {
@@ -2024,6 +2697,65 @@ public partial class MainViewModel : ViewModelBase
         await PersistImportEvidenceAsync(system.Id, preparedEntries);
 
         return result;
+    }
+
+    private Task<PreparedImportEntry[]> PrepareImportEntriesAsync(
+        GameSystem system,
+        IReadOnlyList<string> entryPaths) =>
+        Task.Run(() => entryPaths
+            .Select(path => new PreparedImportEntry(
+                path,
+                _importRules.ReadImportMetadata(path, system)))
+            .ToArray());
+
+    private Task<IReadOnlyDictionary<long, string>> FindVerifiedRelocationsAsync(
+        long folderId,
+        GameSystem system,
+        string replacementPath,
+        IReadOnlyList<PreparedImportEntry> preparedEntries) => Task.Run(() =>
+    {
+        if (_metadataStore is null)
+            return (IReadOnlyDictionary<long, string>)new Dictionary<long, string>();
+
+        var originalRoot = _library.GetLibraryFolders(system.Id)
+            .Single(folder => folder.Id == folderId)
+            .Path;
+        var replacementRoot = Path.GetFullPath(replacementPath);
+        var replacements = preparedEntries.ToDictionary(
+            entry => Path.GetFullPath(entry.Path),
+            entry => entry,
+            PathComparer);
+        var verified = new Dictionary<long, string>();
+
+        foreach (var game in _library.GetGames(system.Id))
+        {
+            if (!TryGetRelativePath(originalRoot, game.Path, out var relativePath))
+                continue;
+            var candidate = Path.GetFullPath(Path.Combine(replacementRoot, relativePath));
+            if (!replacements.TryGetValue(candidate, out var replacement) ||
+                !IdentifiersMatch(_metadataStore.GetIdentifiers(game.Id), replacement.Metadata.Identifiers))
+            {
+                continue;
+            }
+            verified[game.Id] = candidate;
+        }
+
+        return verified;
+    });
+
+    private static bool IdentifiersMatch(
+        IReadOnlyList<GameIdentifier> stored,
+        IReadOnlyList<GameIdentifier> replacement) =>
+        stored.Any(left => replacement.Any(right =>
+            left.Kind == right.Kind &&
+            string.Equals(left.Value, right.Value, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool TryGetRelativePath(string root, string path, out string relativePath)
+    {
+        relativePath = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+        return relativePath != ".." &&
+               !relativePath.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+               !Path.IsPathRooted(relativePath);
     }
 
     private async Task PersistImportEvidenceAsync(
@@ -2090,7 +2822,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Library availability check failed.", ex);
-            StatusText = $"Availability check failed: {ex.Message}";
+            SetStatus($"Availability check failed: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2153,7 +2885,7 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         await RememberSelectedDiscAsync(game, disc);
-        StatusText = $"Disc {disc.Number} selected for {game.Title}";
+        SetStatus($"Disc {disc.Number} selected for {game.Title}");
     }
 
     private async Task LaunchGameCoreAsync(GameViewModel? game)
@@ -2168,13 +2900,15 @@ public partial class MainViewModel : ViewModelBase
         var launchGame = launchDisc.Game;
         if (!launchGame.IsAvailable)
         {
-            StatusText = launchGame.IsAvailable ? game.UnavailableLaunchStatus :
-                $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found.";
+            SetStatus(
+                launchGame.IsAvailable ? game.UnavailableLaunchStatus :
+                    $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found.",
+                StatusSeverity.Error);
             return;
         }
 
         IsBusy = true;
-        StatusText = $"Launching {game.Title}…";
+        SetStatus($"Launching {game.Title}…", StatusSeverity.Progress);
         SuspendFrontendUiWork();
         try
         {
@@ -2187,9 +2921,11 @@ public partial class MainViewModel : ViewModelBase
                         launchGame,
                         afterExit: false,
                         cancellationToken);
-                    StatusText = beforeSync?.Status == CloudSaveSyncStatus.Failed
-                        ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
-                        : $"Launching {game.Title}…";
+                    SetStatus(
+                        beforeSync?.Status == CloudSaveSyncStatus.Failed
+                            ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
+                            : $"Launching {game.Title}…",
+                        StatusSeverity.Progress);
                 });
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
@@ -2202,16 +2938,18 @@ public partial class MainViewModel : ViewModelBase
                     launchGame,
                     afterExit: true,
                     CancellationToken.None);
-            StatusText = DescribeLaunchAndSaveSync(result, beforeSync, afterSync);
+            SetStatus(
+                DescribeLaunchAndSaveSync(result, beforeSync, afterSync),
+                result.Succeeded ? StatusSeverity.Info : StatusSeverity.Error);
         }
         catch (OperationCanceledException)
         {
-            StatusText = $"Launch cancelled for {game.Title}";
+            SetStatus($"Launch cancelled for {game.Title}");
         }
         catch (Exception ex)
         {
             _logger.Error($"Unexpected launch failure for game id {game.Id}.", ex);
-            StatusText = $"Could not launch {game.Title}: {ex.Message}";
+            SetStatus($"Could not launch {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2246,17 +2984,31 @@ public partial class MainViewModel : ViewModelBase
         if (_gameSaveSync?.CanSyncSystem(game.SystemId) != true)
             return null;
 
-        StatusText = afterExit
-            ? $"{game.Title} finished. Syncing saves…"
-            : $"Syncing saves before launching {game.Title}…";
+        SetStatus(
+            afterExit
+                ? $"{game.Title} finished. Syncing saves…"
+                : $"Syncing saves before launching {game.Title}…",
+            StatusSeverity.Progress);
+
         try
         {
-            var outcome = await _gameSaveSync.SyncSystemAsync(game.SystemId, cancellationToken);
+            var outcome = await _gameSaveSync.SyncSystemAsync(
+                game.SystemId,
+                cancellationToken,
+                LaunchStateKeysFor(game));
             if (outcome.Status == CloudSaveSyncStatus.Failed)
             {
                 _logger.Warning(
                     $"Cloud save sync failed {(afterExit ? "after" : "before")} launching " +
                     $"game id {game.Id}: {outcome.Message}");
+            }
+            else if (outcome.Status == CloudSaveSyncStatus.AlreadyRunning)
+            {
+                // Expected whenever the user starts a game while a manual sync is running. That
+                // pass covers this system too, so there is nothing to repair and nothing to report.
+                _logger.Information(
+                    $"Skipped the {(afterExit ? "post-exit" : "pre-launch")} save sync for game id " +
+                    $"{game.Id}: a cloud sync was already running.");
             }
             else if (outcome.Status == CloudSaveSyncStatus.NotConfigured)
             {
@@ -2281,6 +3033,35 @@ public partial class MainViewModel : ViewModelBase
                 ex);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
+    }
+
+    // Keys that scope a launch/exit state sync to just the launched game, so launching one game no
+    // longer hashes and syncs every game's states in a shared folder. The game's ROM file stem
+    // covers RetroArch (it names states after the ROM); the stored serials/disc/title/arcade ids
+    // cover DuckStation, PCSX2, PPSSPP, Dolphin, and RPCS3 (they name states after those). If none
+    // are known, the state phase has nothing to match and stays out of the way; a manual Sync all
+    // passes no keys and still covers every state.
+    private IReadOnlyCollection<string> LaunchStateKeysFor(Game game)
+    {
+        var keys = new List<string>();
+        var stem = System.IO.Path.GetFileNameWithoutExtension(game.Path);
+        if (!string.IsNullOrWhiteSpace(stem))
+            keys.Add(stem);
+
+        if (_metadataStore is not null)
+        {
+            foreach (var identifier in _metadataStore.GetIdentifiers(game.Id))
+            {
+                if (identifier.Kind is GameIdentifierKind.Serial or GameIdentifierKind.DiscId
+                        or GameIdentifierKind.TitleId or GameIdentifierKind.ArcadeSetName &&
+                    !string.IsNullOrWhiteSpace(identifier.Value))
+                {
+                    keys.Add(identifier.Value);
+                }
+            }
+        }
+
+        return keys;
     }
 
     private static string DescribeLaunchAndSaveSync(
@@ -2361,7 +3142,7 @@ public partial class MainViewModel : ViewModelBase
         {
             if (_retroDetails is null || _retroAccount is null)
             {
-                StatusText = "Achievement details are unavailable right now.";
+                SetStatus("Achievement details are unavailable right now.", StatusSeverity.Error);
                 return;
             }
 
@@ -2375,10 +3156,12 @@ public partial class MainViewModel : ViewModelBase
                     _retroDetails,
                     _retroAccount,
                     _retroBadges,
-                    cached);
+                    cached,
+                    logger: _logger,
+                    deferBadgeLoading: true);
                 OpenGamepadOverlay(GamepadOverlayKind.Achievements);
                 GamepadAchievementDetails = details;
-                details.Achievements.CollectionChanged += HandleGamepadAchievementsChanged;
+                details.PropertyChanged += HandleGamepadAchievementDetailsPropertyChanged;
                 FocusFirstAchievement();
                 _ = details.RefreshIfStaleAsync();
                 return;
@@ -2386,7 +3169,7 @@ public partial class MainViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.Error($"Could not open Gamepad achievements for game id {game.Id}.", ex);
-                StatusText = $"Could not open achievements for {game.Title}: {ex.Message}";
+                SetStatus($"Could not open achievements for {game.Title}: {ex.Message}", StatusSeverity.Error);
                 return;
             }
         }
@@ -2398,7 +3181,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error($"Could not open achievements for game id {game.Id}.", ex);
-            StatusText = $"Could not open achievements for {game.Title}: {ex.Message}";
+            SetStatus($"Could not open achievements for {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2438,7 +3221,7 @@ public partial class MainViewModel : ViewModelBase
         var title = game.DraftTitle.Trim();
         if (title.Length == 0)
         {
-            StatusText = "A game title cannot be empty.";
+            SetStatus("A game title cannot be empty.", StatusSeverity.Error);
             return;
         }
 
@@ -2454,12 +3237,12 @@ public partial class MainViewModel : ViewModelBase
             await Task.Run(() => _library.UpdateTitle(game.Id, title));
             game.CompleteTitleEdit(title);
             await ReloadGamesAsync();
-            StatusText = $"Renamed game to {title}";
+            SetStatus($"Renamed game to {title}");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not rename game id {game.Id}.", ex);
-            StatusText = $"Could not rename {game.Title}: {ex.Message}";
+            SetStatus($"Could not rename {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2473,16 +3256,22 @@ public partial class MainViewModel : ViewModelBase
         if (game is null || IsBusy)
             return;
 
-        var sourcePath = await _dialogs.PickCoverImageAsync(game.Title);
-        if (sourcePath is null)
+        var preferredAspectRatio = _systemsById.TryGetValue(game.SystemId, out var system)
+            ? system.CoverAspectRatio
+            : game.CoverAspectRatio;
+        var pickedCover = await _dialogs.PickGameCoverAsync(new GameCoverPickerContext(
+            game.Title,
+            game.SystemName,
+            preferredAspectRatio));
+        if (pickedCover is null)
             return;
 
         IsBusy = true;
-        StatusText = $"Preparing cover for {game.Title}…";
+        SetStatus($"Preparing cover for {game.Title}…", StatusSeverity.Progress);
         var previousCoverPath = game.CoverPath;
         try
         {
-            var imported = await _covers.ImportAsync(game.Id, sourcePath);
+            var imported = await _covers.ImportAsync(game.Id, pickedCover.SourcePath);
             try
             {
                 await Task.Run(() => _library.UpdateCoverPath(game.Id, imported.CoverPath));
@@ -2555,17 +3344,30 @@ public partial class MainViewModel : ViewModelBase
             if (cleanupFailure is not null)
                 warnings.Add($"the previous EmuShelf cover could not be removed: {cleanupFailure.Message}");
 
-            StatusText = warnings.Count == 0
-                ? $"Updated cover for {game.Title}"
-                : $"Updated cover for {game.Title}, but {string.Join("; ", warnings)}";
+            SetStatus(
+                warnings.Count == 0
+                    ? $"Updated cover for {game.Title}"
+                    : $"Updated cover for {game.Title}, but {string.Join("; ", warnings)}",
+                warnings.Count == 0 ? StatusSeverity.Info : StatusSeverity.Error);
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not set a cover for game id {game.Id}.", ex);
-            StatusText = $"Could not set cover for {game.Title}: {ex.Message}";
+            SetStatus($"Could not set cover for {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
+            if (pickedCover.IsTemporary)
+            {
+                try
+                {
+                    File.Delete(pickedCover.SourcePath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("Could not remove a downloaded cover staging file.", ex);
+                }
+            }
             IsBusy = false;
         }
     }
@@ -2592,12 +3394,12 @@ public partial class MainViewModel : ViewModelBase
         {
             await Task.Run(() => _library.RemoveGames(game.Discs.Select(disc => disc.Game.Id).ToArray()));
             await ReloadGamesAsync();
-            StatusText = $"Removed {game.Title} from the library — game files were not touched";
+            SetStatus($"Removed {game.Title} from the library — game files were not touched");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not remove game id {game.Id} from the library.", ex);
-            StatusText = $"Could not remove {game.Title}: {ex.Message}";
+            SetStatus($"Could not remove {game.Title}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2612,11 +3414,16 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var selectedGames = Games.Where(game => game.IsSelected).ToArray();
-        if (selectedGames.Length == 0 ||
-            !await _dialogs.ConfirmRemoveGamesAsync(selectedGames.Length))
+        if (selectedGames.Length == 0)
         {
             return;
         }
+
+        var confirmed = selectedGames.Length == 1
+            ? await _dialogs.ConfirmRemoveGameAsync(selectedGames[0].Title)
+            : await _dialogs.ConfirmRemoveGamesAsync(selectedGames.Length);
+        if (!confirmed)
+            return;
 
         IsBusy = true;
         try
@@ -2626,12 +3433,12 @@ public partial class MainViewModel : ViewModelBase
                 .Distinct()
                 .ToArray()));
             await ReloadGamesAsync();
-            StatusText = $"Removed {selectedGames.Length} {(selectedGames.Length == 1 ? "game" : "games")} from the library — game files and covers were not touched";
+            SetStatus($"Removed {selectedGames.Length} {(selectedGames.Length == 1 ? "game" : "games")} from the library — game files and covers were not touched");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not remove {selectedGames.Length} selected games from the library.", ex);
-            StatusText = $"Could not remove the selected games: {ex.Message}";
+            SetStatus($"Could not remove the selected games: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -2651,33 +3458,137 @@ public partial class MainViewModel : ViewModelBase
                 Systems,
                 _emulators,
                 _emulatorConfigurations,
-                new LibraryMaintenanceActions(
-                    RescanSystemFromSettingsAsync,
-                    RescanAllFromSettingsAsync,
-                    FetchMetadataForSystemFromSettingsAsync,
-                    FetchAllMetadataFromSettingsAsync,
-                    SyncRpcs3LibraryFromSettingsAsync),
+                CreateLibraryMaintenanceActions(),
                 _metadataPreferences,
-                _retroAccount is null
-                    ? null
-                    : new RetroAchievementsSettingsContext(
-                        _retroAccount.Account,
-                        _retroAccount.IsConnected,
-                        ConnectRetroAchievementsAsync,
-                        DisconnectRetroAchievementsAsync,
-                        RefreshRetroAchievementsMatchesAsync),
+                CreateRetroAchievementsSettingsContext(),
                 _cloudSaveSync?.CreateSettingsContext(),
-                // Titles come from the whole library, not the visible collection: a Dolphin pack
-                // must still name the GameCube game it matched while the user is viewing PS1.
-                _texturePacks?.CreateSettingsContext(
-                    BuildLibraryTitleLookup,
-                    RefreshTexturePacksAsync));
+                CreateTexturePackSettingsContext(),
+                ThemeChoices);
         }
         catch (Exception ex)
         {
             _logger.Error("Could not open emulator settings.", ex);
-            StatusText = $"Could not open emulator settings: {ex.Message}";
+            SetStatus($"Could not open emulator settings: {ex.Message}", StatusSeverity.Error);
         }
+    }
+
+    private async Task<EmulatorSettingsViewModel> CreateSettingsViewModelAsync()
+    {
+        var configured = await Task.Run(() => Systems.ToDictionary(
+            system => system.Id,
+            system => _emulatorConfigurations.Get(system.Id),
+            StringComparer.Ordinal));
+        return new EmulatorSettingsViewModel(
+            Systems,
+            _emulators,
+            configured,
+            _emulatorConfigurations,
+            _dialogs,
+            CreateLibraryMaintenanceActions(),
+            _metadataPreferences,
+            _logger,
+            CreateRetroAchievementsSettingsContext(),
+            _cloudSaveSync?.CreateSettingsContext(),
+            CreateTexturePackSettingsContext(),
+            ThemeChoices);
+    }
+
+    private LibraryMaintenanceActions CreateLibraryMaintenanceActions() => new(
+        RescanSystemFromSettingsAsync,
+        RescanAllFromSettingsAsync,
+        FetchMetadataForSystemFromSettingsAsync,
+        FetchAllMetadataFromSettingsAsync,
+        SyncRpcs3LibraryFromSettingsAsync,
+        () => ShowEmptyPlatforms,
+        SetShowEmptyPlatformsAsync,
+        new LibraryFolderManagementActions(
+            GetLibraryFoldersForSettings,
+            AddLibraryFolderFromSettingsAsync,
+            ChangeLibraryFolderFromSettingsAsync,
+            ForgetLibraryFolderFromSettingsAsync));
+
+    private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>
+        _retroAccount is null
+            ? null
+            : new RetroAchievementsSettingsContext(
+                _retroAccount.Account,
+                _retroAccount.IsConnected,
+                ConnectRetroAchievementsAsync,
+                DisconnectRetroAchievementsAsync,
+                RefreshRetroAchievementsMatchesAsync);
+
+    private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
+        // Titles come from the whole library, not the visible collection: a Dolphin pack must
+        // still name the GameCube game it matched while the user is viewing PS1.
+        _texturePacks?.CreateSettingsContext(
+            BuildLibraryTitleLookup,
+            RefreshTexturePacksAsync);
+
+    private void OnGamepadSettingsCloseRequested(bool saved)
+    {
+        if (!IsGamepadSettingsOpen && GamepadSettings is null)
+            return;
+
+        CloseGamepadSettingsProjection();
+        if (!IsGamepadMode)
+            return;
+
+        OpenGamepadOverlay(GamepadOverlayKind.SystemMenu);
+        var settingsIndex = GamepadOverlayOptions.ToList().FindIndex(option => option.Label == "Settings");
+        if (settingsIndex >= 0)
+            GamepadOverlaySelectionIndex = settingsIndex;
+        if (saved)
+            SetStatus("Settings saved.");
+    }
+
+    private void OnGamepadSettingsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GamepadSettingsViewModel.FocusRevision) or
+            nameof(GamepadSettingsViewModel.FocusedRowIndex) or
+            nameof(GamepadSettingsViewModel.SelectedSection) or
+            nameof(GamepadSettingsViewModel.IsTextEntryOpen) or
+            nameof(GamepadSettingsViewModel.IsConfirmationOpen) or
+            nameof(GamepadSettingsViewModel.IsConfirmChoiceSelected) or
+            nameof(GamepadSettingsViewModel.TextEntryRevision))
+        {
+            OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+            OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+            OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+            OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+        }
+    }
+
+    partial void OnGamepadSettingsChanged(
+        GamepadSettingsViewModel? oldValue,
+        GamepadSettingsViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.CloseRequested -= OnGamepadSettingsCloseRequested;
+            oldValue.PropertyChanged -= OnGamepadSettingsPropertyChanged;
+        }
+        if (newValue is not null)
+        {
+            newValue.CloseRequested += OnGamepadSettingsCloseRequested;
+            newValue.PropertyChanged += OnGamepadSettingsPropertyChanged;
+        }
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+    }
+
+    private void CloseGamepadSettingsProjection()
+    {
+        if (GamepadSettings is not { } settings)
+            return;
+
+        settings.Dispose();
+        GamepadSettings = null;
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
     // Connect pipeline: validate the account, identify the existing library, resolve hashes
@@ -2770,7 +3681,7 @@ public partial class MainViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.Warning("Could not persist the metadata consent preference.", ex);
-                StatusText += " — metadata preference could not be saved";
+                SetStatus(StatusText + " — metadata preference could not be saved", StatusSeverity.Error);
             }
         }
 
@@ -2782,17 +3693,19 @@ public partial class MainViewModel : ViewModelBase
     {
         try
         {
-            StatusText = gameIds.Count == 1
-                ? "Fetching metadata for 1 new game…"
-                : $"Fetching metadata for {gameIds.Count} new games…";
+            SetStatus(
+                gameIds.Count == 1
+                    ? "Fetching metadata for 1 new game…"
+                    : $"Fetching metadata for {gameIds.Count} new games…",
+                StatusSeverity.Progress);
             var summary = await _metadataService.EnrichAsync(gameIds);
             await ReloadGamesAsync();
-            StatusText = summary.ToStatusText();
+            SetStatus(summary.ToStatusText());
         }
         catch (Exception ex)
         {
             _logger.Error("Automatic metadata enrichment failed.", ex);
-            StatusText = $"Metadata failed: {ex.Message}";
+            SetStatus($"Metadata failed: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -2910,7 +3823,7 @@ public partial class MainViewModel : ViewModelBase
 
         var summary = await _metadataService.EnrichMissingAsync(systemId, progress);
         await ReloadGamesAsync();
-        StatusText = summary.ToStatusText();
+        SetStatus(summary.ToStatusText());
         return StatusText;
     }
 
@@ -2924,13 +3837,15 @@ public partial class MainViewModel : ViewModelBase
         {
             await _themeService.SetThemeAsync(preference);
             CurrentTheme = _themeService.Current;
-            StatusText = $"Appearance set to {preference.ToString().ToLowerInvariant()}";
+            SetStatus($"Appearance set to {preference.ToString().ToLowerInvariant()}");
         }
         catch (Exception ex)
         {
             _logger.Error("Could not persist the appearance preference.", ex);
             CurrentTheme = _themeService.Current;
-            StatusText = $"Appearance changed for this session, but could not be saved: {ex.Message}";
+            SetStatus(
+                $"Appearance changed for this session, but could not be saved: {ex.Message}",
+                StatusSeverity.Error);
         }
     }
 }

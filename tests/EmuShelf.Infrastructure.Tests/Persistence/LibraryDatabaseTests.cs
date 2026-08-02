@@ -35,6 +35,21 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void CreateConnection_SetsABusyTimeout_SoConcurrentReadsAndWritesWaitInsteadOfFailing()
+    {
+        // Regression: with the default busy_timeout of 0, a background write (availability pass,
+        // RetroAchievements, save sync) overlapping a library read threw SQLITE_BUSY, which the
+        // library reload swallowed and left the grid blank until relaunch.
+        var database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+
+        using var connection = database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA busy_timeout;";
+        Assert.Equal(5000L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
     public void Initialize_CalledTwice_DoesNotFailOrDuplicateSchema()
     {
         var database = new LibraryDatabase(AppPaths);

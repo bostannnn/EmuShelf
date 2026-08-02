@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
@@ -212,6 +213,22 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(["Alpha", "Beta"], vm.Games.Select(g => g.Title).OrderBy(t => t));
         Assert.True(vm.HasGames);
         Assert.Single(_library.GetLibraryFolders("playstation")); // remembered for rescan
+    }
+
+    [AvaloniaFact]
+    public async Task AddEmptyFolder_DoesNotLeaveAHiddenPlatformSelected()
+    {
+        var emptyFolder = Path.Combine(_baseDirectory, "empty-roms");
+        Directory.CreateDirectory(emptyFolder);
+        _dialogs.FolderToReturn = emptyFolder;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        Assert.Equal(LibraryScope.AllGames, vm.CurrentLibraryScope);
+        Assert.Null(vm.SelectedSystem);
+        Assert.Empty(vm.NavigationSystems);
     }
 
     [AvaloniaFact]
@@ -771,6 +788,39 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task FocusedGameWidget_UpdatesWhenAchievementDetailsRefresh()
+    {
+        // #6: unlocking an achievement is reflected by a details refresh (from the achievements
+        // overlay or the post-exit pass). The focused-game dock widget must pick that up, not only a
+        // later full reload — previously the widget kept showing the pre-unlock count ("0/9").
+        var path = Path.Combine(_baseDirectory, "WidgetAchievements.cue");
+        File.WriteAllText(path, "FILE \"WidgetAchievements.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Widget game", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        const int raGameId = 9001;
+        var readStore = new MutableRetroAchievementsReadStore(gameId, raGameId);
+        var details = new RecordingRetroAchievementsDetailsService();
+        var vm = CreateViewModel(
+            retroAchievementsRead: readStore,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: details);
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        // The set is confirmed but no progress has loaded, so the widget shows the em dash.
+        Assert.Equal("—/—", vm.FocusedGame!.GamepadAchievementCountText);
+
+        // The unlock lands in the store, then a details refresh announces it.
+        readStore.SetProgress(raGameId, awarded: 1, total: 9);
+        details.Publish(new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(raGameId, "Widget game", 9, 1, 0, []),
+            DateTimeOffset.UtcNow));
+
+        Assert.Equal("1/9", vm.FocusedGame.GamepadAchievementCountText);
+        Assert.True(vm.FocusedGame.ShowAchievementMark);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadAchievements_StayInTheMainOverlayAndNeverRequestDesktopDialog()
     {
         var path = Path.Combine(_baseDirectory, "GamepadAchievements.cue");
@@ -792,6 +842,129 @@ public class MainViewModelTests : IDisposable
         vm.CloseGamepadOverlayCommand.Execute(null);
         Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
         Assert.Same(vm.FocusedGame, Assert.Single(vm.Games));
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadAchievements_RefreshReplacementPreservesFocusedAchievementId()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadAchievementRefresh.cue");
+        File.WriteAllText(path, "FILE \"GamepadAchievementRefresh.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Refreshing achievements", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var cached = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                4321, "Refreshing achievements", 2, 0, 0,
+                [
+                    new RetroAchievementsAchievement(1, "First row", "", 5, "", 1, null, null),
+                    new RetroAchievementsAchievement(2, "Focused row", "", 10, "", 2, null, null),
+                ]),
+            DateTimeOffset.UtcNow);
+        var details = new RecordingRetroAchievementsDetailsService(cached);
+        var vm = CreateViewModel(
+            retroAchievementsRead: new StaticRetroAchievementsReadStore(gameId, 4321),
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: details);
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+        vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails!.Achievements[1];
+        Assert.Equal(2, vm.FocusedGamepadAchievement.AchievementId);
+
+        details.Publish(new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                4321, "Refreshing achievements", 2, 1, 1,
+                [
+                    new RetroAchievementsAchievement(3, "New first row", "", 5, "", 1, null, null),
+                    new RetroAchievementsAchievement(2, "Refreshed focused row", "", 10, "", 2, DateTimeOffset.UtcNow, null),
+                ]),
+            DateTimeOffset.UtcNow.AddMinutes(1)));
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Contains(vm.FocusedGamepadAchievement!, vm.GamepadAchievementDetails!.Achievements);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadAchievements_ControllerCyclesFiltersSortAndGridFocus()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadAchievementNavigation.cue");
+        File.WriteAllText(path, "FILE \"GamepadAchievementNavigation.bin\" BINARY");
+        _library.AddGames([new Game
+        {
+            SystemId = Ps1.Id,
+            Path = path,
+            Title = "Achievement navigation",
+            DateAdded = DateTimeOffset.UtcNow,
+        }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var earnedAt = DateTimeOffset.UtcNow;
+        var cached = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(
+                4321,
+                "Achievement navigation",
+                4,
+                2,
+                2,
+                [
+                    new RetroAchievementsAchievement(1, "First", "", 5, "", 1, earnedAt, null),
+                    new RetroAchievementsAchievement(2, "Second", "", 25, "", 2, null, null),
+                    new RetroAchievementsAchievement(3, "Third", "", 10, "", 3, earnedAt, earnedAt),
+                    new RetroAchievementsAchievement(4, "Fourth", "", 10, "", 4, null, null),
+                ]),
+            earnedAt);
+        var vm = CreateViewModel(
+            retroAchievementsRead: new StaticRetroAchievementsReadStore(gameId, 4321),
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: new RecordingRetroAchievementsDetailsService(cached));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+        vm.SetRenderedGamepadAchievementColumnCount(2);
+
+        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+
+        vm.SetRenderedGamepadAchievementColumnCount(3);
+        vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails!.VisibleAchievements[1];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails.VisibleAchievements[3];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        vm.SetRenderedGamepadAchievementColumnCount(2);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.Equal(AchievementDisplayFilter.Locked, vm.GamepadAchievementDetails!.SelectedFilter);
+        Assert.Equal([2, 4], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.Equal(AchievementDisplayFilter.Unlocked, vm.GamepadAchievementDetails.SelectedFilter);
+        Assert.Equal([1, 3], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        var revisionBeforeSort = vm.GamepadAchievementLayoutRevision;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
+        Assert.Equal(AchievementDisplaySort.Points, vm.GamepadAchievementDetails.SelectedSort);
+        Assert.Equal([3, 1], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal(3, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
+        Assert.Equal(revisionBeforeSort + 1, vm.GamepadAchievementLayoutRevision);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
+        Assert.Equal(AchievementDisplaySort.UnlockedFirst, vm.GamepadAchievementDetails.SelectedSort);
+        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
+        Assert.Equal(revisionBeforeSort + 2, vm.GamepadAchievementLayoutRevision);
     }
 
     [AvaloniaFact]
@@ -821,10 +994,31 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.FocusedGame.IsEditingTitle);
         Assert.Equal("Gamepad actions", vm.FocusedGame.DraftTitle);
 
+        // The d-pad stays inside the cover grid: Up on the only (top-row) tile keeps focus there
+        // instead of climbing into the platform rail. Platforms are switched with LB/RB.
+        var focusedBeforeUp = vm.FocusedGame;
         vm.MoveGamepadFocusUpCommand.Execute(null);
-        vm.MoveGamepadFocusRightCommand.Execute(null);
-        Assert.Equal(3, vm.GamepadRailIndex);
-        Assert.True(vm.GamepadPlatforms[1].IsRailFocused);
+        Assert.Same(focusedBeforeUp, vm.FocusedGame);
+    }
+
+    [AvaloniaFact]
+    public async Task PlatformShoulderButtons_FromOffListScope_SnapToAllGames()
+    {
+        var path = Path.Combine(_baseDirectory, "OffList.cue");
+        File.WriteAllText(path, "FILE \"OffList.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Off list", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.SelectedSystem = Ps1;
+        await vm.ReloadGamesAsync();
+
+        // Recently Added is not a stop on the LB/RB cycle; from there the next press returns to
+        // All Games rather than dead-ending.
+        await vm.ShowGamepadRecentlyAddedCommand.ExecuteAsync(null);
+        Assert.Equal(LibraryScope.RecentlyAdded, vm.CurrentLibraryScope);
+
+        await vm.NextPlatformCommand.ExecuteAsync(null);
+        Assert.True(vm.IsAllGamesSelected);
     }
 
     [AvaloniaFact]
@@ -848,6 +1042,7 @@ public class MainViewModelTests : IDisposable
         Assert.Equal("Remembered Game", vm.FocusedGame.Title);
         Assert.True(vm.FocusedGame.IsMultiDisc);
         Assert.Equal("2 discs", vm.FocusedGame.DiscCountText);
+        Assert.Equal("Disc 1 of 2", vm.FocusedGame.DiscBadgeText);
 
         vm.OpenFocusedGameActionsCommand.Execute(null);
         Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Select disc");
@@ -862,6 +1057,7 @@ public class MainViewModelTests : IDisposable
         Assert.Null(launcher.Game);
         Assert.Equal(2, vm.FocusedGame!.SelectedDiscNumber);
         Assert.Equal("Disc 2 selected", vm.FocusedGame.SelectedDiscText);
+        Assert.Equal("Disc 2 of 2", vm.FocusedGame.DiscBadgeText);
         Assert.Single(_library.GetDiscSelections().Values, id => id == vm.FocusedGame.LaunchModel.Id);
 
         await vm.ReloadGamesAsync();
@@ -875,6 +1071,7 @@ public class MainViewModelTests : IDisposable
         await desktopDisc1.SelectDiscCommand.ExecuteAsync(null);
         Assert.Equal(disc2, launcher.Game?.Path);
         Assert.Equal(1, vm.FocusedGame.SelectedDiscNumber);
+        Assert.Equal("Disc 1 of 2", vm.FocusedGame.DiscBadgeText);
         Assert.Single(_library.GetDiscSelections().Values, id => id == desktopDisc1.Disc.Game.Id);
         Assert.Equal("Disc 1 selected for Remembered Game", vm.StatusText);
     }
@@ -906,32 +1103,42 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task ShoulderButtons_StepThroughCollectionsInRailOrderWithoutWrapping()
+    public async Task ShoulderButtons_CycleAllGamesAndSystemsWithWrapSkippingRecentlyAdded()
     {
-        // Regression: LB/RB walked All Games -> systems and stepped over the Collections tab.
+        // Option A: LB/RB cycle one ordered list — All Games, then each system — and wrap at both
+        // ends. Recently Added is not a stop (it lives in the Collections overlay), so shoulder
+        // input steps straight from All Games to the first system.
+        var ps1Path = Path.Combine(_baseDirectory, "RailPs1.cue");
+        var gameCubePath = Path.Combine(_baseDirectory, "RailGameCube.iso");
+        File.WriteAllText(ps1Path, "FILE \"RailPs1.bin\" BINARY");
+        File.WriteAllText(gameCubePath, "gamecube");
+        _library.AddGames([
+            new Game { SystemId = Ps1.Id, Path = ps1Path, Title = "Rail PS1", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = gameCubePath, Title = "Rail GameCube", DateAdded = DateTimeOffset.UtcNow },
+        ]);
         var vm = CreateViewModel();
         vm.IsGamepadMode = true;
-        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        await vm.ShowAllGamesCommand.ExecuteAsync(null); // also populates NavigationSystems + GamepadPlatforms
         Assert.True(vm.IsAllGamesSelected);
+        Assert.Equal(2, vm.NavigationSystems.Count);
 
-        // Forward: All Games -> Collections -> first system.
+        // RB steps All Games -> first system; Recently Added is never a stop, and the rail marks
+        // exactly one active tab.
         await vm.NextPlatformCommand.ExecuteAsync(null);
-        Assert.True(vm.IsRecentlyAddedSelected);
-        Assert.Null(vm.SelectedSystem);
+        Assert.Equal(vm.NavigationSystems[0].Id, vm.SelectedSystem?.Id);
+        Assert.False(vm.IsRecentlyAddedSelected);
+        Assert.Single(vm.GamepadPlatforms, platform => platform.IsActive);
 
+        // RB again to the last system, then RB wraps back to All Games (no platform tab active).
         await vm.NextPlatformCommand.ExecuteAsync(null);
-        Assert.Same(vm.Systems[0], vm.SelectedSystem);
-
-        // Backward returns through Collections rather than jumping to All Games.
-        await vm.PreviousPlatformCommand.ExecuteAsync(null);
-        Assert.True(vm.IsRecentlyAddedSelected);
-
-        await vm.PreviousPlatformCommand.ExecuteAsync(null);
+        Assert.Equal(vm.NavigationSystems[1].Id, vm.SelectedSystem?.Id);
+        await vm.NextPlatformCommand.ExecuteAsync(null);
         Assert.True(vm.IsAllGamesSelected);
+        Assert.DoesNotContain(vm.GamepadPlatforms, platform => platform.IsActive);
 
-        // No wrap at the start.
+        // LB from All Games wraps to the last system.
         await vm.PreviousPlatformCommand.ExecuteAsync(null);
-        Assert.True(vm.IsAllGamesSelected);
+        Assert.Equal(vm.NavigationSystems[^1].Id, vm.SelectedSystem?.Id);
     }
 
     [AvaloniaFact]
@@ -964,6 +1171,102 @@ public class MainViewModelTests : IDisposable
         // One shared shelf, tall enough for the tallest cover, keeps the grid rows aligned.
         Assert.Equal(ps1.ShelfCoverHeight, cube.ShelfCoverHeight);
         Assert.Equal(Math.Max(ps1.CoverHeight, cube.CoverHeight), ps1.ShelfCoverHeight);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadCovers_KeepCanonicalFrameWhenOffRatioArtworkLoads()
+    {
+        // Regression for the "covers only take half their space" report: a cover fills its
+        // platform's canonical frame (UniformToFill) instead of adopting its own bitmap ratio, so a
+        // single tall/off-ratio scan can never balloon the shared shelf and shrink every other cover.
+        var firstPath = Path.Combine(_baseDirectory, "ShelfCubeA.iso");
+        File.WriteAllText(firstPath, "x");
+        var secondPath = Path.Combine(_baseDirectory, "ShelfCubeB.iso");
+        File.WriteAllText(secondPath, "y");
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Shelf GC A", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Shelf GC B", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        var first = vm.Games.Single(game => game.Title == "Shelf GC A");
+        var second = vm.Games.Single(game => game.Title == "Shelf GC B");
+        var ratioBefore = first.CoverAspectRatio;
+        var shelfBefore = first.ShelfCoverHeight;
+        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+
+        // A very tall, narrow bitmap: under the reverted per-cover-ratio behavior this stretched the
+        // shared shelf to ~7x the cover width and rendered every other tile at a fraction of it.
+        first.CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+
+        Assert.Equal(ratioBefore, first.CoverAspectRatio, precision: 5);
+        Assert.Equal(shelfBefore, first.ShelfCoverHeight);
+        Assert.Equal(shelfBefore, second.ShelfCoverHeight);
+        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadColumnCount_SurvivesAnAsyncCoverLoad()
+    {
+        // Regression for "the selector can't move right / gets stuck": the view reports the true
+        // rendered column count and it must win over width arithmetic. A cover finishing loading used
+        // to re-run the whole cover layout (via per-cover ratio adoption) and reset the count to the
+        // width estimate mid-navigation, which clamped Right partway across a row.
+        var firstPath = Path.Combine(_baseDirectory, "ColsCubeA.iso");
+        File.WriteAllText(firstPath, "x");
+        var secondPath = Path.Combine(_baseDirectory, "ColsCubeB.iso");
+        File.WriteAllText(secondPath, "y");
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Cols GC A", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Cols GC B", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        vm.SetRenderedGamepadColumnCount(5);
+        Assert.Equal(5, vm.GamepadColumnCount);
+
+        vm.Games[0].CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+
+        Assert.Equal(5, vm.GamepadColumnCount);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadCovers_FilteredShelfUsesOnlyVisibleCoverRatios()
+    {
+        var ps1Path = Path.Combine(_baseDirectory, "FilteredAspectPs1.cue");
+        File.WriteAllText(ps1Path, "FILE \"FilteredAspectPs1.bin\" BINARY");
+        var cubePath = Path.Combine(_baseDirectory, "FilteredAspectCube.iso");
+        File.WriteAllText(cubePath, "x");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = ps1Path, Title = "Visible square cover", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = cubePath, Title = "Hidden portrait cover", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+        var fullShelfHeight = vm.Games.Max(game => game.ShelfCoverHeight);
+
+        vm.SearchText = "Visible square";
+        vm.ApplyFilter();
+
+        var visible = Assert.Single(vm.Games);
+        Assert.Equal(visible.CoverHeight, visible.ShelfCoverHeight);
+        Assert.True(visible.ShelfCoverHeight < fullShelfHeight);
+
+        vm.SearchText = string.Empty;
+        vm.ApplyFilter();
+        Assert.Equal(fullShelfHeight, vm.Games[0].ShelfCoverHeight);
+        Assert.Equal(fullShelfHeight, vm.Games[1].ShelfCoverHeight);
     }
 
     [AvaloniaFact]
@@ -1018,21 +1321,22 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task GamepadMenu_SettingsHandsOffToDesktopAndQuitRequiresConfirmation()
+    public async Task GamepadMenu_SettingsStaysInWindowAndQuitRequiresConfirmation()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
         var lifetime = new RecordingApplicationLifetimeService();
         var vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
 
-        vm.RequestSettingsFromGamepadCommand.Execute(null);
-        Assert.Equal(GamepadOverlayKind.SettingsDesktopHandoff, vm.GamepadOverlay);
-        Assert.Equal(
-            ["Open Settings in Desktop mode"],
-            vm.GamepadOverlayOptions.Select(option => option.Label));
+        await vm.RequestSettingsFromGamepadCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.Settings, vm.GamepadOverlay);
+        Assert.Empty(vm.GamepadOverlayOptions);
+        Assert.NotNull(vm.GamepadSettings);
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
+        Assert.Equal(0, _dialogs.SettingsShown);
 
-        await vm.OpenSettingsFromGamepadCommand.ExecuteAsync(null);
-        Assert.Equal(InterfaceMode.Desktop, mode.Current);
-        Assert.Equal(1, _dialogs.SettingsShown);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal("Settings", vm.GamepadOverlayOptions[vm.GamepadOverlaySelectionIndex].Label);
 
         mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
         vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
@@ -1085,6 +1389,51 @@ public class MainViewModelTests : IDisposable
         vm.FocusedGame = vm.Games[2];
         vm.MoveGamepadFocusDownCommand.Execute(null);
         Assert.Same(vm.Games[2], vm.FocusedGame);
+
+        // Up on the top row clamps and never escapes into the platform rail.
+        vm.FocusedGame = vm.Games[1];
+        vm.MoveGamepadFocusUpCommand.Execute(null);
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+    }
+
+    /// <summary>
+    /// Regression: Right/Left clamp on GamepadColumnCount, and a too-small width estimate (e.g. the
+    /// default of 1 before the grid is measured) trapped the selector partway across a row — "stuck
+    /// at the second column." The view reports the true rendered column count, which navigation must
+    /// then honor.
+    /// </summary>
+    [AvaloniaFact]
+    public void RenderedColumnCountReportedByTheViewDrivesGridNavigation()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 8).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Game {index + 1}.cue",
+                Title = $"Game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+
+        // Arithmetic never ran (no viewport), so the count is the stale default of 1 that would trap
+        // Right at the first column.
+        Assert.Equal(1, vm.GamepadColumnCount);
+        vm.FocusedGame = vm.Games[1];
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+
+        // Once the view reports the real four columns, Right and Down step correctly.
+        vm.SetRenderedGamepadColumnCount(4);
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Same(vm.Games[2], vm.FocusedGame);
+        vm.MoveGamepadFocusDownCommand.Execute(null);
+        Assert.Same(vm.Games[6], vm.FocusedGame);
     }
 
     [AvaloniaFact]
@@ -1362,6 +1711,31 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_WaitsForTheCompletePreLaunchSyncWithoutAnApplicationBudget()
+    {
+        var events = new List<string>();
+        var sync = new BlockingGameSaveSyncService(events);
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished"),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines-wait.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        var launch = vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        await sync.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(["sync:psp"], events);
+        sync.Complete();
+        await launch;
+
+        Assert.Equal(["sync:psp", "launch"], events);
+    }
+
+    [AvaloniaFact]
     public async Task LaunchGame_PreLaunchSyncFailureWarnsButStillLaunchesAndRetriesAfterExit()
     {
         var events = new List<string>();
@@ -1490,6 +1864,36 @@ public class MainViewModelTests : IDisposable
 
         Assert.Equal(1, _dialogs.SettingsShown);
         Assert.NotNull(_dialogs.MaintenanceActions?.RescanSystem);
+        Assert.Same(vm.ThemeChoices, _dialogs.ThemeChoices);
+        Assert.Equal(ThemeCatalog.All.Count, _dialogs.ThemeChoices!.Count);
+    }
+
+    [AvaloniaFact]
+    public async Task SettingsFolderChange_DoesNotGiveDifferentRomTheOldGamesIdentity()
+    {
+        var oldRoot = Path.Combine(_baseDirectory, "old-roms");
+        var newRoot = Path.Combine(_baseDirectory, "new-roms");
+        Directory.CreateDirectory(oldRoot);
+        Directory.CreateDirectory(newRoot);
+        var oldPath = Path.Combine(oldRoot, "Alpha.game");
+        var newPath = Path.Combine(newRoot, "Alpha.game");
+        File.WriteAllText(oldPath, "ORIGINAL-ID");
+        File.WriteAllText(newPath, "DIFFERENT-ID");
+        var rules = new FileContentIdentityImportRules(Ps1);
+        _dialogs.FolderToReturn = oldRoot;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(importRules: rules, metadataStore: _metadataStore);
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        var original = Assert.Single(_library.GetGames(Ps1.Id));
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        var folder = Assert.Single(_dialogs.MaintenanceActions!.Folders!.Get(Ps1.Id));
+
+        await _dialogs.MaintenanceActions.Folders.Change(Ps1.Id, folder.Id, newRoot);
+
+        var games = _library.GetGames(Ps1.Id);
+        Assert.Equal(2, games.Count);
+        Assert.Contains(games, game => game.Id == original.Id && game.Path == oldPath);
+        Assert.Contains(games, game => game.Id != original.Id && game.Path == newPath);
     }
 
     [AvaloniaFact]
@@ -1542,6 +1946,20 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Constructor_WithSavedNonSystemTheme_MarksThatThemeSelectedWithoutThrowing()
+    {
+        // Regression: a saved theme other than System fires OnCurrentThemeChanged during construction,
+        // which reads ThemeChoices — so the collection must exist before CurrentTheme is assigned.
+        var vm = CreateViewModel(themes: new RecordingThemeService(ThemePreference.Dark));
+
+        Assert.Equal(ThemePreference.Dark, vm.CurrentTheme);
+        Assert.True(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.Dark).IsSelected);
+        Assert.All(
+            vm.ThemeChoices.Where(choice => choice.Id != ThemePreference.Dark),
+            choice => Assert.False(choice.IsSelected));
+    }
+
+    [AvaloniaFact]
     public async Task SetTheme_AppliesAndUpdatesSelectionState()
     {
         var themes = new RecordingThemeService();
@@ -1550,8 +1968,9 @@ public class MainViewModelTests : IDisposable
         await vm.SetThemeCommand.ExecuteAsync(ThemePreference.Dark);
 
         Assert.Equal(ThemePreference.Dark, themes.Current);
-        Assert.True(vm.IsDarkTheme);
-        Assert.False(vm.IsSystemTheme);
+        Assert.Equal(ThemePreference.Dark, vm.CurrentTheme);
+        Assert.True(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.Dark).IsSelected);
+        Assert.False(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.System).IsSelected);
         Assert.Equal("Appearance set to dark", vm.StatusText);
     }
 
@@ -1667,11 +2086,35 @@ public class MainViewModelTests : IDisposable
 
         var stored = _library.GetGames(Ps1.Id).Single();
         Assert.Equal("Alpha", _dialogs.LastCoverGameTitle);
+        Assert.Equal("PlayStation", _dialogs.LastCoverPickerContext!.SystemName);
+        Assert.Equal(Ps1.CoverAspectRatio, _dialogs.LastCoverPickerContext.PreferredAspectRatio);
         Assert.NotNull(stored.CoverPath);
         Assert.StartsWith(Path.Combine(_baseDirectory, "Covers"), stored.CoverPath);
         Assert.True(File.Exists(stored.CoverPath));
         Assert.True(File.Exists(sourcePath));
         Assert.True(game.HasCoverImage);
+    }
+
+    [AvaloniaFact]
+    public async Task SetGameCover_RemovesWebSearchStagingFileAfterImport()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var stagingPath = WriteTinyPng("web-cover-staging.png");
+        _dialogs.PickedGameCoverToReturn = new PickedGameCover(
+            stagingPath,
+            IsTemporary: true,
+            SourceUri: "https://covers.example/alpha.png");
+        var vm = CreateViewModel(covers: new GameCoverService(new AppPaths(_baseDirectory)));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        await vm.SetGameCoverCommand.ExecuteAsync(vm.Games.Single());
+
+        var stored = _library.GetGames(Ps1.Id).Single();
+        Assert.NotNull(stored.CoverPath);
+        Assert.True(File.Exists(stored.CoverPath));
+        Assert.False(File.Exists(stagingPath));
     }
 
     [AvaloniaFact]
@@ -1936,32 +2379,74 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task LibrarySelection_TogglesRangesAndSelectsAllInTheCurrentView()
+    public async Task LibrarySelection_UsesOneAnchorAcrossLayoutsAndClearsWhenSearchChanges()
     {
         _library.AddGames(
         [
             new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
             new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
             new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Gamma.cue", Title = "Gamma" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Delta.cue", Title = "Delta" },
         ]);
         var vm = CreateViewModel();
         await vm.ReloadGamesAsync();
 
-        vm.SelectGame(vm.Games[0]);
-        vm.SelectGame(vm.Games[2], toggle: true);
+        vm.SelectGame(vm.Games[1]);
+        Assert.Equal(["Beta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+        Assert.Equal("1 game selected", vm.SelectionSummaryText);
+        Assert.Equal("Remove from library…", vm.SelectionRemovalText);
+
+        var delta = vm.Games.Single(game => game.Title == "Delta");
+        vm.SelectGame(delta, toggle: true);
         Assert.Equal(2, vm.SelectedGameCount);
+        Assert.Equal("Remove 2 selected games…", vm.SelectionRemovalText);
 
         vm.IsGridView = false;
-        vm.SelectGame(vm.Games[1], selectRange: true);
-        Assert.Equal(["Beta", "Gamma"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+        Assert.Equal(["Beta", "Delta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        var gamma = vm.Games.Single(game => game.Title == "Gamma");
+        vm.SelectGame(gamma, selectRange: true, toggle: true);
+        Assert.Equal(["Beta", "Delta", "Gamma"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        var alpha = vm.Games.Single(game => game.Title == "Alpha");
+        vm.SelectGame(alpha, selectRange: true);
+        Assert.Equal(["Alpha", "Beta", "Delta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        vm.SearchText = "Alpha";
+        vm.ApplyFilter();
+        Assert.Equal(0, vm.SelectedGameCount);
+        Assert.False(vm.HasSelectedGames);
+
+        vm.SearchText = string.Empty;
+        vm.ApplyFilter();
 
         vm.SelectAllGamesCommand.Execute(null);
-        Assert.Equal(3, vm.SelectedGameCount);
+        Assert.Equal(4, vm.SelectedGameCount);
         Assert.True(vm.HasSelectedGames);
 
         await vm.ReloadGamesAsync();
         Assert.Equal(0, vm.SelectedGameCount);
         Assert.False(vm.HasSelectedGames);
+    }
+
+    [AvaloniaFact]
+    public async Task RemoveOneSelectedGame_UsesTheNamedSingleGameConfirmation()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+        vm.SelectGame(vm.Games.Single(game => game.Title == "Beta"));
+
+        _dialogs.ConfirmRemoveToReturn = true;
+        await vm.RemoveSelectedGamesCommand.ExecuteAsync(null);
+
+        Assert.Equal("Beta", _dialogs.LastRemoveGameTitle);
+        Assert.Null(_dialogs.LastRemoveGameCount);
+        Assert.Equal(["Alpha"], _library.GetGames(Ps1.Id).Select(game => game.Title));
     }
 
     [AvaloniaFact]
@@ -2046,6 +2531,32 @@ public class MainViewModelTests : IDisposable
                 : GameImportMetadata.Empty;
     }
 
+    private sealed class FileContentIdentityImportRules(GameSystem system) : IGameImportRules
+    {
+        public GameFileAnalysis AnalyzeFile(string path) => new(
+            path,
+            [system],
+            new Dictionary<string, GameFileMatch> { [system.Id] = GameFileMatch.Compatible });
+
+        public bool IsFolderCandidate(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id;
+
+        public GameEntrySelection SelectGameEntries(
+            IReadOnlyList<string> candidates,
+            GameSystem candidateSystem) => new(candidates, []);
+
+        public GameImportMetadata ReadImportMetadata(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id
+                ? new GameImportMetadata(
+                    null,
+                    [new GameIdentifier(
+                        GameIdentifierKind.DiscId,
+                        File.ReadAllText(path),
+                        "test",
+                        true)])
+                : GameImportMetadata.Empty;
+    }
+
     private sealed class FailingOnceMetadataStore(IGameMetadataStore inner) : IGameMetadataStore
     {
         private bool _shouldFail = true;
@@ -2123,12 +2634,34 @@ public class MainViewModelTests : IDisposable
 
         public Task<CloudSaveSyncOutcome> SyncSystemAsync(
             string systemId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
         {
             events.Add($"sync:{systemId}");
             var index = Math.Min(_nextOutcome++, outcomes.Length - 1);
             return Task.FromResult(outcomes[index]);
         }
+    }
+
+    private sealed class BlockingGameSaveSyncService(List<string> events) : IGameSaveSyncService
+    {
+        private readonly TaskCompletionSource _complete = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool CanSyncSystem(string systemId) => systemId == "psp";
+
+        public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
+            string systemId,
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
+        {
+            events.Add($"sync:{systemId}");
+            Started.TrySetResult();
+            await _complete.Task.WaitAsync(cancellationToken);
+            return CloudSaveSyncOutcome.Completed(new SaveSyncReport([]));
+        }
+
+        public void Complete() => _complete.TrySetResult();
     }
 
     private sealed class BlockingLaunchService : IEmulatorLaunchService
@@ -2202,9 +2735,10 @@ public class MainViewModelTests : IDisposable
         }
     }
 
-    private sealed class RecordingThemeService : IAppThemeService
+    private sealed class RecordingThemeService(
+        ThemePreference initial = ThemePreference.System) : IAppThemeService
     {
-        public ThemePreference Current { get; private set; } = ThemePreference.System;
+        public ThemePreference Current { get; private set; } = initial;
 
         public Task SetThemeAsync(
             ThemePreference preference,
@@ -2322,6 +2856,33 @@ public class MainViewModelTests : IDisposable
             new Dictionary<int, RetroAchievementsProgressSnapshot>();
     }
 
+    private sealed class MutableRetroAchievementsReadStore(long localGameId, int retroAchievementsGameId)
+        : IRetroAchievementsReadStore
+    {
+        private readonly Dictionary<int, RetroAchievementsProgressSnapshot> _progress = new();
+
+        public void SetProgress(int raGameId, int awarded, int total) =>
+            _progress[raGameId] = new RetroAchievementsProgressSnapshot(
+                new RetroAchievementsGameProgress(raGameId, total, awarded, 0), DateTimeOffset.UtcNow);
+
+        public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks() =>
+            new Dictionary<long, RetroAchievementsGameLink>
+            {
+                [localGameId] = new RetroAchievementsGameLink(
+                    localGameId,
+                    RetroAchievementsIdentificationStatus.Hashed,
+                    "hash",
+                    "algorithm",
+                    "fingerprint",
+                    retroAchievementsGameId,
+                    true,
+                    DateTimeOffset.UtcNow,
+                    null),
+            };
+
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() => _progress;
+    }
+
     private sealed class RecordingRetroAchievementsMatchingService : IRetroAchievementsMatchingService
     {
         public int Calls { get; private set; }
@@ -2399,16 +2960,13 @@ public class MainViewModelTests : IDisposable
         public void CompleteRefresh() => _complete.TrySetResult();
     }
 
-    private sealed class RecordingRetroAchievementsDetailsService : IRetroAchievementsDetailsService
+    private sealed class RecordingRetroAchievementsDetailsService(
+        RetroAchievementsDetailsSnapshot? cached = null) : IRetroAchievementsDetailsService
     {
         public bool Cleared { get; private set; }
-        public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed
-        {
-            add { }
-            remove { }
-        }
+        public event Action<RetroAchievementsDetailsSnapshot>? DetailsRefreshed;
 
-        public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => null;
+        public RetroAchievementsDetailsSnapshot? GetCached(int retroAchievementsGameId) => cached;
 
         public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>> RefreshAsync(
             RetroAchievementsCredentials credentials,
@@ -2419,6 +2977,8 @@ public class MainViewModelTests : IDisposable
                 RetroAchievementsRequestStatus.Offline));
 
         public void Clear() => Cleared = true;
+
+        public void Publish(RetroAchievementsDetailsSnapshot snapshot) => DetailsRefreshed?.Invoke(snapshot);
     }
 
     private sealed class RecordingProgress<T> : IProgress<T>

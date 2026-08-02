@@ -16,13 +16,14 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     private const string SettingsFileName = "settings.ini";
     private const string PortableMarkerFileName = "portable.txt";
     private const string MemoryCardsSection = "MemoryCards";
+    private const string DefaultCardsDirectoryName = "memcards";
 
     private readonly string _installationDirectory;
     private readonly string? _userDirectoryOverride;
     private readonly string _homeDirectory;
     private readonly string _localApplicationDataDirectory;
     private readonly string _documentsDirectory;
-    private readonly string? _xdgConfigHome;
+    private readonly string? _xdgDataHome;
     private readonly bool _isWindows;
     private readonly bool _isMacOS;
     private readonly bool _isFlatpak;
@@ -33,7 +34,7 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         string? homeDirectory = null,
         string? localApplicationDataDirectory = null,
         string? documentsDirectory = null,
-        string? xdgConfigHome = null,
+        string? xdgDataHome = null,
         bool? isWindows = null,
         bool? isMacOS = null,
         bool isFlatpak = false)
@@ -48,11 +49,13 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
             localApplicationDataDirectory,
             Environment.SpecialFolder.LocalApplicationData);
         _documentsDirectory = FullPathOrEnvironment(documentsDirectory, Environment.SpecialFolder.MyDocuments);
-        var configuredXdgHome = string.IsNullOrWhiteSpace(xdgConfigHome)
-            ? Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
-            : xdgConfigHome;
-        _xdgConfigHome = string.IsNullOrWhiteSpace(configuredXdgHome) ||
-                         !Path.IsPathFullyQualified(configuredXdgHome)
+        // DuckStation roots its Linux user directory at XDG_DATA_HOME (falling back to
+        // ~/.local/share), and ignores the variable unless it is an absolute path.
+        var configuredXdgHome = string.IsNullOrWhiteSpace(xdgDataHome)
+            ? Environment.GetEnvironmentVariable("XDG_DATA_HOME")
+            : xdgDataHome;
+        _xdgDataHome = string.IsNullOrWhiteSpace(configuredXdgHome) ||
+                       !Path.IsPathFullyQualified(configuredXdgHome)
             ? null
             : Path.GetFullPath(configuredXdgHome);
         _isWindows = isWindows ?? OperatingSystem.IsWindows();
@@ -63,6 +66,14 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
     public string SystemId => "playstation";
 
     public string UnitIdPrefix => "duckstation/";
+
+    /// <summary>Returns DuckStation's effective user-data root.</summary>
+    public Task<string> GetUserDirectoryAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ResolveUserDirectory();
+        }, cancellationToken);
 
     /// <summary>Returns the directory explicitly selected by DuckStation for memory cards.</summary>
     public Task<string> GetMemoryCardsDirectoryAsync(CancellationToken cancellationToken = default) =>
@@ -200,10 +211,13 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         if (_isFlatpak)
         {
             var flatpakHome = RequireResolvedRoot(_homeDirectory, "The home directory");
+            // Inside the sandbox XDG_DATA_HOME is ~/.var/app/<id>/data, so DuckStation's Flatpak
+            // user directory lands under data/. config/ is only kept as a fallback for profiles
+            // moved there by hand or by older third-party layouts.
             var current = Path.Combine(
-                flatpakHome, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
-            var legacy = Path.Combine(
                 flatpakHome, ".var", "app", "org.duckstation.DuckStation", "data", "duckstation");
+            var legacy = Path.Combine(
+                flatpakHome, ".var", "app", "org.duckstation.DuckStation", "config", "duckstation");
             if (Directory.Exists(current))
                 return RequireSettings(current, "DuckStation's Flatpak user directory");
             if (Directory.Exists(legacy))
@@ -244,13 +258,13 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
                 "DuckStation's user directory");
         }
 
-        var dataRoot = _xdgConfigHome is null
+        var dataRoot = _xdgDataHome is null
             ? Path.Combine(
                 RequireResolvedRoot(_homeDirectory, "The home directory"),
                 ".local",
                 "share",
                 "duckstation")
-            : Path.Combine(_xdgConfigHome, "duckstation");
+            : Path.Combine(_xdgDataHome, "duckstation");
         return RequireSettings(dataRoot, "DuckStation's user directory");
     }
 
@@ -364,6 +378,11 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
         NonPersistent,
     }
 
+    // DuckStation's own defaults for an unwritten [MemoryCards] entry: slot 1 keeps a card per game
+    // title, slot 2 is disabled.
+    private static MemoryCardType DefaultCardType(int number) =>
+        number == 1 ? MemoryCardType.PerGameTitle : MemoryCardType.None;
+
     private static bool IsPerGame(MemoryCardType type) =>
         type is MemoryCardType.PerGame or MemoryCardType.PerGameTitle or MemoryCardType.PerGameFileTitle;
 
@@ -374,21 +393,25 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
             string userDirectory,
             CancellationToken cancellationToken)
         {
+            // DuckStation only writes settings that differ from its defaults, so a stock install has
+            // no [MemoryCards] section at all. An absent key therefore means "the emulator default",
+            // not "unknown layout"; only a key DuckStation itself would not accept fails closed.
             var memoryCards = ReadMemoryCardSettings(reader, cancellationToken);
-            if (!memoryCards.TryGetValue("Directory", out var configuredDirectory) ||
-                string.IsNullOrWhiteSpace(configuredDirectory))
-            {
-                throw new DuckStationConfigurationFormatException(
-                    "DuckStation's settings.ini does not explicitly configure the memory-card directory.");
-            }
-
-            var cardsDirectory = ResolvePath(userDirectory, configuredDirectory, "memory-card directory");
+            var configuredDirectory = memoryCards.GetValueOrDefault("Directory");
+            var cardsDirectory = ResolvePath(
+                userDirectory,
+                string.IsNullOrWhiteSpace(configuredDirectory) ? DefaultCardsDirectoryName : configuredDirectory,
+                "memory-card directory");
             var slots = new List<MemoryCardSlot>(2);
             for (var number = 1; number <= 2; number++)
             {
-                if (!memoryCards.TryGetValue($"Card{number}Type", out var rawType) ||
-                    !Enum.TryParse<MemoryCardType>(rawType, ignoreCase: true, out var type) ||
-                    !Enum.IsDefined(type))
+                var rawType = memoryCards.GetValueOrDefault($"Card{number}Type");
+                MemoryCardType type;
+                if (string.IsNullOrWhiteSpace(rawType))
+                {
+                    type = DefaultCardType(number);
+                }
+                else if (!Enum.TryParse(rawType, ignoreCase: true, out type) || !Enum.IsDefined(type))
                 {
                     throw new DuckStationConfigurationFormatException(
                         $"DuckStation's settings.ini has no supported Card{number}Type.");

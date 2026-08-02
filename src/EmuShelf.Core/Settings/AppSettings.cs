@@ -25,4 +25,10 @@ public sealed record AppSettings
 
     /// <summary>Installed texture-pack inventory configuration. Read-only discovery only.</summary>
     public TexturePackSettings TexturePacks { get; init; } = new();
+
+    /// <summary>Library presentation — view mode, sort, and what was being shown — restored at launch.</summary>
+    public LibraryViewSettings LibraryView { get; init; } = new();
+
+    /// <summary>Main-window size, position, and maximized state, restored at launch.</summary>
+    public WindowLayoutSettings WindowLayout { get; init; } = new();
 }

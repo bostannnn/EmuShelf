@@ -539,6 +539,11 @@ emulator configuration, or emulator-owned data.
 - [ ] Establish the review matrix: Windows at 100%, 125%, 150%, and 200% scaling; 900×560 minimum
       desktop window; 1280×800 Gamepad/Deck viewport; light, dark, and follow-system appearances;
       mouse, keyboard, and controller paths.
+- [x] Integrate the Desktop shell into theme-owned window chrome while retaining drag,
+      double-click maximize, caption actions, edge/corner resizing, taskbar identity, and a
+      caption layout that remains inside the live window bounds at high DPI. Separate brand/
+      selection, achievement, information/progress, success, warning, and danger colors, and
+      normalize system and collection artwork inside one sidebar icon frame (2026-07-29).
 
 ### Phase 1 — Make the game-session loop reliable
 
@@ -620,9 +625,11 @@ emulator configuration, or emulator-owned data.
       states. Every long-running operation needs a visible owner, useful progress, cancellation
       behavior where supported, completion feedback, and an error state that states what the user
       can do next.
-- [ ] Establish a consistent selection model across grid, list, context menu, keyboard shortcuts,
+- [x] Establish a consistent selection model across grid, list, context menu, keyboard shortcuts,
       and bulk actions. Make primary, secondary, destructive, and disabled controls visually
-      distinct; retain the guarantee that removal affects only EmuShelf records.
+      distinct; retain the guarantee that removal affects only EmuShelf records (2026-07-29;
+      pointer-tunnel selection, additive Ctrl/Cmd+Shift ranges, right-click targeting, Escape/empty-
+      canvas clearing, and one count-aware removal action shared by the contextual bar and menus).
 - [ ] Replace the generic status toast treatment with semantic, accessible notices for progress,
       success, warning, and blocking failure. Messages must remain readable, dismissible when
       appropriate, and never hide the only recovery action.
@@ -664,15 +671,19 @@ Surfaced during the Windows GUI pass (2026-07-19): the library is single-select 
 Remove works one game at a time, so clearing or pruning a library is tedious.
 
 - [x] Add multi-selection to both the cover grid and the list view: Ctrl/Cmd-click to toggle,
-      Shift-click to range-select, and Ctrl/Cmd+A to select every game in the current collection.
+      Shift-click to range-select, Ctrl/Cmd+Shift-click to add a range, and Ctrl/Cmd+A to select
+      every game in the current collection. Right-click first targets an unselected game; clicking
+      the empty canvas or pressing Escape clears selection.
       Keep the selection model in the view model over the existing `IsSelected`/`SelectedGame`
       state; code-behind stays gesture wiring only.
-- [x] Add a bulk "Remove selected" action (context menu + Delete key) with a single confirmation
-      that states the count. Removal touches only EmuShelf's database rows — never the game files
-      or covers — and leaves the selection empty and the view refreshed afterward.
-- [x] Add headless view-model tests for toggle/range/select-all across grid and list, selection
-      surviving (or clearing on) collection reloads, and bulk remove of a mixed available/missing
-      selection. Keep `dotnet build`/`dotnet test` green on macOS and Windows.
+- [x] Add one count-aware removal action to each context menu, a persistent contextual selection
+      bar, and the Delete key, with a single confirmation that names one game or states the selected
+      count. Removal touches only EmuShelf's database rows — never the game files or covers — and
+      leaves the selection empty and the view refreshed afterward.
+- [x] Add headless pointer and view-model tests for click/toggle/replace-range/add-range/select-all,
+      Grid/List switching, right-click targeting, Escape/empty-canvas clearing, search clearing, the
+      contextual bar/menu copy, and bulk remove of a mixed available/missing selection. Keep
+      `dotnet build`/`dotnet test` green on macOS and Windows.
 
 ## M26 — Super Nintendo library (planned)
 
@@ -769,18 +780,32 @@ generalized.
       upload/download, offline/failure-leaves-saves-intact, and cancellation — with rclone faked
       behind the transport interface. Green on macOS + Windows. Never modifies game files or
       emulator config.
+- [x] Harden the original v1 rclone failure classification without changing its remote format:
+      failed or empty
+      index reads cannot become an empty cloud, operational download failures cannot prune an
+      indexed save, verification requires its known `index.json`, and caller cancellation kills
+      and awaits the transfer process; reject null/duplicate indexes and make explicitly staged
+      outbound copies unconditional (2026-07-28).
+- [ ] Revisit v1 global-catalog damage handling without changing its clean remote layout. The
+      attempted fail-closed guard and later v2 replacement were rolled back; matching local/cloud
+      content still repairs a stale interrupted-commit baseline (2026-07-29).
+- [ ] Design any future concurrency fix inside one clean internal folder. The folder-per-commit v2
+      implementation was reverted because it polluted the user's Drive root and accumulated one
+      visible directory per changed save (2026-07-29).
 
 ### Phase 2 — Generalize to the other emulators
 
-- [ ] **Generalization safety gate.** Replace the PCSX2-only filesystem endpoint with a generic,
+- [x] **Generalization safety gate.** Replace the PCSX2-only filesystem endpoint with a generic,
       provider-resolved endpoint. A provider must explicitly resolve every local or remote unit to
-      an allow-listed file, folder, or file set; an unknown unit, inactive card/profile, traversal,
+      an allow-listed file or folder; an unknown unit, inactive card/profile, traversal,
       symlink escape, or layout mismatch fails closed. Preserve the existing `pcsx2/...` unit ids,
-      remote payloads, and manifests so the proven pilot needs no cloud migration.
-- [ ] Add a deterministic **file-set** unit for saves made of several sibling files (notably a
-      Dolphin GCI game). Hash ordinal-sorted logical names + bytes, transfer one deterministic ZIP,
-      and restore through a rollback-capable replacement. File and folder writes receive the same
-      backup-before-overwrite and cancellation guarantees.
+      remote payloads, and manifests so the proven pilot needs no cloud migration. Completed with
+      provider-resolved file/folder boundaries (2026-07-29).
+- [x] Keep the generic endpoint limited to ordinary file and folder units. The attempted sibling
+      file-set abstraction for Dolphin GCI saves was removed after review: every GCI is already a
+      self-contained file, and selective shared-directory replacement added disproportionate
+      rollback risk. Single-file games retain their original cloud ids; uncommon multi-file games
+      use the GCI header's internal save identity to distinguish their files (2026-07-29).
 - [x] Generalize orchestration to register multiple `(provider, local endpoint)` pairs, load the
       cloud index + local manifest once, reconcile enabled systems, flush rclone once, and save the
       manifest atomically. Forced upload/download is scoped to one system, never an implicit
@@ -811,23 +836,39 @@ generalized.
       Per-game code/title/file-title cards are individual file units; file-title cards retain their
       exact filenames with a portability warning. A shared card is one monolithic unit and carries
       the same cross-game conflict warning as a PCSX2 file card. Never include save states.
-- [ ] **RPCS3 third:** resolve `/dev_hdd0` through a versioned, read-only `vfs.yml` adapter and bind
+- [x] **RPCS3 third:** resolve `/dev_hdd0` through a versioned, read-only `vfs.yml` adapter and bind
       one user-selected local RPCS3 profile to a stable EmuShelf profile key. Each complete
       `home/<user>/savedata/<save>/` directory is one unit, including its `PARAM.SFO`/`PARAM.PFD`;
       trophies, licenses, installed games, caches, configs, and save states stay out of scope.
-- [ ] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
+      The profile key is the unit id's *absence* of an account: ids address the save alone, the
+      account is bound locally, and the existing per-system save-location override is what selects
+      it when several accounts hold saves (2026-07-26). Extended the same day beyond the original
+      scope: the bound account's `trophy/<NPWR…>/` sets and the console-wide
+      `dev_hdd0/savedata/vmc` PS1/PS2 Classics cards sync as their own unit namespaces.
+- [x] **Dolphin fourth, split by storage model:** discover its real user directory (portable,
       global/legacy, `-u`, XDG/Flatpak, macOS, or override) and read custom paths read-only. Sync a
-      raw GameCube card as one unit; group GCI files by their embedded game+maker id as a file-set
-      unit; sync each Wii disc title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
+      raw GameCube card as one unit; sync each GCI as an ordinary file; sync each non-empty Wii disc
+      title's `Wii/title/00010000/<title-id>/data/` as one folder unit.
       Never sync the whole NAND; surface that Mii/console-identity-dependent saves may not be fully
-      portable.
-- [ ] **RetroArch last, one verified core adapter at a time:** resolve the effective save path from
+      portable. Reads `Dolphin.ini` plus relevant `GameSettings/*.ini` overrides, follows configured
+      raw/GCI/NAND paths and slot devices, validates local GCI structure and embedded identity, and
+      fails closed on per-game or nested layouts it cannot represent safely. Raw card-size filename
+      variants retain distinct portable ids, cross-slot path aliases are rejected, Settings reports
+      effective save roots, and every incoming payload is hash-verified before replacing live data
+      (2026-07-28).
+- [x] **RetroArch last, one verified core adapter at a time:** resolve the effective save path from
       `retroarch.cfg`, core/content-directory/game overrides, save sorting flags, and the configured
       core. Start with the exact cores used by EmuShelf's Mega Drive, DS, GBA, SNES, and Dreamcast
       rows; unsupported cores fail closed. Detect RetroArch's own cloud sync and refuse overlapping
       management rather than run two manifest systems over the same saves. Flatpak targets add the
       host-visible `$HOME/.var/app/<id>/config/retroarch/saves` layout; resolve its effective path
       through the same read-only config/override rules instead of assuming that default.
+      Shipped for Mega Drive, SNES, DS, GBA, and Dreamcast. Saves are claimed by game name rather
+      than a per-core extension list, so changing core does not silently stop the backup; the folder
+      RetroArch sorts into comes from the installed core's own `corename`. While RetroArch's shared
+      save folder is in use, each row claims only saves named after its own library entries
+      (2026-07-26). Flycast's *shared* VMU images live in RetroArch's system directory and remain out
+      of scope — only its per-game VMUs are in the save folder.
 - [ ] Provider contract tests cover Windows, Linux/Flatpak, portable, custom, and macOS paths;
       unknown config versions; local + remote-only resolution; card/profile mismatch; traversal and
       symlink rejection; deterministic folder/file-set hashing; and strict save-state/config
@@ -848,6 +889,11 @@ generalized.
 - [x] Add strict `.gdi` descriptor discovery for complete, read-only Dreamcast track sets. The
       primary track must validate its IP.BIN marker; loose tracks, CDI, and CHD remain unsupported
       until their logical-track behavior has parity fixtures.
+- [x] Add `.chd` support on the same terms: the container's own track table places the
+      high-density area, a declared data track must validate its IP.BIN marker, and a validated
+      image rules out the PlayStation systems that share the extension. Import, folder scanning,
+      metadata, and the rcheevos hash all reach it through one reader, so a GDI set and a CHD of
+      the same disc identify and hash identically. CDI remains unsupported.
 - [x] Register Dreamcast as a RetroArch/core system and retain its existing licensed navigation
       artwork. Use a portrait `0.708` (width÷height) cover frame matching representative 512×722
       Libretro box art, so downloaded covers and the missing-art placeholder have the same ratio.
@@ -895,6 +941,15 @@ unchanged unless an item explicitly says otherwise.
       (2026-07-25; Settings hands off explicitly and Quit has its own confirmation).
 - [x] Keep per-game actions in the Y surface; remove redundant Back and Desktop-mode rows because
       B and the global menu own those responsibilities (2026-07-25; Y opens a right-side sheet).
+- [x] Keep the Desktop sidebar and Gamepad platform rail library-focused: hide systems with no
+      database entries by default, retain systems whose files are temporarily unavailable, and
+      expose a persisted **Show empty platforms** override in General Settings. Import and emulator
+      configuration continue to list every supported platform. Membership uses a distinct-system
+      database query, empty active platforms fall back to All Games, and background refreshes retain
+      tentative controller-rail focus (2026-07-29).
+- [x] Make one portable install context-safe: `--gamepad-ui` and `--desktop-ui` are non-persisted
+      shortcut overrides, while an unqualified launch uses the remembered interface mode
+      and concurrent launches serialize settings updates through a portable lock file (2026-07-29).
 
 ### Phase 3 — One focus and input-modality model
 
@@ -926,6 +981,84 @@ unchanged unless an item explicitly says otherwise.
 - [ ] Run keyboard, mouse, Xbox-style pad, PlayStation-style pad, Steam Input, and native SDL paths;
       verify Windows fullscreen and real Steam Deck/Gaming Mode focus, OSK, emulator return, and
       menu behavior before marking M31 complete.
+
+### Approved couch-first continuation (2026-08-01)
+
+This product sequence builds on the hardened M31 shell without copying NeoStation branding,
+artwork, or source. The target is a complete living-room interface, not a larger or reduced Desktop
+layout. The reference mockup's clock is deliberately excluded: it does not help library navigation
+or launch flow, and the host already owns time/status UI.
+
+1. **Focused-game presence.** Replace the thin command-only footer with a persistent dock for the
+   focused title: platform, large title, availability/disc context, a prominent **A Play** action,
+   and a RetroAchievements count plus progress bar when a confirmed achievement set exists. Add
+   fixed semantic colors for A/B/X/Y and a stronger focused-cover shadow while keeping the existing
+   per-platform cover ratios and virtualized shelf. The initial dock, semantic prompts, projection
+   tests, and 1280×800 render check landed on 2026-08-01. The screenshot-led refinement then made
+   achievement and Play surfaces a shared 60px height, removed the redundant percentage and
+   "Available" copy, showed the actual launch filename, and added subtle depth to every cover. A
+   further populated-library review replaced the two-row 126px footer with one 104px information
+   row: only game identity, a custom clipped achievement track, and Play remain persistent. The
+   library count and direct-shortcut legend now live in Menu; overlays retain only their contextual
+   hints. The achievements overlay now follows the same focused hierarchy: a selected-achievement
+   detail card beside a virtualized square-badge grid, All/Locked/Unlocked tabs on LB/RB, spatial
+   D-pad navigation, X refresh, and Y cycling Default/Points/Unlocked first/Recently unlocked
+   ordering. Sorting atomically replaces the visible rows and keeps the selector in its physical
+   grid slot, so the badge under the selector changes without the ring chasing the previously
+   selected badge across the screen. A real 86-badge compositor regression replaced collection
+   Reset with a fresh immutable item-source snapshot, delays manual realization until the viewport
+   is measured, and verifies the top-left cell after every sort mode. Achievement D-pad movement
+   now clamps at real row edges/missing final-row cells; filtering always restores layout even when
+   the same badge survives, and pointer selection updates the same logical focus as the controller.
+   Community unlock-percentage sorting remains deferred until that data has an explicit API and
+   portable-cache field. Real-controller tuning remains part of the M31 acceptance pass above.
+2. **Settings entirely on the controller.** Replace the Settings-to-Desktop handoff with an
+   in-window, sectioned Gamepad surface over the existing settings view model. Land General,
+   RetroAchievements, Saves, and Texture Packs first; then emulator paths/arguments. Use the
+   controller-safe text-entry path for text and keep an explicit OS file-picker handoff only where
+   selecting a native executable or folder is unavoidable. The complete Desktop field audit and
+   first in-window slice landed on 2026-08-01: LB/RB changes among those four sections, D-pad owns
+   stable per-section row focus, A edits or activates, B safely cancels or returns, and Save is one
+   Up press from each section's initial row. Text and secrets use focused, masked in-window entry
+   with an automatic host-OSK request where supported and an explicit keyboard/Steam+X fallback;
+   native pickers remain limited to real file/folder selection. The surface reuses the existing
+   settings view model and services, including persistence and destructive-operation confirmation.
+   A populated-library review rejected the initial generic-card presentation on the same day. The
+   replacement is a full-height, proportional two-pane screen with a persistent section rail,
+   pinned Save action, equal-width virtualized rows, recognizable ON/OFF switches, left/right
+   choices, edit/choose affordances, ordinary actions, and visually separate destructive actions.
+   Section and Save actions fill the rail width; START invokes the existing Save command directly,
+   while Up then A remains a tested controller route. General uses Desktop's field wording and
+   values, and real Desktop/Gamepad windows now enforce identical visible mutating-field ids across
+   all four sections so a controller-only field or a missing Desktop field fails validation.
+   Geometry and focus-reveal coverage now exercises real Avalonia windows at 1280x800, 1280x720,
+   and the reported 2048x1152 viewport. Emulator paths/arguments and RPCS3 library maintenance
+   remain the next Phase 2 slice.
+3. **Controller cover search using the existing DuckDuckGo provider.** Reuse M34's explicit,
+   bounded `DuckDuckGoArtworkSearchProvider` and safe preview/download pipeline in a Gamepad
+   candidate grid. Search and selection stay user-driven; unverified results never enter automatic
+   metadata enrichment. Retain **Use local image** as a secondary, clearly labelled Desktop/file
+   picker handoff.
+4. **Full portable themes.** Move beyond Light/Dark plus one accent to complete palettes covering
+   backgrounds, panels, text, borders, selection, and focus. Provide a controller-native theme
+   gallery and portable `Themes/` import, while A/B/X/Y semantic colors remain stable across every
+   palette. The palette-swap engine and first complete set landed on 2026-08-01: `ThemeCatalog`
+   enumerates System/Light/Dark plus full Nord, OLED, and Cyberpunk palettes, each a flat resource
+   dictionary that redefines every `EmuXxxBrush` token (verified by rendering OLED and Cyberpunk with
+   no hardcoded colour leaking through). `AppThemeService` swaps the active palette as an override
+   dictionary and sets the base `ThemeVariant`; all consumers already use `DynamicResource`, so a swap
+   re-colours the UI live. A controller-native theme gallery is a Themes page in Gamepad Settings, and
+   the Desktop Settings gallery lists the same catalog, so appearance is changeable in both modes. The
+   default accent moved from red to rose so selection/focus no longer reads as the danger colour, and
+   the focused game gained a thicker ring, a themed accent glow, and a subtle lift. Portable `Themes/`
+   import and Fluent per-theme accent chrome remain the open work for this item.
+5. **ScreenScraper.fr integration.** Treat ScreenScraper as a separate authenticated metadata
+   provider project, not as the first implementation of the Gamepad picker. Add secure user
+   credentials, application/developer credentials, platform-id mapping, hash-first matching with
+   title search fallback, locale/region preferences, quota/concurrency handling, cached attribution
+   and provenance, and explicit single-game/batch consent. Feed its metadata and media variants
+   into the same controller scraper UI only after deterministic fixtures and provider-failure
+   isolation are in place. ScreenScraper account sharing and quota workarounds are never supported.
 
 ## M32 — Installed texture-pack inventory (in progress)
 
@@ -1036,3 +1169,140 @@ loading setting can also be resolved without guessing.
       four reported replacement loading correctly. Emulator configs and pack files were unchanged
       in bytes and timestamps after repeated rescans, and an empty Dolphin root did not stop the
       other three providers. SteamOS/Linux remains open.)
+
+## M33 — Sync beyond saves: states, cheats, patches, per-game settings (planned)
+
+M29 syncs the games' own battery/memory-card saves and stops there, on the reasoning that
+everything else is either machine-specific or fragile. That reasoning holds for *some* of it, but a
+library that moves between a desktop and a Steam Deck loses more than saves: a save state mid-boss,
+a widescreen patch, a cheat file, and the per-game settings that made a game run at all. This
+milestone extends the existing engine — one unit id, one manifest baseline, non-destructive
+conflicts — to those kinds, one kind at a time, with the risky ones behind their own switch.
+
+Everything here reuses M29's machinery. A content kind is a new unit-id namespace under the same
+provider (`duckstation/cheats/…` beside `duckstation/per-game/…`), so the planner, backup-before-
+overwrite rule, conflict backups, and activity log need no new concepts.
+
+### Phase 1 — Foundation
+
+- [x] Per-kind opt-in per platform, defaulting to saves only. Emulator cheat and patch roots can
+      contain thousands of bundled database files, while save states can be gigabytes and change
+      every session, so optional kinds participate only in manual Sync all/replace actions. Settings
+      shows each kind's exact resolved path, eligible file count, and size before it is enabled.
+- [x] Per-file units for kinds made of many independent files, so one changed state does not
+      re-upload a folder. The existing folder unit stays for save data that is only meaningful whole.
+- [x] Sync every manual state present without deleting local or cloud copies. Exclude auto/undo slots
+      (`.state.auto`, DuckStation's resume state, PCSX2's backup slot), which change on every exit and
+      are worth nothing on another machine.
+- [x] Kind-aware conflict handling. A cheat or patch file is user-edited text where "keep the newer
+      one" is wrong: keep both sides, both readable, and say so — the current timestamp tie-break
+      stays right for opaque binary state.
+
+### Phase 2 — Portable-by-nature kinds (do these first)
+
+- [x] **Cheats.** DuckStation `cheats/<serial>.cht`, PCSX2 `cheats/<CRC>.pnach`, PPSSPP
+      `PSP/Cheats/*.ini`, RetroArch `cheats/`, Dolphin's Gecko/AR sections. Small, text, keyed by
+      game id rather than by machine; the clearest win in this milestone. Dolphin's Gecko/AR
+      sections remain excluded because they share the same INI files as the per-game settings the
+      user chose not to sync; copying those files wholesale would also copy machine-bound settings.
+- [x] **Patches.** PCSX2 `patches/` pnach files and RPCS3 `patches/patch.yml` — the community
+      patch sets that carry widescreen and performance fixes, and that are pure content with no
+      machine-specific paths. Soft patches that live *beside the ROM* (`.ips`/`.bps`/`.ups`) are
+      excluded: EmuShelf never writes into the user's game folders.
+- [ ] **Per-game settings.** DuckStation `gamesettings/`, PCSX2 `gamesettings/`, Dolphin
+      `GameSettings/`, RetroArch per-game overrides. High value — this is the tuning that makes a
+      specific game work — but the files can name a renderer, an adapter, or an absolute path, so
+      sync must filter machine-bound keys rather than copy blindly, and a Deck and a desktop must be
+      able to keep different graphics choices for the same game.
+
+### Phase 3 — Save states, behind a version guard
+
+- [x] **Save states.** DuckStation `savestates/`, PCSX2 `sstates/*.p2s`, PPSSPP
+      `PSP/PPSSPP_STATE/*.ppst`, Dolphin `StateSaves/`, RetroArch `states/*.state`, RPCS3's own
+      `.SAVESTAT`. These are the reason the original exclusion existed: a state is bound to the
+      emulator build that wrote it, and often to its CPU architecture, so restoring one into a
+      different build ranges from a graphical mess to a crash.
+- [x] Record the writing emulator's version and CPU architecture beside each state unit, and refuse to
+      restore a state whose version does not match the local emulator — surfacing it as "available,
+      not restored" rather than silently overwriting or silently skipping. A matching version
+      restores normally.
+- [x] Bandwidth honesty: show the transfer size before the first sync of a platform's states, and
+      keep them out of the pre-launch pass's critical path — a state is not needed to *start* a
+      game the way a memory card is.
+
+### Phase 4 — Worth considering, decide before building
+
+- [ ] **EmuShelf's own library** (`Data/library.db`, `Covers/`) so a second machine sees the same
+      collection, ratings, and artwork. Arguably the highest-value item here after cheats, and the
+      one with the most design questions: stored paths differ per machine, and the cover cache is
+      large. Needs its own decision on portable paths before any code.
+- [ ] **Screenshots and captures** — RetroArch `screenshots/`, PPSSPP `PSP/SCREENSHOT/`, RPCS3
+      `captures/`. Purely additive, no conflicts possible, cheap to implement; low value, so only
+      worth it once the machinery above exists.
+- [ ] **Controller profiles and input remaps** — RetroArch `config/remaps`, DuckStation and PCSX2
+      input profiles. Tempting and usually wrong: device names, indices, and Steam Input differ
+      between a Deck and a desktop, so a synced remap can silently break input on the other machine.
+      If it happens at all, it should be an explicit "copy this profile there", not background sync.
+- [ ] Deliberately out of scope, recorded so it is not revisited: BIOS and firmware images (large,
+      static, and the user's own to place), texture packs (gigabytes, already inventoried by M32),
+      emulator binaries, and RetroAchievements progress (the server owns it).
+
+## M34 — User-driven web cover picker ✅ (2026-07-29)
+
+- [x] Replace Desktop **Set cover…**'s file-only interaction with a Grimmory-style search dialog:
+      prefill title/platform, show a bounded preview grid with resolution/source host, keep an
+      explicit local-file action, and apply nothing until the user selects a result.
+- [x] Keep unverified web results out of automatic metadata enrichment. Search DuckDuckGo Images
+      only on an explicit user action, retain search rank, use the platform cover ratio only as a
+      light ordering signal, and never guess that a result belongs to a ROM.
+- [x] Route previews and selected images through the bounded artwork path: require HTTPS public
+      addresses on the initial URL and every redirect, cap both compressed bytes and decoded pixel
+      dimensions, decode scaled previews off the UI thread as they arrive, delete staging files,
+      and preserve the accepted portable `Covers/` copy as user-owned artwork.
+- [x] Cover query construction, unsafe/tiny-result rejection, format fallback, picker selection,
+      local-file fallback, portable import, and temporary-file cleanup with deterministic tests;
+      verify the live search-token/results exchange without downloading or redistributing artwork.
+
+## M35 — Arcade (FinalBurn Neo)
+
+Single user-facing **Arcade** platform, launched through the existing RetroArch launcher with the
+user-supplied `fbneo_libretro` core. FinalBurn Neo only — no MAME, Naomi/Flycast, Atomiswave, or
+TeknoParrot. BIOS management and ROM repair/conversion stay out of scope. Builds and the full test
+suite are green on macOS; a real-romset launch on Windows is the remaining acceptance gate.
+
+- [x] Register the `arcade` system (stable id, landscape 4:3 cover ratio) and add it to
+      `RetroArchDefinition` so it launches a `.zip` through `-L {CorePath} {GamePath}`.
+- [x] Import `.zip` under Arcade (suggest-by-extension, user confirms); one zip is one game; the
+      archive is never opened and user files are never modified. `.7z` deferred — no 7z reader.
+- [x] Hide BIOS/device archives (neogeo, pgm, …) at import and in folder scans via a bundled
+      set-name list; the FBNeo DAT's `isbios`/`isdevice` flags are the authoritative filter during
+      enrichment.
+- [x] Recognize sets by zip basename == FBNeo DAT `game name`; canonical title from the
+      `<description>` element; unmatched zips keep a filename title rather than being discarded.
+- [x] Read the FBNeo Arcade DAT (`metadat/fbneo-split`, Logiqx XML) through a streaming XML parse
+      path in `LibretroDatCatalog`, selected per profile, with a raised per-profile size cap for the
+      ~8k-set DAT.
+- [x] Arcade artwork from the libretro `FBNeo - Arcade Games` thumbnails, subfolder order
+      Named_Titles → Named_Snaps → Named_Boxarts, falling back to the bundled Arcade placeholder.
+- [x] Cloud save-sync parity: FBNeo battery/NVRAM `.srm` saves and `.state` save states sync through
+      the generic RetroArch descriptor, matched by zip basename, with the same core-version state
+      gating as the other RetroArch platforms.
+- [x] Deterministic tests: Logiqx-XML parse (name/description/isbios/clone), BIOS hiding, `.zip`
+      routing, arcade artwork candidate order, and save-sync registration. Full suite green on macOS.
+- [ ] Verify on Windows: a real FBNeo romset (e.g. `mslug`, `sf2`) launches through RetroArch with
+      the `fbneo_libretro` core, a BIOS-dependent game surfaces a clean failure when `neogeo.zip` is
+      absent, and saves/states round-trip through cloud sync.
+
+## M36 — Automatic save states and visible library folders
+
+- [x] Automatically synchronize opted-in, version-guarded save states before launch and after
+      emulator exit. Ordinary battery/memory-card saves commit first, and launch waits for the
+      complete pass rather than abandoning it after a fixed application-level budget.
+- [x] Show every remembered ROM folder in its platform's emulator-settings row, including missing
+      folders, and allow the user to add, change, forget, and rescan roots without touching game
+      files. Keep RPCS3 on its explicit emulator-owned library workflow.
+- [x] Preserve library records when a remembered root moves by rebasing games whose relative paths
+      are present in the replacement scan; retain unmatched games as unavailable and reject path
+      conflicts atomically.
+- [x] Deterministic view-model, persistence, launch-lifecycle, and save-provider tests; full build
+      and test suite green.

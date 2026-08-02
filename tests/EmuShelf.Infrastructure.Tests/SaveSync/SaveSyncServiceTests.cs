@@ -43,6 +43,74 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task IncompatibleRemoteOnlyState_IsReportedWithoutDownloading()
+    {
+        var state = new SaveUnit("test/states/GAME.state", "GAME.state", SaveUnitKind.File);
+        _remote.Seed(state.UnitId, Bytes("old state"), T0, compatibility: "old-build");
+
+        var report = await CreateService().SyncAsync(new CompatibilityProvider(state, includeLocal: false));
+
+        var skipped = Assert.Single(report.Skipped);
+        Assert.Contains("different build", skipped.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(_local.Has(state.UnitId));
+        Assert.Equal(0, _remote.Downloads);
+    }
+
+    [Fact]
+    public async Task CompatibleLocalState_ReplacesIncompatibleStableRemoteUnitAfterBackup()
+    {
+        var state = new SaveUnit("test/states/GAME.state", "GAME.state", SaveUnitKind.File);
+        _local.CompatibilityResolver = _ => "current-build";
+        _local.Seed(state.UnitId, Bytes("current state"), T0.AddMinutes(1));
+        _remote.Seed(state.UnitId, Bytes("old state"), T0, compatibility: "old-build");
+
+        var report = await CreateService().SyncAsync(new CompatibilityProvider(state, includeLocal: true));
+
+        Assert.Equal(1, report.Conflicts);
+        Assert.Equal(Bytes("current state"), _remote.Content(state.UnitId));
+        Assert.Single(_local.Backups, backup => !backup.FromLocal);
+    }
+
+    [Fact]
+    public async Task EmulatorUpgrade_DoesNotRelabelUnchangedOldStateAsCurrent()
+    {
+        var state = new SaveUnit("test/states/GAME.state", "GAME.state", SaveUnitKind.File);
+        _local.Seed(state.UnitId, Bytes("old state"), T0);
+        _local.CompatibilityResolver = _ => "old-build";
+        var service = CreateService();
+
+        await service.SyncAsync(new CompatibilityProvider(state, includeLocal: true, currentBuild: "old-build"));
+        Assert.Equal("old-build", _manifests.Current.Get(state.UnitId)?.Compatibility);
+
+        // Merely installing a new emulator changes the provider's current identity, not the state
+        // bytes. The old provenance must survive and the old state must not be certified as new.
+        _local.CompatibilityResolver = _ => "current-build";
+        var report = await service.SyncAsync(new CompatibilityProvider(state, includeLocal: true));
+
+        Assert.Single(report.Skipped);
+        Assert.Equal("old-build", _remote.Compatibility(state.UnitId));
+        Assert.Equal(1, _remote.Uploads);
+        Assert.Equal("old-build", _manifests.Current.Get(state.UnitId)?.Compatibility);
+    }
+
+    [Fact]
+    public async Task CorruptDownload_DoesNotReplaceLocalOrAdvanceItsBaseline()
+    {
+        _local.Seed(FileCard.UnitId, Bytes("original"), T0);
+        var service = CreateService();
+        await service.SyncAsync(Provider(FileCard));
+        var baseline = _manifests.Current.Get(FileCard.UnitId);
+
+        _remote.Seed(FileCard.UnitId, Bytes("new remote"), T0.AddMinutes(1));
+        _remote.ReplacePayloadWithoutUpdatingIndex(FileCard.UnitId, Bytes("damaged in transit"));
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => service.SyncAsync(Provider(FileCard)));
+
+        Assert.Equal(Bytes("original"), _local.Content(FileCard.UnitId));
+        Assert.Equal(baseline, _manifests.Current.Get(FileCard.UnitId));
+    }
+
+    [Fact]
     public async Task UnchangedSince_LastSync_DoesNothing()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
@@ -54,6 +122,36 @@ public sealed class SaveSyncServiceTests
         Assert.Equal(1, report.Unchanged);
         Assert.Equal(1, _remote.Uploads);
         Assert.Equal(0, _remote.Downloads);
+    }
+
+    [Fact]
+    public async Task MatchingCopies_RepairAStaleBaselineLeftByAnInterruptedCommit()
+    {
+        _local.Seed(FileCard.UnitId, Bytes("initial"), T0);
+        var service = CreateService();
+        await service.SyncAsync(Provider(FileCard));
+
+        // Reproduce a cloud commit that succeeded before the local manifest could be saved: both
+        // copies contain the committed content, while the baseline still describes the old copy.
+        var committedUtc = T0.AddMinutes(1);
+        _local.Seed(FileCard.UnitId, Bytes("committed"), committedUtc);
+        _remote.Seed(FileCard.UnitId, Bytes("committed"), committedUtc);
+
+        var healingPass = await service.SyncAsync(Provider(FileCard));
+
+        Assert.Equal(1, healingPass.Unchanged);
+        Assert.Equal(
+            InMemoryCloudSyncTransport.Hash(Bytes("committed")),
+            _manifests.Current.Get(FileCard.UnitId)?.ContentHash);
+
+        // With the repaired baseline, a later remote-only edit is a download, not a false
+        // two-sided conflict decided by machine clocks.
+        _remote.Seed(FileCard.UnitId, Bytes("remote edit"), committedUtc.AddMinutes(1));
+        var nextPass = await service.SyncAsync(Provider(FileCard));
+
+        Assert.Equal(1, nextPass.Downloaded);
+        Assert.Equal(0, nextPass.Conflicts);
+        Assert.Equal(Bytes("remote edit"), _local.Content(FileCard.UnitId));
     }
 
     [Fact]
@@ -138,6 +236,68 @@ public sealed class SaveSyncServiceTests
         Assert.Equal(1, report.Downloaded);
         Assert.Equal(Bytes("gow-save"), _remote.Content(gow.UnitId));
         Assert.Equal(Bytes("sotc-save"), _local.Content(sotc.UnitId));
+    }
+
+    [Fact]
+    public async Task EveryUnitNeedingTheCloudPayloadIsAnnouncedBeforeTheFirstTransfer()
+    {
+        // The rclone transport opens one download session for the whole pass; it can only scope that
+        // session to the payloads this pass needs if the service says so before transferring.
+        var download = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
+        var conflict = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
+        _local.Seed(FileCard.UnitId, Bytes("upload-only"), T0);
+        _remote.Seed(download.UnitId, Bytes("remote-only"), T0);
+        _local.Seed(conflict.UnitId, Bytes("local-edit"), T0.AddMinutes(2));
+        _remote.Seed(conflict.UnitId, Bytes("remote-edit"), T0.AddMinutes(1));
+
+        await CreateService().SyncAsync(Provider(FileCard, download, conflict));
+
+        Assert.Equal(
+            [download.UnitId, conflict.UnitId],
+            _remote.AnnouncedDownloads.Order(StringComparer.Ordinal));
+        Assert.DoesNotContain(FileCard.UnitId, _remote.AnnouncedDownloads);
+    }
+
+    [Fact]
+    public async Task AUnitTheIndexPromisesButCannotDeliver_DoesNotCostTheOtherUnitsTheirSync()
+    {
+        // Real failure: the cloud index listed three PSP saves whose payloads were never uploaded,
+        // and the first of them aborted every pass on the other machine.
+        var missing = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
+        var healthy = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
+        _remote.Seed(missing.UnitId, Bytes("promised"), T0);
+        _remote.Seed(healthy.UnitId, Bytes("deliverable"), T0);
+        _remote.MissingPayloads.Add(missing.UnitId);
+
+        var report = await CreateService().SyncAsync(Provider(missing, healthy));
+
+        Assert.Equal(1, report.Downloaded);
+        Assert.Equal(Bytes("deliverable"), _local.Content(healthy.UnitId));
+        Assert.False(_local.Has(missing.UnitId));
+        Assert.Contains(
+            report.Results,
+            result => result.UnitId == missing.UnitId && result.Reason.Contains("missing"));
+    }
+
+    [Fact]
+    public async Task TheTransferIsReportedAsItsOwnPhase_NotAsAFinishedUnitCounter()
+    {
+        // Units are staged locally, so the counter reaches its total before a byte moves. Without a
+        // phase of its own, a large upload looks like a finished sync that has hung.
+        _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
+        var reports = new List<SaveSyncProgress>();
+
+        await CreateService().SyncAsync(
+            Provider(FileCard),
+            new Progress<SaveSyncProgress>(reports.Add));
+
+        // Progress is marshalled, so allow the posted callbacks to run before asserting.
+        for (var attempt = 0; attempt < 50 && !reports.Any(r => r.Phase == SaveSyncPhase.Transferring); attempt++)
+            await Task.Delay(10);
+
+        var transfer = Assert.Single(reports, report => report.Phase == SaveSyncPhase.Transferring);
+        Assert.Null(transfer.TransferPercent);
+        Assert.Contains(reports, report => report.Phase == SaveSyncPhase.Reconciling);
     }
 
     [Fact]
@@ -228,10 +388,13 @@ public sealed class SaveSyncServiceTests
 
         await CreateService().SyncAsync(Provider(first, second), progress);
 
-        Assert.Equal(2, progress.Reports.Count);
-        Assert.All(progress.Reports, report => Assert.Equal(2, report.Total));
-        Assert.Equal([0, 1], progress.Reports.Select(report => report.Completed));
-        Assert.All(progress.Reports, report => Assert.Equal(SaveSyncAction.Upload, report.Action));
+        // Per unit while reconciling, plus one report for the transfer that follows them.
+        var perUnit = progress.Reports.Where(report => report.Phase == SaveSyncPhase.Reconciling).ToList();
+        Assert.Equal(2, perUnit.Count);
+        Assert.All(perUnit, report => Assert.Equal(2, report.Total));
+        Assert.Equal([0, 1], perUnit.Select(report => report.Completed));
+        Assert.All(perUnit, report => Assert.Equal(SaveSyncAction.Upload, report.Action));
+        Assert.Single(progress.Reports, report => report.Phase == SaveSyncPhase.Transferring);
     }
 
     private static FakeSaveLocationProvider Provider(params SaveUnit[] units) =>
@@ -244,5 +407,21 @@ public sealed class SaveSyncServiceTests
         public List<SaveSyncProgress> Reports { get; } = [];
 
         public void Report(SaveSyncProgress value) => Reports.Add(value);
+    }
+
+    private sealed class CompatibilityProvider(
+        SaveUnit state,
+        bool includeLocal,
+        string currentBuild = "current-build") : ISaveLocationProvider
+    {
+        public string SystemId => "test";
+        public string UnitIdPrefix => "test/";
+        public bool OwnsUnit(string unitId) => unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal);
+        public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SaveUnit>>(includeLocal ? [state] : []);
+        public SaveUnitLocation? ResolveUnit(string unitId) => null;
+        public string? GetCompatibility(string unitId) => currentBuild;
+        public string? GetRemoteIncompatibilityReason(SaveUnitSnapshot remoteSnapshot) =>
+            remoteSnapshot.Compatibility == currentBuild ? null : "This state was written by a different build.";
     }
 }

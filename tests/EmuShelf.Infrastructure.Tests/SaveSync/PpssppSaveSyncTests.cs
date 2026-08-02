@@ -58,6 +58,29 @@ public sealed class PpssppSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             Path.Combine(home, ".var", "app", "org.ppsspp.PPSSPP", "config", "ppsspp"),
             PpssppSaveLocationProvider.GetDefaultMemoryStickDirectory("/app", home, "/docs", false, true));
+
+        // macOS keeps the Memory Stick under Application Support, not ~/.config — the same root the
+        // texture resolver already reads this installation's ppsspp.ini from.
+        Assert.Equal(
+            Path.Combine(home, "Library", "Application Support", "PPSSPP"),
+            PpssppSaveLocationProvider.GetDefaultMemoryStickDirectory(
+                "/app", home, "/docs", isWindows: false, isFlatpak: false, isMacOS: true));
+    }
+
+    [Fact]
+    public async Task MacOs_ResolvesSavesUnderApplicationSupport()
+    {
+        var home = Path.Combine(BaseDirectory, "mac-home");
+        var saveData = Path.Combine(home, "Library", "Application Support", "PPSSPP", "PSP", "SAVEDATA");
+        Directory.CreateDirectory(Path.Combine(saveData, "ULUS10041DATA00"));
+        var provider = new PpssppSaveLocationProvider(
+            Path.Combine(BaseDirectory, "install"),
+            homeDirectory: home,
+            isWindows: false,
+            isMacOS: true);
+
+        Assert.Equal(saveData, await provider.GetSaveDataDirectoryAsync());
+        Assert.Single(await provider.GetSaveUnitsAsync());
     }
 
     [Fact]

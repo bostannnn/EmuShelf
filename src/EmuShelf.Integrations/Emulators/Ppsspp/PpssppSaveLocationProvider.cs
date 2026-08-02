@@ -15,6 +15,7 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
     private readonly string _homeDirectory;
     private readonly string _documentsDirectory;
     private readonly bool _isWindows;
+    private readonly bool _isMacOS;
     private readonly bool _isFlatpak;
 
     public PpssppSaveLocationProvider(
@@ -23,7 +24,8 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
         string? homeDirectory = null,
         string? documentsDirectory = null,
         bool? isWindows = null,
-        bool isFlatpak = false)
+        bool isFlatpak = false,
+        bool? isMacOS = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installationDirectory);
         _installationDirectory = Path.GetFullPath(installationDirectory);
@@ -37,6 +39,7 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
             ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
             : Path.GetFullPath(documentsDirectory);
         _isWindows = isWindows ?? OperatingSystem.IsWindows();
+        _isMacOS = isMacOS ?? OperatingSystem.IsMacOS();
         _isFlatpak = isFlatpak;
     }
 
@@ -100,7 +103,10 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
             return NormalizeMemoryStickDirectory(_memoryStickDirectoryOverride);
 
         if (!_isWindows)
-            return GetDefaultMemoryStickDirectory(_installationDirectory, _homeDirectory, _documentsDirectory, false, _isFlatpak);
+        {
+            return GetDefaultMemoryStickDirectory(
+                _installationDirectory, _homeDirectory, _documentsDirectory, false, _isFlatpak, _isMacOS);
+        }
 
         var installedPath = Path.Combine(_installationDirectory, InstalledFileName);
         if (!File.Exists(installedPath))
@@ -145,7 +151,8 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
         string homeDirectory,
         string documentsDirectory,
         bool isWindows,
-        bool isFlatpak)
+        bool isFlatpak,
+        bool isMacOS = false)
     {
         if (isWindows)
             return Path.Combine(installationDirectory, "memstick");
@@ -159,6 +166,11 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
                 "config",
                 "ppsspp");
         }
+
+        // macOS PPSSPP keeps its Memory Stick under Application Support, which is where the texture
+        // resolver already looks for the same installation's ppsspp.ini.
+        if (isMacOS)
+            return Path.Combine(homeDirectory, "Library", "Application Support", "PPSSPP");
 
         return Path.Combine(homeDirectory, ".config", "ppsspp");
     }

@@ -1,10 +1,127 @@
 using EmuShelf.Core.Metadata;
 using EmuShelf.Infrastructure.Metadata;
+using EmuShelf.Integrations.Metadata;
 
 namespace EmuShelf.Infrastructure.Tests.Metadata;
 
 public class LibretroDatCatalogTests
 {
+    [Fact]
+    public void ParseLogiqxXml_KeysBySetName_AndTitlesFromDescription()
+    {
+        using var reader = new StringReader(
+            """
+            <?xml version="1.0"?>
+            <datafile>
+              <game name="mslug">
+                <description>Metal Slug - Super Vehicle-001</description>
+                <year>1996</year>
+                <rom name="201-p1.p1" size="1048576" crc="08d8fed6"/>
+              </game>
+            </datafile>
+            """);
+
+        var index = LibretroDatCatalog.ParseLogiqxXml(reader, GameIdentifierKind.ArcadeSetName);
+
+        var entry = Assert.Single(index.Entries);
+        Assert.Equal(
+            LibretroDatCatalog.NormalizeKey(GameIdentifierKind.ArcadeSetName, "mslug"),
+            entry.Key);
+        Assert.Equal("Metal Slug - Super Vehicle-001", entry.Value.Title);
+    }
+
+    [Fact]
+    public void ParseLogiqxXml_SkipsBiosAndDeviceSets()
+    {
+        using var reader = new StringReader(
+            """
+            <datafile>
+              <game name="neogeo" isbios="yes"><description>Neo Geo BIOS</description></game>
+              <game name="nmk004" isdevice="yes"><description>NMK004 MCU</description></game>
+              <game name="sf2"><description>Street Fighter II: The World Warrior</description></game>
+            </datafile>
+            """);
+
+        var index = LibretroDatCatalog.ParseLogiqxXml(reader, GameIdentifierKind.ArcadeSetName);
+
+        var entry = Assert.Single(index.Entries);
+        Assert.Equal("Street Fighter II: The World Warrior", entry.Value.Title);
+    }
+
+    [Fact]
+    public void ParseLogiqxXml_FallsBackToSetNameWhenDescriptionMissing()
+    {
+        using var reader = new StringReader("""<datafile><game name="puzzle" /></datafile>""");
+
+        var index = LibretroDatCatalog.ParseLogiqxXml(reader, GameIdentifierKind.ArcadeSetName);
+
+        Assert.Equal("puzzle", Assert.Single(index.Entries).Value.Title);
+    }
+
+    [Fact]
+    public void ParseLogiqxXml_HandlesTheRealFbneoDatShape_KeyingBySetIdAndSkippingBios()
+    {
+        // A trimmed but faithful sample of the real "FinalBurn Neo (ClrMame Pro XML, Arcade only)"
+        // DAT: the Logiqx DOCTYPE, a <header>, the game `name` attribute as the set short id, the
+        // title in <description>, a romof/cloneof link, and a BIOS set whose `isbios` attribute
+        // precedes `name` — the exact shape the earlier hand-written tests did not cover.
+        using var reader = new StringReader(
+            """
+            <?xml version="1.0"?>
+            <!DOCTYPE datafile PUBLIC "-//FinalBurn Neo//DTD ROM Management Datafile//EN" "http://www.logiqx.com/Dats/datafile.dtd">
+            <datafile>
+              <header>
+                <name>FinalBurn Neo - Arcade Games</name>
+                <description>FinalBurn Neo v1.0.0.03 Arcade Games</description>
+              </header>
+              <game name="mslug" romof="neogeo">
+                <description>Metal Slug - Super Vehicle-001</description>
+                <year>1996</year>
+                <rom name="201-p1.p1" size="2097152" crc="08d8daa5"/>
+              </game>
+              <game isbios="yes" name="bubsys">
+                <description>Bubble System BIOS</description>
+                <rom name="boot.bin" size="480" crc="f0774fc2"/>
+              </game>
+              <game name="sf2ce" cloneof="sf2">
+                <description>Street Fighter II' - Champion Edition (World 920313)</description>
+              </game>
+            </datafile>
+            """);
+
+        var index = LibretroDatCatalog.ParseLogiqxXml(reader, GameIdentifierKind.ArcadeSetName);
+
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.ArcadeSetName,
+            LibretroDatCatalog.NormalizeKey(GameIdentifierKind.ArcadeSetName, "mslug"),
+            out var mslug));
+        Assert.Equal("Metal Slug - Super Vehicle-001", mslug.Title);
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.ArcadeSetName,
+            LibretroDatCatalog.NormalizeKey(GameIdentifierKind.ArcadeSetName, "sf2ce"),
+            out var sf2ce));
+        Assert.Equal("Street Fighter II' - Champion Edition (World 920313)", sf2ce.Title);
+        // The BIOS set is excluded even though it carries a description, and the <header> name is
+        // never mistaken for a game.
+        Assert.False(index.TryGetValue(
+            GameIdentifierKind.ArcadeSetName,
+            LibretroDatCatalog.NormalizeKey(GameIdentifierKind.ArcadeSetName, "bubsys"),
+            out _));
+        Assert.Equal(2, index.Entries.Count);
+    }
+
+    [Fact]
+    public void ArcadeProfile_UsesTheLogiqxXmlDatNotTheClrMameProTextTwin()
+    {
+        var arcade = KnownMetadataProfiles.All.Single(profile => profile.SystemId == "arcade");
+
+        Assert.Equal(GameIdentifierKind.ArcadeSetName, arcade.CatalogKeyKind);
+        Assert.Equal(DatFormat.LogiqxXml, arcade.CatalogFormat);
+        // The XML twin ("… (ClrMame Pro XML, Arcade only).dat") keys by set id; the text
+        // "FBNeo - Arcade Games.dat" does not contain "ClrMame" and would make XmlReader throw.
+        Assert.Contains("ClrMame", arcade.CatalogUri.AbsoluteUri);
+    }
+
     [Fact]
     public void Parser_IndexesTopLevelSerialAndIgnoresNestedRomFields()
     {

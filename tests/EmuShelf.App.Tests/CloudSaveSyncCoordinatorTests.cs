@@ -130,6 +130,99 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public void UpdateOverrides_PersistsEveryPathInOneSettingsWrite()
+    {
+        var settings = new FakeSettingsService();
+        var coordinator = CreateCoordinator(settings);
+
+        coordinator.UpdateOverrides(Overrides(
+            ("playstation2", " /portable/pcsx2 "),
+            ("psp", "/portable/ppsspp")));
+
+        Assert.Equal("/portable/pcsx2", settings.Current.CloudSaveSync.GetOverride("playstation2"));
+        Assert.Equal("/portable/ppsspp", settings.Current.CloudSaveSync.GetOverride("psp"));
+        Assert.Equal(1, settings.SaveCalls);
+    }
+
+    [Fact]
+    public async Task Detection_SaysSoWhenTheResolvedFolderDoesNotExistOnThisMachine()
+    {
+        // The quietest possible failure: a platform resolves a path, finds nothing there, and
+        // reports a successful sync of zero saves. The row has to say the folder is not there.
+        var root = Path.Combine(Path.GetTempPath(), "emushelf-detect", Guid.NewGuid().ToString("N"));
+        var present = Path.Combine(root, "memstick");
+        Directory.CreateDirectory(Path.Combine(present, "PSP", "SAVEDATA"));
+        var absent = Path.Combine(root, "not-installed");
+        try
+        {
+            var coordinator = CreateCoordinator(
+                new FakeSettingsService(),
+                new AppSettings
+                {
+                    CloudSaveSync = new CloudSaveSyncSettings
+                    {
+                        Enabled = true,
+                        RemoteName = "gdrive",
+                        CloudFolder = "EmuShelf/Saves",
+                    }.WithOverride("psp", present),
+                });
+
+            var found = await coordinator.GetDetectionAsync("psp", TestContext.Current.CancellationToken);
+            Assert.NotNull(found);
+            Assert.Null(found.Warning);
+
+            coordinator.UpdateOverride("psp", absent);
+            var missing = await coordinator.GetDetectionAsync("psp", TestContext.Current.CancellationToken);
+
+            Assert.NotNull(missing);
+            Assert.Contains("does not exist on this machine", missing.Warning);
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
+    public async Task OptionalDetectionFailure_DoesNotInvalidateDirectPcsx2MemoryCardLocation()
+    {
+        var memcards = Path.Combine(Path.GetTempPath(), "emushelf-direct-memcards", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(memcards);
+        await File.WriteAllTextAsync(
+            Path.Combine(memcards, "Mcd001.ps2"),
+            "card",
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var settings = new AppSettings
+            {
+                CloudSaveSync = new CloudSaveSyncSettings
+                {
+                    Enabled = true,
+                    RemoteName = "gdrive",
+                    CloudFolder = "EmuShelf/Saves",
+                }.WithOverride("playstation2", memcards),
+            };
+            var coordinator = CreateCoordinator(new FakeSettingsService(), settings);
+
+            var detection = await coordinator.GetDetectionAsync(
+                "playstation2",
+                TestContext.Current.CancellationToken);
+
+            Assert.NotNull(detection);
+            Assert.Equal(Path.GetFullPath(memcards), detection.Directory);
+            Assert.Null(detection.Warning);
+            Assert.NotEmpty(detection.OptionalContent!);
+            Assert.All(detection.OptionalContent!, location =>
+                Assert.Contains("memory-card folder", location.Warning, StringComparison.OrdinalIgnoreCase));
+        }
+        finally
+        {
+            try { Directory.Delete(memcards, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    [Fact]
     public void LegacySettings_AreMigratedIntoPerSystemLocations()
     {
         var legacy = new AppSettings
@@ -208,6 +301,29 @@ public class CloudSaveSyncCoordinatorTests
         Assert.Equal(
             SaveProviderRegistry.SystemIds,
             context.GetPlatforms().Select(platform => platform.SystemId).ToArray());
+    }
+
+    [Fact]
+    public void UpdatingCloudSettingsPreservesAThemeChangedAfterCoordinatorStartup()
+    {
+        var initial = new AppSettings { Theme = ThemePreference.System };
+        var settings = new FakeSettingsService { Current = initial };
+        var coordinator = CreateCoordinator(settings, initial);
+        settings.Save(initial with { Theme = ThemePreference.Dark });
+
+        coordinator.UpdateOverride("playstation2", "/pcsx2");
+
+        Assert.Equal(ThemePreference.Dark, settings.Current.Theme);
+        Assert.Equal("/pcsx2", settings.Current.CloudSaveSync.GetOverride("playstation2"));
+    }
+
+    [Fact]
+    public void CatalogIntegrityFailure_RetainsTheStableCloudFolderId()
+    {
+        Assert.False(CloudSaveSyncCoordinator.ShouldForgetCloudFolderIdAfter(
+            new InvalidDataException("catalog is damaged")));
+        Assert.True(CloudSaveSyncCoordinator.ShouldForgetCloudFolderIdAfter(
+            new IOException("folder id is no longer reachable")));
     }
 
     private static IReadOnlyDictionary<string, string?> Overrides(params (string SystemId, string? Path)[] entries) =>

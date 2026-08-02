@@ -10,6 +10,12 @@ public interface IGameLibrary
     /// <summary>All games, optionally filtered to one system, ordered by title.</summary>
     IReadOnlyList<Game> GetGames(string? systemId = null);
 
+    /// <summary>
+    /// System ids that have at least one library record. Availability is intentionally ignored so
+    /// a temporarily disconnected game drive does not make its platform disappear.
+    /// </summary>
+    IReadOnlySet<string> GetPopulatedSystemIds();
+
     /// <summary>The newest games across all systems, ordered newest first and limited in SQL.</summary>
     IReadOnlyList<Game> GetRecentlyAddedGames(int limit);
 
@@ -66,4 +72,17 @@ public interface IGameLibrary
 
     /// <summary>Remembers a folder for a system if that exact folder isn't already tracked.</summary>
     void AddLibraryFolder(string systemId, string folderPath);
+
+    /// <summary>
+    /// Replaces one remembered root and applies caller-verified game-id-to-path relocations.
+    /// No game files are moved or modified.
+    /// </summary>
+    LibraryFolderChangeResult ReplaceLibraryFolder(
+        long folderId,
+        string systemId,
+        string replacementPath,
+        IReadOnlyDictionary<long, string> verifiedGamePaths);
+
+    /// <summary>Forgets one rescan root without removing games or touching their files.</summary>
+    void RemoveLibraryFolder(long folderId, string systemId);
 }

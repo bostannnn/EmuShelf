@@ -58,10 +58,9 @@ public sealed class SaveSyncService
             var unitIds = new SortedSet<string>(
                 localUnits.Select(unit => unit.UnitId),
                 StringComparer.Ordinal);
-            foreach (var remote in allRemoteSnapshots.Values)
+            foreach (var remote in provider.SelectRemoteUnits(allRemoteSnapshots.Values.ToArray()))
             {
-                if (remote.UnitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal))
-                    unitIds.Add(remote.UnitId);
+                unitIds.Add(remote.UnitId);
             }
 
             foreach (var unitId in unitIds)
@@ -71,40 +70,163 @@ public sealed class SaveSyncService
                 work.Add(new SyncWorkItem(
                     unitId,
                     displayNames.GetValueOrDefault(unitId, unitId),
-                    target.LocalEndpoint));
+                    target.LocalEndpoint,
+                    provider));
             }
         }
 
+        // Two phases on purpose. Deciding everything before the first transfer lets the transport be
+        // told which payloads this pass needs, so a cloud session can fetch those instead of the
+        // whole remote. Decisions depend only on each unit's own local/remote/baseline state, so
+        // taking them all up front is equivalent to interleaving them.
+        var planned = new List<PlannedUnit>(work.Count);
         var results = new List<SaveUnitSyncResult>();
-        var completed = 0;
         foreach (var item in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            SaveUnitSnapshot? localSnapshot;
+            try
+            {
+                localSnapshot = await item.LocalEndpoint.SnapshotAsync(item.UnitId, cancellationToken);
+            }
+            catch (SaveUnitNotResolvableException ex)
+            {
+                // The cloud holds a save this machine's configuration has no place for — a card
+                // scheme the local emulator does not use, say. Two machines may legitimately differ,
+                // so this unit sits out and the rest of the pass proceeds.
+                results.Add(new SaveUnitSyncResult(
+                    item.UnitId,
+                    SaveSyncAction.Skipped,
+                    DescribeUnresolvable(ex)));
+                continue;
+            }
 
-            var localSnapshot = await item.LocalEndpoint.SnapshotAsync(item.UnitId, cancellationToken);
             allRemoteSnapshots.TryGetValue(item.UnitId, out var remoteSnapshot);
             var baseline = manifest.Get(item.UnitId);
-
-            var decision = SaveSyncPlanner.Decide(localSnapshot, remoteSnapshot, baseline);
-            progress?.Report(new SaveSyncProgress(
-                completed, work.Count, item.DisplayName, decision.Action));
-            manifest = await ApplyAsync(
-                item.LocalEndpoint,
-                item.UnitId,
-                decision.Action,
+            if (localSnapshot is not null)
+                localSnapshot = PreserveCompatibilityProvenance(localSnapshot, baseline, remoteSnapshot);
+            var remoteIncompatibility = remoteSnapshot is null
+                ? null
+                : item.Provider.GetRemoteIncompatibilityReason(remoteSnapshot);
+            var localIncompatibility = localSnapshot is null
+                ? null
+                : item.Provider.GetRemoteIncompatibilityReason(localSnapshot);
+            if (localIncompatibility is not null)
+            {
+                if (remoteSnapshot is not null && remoteIncompatibility is null)
+                {
+                    planned.Add(new PlannedUnit(
+                        item,
+                        new SaveSyncDecision(
+                            SaveSyncAction.ConflictRemoteWins,
+                            localIncompatibility + " The compatible cloud state replaces it after the local copy is backed up."),
+                        localSnapshot,
+                        remoteSnapshot,
+                        baseline));
+                }
+                else
+                {
+                    results.Add(new SaveUnitSyncResult(
+                        item.UnitId,
+                        SaveSyncAction.Skipped,
+                        localIncompatibility + " The local state was not uploaded."));
+                }
+                continue;
+            }
+            if (remoteIncompatibility is not null && localSnapshot is null)
+            {
+                results.Add(new SaveUnitSyncResult(item.UnitId, SaveSyncAction.Skipped, remoteIncompatibility));
+                continue;
+            }
+            planned.Add(new PlannedUnit(
+                item,
+                remoteIncompatibility is null
+                    ? SaveSyncPlanner.Decide(localSnapshot, remoteSnapshot, baseline)
+                    : new SaveSyncDecision(
+                        SaveSyncAction.ConflictLocalWins,
+                        remoteIncompatibility + " The compatible local state replaces it after the cloud copy is backed up."),
                 localSnapshot,
                 remoteSnapshot,
-                baseline,
-                manifest,
-                cancellationToken);
+                baseline));
+        }
 
-            results.Add(new SaveUnitSyncResult(item.UnitId, decision.Action, decision.Reason));
+        _remote.ExpectDownloads(planned
+            .Where(unit => NeedsRemotePayload(unit.Decision.Action))
+            .Select(unit => unit.Item.UnitId));
+
+        var completed = 0;
+        foreach (var unit in planned)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new SaveSyncProgress(
+                completed, planned.Count, unit.Item.DisplayName, unit.Decision.Action));
+            try
+            {
+                manifest = await ApplyAsync(
+                    unit.Item.LocalEndpoint,
+                    unit.Item.UnitId,
+                    unit.Decision.Action,
+                    unit.LocalSnapshot,
+                    unit.RemoteSnapshot,
+                    unit.Baseline,
+                    manifest,
+                    cancellationToken);
+
+                results.Add(new SaveUnitSyncResult(unit.Item.UnitId, unit.Decision.Action, unit.Decision.Reason));
+            }
+            catch (CloudPayloadMissingException)
+            {
+                // One unit the remote index promised but cannot deliver must not cost every other
+                // unit its sync. The baseline is deliberately not advanced, and the transport drops
+                // the stale index entry, so the machine that still holds the save re-uploads it.
+                results.Add(new SaveUnitSyncResult(
+                    unit.Item.UnitId,
+                    SaveSyncAction.Skipped,
+                    "The cloud copy is missing; the stale entry was removed and the save will be " +
+                    "re-uploaded by the machine that still has it."));
+            }
+            catch (SaveUnitNotResolvableException ex)
+            {
+                results.Add(new SaveUnitSyncResult(
+                    unit.Item.UnitId,
+                    SaveSyncAction.Skipped,
+                    DescribeUnresolvable(ex)));
+            }
+
             completed++;
         }
 
-        await _remote.FlushAsync(cancellationToken);
+        await FlushAsync(progress, planned.Count, cancellationToken);
         await _manifests.SaveAsync(manifest, cancellationToken);
         return new SaveSyncReport(results);
+    }
+
+    // The transfer is one step of the pass, but for a sync that actually moves data it is nearly
+    // all of the wall clock: everything above only stages files locally. Reporting it as its own
+    // phase is what keeps the caller from showing a finished counter while the upload runs.
+    private async Task FlushAsync(
+        IProgress<SaveSyncProgress>? progress,
+        int unitCount,
+        CancellationToken cancellationToken)
+    {
+        if (progress is null)
+        {
+            await _remote.FlushAsync(cancellationToken: cancellationToken);
+            return;
+        }
+
+        progress.Report(new SaveSyncProgress(
+            unitCount, unitCount, "Transferring to the cloud", SaveSyncAction.Upload, SaveSyncPhase.Transferring));
+        // The counts here are the transfer's own — how many saves it is actually sending — not the
+        // reconciliation's unit count, most of which needed no transfer at all.
+        var transferProgress = new Progress<SaveTransferProgress>(transfer => progress.Report(new SaveSyncProgress(
+            transfer.CompletedUnits,
+            transfer.TotalUnits,
+            "Transferring to the cloud",
+            SaveSyncAction.Upload,
+            SaveSyncPhase.Transferring,
+            transfer.Percent)));
+        await _remote.FlushAsync(transferProgress, cancellationToken);
     }
 
     /// <summary>
@@ -121,22 +243,44 @@ public sealed class SaveSyncService
         cancellationToken.ThrowIfCancellationRequested();
 
         var manifest = await _manifests.LoadAsync(cancellationToken);
-        var remoteSnapshots = (await _remote.ListAsync(cancellationToken))
-            .Where(snapshot => snapshot.UnitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal))
+        var remoteSnapshots = provider.SelectRemoteUnits(await _remote.ListAsync(cancellationToken))
             .ToDictionary(snapshot => snapshot.UnitId, StringComparer.Ordinal);
         var results = new List<SaveUnitSyncResult>();
 
         if (direction == SaveSyncDirection.Upload)
         {
             var localUnits = await provider.GetSaveUnitsAsync(cancellationToken);
+            var localSnapshots = new Dictionary<string, SaveUnitSnapshot>(StringComparer.Ordinal);
+            var incompatibleLocal = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var unit in localUnits)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (await _local.SnapshotAsync(unit.UnitId, cancellationToken) is { } snapshot)
+                {
+                    remoteSnapshots.TryGetValue(unit.UnitId, out var remoteSnapshot);
+                    snapshot = PreserveCompatibilityProvenance(snapshot, manifest.Get(unit.UnitId), remoteSnapshot);
+                    if (provider.GetRemoteIncompatibilityReason(snapshot) is { } incompatibility)
+                        incompatibleLocal[unit.UnitId] = incompatibility + " The local state was not uploaded.";
+                    else
+                        localSnapshots[unit.UnitId] = snapshot;
+                }
+            }
+
+            // Only the units whose remote copy differs are read back, to preserve it as a backup.
+            _remote.ExpectDownloads(localSnapshots
+                .Where(pair => remoteSnapshots.TryGetValue(pair.Key, out var remote) &&
+                    !ContentEquals(remote.ContentHash, pair.Value.ContentHash))
+                .Select(pair => pair.Key));
+
             var completed = 0;
             foreach (var unit in localUnits)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var localSnapshot = await _local.SnapshotAsync(unit.UnitId, cancellationToken);
-                if (localSnapshot is null)
+                if (!localSnapshots.TryGetValue(unit.UnitId, out var localSnapshot))
                 {
+                    if (incompatibleLocal.TryGetValue(unit.UnitId, out var incompatibility))
+                        results.Add(new SaveUnitSyncResult(unit.UnitId, SaveSyncAction.Skipped, incompatibility));
                     completed++;
                     continue;
                 }
@@ -156,27 +300,58 @@ public sealed class SaveSyncService
         }
         else
         {
+            _remote.ExpectDownloads(remoteSnapshots.Keys);
             var completed = 0;
             foreach (var (unitId, remoteSnapshot) in remoteSnapshots)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 progress?.Report(new SaveSyncProgress(completed, remoteSnapshots.Count, unitId, SaveSyncAction.Download));
-                var localSnapshot = await _local.SnapshotAsync(unitId, cancellationToken);
-                if (localSnapshot is not null && !ContentEquals(localSnapshot.ContentHash, remoteSnapshot.ContentHash))
-                    await _local.BackupLocalAsync(unitId, "Overwritten by a forced download.", cancellationToken);
+                if (provider.GetRemoteIncompatibilityReason(remoteSnapshot) is { } incompatibility)
+                {
+                    results.Add(new SaveUnitSyncResult(unitId, SaveSyncAction.Skipped, incompatibility));
+                    completed++;
+                    continue;
+                }
+                try
+                {
+                    var localSnapshot = await _local.SnapshotAsync(unitId, cancellationToken);
+                    if (localSnapshot is not null && !ContentEquals(localSnapshot.ContentHash, remoteSnapshot.ContentHash))
+                        await _local.BackupLocalAsync(unitId, "Overwritten by a forced download.", cancellationToken);
 
-                await DownloadAsync(_local, unitId, remoteSnapshot, cancellationToken);
-                manifest = manifest.With(NextBaseline(remoteSnapshot, manifest.Get(unitId)));
-                results.Add(new SaveUnitSyncResult(unitId, SaveSyncAction.Download, "Forced download of the cloud save."));
+                    await DownloadAsync(_local, unitId, remoteSnapshot, cancellationToken);
+                    manifest = manifest.With(NextBaseline(remoteSnapshot, manifest.Get(unitId)));
+                    results.Add(new SaveUnitSyncResult(unitId, SaveSyncAction.Download, "Forced download of the cloud save."));
+                }
+                catch (CloudPayloadMissingException)
+                {
+                    results.Add(new SaveUnitSyncResult(
+                        unitId,
+                        SaveSyncAction.Skipped,
+                        "The cloud copy is missing; the local save was left untouched."));
+                }
+                catch (SaveUnitNotResolvableException ex)
+                {
+                    // Forcing a direction cannot force a layout this machine does not use.
+                    results.Add(new SaveUnitSyncResult(
+                        unitId,
+                        SaveSyncAction.Skipped,
+                        DescribeUnresolvable(ex)));
+                }
+
                 completed++;
             }
         }
 
-        await _remote.FlushAsync(cancellationToken);
+        await FlushAsync(progress, results.Count, cancellationToken);
         await _manifests.SaveAsync(manifest, cancellationToken);
         return new SaveSyncReport(results);
     }
+
+    private static string DescribeUnresolvable(SaveUnitNotResolvableException exception) =>
+        string.IsNullOrWhiteSpace(exception.UserReason)
+            ? "This machine's emulator configuration has no place for this save, so it was left in the cloud untouched."
+            : exception.UserReason;
 
     private async Task<SaveSyncManifest> ApplyAsync(
         ILocalSaveEndpoint local,
@@ -191,9 +366,13 @@ public sealed class SaveSyncService
         switch (action)
         {
             case SaveSyncAction.None:
-                // Content already agrees. Record a baseline the first time it is observed so a
-                // later edit on one side is attributed correctly instead of read as a conflict.
-                if (baseline is null && localSnapshot is not null && remoteSnapshot is not null)
+                // Content already agrees. Record or repair the baseline so a pass interrupted after
+                // its cloud commit but before its manifest write heals on the next run. Leaving the
+                // older hash here would make the next one-sided edit look like a two-sided conflict.
+                if (localSnapshot is not null && remoteSnapshot is not null &&
+                    (baseline is null ||
+                     !ContentEquals(baseline.ContentHash, remoteSnapshot.ContentHash) ||
+                     !string.Equals(baseline.Compatibility, remoteSnapshot.Compatibility, StringComparison.Ordinal)))
                     return manifest.With(NextBaseline(remoteSnapshot, baseline));
                 return manifest;
 
@@ -229,7 +408,13 @@ public sealed class SaveSyncService
         CancellationToken cancellationToken)
     {
         await using var content = await local.ReadAsync(unitId, cancellationToken);
-        await _remote.UploadAsync(unitId, content, localSnapshot.ContentHash, localSnapshot.ModifiedUtc, cancellationToken);
+        await _remote.UploadAsync(
+            unitId,
+            content,
+            localSnapshot.ContentHash,
+            localSnapshot.ModifiedUtc,
+            cancellationToken,
+            localSnapshot.Compatibility);
     }
 
     private async Task DownloadAsync(
@@ -241,7 +426,12 @@ public sealed class SaveSyncService
         await using var content = await _remote.DownloadAsync(unitId, cancellationToken);
         // Carry the cloud copy's modified time onto the written unit so both sides converge on
         // one timestamp rather than stamping "now" and manufacturing a future false conflict.
-        await local.WriteAsync(unitId, content, remoteSnapshot.ModifiedUtc, cancellationToken);
+        await local.WriteAsync(
+            unitId,
+            content,
+            remoteSnapshot.ContentHash,
+            remoteSnapshot.ModifiedUtc,
+            cancellationToken);
     }
 
     // The endpoint is passed in rather than read from _local: a multi-provider sync reconciles
@@ -259,10 +449,53 @@ public sealed class SaveSyncService
     }
 
     private static SaveUnitBaseline NextBaseline(SaveUnitSnapshot snapshot, SaveUnitBaseline? previous) =>
-        new(snapshot.UnitId, snapshot.ContentHash, snapshot.ModifiedUtc, (previous?.Revision ?? 0) + 1);
+        new(
+            snapshot.UnitId,
+            snapshot.ContentHash,
+            snapshot.ModifiedUtc,
+            (previous?.Revision ?? 0) + 1,
+            snapshot.Compatibility);
+
+    private static SaveUnitSnapshot PreserveCompatibilityProvenance(
+        SaveUnitSnapshot local,
+        SaveUnitBaseline? baseline,
+        SaveUnitSnapshot? remote)
+    {
+        if (local.Compatibility is null)
+            return local;
+        if (baseline is not null &&
+            ContentEquals(local.ContentHash, baseline.ContentHash) &&
+            !string.IsNullOrWhiteSpace(baseline.Compatibility))
+        {
+            return local with { Compatibility = baseline.Compatibility };
+        }
+        if (remote is not null &&
+            ContentEquals(local.ContentHash, remote.ContentHash) &&
+            !string.IsNullOrWhiteSpace(remote.Compatibility))
+        {
+            return local with { Compatibility = remote.Compatibility };
+        }
+        return local;
+    }
 
     private static bool ContentEquals(string first, string second) =>
         string.Equals(first, second, StringComparison.Ordinal);
 
-    private sealed record SyncWorkItem(string UnitId, string DisplayName, ILocalSaveEndpoint LocalEndpoint);
+    // Every action that reads the remote payload: a download, and either side of a conflict — the
+    // local winner still fetches the cloud copy to preserve it as a backup.
+    private static bool NeedsRemotePayload(SaveSyncAction action) =>
+        action is SaveSyncAction.Download or SaveSyncAction.ConflictRemoteWins or SaveSyncAction.ConflictLocalWins;
+
+    private sealed record SyncWorkItem(
+        string UnitId,
+        string DisplayName,
+        ILocalSaveEndpoint LocalEndpoint,
+        ISaveLocationProvider Provider);
+
+    private sealed record PlannedUnit(
+        SyncWorkItem Item,
+        SaveSyncDecision Decision,
+        SaveUnitSnapshot? LocalSnapshot,
+        SaveUnitSnapshot? RemoteSnapshot,
+        SaveUnitBaseline? Baseline);
 }

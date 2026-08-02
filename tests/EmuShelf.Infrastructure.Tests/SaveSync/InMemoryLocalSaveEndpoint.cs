@@ -10,6 +10,8 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
 
     public List<BackupEntry> Backups { get; } = new();
 
+    public Func<string, string?>? CompatibilityResolver { get; set; }
+
     public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
         _units[unitId] = new LiveUnit(content, modifiedUtc);
 
@@ -22,7 +24,11 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
         if (!_units.TryGetValue(unitId, out var unit))
             return Task.FromResult<SaveUnitSnapshot?>(null);
         return Task.FromResult<SaveUnitSnapshot?>(
-            new SaveUnitSnapshot(unitId, Hash(unit.Content), unit.ModifiedUtc));
+            new SaveUnitSnapshot(
+                unitId,
+                Hash(unit.Content),
+                unit.ModifiedUtc,
+                CompatibilityResolver?.Invoke(unitId)));
     }
 
     public Task<Stream> ReadAsync(string unitId, CancellationToken cancellationToken = default)
@@ -34,12 +40,16 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
     public async Task WriteAsync(
         string unitId,
         Stream content,
+        string expectedContentHash,
         DateTimeOffset modifiedUtc,
         CancellationToken cancellationToken = default)
     {
         using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken);
-        _units[unitId] = new LiveUnit(buffer.ToArray(), modifiedUtc);
+        var bytes = buffer.ToArray();
+        if (!string.Equals(expectedContentHash, Hash(bytes), StringComparison.Ordinal))
+            throw new InvalidDataException("The downloaded save did not match the cloud index and was not installed.");
+        _units[unitId] = new LiveUnit(bytes, modifiedUtc);
     }
 
     public Task BackupLocalAsync(string unitId, string reason, CancellationToken cancellationToken = default)

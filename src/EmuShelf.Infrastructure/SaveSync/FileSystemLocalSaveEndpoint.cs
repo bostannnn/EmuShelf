@@ -15,7 +15,6 @@ namespace EmuShelf.Infrastructure.SaveSync;
 public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
 {
     private static readonly DateTimeOffset ZipTimestamp = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
-
     private readonly ISaveLocationProvider _provider;
     private readonly string _conflictsDirectory;
     private readonly string _transfersDirectory;
@@ -38,9 +37,12 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     public Task WriteAsync(
         string unitId,
         Stream content,
+        string expectedContentHash,
         DateTimeOffset modifiedUtc,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => Write(unitId, content, modifiedUtc, cancellationToken), cancellationToken);
+        Task.Run(
+            () => Write(unitId, content, expectedContentHash, modifiedUtc, cancellationToken),
+            cancellationToken);
 
     public Task BackupLocalAsync(string unitId, string reason, CancellationToken cancellationToken = default) =>
         Task.Run(() => BackupLocal(unitId, reason, cancellationToken), cancellationToken);
@@ -55,13 +57,17 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private SaveUnitSnapshot? Snapshot(string unitId, CancellationToken cancellationToken)
     {
         var location = Resolve(unitId);
-        if (location.IsFolder)
+        if (location.Kind == SaveUnitKind.Folder)
         {
             if (!Directory.Exists(location.Path))
                 return null;
 
             var files = EnumerateAllFolderFiles(location.Path, cancellationToken).ToList();
-            return new SaveUnitSnapshot(unitId, HashFolder(files, location.Path, cancellationToken), MaxModifiedUtc(files));
+            return new SaveUnitSnapshot(
+                unitId,
+                HashFolder(files, location.Path, cancellationToken),
+                MaxModifiedUtc(files),
+                _provider.GetCompatibility(unitId));
         }
 
         if (!File.Exists(location.Path))
@@ -70,13 +76,14 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         return new SaveUnitSnapshot(
             unitId,
             HashFile(location.Path, cancellationToken),
-            File.GetLastWriteTimeUtc(location.Path));
+            File.GetLastWriteTimeUtc(location.Path),
+            _provider.GetCompatibility(unitId));
     }
 
     private Stream Read(string unitId, CancellationToken cancellationToken)
     {
         var location = Resolve(unitId);
-        if (!location.IsFolder)
+        if (location.Kind == SaveUnitKind.File)
         {
             return new FileStream(location.Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
@@ -120,17 +127,24 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         }
     }
 
-    private void Write(string unitId, Stream content, DateTimeOffset modifiedUtc, CancellationToken cancellationToken)
+    private void Write(
+        string unitId,
+        Stream content,
+        string expectedContentHash,
+        DateTimeOffset modifiedUtc,
+        CancellationToken cancellationToken)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedContentHash);
         var location = Resolve(unitId);
         Directory.CreateDirectory(Path.GetDirectoryName(location.Path)!);
-        if (!location.IsFolder)
+        if (location.Kind == SaveUnitKind.File)
         {
             var temporaryPath = location.Path + ".emushelf-tmp";
             try
             {
                 using (var target = new FileStream(temporaryPath, FileMode.Create, FileAccess.Write, FileShare.None))
                     Copy(content, target, cancellationToken);
+                EnsureExpectedHash(expectedContentHash, HashFile(temporaryPath, cancellationToken));
                 File.Move(temporaryPath, location.Path, overwrite: true);
                 File.SetLastWriteTimeUtc(location.Path, modifiedUtc.UtcDateTime);
             }
@@ -152,7 +166,11 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         {
             Directory.CreateDirectory(temporaryDirectory);
             ExtractArchive(content, temporaryDirectory, cancellationToken);
-            foreach (var file in Directory.EnumerateFiles(temporaryDirectory, "*", SearchOption.AllDirectories))
+            var incomingFiles = EnumerateAllFolderFiles(temporaryDirectory, cancellationToken).ToList();
+            EnsureExpectedHash(
+                expectedContentHash,
+                HashFolder(incomingFiles, temporaryDirectory, cancellationToken));
+            foreach (var file in incomingFiles)
                 File.SetLastWriteTimeUtc(file, modifiedUtc.UtcDateTime);
 
             // Replace rather than merge so a file absent from the winning remote folder is not
@@ -182,7 +200,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         var location = Resolve(unitId);
         var backupDirectory = CreateBackupDirectory(unitId);
         WriteReason(backupDirectory, reason);
-        if (location.IsFolder)
+        if (location.Kind == SaveUnitKind.Folder)
         {
             var destination = Path.Combine(backupDirectory, "local");
             CopyDirectory(location.Path, destination, cancellationToken);
@@ -198,7 +216,9 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         var location = Resolve(unitId);
         var backupDirectory = CreateBackupDirectory(unitId);
         WriteReason(backupDirectory, reason);
-        var payloadName = location.IsFolder ? "incoming.zip" : Path.GetFileName(location.Path);
+        var payloadName = location.Kind == SaveUnitKind.Folder
+            ? "incoming.zip"
+            : Path.GetFileName(location.Path);
         using var target = new FileStream(
             Path.Combine(backupDirectory, payloadName),
             FileMode.CreateNew,
@@ -210,10 +230,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
     private ResolvedUnit Resolve(string unitId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(unitId);
-        var approved = _provider.ResolveUnit(unitId) ??
-            throw new ArgumentException(
-                $"The save provider cannot safely materialize unit '{unitId}' in its active configuration.",
-                nameof(unitId));
+        var approved = _provider.ResolveUnit(unitId) ?? throw new SaveUnitNotResolvableException(unitId);
         if (approved.Kind is not (SaveUnitKind.File or SaveUnitKind.Folder))
             throw new ArgumentException("The save unit kind is not supported by the filesystem endpoint.", nameof(unitId));
 
@@ -223,7 +240,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             throw new ArgumentException("The provider resolved the save unit outside its approved root.", nameof(unitId));
         EnsureNoLinkedPathBelowRoot(path, root);
 
-        return new ResolvedUnit(path, approved.Kind == SaveUnitKind.Folder);
+        return new ResolvedUnit(path, approved.Kind);
     }
 
     private string CreateBackupDirectory(string unitId)
@@ -280,6 +297,15 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         AppendStream(hash, stream, cancellationToken);
         return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private static void EnsureExpectedHash(string expected, string actual)
+    {
+        if (!string.Equals(expected, actual, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                "The downloaded save did not match the cloud index and was not installed.");
+        }
     }
 
     private static void AppendStream(IncrementalHash hash, Stream stream, CancellationToken cancellationToken)
@@ -371,5 +397,5 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         }
     }
 
-    private readonly record struct ResolvedUnit(string Path, bool IsFolder);
+    private readonly record struct ResolvedUnit(string Path, SaveUnitKind Kind);
 }

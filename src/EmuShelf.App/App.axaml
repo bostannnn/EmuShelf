@@ -19,8 +19,8 @@
     <Application.Styles>
         <FluentTheme>
             <FluentTheme.Palettes>
-                <ColorPaletteResources x:Key="Light" Accent="#D43F4A" />
-                <ColorPaletteResources x:Key="Dark" Accent="#EF4855" />
+                <ColorPaletteResources x:Key="Light" Accent="#D23A76" />
+                <ColorPaletteResources x:Key="Dark" Accent="#F15C93" />
             </FluentTheme.Palettes>
         </FluentTheme>
     </Application.Styles>

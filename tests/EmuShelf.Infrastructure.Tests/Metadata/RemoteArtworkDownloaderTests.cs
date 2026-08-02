@@ -190,6 +190,36 @@ public class RemoteArtworkDownloaderTests : TempAppDirectoryTestBase
         File.Delete(downloaded.TemporaryPath);
     }
 
+    [Fact]
+    public async Task DownloadFirstAsync_BlocksRedirectToPrivateAddress()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var requested = new List<Uri>();
+        using var httpClient = new HttpClient(new DelegateHandler(request =>
+        {
+            requested.Add(request.RequestUri!);
+            var response = new HttpResponseMessage(HttpStatusCode.Found);
+            response.Headers.Location = new Uri("https://127.0.0.1/private-cover.png");
+            return response;
+        }));
+        var policy = new RecordingUriPolicy(uri => uri.Host == "images.example");
+        var downloader = new RemoteArtworkDownloader(AppPaths, httpClient, uriPolicy: policy);
+
+        var downloaded = await downloader.DownloadFirstAsync(
+        [
+            new ArtworkCandidate(
+                "web-search",
+                new Uri("https://images.example/cover.png"),
+                ".png"),
+        ]);
+
+        Assert.Null(downloaded);
+        Assert.Single(requested);
+        Assert.Equal(
+            ["images.example", "127.0.0.1"],
+            policy.CheckedUris.Select(uri => uri.Host).ToArray());
+    }
+
     private sealed class DelegateHandler(Func<HttpRequestMessage, HttpResponseMessage> response) :
         HttpMessageHandler
     {
@@ -205,5 +235,18 @@ public class RemoteArtworkDownloaderTests : TempAppDirectoryTestBase
         public void Information(string message) { }
         public void Warning(string message, Exception? exception = null) => Warnings.Add(message);
         public void Error(string message, Exception? exception = null) { }
+    }
+
+    private sealed class RecordingUriPolicy(Func<Uri, bool> isAllowed) : IRemoteArtworkUriPolicy
+    {
+        public List<Uri> CheckedUris { get; } = [];
+
+        public Task<bool> IsAllowedAsync(
+            Uri uri,
+            CancellationToken cancellationToken = default)
+        {
+            CheckedUris.Add(uri);
+            return Task.FromResult(isAllowed(uri));
+        }
     }
 }

@@ -66,6 +66,29 @@ public class GameCoverServiceTests : IDisposable
         Assert.Equal(timestamp, File.GetLastWriteTimeUtc(imported.ThumbnailPath));
     }
 
+    [Fact]
+    public async Task ImportAsync_RejectsImageWhoseDecodedDimensionsExceedSafetyLimit()
+    {
+        var sourcePath = Path.Combine(_baseDirectory, "oversized.png");
+        using (var output = File.Create(sourcePath))
+        {
+            output.Write([137, 80, 78, 71, 13, 10, 26, 10]);
+            var header = new byte[13];
+            BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(0, 4), 10_000);
+            BinaryPrimitives.WriteUInt32BigEndian(header.AsSpan(4, 4), 10_000);
+            header[8] = 8;
+            header[9] = 6;
+            WritePngChunk(output, "IHDR", header);
+        }
+        var service = new GameCoverService(_paths);
+
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => service.ImportAsync(99, sourcePath, TestContext.Current.CancellationToken));
+
+        Assert.Contains("pixel safety limit", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(Directory.EnumerateFiles(_paths.CoversDirectory));
+    }
+
     [AvaloniaFact]
     public async Task DeleteOwnedCoverAsync_RemovesOnlyConfirmedOldAppOwnedCover()
     {
@@ -89,8 +112,12 @@ public class GameCoverServiceTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void GameViewModel_LoadedArtworkUsesItsActualAspectRatio()
+    public void GameViewModel_LoadedArtworkKeepsThePlatformCanonicalFrame()
     {
+        // A cover fills the platform's canonical frame (UniformToFill in the tile) rather than
+        // adopting its own bitmap ratio. That keeps every tile of a system uniform and stops a
+        // single off-ratio scan from ballooning the shared shelf so other covers render half-height.
+        // See DECISIONS 2026-08-02.
         var sourcePath = CreateImage("pal-dreamcast.png", new PixelSize(512, 722));
         var game = new Game
         {
@@ -109,8 +136,38 @@ public class GameCoverServiceTests : IDisposable
 
         viewModel.CoverImage = new Bitmap(sourcePath);
 
-        Assert.Equal(512d / 722d, viewModel.CoverAspectRatio, precision: 3);
-        Assert.Equal(37d, viewModel.ListCoverWidth);
+        Assert.Equal(1.0, viewModel.CoverAspectRatio, precision: 3);
+        Assert.Equal(52d, viewModel.ListCoverWidth);
+        Assert.Equal(Math.Round(viewModel.CoverWidth / 1.0), viewModel.CoverHeight);
+        viewModel.Dispose();
+    }
+
+    [AvaloniaFact]
+    public void GameViewModel_LandscapePlatformKeepsFixedFrameForVerticalCover()
+    {
+        // Arcade art is a mix of vertical and horizontal title screens. A vertical cover must not
+        // stretch the shared shelf to its full height; the frame stays at the platform's landscape
+        // ratio and the image is cropped to it (Stretch=UniformToFill in the tile template).
+        var verticalCover = CreateImage("arcade-vertical.png", new PixelSize(512, 722));
+        var game = new Game
+        {
+            Id = 1,
+            SystemId = "arcade",
+            Path = Path.Combine(_baseDirectory, "mslug.zip"),
+            Title = "Metal Slug",
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var viewModel = new GameViewModel(
+            game,
+            "Arcade",
+            "ARC",
+            "#C0473A",
+            coverAspectRatio: 1.333);
+
+        viewModel.CoverImage = new Bitmap(verticalCover);
+
+        Assert.Equal(1.333, viewModel.CoverAspectRatio, precision: 3);
+        Assert.Equal(Math.Round(viewModel.CoverWidth / 1.333), viewModel.CoverHeight);
         viewModel.Dispose();
     }
 

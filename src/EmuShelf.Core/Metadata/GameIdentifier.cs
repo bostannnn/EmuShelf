@@ -8,6 +8,11 @@ public enum GameIdentifierKind
     TitleId,
     Crc32,
     Sha1,
+
+    // The short romset id of an arcade archive (the zip basename, for example "mslug"), which is
+    // how FinalBurn Neo itself keys a set. Appended last so existing persisted identifier kinds
+    // keep their stored ordinal.
+    ArcadeSetName,
 }
 
 /// <summary>

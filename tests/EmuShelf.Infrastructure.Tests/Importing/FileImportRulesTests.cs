@@ -30,6 +30,47 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void AnalyzeFile_ArcadeZip_SuggestsArcade()
+    {
+        var analysis = _rules.AnalyzeFile("/games/mslug.zip");
+
+        Assert.Equal(["arcade"], analysis.SuggestedSystems.Select(system => system.Id));
+        Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("arcade"));
+        Assert.True(_rules.IsFolderCandidate(analysis.Path, System("arcade")));
+    }
+
+    [Fact]
+    public void AnalyzeFile_ArcadeBiosZip_IsHiddenFromTheLibrary()
+    {
+        var analysis = _rules.AnalyzeFile("/games/neogeo.zip");
+
+        Assert.Empty(analysis.SuggestedSystems);
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("arcade"));
+        Assert.False(_rules.IsFolderCandidate(analysis.Path, System("arcade")));
+    }
+
+    [Theory]
+    [InlineData("neogeo")]
+    [InlineData("pgm")]
+    [InlineData("decocass")]
+    public void IsFolderCandidate_ArcadeBiosArchives_AreRejected(string setName)
+    {
+        Assert.False(_rules.IsFolderCandidate($"/games/{setName}.zip", System("arcade")));
+    }
+
+    [Fact]
+    public void ReadImportMetadata_ArcadeZip_UsesTheSetNameAsIdentifier()
+    {
+        var metadata = _rules.ReadImportMetadata("/games/sfa3.zip", System("arcade"));
+
+        var identifier = Assert.Single(metadata.Identifiers);
+        Assert.Equal(GameIdentifierKind.ArcadeSetName, identifier.Kind);
+        Assert.Equal("sfa3", identifier.Value);
+        Assert.True(identifier.IsPrimary);
+        Assert.Null(metadata.EmbeddedTitle);
+    }
+
+    [Fact]
     public void AnalyzeFile_SharedPlayStationExtensions_SuggestBothSystems()
     {
         Assert.Equal(

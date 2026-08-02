@@ -16,6 +16,7 @@ namespace EmuShelf.App.ViewModels;
 internal sealed class EmptyGameLibrary : IGameLibrary
 {
     public IReadOnlyList<Game> GetGames(string? systemId = null) => [];
+    public IReadOnlySet<string> GetPopulatedSystemIds() => new HashSet<string>();
     public IReadOnlyList<Game> GetRecentlyAddedGames(int limit) => [];
     public int AddGames(IEnumerable<Game> games) => 0;
     public GameImportResult ReconcileImport(
@@ -34,6 +35,12 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public void RemoveGames(IReadOnlyList<long> gameIds) { }
     public IReadOnlyList<LibraryFolder> GetLibraryFolders(string? systemId = null) => [];
     public void AddLibraryFolder(string systemId, string folderPath) { }
+    public LibraryFolderChangeResult ReplaceLibraryFolder(
+        long folderId,
+        string systemId,
+        string replacementPath,
+        IReadOnlyDictionary<long, string> verifiedGamePaths) => new(0);
+    public void RemoveLibraryFolder(long folderId, string systemId) { }
 }
 
 internal sealed class NullFolderScanner : IFolderScanner
@@ -101,6 +108,7 @@ internal sealed class NullDialogService : IDialogService
     public Task<string?> PickRpcs3ConfigurationDirectoryAsync() => Task.FromResult<string?>(null);
     public Task<string?> PickCoverImageAsync(string gameTitle) =>
         Task.FromResult<string?>(null);
+    public Task<string?> PickGoogleClientJsonAsync() => Task.FromResult<string?>(null);
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle) =>
         Task.FromResult(false);
     public Task<bool> ConfirmRemoveGamesAsync(int gameCount) =>
@@ -117,7 +125,8 @@ internal sealed class NullDialogService : IDialogService
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null) => Task.CompletedTask;
+        TexturePackSettingsContext? texturePacks = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null) => Task.CompletedTask;
     public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
         Task.CompletedTask;
 }

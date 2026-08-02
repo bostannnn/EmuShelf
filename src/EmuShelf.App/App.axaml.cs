@@ -17,6 +17,7 @@ public partial class App : Application
 {
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
     private HttpClient? _metadataHttpClient;
+    private HttpClient? _webArtworkHttpClient;
     private HttpClient? _retroAchievementsHttpClient;
     private GamepadInputService? _gamepadInput;
 
@@ -41,11 +42,22 @@ public partial class App : Application
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings);
             var mainWindow = new MainWindow();
+            var libraryViewState = new LibraryViewStateService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                Bootstrapper.Logger);
+            // Applies the saved geometry before the interface-mode service reads the window state,
+            // so starting in Gamepad mode still records a maximized desktop window to return to.
+            _ = new WindowLayoutService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                mainWindow,
+                Bootstrapper.Logger);
             var interfaceModeService = new WindowInterfaceModeService(
                 Bootstrapper.SettingsService,
                 Bootstrapper.Settings,
                 mainWindow,
-                AppLaunchOptions.GamepadUiRequested);
+                AppLaunchOptions.InterfaceModeOverride);
             var launchService = new EmulatorLaunchService(
                 Bootstrapper.EmulatorConfigurations,
                 Bootstrapper.ProcessRunner,
@@ -68,14 +80,27 @@ public partial class App : Application
                 Timeout = TimeSpan.FromSeconds(30),
             };
             _metadataHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            var artworkDownloader = new RemoteArtworkDownloader(
+                Bootstrapper.Paths,
+                _metadataHttpClient,
+                Bootstrapper.Logger);
+            var publicArtworkPolicy = new PublicArtworkUriPolicy();
+            _webArtworkHttpClient = new HttpClient(
+                PublicArtworkHttpTransport.CreateHandler(publicArtworkPolicy))
+            {
+                Timeout = TimeSpan.FromSeconds(30),
+            };
+            _webArtworkHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            var webArtworkDownloader = new RemoteArtworkDownloader(
+                Bootstrapper.Paths,
+                _webArtworkHttpClient,
+                Bootstrapper.Logger,
+                publicArtworkPolicy);
             var metadataService = new GameMetadataService(
                 Bootstrapper.MetadataStore,
                 Bootstrapper.MetadataProfiles,
                 new LibretroDatCatalog(Bootstrapper.Paths, _metadataHttpClient),
-                new RemoteArtworkDownloader(
-                    Bootstrapper.Paths,
-                    _metadataHttpClient,
-                    Bootstrapper.Logger),
+                artworkDownloader,
                 coverService,
                 Bootstrapper.Logger,
                 new LibretroArtworkTitleIndex(Bootstrapper.Paths, _metadataHttpClient));
@@ -133,7 +158,11 @@ public partial class App : Application
                     Bootstrapper.Logger,
                     retroAchievementsDetails,
                     retroAchievementsAccount,
-                    retroAchievementsBadges),
+                    retroAchievementsBadges,
+                    new DuckDuckGoArtworkSearchProvider(
+                        _metadataHttpClient,
+                        publicArtworkPolicy),
+                    webArtworkDownloader),
                 Bootstrapper.Systems,
                 launchService,
                 Bootstrapper.EmulatorConfigurations,
@@ -155,10 +184,16 @@ public partial class App : Application
                 retroAchievementsBadges,
                 Bootstrapper.CloudSaveSync,
                 applicationLifetime: new ApplicationLifetimeService(desktop),
-                texturePacks: Bootstrapper.TexturePacks);
+                texturePacks: Bootstrapper.TexturePacks,
+                libraryViewState: libraryViewState,
+                onScreenKeyboard: new PlatformOnScreenKeyboardService());
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
+
+            // Subscribed after WindowLayoutService's own Closing handler, so the layout is written
+            // first and this read-modify-write picks it up rather than racing it.
+            mainWindow.Closing += (_, _) => viewModel.FlushPendingLibraryViewStateSave();
 
             // Native controller input (SDL2) drives the same Gamepad-mode routing as Steam Input's
             // keyboard mapping. It polls only in Gamepad mode and degrades to no-op if SDL2 or a
@@ -180,6 +215,7 @@ public partial class App : Application
             desktop.Exit += (_, _) =>
             {
                 _gamepadInput?.Dispose();
+                _webArtworkHttpClient?.Dispose();
                 _metadataHttpClient?.Dispose();
                 _retroAchievementsHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");

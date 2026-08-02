@@ -1852,3 +1852,1477 @@ This puts Dolphin on the same footing as PCSX2 and DuckStation, whose texture ro
 read from their own settings files rather than guessed. The library mark still means "installed and
 matched": loading status stays Unknown unless `GFX.ini` proves otherwise, and the Settings override
 remains the escape hatch.
+
+## 2026-07-26 — DuckStation settings are read with DuckStation's own defaults
+
+Reported from a real Steam Deck AppImage install: EmuShelf refused to sync PlayStation saves with
+"DuckStation's settings.ini has no supported Card1Type." Current DuckStation only writes settings
+that differ from its defaults, so a normal install has a small `settings.ini` with no `[MemoryCards]`
+section at all. Treating an absent key as an unknown layout made the common case fail closed for a
+configuration DuckStation itself considers fully specified.
+
+An absent key now means the emulator default — memory cards under `<user directory>/memcards`,
+slot 1 `PerGameTitle`, slot 2 `None` — and only a key that is present with a value DuckStation would
+not accept still fails closed. This supersedes the "explicitly configured directory" requirement in
+**2026-07-26 — Save-sync status and DuckStation identities fail closed at their real boundary**: the
+fail-closed boundary is a value EmuShelf cannot interpret, not a value the emulator chose not to
+write.
+
+This also corrects the Linux root in **2026-07-26 — DuckStation discovery mirrors the emulator's
+data-root precedence**. DuckStation roots its Linux user directory at `XDG_DATA_HOME` (default
+`~/.local/share/duckstation`), not `XDG_CONFIG_HOME`; the previous branch pointed at the wrong
+directory whenever `XDG_CONFIG_HOME` was set. By the same rule, a Flatpak install's user directory
+is `~/.var/app/org.duckstation.DuckStation/data/duckstation` — the sandbox's `XDG_DATA_HOME` — with
+the `config` path kept only as a fallback for hand-relocated profiles.
+
+## 2026-07-26 — RPCS3 saves are addressed without their local account
+
+RPCS3 is the fourth save-sync platform. Its hard disk is resolved the way RPCS3 resolves it: a
+`portable/` directory beside the executable wins on every platform, then `RPCS3_CONFIG_DIR` and the
+executable directory on Windows, `$XDG_CONFIG_HOME/rpcs3` (default `~/.config/rpcs3`) on Linux,
+`~/Library/Application Support/rpcs3` on macOS, and the sandbox path for Flatpak. `vfs.yml` — read
+from `config/` on Windows and the configuration directory elsewhere — supplies `$(EmulatorDir)` and
+`/dev_hdd0/`; an absent file or empty entry means RPCS3's own documented default, while an
+unreadable file or an unknown `$(…)` placeholder fails closed. Only those two top-level keys are
+interpreted, so a future device entry cannot move the hard disk behind EmuShelf's back.
+
+The account is the interesting part. `dev_hdd0/home/00000001` is machine-local: the same person can
+be `00000001` on a desktop and `00000002` on a Deck, so embedding the account in the unit id would
+make the same save two different cloud objects. Unit ids are therefore `rpcs3/savedata/<save>` and
+the account is bound locally — that binding *is* the stable profile key. Binding is automatic while
+only one account can be meant (a single account, or the single account holding saves) and fails
+closed with an actionable message when several accounts hold saves; the existing per-system save
+location override is how the user picks one, and it accepts RPCS3's folder, its `dev_hdd0`, one
+account folder, or that account's `savedata`. No new settings field was needed. Those forms are
+matched widest-container-first, because `dev_hdd0` has a `savedata` directory of its own — the
+PS1/PS2 Classics virtual memory cards — and matching on a `savedata` child first would resolve a
+`dev_hdd0` override to the virtual cards instead of the account's saves.
+
+A save unit is a `savedata/<save>/` directory containing `PARAM.SFO` — the file that makes the
+directory a save RPCS3's own save manager recognizes. Directories without it are partial copies, not
+units. Trophies, `exdata` licenses, installed games, caches, configuration, and save states sit
+outside `savedata` and are never enumerated. Verified read-only against a real 63-save RPCS3
+install: every save name passed the id-safety filter and none of the sibling directories did.
+
+## 2026-07-26 — RPCS3 trophies and virtual memory cards are their own namespaces
+
+Trophy progress and PS1/PS2 Classics saves are things users lose when only `savedata` travels, so
+both now sync. A trophy set is `home/<account>/trophy/<NPWR…>/` containing `TROPUSR.DAT` — the
+communication id is the same on every machine, so it needs no library lookup — and a virtual memory
+card is a `.VM1`/`.VM2` file in the console-wide `dev_hdd0/savedata/vmc`. They take the unit
+namespaces `rpcs3/trophy/…` and `rpcs3/vmc/…`, leaving the shipped `rpcs3/savedata/…` ids untouched,
+and each resolves under its own root so no namespace can address a sibling of another.
+
+The virtual-card directory is console-wide rather than account-scoped, so it is only in scope when
+the resolved location still sits in RPCS3's own `dev_hdd0/home/<account>` shape. A save folder
+chosen anywhere else stays account-scoped instead of reaching up into a parent EmuShelf was never
+pointed at. Verified read-only against a real install: 63 saves, 23 trophy sets, 2 cards.
+
+## 2026-07-26 — RetroArch resolves per system, and the library decides whose save is whose
+
+RetroArch is one installation serving five EmuShelf rows, so each row resolves its own effective
+save directory from `retroarch.cfg`: `:` and `~` expand the way RetroArch expands them (application
+directory, home), a per-core override at `<config>/<core>/<core>.cfg` is layered on top, and
+`sort_savefiles_enable` appends the core's own folder name. Anything EmuShelf cannot resolve to one
+exact directory fails closed with a message naming the setting — saves kept in the content
+directory, sorting by content directory, no configured save directory, a missing `retroarch.cfg`,
+and RetroArch's own cloud sync being enabled for saves, which EmuShelf refuses to double-manage.
+
+The harder problem is that RetroArch's default is one shared save folder: every core writes `.srm`
+into it, so the file name is the only evidence of which system a save belongs to. Claiming all of
+them would have each of the four rows syncing the other three's saves under four different unit ids.
+EmuShelf therefore matches save names against the library's own file names for that system, which is
+the same evidence RetroArch used when it named the file. The rule applies to remote-only units too:
+a downloaded save can only land under a system that has the matching game. A directory that is
+exclusively this system's — because the core sorts into its own folder, or because the user chose
+the folder explicitly — skips matching entirely. The cost is that a save whose game is not in the
+library is left alone; the escape hatch is the per-platform save location.
+
+Cores are an explicit verified table (Genesis Plus GX, Snes9x, melonDS DS, mGBA — all `.srm`), and
+an unrecognized core fails closed rather than guessing an extension. Dreamcast is deliberately not
+registered: Flycast writes VMU images to RetroArch's system directory or the save directory
+depending on a core option, and that has not been verified against a real install. Verified against
+one: the DS row claimed exactly the five DS saves in a shared folder of nine, leaving the GBA and
+SNES saves and two saves whose ROMs are not in the library.
+
+## 2026-07-26 — RetroArch saves are claimed by game name, not by a per-core extension list
+
+This supersedes the verified-core table in **2026-07-26 — RetroArch resolves per system, and the
+library decides whose save is whose**. That table paired each core with the extension it writes, and
+the premise was wrong twice over. First, testing against a real install showed melonDS DS writing
+`.sav`, not the `.srm` the migration docs implied — an allow-list would have synced none of that
+user's 31 DS saves. Second, an extension list turns a core swap into silent data loss: switching a
+DS core to DeSmuME changes the extension to `.dsv` and sync would have stopped without a word.
+
+What is actually stable is the file *name*: every core names a save after the content file. A unit is
+therefore any direct child of the resolved save folder that is not one of RetroArch's own artifacts
+(save states by `.state*`/`.auto` shape, replays, screenshots, configuration, and extension-less core
+hint files such as "Place NDS saves here"). Whose save it is comes from the same two rules as before:
+a folder RetroArch sorts per core — or one the user chose — belongs entirely to that system, and a
+shared folder is filtered by the library's own file names. Any core works now, including cores
+EmuShelf has never heard of, so Dreamcast/Flycast is registered too; its shared VMU images live in
+RetroArch's system directory and are still out of scope, while per-game VMUs land in the save folder
+and match like anything else.
+
+The core's *name* is still needed for one thing — the folder RetroArch sorts into — and that name is
+libretro's `corename` ("melonDS DS"), read from the installed core's own `info/` entry. It is
+explicitly not `display_name`, which names the system ("Nintendo - DS (melonDS DS)") and would
+produce a folder that does not exist. A built-in table covers a handful of cores as a fallback, and
+sorting with an unreadable core name fails closed rather than guessing a directory.
+
+## 2026-07-26 — Sync latency is measured, and cloud sessions are scoped to what a pass needs
+
+A launch-time sync was reported as taking about a minute. Measured on the real library, the local
+half is not the cost: enumerating and hashing all 88 PS3 units — 1,520 files, 175 MB — takes about
+270 ms, and 31 DS saves take 55 ms. The time is in rclone, so the log now records the wall clock of
+each pass and the duration of every rclone invocation. A user (or a future decision) should not have
+to guess which call a launch waited on.
+
+Two rclone patterns were structurally wasteful regardless of what the timings show. Downloading any
+single unit opened the session with `rclone copy <remote root> <inbox>`, which fetches *every*
+platform's payloads — a one-save DS download could pull the whole PS3 collection. The service now
+decides every unit's action before transferring anything and announces the units that need a remote
+payload (a download, and either side of a conflict, since the loser is preserved as a backup), so the
+session runs with `--files-from` over exactly those paths. A download that was never announced still
+succeeds through a single-payload fetch, so scoping can never lose a save. Uploads and the scoped
+download now pass `--no-traverse`: the remote holds every save ever synced, and rclone would
+otherwise list all of it to decide whether to copy a handful of staged files.
+
+Deciding before transferring also made the two-phase structure explicit. It is equivalent to the
+previous interleaved loop because a unit's decision depends only on its own local, remote, and
+baseline state — never on another unit's outcome.
+
+## 2026-07-27 — The launch wait is a Drive path lookup, and it is now bounded
+
+The instrumented log answered the question. A launch-time pass for PlayStation with nothing to do —
+7 units, no transfers — took 22.2 seconds, of which 22.24 were a single `rclone cat` of `index.json`.
+A pass moments later took 3.5 seconds for the same call. EmuShelf's own work is not involved: the
+whole PS3 library hashes in 271 ms.
+
+Measured directly against the configured remote, `cat` of the index costs 3.5–6.0 s normally, with
+occasional ~20 s outliers. The same read addressed by the folder's own id — `--drive-root-folder-id`
+— costs 1.7–2.1 s. Google Drive has no real paths, so `EmuShelf/Saves/index.json` is resolved one
+listing request per segment on every call, and those requests are both slow and rate-limited.
+EmuShelf now caches the folder's id in settings after one lookup and addresses the folder directly.
+The id is not a secret and grants nothing; a failed lookup falls back to the path, and any failed
+pass clears the cached id so a moved or recreated folder repairs itself on the next attempt.
+
+The outliers are Google throttling, not something EmuShelf can fix — rclone's shared Google client id
+is rate-limited (and, per rclone's own notice, retired during 2026). So the pre-launch pass is now
+bounded: it gets 12 seconds, after which the game starts with the saves already on disk, exactly as
+it does when a pre-launch sync fails. The post-exit pass keeps running to completion because nothing
+is waiting on it. A cloud that is having a bad minute can no longer turn into a launcher that looks
+hung.
+
+## 2026-07-27 — A resolved save folder that does not exist is reported, not silently empty
+
+A PSP sync on the Steam Deck "did nothing" with no error. That shape of failure is possible for every
+platform: the provider resolves a path, the folder is not there, zero units are enumerated, and the
+pass reports success. Detection now checks the resolved directory and says so in the platform row
+when it is absent, naming the two things that cause it — the configured emulator is not the one the
+user actually plays with, or the save location needs setting explicitly. An existing but empty folder
+is normal (the emulator has not written a save yet) and is not flagged.
+
+The same review found PPSSPP resolving `~/.config/ppsspp` on macOS, where PPSSPP actually keeps its
+Memory Stick under `~/Library/Application Support/PPSSPP` — the root this repo's own texture resolver
+already reads `ppsspp.ini` from. The save provider now agrees with it.
+
+## 2026-07-27 — A personal Google OAuth client is imported as a file, and its secret never lands in settings
+
+rclone's shared Google client is rate-limited — the multi-second `rclone cat` before a launch, and
+the ~20 s outliers — and Google retires it during 2026. Using a personal OAuth client fixes both, so
+Settings now imports the `client_secret_*.json` the Google Cloud console produces: choose the file,
+press Connect, sign in once. Copying two long strings by hand was the only alternative and is the
+kind of step users skip.
+
+The split follows the rule the connect flow already had for the OAuth token: EmuShelf stores the
+client *id* (public by design, and useful to show which client a remote uses) and never stores the
+*secret*. The secret is read from the file the user chose, handed to rclone as one argv entry, and
+dropped from memory as soon as the connection attempt returns; rclone's own config holds it beside
+the token. The parser accepts either the `installed` or `web` section, and a file without both
+values reports what to download from where rather than failing with a JSON error. Nothing about the
+file's contents is ever logged or echoed into a status message.
+
+## 2026-07-27 — The folder-id lookup was reading the wrong rclone output
+
+The first attempt at caching the Drive folder id never worked, and the instrumented log is what
+showed it: every pass ran `rclone config` + `rclone lsjson` and then still paid full price for
+`rclone cat`, because `lsjson --stat` on the folder describes the queried path as its own root and
+reports no id at all. The id only appears when the *parent* is listed, so resolution now lists the
+parent and matches the folder by name. The resolved id is also adopted by the transport that found
+it rather than rebuilding one, so the pass that pays for the lookup benefits from it and all of its
+rclone calls are accounted for in one place — the previous split meant the header time excluded the
+lookup the user was waiting on.
+
+Measured against the real remote afterwards: lookup 1.5 s once, then a full index read of 255 units
+in 1.8–2.2 s by id versus 3.2 s by path. rclone's own process start is 152 ms, so what remains is the
+provider's round trip, and no amount of local work removes it: every pass has to ask the cloud
+whether another machine changed a save. That is the floor this design has, and the 12-second launch
+budget is what keeps a bad minute from reaching the user.
+
+## 2026-07-27 — The cloud index is a commit, and is written after the payloads it describes
+
+A PSP sync on the Steam Deck failed with "the cloud save payload for 'ppsspp/ULES00841' was not
+found on the remote", and the remote confirmed it: the index listed thirteen PSP units while only
+ten payloads existed. All three of the missing saves were present locally on the machine that had
+uploaded them.
+
+The cause was a single `rclone copy` of the whole outbox — payloads and `index.json` together.
+rclone transfers concurrently, so a session that failed partway could land the small index while a
+payload did not arrive. That is unrecoverable by itself, because the index carries the content hash:
+the owning machine then reconciles to "unchanged" and never re-uploads, while every other machine
+fails downloading it and, since one failure aborted the pass, loses the sync of every unit behind it.
+
+Three changes, in the order the failure needs them. Payloads are uploaded first and the index second,
+in separate sessions, so an interruption can only leave a payload with no index entry — harmless,
+re-uploaded next pass — rather than an entry with no payload. A missing payload now raises a typed
+per-unit condition that the service records and steps over, so one bad entry costs one unit rather
+than the pass. And the transport drops such entries from the index it writes at the end of the pass,
+so the machine that still has the save stops seeing "already on the remote" and uploads it. The
+damage already on the remote heals on the next pass from either machine.
+
+## 2026-07-27 — Every full sync verifies the cloud against itself
+
+Auditing the remote after the index/payload defect showed the damage was not one platform's:
+74 of 255 indexed units had no payload — 71 RPCS3 and 3 PPSSPP. (A first pass reported 79 and
+included DuckStation and RetroArch; that was wrong. The index JSON-escapes apostrophes, so five
+entries were compared against their unescaped file names and looked missing when they were not.)
+
+The 71 name the second cause. The per-rclone-call timeout was two minutes for every kind of call,
+and the first RPCS3 upload is 179 MB of save data and trophy sets. On an ordinary uplink that
+session could not finish inside the cap, so it was killed after the small index had already gone up.
+Timeouts are now split by what the call does: two minutes for a metadata round trip, thirty for a
+transfer, because a transfer's duration is set by how much data there is, not by whether the network
+is alive.
+
+Repair could not rely on a failed download. The machine that owns a save never downloads it, so it
+would never discover its own broken upload; only a second machine would, one failed download at a
+time. A full manual sync therefore lists the remote once and compares it against the index, drops
+the entries with no payload, and lets the owning machine upload them again on the same pass. That
+listing costs one call on an operation the user already waits on, and it is deliberately not part of
+the pre-launch pass, which is optimized for latency.
+
+## 2026-07-27 — Status messages carry a severity, and only some of them expire
+
+The library toast waited for a manual dismissal. Every message did — a rename confirmation sat on
+screen as long as an import failure, and in Gamepad mode, where the toast had no dismiss button at
+all, neither could be got rid of.
+
+A single timer would have been wrong, because `StatusText` was doing three unrelated jobs. It
+carries results ("Removed 1 game"), live commentary on work in flight ("Scanning PlayStation… 41
+found"), and failures ("Import failed: …"). Expiring all three on one short countdown discards an
+error before it can be read; expiring none of them is where we started.
+
+Messages are therefore set through `SetStatus(text, severity)` rather than by assigning the
+property, and the severity picks the lifetime. Results get five seconds. Failures get fifteen —
+long enough to read, but still finite, because a stale error on a library that is now working is
+its own kind of wrong. Progress gets no countdown at all: the operation that emits it replaces the
+text with its own result when it finishes, and a scan that goes quiet for five seconds on a slow
+folder must not look like it stopped.
+
+Severity is also what marks a failure visually. The app's accent is red, so a red dot cannot say
+"this went wrong" — the toast switches the dot for a warning triangle instead, and the distinction
+survives whatever the accent colour is.
+
+## 2026-07-27 — Restored view state is persisted by name, and only restored window bounds are saved
+
+Nothing about the library's presentation survived a restart: view mode, sort, selected platform,
+and sidebar state all reset every launch, and the window always reopened at 1240x800, centred.
+
+Two choices in how this is stored. The sort column and library scope are written as **strings**
+rather than enums, because both name view-layer concepts that Core deliberately does not model —
+`LibrarySortColumn` and `LibraryScope` live in `EmuShelf.App.ViewModels`, and Core takes no
+dependency on the UI. Names also keep the portable settings file readable and survive reordering
+the enums. Unrecognized names fall back to defaults instead of throwing.
+
+For the window, **only the restored bounds are ever persisted.** Maximized and full-screen bounds
+describe the monitor, not a decision the user made about the window, so they are tracked separately
+and the maximized flag is stored on its own. This is what lets quitting from Gamepad mode — which
+is full screen — still reopen the desktop window at the size it was last dragged to. A saved
+position is validated against the attached displays at startup, so a window last closed on a
+monitor that is now gone reopens centred rather than somewhere unreachable.
+
+Restoring assigns the same properties the user normally drives, so saving is suppressed while it
+runs; otherwise the first launch after adding this would write defaults over a good remembered view.
+
+## 2026-07-27 — What is deliberately not animated
+
+Covers crossfade over their placeholder, the toast rises as it fades in, and desktop tiles lift
+under the pointer. All of it is on Opacity or RenderTransform, which composite without triggering
+layout, so it stays cheap across a fully realized grid.
+
+The Gamepad hover and focus rings are excluded on purpose. They are the only indication of where
+you are when navigating with a controller, and fading them in costs the input a frame of feedback
+for no visual gain. A snapshot test that asserts the hover ring's opacity caught the first attempt
+to animate them, which is the behaviour working as intended rather than a test to relax.
+
+## 2026-07-27 — A scoped download session reports a broken entry instead of failing on it
+
+Reviewing the repair work found it incomplete in the one place that mattered most. Scoping the
+download session with `--files-from` names exactly the payloads a pass needs — including, on a
+remote with broken entries, payloads that are not there. rclone fails the whole session over one
+absent file, and the transport treated that as a failed download of everything, so a machine facing
+the 74 broken entries would still have lost every unit behind the first one. A scoped session now
+reports a non-zero exit rather than throwing: anything that did not arrive is caught per unit, where
+it is already a recoverable condition. An unscoped session still fails loudly, because there the
+exit code is the only signal there is.
+
+Verification also gained a floor. An empty listing against a non-empty index is far more likely to
+be a listing that did not work than a remote that lost every payload, and pruning on it would drop
+the entire index. That case now reports nothing and leaves the decision to the next verification.
+
+## 2026-07-27 — A repair completes in the pass that finds it
+
+The first verified sync worked: the remote went from 255 index entries against 181 payloads to 181
+against 181, with nothing broken. It also showed the repair only half-finishing. Verification marked
+the 74 orphaned entries, but the pruned index was written by the pass's own flush at the very end,
+so the reconciliation in between still planned against the entries it was about to remove — all 74
+looked "unchanged" — and the saves themselves would only have been uploaded by a second sync the
+user had no reason to know was needed. Worse, between the two the saves existed on exactly one
+machine with nothing in the cloud.
+
+The pruned index is now committed before the reconciliation reads it. The pass that discovers the
+breakage is the pass that repairs it: one extra index write, only when something was actually wrong.
+
+## 2026-07-27 — The transfer is a phase of its own, measured by rclone
+
+The repair completed in one pass — the remote went to 255 indexed units against 255 payloads, with
+nothing broken and nothing orphaned — and the log showed where the time went: `rclone copy 49517 ms`
+for the 179 MB, against about six seconds for everything else. The progress bar had reached 255 of
+255 long before that, because uploads are staged locally during reconciliation and transferred once
+at the end. A counter that reads "finished" while the work runs is worse than no counter.
+
+Progress now carries a phase. Reconciliation counts units, as before; the transfer reports its own
+0-100 percentage, taken from rclone's own `--stats` output on stderr rather than guessed — EmuShelf
+cannot infer it, since nothing it does locally correlates with bytes on the wire. Until the provider
+has moved enough to report a percentage the bar is indeterminate, which is honest about not knowing
+rather than inventing a number. Reading stderr line by line for this also means only its tail is
+kept for error messages, which is all an error ever needed.
+
+## 2026-07-27 — A save this machine cannot place is a skipped unit, not a failed sync
+
+The Steam Deck, now on the current build, failed a whole sync on one unit: "the save provider cannot
+safely materialize unit 'duckstation/per-game/file-title/Silent Hill …_2.mcd' in its active
+configuration". That refusal is correct — the Windows machine writes filename-based cards in slot 2
+and the Deck's DuckStation does not enable that scheme, so placing the card there would invent an
+active card the emulator would not read. What was wrong is that it aborted everything behind it.
+
+This is the same shape as the missing-payload defect and gets the same treatment: a typed per-unit
+condition the reconciliation records and steps over. The unit is reported as left in the cloud
+untouched, and the pass syncs the rest. Both machines keep their own configuration, which they are
+entitled to; only the units that depend on the difference sit out.
+
+It also has to be caught while planning, not only while applying. The local snapshot resolves the
+unit through the same provider, so an unplaceable remote unit throws before any decision is made —
+which is exactly where the Deck's pass was dying.
+
+## 2026-07-27 — A skipped save is its own outcome, and says why in the row
+
+Two machines can be configured differently, so a sync can succeed and still leave a save where it
+was — and until now the only trace was a line in the activity log. Worse, the per-unit reasons were
+recorded as `None`, the same value that means "both sides already agree", so the log counted a save
+nobody synced as "unchanged".
+
+`Skipped` is now its own action with the reason attached. The activity log lists them under their own
+heading, and the last pass's reason is persisted per platform and shown in that platform's row, so
+the answer to "why is this save not on my Deck" is in the place the question gets asked rather than
+in a log the user has to know to open.
+
+The two hints that lead to skipped saves are now written to be acted on rather than merely
+understood. RetroArch's names the setting and its path — Settings → Saving → Sort Saves Into Folders
+By Core Name — and warns that RetroArch does not move existing saves into the new per-core folder and
+will not find them until the user does. DuckStation's says that cards are matched per slot and card
+type, so a machine using a different type in a slot has no place for the other's cards. The two
+Replace buttons gained tooltips naming the direction they overwrite and where the overwritten copies
+are kept.
+
+## 2026-07-28 — A failed cloud request is never evidence that a save is absent
+
+The rclone transport keeps its original copy-only layout and stable `<unit-id>.payload` names; this
+hardening does not introduce a new index format, immutable-object store, retention policy, or remote
+deletion. Only rclone's documented directory-not-found and file-not-found exits establish absence.
+Every other non-zero result is an operational failure, and a successful but zero-byte `index.json`
+is invalid rather than an empty cloud.
+
+Verification uses the index itself as its authority marker: after successfully reading a non-empty
+index, a recursive listing must contain `index.json` before it can classify any payload as missing.
+This prevents authentication, throttling, and partial-listing failures from pruning healthy entries.
+Caller cancellation also kills and awaits the rclone child process before returning, so canceled
+launch passes cannot leave transfers running against staging files that EmuShelf is cleaning up.
+
+The same fail-closed rule applies to structurally ambiguous indexes: JSON `null` and duplicate unit
+ids are invalid rather than alternate spellings of an empty or last-entry-wins index. Outbox and
+index staging directories contain only files already selected for upload, so those two rclone copies
+use `--ignore-times`; matching size and timestamp cannot skip a write that reconciliation committed.
+
+## 2026-07-28 — Dolphin save locations come from Dolphin, and shared GCI folders stay shared
+
+Dolphin does not have one trustworthy default save folder. Its effective user directory can come
+from an explicit EmuShelf override, the launcher's `-u`/`--user` argument, portable mode, a Flatpak
+sandbox, XDG, the Windows Documents directory, or the macOS application-support directory. The user
+directory is only the start: `Dolphin.ini` can redirect raw memory cards, GCI card folders, and the
+Wii NAND, while `GameSettings/*.ini` can redirect a particular game's GCI folder. Save sync therefore
+reads those files without modifying them and uses Dolphin's defaults only when the corresponding key
+is absent. A per-game device/raw-card/NAND layout that cannot be represented is an explicit skip,
+never a reason to guess a path.
+
+A GCI-folder card is shared by many games, so replacing its directory would delete unrelated saves.
+Each game is instead one file-set unit: every sibling GCI whose embedded game+maker id matches the
+unit. Logical filenames and bytes are hashed in ordinal order and transferred as one deterministic
+archive. Restore validates every incoming GCI's structure and embedded id, displaces only the old
+members of that same unit, and rolls them back if installation does not complete. This keeps unrelated
+GCI files untouched while allowing a game with several GCI entries to reconcile atomically.
+
+Raw GameCube cards remain monolithic units because their allocation tables span every save. Wii sync
+is limited to each disc title's `title/00010000/<title-id>/data` directory; the rest of the NAND,
+including console identity, Miis, channels, and emulator save states, remains local.
+
+## 2026-07-28 — Dolphin card variants keep their filenames, and downloads verify before replacement
+
+Dolphin can select several physical raw-card files for one slot and region by adding its configured
+memory-card-size suffix (for example, `SRAM.USA.251.raw`). The suffix is therefore part of the cloud
+unit id when present; the legacy unsuffixed id remains unchanged. This lets another machine restore
+the payload to the exact filename Dolphin selects instead of silently creating an unused default-size
+card. Multiple variants are independent saves. Slots A and B, however, may not resolve to the same
+raw-card family or GCI folder: distinct cloud identities writing the same local bytes would make the
+last restore win, so that configuration fails closed before any transfer.
+
+Cloud metadata's content hash is now an installation precondition rather than evidence accepted on
+trust. Every downloaded file, folder, and file set is staged, hashed using the same semantic hash as
+its local snapshot, and compared before the live save is moved or replaced. A mismatch leaves the
+live save and manifest baseline unchanged. For Dolphin, Settings validates the configuration and
+shows those effective card/NAND locations while retaining the user directory as the configuration
+root used by the provider.
+
+## 2026-07-28 — Existing payloads make a missing or incomplete cloud catalog a hard stop
+
+An absent `index.json` means “new cloud” only when the remote contains no save payloads. Payloads
+without an index are evidence of an interrupted or collapsed catalog, not permission to rebuild the
+global index from whichever platform happens to sync next. The transport therefore lists the remote
+before accepting a missing index, and every catalog-changing flush refuses to upload or replace the
+index when it can see payloads omitted from the catalog. A pending unit is the sole exception: its
+unindexed payload may be the recoverable result of that same unit's interrupted earlier upload, and
+the current commit makes it visible again.
+
+Manual verification applies the same check in both directions. It still identifies indexed units
+whose payload is missing, but now also stops on payloads the index omitted; automatic reconstruction
+is deliberately deferred until the remote stores enough per-unit metadata to rebuild semantic hashes
+without guessing. Separately, when local and cloud content already match, that agreement repairs an
+older manifest baseline. This closes the interruption window where the cloud commit succeeded but
+the local manifest write did not, preventing a later one-sided edit from becoming a false conflict.
+
+## 2026-07-28 — No pending upload may claim an unindexed cloud payload
+
+The earlier interrupted-upload exception is withdrawn. An unindexed payload with the same unit id as
+a pending local upload is ambiguous: it may be this machine's incomplete transfer, but it may instead
+be a newer save whose catalog entry was lost. Without metadata proving which, overwriting it could
+destroy the only copy. Every unindexed payload is therefore a hard stop, including pending units, and
+recovery remains manual until the remote format can identify and preserve immutable payload versions.
+
+A catalog-changing flush also requires a previously read folder and its `index.json` marker to remain
+visible immediately before the first upload. A missing listing or marker aborts rather than recreating
+the remote from cached state. Catalog-integrity failures retain the cached Drive folder id so the next
+attempt cannot silently switch to a same-named folder; only operational reachability failures clear it.
+The added safety listing makes the former twelve-second launch budget unrealistically tight for known
+healthy Drive timings, so pre-launch sync now receives twenty seconds while post-exit sync remains
+unbounded by the launch budget.
+
+## 2026-07-28 — Immutable per-save commits replace the global catalog as the source of truth
+
+The global `index.json` protocol is retired as an authority because no ordering of “payload then
+index” can make one mutable index safe across interruption and independent PC/Deck writers. Save
+sync v2 stores each upload at an immutable, uniquely named version path and commits it with a unique
+per-unit head marker uploaded afterward. A payload without a marker is an incomplete upload and is
+ignored; retrying creates another safe version. Head markers are never replaced or deleted. Each marker carries a
+per-unit Lamport generation and random tie-breaker, so simultaneous writers converge deterministically
+from one recursive listing while retaining both immutable payloads. Different units cannot erase one
+another, and a marker can never describe bytes from another writer.
+
+Each commit uses a unique top-level remote directory rather than shared `heads/` and `payloads/`
+directories. Google Drive permits duplicate folder names, so concurrent creation of a shared protocol
+tree could split two first-time writers into different same-named folders. Unique commit roots remove
+that distributed directory-creation race; the already pinned Drive save-folder id remains the only
+shared directory identity.
+
+Existing `index.json` entries are migrated in place to generation-zero markers that continue to
+reference their untouched legacy payloads. A readiness marker is written only after every trustworthy
+legacy entry has a v2 marker; after that, normal catalog reads require one listing and ignore the old
+index. A damaged legacy index no longer blocks new v2 commits and is never overwritten or used to
+guess metadata: its payloads remain preserved for manual recovery. A unit whose newest marker has no
+payload is omitted from reconciliation while retaining that marker's generation internally; a machine
+holding the save then uploads generation N+1. EmuShelf does not silently roll active cloud state back
+to an older version, although every older immutable payload remains preserved.
+
+Closing the main window while cloud sync owns its single-flight gate now defers shutdown until that
+operation releases the gate. This keeps the application and rclone lifetime aligned during the
+post-emulator-exit commit. The immutable protocol remains safe under forced process termination, but
+ordinary shutdown no longer creates that interruption deliberately.
+
+## 2026-07-29 — Revert the folder-per-commit cloud format
+
+The v2 format above is withdrawn. Although its immutable markers handled interruption and concurrent
+writers, placing every commit in a unique top-level Google Drive directory made EmuShelf's save root
+visibly noisy and caused unbounded folder accumulation. That storage layout is not acceptable for a
+user-owned cloud folder.
+
+EmuShelf returns to the previously working v1 layout: one `index.json` and stable per-system
+`*.payload` files. The rollback changes no cloud data and performs no cleanup; existing
+`.emushelf-v2-commit-*` directories and `.emushelf-v2-ready` remain untouched until a separately
+reviewed recovery tool can verify their contents before removal. The restored v1 client ignores those
+names and creates no more of them. Any future concurrency design must keep internal state beneath one
+clean folder and must be reviewed as a storage layout before implementation.
+
+## 2026-07-29 — Dolphin GCI saves use ordinary file units
+
+The sibling `FileSet` abstraction is withdrawn. A GCI is already a self-contained memory-card file,
+while selectively replacing several siblings inside a shared card directory required a second,
+provider-specific rollback protocol in the generic filesystem endpoint. That extra transaction path
+was not justified by the save format and had a partial-cleanup failure mode that ordinary atomic file
+replacement does not share.
+
+Dolphin now exposes each GCI through the existing file path. The common one-file-per-game case keeps
+the prior `dolphin/gc/gci/<slot>/<game-id>` identity so the cloud copies already created during local
+testing migrate in place on their next upload. If a game owns several GCI files, their internal GCI
+save-name fields provide stable suffixes so each remains independent even when physical filenames
+differ between machines. Empty Wii title `data` directories are not saves and are no longer
+enumerated; existing empty cloud entries remain untouched because save sync does not delete data.
+
+## 2026-07-29 — Desktop selection is view-model-owned and observed before controls consume input
+
+Grid and List use the same `GameViewModel.IsSelected` set, current item, and range anchor. Desktop
+pointer presses are observed in the window's tunnel because `ListBox` may consume a right or left
+press before an item-level handler runs; this keeps normal click, Ctrl/Cmd toggle, Shift replacement
+range, and Ctrl/Cmd+Shift additive range identical in both layouts. A context request independently
+targets an unselected game so keyboard- and pointer-opened menus agree. Changing the search query,
+clicking the empty library canvas, or pressing Escape clears selection; sorting and switching layouts
+do not.
+
+Every game context menu and the contextual selection bar expose the same count-aware removal command.
+One selected game is named in its confirmation; multiple games confirm the count once. Removal still
+deletes only EmuShelf database records and never game files or covers.
+
+## 2026-07-29 — Dolphin keeps one stable base GCI identity
+
+When a game has several GCI files, the file with the lowest stable internal-name identity keeps the
+unsuffixed `dolphin/gc/gci/<slot>/<game-id>` unit and only additional files receive suffixes. Keeping
+the base unit at every file count prevents a one-file cloud entry from becoming an orphan when the
+game creates another save. It also lets another machine reconcile the expanded card without
+downloading the former base file twice under two different local names.
+
+## 2026-07-29 — Web cover search is a user choice, not an automatic Google provider
+
+The requested Grimmory-like flow is implemented as an in-app result picker, but not as a literal
+Google provider. Grimmory's current cover picker uses DuckDuckGo Images rather than Google. Google's
+official Custom Search JSON API now accepts no new customers and is scheduled to end for existing
+customers in 2027; scraping Google Images would replace that dead-end dependency with an unstable,
+unapproved HTML contract. EmuShelf therefore follows Grimmory's interaction and provider choice:
+an explicit DuckDuckGo search with a bounded grid, plus the existing local-file option.
+
+A web result has title similarity but no trustworthy game identity, region, or artwork license, so
+it never enters `MetadataSystemProfile` and is never chosen automatically. The platform cover ratio
+only reorders results within small search-rank bands; it cannot filter a legitimate alternate shape
+or promote a distant result over the search engine's first page. The user-selected image passes
+through the existing content-type, 8 MiB, and signature checks, is imported as a normal user-owned
+cover, and leaves no preview or staging file behind. This keeps automatic exact-id metadata
+conservative while giving unmatched ROMs a practical cover workflow.
+
+The picker treats search-result hosts as untrusted. It accepts HTTPS only, resolves the initial
+image/thumbnail host and every redirect, rejects loopback, private, link-local, and other
+non-public addresses, disables proxy and automatic-redirect behavior for this transport, and pins
+the validated DNS answer to the outbound socket. Downloaded headers must also declare no more than
+40 million pixels or 16,384 pixels on either edge before Avalonia decodes them. Previews use the
+codec's scaled decode off the UI thread and enter the ranked grid independently as each bounded
+download finishes; the selected original receives the same dimension check during normal cover
+import. These checks apply to manual web search without changing trusted automatic metadata hosts.
+
+## 2026-07-29 — Settings updates are atomic, launch shortcuts own context, and navigation reflects the library
+
+Every component that owns one settings section now updates that section through a single serialized
+read-modify-write operation in `ISettingsService`. Loading and saving independently was insufficient:
+cloud-sync results and texture-pack overrides retained the startup `AppSettings` snapshot and could
+write an older theme or interface preference back after the user changed it. Atomic scoped updates
+make the JSON file the latest source of truth without introducing a second settings store.
+
+Interface mode has two layers. An unqualified launch uses the persisted Desktop/Gamepad preference;
+`--gamepad-ui` and `--desktop-ui` force one launch and never mutate that preference. This lets a Steam
+Gaming Mode shortcut and a desktop shortcut share the same portable AppImage and data directory
+without whichever context ran last changing the other one's next startup.
+
+Platform navigation represents library contents, not the complete capability catalogue. Desktop and
+Gamepad hide platforms with zero database entries by default; import and emulator Settings still use
+the complete registered system list. An unavailable entry remains sufficient to show its platform,
+because a disconnected removable drive is a recoverable library state rather than an empty library.
+General Settings persists a `Show empty platforms` escape hatch for setup and preference.
+
+## 2026-07-29 — Settings serialization crosses process boundaries and navigation refresh preserves intent
+
+The portable settings transaction is guarded by a sibling lock file as well as a process-local lock.
+The lock file remains in `Settings/`: deleting it after release would let a third process create a new
+file while another process still holds the old file handle, splitting the lock. This makes concurrent
+Steam and desktop launches serialize their read-modify-write operations before the existing atomic
+rename replaces `settings.json`.
+
+Platform membership is queried with `SELECT DISTINCT SystemId` rather than materializing the entire
+game library. Library reload owns the empty-selected-system fallback, so every import, rescan, sync,
+and removal path reaches All Games consistently when its platform disappears. A refresh also keeps a
+tentative Gamepad rail position while the rail has focus; active-scope synchronization resumes after
+focus leaves the rail.
+
+## 2026-07-29 — Desktop chrome, semantic color, and navigation artwork share one visual contract
+
+The main Desktop window uses Avalonia-drawn, theme-owned chrome instead of the native title strip.
+Windows 10 cannot officially darken its native caption, while extending under full decorations
+causes the system title to overlap EmuShelf's sidebar header. The window therefore keeps its public
+`Title` and taskbar identity but draws explicit minimize/maximize/close controls, marks both header
+surfaces as native drag regions, and delegates all eight resize edges/corners through Avalonia's
+`WindowDecorationProperties` roles. Caption controls are positioned against the live window bounds,
+not the library's desired width, so wide list columns cannot push them off-screen at high DPI.
+Gamepad mode remains fullscreen and does not show Desktop caption controls.
+
+Color tokens now carry one meaning each: coral remains brand/selection, gold identifies
+achievements, blue identifies informational or in-progress feedback, green is reserved for success,
+amber for warnings, and red for destructive or failed states. Platform and collection bitmaps keep
+their licensed source pixels but render with uniform scaling inside the same neutral 26-point icon
+well. This equalizes portrait, landscape, and 32-pixel collection assets without redrawing or
+relicensing them; the selected well receives the existing coral focus border.
+
+## 2026-07-29 — Custom title-bar drag regions never own toolbar input
+
+The Desktop headers remain native title-bar drag regions, but every control or control group inside
+them is explicitly assigned Avalonia's `User` decoration role. This makes non-client hit testing
+redirect input to grid/list mode, search, Gamepad mode, theme, Settings, and navigation controls
+before it considers the containing header as a window-drag target. The caption buttons alone occupy
+the top-level overlay; no full-width transparent surface may sit above the toolbar. The window-sized
+root keeps those caption buttons aligned to the live client edge without widening their hit target.
+
+## 2026-07-29 — Grid state indicators stay inside the cover footprint
+
+Selection and multi-disc state must not change a library tile's measured height. The Desktop
+selection ring is inset within the cover frame because `UniformGridLayout` may clip pixels rendered
+outside its row boundary. A multi-disc title uses its existing cover badge for both count and active
+disc: it reads “2 discs” while disc 1 is current and “Disc 2 of 2” after another disc is selected.
+Desktop and Gamepad grids do not add a conditional status row beneath the title; the list uses the
+same compact label in its already-present metadata line.
+
+## 2026-07-29 — Multi-disc badges always identify the active disc
+
+The cover badge uses one stable meaning for every multi-disc title: “Disc N of M,” including when
+disc 1 is active. A badge that alternates between the collection size (“2 discs”) and the active
+position (“Disc 2 of 2”) makes the same surface communicate two different things. The explicit
+position also confirms which disc will launch without requiring the user to remember whether a
+non-default selection was made.
+
+## 2026-07-29 — Virtualized Desktop tiles do not scale outside their cells
+
+Pointer hover is communicated through the cover's stronger border and shadow, not by scaling the
+whole game tile. `UniformGridLayout` clips transformed content at virtualized cell boundaries; when
+a selected tile remained under the pointer after a click, scaling it by 1.025 moved the inset
+selection ring beyond the cell and removed its top edge. Keeping the tile transform at identity
+preserves the complete selection outline while retaining visible hover feedback.
+
+## 2026-07-29 — Desktop hover motion uses reserved in-cell headroom
+
+Desktop cover tiles retain animated motion, but use a three-pixel upward translation instead of
+scaling the whole tile. Each repeater item reserves four pixels above the card, so the translated
+selection ring remains inside its virtualized cell. Border and shadow changes continue alongside
+the lift. This preserves responsive hover feedback without cropping the selected cover or changing
+cover width and column spacing.
+
+## 2026-07-29 — Gamepad surfaces keep stable geometry and explicit controller states
+
+Gamepad library rows reserve a fixed title zone beneath a bottom-aligned cover shelf, so mixed cover
+ratios do not move or hide titles. Controller guidance is rendered as compact button caps, overlays
+use a height appropriate to their workflow, and destructive actions are visually separated from
+ordinary choices. The achievements overlay must always render one of its meaningful states—loading,
+results, empty, offline, or disconnected—rather than presenting a blank panel while data is absent.
+
+## 2026-07-29 — Gamepad overlays are content-sized with bounded scrolling
+
+Controller menus, prompts, and action sheets grow from their visible content instead of reserving a
+fixed dialog height. Achievement-only header fields are collapsed as one group so missing nested
+data cannot leave invisible rows in other overlays. Option lists and achievement rows have bounded
+scroll regions for unusually long content, while the surrounding sheet remains centered and compact.
+Achievement presentation distinguishes a loaded game with no available achievements from loading or
+missing cached details, and collection replacement restores focus to a live achievement row.
+
+## 2026-07-29 — Gamepad layout constraints follow visible content and preserve navigation context
+
+The overlay header and footer remain auto-sized, while the middle body owns the flexible height and
+scrolls inside the minimum supported window instead of pushing controller hints out of view. Cover
+shelf height is recalculated from the filtered games currently on screen, not hidden search results.
+Achievement refresh restores focus by achievement id when that achievement still exists, and every
+unexpected refresh failure resolves to an explicit cached or uncached state rather than escaping a
+fire-and-forget task.
+
+## 2026-07-29 — Optional sync content reuses the stable catalog and stays opt-in
+
+Cheats/patches and save states use per-file namespaces beneath each existing emulator prefix; the
+stable `index.json` and payload protocol are unchanged. Both kinds default off. Cheats and patches
+may join normal save passes when enabled, while states run only in manual Sync all/replace actions.
+The existing index entry records the detected emulator version, libretro core version where
+applicable, and CPU architecture; state unit ids stay stable so emulator upgrades do not create a
+new generation of orphaned objects. Incompatible remote states remain indexed and are reported
+rather than restored.
+Retention selects the newest configured number per game across local and remote candidates without
+deleting older local or cloud files. Auto, resume, undo, and backup states are excluded.
+
+Dolphin Gecko/Action Replay sections are intentionally not copied: they live inside the same
+GameSettings INIs as machine-specific per-game emulator settings, which this milestone explicitly
+does not sync. Copying the complete INI would violate that boundary; section-aware merge can be
+revisited only with the per-game-settings work.
+
+## 2026-07-29 — Optional sync is manual, observable, and independently detectable
+
+This supersedes the automatic-cheat portion of the preceding decision. Real portable emulator
+installs can place thousands of bundled/community database files in the same cheats and patches
+roots as user-authored files. Hashing and reconciling those files before every launch would put a
+large, optional catalog on the game's critical path. Cheats, patches, and states therefore run only
+in manual Sync all/replace actions; ordinary in-game saves remain the only automatic pre/post-launch
+content.
+
+Settings reports each optional kind independently with its exact resolved folder, selected/total
+file count, size, compatibility identity, and any advisory error. Failure to resolve one optional
+folder never invalidates the ordinary save location. A direct PCSX2 memory-card override cannot
+identify sibling content safely and reports that limitation instead of inventing paths beneath the
+card folder.
+
+State compatibility is provenance attached to content, not a label inferred anew from the emulator
+installed today. The local manifest retains the compatibility identity alongside the content hash;
+unchanged bytes keep that identity after an emulator upgrade, while genuinely changed bytes receive
+the current identity. This prevents an upgrade from silently certifying an old state as compatible.
+Executable version strings are normalized across packaging formats, and native executables without
+embedded version resources fall back to their bounded `--version` command.
+
+## 2026-07-29 — Manual state sync includes every eligible state
+
+This supersedes the retention rule in the earlier optional-sync decision. Enabling save-state sync
+means every manual state currently present in the resolved folder participates in manual Sync all
+and replace actions. A newest-N selector made the option's meaning incomplete, could hide a usable
+state behind newer incompatible states, and did not reclaim cloud storage because synchronization
+never deletes local or remote files. Automatic, resume, undo, and backup states remain excluded,
+and compatibility checks still prevent states from being restored by a different emulator build.
+
+## 2026-07-29 — Settings writes tolerate transient Windows file locks
+
+Settings forms persist their edited cloud-save paths in one transaction before starting a manual
+operation. Atomic settings replacement uses a unique sibling temporary file and a short bounded
+retry when Windows reports an I/O or access-denied error, since antivirus, indexing, and backup
+software can briefly open the destination without delete sharing. Permanent failures still surface
+to the user, and the existing settings file remains intact when replacement cannot complete. An
+update also fails without writing if the current settings cannot be read or parsed; only a plain
+startup load may fall back to defaults.
+
+## 2026-07-31 — Cheats and patches are not synced; save states still are
+
+This supersedes the cheat/patch portion of the optional-sync decisions above. The optional cheat
+and patch namespaces pointed at each emulator's whole cheats/patches folder. On DuckStation and
+PCSX2 that folder holds the community database the emulator ships and can redownload, not files
+the user wrote: one real library staged 4,496 DuckStation `.cht` files averaging 3.4 KB, 579 PCSX2
+cheat files, and 702 `.pnach` patches — 5,917 files per pass, of which 4,496 were one database.
+
+Cost, not principle, decides this. On a per-file-metered provider those thousands of small files
+were the entire wall-clock cost of a sync while carrying 24% of its bytes, so the transfer appeared
+to freeze at 79% — where the large saves end and the small-file tail begins — for tens of minutes.
+The content is identical on every machine and recoverable from the emulator, so syncing it buys
+nothing. Save states stay: they are genuine per-machine user data, and the version guard already
+governs when they may be restored.
+
+The unit-id namespaces `cheats` and `patches` remain excluded from `ISaveLocationProvider.OwnsUnit`
+although nothing writes them any more, so payloads left on a remote by an older build are never
+claimed and resolved as local saves. Sync remains copy-only, so those payloads are not deleted.
+
+## 2026-07-31 — A cloud flush commits in batches
+
+The flush uploaded every staged payload and then wrote `index.json` once. Because the index carries
+the content hash that decides what changed, that made a pass all-or-nothing: an interrupted run
+lost all of its uploads and re-staged the identical set next time, so a large first sync could never
+converge. Payloads are now uploaded in batches bounded by both count and size — either bound alone
+leaves a bad case — and the index is committed after each batch. Payload-before-index ordering is
+unchanged and is what makes a partial commit safe to resume from.
+
+Transfer progress is anchored to saves rather than bytes for the same reason the old percentage
+misled: a byte percentage races through the large saves and then appears stalled for the whole
+small-file tail. The batch's own byte progress is folded in only to keep the bar moving within a
+batch. Missing-payload pruning is applied to the first commit so a later batch's failure cannot
+take it down with it.
+
+## 2026-07-31 — A launch-triggered sync declines rather than queues
+
+`SyncSystemAsync` now takes the sync gate with a zero timeout and returns `AlreadyRunning` when a
+manual pass holds it. A launch-triggered sync is work the user did not ask for; waiting its turn
+spent the whole pre-launch budget on the queue and stalled the post-exit pass, which has no budget,
+behind a manual sync indefinitely. The launch proceeds on the saves already on disk exactly as it
+does when a pass fails, and the manual pass in flight covers that system anyway. Manual syncs are
+now cancellable from Settings, which is safe precisely because the flush commits in batches.
+
+## 2026-07-31 — Dreamcast accepts CHD by reading the container's own track table
+
+CHD joins `.gdi` as a supported Dreamcast packaging. The earlier decision deferred it until a
+logical-track reader existed with parity fixtures; this is that reader. A CHD is accepted only when
+its metadata declares a track layout and a declared data track really begins with the
+`SEGA SEGAKATANA` IP.BIN marker, so the extension — shared with PlayStation, PS2, and PSP — is
+never treated as evidence. A validated Dreamcast image now vetoes the PlayStation systems for that
+file exactly as PARAM.SFO evidence already vetoed them for PSP.
+
+Three properties of chdman's GD-ROM layout drive the reader, each verified by round-tripping real
+discs back to GDI sets with chdman 0.249 and requiring identical reads:
+
+- A track's declared `FRAMES` accumulate into the next track's disc address, which is what lands
+  the high-density track on LBA 45000. `PAD` is the tail of that extent the dump never stored.
+- Every track is stored on a four-frame boundary, so a track whose extent is not a multiple of four
+  shifts each later track's physical position away from its disc address. In the committed fixture,
+  as on a real disc, track 03 addresses 45000 but lives at frame 45004.
+- The low-density area opens with an IP.BIN copy of its own. The boot header is the first one at or
+  past LBA 45000, mirroring the GDI reader's choice of track 03 over track 01; a Dreamcast disc
+  pressed as a plain CD has no such area and keeps its single header.
+
+Each frame's user data is located from the track's declared type (`MODE1_RAW` and the rest), not
+from the frame's content. The content heuristic the PlayStation reader uses cannot recognize a
+sync-stripped frame past 99 minutes, where the encoder's own minutes field stops being valid BCD —
+and a GD-ROM is 122 minutes long, so most of every disc is past that point. The heuristic itself is
+unchanged, so no PlayStation hash is invalidated.
+
+A Dreamcast CHD is catalogued by its IP.BIN product number alone. Redump's SHA-1 covers a track
+file's raw 2352-byte frames, and this reader deliberately does not regenerate the sync and ECC
+bytes the CD codecs strip, so a hash taken from a CHD could not match the catalogue. The serial
+fallback already exists for GDI sets and stays disabled for images whose own name or folder labels
+a translation, patch, or hack. The RetroAchievements algorithm version is unchanged: the hash is
+IP.BIN plus the boot executable however the disc is packaged, so a GDI set converted to CHD keeps
+its stored hash.
+
+## 2026-07-29 — Each library mode owns its cover sizing, and a scope change empties the grid first
+
+Two faults reported together from a Steam Deck: switching desktop → Gamepad produced crowded,
+overlapping tiles with games that "straight up disappear", and LB/RB sometimes showed one
+platform's games under another platform's name. They turned out to be independent, and the second
+made the first look worse.
+
+Cover sizing was one set of state serving two grids. `LibraryViewportWidth`, `GridCoverWidth` and a
+single `GridHorizontalPadding` were shared, and the Gamepad viewport was assigned *into*
+`LibraryViewportWidth`, so whichever grid last raised `SizeChanged` defined the size for the grid
+that was actually on screen. The inset was wrong for one of them by construction: the desktop
+measures a ScrollViewer whose ItemsRepeater carries a 32/28 margin inside it, while the Gamepad
+ScrollViewer's own margin is already excluded from its arranged size and its repeater adds none —
+so the 60px was subtracted from a width that never contained it.
+
+Each mode now has its own viewport and its own inset, and the cover width is derived from whichever
+is active. The consequence that mattered was not the cover width but `GamepadColumnCount`: D-pad
+up/down steps a whole row, and the stride was computed from the mismatched numbers. Tests across
+four viewport widths show it disagreed with the rendered column count at *every* one, which is why
+Up/Down landed on the wrong tile and the reveal scrolled the grid to it.
+
+The second fault was a visible window, not bad data. The rail, title and count move to the new
+platform the instant the selection changes; `Games` was only replaced two awaits later, and the
+code already said so ("Games still contains the previous scope here"). A scope change now empties
+the visible grid before the first await, and the empty-library and no-results panels are suppressed
+until the read completes — claiming a platform is empty before reading it is its own wrong answer.
+Re-reading the scope already on screen deliberately keeps its tiles, so availability passes and
+rescans do not flash.
+
+Related: the cover crossfade now cuts rather than fades when a virtualized tile is recycled onto a
+different game. The fade is there to soften a cover arriving from disk; on recycling it dissolved
+the previous game's artwork over the incoming tile, which during fast LB/RB read as the wrong
+artwork appearing and made the stale window above considerably more visible.
+
+Two things deliberately left alone after checking them. The Gamepad tile's fixed 58px title row
+does not clip: the title is already `MaxLines="2"` with ellipsis, which cannot exceed it, and
+making the row a minimum would give tiles variable heights that `UniformGridLayout` — which derives
+one uniform cell height — cannot represent, reintroducing the overlap. And `RefreshNavigationSystems`
+already runs after the load-generation check, while `MovePlatformAsync` reads `NavigationSystems`
+synchronously with no await between the lookup and the index, so a rebuild cannot move the rail
+under a platform switch.
+
+## 2026-07-31 — Arcade is FinalBurn Neo, identified by set name, synced like any RetroArch core
+
+Arcade support is one platform backed by exactly one emulator, the RetroArch `fbneo_libretro` core.
+No MAME, Naomi/Flycast, Atomiswave, or TeknoParrot: each brings its own romset universe, BIOS
+matrix, and failure modes, and the goal is a platform a user can populate and launch, not a
+romset-management tool. BIOS placement and ROM repair stay the user's job and RetroArch's system
+directory, deliberately outside EmuShelf.
+
+A game is identified by the one thing FinalBurn Neo itself keys on — the archive's file name. The
+core loads a set by matching the zip basename to a romset short id (`kof94.zip`), so the basename is
+the identity, and the FBNeo DAT turns that short id into a human title through its game `name` →
+`description` mapping. EmuShelf does not open the zip or hash its contents on the import path:
+content-CRC corroboration would buy marginal certainty at the cost of a zip reader and a CRC-32
+implementation the app does not otherwise need, and an unknown or renamed zip keeps its filename
+title rather than being rejected, because it is the user's file to keep.
+
+The FBNeo DAT is Logiqx XML, not the clrmamepro text the console catalogs use, and it inverts the
+convention: the game `name` attribute is the key and the title lives in a `description` element.
+Rather than add a second catalog and a routing layer, the existing downloader and cache learned a
+streaming XML parse path selected per profile, which skips `isbios`/`isdevice` sets; the catalog
+size cap became per-profile because the arcade DAT carries roughly eight thousand sets with full ROM
+hashes. BIOS archives such as `neogeo` are excluded twice — a small bundled set-name list hides them
+at import, when the DAT is not yet present, and the DAT's `isbios` flag excludes them during
+enrichment.
+
+Clones are listed as their own library entries rather than folded under a parent, because EmuShelf
+is one-file-one-game and the user physically owns whichever zips they have; each clone carries its
+own `description`. Arcade art is landscape because arcade output is 4:3 and box art barely exists for
+it, so the card reuses the wide cover ratio SNES already proved and resolves title screens first,
+then snaps, then the rare boxart, before the bundled placeholder.
+
+Save sync treats arcade as just another RetroArch core. FinalBurn Neo writes battery and NVRAM data
+as `.srm` and its save states as `.state` into RetroArch's save and state folders, named after the
+loaded zip, so the generic RetroArch save descriptor covers it unchanged — one file per game,
+matched by name, with the same per-core-version gating that refuses to restore a state written by a
+different core build. Nothing about arcade needed a bespoke save path, so it reuses the descriptor
+the other RetroArch systems already share.
+
+## 2026-07-31 — Gamepad rail is a passive LB/RB indicator, not a D-pad target
+
+The controller library had two focus planes — the cover grid and the platform rail — bridged by
+"D-pad Up from the top row enters the rail." That let the grid selector climb out of the grid, and
+it exposed a deeper defect: three code paths owned three disagreeing index spaces. LB/RB walked
+`[All Games, Recently Added, systems…]`, the rail tabs were `[All Games, Collections, systems…]`,
+and Up-into-rail mapped the Recently Added *scope* onto the Collections *tab* (whose highlight even
+bound to `IsRecentlyAddedSelected`). So shoulder input could land on a scope with no lit tab, and
+Collections was unreachable by the bumpers at all.
+
+The rail is now a **passive indicator**: the d-pad/stick move only inside the cover grid (Up on the
+top row clamps), and platforms are switched solely by **LB/RB**, which cycle **one** ordered list —
+`[All Games, systems…]` — with wrap at both ends. This eliminates the third (up-into-rail) index
+space rather than reconciling it: the rail no longer owns an index, it just reflects
+`IsAllGamesSelected` / platform `IsActive`. Collections and Recently Added are not platforms, so
+they are off the cycle — Collections lives in the Start menu, Recently Added in the Collections
+overlay. From an off-list scope the first bumper press snaps to All Games so a controller can never
+dead-end. `IsGamepadRailFocused`, `GamepadRailIndex`, and their reveal/focus plumbing were deleted.
+
+Two selector-disappearance races were fixed alongside: entering Gamepad mode now seeds the gamepad
+viewport from the desktop's so `GamepadColumnCount` is never left at its default of 1 (which made
+row-wise Up/Down step a single tile), and `RevealFocusedGame` retries on the next layout pass when
+the target tile is not yet realized, so the ring is never stranded on an off-screen tile. The left
+stick also resolves a diagonal push to its dominant axis so one flick moves a single cell.
+
+The grid column count is now reported by the **view**, which actually lays the grid out, rather than
+trusted from width arithmetic alone. The arithmetic (`UpdateCoverLayout`) can be momentarily stale
+relative to the real layout, and a too-small count made Left/Right clamp partway across a row —
+"stuck at the second column." The window reads the true count from the realized tiles' rows (the
+most-populated realized row) after every layout and reports it through
+`SetRenderedGamepadColumnCount`; the arithmetic stays as the pre-layout fallback and for headless
+tests with no view.
+
+## 2026-07-31 — Library connections get a busy timeout so overlapping read/write don't blank the grid
+
+The library grid could go blank after rapid platform switching and stay blank until relaunch.
+Root cause: `LibraryDatabase.CreateConnection` opened SQLite with the default rollback journal and
+a `busy_timeout` of 0. The app reads the library on background threads (a platform switch loads the
+new scope) while other work writes it (availability passes, RetroAchievements, save sync). With a
+zero busy timeout a reader that overlaps a writer fails with `SQLITE_BUSY` immediately; the reload's
+`catch` swallowed that and left the grid empty (the outgoing tiles were already dropped for the
+scope change). Making Left/Right platform switching wrap around increased switch frequency and made
+the collision easy to hit.
+
+Every connection now sets `PRAGMA busy_timeout = 5000`, so a reader waits for a short concurrent
+write instead of throwing. Chosen over switching the database to WAL: the busy timeout is a one-line,
+side-effect-free change, while WAL adds `-wal`/`-shm` sidecar files that complicate the "portable
+Data/ folder is safe to move while idle" rule the no-pooling connection policy exists to protect.
+
+## 2026-07-31 — A Gamepad launch maximizes on its first switch to Desktop
+
+Switching to Desktop mode on a device that launched straight into Gamepad (a Steam Deck / TV) opened
+a small floating 1240×800 window — the default restored size — which reads as a "weird size" on a
+handheld. `WindowInterfaceModeService` used to capture the transient startup window as the "desktop
+state" and restore it.
+
+It now distinguishes a real desktop session from none. A Desktop launch records its window and a
+trip through Gamepad restores it exactly (maximized stays maximized — the existing guarantee). A
+Gamepad launch records no desktop state, so the first return to Desktop maximizes instead of
+restoring the startup window; after that the user's chosen desktop window is remembered normally.
+Desktop-PC behavior is unchanged.
+
+## 2026-08-01 — Opted-in save states follow the complete launch lifecycle
+
+The manual-only restriction on save states is superseded. A user who enables state sync expects a
+state written on one machine to be available before play on another, so enabled manual states now
+reconcile before launch and after an EmuShelf-tracked emulator exits. The emulator/core-version and
+CPU-architecture guard remains authoritative, and automatic/resume/undo/backup slots remain
+excluded.
+
+There is no application-level pre-launch time budget. Launch waits for synchronization to complete;
+an operational failure is still advisory and launches with the data then on disk. Ordinary battery
+and memory-card saves commit in a first phase before the state phase, so a later state failure cannot
+strand a successfully reconciled critical save in local staging. A launch-triggered pass continues
+to decline immediately when another sync owns the single-flight gate.
+
+## 2026-08-01 — Remembered library roots are managed per platform without owning game files
+
+File-based systems can own more than one recursive scan root. Emulator Settings shows those roots
+as library configuration, but changing or forgetting a root changes only EmuShelf's database and
+never moves or deletes ROMs. A replacement root is scanned before it is committed. Existing game
+records beneath the old root keep their ids, titles, covers, and metadata only when a stable
+identifier read from the replacement matches persisted evidence for the old entry; a matching
+relative filename is not sufficient. Unverified records remain and become unavailable, while the
+replacement is imported as a separate game. A destination path already owned by another game
+aborts the replacement atomically.
+
+RPCS3 is excluded because its `games.yml` remains the source of truth for the PlayStation 3 library.
+
+## 2026-08-01 — Gamepad redesign has no clock; DuckDuckGo precedes ScreenScraper
+
+The NeoStation-inspired Gamepad work borrows couch-first information hierarchy and complete
+controller workflows, not branding, artwork, or source. The reference mockup's clock is excluded
+because it consumes persistent navigation space without advancing a library task. The existing
+explicit DuckDuckGo cover search is the first Gamepad scraper backend because it is already bounded,
+user-driven, and isolated from automatic metadata enrichment. ScreenScraper.fr is a later Phase 5
+provider: its application and user credentials, quotas, platform mapping, metadata provenance,
+regional media selection, and batch behavior require a separate reviewed integration rather than a
+silent replacement of the current cover picker. Fixed A/B/X/Y semantic colors remain independent of
+future full-palette themes so controller prompts retain their meaning.
+
+## 2026-08-01 — Reference screenshots govern Gamepad proportions, not the HTML mockup
+
+The interactive HTML artifact remains a list of product ideas only. It is not a dimensional or
+styling specification. Phase 1 is reviewed against the actual EmuShelf render and the supplied
+NeoStation screenshot: related dock controls share one 60px height, achievement progress is a
+compact count-plus-bar pill without a separate percentage, and the focused title shows its real
+launch filename instead of redundant format/"Available" labels. EmuShelf keeps its own platform
+rail, rectangular per-system artwork, and bottom controller hints rather than copying NeoStation's
+square-card grid or left action rail.
+
+## 2026-08-01 — The base Gamepad footer is information, not a controller legend
+
+A populated-library comparison showed that equal control heights alone did not make the footer
+clean: the persistent Menu/count/prompt row still competed with the focused-game information and
+actions. The base shelf therefore uses one 104px row containing only platform/title/source,
+achievement progress when available, and Play. LB/RB remains visible on the platform rail. The
+library count and direct X/Y shortcut legend move into the system Menu, while modal overlays keep
+their own contextual controls. Achievement progress uses a fixed clipped track rather than the
+theme's generic stretching ProgressBar template so its geometry remains stable at couch layouts.
+
+## 2026-08-01 — Achievement sorting is cache-backed; community rarity is deferred
+
+The controller achievement browser offers All, Locked, and Unlocked filters plus Default, Points,
+Unlocked first, and Recently unlocked ordering. Every choice is derived from fields already stored
+in the portable achievement-detail cache, so it remains deterministic and useful offline. LB/RB
+owns the three filters, D-pad owns the badge grid, X refreshes, and Y cycles ordering; the selected
+badge's title, description, points, state, and earned date stay visible in one detail card rather
+than repeating full text under every grid item.
+
+RetroAchievements community unlock percentage is not currently represented by
+`RetroAchievementsAchievement` or the cache schema. EmuShelf will not infer it from the connected
+user's progress or label another field as rarity. Percentage/rarity sorting waits for a reviewed API
+field, cache migration, stale/offline semantics, and fixtures proving the value's meaning.
+
+## 2026-08-01 — Achievement sorting preserves the selector's slot, not badge identity
+
+Reordering an achievement grid changes what occupies each spatial position. The controller
+selector therefore remains at the same visible index and the detail card updates to the newly
+occupying achievement; following the old achievement id would make the focus ring jump around the
+screen after every Y press. Filtering retains its separate identity-or-first behavior because its
+purpose is to remove whole classes of rows rather than reorder the same set.
+
+The visible achievement collection is replaced with one Reset notification. Clearing it and adding
+rows individually exposed Avalonia's virtualized `ItemsRepeater` to empty and partially rebuilt
+lists, allowing recycled tiles to keep stale positions during repeated sorts. One atomic replacement
+gives layout, focus reveal, and column recount a single final ordering to process.
+
+## 2026-08-01 — Fresh achievement sources supersede collection Reset after real-compositor review
+
+The single-Reset approach above removed partial lists but did not fully solve Avalonia's real-window
+virtualization state: an 86-achievement grid could retain a stale anchor and reserve row 1, column 1
+without realizing its badge. Each filter/sort now publishes a new fixed row snapshot as the
+`ItemsRepeater` source. Focus realization also waits until the scroll viewport has non-zero final
+geometry before calling `GetOrCreateElement`; requesting an anchor during the overlay's first measure
+can itself create the leading hole this change prevents.
+
+Achievement navigation follows the library grid's spatial contract: Left/Right never wrap rows and
+Up/Down do nothing when the corresponding cell is absent from a partial final row. A filter that
+retains the same badge still issues a layout revision because its position and recycled visual may
+have changed even though its object identity did not. Pointer selection enters the same logical
+focus path as controller selection, keeping the badge ring and detail card synchronized.
+
+## 2026-08-01 — Gamepad Settings projects the existing settings model
+
+The controller surface is a navigation adapter over `EmulatorSettingsViewModel`, not a second
+settings store. General, RetroAchievements, Saves, and Texture Packs are projected into stable row
+keys, with remembered focus per section and the same commands, child view models, validation, and
+portable persistence used by Desktop. Save is placed at the start of each virtualized section but
+initial focus remains on the first setting, making Save one Up press away without displacing the
+normal reading order. B cancels an active edit or confirmation first, then closes Settings without
+saving and restores focus to the Settings menu item.
+
+The first slice intentionally excludes emulator executable paths, arguments, cores, library-root
+management, and RPCS3 library maintenance. Those fields were audited with the rest of Desktop
+Settings but remain the next Phase 2 slice; cover search, themes, and ScreenScraper remain Phases 3,
+4, and 5 respectively. Texture-pack operations stay observational and limited to existing rescan,
+filter, picker, and clear services; opening the host file manager remains Desktop-only. EmuShelf
+still never edits emulator-owned texture configuration or pack contents.
+
+## 2026-08-01 — Controller text entry uses an optional host-keyboard capability
+
+Text and secret rows enter a focused in-window editor whose draft is committed only with A and
+discarded with B. Secret values remain masked in both the row and editor, and the draft is cleared
+after either outcome; the underlying settings view model continues to own secure persistence.
+Opening an editor requests an on-screen keyboard through a Core capability. The Windows adapter
+best-effort launches the system touch keyboard or OSK, while unsupported hosts retain an explicit
+hardware-keyboard or Steam+X path instead of adding a Steamworks dependency without its required
+lifecycle. This interface leaves room for a native Steam/Deck implementation later and keeps all
+platform-specific process behavior outside the cross-platform view model.
+
+Native dialogs are used only for values whose meaning is an actual file or folder. All choices,
+toggles, actions, text, secrets, and destructive confirmations remain controller-owned inside the
+Gamepad window; destructive rows always focus the non-destructive choice first.
+
+## 2026-08-01 — Gamepad Settings control shape communicates behavior
+
+A real populated-library screenshot rejected the initial Settings presentation even though its
+focus and containment assertions passed. Giving every field the same variably sized card plus a
+small `TOGGLE`, `ACTION`, or `FILE` badge hid how the field worked and allowed virtualized children
+to keep their desired widths. Geometry containment alone is therefore not visual acceptance.
+
+The replacement uses a full-height proportional section rail and one equal-width virtualized
+content column. Boolean fields render as conventional ON/OFF tracks with a moving checked/cleared
+thumb; choices render between directional chevrons; text, secret, file, and folder fields show their
+current value beside an explicit A Edit/Choose affordance; ordinary and destructive commands use
+distinct action treatments. This follows the reference's interaction vocabulary without copying
+its branding, type, icons, clock, or exact composition.
+
+The Save row remains first in the logical D-pad order, so Up from the initial setting still reaches
+it, but it is now rendered as a pinned action at the bottom of the section rail rather than as a
+generic content card. This supersedes only the visual-placement portion of the earlier projection
+decision. The repeater receives an explicit viewport-derived cross-axis width, and viewport resize
+re-reveals logical focus. Real-window tests cover 1280x800, 1280x720, and 2048x1152 so a fixed-size
+desktop dialog cannot satisfy the Gamepad geometry contract again.
+
+## 2026-08-01 — Desktop and Gamepad Settings parity is executable
+
+Gamepad Settings does not add preferences and does not own a second persistent settings object.
+`AutomaticallyFetchMetadataAfterImport`, including its metadata consent and persistence behavior,
+was already a Desktop field; both surfaces read and mutate the same `EmulatorSettingsViewModel`
+property and use its existing `IMetadataPreferencesService` save path.
+
+Every mutating control in General, RetroAchievements, Saves, and Texture Packs now carries the same
+stable field id in the Desktop window and the Gamepad row projection. A real-window test collects
+the effectively visible Desktop ids in each connection state and compares them with the complete
+controller projection. The controller list remains virtualized, so a second assertion checks that
+each realized row exposes its field id without requiring off-screen rows to be materialized.
+Read-only status/inventory content and external browser or file-manager links are deliberately not
+counted as settings mutations.
+
+The final control vocabulary uses reference-sized two-state tracks with a moving check/clear thumb,
+large circular edit/action targets, full-width section selections, and a full-width pinned Save
+action. It borrows the reference's conventional behavior without copying its typeface, branding,
+clock, theme system, or exact composition. START is a direct Save-and-close route; Up from a
+section's initial field followed by A remains an equivalent tested route, and B still exits without
+saving. This supersedes the earlier text-labelled action-capsule presentation.
+
+## 2026-08-01 — Full palettes swap an override dictionary; tokens stay `DynamicResource`
+
+The appearance system moved from Light/Dark theme-dictionaries plus a single accent to complete
+named palettes. `ThemePreference` gained `Oled`, `Cyberpunk`, and `Nord`; it still serializes as a
+string, so existing `System`/`Light`/`Dark` settings files keep parsing and no migration is needed.
+`ThemeCatalog` (Core) is the single source of built-in themes — id, display name, dark/light, and
+four preview-swatch hex colors — consumed by both the Desktop appearance menu and the controller
+theme gallery so a theme added there appears in both modes.
+
+Each extra palette is a flat `ResourceDictionary` under `Styles/Palettes/` that redefines every
+`EmuXxxBrush` token plus an `EmuFocusGlow` box-shadow. `AppThemeService` sets the base `ThemeVariant`
+(so stock Fluent chrome stays legible) and appends the selected palette last in the application's
+merged dictionaries, where its top-level tokens win over the base `EmuShelfTheme` set; System/Light/
+Dark append no override. Because every consumer already binds tokens with `DynamicResource`, swapping
+the dictionary re-colors the whole UI live. Built-in themes are an enum rather than a `Themes/` import
+because the roadmap defers a portable import format until the token contract is proven stable — which
+this work does by rendering OLED and Cyberpunk with no hardcoded color leaking through. A/B/X/Y and
+the green Play action remain fixed brushes outside every palette.
+
+## 2026-08-01 — Accent is separated from danger; the focused game is raised, not alarmed
+
+A populated-library review found the Gamepad UI read as a wall of alarm-red: the accent (`#EF4855`)
+was the same hue as the danger color, so selection, focus, section highlights, toggles, and every
+destructive action all looked like errors. The default accent moved to rose (`#F15C93` dark,
+`#D23A76` light), distinct from the unchanged red danger brush, so selection and focus read as brand
+rather than warning. Destructive settings rows now look ordinary until focused — the danger cue is
+the tinted action circle plus the existing confirmation gate, not a red title on every row — and the
+toggle thumb lost its busy ×/✓ pair for a plain sliding thumb.
+
+The focused game gained presence to match NeoStation's reference: a thicker accent ring, a
+theme-colored `EmuFocusGlow` halo, and a subtle non-layout scale so the selected cover lifts off the
+shelf without moving its neighbours. The glow is a themed `BoxShadows` resource, so it takes the
+active palette's accent.
+
+## 2026-08-01 — The controller theme gallery is a gamepad-only page with shared choices
+
+Theme selection previously lived only in the Desktop toolbar, so Gamepad mode could not change it —
+a parity gap. Gamepad Settings gained a Themes page presenting a NeoStation-style gallery: a
+three-column grid of cards, each rendering a miniature app window from that theme's own swatches,
+with the applied theme marked and the focused card carrying the strong-focus border. It is a
+gamepad-only page rather than a `SettingsSection` because appearance is not part of the settings
+model; the executable Desktop/Gamepad parity test therefore still compares only the four model
+sections. Both surfaces project the same `ThemeChoice` instances and apply through one path, so a
+change in either mode updates the other and persists once.
+
+Read-only texture-pack inventory is now bounded in Gamepad Settings: a large real library rendered
+as an endless wall of near-identical cards, so the controller list shows a capped, filterable window
+with a count and points at the filters and Desktop for the rest, and read-only rows (inventory,
+logs, connected account) render as a flat list instead of solid action-button cards. The full
+inventory remains browsable in Desktop; this is inventory display, not a settings field, so it does
+not affect executable parity.
+
+## 2026-08-01 — Focus frames the cover from outside; Gamepad Settings is grouped by platform
+
+A real zoomed render showed the earlier focus ring painting on top of the cover's dark edge read as
+a faint glow "behind" the art rather than a selection. The focus ring now sits 5px outside the cover
+on every side (negative margin, larger corner radius) so it reads unambiguously as a frame around the
+artwork, keeps the theme-colored `EmuFocusGlow`, and stays the topmost tile layer. The earlier
+non-layout scale-up was removed: the frame plus glow already give couch-distance presence, and the
+transform muddied where the border sat. Geometry tests now assert the frame is exactly 10px larger
+than the cover frame.
+
+Gamepad Settings gained the Desktop settings hierarchy. Saves and Texture Packs are grouped under
+non-focusable platform headers (platform artwork plus name); the platform's rows are indented beneath
+their header and carry the same platform artwork as their leading icon, so membership is unmistakable.
+Member labels drop the redundant platform-name prefix because the header carries it — the stable field
+ids (Keys) are unchanged, so executable Desktop/Gamepad parity still holds. Generic rows (General,
+maintenance, filters) show a category glyph in the same leading-icon slot; read-only inventory rows
+stay icon-free so a long list reads lightly. D-pad navigation and post-rebuild focus targeting skip
+header rows, and the geometry suite covers the indent width and that focus never lands on a header.
+
+## 2026-08-01 — Selector is an on-cover frame; inventories collapse; settings gain a rail column
+
+Rendering the focus frame against a real opaque cover (not the placeholder covers the tests used)
+showed the "outside the cover" negative-margin ring was clipped left/right by the tile width while
+top/bottom overflowed into the taller shelf cell — so selection looked broken on real artwork. The
+selector is now a 5px accent border drawn at the cover bounds (topmost tile layer, no overflow, so it
+can never be clipped) plus the themed glow; a real-cover regression test captures this. Lesson:
+gamepad-tile visuals must be verified with an opaque cover, not only the missing-artwork placeholder.
+
+The texture-pack inventory is collapsed by default in both modes because a real library holds
+hundreds of packs and the matched/attention totals are what a user needs. Gamepad shows an
+"N installed packs" control that reveals a bounded list on A; Desktop moves the full list into a
+collapsed Expander backed by a virtualizing ListBox so an expanded large library stays responsive.
+The gamepad reveal control is a view-state row excluded from executable Desktop/Gamepad parity.
+
+Gamepad Settings navigation added a left-rail focus column so the vertical section list responds to
+the D-pad, not only LB/RB. Left steps from the content into the rail; on the rail Up/Down move
+sections live and Right/A return to the content; LB/RB remain a shortcut from either column. Values
+change with A (or Right), NeoStation-style, which frees Left/Right for column movement; the active
+column is shown by filling the selected rail item and dimming the inactive content pane. The theme
+gallery integrates the same way — Left from its first column steps out to the rail.
+
+## 2026-08-01 — Themes is a real settings section in both modes; selector hardened
+
+The Desktop settings window now has its own Themes section, not only the toolbar menu, so it matches
+Gamepad settings — appearance is selectable from the settings surface in both modes. `SettingsSection`
+gained `Themes`; `EmulatorSettingsViewModel` adds it (and exposes the shared `ThemeChoice` list) only
+when the host supplies theme choices, and renders the same swatch gallery the Gamepad gallery uses.
+Gamepad continues to present themes as its dedicated gallery page and therefore excludes both Themes
+and the Desktop-only Emulators slice from its projected row sections. Emulators paths/arguments remain
+the one section that is still Desktop-only, pending the deferred Gamepad emulator-settings work.
+
+The read-only pack inventory Expander on Desktop was too small and narrow; it now stretches to the
+content width with a much taller virtualized list. The focused-cover selector was thickened to a 6px
+accent border, and — because the corner bleed reported on real hardware does not reproduce under the
+headless Skia renderer — the cover art is now clipped with a larger corner radius than the focus ring
+so the art corners are pulled inside the ring regardless of GPU anti-aliasing.
+
+## 2026-08-01 — Desktop theme selection lives in Settings
+
+The Desktop toolbar theme flyout was removed after Themes became a complete Settings section. Keeping
+both entry points duplicated the same catalog and crowded the small group of global toolbar actions;
+the gear is now the single Desktop configuration entry point. Gamepad mode retains its controller-native
+Themes page, and both settings surfaces continue to share the same theme-choice instances and persistence
+path so selection state stays synchronized.
+
+## 2026-08-02 — Covers fill one canonical per-platform frame again (Steam Deck grid fixes)
+
+Steam Deck testing reported three grid faults together: covers rendering at roughly half their
+expected height with empty space above, intermittent blank tiles, and the controller selector
+sometimes unable to move right / "stuck". They share one cause.
+
+Commit `232229b` (2026-07-25) had quietly reversed the 2026-07-17 "one canonical frame per platform"
+decision: `GameViewModel` began adopting each loaded bitmap's own aspect ratio (`SetCoverAspectRatio`,
+raising `CoverAspectRatioChanged`). Two consequences followed on a real mixed-provider library:
+
+- The shared cover shelf is `max(cover height)` across the view, and covers bottom-align in it. Once
+  tiles adopt their own ratios, a single tall or off-ratio scan balloons the shelf and every other
+  cover renders at a fraction of it — the "covers only take half their space" report.
+- Every cover finishing its async load fired `CoverAspectRatioChanged → UpdateCoverLayout()`, which
+  re-applied layout to all tiles and **recomputed `GamepadColumnCount` from width arithmetic**,
+  clobbering the authoritative rendered column count the view reports. A momentarily-low arithmetic
+  count made Right/Left clamp partway across a row (the 2026-07-31 "stuck at second column" fix,
+  re-broken), and the constant relayout churn as covers streamed in surfaced as blank/again-blank
+  tiles.
+
+The fix restores the documented behavior: `CoverAspectRatio` is the platform's canonical frame for
+the whole session, set once at construction, and the real cover fills it (`UniformToFill`, already in
+the tile templates), cropping at most the ~2px of outer bleed the 2026-07-17 decision accepted. A
+cover load now only toggles `HasCoverImage`; it never resizes the shelf or re-runs the column-count
+arithmetic. `SetCoverAspectRatio`, the `CoverAspectRatioChanged` event, and its `UpdateCoverLayout`
+subscription were removed. Arcade already used a fixed landscape frame, so its behavior is unchanged;
+now every platform behaves the same way it does. Regression tests assert an off-ratio cover load
+leaves a tile's canonical frame and the shared shelf untouched, and that a cover load no longer
+resets the rendered gamepad column count.
+
+## 2026-08-02 — Save states get their own detected folder and override, 1:1 with saves
+
+Steam Deck testing found arcade (RetroArch/FinalBurn Neo) save states were not syncing: a state was
+made and the post-exit pass reported "no saves were found to sync". Two gaps, now closed.
+
+- **Silent compatibility drop.** `AuxiliarySyncProvider` only enumerates states when a
+  `StateCompatibility` can be built, and for a RetroArch core that requires the core's
+  `display_version` from its `info/*.info` file. On a Flatpak RetroArch, or when the core file is
+  dropped in beside EmuShelf, that info file is often absent, so compatibility resolved to null and
+  every state was silently dropped with no upload. A libretro state is written by the core, so the
+  core identity is the compatibility key: when `display_version` is unavailable, EmuShelf now falls
+  back to a stable token derived from the core file's byte length (identical for the same build on
+  every machine, different across builds). Architecture still comes from the core binary. So state
+  sync resolves whenever the core file exists, while the "only restore a state from the same build"
+  guard is preserved.
+
+- **No way to correct the folder.** Save states now have their own detected-folder display and manual
+  override, mirroring the save folder exactly: `SaveLocationSettings.StateDirectoryOverride`,
+  `CloudSaveSyncSettings.GetStateOverride`/`WithStateOverride`, a `StateDirectoryOverride` on
+  `SaveProviderContext` that replaces the resolved state root in `AddStateSources`, and a second
+  path box + Browse button under the "Automatically sync save states" toggle in Settings. It persists
+  the same way the save override does (immediately on Browse, and in the Settings Save batch).
+
+## 2026-08-02 — The focused-game achievement widget follows a details refresh
+
+RetroAchievements progress that arrives from a detail refresh — opening the achievements overlay, or
+the one post-exit refresh — writes the account's new unlock count to the progress store, but only a
+full library reload re-applied it to a tile. So after unlocking an achievement the Gamepad focused-game
+dock widget kept showing the pre-unlock count ("0/9") even though the overlay already reflected it.
+`MainViewModel` now subscribes to `IRetroAchievementsDetailsService.DetailsRefreshed` and re-applies
+the achievement display for every loaded tile linked to that RA game (re-reading the same local
+stores the reload path uses, no network), marshaled to the UI thread. The dock widget and grid mark
+now update as soon as fresh progress is cached, whether from the overlay or the post-exit pass.
+
+## 2026-08-02 — State-compatibility versions never launch the emulator; Flatpak falls back to the build commit
+
+A second Steam Deck pass surfaced a modal "Unknown parameter: --version" dialog every time Saves
+settings opened. Version detection for save-state compatibility launched the configured emulator
+with `--version`; GUI emulators (DuckStation, PCSX2, RPCS3, Dolphin) treat an unknown argument as a
+fatal error and pop a dialog rather than printing a version — and the process never exits on its own,
+so it also blocked detection until a 5s kill. The subprocess is removed entirely. A binary with no
+embedded version resource (a typical Linux build) now keys compatibility off a stable file-length
+token (`exelen{bytes}` / `corelen{bytes}` via one shared helper) — identical per build across
+machines, different across builds — so nothing is ever run to read a version.
+
+The same pass found Flatpak PCSX2 reporting "the emulator/core version could not be detected, so
+states will not be synced": many Flathub emulators publish no `--show-version` string, which
+resolved compatibility to null and dropped every state. `flatpak info` now falls back to
+`--show-commit` (always present for an installed app, stable per build) when the version is empty, so
+compatibility resolves and states sync. Architecture still comes from `--show-arch` / the binary.
+
+## 2026-08-02 — A launch/exit state sync is scoped to the launched game
+
+This supersedes the launch/exit portion of "Manual state sync includes every eligible state"
+(2026-07-29). Because states live in one folder per emulator (not per game), launching any PS2 game
+made the launch/exit pass hash and sync *every* PS2 game's states — dozens of ~15 MB PCSX2 states,
+so the pass read GB on each launch and the first sync uploaded everything. The launch/exit state
+phase is now scoped to the launched game: `MainViewModel` builds the game's keys (its ROM file stem,
+how RetroArch names states, plus the serials/disc/title/arcade ids the metadata store extracted, how
+DuckStation, PCSX2, PPSSPP, Dolphin, and RPCS3 name them) and passes them to `SyncSystemAsync`;
+`AuxiliarySyncProvider` includes only states whose normalized file name contains a key, for both
+local enumeration and remote selection. Matching is deliberately fuzzy alphanumeric-contains: a
+false positive only syncs an extra state, and a game whose id is unknown simply isn't auto-synced on
+launch. A **manual Sync all passes no keys and still reconciles every state**, so nothing is ever
+permanently excluded — it is the exact escape hatch. Regular battery/memory-card saves are never
+scoped.
+
+## 2026-08-02 — Gamepad grid hardening: cover backstop and full-tile reveal
+
+Two Steam Deck grid faults beyond the cover-frame fix. Covers load off per-element
+AttachedToVisualTree / DataContextChanged events, which race during rapid LB/RB recycling and could
+leave a tile an empty cell; after the grid lays out, the view now requests the cover for every
+realized tile as a settle-time backstop (LoadCover is idempotent, so already-loaded/loading tiles
+are skipped). And on the Deck's short grid viewport a tall portrait tile (cover + title ≈ 324px)
+could be revealed bottom-aligned with its cover clipped ("half the cover"); after BringIntoView the
+view nudges the scroll, in content coordinates, so the whole focused tile stays inside the viewport,
+scrolling only when it is actually clipped.
+
+## 2026-08-02 — RetroArch save-state compatibility keys on the core, not the frontend
+
+Real cross-machine testing showed states uploaded from a Steam Deck never restored on Windows:
+Google Drive held them, but the Windows launch marked each "written by a different emulator version"
+and skipped it. Cause: the state-compatibility key mixed in the RetroArch *frontend* version
+(`ResolveEmulatorVersion`), and two machines almost never run the identical RetroArch build — so the
+Deck key and the Windows key differed even when the core was byte-identical.
+
+A libretro save state is produced by the core, so its portability depends on the core (name +
+version) and CPU architecture, not the frontend. The RetroArch key is now
+`retroarch:<coreId> | <arch> | <coreVersion> | <coreVersion>` with the frontend version removed. The
+core's published `display_version` (from its info file) is platform-independent, so a state made on
+Linux restores on Windows for the same core version; the file-length token remains a within-platform
+fallback only for when the info file is absent (a `.so` and a `.dll` differ in length, so cross-OS
+restore then needs the info file present on both). Standalone emulators (DuckStation, PCSX2, …) keep
+keying on their own version — that is the correct guard, since their states are version-specific.
+
+Consequence: states already uploaded under the old key keep it (an unchanged state retains its
+recorded compatibility, by design), so a fresh state must be made after both machines update before
+cross-machine restore is observable; new states carry the new, matching key.
+
+## 2026-08-02 — State compatibility is a structured, provenance-aware identity, not an opaque hash
+
+Real Deck↔Windows testing showed the core-keying fix above was necessary but not sufficient: states
+still did not restore. Two residual causes, both because the compatibility "version" could be an
+OS-specific token that two machines never agree on.
+
+- **RetroArch, no info file.** When the core's `display_version` is unavailable (a bare core dropped
+  beside EmuShelf, a Flatpak with no `info/` dir — the common Deck setup), the key fell back to a
+  core **file-length** token. A `.so` (Deck) and a `.dll` (Windows) of the same core have different
+  byte lengths, so the keys differed and Windows rejected every Deck state. It also broke
+  *asymmetrically*: one machine reading `display_version` while the other fell back never matched.
+- **Standalone (PCSX2), Flatpak.** A Flatpak that publishes no version fell back to a `commit<hash>`
+  token, which can never equal a native build's `2.x` version resource — so Deck-Flatpak → Windows
+  PCSX2 states were a guaranteed skip.
+
+The compatibility value is now a **structured, parseable** string —
+`st1|<emulatorId|retroarch:coreId>|<arch>|<auth|unk>:<version>` — compared component-wise rather than
+by exact-string/hash equality. Rule: the emulator/core **id and CPU architecture must always match**;
+the build **version is enforced only when BOTH machines recorded an *authoritative* one** (a core
+`display_version`, an executable version resource, a Flatpak's published version). When either side's
+version is unknown, the state is compatible on id+arch alone. The OS-specific length/commit tokens are
+removed entirely — an unavailable version is recorded as *unknown*, not substituted. This lets a
+bare-core Deck state restore on a Windows `.dll` of the same core (both x64, unknown version), lets a
+Flatpak-PCSX2 state reach a native Windows PCSX2, and still keeps two genuinely different *known*
+versions apart. Keys uploaded before this format are opaque slug-hashes: they fall back to exact-match,
+so a fresh state is still required to cross machines (as already documented above).
+
+This is safe to be permissive: sync never deletes, `SaveSyncService` backs up the losing copy before
+any overwrite, and RetroArch/PCSX2 both validate a state's own embedded version tag on load and refuse
+a genuinely incompatible one — so the worst case of an over-permissive match is "the emulator declines
+to load it," never data loss. The prior behaviour's worst case was the feature silently doing nothing.
+
+Diagnostics were extended to make a residual mismatch self-evident: the launch/exit state pass now logs
+the resolved `compatibilityKey` (two machines must print the same key to restore) and every distinct
+skip reason, to `Logs/EmuShelf-YYYY-MM-DD.log`.
+
+## 2026-08-02 — The gamepad grid is deterministic: reserved gutter, overlay selector, geometry reveal
+
+Real Steam Deck use surfaced three grid faults. Investigation (with adversarial verification) placed
+each precisely, and the fix makes the grid's focus and sizing deterministic instead of dependent on
+virtualization/compositor timing that the headless renderer can't reproduce.
+
+- **The selector sometimes vanished.** The accent focus ring was a `Border` *inside* the virtualized
+  item template (`IsVisible="{Binding IsFocused}"`), so it only existed while its tile was realized.
+  When focus moved to a row outside the realized window and the reveal stranded (it gave up silently
+  after five attempts, or a rapid d-pad repeat pre-empted it), no realized tile carried the ring and
+  the selector disappeared entirely. The ring is now a single **overlay** (`GamepadSelectorRing`) that
+  lives outside the `ItemsRepeater`, in the shared scroller content, positioned by the view from the
+  focused cover's geometry. It can never be virtualized away or occluded, and it scrolls glued to the
+  cover because it shares the content. It prefers the realized cover's real bounds and falls back to
+  computed geometry, so it is drawn the instant focus moves.
+- **The right column's cover/glow clipped.** The cover width was packed to fill the row to the
+  sub-pixel remainder with zero side inset, so the edge tile's focus glow (which blurs ~30px past the
+  cover) fell into a 0–4px gutter and was shaved by the scroller's clip; a stale cell width right after
+  a mode/platform switch could also push a whole column past the edge. The gamepad grid now reserves a
+  `GamepadGridSideGutter` (40px, > the glow radius) on each side — mirrored by the repeater's `Margin`
+  and subtracted in the column arithmetic — so the focused tile's glow always has room and the column
+  count is derived from the true content region.
+- **Reveal is now deterministic.** Instead of `BringIntoView` plus a manual nudge that read a possibly
+  stale element rectangle, the target scroll offset is computed from the focused index, the column
+  count, and the uniform row height, clamped to keep a full glow radius of clearance. This can't be
+  lost to a competing layout pass or a fast d-pad repeat — the mechanisms behind the strand.
+
+The `staggered/unpolished` perception was investigated and is **not** a bug: rows are uniform height,
+and the ragged tops are covers of different per-platform aspect ratios bottom-aligned on the shared
+shelf (the mandated OpenEmu-style framing, DECISIONS 2026-07-17/08-02). It is left as designed.
+
+Virtualization, asynchronous cover loading, and per-platform cover ratios are preserved. Because the
+residual timing faults cannot be reproduced off-device, a **fault-only** diagnostic (`LogGamepadGridFault`)
+logs to `Logs/EmuShelf-*.log` when the focused tile fails to realize, the selector cannot be placed, or
+the arithmetic and rendered column counts disagree — so a single Deck run pinpoints any remainder
+without flooding the log on every d-pad move.

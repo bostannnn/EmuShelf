@@ -23,12 +23,29 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     public int FlushCalls { get; private set; }
 
-    public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
-        _units[unitId] = new StoredUnit(content, Hash(content), modifiedUtc);
+    public void Seed(
+        string unitId,
+        byte[] content,
+        DateTimeOffset modifiedUtc,
+        string? compatibility = null) =>
+        _units[unitId] = new StoredUnit(content, Hash(content), modifiedUtc, compatibility);
+
+    public void ReplacePayloadWithoutUpdatingIndex(string unitId, byte[] content)
+    {
+        var stored = _units[unitId];
+        _units[unitId] = stored with { Content = content };
+    }
 
     public bool Has(string unitId) => _units.ContainsKey(unitId);
 
+    /// <summary>The unit ids the service announced before transferring anything, in order.</summary>
+    public List<string> AnnouncedDownloads { get; } = [];
+
+    public void ExpectDownloads(IEnumerable<string> unitIds) => AnnouncedDownloads.AddRange(unitIds);
+
     public byte[] Content(string unitId) => _units[unitId].Content;
+
+    public string? Compatibility(string unitId) => _units[unitId].Compatibility;
 
     public Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(Connected);
@@ -38,14 +55,24 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
         Guard();
         ListCalls++;
         IReadOnlyList<SaveUnitSnapshot> snapshots = _units
-            .Select(pair => new SaveUnitSnapshot(pair.Key, pair.Value.Hash, pair.Value.ModifiedUtc))
+            .Select(pair => new SaveUnitSnapshot(
+                pair.Key,
+                pair.Value.Hash,
+                pair.Value.ModifiedUtc,
+                pair.Value.Compatibility))
             .ToList();
         return Task.FromResult(snapshots);
     }
 
+    /// <summary>Unit ids the index advertises but whose payload the remote cannot produce.</summary>
+    public HashSet<string> MissingPayloads { get; } = new(StringComparer.Ordinal);
+
     public Task<Stream> DownloadAsync(string unitId, CancellationToken cancellationToken = default)
     {
         Guard();
+        if (MissingPayloads.Contains(unitId))
+            throw new CloudPayloadMissingException(unitId);
+
         Downloads++;
         Stream stream = new MemoryStream(_units[unitId].Content, writable: false);
         return Task.FromResult(stream);
@@ -56,16 +83,19 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
         Stream content,
         string contentHash,
         DateTimeOffset modifiedUtc,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? compatibility = null)
     {
         Guard();
         using var buffer = new MemoryStream();
         await content.CopyToAsync(buffer, cancellationToken);
-        _units[unitId] = new StoredUnit(buffer.ToArray(), contentHash, modifiedUtc);
+        _units[unitId] = new StoredUnit(buffer.ToArray(), contentHash, modifiedUtc, compatibility);
         Uploads++;
     }
 
-    public Task FlushAsync(CancellationToken cancellationToken = default)
+    public Task FlushAsync(
+        IProgress<SaveTransferProgress>? transferProgress = null,
+        CancellationToken cancellationToken = default)
     {
         FlushCalls++;
         return Task.CompletedTask;
@@ -79,5 +109,9 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 
     internal static string Hash(byte[] content) => Convert.ToHexString(SHA256.HashData(content));
 
-    private readonly record struct StoredUnit(byte[] Content, string Hash, DateTimeOffset ModifiedUtc);
+    private readonly record struct StoredUnit(
+        byte[] Content,
+        string Hash,
+        DateTimeOffset ModifiedUtc,
+        string? Compatibility = null);
 }

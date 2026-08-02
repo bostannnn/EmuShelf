@@ -180,9 +180,10 @@ public sealed class GameCoverService : IGameCoverService
 
     private static void CreateThumbnail(string sourcePath, string destinationPath)
     {
-        using var source = new Bitmap(sourcePath);
-        var size = CalculateThumbnailSize(source.PixelSize);
-        using var thumbnail = source.CreateScaledBitmap(size, BitmapInterpolationMode.HighQuality);
+        using var thumbnail = SafeImageDecoder.DecodeToFit(
+            sourcePath,
+            ThumbnailWidth,
+            ThumbnailHeight);
         using var destination = File.Create(destinationPath);
         thumbnail.Save(destination, PngBitmapEncoderOptions.Default);
     }

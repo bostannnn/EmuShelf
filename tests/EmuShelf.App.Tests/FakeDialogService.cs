@@ -1,4 +1,5 @@
 using EmuShelf.App.Services;
+using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Systems;
 
@@ -14,17 +15,20 @@ internal sealed class FakeDialogService : IDialogService
     public string? EmulatorExecutableToReturn { get; set; }
     public string? Rpcs3ConfigurationDirectoryToReturn { get; set; }
     public string? CoverImageToReturn { get; set; }
+    public PickedGameCover? PickedGameCoverToReturn { get; set; }
     public bool ConfirmRemoveToReturn { get; set; }
     public bool ConfirmRemoveGamesToReturn { get; set; }
     public MetadataConsentChoice MetadataConsentToReturn { get; set; } =
         MetadataConsentChoice.NotNow;
     public int MetadataConsentPrompts { get; private set; }
     public string? LastCoverGameTitle { get; private set; }
+    public GameCoverPickerContext? LastCoverPickerContext { get; private set; }
     public string? LastRemoveGameTitle { get; private set; }
     public int? LastRemoveGameCount { get; private set; }
     public Exception? SettingsException { get; set; }
     public int SettingsShown { get; private set; }
     public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
+    public IReadOnlyList<ThemeChoiceViewModel>? ThemeChoices { get; private set; }
     public (string GameTitle, int RetroAchievementsGameId)? AchievementDetailsRequest { get; private set; }
 
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult(FilesToReturn);
@@ -38,10 +42,22 @@ internal sealed class FakeDialogService : IDialogService
         Task.FromResult(LibretroCoreToReturn);
     public Task<string?> PickRpcs3ConfigurationDirectoryAsync() =>
         Task.FromResult(Rpcs3ConfigurationDirectoryToReturn);
+    public string? GoogleClientJsonPath { get; set; }
+
+    public Task<string?> PickGoogleClientJsonAsync() => Task.FromResult(GoogleClientJsonPath);
+
     public Task<string?> PickCoverImageAsync(string gameTitle)
     {
         LastCoverGameTitle = gameTitle;
         return Task.FromResult(CoverImageToReturn);
+    }
+    public Task<PickedGameCover?> PickGameCoverAsync(GameCoverPickerContext context)
+    {
+        LastCoverPickerContext = context;
+        LastCoverGameTitle = context.GameTitle;
+        return Task.FromResult(
+            PickedGameCoverToReturn ??
+            (CoverImageToReturn is null ? null : new PickedGameCover(CoverImageToReturn)));
     }
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle)
     {
@@ -71,13 +87,15 @@ internal sealed class FakeDialogService : IDialogService
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null)
+        TexturePackSettingsContext? texturePacks = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         SettingsShown++;
         TexturePacks = texturePacks;
         MaintenanceActions = maintenance;
         RetroAchievementsContext = retroAchievements;
         CloudSaveSyncContext = cloudSaves;
+        ThemeChoices = themeChoices;
         if (SettingsException is not null)
             return Task.FromException(SettingsException);
         return Task.CompletedTask;

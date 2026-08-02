@@ -118,4 +118,76 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         Assert.False(loaded.CloudSaveSync.Enabled);
         Assert.Null(loaded.CloudSaveSync.RemoteName);
     }
+
+    [Fact]
+    public void OptionalContent_IsOptIn()
+    {
+        var defaults = new CloudSaveSyncSettings().GetLocation("playstation2");
+        Assert.False(defaults.SyncSaveStates);
+
+        var enabled = new CloudSaveSyncSettings()
+            .WithOptionalContent("playstation2", syncSaveStates: true)
+            .GetLocation("playstation2");
+
+        Assert.True(enabled.SyncSaveStates);
+    }
+
+    [Fact]
+    public void SaveStateOverride_RoundTripsAndIsIndependentOfTheSaveFolder()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+        var configuration = new CloudSaveSyncSettings { Enabled = true, RemoteName = "gdrive" }
+            .WithOverride("arcade", "/home/deck/retroarch/saves")
+            .WithStateOverride("arcade", "/home/deck/retroarch/states")
+            .WithOptionalContent("arcade", syncSaveStates: true);
+
+        service.Save(new AppSettings { CloudSaveSync = configuration });
+        var loaded = service.Load().CloudSaveSync;
+
+        Assert.Equal(configuration, loaded);
+        // The two folders are independent, mirroring the save-folder override 1:1 for save states.
+        Assert.Equal("/home/deck/retroarch/saves", loaded.GetOverride("arcade"));
+        Assert.Equal("/home/deck/retroarch/states", loaded.GetStateOverride("arcade"));
+        Assert.True(loaded.GetLocation("arcade").SyncSaveStates);
+
+        // Clearing one leaves the other and the opt-in intact.
+        var cleared = loaded.WithStateOverride("arcade", null);
+        Assert.Null(cleared.GetStateOverride("arcade"));
+        Assert.Equal("/home/deck/retroarch/saves", cleared.GetOverride("arcade"));
+        Assert.True(cleared.GetLocation("arcade").SyncSaveStates);
+    }
+
+    // Cheats and patches are no longer synced, so the flag is gone from the record. A settings file
+    // written by a build that had it must still load, and must not disturb the state opt-in beside it.
+    [Fact]
+    public void RemovedCheatsAndPatchesSetting_DoesNotBreakExistingSettingsFiles()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"SaveLocations\":{\"playstation2\":" +
+            "{\"SyncCheatsAndPatches\":true,\"SyncSaveStates\":true}}}}");
+
+        var loaded = new JsonSettingsService(AppPaths).Load();
+
+        Assert.True(loaded.CloudSaveSync.GetLocation("playstation2").SyncSaveStates);
+    }
+
+    [Fact]
+    public void RemovedRetentionSetting_DoesNotBreakExistingSettingsFiles()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"SaveLocations\":{\"playstation2\":" +
+            "{\"SyncSaveStates\":true,\"SaveStateRetention\":7}}}}");
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+
+        var loaded = service.Load();
+
+        Assert.True(loaded.CloudSaveSync.GetLocation("playstation2").SyncSaveStates);
+        service.Save(loaded);
+        Assert.DoesNotContain("SaveStateRetention", File.ReadAllText(AppPaths.SettingsFilePath), StringComparison.Ordinal);
+    }
 }

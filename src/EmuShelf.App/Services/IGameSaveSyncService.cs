@@ -7,5 +7,6 @@ public interface IGameSaveSyncService
 
     Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<string>? launchStateKeys = null);
 }

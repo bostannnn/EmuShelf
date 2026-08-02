@@ -19,7 +19,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         new AsyncRelayCommand<GameViewModel?>(_ => Task.CompletedTask);
     private static readonly IAsyncRelayCommand NoCommand =
         new AsyncRelayCommand(() => Task.CompletedTask);
-    private readonly double _defaultCoverAspectRatio;
     private readonly IReadOnlyList<GameDisc> _discs;
 
     /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
@@ -45,6 +44,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public string DiscCountText => $"{DiscCount} discs";
     public string SelectedDiscText => $"Disc {SelectedDiscNumber} selected";
     public bool ShowsSelectedDisc => IsMultiDisc && SelectedDiscNumber != 1;
+    public string DiscBadgeText => $"Disc {SelectedDiscNumber} of {DiscCount}";
     public long Id { get; }
     public string SystemId { get; }
     public string Path { get; }
@@ -67,12 +67,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public double ListCoverWidth { get; private set; }
     public double ListCoverHeight { get; }
 
-    /// <summary>Displayed cover aspect ratio (width:height). This starts at the platform default
-    /// and switches to the actual artwork ratio after the cover has loaded.</summary>
-    public double CoverAspectRatio { get; private set; }
-
-    /// <summary>Raised when loading or replacing artwork changes this tile's required frame.</summary>
-    public event EventHandler? CoverAspectRatioChanged;
+    /// <summary>Displayed cover aspect ratio (width:height). This is the platform's canonical
+    /// frame for the whole session: every cover of a system is drawn into one frame and filled
+    /// (UniformToFill), so a system's tiles are uniform and one off-ratio scan can never balloon
+    /// the shared shelf. See DECISIONS 2026-07-17 and 2026-08-02.</summary>
+    public double CoverAspectRatio { get; }
 
     /// <summary>Height of the grid cover shelf this tile sits in: the tallest cover in the
     /// current view, so a mixed collection bottom-aligns covers to one baseline while a single
@@ -150,6 +149,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>Context-menu copy supplied by the library's shared selection model.</summary>
+    [ObservableProperty]
+    public partial string SelectionRemovalText { get; set; } = "Remove from library…";
+
     /// <summary>Whether the grid tile shows the achievement/trophy mark (a confirmed RA match).</summary>
     [ObservableProperty]
     public partial bool ShowAchievementMark { get; set; }
@@ -170,6 +173,31 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// exists but progress hasn't loaded, otherwise the number of unlocked achievements.</summary>
     public int AchievementSortKey { get; private set; } = -1;
 
+    /// <summary>Couch-distance achievement copy for the focused-game dock.</summary>
+    public string GamepadAchievementCountText =>
+        TryGetAchievementProgress(out var awarded, out var total)
+            ? $"{awarded}/{total}"
+            : "—/—";
+
+    public double GamepadAchievementProgressRatio =>
+        TryGetAchievementProgress(out var awarded, out var total)
+            ? Math.Clamp(awarded / (double)total, 0, 1)
+            : 0;
+
+    /// <summary>The actual source that A will launch, kept compact for the focused-game dock.</summary>
+    public string GamepadSubtitle
+    {
+        get
+        {
+            var trimmedPath = LaunchModel.Path.TrimEnd(
+                System.IO.Path.DirectorySeparatorChar,
+                System.IO.Path.AltDirectorySeparatorChar);
+            var fileName = System.IO.Path.GetFileName(trimmedPath);
+            var source = string.IsNullOrWhiteSpace(fileName) ? LaunchModel.Title : fileName;
+            return source;
+        }
+    }
+
     /// <summary>Applies a resolved achievement presentation from the display state machine.</summary>
     public void ApplyAchievementsDisplay(RetroAchievementsDisplay display)
     {
@@ -177,6 +205,23 @@ public partial class GameViewModel : ObservableObject, IDisposable
         AchievementsColumnText = display.ColumnText;
         AchievementsTooltip = display.Tooltip;
         AchievementSortKey = ComputeAchievementSortKey(display);
+    }
+
+    partial void OnAchievementsColumnTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(GamepadAchievementCountText));
+        OnPropertyChanged(nameof(GamepadAchievementProgressRatio));
+    }
+
+    private bool TryGetAchievementProgress(out int awarded, out int total)
+    {
+        awarded = 0;
+        total = 0;
+        var slash = AchievementsColumnText.IndexOf('/');
+        return slash > 0 &&
+               int.TryParse(AchievementsColumnText.AsSpan(0, slash), out awarded) &&
+               int.TryParse(AchievementsColumnText.AsSpan(slash + 1), out total) &&
+               awarded >= 0 && total > 0;
     }
 
     private static int ComputeAchievementSortKey(RetroAchievementsDisplay display)
@@ -262,13 +307,15 @@ public partial class GameViewModel : ObservableObject, IDisposable
         AccentColor = accentColor;
         PlatformArtwork = platformArtwork ??
             EmuShelf.App.ViewModels.PlatformArtwork.ForSystem(game.SystemId);
-        // The system ratio sizes placeholders until artwork is available. Real artwork supplies
-        // its own ratio so regional packaging is not cropped into a fixed system frame.
-        _defaultCoverAspectRatio = coverAspectRatio;
+        // One canonical frame per platform, shared by the real cover and the placeholder, so a
+        // system's covers are uniform. The real cover fills it (UniformToFill), which crops only the
+        // ~2px of outer bleed on an off-ratio scan and never lets a single tall scan balloon the
+        // shared shelf so every other cover renders half-height. See DECISIONS 2026-07-17/2026-08-02.
         CoverAspectRatio = coverAspectRatio;
         // Default to the fixed frame width until the library recomputes it from the viewport.
         ApplyCoverLayout(CoverFrameWidth, Math.Round(CoverFrameWidth / coverAspectRatio));
-        // List rows share one height; their width follows the cover currently being shown.
+        // List rows share one height; their width follows the platform's canonical cover shape so a
+        // square PS1 cover stays square instead of being cropped into a portrait thumbnail.
         ListCoverHeight = ListCoverFrameHeight;
         ListCoverWidth = Math.Round(ListCoverFrameHeight * coverAspectRatio);
         FormatLabel = GetFormatLabel(LaunchModel);
@@ -296,7 +343,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedDiscNumber));
         OnPropertyChanged(nameof(SelectedDiscText));
         OnPropertyChanged(nameof(ShowsSelectedDisc));
+        OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
+        OnPropertyChanged(nameof(GamepadSubtitle));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
         foreach (var option in DiscOptions)
             option.IsCurrent = option.Disc.Game.Id == selectedDisc.Game.Id;
@@ -320,33 +369,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
             CoverImage?.Dispose();
     }
 
-    partial void OnCoverImageChanged(Bitmap? value)
-    {
-        OnPropertyChanged(nameof(HasCoverImage));
-
-        if (value is null)
-        {
-            SetCoverAspectRatio(_defaultCoverAspectRatio);
-            return;
-        }
-        if (value.PixelSize.Height <= 0)
-            return;
-
-        var ratio = value.PixelSize.Width / (double)value.PixelSize.Height;
-        SetCoverAspectRatio(ratio);
-    }
-
-    private void SetCoverAspectRatio(double ratio)
-    {
-        if (Math.Abs(ratio - CoverAspectRatio) < 0.001)
-            return;
-
-        CoverAspectRatio = ratio;
-        ListCoverWidth = Math.Round(ListCoverFrameHeight * ratio);
-        OnPropertyChanged(nameof(CoverAspectRatio));
-        OnPropertyChanged(nameof(ListCoverWidth));
-        CoverAspectRatioChanged?.Invoke(this, EventArgs.Empty);
-    }
+    // The frame never adopts the loaded bitmap's own ratio: the cover fills the platform's canonical
+    // frame (UniformToFill in the tile), which keeps every tile of a system uniform and stops one
+    // off-ratio scan from ballooning the shared shelf. So loading a cover only toggles HasCoverImage.
+    partial void OnCoverImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasCoverImage));
 
     [RelayCommand]
     private void BeginEditTitle()

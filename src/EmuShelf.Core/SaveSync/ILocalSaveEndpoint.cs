@@ -13,10 +13,14 @@ public interface ILocalSaveEndpoint
     /// <summary>Opens the local payload for a unit for reading.</summary>
     Task<Stream> ReadAsync(string unitId, CancellationToken cancellationToken = default);
 
-    /// <summary>Writes (creating or overwriting) the local unit from incoming content.</summary>
+    /// <summary>
+    /// Stages and verifies incoming content against <paramref name="expectedContentHash"/>, then
+    /// writes (creating or overwriting) the local unit. A mismatch must leave the live unit intact.
+    /// </summary>
     Task WriteAsync(
         string unitId,
         Stream content,
+        string expectedContentHash,
         DateTimeOffset modifiedUtc,
         CancellationToken cancellationToken = default);
 

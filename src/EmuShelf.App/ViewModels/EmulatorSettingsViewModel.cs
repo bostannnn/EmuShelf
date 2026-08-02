@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
+using EmuShelf.Infrastructure.SaveSync;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
@@ -18,6 +19,7 @@ public enum SettingsSection
     RetroAchievements,
     Saves,
     TexturePacks,
+    Themes,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
@@ -30,6 +32,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly TexturePackSettingsContext? _texturePacks;
     private readonly IAppLogger _logger;
+    // Held only for the duration of one cloud operation so the Stop button can reach it.
+    private CancellationTokenSource? _cloudCancellation;
     private bool _synchronizingSharedInstallation;
 
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
@@ -45,6 +49,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
+    [NotifyPropertyChangedFor(nameof(IsThemesSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
@@ -52,6 +57,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
+    public bool IsThemesSection => SelectedSection == SettingsSection.Themes;
+
+    /// <summary>Appearance choices shown as a Themes section so Desktop and Gamepad settings both
+    /// expose theme selection; empty when the host did not provide them.</summary>
+    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
+
+    public bool HasThemes => ThemeChoices.Count > 0;
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -136,10 +148,35 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial bool AutomaticallyFetchMetadataAfterImport { get; set; }
 
     [ObservableProperty]
+    public partial bool ShowEmptyPlatforms { get; set; }
+
+    [ObservableProperty]
     public partial string CloudRemoteName { get; set; } = "emushelf-gdrive";
 
     [ObservableProperty]
     public partial string CloudFolder { get; set; } = "EmuShelf/Saves";
+
+    /// <summary>
+    /// The user's own Google OAuth client id, or empty to use rclone's shared client. Its own
+    /// client avoids the shared one's rate limiting — the multi-second wait before a launch — and
+    /// the shared client's retirement during 2026.
+    /// </summary>
+    [ObservableProperty]
+    public partial string CloudClientId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The matching client secret, read from the imported JSON. Held only long enough to hand to
+    /// rclone, which stores it in its own config next to the OAuth token; it is never written to
+    /// EmuShelf's settings, never shown, and dropped as soon as the connection is made.
+    /// </summary>
+    private string? _cloudClientSecret;
+
+    /// <summary>What was imported, for the row under the button. Never the secret itself.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasCloudClientStatus))]
+    public partial string CloudClientStatusText { get; set; } = string.Empty;
+
+    public bool HasCloudClientStatus => !string.IsNullOrWhiteSpace(CloudClientStatusText);
 
     /// <summary>One row per registered save platform, rendered by a single view template.</summary>
     public ObservableCollection<CloudSavePlatformRowViewModel> CloudPlatforms { get; } = new();
@@ -167,6 +204,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
     public partial int CloudSyncProgressTotal { get; set; }
+
+    /// <summary>Whether the transfer is running but has not reported a percentage yet.</summary>
+    [ObservableProperty]
+    public partial bool IsCloudTransferIndeterminate { get; set; }
 
     [ObservableProperty]
     public partial string CloudSyncProgressText { get; set; } = string.Empty;
@@ -207,7 +248,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IAppLogger? logger = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null)
+        TexturePackSettingsContext? texturePacks = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -217,6 +259,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
         _logger = logger ?? NullAppLogger.Instance;
+        ThemeChoices = themeChoices ?? [];
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
         if (retroAchievements is not null)
@@ -225,6 +268,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             sections.Add(SettingsSection.Saves);
         if (texturePacks is not null)
             sections.Add(SettingsSection.TexturePacks);
+        if (HasThemes)
+            sections.Add(SettingsSection.Themes);
         Sections = sections;
         if (texturePacks is not null)
             ApplyTexturePackInventory();
@@ -233,6 +278,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             var saves = cloudSaves.Current;
             CloudRemoteName = string.IsNullOrWhiteSpace(saves.RemoteName) ? "emushelf-gdrive" : saves.RemoteName!;
             CloudFolder = string.IsNullOrWhiteSpace(saves.CloudFolder) ? "EmuShelf/Saves" : saves.CloudFolder!;
+            CloudClientId = saves.GoogleClientId ?? string.Empty;
             // One row per registered platform. The row owns its own override, detected path, and
             // per-platform actions, so this view model never names an emulator.
             foreach (var platform in cloudSaves.GetPlatforms())
@@ -290,7 +336,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 isExpanded: false,
                 emulatorInstallationId: installationId,
                 isExecutableShared: isShared,
-                logger: _logger);
+                logger: _logger,
+                folderActions: system.Id == "playstation3" ? null : maintenance?.Folders,
+                runFolderMaintenance: (action, report) => RunMaintenanceAsync(
+                    action,
+                    "Updating remembered folders…",
+                    report));
         }).ToArray();
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
         foreach (var row in Rows)
@@ -301,6 +352,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
+        ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
     }
 
     partial void OnIsSavingChanged(bool value)
@@ -448,6 +500,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 await _metadataPreferences.SaveAutomaticFetchAsync(
                     AutomaticallyFetchMetadataAfterImport);
             }
+            if (_maintenance?.SetShowEmptyPlatforms is not null)
+                await _maintenance.SetShowEmptyPlatforms(ShowEmptyPlatforms);
             PersistCloudSaveLocations();
             CloseRequested?.Invoke(true);
         }
@@ -776,6 +830,36 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             _ = platform.RefreshDetectedDirectoryAsync();
     }
 
+    /// <summary>
+    /// Imports the OAuth client JSON downloaded from the Google Cloud console. Using a personal
+    /// client instead of rclone's shared one is what removes the rate limiting that shows up as a
+    /// slow sync before a launch — and the shared client stops working during 2026.
+    /// </summary>
+    [RelayCommand]
+    private async Task ImportGoogleClientAsync()
+    {
+        try
+        {
+            var path = await _dialogs.PickGoogleClientJsonAsync();
+            if (path is null)
+                return;
+
+            var client = await GoogleOAuthClientFile.ReadAsync(path);
+            CloudClientId = client.ClientId;
+            _cloudClientSecret = client.ClientSecret;
+            CloudClientStatusText = client.ProjectId is null
+                ? "Google client loaded. Press Connect Google Drive to sign in."
+                : $"Google client loaded from project {client.ProjectId}. Press Connect Google Drive to sign in.";
+        }
+        catch (InvalidDataException ex)
+        {
+            // The message names what to download and from where; it never contains file contents.
+            CloudClientId = string.Empty;
+            _cloudClientSecret = null;
+            CloudClientStatusText = ex.Message;
+        }
+    }
+
     [RelayCommand]
     private async Task ConnectCloudAsync()
     {
@@ -790,7 +874,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 CloudRemoteName.Trim(),
                 CloudFolder.Trim(),
                 CollectOverrides(),
-                CancellationToken.None);
+                CancellationToken.None,
+                string.IsNullOrWhiteSpace(CloudClientId) ? null : CloudClientId.Trim(),
+                _cloudClientSecret);
+            // Whatever the outcome, the secret has been handed to rclone and has no further use
+            // here; holding it any longer only widens where it can be read from.
+            _cloudClientSecret = null;
             CloudStatusText = result switch
             {
                 CloudSaveSyncConnectResult.Connected => "Connected. Use Sync now to reconcile enabled saves.",
@@ -887,6 +976,29 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             startingMessage);
     }
 
+    /// <summary>
+    /// Stops the running sync. The transfer commits in batches, so the batches already on the
+    /// remote stay there and the next pass resumes from them rather than starting over.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanCancelCloudSync))]
+    private void CancelCloudSync()
+    {
+        if (_cloudCancellation is not { } cancellation)
+            return;
+
+        CloudStatusText = "Stopping the sync…";
+        try
+        {
+            cancellation.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The operation finished between the button press and this call.
+        }
+    }
+
+    private bool CanCancelCloudSync() => IsCloudBusy && _cloudCancellation is not null;
+
     private async Task RunCloudOperationAsync(
         Func<IProgress<SaveSyncProgress>, CancellationToken, Task<CloudSaveSyncOutcome>> operation,
         string startingMessage)
@@ -894,7 +1006,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         if (_cloudSaves is null || IsCloudBusy)
             return;
 
+        using var cancellation = new CancellationTokenSource();
+        _cloudCancellation = cancellation;
         IsCloudBusy = true;
+        CancelCloudSyncCommand.NotifyCanExecuteChanged();
         CloudStatusText = startingMessage;
         CloudSyncProgressCompleted = 0;
         CloudSyncProgressTotal = 0;
@@ -903,13 +1018,21 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         try
         {
             PersistCloudSaveLocations();
-            var outcome = await operation(progress, CancellationToken.None);
+            var outcome = await operation(progress, cancellation.Token);
             CloudStatusText = outcome.Status switch
             {
                 CloudSaveSyncStatus.Completed => DescribeCloudReport(outcome.Report!),
                 CloudSaveSyncStatus.NotConfigured => "Connect Google Drive and configure at least one save platform first.",
+                CloudSaveSyncStatus.AlreadyRunning => "Another cloud sync is already running.",
                 _ => outcome.Message is null ? "Sync failed." : $"Sync failed: {outcome.Message}",
             };
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Stopping is a normal outcome, not a failure: whatever committed before the stop is
+            // on the remote, and saying so is what stops the user re-running it from scratch.
+            CloudStatusText = "Sync stopped. Saves already transferred are in the cloud; " +
+                "the next sync continues from there.";
         }
         catch (Exception ex)
         {
@@ -918,7 +1041,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
         finally
         {
+            _cloudCancellation = null;
             IsCloudBusy = false;
+            CancelCloudSyncCommand.NotifyCanExecuteChanged();
             // A successful sync creates the log after SyncLogPath was first assigned, so notify
             // the view that the previously hidden activity-log link is now available.
             OnPropertyChanged(nameof(HasSyncLog));
@@ -943,6 +1068,25 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     private void ApplyCloudProgress(SaveSyncProgress progress)
     {
+        // Comparing units and transferring them are different measures. The unit counter reaches
+        // its total before the upload starts — everything until then is staged locally — so the
+        // transfer reports its own percentage, and an indeterminate bar until the provider has
+        // moved enough bytes to report one.
+        if (progress.Phase == SaveSyncPhase.Transferring)
+        {
+            IsCloudTransferIndeterminate = progress.TransferPercent is null;
+            CloudSyncProgressTotal = 100;
+            CloudSyncProgressCompleted = progress.TransferPercent ?? 0;
+            // The count is named as well as the percentage. The percentage alone reads as stalled
+            // whenever the remaining saves are small ones, because they take provider round trips
+            // rather than bandwidth; "142 of 180 saves" keeps moving when the bar does not.
+            CloudSyncProgressText = progress.TransferPercent is { } percent
+                ? $"Transferring saves to the cloud — {percent}% ({progress.Completed} of {progress.Total} saves)"
+                : $"Transferring saves to the cloud — {progress.Total} save(s)…";
+            return;
+        }
+
+        IsCloudTransferIndeterminate = false;
         CloudSyncProgressCompleted = progress.Completed;
         CloudSyncProgressTotal = progress.Total;
         var position = Math.Min(progress.Completed + 1, progress.Total);
@@ -956,8 +1100,17 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
         // Typed paths and folder-picker paths follow the same persistence rule. A configured
         // emulator still supplies the default when a platform's box is left empty.
-        foreach (var platform in CloudPlatforms)
-            _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
+        if (_cloudSaves.UpdateOverrides is { } updateOverrides)
+            updateOverrides(CollectOverrides());
+        else
+            foreach (var platform in CloudPlatforms)
+                _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
+
+        // Save-state folders persist the same way as save folders, so a typed state path is not
+        // lost when the picker was not used.
+        if (_cloudSaves.UpdateStateOverride is { } updateStateOverride)
+            foreach (var platform in CloudPlatforms)
+                updateStateOverride(platform.SystemId, platform.NormalizedStateOverride);
     }
 
     /// <summary>The per-platform overrides as typed, keyed by system id for the connect call.</summary>

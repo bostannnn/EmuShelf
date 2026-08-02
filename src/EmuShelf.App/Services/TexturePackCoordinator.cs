@@ -121,8 +121,16 @@ public sealed class TexturePackCoordinator
     /// </summary>
     public void UpdateOverride(string systemId, string? directory)
     {
-        _settings = _settings with { TexturePacks = _settings.TexturePacks.WithOverride(systemId, directory) };
-        _settingsService?.Save(_settings);
+        if (_settingsService is null)
+        {
+            _settings = _settings with { TexturePacks = _settings.TexturePacks.WithOverride(systemId, directory) };
+            return;
+        }
+
+        _settings = _settingsService.Update(latest => latest with
+        {
+            TexturePacks = latest.TexturePacks.WithOverride(systemId, directory),
+        });
     }
 
     /// <summary>Bundles the coordinator's operations as a delegate context for the Settings view model.</summary>

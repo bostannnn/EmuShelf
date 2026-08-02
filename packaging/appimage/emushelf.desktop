@@ -2,7 +2,7 @@
 Type=Application
 Name=EmuShelf
 Comment=Portable game library frontend
-Exec=EmuShelf
+Exec=EmuShelf --desktop-ui
 Icon=emushelf
 Categories=Game;Emulator;
 Terminal=false

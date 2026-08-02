@@ -32,6 +32,7 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
     private readonly FileStream _stream;
     private readonly string[] _compressors;
     private readonly long _logicalBytes;
+    private readonly long _metadataOffset;
     private readonly uint _hunkBytes;
     private readonly uint _unitBytes;
     private readonly bool _isCd;
@@ -41,13 +42,25 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
 
     private long _cachedHunkIndex = -1;
     private byte[]? _cachedHunk;
+    private IReadOnlyList<ChdTrack>? _tracks;
 
     public int FirstTrackSector => 0;
+
+    /// <summary>True for a CD/GD-ROM image, whose units are whole CD frames rather than
+    /// cooked 2048-byte sectors.</summary>
+    public bool IsCd => _isCd;
+
+    /// <summary>
+    /// The container's declared track layout, empty when it has none or the list is malformed.
+    /// Read on first use: the sector reads that every caller performs do not need it.
+    /// </summary>
+    public IReadOnlyList<ChdTrack> Tracks => _tracks ??= ReadTracks();
 
     private ChdSectorSource(
         FileStream stream,
         string[] compressors,
         long logicalBytes,
+        long metadataOffset,
         uint hunkBytes,
         uint unitBytes,
         int hunkCount,
@@ -56,6 +69,7 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
         _stream = stream;
         _compressors = compressors;
         _logicalBytes = logicalBytes;
+        _metadataOffset = metadataOffset;
         _hunkBytes = hunkBytes;
         _unitBytes = unitBytes;
         _isCd = unitBytes != SectorSize;
@@ -89,6 +103,7 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
 
             var logicalBytes = (long)BinaryPrimitives.ReadUInt64BigEndian(header.Slice(32, 8));
             var mapOffset = (long)BinaryPrimitives.ReadUInt64BigEndian(header.Slice(40, 8));
+            var metadataOffset = (long)BinaryPrimitives.ReadUInt64BigEndian(header.Slice(48, 8));
             var hunkBytes = BinaryPrimitives.ReadUInt32BigEndian(header.Slice(56, 4));
             var unitBytes = BinaryPrimitives.ReadUInt32BigEndian(header.Slice(60, 4));
 
@@ -104,7 +119,8 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
                 return DisposeAndNull(stream);
 
             return new ChdSectorSource(
-                stream, compressors, logicalBytes, hunkBytes, unitBytes, hunkCount, rawMap);
+                stream, compressors, logicalBytes, metadataOffset,
+                hunkBytes, unitBytes, hunkCount, rawMap);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                                    ArgumentException or NotSupportedException or EndOfStreamException)
@@ -113,7 +129,16 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
         }
     }
 
-    public int ReadSector(uint sector, Span<byte> destination)
+    public int ReadSector(uint sector, Span<byte> destination) =>
+        ReadSector(sector, destination, userDataOffset: null);
+
+    /// <summary>
+    /// Reads one frame's user data. <paramref name="userDataOffset"/> is where that data starts
+    /// inside the frame; pass it whenever the container declares the track's sector layout, since
+    /// the content heuristic used otherwise cannot recognize a sync-stripped frame past 99
+    /// minutes, where the encoder's own minutes field stops being valid BCD.
+    /// </summary>
+    public int ReadSector(uint sector, Span<byte> destination, int? userDataOffset)
     {
         if (destination.Length > SectorSize)
             return 0;
@@ -144,7 +169,10 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
             return 0;
 
         var frame = cdHunk.AsSpan(frameByte, CdSectorData);
-        var start = frameByte + GetCdUserDataOffset(frame);
+        var offsetInFrame = userDataOffset ?? GetCdUserDataOffset(frame);
+        if (offsetInFrame < 0 || offsetInFrame + destination.Length > CdSectorData)
+            return 0;
+        var start = frameByte + offsetInFrame;
         if (start + destination.Length > cdHunk.Length)
             return 0;
         cdHunk.AsSpan(start, destination.Length).CopyTo(destination);
@@ -175,6 +203,19 @@ internal sealed class ChdSectorSource : ILogicalSectorReader, IDisposable
     private static bool IsBcd(byte value, int maximum) =>
         (value >> 4) <= 9 && (value & 0x0F) <= 9 &&
         ((value >> 4) * 10 + (value & 0x0F)) <= maximum;
+
+    private IReadOnlyList<ChdTrack> ReadTracks()
+    {
+        try
+        {
+            return ChdTrackTable.Read(_stream, _metadataOffset);
+        }
+        catch (Exception ex) when (ex is IOException or ArgumentException or
+                                   NotSupportedException or EndOfStreamException)
+        {
+            return [];
+        }
+    }
 
     private byte[]? ReadHunk(int hunkIndex, int depth)
     {

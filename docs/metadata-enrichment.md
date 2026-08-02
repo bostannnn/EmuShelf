@@ -27,6 +27,25 @@ platform. Downloaded catalogs are cached under `Cache/Metadata/Catalogs/` for 30
 downloads use `Cache/Metadata/Downloads/`; accepted covers use `Covers/` and the existing scaled
 thumbnail cache under `Cache/Covers/`. All locations remain portable beside the executable.
 
+### Manual web cover search
+
+Desktop **Set cover…** opens a user-driven picker inspired by Grimmory's cover workflow. The game
+title and platform are prefilled, DuckDuckGo Images returns a bounded set of suggestions, and the
+user must choose one result explicitly. The picker shows locally decoded previews, resolution, and
+the source host; **Choose local image…** preserves the original file-picker path.
+
+This picker is not an automatic metadata provider. Search rank is retained in small bands, with the
+platform's cover aspect ratio used only to order results within each band. EmuShelf does not infer
+that a web result belongs to the game and never applies one unattended. Preview and selected-image
+downloads require a public HTTPS target. EmuShelf validates DNS for the initial URL and every
+redirect, rejects local/private/link-local destinations, and connects to the validated address
+directly. The normal 8 MiB, image-content-type, and file-signature checks still apply, followed by
+a decoded-image limit of 40 million pixels and 16,384 pixels per edge. Scaled previews decode off
+the UI thread and appear individually while slower results continue loading. Preview files and the
+selected staging file are deleted after use; only the accepted copy under portable `Covers/`
+remains, recorded as a user-owned cover so later enrichment cannot replace it. No game file is
+modified.
+
 ## Processing pipeline
 
 For each requested game, `GameMetadataService` performs the following bounded background work:
@@ -168,7 +187,9 @@ The stable contracts and value types live in `src/EmuShelf.Core/Metadata/`. SQLi
 provider-agnostic storage/download behavior live in `src/EmuShelf.Infrastructure/Metadata/`.
 Platform extractors, provider URL rules, and the profile registry live in
 `src/EmuShelf.Integrations/Metadata/`. Consent, orchestration, and UI-facing summaries live in
-`src/EmuShelf.App/`.
+`src/EmuShelf.App/`. The user-driven image-search contract stays in Core, its remote search adapter
+in Infrastructure, and its picker/view model in App; it is intentionally not part of a platform's
+automatic `MetadataSystemProfile`.
 
 This separation is intentional: the enrichment coordinator should not gain a switch statement
 when a platform is added. Platform-specific knowledge belongs in an extractor and one declarative

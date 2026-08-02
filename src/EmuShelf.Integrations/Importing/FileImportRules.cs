@@ -7,8 +7,8 @@ namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
 /// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
-/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Super Nintendo, Dreamcast, GameCube,
-/// and Wii. PS3 remains
+/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Game Boy Color, NES, Super Nintendo,
+/// Dreamcast, GameCube, Wii, and Arcade. PS3 remains
 /// directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
@@ -23,6 +23,9 @@ public sealed class FileImportRules : IGameImportRules
     private const string DreamcastId = "dreamcast";
     private const string GameCubeId = "gamecube";
     private const string WiiId = "wii";
+    private const string ArcadeId = "arcade";
+    private const string GameBoyColorId = "gbc";
+    private const string NesId = "nes";
 
     private static readonly IReadOnlyDictionary<string, HashSet<string>> ExtensionsBySystem =
         new Dictionary<string, HashSet<string>>
@@ -42,17 +45,29 @@ public sealed class FileImportRules : IGameImportRules
             // layouts need their own read-only normalization contracts before they can join.
             [NintendoDsId] = new(StringComparer.OrdinalIgnoreCase) { ".nds" },
             [GameBoyAdvanceId] = new(StringComparer.OrdinalIgnoreCase) { ".gba" },
+            // The extension is a routing hint only: the reader requires the Game Boy boot logo, a
+            // valid header checksum, and the CGB flag, so an original Game Boy ROM is never accepted.
+            [GameBoyColorId] = new(StringComparer.OrdinalIgnoreCase) { ".gbc", ".gb" },
+            // The extension is a routing hint only: the reader requires the iNES "NES\x1A" magic and a
+            // length that fits the PRG/CHR banks the header declares, so a renamed file is rejected.
+            [NesId] = new(StringComparer.OrdinalIgnoreCase) { ".nes" },
             // The extension is a routing hint only: the reader requires a valid internal LoROM or
             // HiROM header. Copier formats (.fig/.swc) wait for their own normalization contract.
             [SuperNintendoId] = new(StringComparer.OrdinalIgnoreCase) { ".sfc", ".smc" },
-            // GDI is the primary Dreamcast descriptor: it names every track and gives the data
-            // track enough structure for safe identification. CDI and CHD wait for their own
-            // verified logical-track readers rather than being filename-guessed.
-            [DreamcastId] = new(StringComparer.OrdinalIgnoreCase) { ".gdi" },
+            // The extension is a routing hint only. A GDI descriptor must name every track and a
+            // CHD must declare its own track layout; either way the image is accepted only when a
+            // data track really starts with IP.BIN, so a .chd shared with the PlayStation systems
+            // is never filename-guessed onto Dreamcast. CDI still waits for its own reader.
+            [DreamcastId] = new(StringComparer.OrdinalIgnoreCase) { ".gdi", ".chd" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
+            // FinalBurn Neo loads a romset from a .zip named by the set's short id. No other system
+            // claims .zip, so it routes straight to Arcade; the archive itself is never opened at
+            // import — the zip basename is the identity, resolved to a title later from the DAT.
+            // .7z is deliberately omitted: the framework has no 7z reader and v1 does not add one.
+            [ArcadeId] = new(StringComparer.OrdinalIgnoreCase) { ".zip" },
         };
 
     private static readonly HashSet<string> NintendoExtensions =
@@ -90,17 +105,32 @@ public sealed class FileImportRules : IGameImportRules
         var gameBoyAdvanceHeader = ExtensionsBySystem[GameBoyAdvanceId].Contains(extension)
             ? GameBoyAdvanceRomReader.TryRecognize(path)
             : null;
+        var gameBoyColorHeader = ExtensionsBySystem[GameBoyColorId].Contains(extension)
+            ? GameBoyColorRomReader.TryRecognize(path)
+            : null;
+        var nesHeader = ExtensionsBySystem[NesId].Contains(extension)
+            ? NesRomReader.TryRecognize(path)
+            : null;
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
             : null;
+        // A validated PSP image is never a Dreamcast one, so the shared .chd extension only pays
+        // for the IP.BIN probe when the PSP evidence came back empty.
         var dreamcastImage = ExtensionsBySystem[DreamcastId].Contains(extension) &&
-                             DreamcastGdiReader.TryRecognize(path);
+                             pspEvidence is null &&
+                             DreamcastDisc.TryRecognize(path);
 
         // PSP_GAME/PARAM.SFO is decisive evidence for the otherwise ambiguous ISO/CSO/CHD
         // extensions. Put it first so the system picker defaults to PSP, and never let an
         // explicitly confirmed PS1/PS2 import misclassify a validated PSP image.
         if (pspEvidence is not null && FindSystem(PspId) is { } pspSystem)
             suggestions.Add(pspSystem);
+
+        // A validated IP.BIN is decisive for the otherwise ambiguous .chd extension in the same
+        // way PARAM.SFO is for PSP, so the system picker defaults to Dreamcast and MatchSystem
+        // vetoes the PlayStation systems that share the container.
+        if (dreamcastImage && FindSystem(DreamcastId) is { } dreamcastSystem)
+            suggestions.Add(dreamcastSystem);
 
         // A valid Nintendo header is definitive, so put that match ahead of the
         // extension-only suggestions for shared formats such as .iso.
@@ -138,13 +168,29 @@ public sealed class FileImportRules : IGameImportRules
                 GameBoyAdvanceId => gameBoyAdvanceHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
+                GameBoyColorId => gameBoyColorHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                NesId => nesHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
                 SuperNintendoId => superNintendoHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 DreamcastId => dreamcastImage
                     ? GameFileMatch.Compatible
                     : GameFileMatch.Incompatible,
-                _ => MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null),
+                // A .zip is an arcade set unless its basename is a known BIOS/device archive, which
+                // is hidden so neogeo.zip and friends never become a game.
+                ArcadeId => IsArcadeBiosArchive(path)
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                _ => MatchSystem(
+                    extension,
+                    system.Id,
+                    detectedNintendoSystem,
+                    pspEvidence is not null,
+                    dreamcastImage),
             };
 
             matches[system.Id] = match;
@@ -188,10 +234,16 @@ public sealed class FileImportRules : IGameImportRules
             return NintendoDsRomReader.TryRecognize(path) is not null;
         if (system.Id == GameBoyAdvanceId)
             return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
+        if (system.Id == GameBoyColorId)
+            return GameBoyColorRomReader.TryRecognize(path) is not null;
+        if (system.Id == NesId)
+            return NesRomReader.TryRecognize(path) is not null;
         if (system.Id == SuperNintendoId)
             return SuperNintendoRomReader.TryRecognize(path) is not null;
         if (system.Id == DreamcastId)
-            return DreamcastGdiReader.TryRecognize(path);
+            return DreamcastDisc.TryRecognize(path);
+        if (system.Id == ArcadeId)
+            return ExtensionsBySystem[ArcadeId].Contains(extension) && !IsArcadeBiosArchive(path);
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
@@ -209,7 +261,18 @@ public sealed class FileImportRules : IGameImportRules
         var detectedNintendoSystem = NintendoExtensions.Contains(extension)
             ? NintendoDiscDetector.Detect(path)
             : NintendoDiscSystem.Unknown;
-        return MatchSystem(extension, system.Id, detectedNintendoSystem, pspEvidence is not null) ==
+        // A Dreamcast CHD is not a PlayStation one. The IP.BIN probe runs only for the container
+        // the two share, and only once the PSP evidence has already come back empty.
+        var dreamcastImage = system.Id is PlayStationId or PlayStation2Id &&
+                             pspEvidence is null &&
+                             ExtensionsBySystem[DreamcastId].Contains(extension) &&
+                             DreamcastDisc.TryRecognize(path);
+        return MatchSystem(
+                   extension,
+                   system.Id,
+                   detectedNintendoSystem,
+                   pspEvidence is not null,
+                   dreamcastImage) ==
                GameFileMatch.Compatible;
     }
 
@@ -232,7 +295,7 @@ public sealed class FileImportRules : IGameImportRules
             {
                 ".m3u" => ReferencedFileParser.ParseM3u(candidate),
                 ".cue" => ReferencedFileParser.ParseCue(candidate),
-                ".gdi" => DreamcastGdiReader.GetReferencedFiles(candidate),
+                ".gdi" => DreamcastDisc.GetReferencedFiles(candidate),
                 _ => [],
             };
 
@@ -286,6 +349,25 @@ public sealed class FileImportRules : IGameImportRules
                 gameBoyAdvanceEvidence.Sha1,
                 "Game Boy Advance ROM");
 
+        // The Game Boy Color header has no reliable commercial game code, so only the raw SHA-1 is
+        // catalogue evidence — the same shape as Super Nintendo.
+        if (system.Id == GameBoyColorId && GameBoyColorRomReader.TryRead(path) is { } gameBoyColorEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "Game Boy Color header",
+                gameBoyColorEvidence.Sha1,
+                "Game Boy Color ROM");
+
+        // The iNES header has no reliable commercial game code, so only the SHA-1 is catalogue
+        // evidence. Unlike SNES this keeps the 16-byte header, because the No-Intro NES set is keyed
+        // by the whole headered file; RetroAchievements strips the header in its own hasher instead.
+        if (system.Id == NesId && NesRomReader.TryRead(path) is { } nesEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "NES header",
+                nesEvidence.Sha1,
+                "NES ROM");
+
         // The SNES header has no reliable commercial game code, so only the headerless SHA-1 is
         // used as catalogue evidence; the Shift-JIS header title stays out of the display fields.
         if (system.Id == SuperNintendoId && SuperNintendoRomReader.TryRead(path) is { } superNintendoEvidence)
@@ -295,11 +377,29 @@ public sealed class FileImportRules : IGameImportRules
                 superNintendoEvidence.Sha1,
                 "Super Nintendo ROM");
 
-        // Dreamcast deliberately supplies no import-time evidence. Its catalogue key is the SHA-1
-        // of a whole data track — up to 1.1 GB per game, and a GDI set can have more than one —
-        // whereas every other system's import evidence is a header read or a cartridge-sized ROM.
-        // DreamcastGdiIdentifierExtractor computes it once during opt-in metadata enrichment, which
-        // is already gated and reports progress, so adding a folder stays as cheap as AnalyzeFile.
+        // The arcade set id is the zip basename — no file is opened. Storing it now lets metadata
+        // enrichment resolve the title from the DAT without re-deriving the identifier.
+        if (system.Id == ArcadeId)
+        {
+            var setName = Path.GetFileNameWithoutExtension(path);
+            return string.IsNullOrWhiteSpace(setName)
+                ? GameImportMetadata.Empty
+                : new GameImportMetadata(
+                    null,
+                    [new GameIdentifier(
+                        GameIdentifierKind.ArcadeSetName,
+                        setName,
+                        "FBNeo set name",
+                        IsPrimary: true)]);
+        }
+
+        // Dreamcast deliberately supplies no import-time evidence. A GDI set's catalogue key is
+        // the SHA-1 of a whole data track — up to 1.1 GB per game, and a set can have more than
+        // one — whereas every other system's import evidence is a header read or a cartridge-sized
+        // ROM. DreamcastIdentifierExtractor computes it once during opt-in metadata enrichment,
+        // which is already gated and reports progress, so adding a folder stays as cheap as
+        // AnalyzeFile. A CHD is keyed on its IP.BIN serial and would be cheap to read here, but it
+        // takes the same path so that both packagings are identified in exactly one place.
         if (system.Id == DreamcastId)
             return GameImportMetadata.Empty;
 
@@ -341,6 +441,9 @@ public sealed class FileImportRules : IGameImportRules
     private GameSystem? FindSystem(string id) =>
         _systems.FirstOrDefault(system => system.Id == id);
 
+    private static bool IsArcadeBiosArchive(string path) =>
+        KnownArcadeBiosSets.Contains(Path.GetFileNameWithoutExtension(path));
+
     private static GameFileMatch MatchNintendoSystem(
         NintendoDiscSystem detected,
         NintendoDiscSystem expected) =>
@@ -355,10 +458,14 @@ public sealed class FileImportRules : IGameImportRules
         string extension,
         string systemId,
         NintendoDiscSystem detectedNintendoSystem,
-        bool pspEvidence) =>
+        bool pspEvidence,
+        bool dreamcastEvidence) =>
         systemId switch
         {
             GameCubeId or WiiId when pspEvidence => GameFileMatch.Incompatible,
+            // Dreamcast and the PlayStation systems share .chd, and only one of them can have
+            // written an IP.BIN header into the image's data track.
+            PlayStationId or PlayStation2Id when dreamcastEvidence => GameFileMatch.Incompatible,
             GameCubeId => MatchNintendoSystem(
                 detectedNintendoSystem,
                 NintendoDiscSystem.GameCube),

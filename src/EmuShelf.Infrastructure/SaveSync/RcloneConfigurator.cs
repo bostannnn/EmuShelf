@@ -24,11 +24,40 @@ public sealed class RcloneConfigurator
     /// <summary>Whether the portable rclone executable is present beside EmuShelf.</summary>
     public bool IsRcloneAvailable => File.Exists(_rclonePath);
 
-    /// <summary>Runs rclone's Google Drive OAuth and stores the resulting remote in the portable config.</summary>
-    public Task CreateGoogleDriveRemoteAsync(string remoteName, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Runs rclone's Google Drive OAuth and stores the resulting remote in the portable config.
+    /// </summary>
+    /// <param name="clientId">
+    /// An optional Google OAuth client id. Without one rclone uses its own shared client, which is
+    /// heavily rate-limited — the cause of multi-second waits before a launch — and which Google is
+    /// retiring during 2026.
+    /// </param>
+    /// <param name="clientSecret">
+    /// The matching client secret. It is handed to rclone and stored only in rclone's own config
+    /// beside the OAuth token; EmuShelf never persists it in its settings.
+    /// </param>
+    public Task CreateGoogleDriveRemoteAsync(
+        string remoteName,
+        CancellationToken cancellationToken = default,
+        string? clientId = null,
+        string? clientSecret = null)
     {
         ValidateRemoteName(remoteName);
-        return RunAsync(["config", "create", remoteName, "drive"], cancellationToken);
+        var arguments = new List<string> { "config", "create", remoteName, "drive" };
+        if (!string.IsNullOrWhiteSpace(clientId))
+        {
+            // Both halves or neither: a client id without its secret authenticates as nothing and
+            // would fail the OAuth flow with a message that does not explain why.
+            if (string.IsNullOrWhiteSpace(clientSecret))
+                throw new ArgumentException("A Google client id also needs its client secret.", nameof(clientSecret));
+
+            arguments.Add("client_id");
+            arguments.Add(ValidateConfigValue(clientId, nameof(clientId)));
+            arguments.Add("client_secret");
+            arguments.Add(ValidateConfigValue(clientSecret, nameof(clientSecret)));
+        }
+
+        return RunAsync(arguments, cancellationToken);
     }
 
     /// <summary>Creates the cloud save folder if it does not already exist (idempotent).</summary>
@@ -66,6 +95,16 @@ public sealed class RcloneConfigurator
         await Task.WhenAll(drainOutput, readError, process.WaitForExitAsync(cancellationToken));
         if (process.ExitCode != 0)
             throw new IOException($"rclone exited with code {process.ExitCode}: {(await readError).Trim()}");
+    }
+
+    // Passed as its own argv entry, so quoting is not a concern; control characters are, because a
+    // newline would end up writing an extra key into rclone's config file.
+    private static string ValidateConfigValue(string value, string parameterName)
+    {
+        var trimmed = value.Trim();
+        if (trimmed.Length > 512 || trimmed.Any(char.IsControl))
+            throw new ArgumentException("The value contains unsupported characters.", parameterName);
+        return trimmed;
     }
 
     private static void ValidateRemoteName(string remoteName)

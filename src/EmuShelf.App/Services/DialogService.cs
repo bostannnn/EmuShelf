@@ -9,6 +9,7 @@ using EmuShelf.Core.Achievements;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.Services;
@@ -24,19 +25,25 @@ public sealed class DialogService : IDialogService
     private readonly IRetroAchievementsDetailsService? _retroAchievementsDetails;
     private readonly IRetroAchievementsAccountService? _retroAchievementsAccount;
     private readonly IRetroAchievementsBadgeCache? _retroAchievementsBadges;
+    private readonly IGameArtworkSearchProvider? _artworkSearch;
+    private readonly IRemoteArtworkDownloader? _artworkDownloader;
 
     public DialogService(
         IClassicDesktopStyleApplicationLifetime lifetime,
         IAppLogger? logger = null,
         IRetroAchievementsDetailsService? retroAchievementsDetails = null,
         IRetroAchievementsAccountService? retroAchievementsAccount = null,
-        IRetroAchievementsBadgeCache? retroAchievementsBadges = null)
+        IRetroAchievementsBadgeCache? retroAchievementsBadges = null,
+        IGameArtworkSearchProvider? artworkSearch = null,
+        IRemoteArtworkDownloader? artworkDownloader = null)
     {
         _lifetime = lifetime;
         _logger = logger ?? NullAppLogger.Instance;
         _retroAchievementsDetails = retroAchievementsDetails;
         _retroAchievementsAccount = retroAchievementsAccount;
         _retroAchievementsBadges = retroAchievementsBadges;
+        _artworkSearch = artworkSearch;
+        _artworkDownloader = artworkDownloader;
     }
 
     private Window? Owner => _lifetime.MainWindow;
@@ -123,9 +130,33 @@ public sealed class DialogService : IDialogService
         return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
-    public async Task<string?> PickCoverImageAsync(string gameTitle)
+    public async Task<string?> PickGoogleClientJsonAsync()
     {
         var owner = Owner;
+        if (owner is null)
+            return null;
+
+        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose the OAuth client JSON downloaded from Google",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Google OAuth client")
+                {
+                    Patterns = ["client_secret*.json", "*.json"],
+                    AppleUniformTypeIdentifiers = ["public.json"],
+                    MimeTypes = ["application/json"],
+                },
+            ],
+        });
+
+        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> PickCoverImageAsync(string gameTitle)
+    {
+        var owner = PickerOwner;
         if (owner is null)
             return null;
 
@@ -145,6 +176,37 @@ public sealed class DialogService : IDialogService
         });
 
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<PickedGameCover?> PickGameCoverAsync(GameCoverPickerContext context)
+    {
+        var owner = Owner;
+        if (owner is null)
+            return null;
+        if (_artworkSearch is null || _artworkDownloader is null)
+        {
+            var path = await PickCoverImageAsync(context.GameTitle);
+            return path is null ? null : new PickedGameCover(path);
+        }
+
+        var viewModel = new CoverSearchViewModel(
+            context,
+            _artworkSearch,
+            _artworkDownloader,
+            () => PickCoverImageAsync(context.GameTitle),
+            _logger);
+        var dialog = new CoverSearchWindow { DataContext = viewModel };
+        viewModel.CloseRequested += result => dialog.Close(result);
+        _activeDialog = dialog;
+        try
+        {
+            return await dialog.ShowDialog<PickedGameCover?>(owner);
+        }
+        finally
+        {
+            _activeDialog = null;
+            viewModel.Dispose();
+        }
     }
 
     public async Task<bool> ConfirmRemoveGameAsync(string gameTitle)
@@ -201,7 +263,8 @@ public sealed class DialogService : IDialogService
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null)
+        TexturePackSettingsContext? texturePacks = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -222,7 +285,8 @@ public sealed class DialogService : IDialogService
             _logger,
             retroAchievements,
             cloudSaves,
-            texturePacks);
+            texturePacks,
+            themeChoices);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 
@@ -252,7 +316,8 @@ public sealed class DialogService : IDialogService
             _retroAchievementsDetails,
             _retroAchievementsAccount,
             _retroAchievementsBadges,
-            cached);
+            cached,
+            logger: _logger);
         var dialog = new AchievementDetailsWindow { DataContext = viewModel };
         viewModel.CloseRequested += dialog.Close;
         dialog.Opened += (_, _) => _ = viewModel.RefreshIfStaleAsync();

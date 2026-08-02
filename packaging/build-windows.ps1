@@ -16,13 +16,30 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+# The dotnet on PATH may be the runtime-only host under Program Files, which cannot run
+# `test` or `publish`. Prefer whichever candidate actually reports an installed SDK.
+function Resolve-DotnetSdk {
+    $candidates = @(Join-Path $HOME '.dotnet/dotnet.exe')
+    $onPath = Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($onPath) { $candidates += $onPath.Source }
+
+    foreach ($candidate in $candidates) {
+        if (-not (Test-Path $candidate)) { continue }
+        $sdks = & $candidate --list-sdks 2>$null
+        if ($LASTEXITCODE -eq 0 -and $sdks) {
+            $env:DOTNET_ROOT = Split-Path -Parent $candidate
+            Write-Host "Using SDK: $candidate ($(@($sdks)[-1]))" -ForegroundColor DarkGray
+            return $candidate
+        }
+    }
+    throw 'No .NET SDK was found. Checked ~/.dotnet and PATH (the PATH dotnet may be runtime-only).'
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 Push-Location $root
 try {
-    $command = Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    $dotnet = if ($command) { $command.Source } else { Join-Path $HOME '.dotnet/dotnet.exe' }
-    if (-not (Test-Path $dotnet)) { throw 'dotnet was not found on PATH or in ~/.dotnet' }
+    $dotnet = Resolve-DotnetSdk
 
     if (-not $SkipTests) {
         Write-Host '==> dotnet test' -ForegroundColor Cyan
@@ -53,8 +70,12 @@ try {
         Copy-Item $exe.FullName (Join-Path $PublishDir 'rclone.exe')
         $licenseDir = Join-Path $PublishDir 'ThirdParty/rclone'
         New-Item -ItemType Directory -Force $licenseDir | Out-Null
-        $license = Get-ChildItem $exe.Directory -Filter 'LICENSE*' | Select-Object -First 1
-        if ($license) { Copy-Item $license.FullName (Join-Path $licenseDir 'LICENSE.txt') }
+        # rclone's release archives ship no license file, but we redistribute the binary and
+        # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
+        $tag = $exe.Directory.Name -replace '^rclone-(v[\d.]+)-.*$', '$1'
+        if ($tag -eq $exe.Directory.Name) { throw "Could not derive the rclone version from '$($exe.Directory.Name)'" }
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING" `
+            -OutFile (Join-Path $licenseDir 'LICENSE.txt')
     }
     finally {
         Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue

@@ -196,15 +196,13 @@ public sealed class RetroAchievementsAccountService : IRetroAchievementsAccountS
         string? ulid,
         CancellationToken cancellationToken)
     {
-        // Merge with the latest snapshot so this never reverts an independent theme or metadata
-        // change (mirrors MetadataPreferencesService). Only the non-secret identity is written.
-        var latest = await Task.Run(_settingsService.Load, cancellationToken);
-        var updated = latest with
-        {
-            RetroAchievementsUsername = username,
-            RetroAchievementsUserUlid = ulid,
-        };
-        await Task.Run(() => _settingsService.Save(updated), cancellationToken);
+        await Task.Run(
+            () => _settingsService.Update(latest => latest with
+            {
+                RetroAchievementsUsername = username,
+                RetroAchievementsUserUlid = ulid,
+            }),
+            cancellationToken);
     }
 
     private static RetroAchievementsConnectionResult Map(RetroAchievementsRequestStatus status) => status switch
