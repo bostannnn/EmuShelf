@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Storage;
@@ -59,7 +60,11 @@ public sealed class FileSaveSyncLog
         ArgumentNullException.ThrowIfNull(report);
 
         var builder = new StringBuilder();
-        var duration = elapsed is null ? string.Empty : $" ({elapsed.Value.TotalSeconds:0.0}s)";
+        // Invariant so the portable log reads the same on every machine — a comma-decimal locale must
+        // not write "(41,7s)" where another machine (and the tests) expect "(41.7s)".
+        var duration = elapsed is null
+            ? string.Empty
+            : $" ({elapsed.Value.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)}s)";
         builder.AppendLine($"===== {timestamp:yyyy-MM-dd HH:mm:ss} — {operation}{duration} =====");
         AppendList(builder, "Uploaded", report.Results.Where(result => result.Action == SaveSyncAction.Upload));
         AppendList(builder, "Downloaded", report.Results.Where(result => result.Action == SaveSyncAction.Download));

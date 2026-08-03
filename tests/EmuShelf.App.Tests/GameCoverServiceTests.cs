@@ -112,8 +112,12 @@ public class GameCoverServiceTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void GameViewModel_LoadedArtworkUsesItsActualAspectRatio()
+    public void GameViewModel_LoadedArtworkKeepsThePlatformCanonicalFrame()
     {
+        // A cover fills the platform's canonical frame (UniformToFill in the tile) rather than
+        // adopting its own bitmap ratio. That keeps every tile of a system uniform and stops a
+        // single off-ratio scan from ballooning the shared shelf so other covers render half-height.
+        // See DECISIONS 2026-08-02.
         var sourcePath = CreateImage("pal-dreamcast.png", new PixelSize(512, 722));
         var game = new Game
         {
@@ -132,8 +136,9 @@ public class GameCoverServiceTests : IDisposable
 
         viewModel.CoverImage = new Bitmap(sourcePath);
 
-        Assert.Equal(512d / 722d, viewModel.CoverAspectRatio, precision: 3);
-        Assert.Equal(37d, viewModel.ListCoverWidth);
+        Assert.Equal(1.0, viewModel.CoverAspectRatio, precision: 3);
+        Assert.Equal(52d, viewModel.ListCoverWidth);
+        Assert.Equal(Math.Round(viewModel.CoverWidth / 1.0), viewModel.CoverHeight);
         viewModel.Dispose();
     }
 

@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>EmuShelf</AssemblyName>
+    <!-- Product version: drives the assembly version and the AppImage version string. Bump per release. -->
+    <Version>0.1.0</Version>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

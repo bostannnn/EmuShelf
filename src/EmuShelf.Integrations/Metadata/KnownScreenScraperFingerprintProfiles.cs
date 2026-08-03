@@ -20,6 +20,11 @@ public static class KnownScreenScraperFingerprintProfiles
             Profile("dreamcast"),
             Profile("arcade"),
             Profile("gbc", ".gb", ".gbc"),
+            Profile("nes", ".nes"),
+            // 3DS images (.3ds/.cci/.cia) are not canonically whole-file hashable, so — like the
+            // disc-id/title-id systems above — it has no hash route and falls back to title search
+            // until a validated 3DS fingerprint rule lands.
+            Profile("3ds"),
         }.ToDictionary(profile => profile.SystemId, StringComparer.OrdinalIgnoreCase);
 
     public static bool TryGet(

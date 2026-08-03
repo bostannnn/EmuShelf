@@ -25,7 +25,7 @@ public class PlatformArtworkTests
     public void ExpansionSystems_HaveStableNavigationIdsAndLicensedArtwork()
     {
         Assert.Equal(
-            ["psp", "megadrive", "nds", "gba", "snes", "dreamcast", "arcade", "gbc"],
+            ["psp", "megadrive", "nds", "gba", "3ds", "nes", "snes", "dreamcast", "arcade", "gbc"],
             KnownSystems.All.Skip(5).Select(system => system.Id));
         Assert.All(KnownSystems.All.Skip(5), system =>
             Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
@@ -41,6 +41,14 @@ public class PlatformArtworkTests
         Assert.Equal(
             1.0,
             KnownSystems.All.Single(system => system.Id == "gba").CoverAspectRatio);
+        // 3DS front covers from GameTDB use a fixed near-square 768×680 canvas.
+        Assert.Equal(
+            1.129,
+            KnownSystems.All.Single(system => system.Id == "3ds").CoverAspectRatio);
+        // NES uses the portrait North-American cardboard box, like the disc systems.
+        Assert.Equal(
+            0.72,
+            KnownSystems.All.Single(system => system.Id == "nes").CoverAspectRatio);
         // SNES box art is the wide North-American box (Libretro scans cluster at 512×357).
         Assert.Equal(
             1.434,

@@ -1,5 +1,6 @@
 using EmuShelf.App.Services;
 using EmuShelf.Core.SaveSync;
+using EmuShelf.Infrastructure.Storage;
 
 namespace EmuShelf.App.Tests;
 
@@ -160,6 +161,272 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.Equal("1.0 · x64", stateLocation.Compatibility);
         var broken = Assert.Single(locations, location => location.Directory is null);
         Assert.Contains("unreadable", broken.Warning, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RetroArchStates_ResolveViaOverrideAndCoreBinaryWhenNoInfoFileExists()
+    {
+        // Regression for "arcade save state not synced": the RetroArch state folder is overridable
+        // 1:1 with the save folder (#5), and state compatibility resolves from the core binary's
+        // architecture alone (the version is left unknown) when the core's .info file is absent — so a
+        // state is not silently dropped (compatibility null -> zero units), which is common on a Steam
+        // Deck Flatpak RetroArch or a bare core dropped in beside it.
+        Directory.CreateDirectory(_root);
+        var stateDir = Path.Combine(_root, "chosen-states");
+        Directory.CreateDirectory(stateDir);
+        WriteState(stateDir, "spiderman.state", 1);
+        var corePath = WriteElfCore(Path.Combine(_root, "fbneo_libretro.so"));
+
+        var descriptor = SaveProviderRegistry.Find("arcade")!;
+        var context = new SaveProviderContext(
+            DirectoryOverride: null,
+            EmulatorDirectory: _root,
+            IsFlatpak: false,
+            Paths: new AppPaths(_root),
+            CorePath: corePath,
+            StateDirectoryOverride: stateDir);
+        var saves = descriptor.CreateProvider(context)!;
+        var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            saves,
+            context,
+            includeSaveStates: true,
+            includeBaseSaves: false);
+
+        Assert.True(provider.HasStateCompatibility);
+        var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(units, unit => unit.UnitId.EndsWith("/spiderman.state", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DirectExecutableStates_ResolveWithoutLaunchingTheEmulator()
+    {
+        // Regression for the "Unknown parameter: --version" dialog: a GUI emulator with no embedded
+        // version resource (a Linux binary) must still resolve state compatibility without being run.
+        // Here the fake executable is not a launchable program, so if version resolution tried to
+        // start it with --version this would fail (compatibility null); instead the binary's
+        // architecture keys it (version left unknown), so states resolve and no process is ever started.
+        Directory.CreateDirectory(_root);
+        var stateDir = Path.Combine(_root, "pcsx2-states");
+        Directory.CreateDirectory(stateDir);
+        WriteState(stateDir, "game.p2s", 1);
+        var executable = WriteElfCore(Path.Combine(_root, "pcsx2"));
+
+        var descriptor = SaveProviderRegistry.Find("playstation2")!;
+        var context = new SaveProviderContext(
+            DirectoryOverride: null,
+            EmulatorDirectory: _root,
+            IsFlatpak: false,
+            Paths: new AppPaths(_root),
+            ExecutablePath: executable,
+            StateDirectoryOverride: stateDir);
+        var saves = descriptor.CreateProvider(context)!;
+        var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            saves,
+            context,
+            includeSaveStates: true,
+            includeBaseSaves: false);
+
+        Assert.True(provider.HasStateCompatibility);
+        var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(units, unit => unit.UnitId.EndsWith("/game.p2s", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void StandaloneState_FallsBackToHostArchitectureWhenTheEmulatorBinaryIsUnreadable()
+    {
+        // Regression for "PCSX2 states never upload from the Steam Deck": the emulator's architecture
+        // could not be read (a Flatpak/wrapper with no parseable binary and no --show-arch), so
+        // compatibility resolved to null and every state was silently dropped (compatibilityKey=none in
+        // the Deck log). The emulator runs on THIS machine, so the host architecture is a sound fallback:
+        // compatibility must resolve, and the key must carry a real architecture, not "(none)".
+        Directory.CreateDirectory(_root);
+        var stateDir = Path.Combine(_root, "pcsx2-states");
+        Directory.CreateDirectory(stateDir);
+        WriteState(stateDir, "game.p2s", 1);
+
+        var descriptor = SaveProviderRegistry.Find("playstation2")!;
+        var context = new SaveProviderContext(
+            DirectoryOverride: null,
+            EmulatorDirectory: _root,
+            IsFlatpak: false,
+            Paths: new AppPaths(_root),
+            ExecutablePath: Path.Combine(_root, "unreadable-binary"), // no parseable architecture
+            StateDirectoryOverride: stateDir);
+        var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+            descriptor,
+            descriptor.CreateProvider(context)!,
+            context,
+            includeSaveStates: true,
+            includeBaseSaves: false);
+
+        Assert.True(provider.HasStateCompatibility);
+        Assert.StartsWith("st1|pcsx2|", provider.StateCompatibilityKey);
+        Assert.DoesNotContain("(none)", provider.StateCompatibilityKey);
+    }
+
+    [Fact]
+    public void RetroArchStateCompat_IgnoresFrontendVersionSoStatesRestoreCrossMachine()
+    {
+        // Regression for "states upload from the Deck but never restore on Windows": a libretro state
+        // is produced by the core, so its compatibility key must depend on the core + architecture,
+        // not the RetroArch frontend version. Two machines almost never run the same RetroArch build,
+        // and keying on it marked every state "written by a different emulator version". Same core =>
+        // same key regardless of which frontend produced it.
+        Directory.CreateDirectory(_root);
+        var core = WriteElfCore(Path.Combine(_root, "genesis_plus_gx_libretro.so"));
+        var deckFrontend = Path.Combine(_root, "retroarch-deck");
+        File.WriteAllBytes(deckFrontend, new byte[100]);
+        var windowsFrontend = Path.Combine(_root, "retroarch-win.exe");
+        File.WriteAllBytes(windowsFrontend, new byte[500]);
+        var descriptor = SaveProviderRegistry.Find("megadrive")!;
+
+        string? KeyFor(string frontend)
+        {
+            var context = new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: _root,
+                IsFlatpak: false,
+                Paths: new AppPaths(_root),
+                CorePath: core,
+                ExecutablePath: frontend,
+                StateDirectoryOverride: _root);
+            var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+                descriptor,
+                descriptor.CreateProvider(context)!,
+                context,
+                includeSaveStates: true,
+                includeBaseSaves: false);
+            return provider.GetCompatibility("retroarch/megadrive/states/game.state");
+        }
+
+        var deckKey = KeyFor(deckFrontend);
+        Assert.NotNull(deckKey);
+        Assert.Equal(deckKey, KeyFor(windowsFrontend));
+    }
+
+    [Fact]
+    public void RetroArchStateCompat_IgnoresCoreFileLengthSoDeckSoRestoresOnWindowsDll()
+    {
+        // The exact reported failure: a state uploaded from the Deck (a .so core, no info file) never
+        // restored on Windows (a .dll core of the same id). The previous fix keyed the missing version
+        // off the core file's byte length, which necessarily differs between a .so and a .dll, so the
+        // two keys mismatched and every Deck state was skipped. The identity now keys on core id + CPU
+        // architecture (both identical), leaving the version unknown, so the state restores cross-OS.
+        Directory.CreateDirectory(_root);
+        var deckCore = WriteElfCore(Path.Combine(_root, "genesis_plus_gx_libretro.so"));
+        var windowsCore = WriteElfCore(Path.Combine(_root, "genesis_plus_gx_libretro.dll"), padTo: 4096);
+        Assert.NotEqual(new FileInfo(deckCore).Length, new FileInfo(windowsCore).Length);
+        var descriptor = SaveProviderRegistry.Find("megadrive")!;
+
+        string? KeyFor(string corePath)
+        {
+            var context = new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: _root,
+                IsFlatpak: false,
+                Paths: new AppPaths(_root),
+                CorePath: corePath,
+                StateDirectoryOverride: _root);
+            var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+                descriptor,
+                descriptor.CreateProvider(context)!,
+                context,
+                includeSaveStates: true,
+                includeBaseSaves: false);
+            return provider.GetCompatibility("retroarch/megadrive/states/game.state");
+        }
+
+        var deckKey = KeyFor(deckCore);
+        var windowsKey = KeyFor(windowsCore);
+        Assert.NotNull(deckKey);
+        Assert.NotNull(windowsKey);
+        Assert.True(StateCompatibility.AreCompatible(windowsKey!, deckKey!));
+    }
+
+    [Fact]
+    public void StateCompat_UnknownVersionMatchesOnCoreAndArch_KnownVersionsAreGuarded()
+    {
+        var deck = StateCompatibility.Create("retroarch:genesis_plus_gx", null, "x64")!;
+        var windows = StateCompatibility.Create("retroarch:genesis_plus_gx", null, "x64")!;
+        // Unknown version on both -> compatible on same id + arch (the Deck<->Windows bare-core case).
+        Assert.True(StateCompatibility.AreCompatible(windows.Key, deck.Key));
+
+        // Asymmetric info-file availability: one side reads display_version, the other cannot. Still
+        // restores — an unknown version never blocks a known one.
+        var known = StateCompatibility.Create("retroarch:genesis_plus_gx", "1.7.4", "x64")!;
+        Assert.True(StateCompatibility.AreCompatible(known.Key, deck.Key));
+        Assert.True(StateCompatibility.AreCompatible(deck.Key, known.Key));
+
+        // Two real, different versions keep the same-build guard; equal versions match.
+        var v220 = StateCompatibility.Create("pcsx2", "2.2.0", "x64")!;
+        var v240 = StateCompatibility.Create("pcsx2", "2.4.0", "x64")!;
+        Assert.False(StateCompatibility.AreCompatible(v220.Key, v240.Key));
+        Assert.True(StateCompatibility.AreCompatible(v220.Key, StateCompatibility.Create("pcsx2", "2.2.0", "x64")!.Key));
+
+        // Architecture and core id are always hard gates, even when the version is unknown.
+        Assert.False(StateCompatibility.AreCompatible(
+            deck.Key, StateCompatibility.Create("retroarch:genesis_plus_gx", null, "arm64")!.Key));
+        Assert.False(StateCompatibility.AreCompatible(
+            deck.Key, StateCompatibility.Create("retroarch:snes9x", null, "x64")!.Key));
+
+        // Legacy opaque keys (uploaded before this format) keep exact-match behaviour.
+        Assert.True(StateCompatibility.AreCompatible("retroarch-1-0-x64-abc123", "retroarch-1-0-x64-abc123"));
+        Assert.False(StateCompatibility.AreCompatible("retroarch-1-0-x64-abc123", "retroarch-1-0-x64-def456"));
+        Assert.False(StateCompatibility.AreCompatible(deck.Key, "retroarch-1-0-x64-abc123"));
+    }
+
+    [Fact]
+    public async Task StateScoping_LimitsLaunchSyncToTheLaunchedGamesStates()
+    {
+        // Regression for "launching Bully syncs every game's states": on a launch/exit pass the state
+        // phase is scoped to the launched game's keys (its file stem + serials). RetroArch names
+        // states after the ROM (Bully.state), PCSX2 after the serial (SLUS-21269 (...).p2s); both
+        // match, another game's state does not. A manual Sync all passes no keys and takes everything.
+        var states = Directory.CreateDirectory(Path.Combine(_root, "scoped-states")).FullName;
+        WriteState(states, "Bully.state", 1);
+        WriteState(states, "Bully.state1", 2);
+        WriteState(states, "SLUS-21269 (ABCD1234).00.p2s", 3);
+        WriteState(states, "OtherGame.state", 4);
+
+        AuxiliarySyncProvider Build(IReadOnlyCollection<string>? keys) => new(
+            new EmptyProvider(),
+            [new("states", _ => states, path =>
+                path.Contains(".state", StringComparison.Ordinal) ||
+                path.EndsWith(".p2s", StringComparison.Ordinal))],
+            new StateCompatibility("current", "1.0 · x64"),
+            includeBaseSaves: false,
+            stateGameKeys: keys);
+
+        var scoped = (await Build(["Bully", "SLUS-21269"])
+            .GetSaveUnitsAsync(TestContext.Current.CancellationToken))
+            .Select(unit => unit.UnitId)
+            .ToArray();
+        Assert.Contains(scoped, id => id.EndsWith("/Bully.state", StringComparison.Ordinal));
+        Assert.Contains(scoped, id => id.EndsWith("/Bully.state1", StringComparison.Ordinal));
+        Assert.Contains(scoped, id => id.Contains("SLUS-21269", StringComparison.Ordinal));
+        Assert.DoesNotContain(scoped, id => id.Contains("OtherGame", StringComparison.OrdinalIgnoreCase));
+
+        // Manual Sync all (no keys) still takes every state.
+        var unscoped = await Build(null).GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(4, unscoped.Count);
+    }
+
+    // A minimal little-endian x86-64 ELF header, enough for the architecture reader to identify it.
+    // padTo lets a test create two cores that read as the same architecture but differ in byte length.
+    private static string WriteElfCore(string path, int padTo = 20)
+    {
+        var bytes = new byte[Math.Max(20, padTo)];
+        bytes[0] = 0x7f;
+        bytes[1] = (byte)'E';
+        bytes[2] = (byte)'L';
+        bytes[3] = (byte)'F';
+        bytes[4] = 0x02; // EI_CLASS = 64-bit
+        bytes[5] = 0x01; // EI_DATA = little-endian
+        bytes[18] = 0x3e; // e_machine = EM_X86_64 (62)
+        File.WriteAllBytes(path, bytes);
+        return path;
     }
 
     private static void WriteState(string directory, string name, int day)

@@ -73,6 +73,73 @@ public sealed class GameTdbArtworkProvider : IGameArtworkProvider
     }
 }
 
+/// <summary>
+/// Nintendo 3DS covers addressed by the NCCH product code, the same id-addressed approach used for
+/// GameCube/Wii. GameTDB keys on the four-character game code (the segment after the last dash of a
+/// code such as "CTR-P-AQNE"); its fourth character selects a region folder, with English and US
+/// folders tried as fallbacks. The high-resolution `coverHQ` front is offered before the smaller
+/// `cover`, and the downloader takes the first that exists. Because it is id-addressed it needs no
+/// catalogue title match — the reliable route for the multi-gigabyte dumps EmuShelf never hashes.
+/// </summary>
+public sealed class GameTdb3dsArtworkProvider : IGameArtworkProvider
+{
+    private const string BaseUri = "https://art.gametdb.com/3ds";
+    private static readonly string[] CoverSets = ["coverHQ", "cover"];
+
+    public string Id => "gametdb-3ds";
+
+    public IReadOnlyList<ArtworkCandidate> GetCandidates(
+        IReadOnlyList<GameIdentifier> identifiers,
+        GameCatalogMatch? match) => identifiers
+        .Where(identifier => identifier.Kind == GameIdentifierKind.Serial)
+        .Select(identifier => NormalizeGameCode(identifier.Value))
+        .Where(code => code is not null)
+        .Select(code => code!)
+        .Distinct(StringComparer.Ordinal)
+        .SelectMany(code => CoverSets
+            .SelectMany(set => RegionFolders(code[3])
+                .Select(folder => new ArtworkCandidate(
+                    Id,
+                    new Uri($"{BaseUri}/{set}/{folder}/{Uri.EscapeDataString(code)}.jpg"),
+                    ".jpg"))))
+        .ToArray();
+
+    // The product code is "CTR-P-AQNE" (or "KTR-P-…" on New-3DS-exclusive titles); GameTDB keys on
+    // the four-character game code after the last dash. A value that is already the bare four-char
+    // code is accepted as-is; anything else is ignored rather than guessed.
+    private static string? NormalizeGameCode(string productCode)
+    {
+        var code = productCode;
+        var dash = productCode.LastIndexOf('-');
+        if (dash >= 0 && dash + 1 < productCode.Length)
+            code = productCode[(dash + 1)..];
+        code = code.Trim().ToUpperInvariant();
+        return code.Length == 4 && code.All(character =>
+            character is >= '0' and <= '9' or >= 'A' and <= 'Z')
+            ? code
+            : null;
+    }
+
+    private static IEnumerable<string> RegionFolders(char regionCode)
+    {
+        var primary = regionCode switch
+        {
+            'E' => "US",
+            'J' => "JA",
+            'K' => "KO",
+            'W' or 'C' => "ZH", // Taiwanese/Chinese releases
+            'D' => "DE",
+            'F' => "FR",
+            'S' => "ES",
+            'I' => "IT",
+            'H' => "NL",
+            _ => "EN", // P/X/Y/Z/U and unknowns: generic PAL English
+        };
+        // Preserve order, drop duplicates so a US or EN game is not requested twice.
+        return new[] { primary, "EN", "US" }.Distinct(StringComparer.Ordinal);
+    }
+}
+
 public sealed class GameTdbPlayStation3ArtworkProvider : IGameArtworkProvider
 {
     private const string BaseUri = "https://art.gametdb.com/ps3";

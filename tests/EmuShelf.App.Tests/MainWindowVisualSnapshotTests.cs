@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Chrome;
 using Avalonia.Controls.Primitives;
@@ -22,6 +23,7 @@ using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.TexturePacks;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 
@@ -51,7 +53,6 @@ public class MainWindowVisualSnapshotTests
             var grid = window.FindControl<ToggleButton>("GridViewToggle");
             var list = window.FindControl<ToggleButton>("ListViewToggle");
             var gamepad = window.FindControl<Button>("GamepadModeButton");
-            var theme = window.FindControl<Button>("ThemeButton");
             var settings = window.FindControl<Button>("SettingsButton");
             var captions = window.FindControl<StackPanel>("CaptionButtons");
             var minimize = window.FindControl<Button>("MinimizeWindowButton");
@@ -62,7 +63,6 @@ public class MainWindowVisualSnapshotTests
             Assert.NotNull(grid);
             Assert.NotNull(list);
             Assert.NotNull(gamepad);
-            Assert.NotNull(theme);
             Assert.NotNull(settings);
             Assert.NotNull(captions);
             Assert.NotNull(minimize);
@@ -79,7 +79,7 @@ public class MainWindowVisualSnapshotTests
 
             foreach (var control in new Control[]
                      {
-                         navigation, grid, list, search, gamepad, theme, settings,
+                         navigation, grid, list, search, gamepad, settings,
                          minimize, maximize, close,
                      })
             {
@@ -906,8 +906,8 @@ public class MainWindowVisualSnapshotTests
             viewModel.RequestDesktopModeFromGamepadCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-desktop-confirmation-1280x800.png");
             viewModel.BackFromGamepadOverlayCommand.Execute(null);
-            viewModel.RequestSettingsFromGamepadCommand.Execute(null);
-            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-settings-handoff-1280x800.png");
+            await viewModel.RequestSettingsFromGamepadCommand.ExecuteAsync(null);
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-settings-1280x800.png");
             viewModel.BackFromGamepadOverlayCommand.Execute(null);
             viewModel.RequestQuitFromGamepadCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-quit-confirmation-1280x800.png");
@@ -982,12 +982,12 @@ public class MainWindowVisualSnapshotTests
             var achievementWidget = window.FindControl<Border>("GamepadAchievementWidget");
             var playButton = window.FindControl<Button>("GamepadPlayButton");
             var focusedDock = window.FindControl<Border>("GamepadFocusedDock");
-            var libraryScroller = window.FindControl<ScrollViewer>("GamepadLibraryScroller");
+            var rowList = window.FindControl<ListBox>("GamepadRowList");
             Assert.NotNull(achievementWidget);
             Assert.NotNull(playButton);
             Assert.NotNull(focusedDock);
-            Assert.NotNull(libraryScroller);
-            Assert.Equal(ScrollBarVisibility.Hidden, libraryScroller.VerticalScrollBarVisibility);
+            Assert.NotNull(rowList);
+            Assert.Equal(ScrollBarVisibility.Hidden, ScrollViewer.GetVerticalScrollBarVisibility(rowList));
             Assert.InRange(focusedDock.Bounds.Height, 102, 106);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
@@ -1365,9 +1365,10 @@ public class MainWindowVisualSnapshotTests
             viewModel.FocusedGame = viewModel.Games[0];
             await PumpAsync();
 
-            var scroller = window.GetVisualDescendants()
-                .OfType<ScrollViewer>()
-                .Single(candidate => candidate.Name == "GamepadLibraryScroller");
+            // The virtualized row list owns the scroller inside its template.
+            var rowList = window.FindControl<ListBox>("GamepadRowList");
+            Assert.NotNull(rowList);
+            var scroller = rowList.GetVisualDescendants().OfType<ScrollViewer>().First();
             var initialOffset = scroller.Offset.Y;
 
             // Walk down far enough to leave the first viewport regardless of the resolved column count.
@@ -1569,9 +1570,13 @@ public class MainWindowVisualSnapshotTests
             var hoverRing = shortButton.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-hover-ring"));
+            // The controller focus ring is drawn by the focused tile itself (a per-tile layer, shown via
+            // opacity on the .focused state). This short tile is not focused (tallGame is), so its own
+            // focus ring must be transparent here.
             var focusRing = shortButton.GetVisualDescendants()
                 .OfType<Border>()
-                .Single(border => border.Classes.Contains("gamepad-focus-ring"));
+                .Single(border => border.Classes.Contains("gamepad-focus-tile-ring"));
+            Assert.Equal(0, focusRing.Opacity);
             viewModel.NotifyGamepadPointerInput();
             var pseudoClasses = (IPseudoClasses)shortButton.Classes;
             pseudoClasses.Add(":pointerover");
@@ -1579,7 +1584,6 @@ public class MainWindowVisualSnapshotTests
 
             Assert.False(viewModel.IsGamepadControllerInputActive);
             Assert.Equal(1, hoverRing.Opacity);
-            Assert.False(focusRing.IsVisible);
             Assert.Equal(shortGame.CoverHeight, coverFrame.Bounds.Height, 1);
             Assert.Equal(coverFrame.Bounds.Height, hoverRing.Bounds.Height, 1);
             Assert.True(
@@ -1599,8 +1603,14 @@ public class MainWindowVisualSnapshotTests
 
             viewModel.FocusedGame = shortGame;
             await PumpAsync();
-            Assert.True(focusRing.IsVisible);
-            Assert.Equal(coverFrame.Bounds.Height, focusRing.Bounds.Height, 1);
+            // Focusing this tile makes its own ring opaque. The selector is an accent pad 6px larger
+            // than the cover on every side (Border.gamepad-focus-tile-ring, Margin -6), so its bounds
+            // exceed the cover frame by 12px in each dimension; the opaque cover masks the pad's centre,
+            // leaving an even 6px accent frame.
+            const double focusFrameInset = 6;
+            Assert.Equal(1, focusRing.Opacity);
+            Assert.Equal(coverFrame.Bounds.Height + (focusFrameInset * 2), focusRing.Bounds.Height, 1);
+            Assert.Equal(coverFrame.Bounds.Width + (focusFrameInset * 2), focusRing.Bounds.Width, 1);
         }
         finally
         {
@@ -1700,6 +1710,369 @@ public class MainWindowVisualSnapshotTests
             Task.FromResult(RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
                 RetroAchievementsRequestStatus.Offline));
         public void Clear() { }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSettingsAt1280x800_KeepRowsFocusAndConfirmationInsideTheOverlay()
+    {
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var configuration = new CloudSaveSyncSettings
+        {
+            Enabled = true,
+            RemoteName = "emushelf-gdrive",
+            CloudFolder = "EmuShelf/Saves",
+        };
+        var cloudSaves = new CloudSaveSyncSettingsContext(
+            configuration,
+            IsRcloneAvailable: true,
+            RcloneExpectedPath: @"D:\EmuShelf\rclone.exe",
+            SyncLogPath: @"D:\EmuShelf\Logs\save-sync.log",
+            GetPlatforms: () => SaveProviderRegistry.All.Select(descriptor => new CloudSaveSyncPlatformContext(
+                descriptor.SystemId,
+                descriptor.DisplayName,
+                descriptor.SaveShapeDescription,
+                descriptor.OverridePlaceholder,
+                Override: null,
+                LastSuccessUtc: null,
+                LastError: null,
+                SupportsSaveStates: descriptor.SystemId is "playstation2" or "psp")).ToArray(),
+            (systemId, _) => Task.FromResult<string?>(@"D:\Saves\" + systemId),
+            (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
+            (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
+            (_, _) => { },
+            _ => Task.FromResult(true));
+        var maintenance = new LibraryMaintenanceActions(
+            _ => Task.FromResult(string.Empty),
+            () => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            () => Task.FromResult(string.Empty),
+            () => true,
+            _ => Task.CompletedTask);
+        var retroAchievements = new RetroAchievementsSettingsContext(
+            null,
+            false,
+            (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+                RetroAchievementsConnectionResult.Connected)),
+            _ => Task.CompletedTask,
+            (_, _) => Task.FromResult<RetroAchievementsLibrarySyncSummary?>(null));
+        var textureResult = new TexturePackInventoryResult(
+            TexturePackLibraryMap.Empty,
+            [new TexturePackPlatformState(
+                "gamecube",
+                "GameCube",
+                @"D:\Dolphin\Load\Textures",
+                false,
+                TexturePackRootStatus.Ready,
+                false,
+                TexturePackLoadingStatus.Enabled,
+                null)]);
+        var texturePacks = new TexturePackSettingsContext(
+            () => textureResult,
+            () => true,
+            _ => Task.FromResult(textureResult),
+            (_, _) => { },
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["gamecube"] = "Use the Dolphin-detected folder",
+            },
+            () => new Dictionary<long, string>());
+        var desktopSettings = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(
+                system => system.Id,
+                _ => (EmulatorConfiguration?)null,
+                StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            maintenance,
+            retroAchievements: retroAchievements,
+            cloudSaves: cloudSaves,
+            texturePacks: texturePacks);
+        var gamepadSettings = new GamepadSettingsViewModel(desktopSettings)
+        {
+            SelectedSection = SettingsSection.General,
+        };
+        var paritySections = new[]
+        {
+            (SettingsSection.General, "general."),
+            (SettingsSection.RetroAchievements, "retro."),
+            (SettingsSection.Saves, "saves."),
+            (SettingsSection.TexturePacks, "textures."),
+        };
+        var desktopFieldIds = new Dictionary<SettingsSection, string[]>();
+        foreach (var (section, prefix) in paritySections)
+            desktopFieldIds[section] = await CaptureDesktopFieldIdsAsync(section, prefix);
+        desktopSettings.SelectedSection = SettingsSection.General;
+        var viewModel = new MainViewModel
+        {
+            IsGamepadMode = true,
+            GamepadSettings = gamepadSettings,
+            GamepadOverlay = GamepadOverlayKind.Settings,
+        };
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1280,
+            Height = 800,
+        };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-general-1280x800.png");
+
+            var overlay = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("gamepad-overlay"));
+            var host = window.FindControl<Panel>("GamepadOverlayHost");
+            var scroller = window.FindControl<ScrollViewer>("GamepadSettingsScroller");
+            var repeater = window.FindControl<ItemsRepeater>("GamepadSettingsRows");
+            Assert.NotNull(host);
+            Assert.NotNull(scroller);
+            Assert.NotNull(repeater);
+            Assert.Equal(host.Bounds.Width, overlay.Bounds.Width, 1);
+            Assert.Equal(host.Bounds.Height, overlay.Bounds.Height, 1);
+
+            var switches = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(border => border.IsVisible && border.Classes.Contains("gamepad-settings-switch"))
+                .ToArray();
+            Assert.Equal(2, switches.Length);
+            Assert.All(switches, toggle =>
+            {
+                Assert.InRange(toggle.Bounds.Width, 138, 142);
+                Assert.InRange(toggle.Bounds.Height, 46, 50);
+            });
+            AssertGamepadSettingsParity(SettingsSection.General, "general.");
+            var navigationButtons = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-nav"))
+                .ToArray();
+            Assert.Equal(4, navigationButtons.Length);
+            Assert.All(
+                navigationButtons,
+                button => Assert.Equal(navigationButtons[0].Bounds.Width, button.Bounds.Width, 1));
+            var saveButton = window.FindControl<Button>("GamepadSettingsSaveButton");
+            Assert.NotNull(saveButton);
+            Assert.Equal(navigationButtons[0].Bounds.Width, saveButton.Bounds.Width, 1);
+
+            gamepadSettings.SelectedSection = SettingsSection.RetroAchievements;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-retro-1280x800.png");
+            AssertGamepadSettingsParity(SettingsSection.RetroAchievements, "retro.");
+
+            gamepadSettings.SelectedSection = SettingsSection.TexturePacks;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-textures-1280x800.png");
+            AssertGamepadSettingsParity(SettingsSection.TexturePacks, "textures.");
+            var choices = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(border => border.IsVisible && border.Classes.Contains("gamepad-settings-affordance"))
+                .ToArray();
+            Assert.True(choices.Length >= 2);
+
+            gamepadSettings.SelectedSection = SettingsSection.Saves;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-saves-1280x800.png");
+            AssertGamepadSettingsParity(SettingsSection.Saves, "saves.");
+
+            var visibleRows = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-row"))
+                .ToArray();
+            Assert.True(visibleRows.Length >= 3);
+            Assert.Single(
+                visibleRows,
+                button => button.DataContext is GamepadSettingsRowViewModel { IsFocused: true });
+            Assert.All(visibleRows, row => Assert.InRange(row.Bounds.Height, 84, 102));
+            // Full-width rows fill the repeater; grouped rows under a platform header are indented.
+            var fullRowWidth = scroller.Bounds.Width - 18;
+            Assert.All(visibleRows, row => Assert.Equal(
+                row.Classes.Contains("grouped") ? fullRowWidth - 24 : fullRowWidth,
+                row.Bounds.Width,
+                1));
+
+            Assert.True(saveButton.IsVisible);
+            Assert.DoesNotContain(saveButton, visibleRows);
+
+            for (var index = 0; index < 12; index++)
+                viewModel.DispatchGamepadAction(GamepadAction.NavigateDown);
+            await PumpAsync();
+            var focused = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => button.IsVisible &&
+                    button.Classes.Contains("gamepad-settings-row") &&
+                    button.DataContext is GamepadSettingsRowViewModel { IsFocused: true });
+            var focusedOrigin = focused.TranslatePoint(default, scroller);
+            Assert.NotNull(focusedOrigin);
+            Assert.True(focusedOrigin.Value.Y >= -1);
+            Assert.True(focusedOrigin.Value.Y + focused.Bounds.Height <= scroller.Bounds.Height + 1);
+
+            // Saves is grouped by platform: headers exist, focus never lands on one, and member rows
+            // carry their platform id so the leading artwork can render.
+            Assert.Contains(gamepadSettings.Rows, row => row.IsHeader);
+            Assert.False(gamepadSettings.FocusedRow!.IsHeader);
+            Assert.All(
+                gamepadSettings.Rows.Where(row => row.IsGrouped),
+                row => Assert.False(string.IsNullOrEmpty(row.SystemId)));
+
+            window.Height = 720;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-saves-1280x720.png",
+                new PixelSize(1280, 720));
+            Assert.Equal(host.Bounds.Width, overlay.Bounds.Width, 1);
+            Assert.Equal(host.Bounds.Height, overlay.Bounds.Height, 1);
+            var resizedFocusedOrigin = focused.TranslatePoint(default, scroller);
+            Assert.NotNull(resizedFocusedOrigin);
+            Assert.True(resizedFocusedOrigin.Value.Y >= -1);
+            Assert.True(resizedFocusedOrigin.Value.Y + focused.Bounds.Height <= scroller.Bounds.Height + 1);
+
+            window.Width = 2048;
+            window.Height = 1152;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-saves-2048x1152.png",
+                new PixelSize(2048, 1152));
+            Assert.Equal(host.Bounds.Width, overlay.Bounds.Width, 1);
+            Assert.Equal(host.Bounds.Height, overlay.Bounds.Height, 1);
+            var wideVisibleRows = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-row"))
+                .ToArray();
+            Assert.True(wideVisibleRows.Length >= visibleRows.Length);
+            var wideFullRowWidth = scroller.Bounds.Width - 18;
+            Assert.All(wideVisibleRows, row => Assert.Equal(
+                row.Classes.Contains("grouped") ? wideFullRowWidth - 24 : wideFullRowWidth,
+                row.Bounds.Width,
+                1));
+
+            var replaceLocal = gamepadSettings.Rows.First(row =>
+                row.Key.EndsWith("replace-local", StringComparison.Ordinal));
+            await replaceLocal.SelectCommand.ExecuteAsync(null);
+            await PumpAsync();
+            var keep = window.FindControl<Button>("GamepadSettingsKeepButton");
+            var confirm = window.FindControl<Button>("GamepadSettingsConfirmButton");
+            Assert.NotNull(keep);
+            Assert.NotNull(confirm);
+            Assert.True(keep.IsVisible);
+            Assert.True(confirm.IsVisible);
+            Assert.Contains("focused", keep.Classes);
+            Assert.DoesNotContain("focused", confirm.Classes);
+            foreach (var button in new[] { keep, confirm })
+            {
+                var origin = button.TranslatePoint(default, overlay);
+                Assert.NotNull(origin);
+                Assert.True(origin.Value.X >= 0 && origin.Value.Y >= 0);
+                Assert.True(origin.Value.X + button.Bounds.Width <= overlay.Bounds.Width + 1);
+                Assert.True(origin.Value.Y + button.Bounds.Height <= overlay.Bounds.Height + 1);
+            }
+
+            gamepadSettings.Dispatch(GamepadAction.Cancel);
+            desktopSettings.ConnectedAccountName = "Parity Player";
+            desktopFieldIds[SettingsSection.RetroAchievements] = await CaptureDesktopFieldIdsAsync(
+                SettingsSection.RetroAchievements,
+                "retro.");
+            gamepadSettings.SelectedSection = SettingsSection.RetroAchievements;
+            await PumpAsync();
+            AssertGamepadSettingsParity(SettingsSection.RetroAchievements, "retro.");
+
+            desktopSettings.IsCloudConnected = false;
+            desktopFieldIds[SettingsSection.Saves] = await CaptureDesktopFieldIdsAsync(
+                SettingsSection.Saves,
+                "saves.");
+            gamepadSettings.SelectedSection = SettingsSection.Saves;
+            await PumpAsync();
+            AssertGamepadSettingsParity(SettingsSection.Saves, "saves.");
+
+            void AssertGamepadSettingsParity(SettingsSection section, string prefix)
+            {
+                // The controller list is intentionally virtualized, so the visual tree contains
+                // only the current viewport. Compare Desktop's visible controls with the complete
+                // controller projection, then separately verify that realized rows expose the same
+                // stable ids for accessibility and routing.
+                var gamepadIds = gamepadSettings.Rows
+                    .Select(row => row.ParityId)
+                    .Where(id => id?.StartsWith(prefix, StringComparison.Ordinal) == true)
+                    .Select(id => id!)
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
+                Assert.Equal(desktopFieldIds[section], gamepadIds);
+
+                var realizedRows = window.GetVisualDescendants()
+                    .OfType<Button>()
+                    .Where(button => button.IsVisible &&
+                        button.Classes.Contains("gamepad-settings-row") &&
+                        button.DataContext is GamepadSettingsRowViewModel row &&
+                        !string.IsNullOrEmpty(row.ParityId))
+                    .ToArray();
+                Assert.NotEmpty(realizedRows);
+                Assert.All(realizedRows, button =>
+                {
+                    var row = Assert.IsType<GamepadSettingsRowViewModel>(button.DataContext);
+                    Assert.Equal(row.ParityId, AutomationProperties.GetAutomationId(button));
+                });
+            }
+
+        }
+        finally
+        {
+            gamepadSettings.Dispose();
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+
+        async Task<string[]> CaptureDesktopFieldIdsAsync(SettingsSection section, string prefix)
+        {
+            desktopSettings.SelectedSection = section;
+            var desktopWindow = new EmulatorSettingsWindow
+            {
+                DataContext = desktopSettings,
+                Width = 1100,
+                Height = 800,
+            };
+            desktopWindow.Show();
+            try
+            {
+                await PumpAsync();
+                return desktopWindow.GetVisualDescendants()
+                    .OfType<Control>()
+                    .Where(control => control.IsVisible &&
+                        control.GetVisualAncestors().All(ancestor => ancestor.IsVisible))
+                    .Select(AutomationProperties.GetAutomationId)
+                    .Where(id => id?.StartsWith(prefix, StringComparison.Ordinal) == true)
+                    .Select(id => id!)
+                    .Distinct(StringComparer.Ordinal)
+                    .Order(StringComparer.Ordinal)
+                    .ToArray();
+            }
+            finally
+            {
+                desktopWindow.Close();
+            }
+        }
     }
 
     [AvaloniaFact]

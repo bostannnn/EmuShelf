@@ -35,6 +35,10 @@ public enum TexturePackMatchRule
     DolphinMarkerExact,
     DolphinMarkerPrefix,
     DolphinShared,
+
+    // The 16-hex 3DS title id naming an Azahar load/textures/<title id> folder. Appended last so
+    // existing persisted match-rule ordinals in the inventory cache are unchanged.
+    Nintendo3dsTitleId,
 }
 
 /// <summary>One identifier or marker declared by a texture pack.</summary>
@@ -138,6 +142,10 @@ public static class TexturePackMatcher
             .Where(identifier => identifier.Kind == GameIdentifierKind.DiscId)
             .Select(identifier => identifier.Value.Trim().ToUpperInvariant())
             .ToHashSet(StringComparer.Ordinal);
+        var titleIds = identifierList
+            .Where(identifier => identifier.Kind == GameIdentifierKind.TitleId)
+            .Select(identifier => identifier.Value.Trim().ToUpperInvariant())
+            .ToHashSet(StringComparer.Ordinal);
 
         // Dolphin checks for an exact six-character directory before considering a region-free
         // three-character directory. The exact directory blocks fallback even when it is empty.
@@ -153,6 +161,7 @@ public static class TexturePackMatcher
                 serials,
                 pspIds,
                 discIds,
+                titleIds,
                 exactDolphinDirectories)))
             .ToArray();
     }
@@ -162,11 +171,13 @@ public static class TexturePackMatcher
         IReadOnlySet<string> serials,
         IReadOnlySet<string> pspIds,
         IReadOnlySet<string> discIds,
+        IReadOnlySet<string> titleIds,
         IReadOnlySet<string> exactDolphinDirectories) =>
         key.Rule switch
         {
             TexturePackMatchRule.ExactSerial => serials.Contains(key.Value),
             TexturePackMatchRule.PspGameId => pspIds.Contains(key.Value),
+            TexturePackMatchRule.Nintendo3dsTitleId => titleIds.Contains(key.Value),
             TexturePackMatchRule.DolphinDirectoryExact or TexturePackMatchRule.DolphinMarkerExact =>
                 discIds.Contains(key.Value),
             TexturePackMatchRule.DolphinDirectoryPrefix => discIds.Any(discId =>

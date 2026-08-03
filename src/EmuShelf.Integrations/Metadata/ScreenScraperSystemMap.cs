@@ -26,6 +26,11 @@ public static class ScreenScraperSystemMap
             ["dreamcast"] = 23,
             ["arcade"] = 75,
             ["gbc"] = 10,
+            // Added alongside the 3DS/NES system support merged from main. These two ids
+            // (3DS = 17, NES = 3) are ScreenScraper's documented values but have not yet been
+            // cross-checked against the live systemesListe.php catalogue like the entries above.
+            ["3ds"] = 17,
+            ["nes"] = 3,
         };
 
     /// <summary>All EmuShelf-to-ScreenScraper system mappings, for auditing against the live catalogue.</summary>

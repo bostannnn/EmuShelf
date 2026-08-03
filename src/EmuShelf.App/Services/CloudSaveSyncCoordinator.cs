@@ -94,19 +94,29 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         CancellationToken cancellationToken = default)
     {
         var descriptor = SaveProviderRegistry.Find(systemId);
-        if (descriptor is null || CreateBaseProvider(systemId) is not { } provider)
+        if (descriptor is null)
+            return null;
+
+        // Everything below reads the emulator's own configuration, its version resources and binary
+        // architecture, and the save/state folders — often on a slow external drive. The Saves
+        // section resolves every platform at once when it opens, so this must stay off the UI thread;
+        // running it inline froze the window for a few seconds each time. Provider construction reads
+        // the RetroArch core info file, so it is off-thread too.
+        var provider = await Task.Run(() => CreateBaseProvider(systemId), cancellationToken);
+        if (provider is null)
             return null;
 
         var detection = await descriptor.DetectAsync(provider, cancellationToken);
-        var context = CreateProviderContext(systemId, _settings.CloudSaveSync);
         var optionalSummary = (Summary: (string?)null, Locations: (IReadOnlyList<OptionalContentDetection>)[]);
         try
         {
-            var optional = SaveProviderRegistry.WithOptionalContent(
-                descriptor,
-                provider,
-                context,
-                includeSaveStates: true);
+            var optional = await Task.Run(
+                () => SaveProviderRegistry.WithOptionalContent(
+                    descriptor,
+                    provider,
+                    CreateProviderContext(systemId, _settings.CloudSaveSync),
+                    includeSaveStates: true),
+                cancellationToken);
             optionalSummary = await DescribeOptionalContentAsync(optional, provider, cancellationToken);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
@@ -176,6 +186,10 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// <summary>Persists one platform's opt-in save-state choice.</summary>
     public void UpdateOptionalContent(string systemId, bool syncSaveStates) =>
         Persist(_settings.CloudSaveSync.WithOptionalContent(systemId, syncSaveStates));
+
+    /// <summary>Persists one system's save-state folder override without changing the connection state.</summary>
+    public void UpdateStateOverride(string systemId, string? directory) =>
+        Persist(_settings.CloudSaveSync.WithStateOverride(systemId, directory));
 
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
@@ -312,7 +326,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         DownloadRcloneAsync,
         GetDetectionAsync,
         UpdateOptionalContent,
-        UpdateOverrides);
+        UpdateOverrides,
+        UpdateStateOverride);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -338,10 +353,16 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// saves commit before the optional state phase, so a state failure cannot strand a reconciled
     /// memory-card save in staging. The launch lifecycle itself supplies cancellation; there is no
     /// shorter application-level pre-launch budget.
+    ///
+    /// <paramref name="launchStateKeys"/> scopes the state phase to the launched game (its file
+    /// stem, serials, and disc ids) so launching one game no longer hashes and syncs every game's
+    /// states in a shared folder. Regular saves are never scoped, and a manual Sync all passes no
+    /// keys so it still covers every state.
     /// </remarks>
     public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
         string systemId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyCollection<string>? launchStateKeys = null)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
@@ -361,10 +382,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             if (saves.Status != CloudSaveSyncStatus.Completed ||
                 !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
             {
+                if (saves.Status == CloudSaveSyncStatus.Completed &&
+                    !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
+                {
+                    _logger.Information(
+                        $"Save-state sync skipped for '{systemId}': the platform's " +
+                        "'Automatically sync save states' toggle is off on this machine.");
+                }
                 RecordAutomaticOutcome(systemId, saves);
                 return saves;
             }
 
+            await LogStatePhaseDiagnosticsAsync(systemId, launchStateKeys);
             var states = await RunSyncPipelineAsync(
                 [systemId],
                 progress: null,
@@ -372,7 +401,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 cancellationToken,
                 gateAlreadyHeld: true,
                 contentScope: SyncContentScope.SaveStatesOnly,
-                recordOutcome: false);
+                recordOutcome: false,
+                stateGameKeys: launchStateKeys);
+            LogStatePhaseResult(systemId, states);
             if (states.Status != CloudSaveSyncStatus.Completed)
             {
                 RecordAutomaticOutcome(
@@ -390,6 +421,70 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         {
             _gate.Release();
         }
+    }
+
+    // Names the failing gate when launch-time save-state sync appears to do nothing. Writes to the
+    // portable app log (Logs/EmuShelf-*.log). Best-effort: diagnostics must never fail a sync.
+    private async Task LogStatePhaseDiagnosticsAsync(string systemId, IReadOnlyCollection<string>? keys)
+    {
+        try
+        {
+            var keyText = keys is { Count: > 0 }
+                ? string.Join(", ", keys)
+                : "(none — this pass reconciles every state for the platform)";
+            var provider = CreateProvider(systemId, SyncContentScope.SaveStatesOnly, keys);
+            var auxiliary = provider as AuxiliarySyncProvider;
+            var compatible = auxiliary?.HasStateCompatibility;
+            // The exact key, logged on both machines: two machines must print the SAME key for a state
+            // to restore. A different key here is the direct signature of the cross-machine mismatch
+            // that leaves states uploaded-but-not-restored.
+            var compatibilityKey = auxiliary?.StateCompatibilityKey ?? "(none)";
+            var localCount = provider is null ? 0 : (await provider.GetSaveUnitsAsync()).Count;
+            _logger.Information(
+                $"Save-state sync for '{systemId}': keys=[{keyText}]; " +
+                $"compatibilityDetected={compatible?.ToString() ?? "n/a"}; compatibilityKey={compatibilityKey}; " +
+                $"localStatesMatched={localCount}. " +
+                (compatible == false
+                    ? "compatibilityDetected=false means the emulator/core version or CPU architecture " +
+                      "could not be read, so states are neither uploaded nor restored — check the emulator " +
+                      "and core are configured. "
+                    : string.Empty) +
+                (localCount == 0 && compatible != false
+                    ? "localStatesMatched=0 while the folder has states means the launched game's name/serial " +
+                      "did not match the state file names (or the state folder is wrong). "
+                    : string.Empty));
+        }
+        catch (Exception ex) when (
+            ex is IOException or InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
+        {
+            _logger.Information($"Save-state sync diagnostics for '{systemId}' were unavailable: {ex.Message}");
+        }
+    }
+
+    private void LogStatePhaseResult(string systemId, CloudSaveSyncOutcome outcome)
+    {
+        if (outcome.Report is not { } report)
+        {
+            _logger.Information($"Save-state sync for '{systemId}' did not complete: {outcome.Status}.");
+            return;
+        }
+
+        var skipped = report.Skipped;
+        // Enumerate every distinct skip reason (capped), not just the first: on a launch pass several
+        // states can skip for different reasons (a version mismatch and a name-scope miss at once), and
+        // seeing only the first hides the others.
+        var skippedDetail = string.Empty;
+        if (skipped.Count > 0)
+        {
+            var reasons = skipped
+                .GroupBy(result => result.Reason, StringComparer.Ordinal)
+                .Select(group => $"{group.Count()}× {group.Key}")
+                .Take(5);
+            skippedDetail = " Skip reasons: " + string.Join(" | ", reasons);
+        }
+        _logger.Information(
+            $"Save-state sync for '{systemId}' result: {report.Uploaded} uploaded, {report.Downloaded} downloaded, " +
+            $"{report.Unchanged} already in sync, {skipped.Count} skipped.{skippedDetail}");
     }
 
     /// <summary>
@@ -440,7 +535,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 location.LastError,
                 location.LastNotice,
                 descriptor.SupportsSaveStates,
-                location.SyncSaveStates);
+                location.SyncSaveStates,
+                location.StateDirectoryOverride);
         }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
@@ -501,7 +597,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         bool waitForGate = true,
         bool gateAlreadyHeld = false,
         SyncContentScope contentScope = SyncContentScope.SavesOnly,
-        bool recordOutcome = true)
+        bool recordOutcome = true,
+        IReadOnlyCollection<string>? stateGameKeys = null)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
@@ -525,7 +622,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             foreach (var systemId in requestedSystemIds)
             {
                 constructingSystemId = systemId;
-                if (CreateTarget(systemId, contentScope) is { } target)
+                if (CreateTarget(systemId, contentScope, stateGameKeys) is { } target)
                 {
                     targets.Add(target);
                     synced.Add(systemId);
@@ -636,13 +733,15 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     private ISaveLocationProvider? CreateProvider(
         string systemId,
-        SyncContentScope contentScope = SyncContentScope.SavesOnly) =>
-        CreateProvider(systemId, _settings.CloudSaveSync, contentScope);
+        SyncContentScope contentScope = SyncContentScope.SavesOnly,
+        IReadOnlyCollection<string>? stateGameKeys = null) =>
+        CreateProvider(systemId, _settings.CloudSaveSync, contentScope, stateGameKeys);
 
     private ISaveLocationProvider? CreateProvider(
         string systemId,
         CloudSaveSyncSettings configuration,
-        SyncContentScope contentScope)
+        SyncContentScope contentScope,
+        IReadOnlyCollection<string>? stateGameKeys = null)
     {
         if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
             return null;
@@ -657,7 +756,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             context,
             contentScope != SyncContentScope.SavesOnly &&
                 configuration.GetLocation(systemId).SyncSaveStates,
-            includeBaseSaves: contentScope != SyncContentScope.SaveStatesOnly);
+            includeBaseSaves: contentScope != SyncContentScope.SaveStatesOnly,
+            gameStateKeys: stateGameKeys);
     }
 
     private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
@@ -682,7 +782,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             _gamesForSystem is null ? null : () => GameFileNames(systemId),
             installation?.LaunchArguments,
             ResolvePortablePath(installation?.ExecutablePath),
-            installation?.FlatpakApplicationId);
+            installation?.FlatpakApplicationId,
+            ResolvePortablePath(configuration.GetStateOverride(systemId)));
     }
 
     private static async Task<(string? Summary, IReadOnlyList<OptionalContentDetection> Locations)> DescribeOptionalContentAsync(
@@ -733,8 +834,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     private SaveSyncTarget? CreateTarget(
         string systemId,
-        SyncContentScope contentScope = SyncContentScope.SavesOnly) =>
-        CreateProvider(systemId, contentScope) is not { } provider
+        SyncContentScope contentScope = SyncContentScope.SavesOnly,
+        IReadOnlyCollection<string>? stateGameKeys = null) =>
+        CreateProvider(systemId, contentScope, stateGameKeys) is not { } provider
             ? null
             : new SaveSyncTarget(provider, new FileSystemLocalSaveEndpoint(provider, _paths));
 
@@ -918,7 +1020,8 @@ public sealed record CloudSaveSyncPlatformContext(
     string? LastError,
     string? LastNotice = null,
     bool SupportsSaveStates = false,
-    bool SyncSaveStates = false);
+    bool SyncSaveStates = false,
+    string? StateOverride = null);
 
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view
@@ -940,4 +1043,5 @@ public sealed record CloudSaveSyncSettingsContext(
     Func<CancellationToken, Task<bool>> DownloadRcloneAsync,
     Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null,
     Action<string, bool>? UpdateOptionalContent = null,
-    Action<IReadOnlyDictionary<string, string?>>? UpdateOverrides = null);
+    Action<IReadOnlyDictionary<string, string?>>? UpdateOverrides = null,
+    Action<string, string?>? UpdateStateOverride = null);

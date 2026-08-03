@@ -1,4 +1,5 @@
 using EmuShelf.App.Services;
+using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Systems;
 
@@ -27,6 +28,7 @@ internal sealed class FakeDialogService : IDialogService
     public Exception? SettingsException { get; set; }
     public int SettingsShown { get; private set; }
     public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
+    public IReadOnlyList<ThemeChoiceViewModel>? ThemeChoices { get; private set; }
     public (string GameTitle, int RetroAchievementsGameId)? AchievementDetailsRequest { get; private set; }
     public long? LastScraperGameId { get; private set; }
     public string? LastScraperGameTitle { get; private set; }
@@ -96,13 +98,15 @@ internal sealed class FakeDialogService : IDialogService
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
-        ScreenScraperSettingsContext? screenScraper = null)
+        ScreenScraperSettingsContext? screenScraper = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         SettingsShown++;
         TexturePacks = texturePacks;
         MaintenanceActions = maintenance;
         RetroAchievementsContext = retroAchievements;
         CloudSaveSyncContext = cloudSaves;
+        ThemeChoices = themeChoices;
         if (SettingsException is not null)
             return Task.FromException(SettingsException);
         return Task.CompletedTask;

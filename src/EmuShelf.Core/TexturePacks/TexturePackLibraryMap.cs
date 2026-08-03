@@ -238,6 +238,7 @@ public sealed class TexturePackLibraryMap
         private readonly Dictionary<string, List<long>> _serials = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<long>> _pspIds = new(StringComparer.Ordinal);
         private readonly Dictionary<string, List<long>> _discIds = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, List<long>> _titleIds = new(StringComparer.Ordinal);
 
         public static LibraryIdentifierIndex Build(
             IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> identifiersByGame)
@@ -262,6 +263,9 @@ public sealed class TexturePackLibraryMap
                         case GameIdentifierKind.DiscId:
                             Add(index._discIds, value, gameId);
                             break;
+                        case GameIdentifierKind.TitleId:
+                            Add(index._titleIds, value, gameId);
+                            break;
                     }
                 }
             }
@@ -274,6 +278,7 @@ public sealed class TexturePackLibraryMap
         {
             TexturePackMatchRule.ExactSerial => _serials.Count > 0,
             TexturePackMatchRule.PspGameId => _pspIds.Count > 0,
+            TexturePackMatchRule.Nintendo3dsTitleId => _titleIds.Count > 0,
             TexturePackMatchRule.DolphinDirectoryExact
                 or TexturePackMatchRule.DolphinDirectoryPrefix
                 or TexturePackMatchRule.DolphinMarkerExact
@@ -294,6 +299,9 @@ public sealed class TexturePackLibraryMap
                     break;
                 case TexturePackMatchRule.PspGameId:
                     AddRange(_pspIds, key.Value, gameIds);
+                    break;
+                case TexturePackMatchRule.Nintendo3dsTitleId:
+                    AddRange(_titleIds, key.Value, gameIds);
                     break;
                 case TexturePackMatchRule.DolphinDirectoryExact:
                 case TexturePackMatchRule.DolphinMarkerExact:

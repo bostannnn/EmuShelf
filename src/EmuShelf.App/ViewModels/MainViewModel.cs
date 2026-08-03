@@ -13,6 +13,7 @@ using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
+using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
@@ -31,6 +32,11 @@ public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
     private const int ViewStateSaveDebounceMs = 500;
+    // Fast LB/RB cycling changes the selected platform many times a second; each change used to run a
+    // full clear-and-rebuild of the grid (BeginScopeChange + a fresh DB query + hundreds of new
+    // GameViewModels), which is what blanked covers, dropped the selector and reset focus mid-scroll.
+    // Coalesce a burst into one reload of the platform the user settles on.
+    private const int PlatformReloadDebounceMs = 180;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
@@ -58,6 +64,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IAppThemeService _themeService;
     private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IApplicationLifetimeService? _applicationLifetime;
+    private readonly IOnScreenKeyboardService _onScreenKeyboard;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
     private readonly IMetadataPreferencesService _metadataPreferences;
@@ -84,6 +91,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _searchDebounce;
     private readonly DispatcherTimer _statusDismiss;
     private readonly DispatcherTimer _viewStateSave;
+    private readonly DispatcherTimer _platformReloadDebounce;
+    private TaskCompletionSource? _platformReloadCompletion;
     private readonly ILibraryViewStateService _libraryViewState;
     private bool _isRestoringViewState;
     private readonly List<GameViewModel> _systemGames = [];
@@ -95,6 +104,14 @@ public partial class MainViewModel : ViewModelBase
     private string? _displayedScopeKey;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
+    // Built GameViewModel lists per scope key (system:{id} / AllGames / RecentlyAdded). Navigating to
+    // an already-visited scope reuses its list instantly instead of re-querying the DB and rebuilding
+    // hundreds of view models, which is what made fast LB/RB cycling thrash. The cache owns these view
+    // models; it is dropped wholesale (forceRebuild) whenever the underlying library data changes
+    // (add/remove/rename/rescan, availability and achievements passes), so a rebuild always reflects
+    // the DB. Covers stay warm across switches because the same view models are reused.
+    private readonly Dictionary<string, List<GameViewModel>> _scopeCache = new(StringComparer.Ordinal);
+
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
@@ -104,6 +121,14 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<GameSystem> NavigationSystems { get; }
     public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
+
+    // Row projection of Games for the gamepad grid. The grid is rendered as a virtualized ListBox with
+    // one row per line, so only the ~5 visible rows realize (mature couch-UI pattern) — vastly cheaper
+    // than laying out every tile, and it avoids the phantom-cell defect of a virtualized UniformGrid.
+    // Each row holds exactly GamepadColumnCount games, so the rendered column count is guaranteed to
+    // equal the value navigation uses. Navigation still runs on the flat Games list + index%columns.
+    public BulkObservableCollection<IReadOnlyList<GameViewModel>> GamepadRows { get; } = [];
+
     public ObservableCollection<GamepadOverlayOptionViewModel> GamepadOverlayOptions { get; } = [];
 
     [ObservableProperty]
@@ -196,6 +221,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
 
+    /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
+    /// theme gallery projects the same instances so both modes stay in lock-step.</summary>
+    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
+
     [ObservableProperty]
     public partial GameViewModel? SelectedGame { get; set; }
 
@@ -218,6 +247,9 @@ public partial class MainViewModel : ViewModelBase
     public partial GamepadOverlayKind GamepadOverlay { get; set; }
 
     [ObservableProperty]
+    public partial GamepadSettingsViewModel? GamepadSettings { get; set; }
+
+    [ObservableProperty]
     public partial int GamepadOverlaySelectionIndex { get; set; }
 
     [ObservableProperty]
@@ -230,7 +262,8 @@ public partial class MainViewModel : ViewModelBase
     public partial GamepadScraperViewModel? GamepadScraperDetails { get; set; }
 
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
-    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename;
+    public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename ||
+        IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadAchievementsOpen => GamepadOverlay == GamepadOverlayKind.Achievements;
     public bool IsGamepadSearchOpen => GamepadOverlay == GamepadOverlayKind.Search;
     public bool IsGamepadCollectionsOpen => GamepadOverlay == GamepadOverlayKind.Collections;
@@ -240,19 +273,25 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
     public bool IsGamepadScraperOpen => GamepadOverlay == GamepadOverlayKind.Scraper;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
+    public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
+    public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
+    public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
+    public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
-    public bool IsGamepadSettingsHandoffOpen => GamepadOverlay == GamepadOverlayKind.SettingsDesktopHandoff;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
-    // The Achievements and Scraper overlays render their own bespoke bodies, so the shared
-    // option-button list is hidden for them.
-    public bool IsGamepadOverlayOptionsVisible => GamepadOverlay is not
-        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Scraper);
+    // The Achievements, Settings and Scraper overlays render their own bespoke bodies, so the
+    // shared option-button list and the chrome title are hidden for them.
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
-         GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper);
+         GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.Settings);
+    public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
+         GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper);
+    public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
@@ -264,14 +303,15 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
         GamepadOverlayKind.SystemMenu => "Menu",
+        GamepadOverlayKind.Settings => "Settings",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
-        GamepadOverlayKind.SettingsDesktopHandoff => "Open Settings?",
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
     };
     public string GamepadOverlayHelpText => GamepadOverlay switch
     {
         GamepadOverlayKind.Achievements => "D-pad Browse   X Refresh   B Back",
+        GamepadOverlayKind.Settings => "LB/RB Sections   D-pad Rows   A Select   B Cancel",
         GamepadOverlayKind.Search => "Steam + X Keyboard   B Back",
         GamepadOverlayKind.Rename => "A Save   B Back",
         GamepadOverlayKind.Scraper => "D-pad Move   A Select   B Back",
@@ -281,29 +321,65 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial double GamepadViewportWidth { get; set; }
 
-    public int GamepadColumnCount { get; private set; } = 1;
+    private int _gamepadColumnCount = 1;
+    // Observable so the gamepad grid's UniformGrid binds its Columns to it: the rendered column count
+    // is then guaranteed to equal the value navigation uses, so index%columns can never disagree with
+    // the layout.
+    public int GamepadColumnCount
+    {
+        get => _gamepadColumnCount;
+        private set
+        {
+            if (SetProperty(ref _gamepadColumnCount, value))
+                BuildGamepadRows(); // re-group into rows of the new width (e.g. on resize)
+        }
+    }
+
+    // Slice the flat Games list into rows of GamepadColumnCount for the virtualized row list. Called
+    // whenever Games or the column count changes; cheap (it allocates small arrays, not view models).
+    private void BuildGamepadRows()
+    {
+        if (!IsGamepadMode)
+        {
+            if (GamepadRows.Count > 0)
+                GamepadRows.Clear();
+            return;
+        }
+
+        var columns = Math.Max(1, GamepadColumnCount);
+        var rows = new List<IReadOnlyList<GameViewModel>>((Games.Count + columns - 1) / columns);
+        for (var start = 0; start < Games.Count; start += columns)
+        {
+            var take = Math.Min(columns, Games.Count - start);
+            var row = new GameViewModel[take];
+            for (var offset = 0; offset < take; offset++)
+                row[offset] = Games[start + offset];
+            rows.Add(row);
+        }
+
+        GamepadRows.ReplaceAll(rows);
+    }
     public int GamepadAchievementColumnCount { get; private set; } = 1;
     public int GamepadAchievementLayoutRevision { get; private set; }
     public bool HasFocusedGamepadAchievement => FocusedGamepadAchievement is not null;
 
-    /// <summary>
-    /// The view that lays the grid out reports the true rendered column count here, and it wins over
-    /// the width arithmetic in <see cref="UpdateCoverLayout"/>. That arithmetic can be momentarily
-    /// stale relative to the real layout, and a too-small count made Right/Left navigation clamp
-    /// partway across a row ("stuck at the second column"). The arithmetic remains the fallback for
-    /// before the grid has laid out (and for headless tests with no view).
-    /// </summary>
-    internal void SetRenderedGamepadColumnCount(int columns)
-    {
-        if (columns >= 1)
-            GamepadColumnCount = columns;
-    }
+    // GamepadColumnCount is derived purely by width arithmetic in UpdateCoverLayout, using the same
+    // formula and constants (gutters + spacing) as the real UniformGridLayout — so it always equals
+    // the rendered column count without reading the visual tree. An earlier design let the view
+    // overwrite it from realized tile bounds; during fast LB/RB the repeater is mid-recycle and those
+    // bounds are stale (tiles collapse into one Y row, or only a partial row is realized), which
+    // produced a garbage count that broke index%columns math — the stuck selector, blocked Left, and
+    // vanishing focus ring. The arithmetic value cannot race, so navigation now trusts it alone.
 
     internal void SetRenderedGamepadAchievementColumnCount(int columns)
     {
         if (columns >= 1)
             GamepadAchievementColumnCount = columns;
     }
+
+    // The view reports a gamepad-grid fault here (e.g. a focused row's container did not realize after
+    // several attempts) so a Deck run leaves a warning in Logs/EmuShelf-*.log without per-move noise.
+    internal void LogGamepadGridFault(string detail) => _logger.Warning($"Gamepad grid: {detail}");
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
@@ -328,11 +404,21 @@ public partial class MainViewModel : ViewModelBase
 
     // Each mode measures a different element, so each has its own inset. Desktop measures the
     // ScrollViewer, and the ItemsRepeater inside it carries Margin 32/28 that the measurement
-    // still includes. Gamepad measures its own ScrollViewer, whose Margin is already excluded
-    // from its arranged size, and its repeater adds none — so there is nothing left to subtract.
-    // Sharing one constant between them silently mis-sized whichever mode it did not describe.
+    // still includes. Gamepad measures its own ScrollViewer, whose Margin is already excluded from
+    // its arranged size; its repeater carries a deliberate side gutter (GamepadGridSideGutter each
+    // side) so the focused tile's accent glow — which blurs ~30px past the cover — is never shaved
+    // by the scroller's clip on the edge columns. The column arithmetic subtracts both gutters so a
+    // whole number of covers fills the region between them with no lopsided edge.
     private const double DesktopGridHorizontalPadding = 60;
-    private const double GamepadGridHorizontalPadding = 0;
+    // The reserved gutter on each side of the gamepad grid, mirrored by the ItemsRepeater's Margin
+    // in MainWindow.axaml. Must exceed the EmuFocusGlow blur radius (~30px) so edge-column focus
+    // never clips. The view reads it via GamepadGridSideGutterPixels to place the selector overlay.
+    internal const double GamepadGridSideGutter = 40;
+    private const double GamepadGridHorizontalPadding = 2 * GamepadGridSideGutter;
+
+    /// <summary>The per-side gutter (logical px) reserved inside the gamepad grid scroller, so the
+    /// view's deterministic selector/reveal geometry uses the same value the layout is sized from.</summary>
+    internal static double GamepadGridSideGutterPixels => GamepadGridSideGutter;
 
     /// <summary>Current width of the desktop library grid area.</summary>
     [ObservableProperty]
@@ -353,9 +439,6 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnLibraryViewportWidthChanged(double value) => UpdateCoverLayout();
 
-    public bool IsSystemTheme => CurrentTheme == ThemePreference.System;
-    public bool IsLightTheme => CurrentTheme == ThemePreference.Light;
-    public bool IsDarkTheme => CurrentTheme == ThemePreference.Dark;
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
@@ -401,13 +484,6 @@ public partial class MainViewModel : ViewModelBase
         : SelectedSystem?.Id == "playstation3"
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
         : "Add game files or a dedicated folder to begin building this shelf.";
-    public string ThemeDescription => CurrentTheme switch
-    {
-        ThemePreference.Light => "Light appearance",
-        ThemePreference.Dark => "Dark appearance",
-        _ => "Follow system appearance",
-    };
-
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -458,7 +534,8 @@ public partial class MainViewModel : ViewModelBase
         IScreenScraperPreviewService? screenScraperPreview = null,
         IGameScrapeApplicationService? scrapeApply = null,
         IRemoteArtworkDownloader? artworkDownloader = null,
-        ISettingsService? settingsService = null)
+        ISettingsService? settingsService = null,
+        IOnScreenKeyboardService? onScreenKeyboard = null)
     {
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;
@@ -478,6 +555,7 @@ public partial class MainViewModel : ViewModelBase
         _themeService = themeService ?? new NullAppThemeService();
         _interfaceModeService = interfaceModeService;
         _applicationLifetime = applicationLifetime;
+        _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         IsGamepadMode = interfaceModeService?.Current == InterfaceMode.Gamepad;
         if (_interfaceModeService is not null)
         {
@@ -500,13 +578,28 @@ public partial class MainViewModel : ViewModelBase
         _retroMatching = retroMatching;
         _retroProgress = retroProgress;
         _retroDetails = retroDetails;
+        // A details refresh (opening the achievements overlay, or the post-exit refresh) writes the
+        // account's new unlock count to the progress store, but only a full reload re-applied it to a
+        // tile. So the focused-game dock widget kept showing the pre-unlock count ("0/9") after an
+        // unlock the overlay already reflected. Re-apply the affected tiles' display when fresh
+        // details arrive so the widget and grid mark update without a reload.
+        if (_retroDetails is not null)
+            _retroDetails.DetailsRefreshed += OnAchievementDetailsRefreshed;
         _retroRefresh = retroRefresh;
         _retroBadges = retroBadges;
         _cloudSaveSync = cloudSaveSync;
         _texturePacks = texturePacks;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
+        // Build the theme choices before assigning CurrentTheme: the generated setter fires
+        // OnCurrentThemeChanged, which reads ThemeChoices, whenever the saved theme differs from the
+        // System default.
+        ThemeChoices = ThemeCatalog.All
+            .Select(theme => new ThemeChoiceViewModel(theme, SetThemeAsync))
+            .ToArray();
         CurrentTheme = _themeService.Current;
+        foreach (var choice in ThemeChoices)
+            choice.IsSelected = choice.Id == CurrentTheme;
 
         Systems = new ObservableCollection<GameSystem>(systems);
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
@@ -518,6 +611,10 @@ public partial class MainViewModel : ViewModelBase
         NavigationSystems = new ObservableCollection<GameSystem>(navigationSystems);
         GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
             navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
+
+        // Keep the gamepad row projection in lockstep with Games no matter how Games is changed
+        // (reload, filter, or a direct test mutation), so the virtualized row grid never goes stale.
+        Games.CollectionChanged += (_, _) => BuildGamepadRows();
 
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchDebounceMs) };
         _searchDebounce.Tick += (_, _) =>
@@ -531,6 +628,28 @@ public partial class MainViewModel : ViewModelBase
         {
             _statusDismiss.Stop();
             StatusText = string.Empty;
+        };
+
+        _platformReloadDebounce = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(PlatformReloadDebounceMs),
+        };
+        _platformReloadDebounce.Tick += async (_, _) =>
+        {
+            _platformReloadDebounce.Stop();
+            var completion = _platformReloadCompletion;
+            _platformReloadCompletion = null;
+            try
+            {
+                // Navigation hot path: reuse the cached scope if we have visited it before.
+                await ReloadGamesAsync(useCache: true);
+            }
+            finally
+            {
+                // ReloadGamesAsync swallows its own errors, but complete the awaiter no matter what
+                // so a caller that awaited the selection change can never hang.
+                completion?.TrySetResult();
+            }
         };
 
         // Selecting a platform moves several of these properties at once. Coalesce them into one
@@ -684,7 +803,9 @@ public partial class MainViewModel : ViewModelBase
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
         ScheduleLibraryViewStateSave();
-        _selectedSystemLoad = ReloadGamesAsync();
+        // Debounced: the rail highlight and title above move immediately, but the heavy grid reload is
+        // coalesced so holding/tapping LB/RB does not rebuild the library on every press.
+        _selectedSystemLoad = RequestLibraryReload();
     }
 
     partial void OnCurrentLibraryScopeChanged(LibraryScope value)
@@ -948,8 +1069,25 @@ public partial class MainViewModel : ViewModelBase
         OpenGamepadOverlay(GamepadOverlayKind.DesktopModeConfirmation);
 
     [RelayCommand]
-    private void RequestSettingsFromGamepad() =>
-        OpenGamepadOverlay(GamepadOverlayKind.SettingsDesktopHandoff);
+    private async Task RequestSettingsFromGamepadAsync()
+    {
+        if (!IsGamepadMode || IsBusy)
+            return;
+
+        try
+        {
+            CloseGamepadSettingsProjection();
+            var settings = await CreateSettingsViewModelAsync();
+            GamepadSettings = new GamepadSettingsViewModel(
+                settings, _onScreenKeyboard, ThemeChoices, SetThemeAsync);
+            OpenGamepadOverlay(GamepadOverlayKind.Settings);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not open Gamepad settings.", ex);
+            SetStatus($"Could not open Settings: {ex.Message}", StatusSeverity.Error);
+        }
+    }
 
     [RelayCommand]
     private void RequestQuitFromGamepad() =>
@@ -1029,6 +1167,8 @@ public partial class MainViewModel : ViewModelBase
         }
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        if (closingOverlay == GamepadOverlayKind.Settings)
+            CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
@@ -1055,6 +1195,12 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        if (IsGamepadSettingsOpen)
+        {
+            OnGamepadSettingsCloseRequested(false);
+            return;
+        }
+
         var returnOverlay = GamepadOverlay switch
         {
             GamepadOverlayKind.Rename or
@@ -1062,7 +1208,6 @@ public partial class MainViewModel : ViewModelBase
             GamepadOverlayKind.RemoveConfirmation or
             GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
             GamepadOverlayKind.DesktopModeConfirmation or
-            GamepadOverlayKind.SettingsDesktopHandoff or
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
             _ => GamepadOverlayKind.None,
         };
@@ -1125,6 +1270,9 @@ public partial class MainViewModel : ViewModelBase
         // Desktop-mode switch.
         if (IsGamepadInputSuspended)
             return true;
+
+        if (IsGamepadSettingsOpen && GamepadSettings is { } settings)
+            return settings.Dispatch(action);
 
         if (GamepadOverlayOwnsTextInput)
             return DispatchTextOverlayAction(action);
@@ -1311,11 +1459,10 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
                 break;
+            case GamepadOverlayKind.Settings:
+                break;
             case GamepadOverlayKind.DesktopModeConfirmation:
                 AddOption("Switch to Desktop mode", SwitchToDesktopModeCommand);
-                break;
-            case GamepadOverlayKind.SettingsDesktopHandoff:
-                AddOption("Open Settings in Desktop mode", OpenSettingsFromGamepadCommand);
                 break;
             case GamepadOverlayKind.QuitConfirmation:
                 AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand, true);
@@ -1467,12 +1614,16 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadScraperOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
-        OnPropertyChanged(nameof(IsGamepadSettingsHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
-        OnPropertyChanged(nameof(IsGamepadOverlayOptionsVisible));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
+        OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
+        OnPropertyChanged(nameof(ShowsGamepadOverlayChromeTitle));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
         OnPropertyChanged(nameof(GamepadOverlayHelpText));
     }
@@ -1500,14 +1651,6 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task OpenSettingsFromGamepadAsync()
-    {
-        CloseGamepadOverlay();
-        await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        await OpenSettingsAsync();
-    }
-
-    [RelayCommand]
     private void ConfirmQuitGamepad()
     {
         CloseGamepadOverlay();
@@ -1531,7 +1674,9 @@ public partial class MainViewModel : ViewModelBase
         }
         else
         {
-            await ReloadGamesAsync();
+            // Reached All Games / Recently Added directly (a menu, or an LB/RB stop that did not pass
+            // through a system). Debounce it the same way so cycling across this stop does not thrash.
+            await RequestLibraryReload();
         }
     }
 
@@ -1639,10 +1784,8 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnCurrentThemeChanged(ThemePreference value)
     {
-        OnPropertyChanged(nameof(IsSystemTheme));
-        OnPropertyChanged(nameof(IsLightTheme));
-        OnPropertyChanged(nameof(IsDarkTheme));
-        OnPropertyChanged(nameof(ThemeDescription));
+        foreach (var choice in ThemeChoices)
+            choice.IsSelected = choice.Id == value;
     }
 
     partial void OnSelectedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
@@ -1695,11 +1838,13 @@ public partial class MainViewModel : ViewModelBase
         {
             IsGamepadControllerInputActive = true;
             IsGridView = true;
+            BuildGamepadRows(); // populate the row list for the grid we're about to show
             RestoreFocusedGame();
         }
         else
         {
             CloseGamepadOverlay();
+            GamepadRows.Clear(); // drop the row tiles' view models while the gamepad grid is hidden
         }
     }
 
@@ -1851,12 +1996,82 @@ public partial class MainViewModel : ViewModelBase
             game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
     }
 
-    internal async Task ReloadGamesAsync()
+    // Entry point for reloads driven by a selection change (LB/RB platform cycling, or a scope switch).
+    // Returns a task that completes once the games for the new scope are on screen, so the few callers
+    // that set the selection and then await the load still observe the finished grid. Direct callers
+    // (rescan, add/remove, availability passes) keep calling ReloadGamesAsync so their reloads rebuild.
+    private Task RequestLibraryReload()
+    {
+        var scopeKey = DescribeScope(CurrentLibraryScope, SelectedSystem);
+
+        // Already built and still valid: swap it in synchronously so the correct games appear instantly
+        // — no blank frame, no debounce. ReloadGamesAsync's cache fast path returns without awaiting.
+        if (_scopeCache.ContainsKey(scopeKey))
+        {
+            _platformReloadDebounce.Stop();
+            var pending = _platformReloadCompletion;
+            _platformReloadCompletion = null;
+            var swap = ReloadGamesAsync(useCache: true);
+            pending?.TrySetResult();
+            return swap;
+        }
+
+        // Not built yet: clear the outgoing tiles now so one platform's library can't sit under
+        // another platform's title, then debounce the heavy build so cycling through several unvisited
+        // platforms only builds the one the user settles on.
+        if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
+            BeginScopeChange();
+        _platformReloadCompletion ??=
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _platformReloadDebounce.Stop();
+        _platformReloadDebounce.Start();
+        return _platformReloadCompletion.Task;
+    }
+
+    // Default (useCache: false) is the safe, data-changing reload used by every mutation and refresh
+    // path: it drops the whole scope cache so the rebuild reflects the DB. Only the navigation hot path
+    // (platform cycling) passes useCache: true to reuse a previously built scope. Defaulting to the
+    // safe behavior means a caller that forgets the flag rebuilds (correct, just not cached) rather
+    // than serving stale tiles.
+    internal async Task ReloadGamesAsync(bool useCache = false)
     {
         var system = SelectedSystem;
         var scope = CurrentLibraryScope;
         if (scope == LibraryScope.System && system is null)
             return;
+
+        var scopeKey = DescribeScope(scope, system);
+
+        // A data-changing reload: drop every cached scope so each rebuilds from the DB. Scopes that are
+        // not on screen are disposed now; the on-screen scope's view models stay alive until their
+        // freshly built replacement is ready (handled below), so the grid never shows disposed tiles.
+        if (!useCache)
+        {
+            foreach (var (key, list) in _scopeCache)
+            {
+                if (!string.Equals(key, _displayedScopeKey, StringComparison.Ordinal))
+                    foreach (var vm in list)
+                        vm.Dispose();
+            }
+            _scopeCache.Clear();
+        }
+
+        // Fast path: this scope has been built before and nothing has invalidated it. Reuse its view
+        // models instantly — no DB read, no rebuild, no dispose, covers already loaded. Synchronous, so
+        // it cannot be pre-empted by a competing reload.
+        if (useCache && _scopeCache.TryGetValue(scopeKey, out var cachedGames))
+        {
+            // Cancel any slow reload still in flight so it cannot land after us and overwrite the
+            // scope we just switched to.
+            ++_loadGeneration;
+            _systemGames.Clear();
+            _systemGames.AddRange(cachedGames);
+            UpdateCoverLayout(applyVisibleShelf: false);
+            ApplyFilter();
+            _displayedScopeKey = scopeKey;
+            IsLibraryLoading = false;
+            return;
+        }
 
         var generation = ++_loadGeneration;
 
@@ -1865,7 +2080,6 @@ public partial class MainViewModel : ViewModelBase
         // platform's tiles now so that gap shows an empty grid rather than one platform's library
         // sitting under another platform's name. A reload of the scope already on screen (an
         // availability pass, a rescan) keeps its tiles, so refreshes do not flash.
-        var scopeKey = DescribeScope(scope, system);
         if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
             BeginScopeChange();
 
@@ -1938,7 +2152,6 @@ public partial class MainViewModel : ViewModelBase
                         titleSet.SelectionKey,
                         LaunchSelectedDiscFromLibraryAsync,
                         ScrapeGameCommand);
-                    viewModel.CoverAspectRatioChanged += OnGameCoverAspectRatioChanged;
                     viewModels.Add(viewModel);
                 }
 
@@ -1957,10 +2170,19 @@ public partial class MainViewModel : ViewModelBase
             }
 
             ClearSelection();
-            foreach (var existingGame in _systemGames)
-                existingGame.Dispose();
+
+            // Dispose the outgoing on-screen view models only if the cache is not keeping them. On a
+            // scope switch the previous scope stays cached, so its tiles must survive; on a forced
+            // rebuild its cache entry was dropped above, so now that the replacement is built they can
+            // be released here.
+            var outgoingRetained = _displayedScopeKey is { } outgoingKey && _scopeCache.ContainsKey(outgoingKey);
+            if (!outgoingRetained)
+                foreach (var existingGame in _systemGames)
+                    existingGame.Dispose();
+
             _systemGames.Clear();
             _systemGames.AddRange(games);
+            _scopeCache[scopeKey] = games;
             // Games still contains the previous scope here. ApplyFilter replaces it immediately
             // afterward and performs the authoritative visible-shelf pass.
             UpdateCoverLayout(applyVisibleShelf: false);
@@ -2000,6 +2222,55 @@ public partial class MainViewModel : ViewModelBase
         HasGames = false;
         IsLibraryEmpty = false;
         IsSearchEmpty = false;
+    }
+
+    // A just-refreshed detail carries the account's current unlocks. Re-apply the display for every
+    // loaded tile linked to that RA game so the focused-game widget and grid mark reflect a new
+    // unlock immediately, whether the refresh came from the post-exit pass or from opening the
+    // achievements overlay. This never touches the network: it re-reads the local stores the reload
+    // path already uses. Marshaled to the UI thread because the details service raises this from the
+    // request continuation.
+    private void OnAchievementDetailsRefreshed(RetroAchievementsDetailsSnapshot snapshot)
+    {
+        if (_retroAchievementsRead is null)
+            return;
+
+        if (Dispatcher.UIThread.CheckAccess())
+            ApplyRefreshedAchievementDisplay(snapshot.Details.GameId);
+        else
+            Dispatcher.UIThread.Post(() => ApplyRefreshedAchievementDisplay(snapshot.Details.GameId));
+    }
+
+    private void ApplyRefreshedAchievementDisplay(int retroAchievementsGameId)
+    {
+        if (_retroAchievementsRead is null)
+            return;
+
+        try
+        {
+            var affected = _systemGames
+                .Where(game => game.RetroAchievementsGameId == retroAchievementsGameId)
+                .ToArray();
+            if (affected.Length == 0)
+                return;
+
+            var links = _retroAchievementsRead.GetAllLinks();
+            var progress = _retroAchievementsRead.GetAllProgress();
+            var connected = _retroAccount?.IsConnected ?? false;
+            foreach (var game in affected)
+            {
+                links.TryGetValue(game.Id, out var link);
+                RetroAchievementsProgressSnapshot? snapshot = null;
+                if (link?.RetroAchievementsGameId is { } raGameId)
+                    progress.TryGetValue(raGameId, out snapshot);
+                game.ApplyAchievementsDisplay(
+                    RetroAchievementsDisplay.For(game.SystemId, connected, link, snapshot));
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not apply refreshed RetroAchievements progress to the library.", ex);
+        }
     }
 
     // Resolves each game's achievement presentation from the cached links + progress and the
@@ -2201,8 +2472,6 @@ public partial class MainViewModel : ViewModelBase
             game.IsCoverLoading = false;
         }
     }
-
-    private void OnGameCoverAspectRatioChanged(object? sender, EventArgs e) => UpdateCoverLayout();
 
     // Sets the sort column, toggling ascending/descending when the same column is chosen again.
     [RelayCommand]
@@ -3017,7 +3286,8 @@ public partial class MainViewModel : ViewModelBase
         {
             var outcome = await _gameSaveSync.SyncSystemAsync(
                 game.SystemId,
-                cancellationToken);
+                cancellationToken,
+                LaunchStateKeysFor(game));
             if (outcome.Status == CloudSaveSyncStatus.Failed)
             {
                 _logger.Warning(
@@ -3055,6 +3325,35 @@ public partial class MainViewModel : ViewModelBase
                 ex);
             return CloudSaveSyncOutcome.Failed(ex.Message);
         }
+    }
+
+    // Keys that scope a launch/exit state sync to just the launched game, so launching one game no
+    // longer hashes and syncs every game's states in a shared folder. The game's ROM file stem
+    // covers RetroArch (it names states after the ROM); the stored serials/disc/title/arcade ids
+    // cover DuckStation, PCSX2, PPSSPP, Dolphin, and RPCS3 (they name states after those). If none
+    // are known, the state phase has nothing to match and stays out of the way; a manual Sync all
+    // passes no keys and still covers every state.
+    private IReadOnlyCollection<string> LaunchStateKeysFor(Game game)
+    {
+        var keys = new List<string>();
+        var stem = System.IO.Path.GetFileNameWithoutExtension(game.Path);
+        if (!string.IsNullOrWhiteSpace(stem))
+            keys.Add(stem);
+
+        if (_metadataStore is not null)
+        {
+            foreach (var identifier in _metadataStore.GetIdentifiers(game.Id))
+            {
+                if (identifier.Kind is GameIdentifierKind.Serial or GameIdentifierKind.DiscId
+                        or GameIdentifierKind.TitleId or GameIdentifierKind.ArcadeSetName &&
+                    !string.IsNullOrWhiteSpace(identifier.Value))
+                {
+                    keys.Add(identifier.Value);
+                }
+            }
+        }
+
+        return keys;
     }
 
     private static string DescribeLaunchAndSaveSync(
@@ -3482,47 +3781,150 @@ public partial class MainViewModel : ViewModelBase
                 Systems,
                 _emulators,
                 _emulatorConfigurations,
-                new LibraryMaintenanceActions(
-                    RescanSystemFromSettingsAsync,
-                    RescanAllFromSettingsAsync,
-                    FetchMetadataForSystemFromSettingsAsync,
-                    FetchAllMetadataFromSettingsAsync,
-                    SyncRpcs3LibraryFromSettingsAsync,
-                    () => ShowEmptyPlatforms,
-                    SetShowEmptyPlatformsAsync,
-                    new LibraryFolderManagementActions(
-                        GetLibraryFoldersForSettings,
-                        AddLibraryFolderFromSettingsAsync,
-                        ChangeLibraryFolderFromSettingsAsync,
-                        ForgetLibraryFolderFromSettingsAsync)),
+                CreateLibraryMaintenanceActions(),
                 _metadataPreferences,
-                _retroAccount is null
-                    ? null
-                    : new RetroAchievementsSettingsContext(
-                        _retroAccount.Account,
-                        _retroAccount.IsConnected,
-                        ConnectRetroAchievementsAsync,
-                        DisconnectRetroAchievementsAsync,
-                        RefreshRetroAchievementsMatchesAsync),
+                CreateRetroAchievementsSettingsContext(),
                 _cloudSaveSync?.CreateSettingsContext(),
-                // Titles come from the whole library, not the visible collection: a Dolphin pack
-                // must still name the GameCube game it matched while the user is viewing PS1.
-                _texturePacks?.CreateSettingsContext(
-                    BuildLibraryTitleLookup,
-                    RefreshTexturePacksAsync),
-                _screenScraperAccount is null
-                    ? null
-                    : new ScreenScraperSettingsContext(
-                        _screenScraperAccount.IsConnected,
-                        _screenScraperAccount.LastAccountInfo,
-                        _screenScraperAccount.ConnectAsync,
-                        _screenScraperAccount.DisconnectAsync));
+                CreateTexturePackSettingsContext(),
+                CreateScreenScraperSettingsContext(),
+                ThemeChoices);
         }
         catch (Exception ex)
         {
             _logger.Error("Could not open emulator settings.", ex);
             SetStatus($"Could not open emulator settings: {ex.Message}", StatusSeverity.Error);
         }
+    }
+
+    private async Task<EmulatorSettingsViewModel> CreateSettingsViewModelAsync()
+    {
+        var configured = await Task.Run(() => Systems.ToDictionary(
+            system => system.Id,
+            system => _emulatorConfigurations.Get(system.Id),
+            StringComparer.Ordinal));
+        return new EmulatorSettingsViewModel(
+            Systems,
+            _emulators,
+            configured,
+            _emulatorConfigurations,
+            _dialogs,
+            CreateLibraryMaintenanceActions(),
+            _metadataPreferences,
+            _logger,
+            CreateRetroAchievementsSettingsContext(),
+            _cloudSaveSync?.CreateSettingsContext(),
+            CreateTexturePackSettingsContext(),
+            // ScreenScraper connect is reached from the controller-native scraper overlay, so the
+            // Gamepad settings projection omits its text-entry-heavy section for now.
+            screenScraper: null,
+            themeChoices: ThemeChoices);
+    }
+
+    private LibraryMaintenanceActions CreateLibraryMaintenanceActions() => new(
+        RescanSystemFromSettingsAsync,
+        RescanAllFromSettingsAsync,
+        FetchMetadataForSystemFromSettingsAsync,
+        FetchAllMetadataFromSettingsAsync,
+        SyncRpcs3LibraryFromSettingsAsync,
+        () => ShowEmptyPlatforms,
+        SetShowEmptyPlatformsAsync,
+        new LibraryFolderManagementActions(
+            GetLibraryFoldersForSettings,
+            AddLibraryFolderFromSettingsAsync,
+            ChangeLibraryFolderFromSettingsAsync,
+            ForgetLibraryFolderFromSettingsAsync));
+
+    private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>
+        _retroAccount is null
+            ? null
+            : new RetroAchievementsSettingsContext(
+                _retroAccount.Account,
+                _retroAccount.IsConnected,
+                ConnectRetroAchievementsAsync,
+                DisconnectRetroAchievementsAsync,
+                RefreshRetroAchievementsMatchesAsync);
+
+    private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
+        // Titles come from the whole library, not the visible collection: a Dolphin pack must
+        // still name the GameCube game it matched while the user is viewing PS1.
+        _texturePacks?.CreateSettingsContext(
+            BuildLibraryTitleLookup,
+            RefreshTexturePacksAsync);
+
+    private ScreenScraperSettingsContext? CreateScreenScraperSettingsContext() =>
+        _screenScraperAccount is null
+            ? null
+            : new ScreenScraperSettingsContext(
+                _screenScraperAccount.IsConnected,
+                _screenScraperAccount.LastAccountInfo,
+                _screenScraperAccount.ConnectAsync,
+                _screenScraperAccount.DisconnectAsync);
+
+    private void OnGamepadSettingsCloseRequested(bool saved)
+    {
+        if (!IsGamepadSettingsOpen && GamepadSettings is null)
+            return;
+
+        CloseGamepadSettingsProjection();
+        if (!IsGamepadMode)
+            return;
+
+        OpenGamepadOverlay(GamepadOverlayKind.SystemMenu);
+        var settingsIndex = GamepadOverlayOptions.ToList().FindIndex(option => option.Label == "Settings");
+        if (settingsIndex >= 0)
+            GamepadOverlaySelectionIndex = settingsIndex;
+        if (saved)
+            SetStatus("Settings saved.");
+    }
+
+    private void OnGamepadSettingsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GamepadSettingsViewModel.FocusRevision) or
+            nameof(GamepadSettingsViewModel.FocusedRowIndex) or
+            nameof(GamepadSettingsViewModel.SelectedSection) or
+            nameof(GamepadSettingsViewModel.IsTextEntryOpen) or
+            nameof(GamepadSettingsViewModel.IsConfirmationOpen) or
+            nameof(GamepadSettingsViewModel.IsConfirmChoiceSelected) or
+            nameof(GamepadSettingsViewModel.TextEntryRevision))
+        {
+            OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+            OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+            OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+            OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+        }
+    }
+
+    partial void OnGamepadSettingsChanged(
+        GamepadSettingsViewModel? oldValue,
+        GamepadSettingsViewModel? newValue)
+    {
+        if (oldValue is not null)
+        {
+            oldValue.CloseRequested -= OnGamepadSettingsCloseRequested;
+            oldValue.PropertyChanged -= OnGamepadSettingsPropertyChanged;
+        }
+        if (newValue is not null)
+        {
+            newValue.CloseRequested += OnGamepadSettingsCloseRequested;
+            newValue.PropertyChanged += OnGamepadSettingsPropertyChanged;
+        }
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
+    }
+
+    private void CloseGamepadSettingsProjection()
+    {
+        if (GamepadSettings is not { } settings)
+            return;
+
+        settings.Dispose();
+        GamepadSettings = null;
+        OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
+        OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
     // Connect pipeline: validate the account, identify the existing library, resolve hashes

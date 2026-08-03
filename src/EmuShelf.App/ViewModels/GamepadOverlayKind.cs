@@ -18,8 +18,8 @@ public enum GamepadOverlayKind
     CoverDesktopHandoff,
     Scraper,
     SystemMenu,
+    Settings,
     DesktopModeConfirmation,
-    SettingsDesktopHandoff,
     QuitConfirmation,
 }
 

@@ -37,6 +37,7 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [InlineData("nds", "rcheevos-2ac45d3-nds-v1", 18)]
     [InlineData("gba", "rcheevos-2ac45d3-gba-v1", 5)]
     [InlineData("gbc", "rcheevos-2ac45d3-gbc-v1", 6)]
+    [InlineData("nes", "rcheevos-2ac45d3-nes-v1", 7)]
     [InlineData("snes", "rcheevos-2ac45d3-snes-v1", 3)]
     [InlineData("dreamcast", "rcheevos-2ac45d3-dreamcast-v1", 40)]
     [InlineData("arcade", "rcheevos-2ac45d3-arcade-v1", 27)]
@@ -147,6 +148,52 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
 
         Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
         Assert.Null(result.CanonicalHash);
+    }
+
+    [Fact]
+    public void Identify_NesRom_SkipsInesHeaderAndTrimsOverdumpWithoutWriting()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        // 1 PRG bank (16 KiB) + 1 CHR bank (8 KiB), plus 4 KiB of trailing padding an over-dump adds.
+        var image = NesRomReaderTests.CreateRomFixture(prgBanks: 1, chrBanks: 1, trailingPadding: 4096);
+        var path = Path.Combine(BaseDirectory, "game.nes");
+        File.WriteAllBytes(path, image);
+        var timestamp = new DateTime(2026, 8, 1, 18, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, timestamp);
+        var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+        var result = _hasher.Identify(Game("nes", path));
+
+        // rcheevos hashes only the PRG + CHR the header declares, skipping the 16-byte iNES header
+        // and trimming the trailing padding.
+        var body = image.AsSpan(16, (16 * 1024) + (8 * 1024)).ToArray();
+        var expected = Convert.ToHexString(MD5.HashData(body)).ToLowerInvariant();
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal(expected, result.CanonicalHash);
+        Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+        Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void Identify_NesHeaderOnlyDifference_YieldsTheSameAchievementHash()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var plain = NesRomReaderTests.CreateRomFixture(flags6: 0x00);
+        var mirrored = NesRomReaderTests.CreateRomFixture(flags6: 0x01); // nametable-mirroring flag only
+        var plainPath = Path.Combine(BaseDirectory, "plain.nes");
+        var mirroredPath = Path.Combine(BaseDirectory, "mirrored.nes");
+        File.WriteAllBytes(plainPath, plain);
+        File.WriteAllBytes(mirroredPath, mirrored);
+
+        var plainResult = _hasher.Identify(Game("nes", plainPath));
+        var mirroredResult = _hasher.Identify(Game("nes", mirroredPath));
+
+        Assert.NotEqual(plain, mirrored); // the files really differ, in a header byte
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, plainResult.Status);
+        // The header is skipped, so a header-only difference produces the same achievement hash,
+        // even though the whole-file catalogue SHA-1 (verified in NesRomReaderTests) differs.
+        Assert.Equal(plainResult.CanonicalHash, mirroredResult.CanonicalHash);
     }
 
     [Fact]

@@ -5,9 +5,11 @@ using EmuShelf.Core.Storage;
 namespace EmuShelf.Infrastructure.Achievements;
 
 /// <summary>
-/// Chooses the platform-appropriate credential store: a DPAPI-protected blob under portable
-/// <c>Settings/</c> on Windows (the v1 ship target), and a session-only store elsewhere so
-/// macOS development never persists the secret without a verified protection story.
+/// Chooses the platform-appropriate credential store, both writing to the same portable
+/// <c>Settings/</c> blob so the key survives restarts and updates: a DPAPI-protected blob on Windows
+/// (the v1 ship target), and an AES-GCM obfuscated blob elsewhere (Linux/Steam Deck, macOS) where no
+/// OS keychain is wired in. The obfuscated blob trades strong at-rest protection for portability and
+/// a persistent key; see <see cref="PortableObfuscatedCredentialStore"/> and DECISIONS.md.
 /// </summary>
 public static class RetroAchievementsCredentialStoreFactory
 {
@@ -17,12 +19,9 @@ public static class RetroAchievementsCredentialStoreFactory
         IAppPaths paths,
         IAppLogger? logger = null)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            var blobPath = Path.Combine(paths.SettingsDirectory, BlobFileName);
-            return new WindowsDpapiCredentialStore(blobPath, logger);
-        }
-
-        return new SessionOnlyCredentialStore();
+        var blobPath = Path.Combine(paths.SettingsDirectory, BlobFileName);
+        return OperatingSystem.IsWindows()
+            ? new WindowsDpapiCredentialStore(blobPath, logger)
+            : new PortableObfuscatedCredentialStore(blobPath, logger);
     }
 }

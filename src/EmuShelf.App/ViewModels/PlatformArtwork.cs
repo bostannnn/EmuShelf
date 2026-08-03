@@ -24,6 +24,9 @@ public static class PlatformArtwork
             ["playstation3"] = "playstation3.png",
             ["wii"] = "wii.png",
             ["psp"] = "psp.png",
+            // Original EmuShelf art: OpenEmu ships no 3DS icon, so this dual-screen clamshell is
+            // bundled here rather than under the licensed OpenEmu PlatformIcons set.
+            ["3ds"] = "3ds.png",
         };
 
     private static readonly IReadOnlyDictionary<string, string> Assets =

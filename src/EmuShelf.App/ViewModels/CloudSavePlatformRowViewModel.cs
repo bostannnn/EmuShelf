@@ -34,6 +34,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         SaveShapeDescription = platform.SaveShapeDescription;
         OverridePlaceholder = platform.OverridePlaceholder;
         OverrideDirectory = platform.Override ?? string.Empty;
+        StateOverrideDirectory = platform.StateOverride ?? string.Empty;
         LastResultText = DescribeLastResult(platform);
         LastNoticeText = platform.LastNotice;
         SupportsSaveStates = platform.SupportsSaveStates;
@@ -43,6 +44,16 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     /// <summary>The stable system id this row configures.</summary>
     public string SystemId { get; }
+
+    public string FolderFieldId => $"saves.{SystemId}.folder";
+
+    public string SaveStatesFieldId => $"saves.{SystemId}.states";
+
+    public string StateFolderFieldId => $"saves.{SystemId}.states-folder";
+
+    public string ReplaceCloudFieldId => $"saves.{SystemId}.replace-cloud";
+
+    public string ReplaceLocalFieldId => $"saves.{SystemId}.replace-local";
 
     /// <summary>The platform name, e.g. <c>PlayStation 2</c>.</summary>
     public string DisplayName { get; }
@@ -62,6 +73,10 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string OverrideDirectory { get; set; } = string.Empty;
+
+    /// <summary>An explicit save-state folder, mirroring <see cref="OverrideDirectory"/> for states.</summary>
+    [ObservableProperty]
+    public partial string StateOverrideDirectory { get; set; } = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDetectedDirectory))]
@@ -122,6 +137,10 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     public string? NormalizedOverride =>
         string.IsNullOrWhiteSpace(OverrideDirectory) ? null : OverrideDirectory.Trim();
 
+    /// <summary>The save-state override as it should be persisted: trimmed, or null when empty.</summary>
+    public string? NormalizedStateOverride =>
+        string.IsNullOrWhiteSpace(StateOverrideDirectory) ? null : StateOverrideDirectory.Trim();
+
     /// <summary>
     /// Applies a freshly read platform snapshot after a sync. Only the recorded result is taken:
     /// the override box is left alone because the user may be part-way through editing it.
@@ -175,6 +194,18 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         DetectedDirectory = null;
         CompatibilityWarning = null;
         DetectionErrorText = null;
+        await RefreshDetectedDirectoryAsync();
+    }
+
+    [RelayCommand]
+    private async Task PickStateDirectoryAsync()
+    {
+        var picked = await _dialogs.PickFolderAsync();
+        if (string.IsNullOrWhiteSpace(picked))
+            return;
+
+        StateOverrideDirectory = picked;
+        _cloudSaves.UpdateStateOverride?.Invoke(SystemId, picked);
         await RefreshDetectedDirectoryAsync();
     }
 

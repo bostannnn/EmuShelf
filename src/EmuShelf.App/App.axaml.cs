@@ -216,7 +216,8 @@ public partial class App : Application
                 screenScraperPreview: Bootstrapper.ScreenScraperPreview,
                 scrapeApply: scrapeApply,
                 artworkDownloader: webArtworkDownloader,
-                settingsService: Bootstrapper.SettingsService);
+                settingsService: Bootstrapper.SettingsService,
+                onScreenKeyboard: new PlatformOnScreenKeyboardService());
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

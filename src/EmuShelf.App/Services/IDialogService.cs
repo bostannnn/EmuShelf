@@ -1,3 +1,4 @@
+using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Systems;
 
@@ -76,7 +77,8 @@ public interface IDialogService
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
-        ScreenScraperSettingsContext? screenScraper = null);
+        ScreenScraperSettingsContext? screenScraper = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);

@@ -2,7 +2,9 @@ using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Storage;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using EmuShelf.Integrations.Emulators.Azahar;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.Pcsx2;
@@ -27,6 +29,7 @@ namespace EmuShelf.App.Services;
 /// whose emulator shares one save folder across systems use it to claim only their own saves.
 /// </param>
 /// <param name="LaunchArguments">The configured launch template, for emulators whose arguments can relocate data.</param>
+/// <param name="StateDirectoryOverride">The user's explicit save-state folder, or null to derive it.</param>
 public sealed record SaveProviderContext(
     string? DirectoryOverride,
     string? EmulatorDirectory,
@@ -36,7 +39,8 @@ public sealed record SaveProviderContext(
     Func<IReadOnlyCollection<string>>? GameFileNames = null,
     string? LaunchArguments = null,
     string? ExecutablePath = null,
-    string? FlatpakApplicationId = null);
+    string? FlatpakApplicationId = null,
+    string? StateDirectoryOverride = null);
 
 /// <summary>A provider's resolved save directory plus optional display text and compatibility note.</summary>
 public sealed record SaveProviderDetection(
@@ -247,6 +251,35 @@ public static class SaveProviderRegistry
                     DescribeDolphinLocations(info));
             }),
 
+        new SaveProviderDescriptor(
+            SystemId: "3ds",
+            DisplayName: "Nintendo 3DS",
+            SaveShapeDescription:
+                "Azahar in-game save data · per-title save archives and extdata on the emulated SD card",
+            OverridePlaceholder: "Use configured Azahar, or choose its user data folder (contains sdmc)",
+            CreateProvider: static context =>
+            {
+                // A Flatpak Azahar has a documented fixed data location, so it can participate with
+                // neither an override nor a resolvable installation directory.
+                if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
+                    string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
+                    !context.IsFlatpak)
+                {
+                    return null;
+                }
+
+                return new AzaharSaveLocationProvider(
+                    context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+                    userDirectoryOverride: context.DirectoryOverride,
+                    isFlatpak: context.IsFlatpak);
+            },
+            DetectAsync: static async (provider, cancellationToken) =>
+                new SaveProviderDetection(
+                    await ((AzaharSaveLocationProvider)provider).GetSaveDataDirectoryAsync(cancellationToken),
+                    "3DS saves live on the emulated SD card under a console-unique ID folder. EmuShelf syncs " +
+                    "each game's save by its title id and places it under this machine's own SD card, so run " +
+                    "Azahar once on a new machine to create the SD card before the first download.")),
+
         // RetroArch serves several systems from one installation, so each row resolves the save
         // directory for its own configured core.
         .. RetroArchPlatform("megadrive", "Mega Drive / Genesis"),
@@ -254,6 +287,7 @@ public static class SaveProviderRegistry
         .. RetroArchPlatform("nds", "Nintendo DS"),
         .. RetroArchPlatform("gba", "Game Boy Advance"),
         .. RetroArchPlatform("gbc", "Game Boy Color"),
+        .. RetroArchPlatform("nes", "Nintendo Entertainment System"),
         // Flycast's shared VMU images live in RetroArch's system directory, outside any save
         // folder; only its per-game VMUs land in the save directory, where the same name matching
         // as every other core applies.
@@ -365,7 +399,8 @@ public static class SaveProviderRegistry
         ISaveLocationProvider saves,
         SaveProviderContext context,
         bool includeSaveStates,
-        bool includeBaseSaves = true)
+        bool includeBaseSaves = true,
+        IReadOnlyCollection<string>? gameStateKeys = null)
     {
         if (!includeSaveStates || !descriptor.SupportsSaveStates)
             return includeBaseSaves
@@ -373,27 +408,45 @@ public static class SaveProviderRegistry
                 : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
         var sources = new List<AuxiliaryFileSource>();
-        AddStateSources(saves, sources);
+        AddStateSources(saves, sources, context.StateDirectoryOverride);
         if (sources.Count == 0)
             return includeBaseSaves
                 ? saves
                 : new AuxiliarySyncProvider(saves, [], compatibility: null, includeBaseSaves: false);
 
-        var coreVersion = ResolveCoreVersion(context);
-        var emulatorVersion = saves is RetroArchSaveLocationProvider && string.IsNullOrWhiteSpace(coreVersion)
-            ? null
-            : ResolveEmulatorVersion(context);
-        var compatibility = StateCompatibility.Create(
-            EmulatorId(saves),
-            emulatorVersion,
-            coreVersion,
-            ResolveEmulatorArchitecture(context));
-        return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves);
+        var architecture = ResolveEmulatorArchitecture(context);
+        StateCompatibility? compatibility;
+        if (saves is RetroArchSaveLocationProvider)
+        {
+            // A libretro save state is produced by the core, not by the RetroArch frontend, so its
+            // portability depends on the core (id + version) and CPU architecture. The core's published
+            // display_version is platform-independent, so a state made on Linux restores on Windows for
+            // the same core version. When the info file is absent (a bare core dropped beside EmuShelf,
+            // a Flatpak with no info dir) the version is deliberately left UNKNOWN rather than standing
+            // in an OS-specific token: a .so and a .dll differ in byte length, so a length token made
+            // every Deck state read as a different version on Windows. An unknown-version state restores
+            // on any machine running the same core id on the same architecture, and the emulator refuses
+            // a genuinely incompatible state on load.
+            var coreId = RetroArchCoreId(context.CorePath);
+            var coreVersion = NormalizeVersion(ResolveCoreVersion(context));
+            compatibility = StateCompatibility.Create($"retroarch:{coreId}", coreVersion, architecture);
+        }
+        else
+        {
+            // A standalone emulator's state format is tied to its build, so enforce an equal version —
+            // but only when both machines can read a real, comparable one. A Flatpak that publishes no
+            // version, or a native binary with no version resource, records an unknown version and syncs
+            // on emulator id + architecture, so a Deck state reaches Windows and the emulator's own
+            // savestate version tag adjudicates on load (rather than being silently dropped in transit).
+            compatibility = StateCompatibility.Create(EmulatorId(saves), ResolveEmulatorVersion(context), architecture);
+        }
+        return new AuxiliarySyncProvider(saves, sources, compatibility, includeBaseSaves, gameStateKeys);
     }
 
     private static void AddStateSources(
         ISaveLocationProvider provider,
-        ICollection<AuxiliaryFileSource> sources)
+        ICollection<AuxiliaryFileSource> sources,
+        string? stateOverride)
     {
         AuxiliaryFileSource? source = provider switch
         {
@@ -417,8 +470,28 @@ public static class SaveProviderRegistry
                 path => Path.GetFileName(path).Contains(".state", StringComparison.OrdinalIgnoreCase)),
             _ => null,
         };
-        if (source is not null)
-            sources.Add(source);
+        if (source is null)
+            return;
+
+        // An explicit save-state folder wins over whatever the emulator configuration resolves to,
+        // exactly like the base-save override — the escape hatch for a mis-detected state folder.
+        if (!string.IsNullOrWhiteSpace(stateOverride))
+        {
+            var full = Path.GetFullPath(stateOverride);
+            source = source with { ResolveRoot = _ => full };
+        }
+
+        sources.Add(source);
+    }
+
+    // The libretro core's stable short id (the file name without the _libretro suffix), so the state
+    // compatibility key names the exact core across machines and never collides between cores.
+    private static string RetroArchCoreId(string? corePath)
+    {
+        if (string.IsNullOrWhiteSpace(corePath))
+            return "core";
+        return Path.GetFileNameWithoutExtension(corePath)
+            .Replace("_libretro", string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     private static AuxiliaryFileSource State(
@@ -470,9 +543,17 @@ public static class SaveProviderRegistry
     }
 
     private static string? ReadFlatpakVersion(string applicationId)
-        => ReadFlatpakInfo(applicationId, "--show-version", normalizeVersion: true);
+    {
+        // Only a real, published version is authoritative for cross-machine state compatibility. Many
+        // Flathub emulators (PCSX2 among them) publish none; the build commit is NOT used as a stand-in,
+        // because it is unique to the Flatpak build and can never equal a native build's version — that
+        // made every Deck-Flatpak state read as a different version on Windows. With no published
+        // version the state keys on emulator id + architecture instead (unknown version), so it still
+        // reaches the other machine, which the emulator's own savestate version tag then adjudicates.
+        return FirstVersion(ReadFlatpakInfoRaw(applicationId, "--show-version"));
+    }
 
-    private static string? ReadFlatpakInfo(string applicationId, string option, bool normalizeVersion)
+    private static string? ReadFlatpakInfoRaw(string applicationId, string option)
     {
         try
         {
@@ -495,7 +576,7 @@ public static class SaveProviderRegistry
             if (process.ExitCode != 0)
                 return null;
             var output = process.StandardOutput.ReadToEnd().Trim();
-            return normalizeVersion ? FirstVersion(output) : NormalizeArchitecture(output);
+            return string.IsNullOrWhiteSpace(output) ? null : output;
         }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
         {
@@ -515,14 +596,32 @@ public static class SaveProviderRegistry
         {
             return executableArchitecture;
         }
-        if (!context.IsFlatpak || string.IsNullOrWhiteSpace(context.FlatpakApplicationId))
-            return null;
-        return FlatpakArchitectures.GetOrAdd(
-            context.FlatpakApplicationId,
-            applicationId => new Lazy<string?>(
-                () => ReadFlatpakInfo(applicationId, "--show-arch", normalizeVersion: false),
-                true)).Value;
+        if (context.IsFlatpak && !string.IsNullOrWhiteSpace(context.FlatpakApplicationId) &&
+            FlatpakArchitectures.GetOrAdd(
+                context.FlatpakApplicationId,
+                applicationId => new Lazy<string?>(
+                    () => NormalizeArchitecture(ReadFlatpakInfoRaw(applicationId, "--show-arch")),
+                    true)).Value is { } flatpakArchitecture)
+        {
+            return flatpakArchitecture;
+        }
+
+        // The emulator runs on THIS machine, so when its binary/Flatpak architecture can't be read the
+        // host's own architecture is a sound proxy — a machine cannot run a foreign-arch emulator
+        // natively. Without this, a Flatpak/AppImage/wrapper-script emulator whose arch is unreadable
+        // resolved to null, which made StateCompatibility.Create return null and silently dropped every
+        // save state: on the Steam Deck, PCSX2 uploaded and restored nothing for exactly this reason.
+        return HostArchitecture();
     }
+
+    private static string HostArchitecture() => RuntimeInformation.OSArchitecture switch
+    {
+        Architecture.X64 => "x64",
+        Architecture.Arm64 => "arm64",
+        Architecture.X86 => "x86",
+        Architecture.Arm => "arm",
+        var other => other.ToString().ToLowerInvariant(),
+    };
 
     internal static string? ReadBinaryArchitecture(string path)
     {
@@ -605,40 +704,18 @@ public static class SaveProviderRegistry
         try
         {
             var info = FileVersionInfo.GetVersionInfo(executablePath);
-            if (FirstVersion(info.ProductVersion, info.FileVersion) is { } embedded)
-                return embedded;
+            return FirstVersion(info.ProductVersion, info.FileVersion);
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or System.ComponentModel.Win32Exception)
         {
             // AppImages and other native Unix executables commonly have no Windows-style version
-            // resource. Their own version command below is the authoritative fallback.
-        }
-
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = executablePath,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                ArgumentList = { "--version" },
-            });
-            if (process is null)
-                return null;
-            if (!process.WaitForExit(5000))
-            {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit();
-                return null;
-            }
-            if (process.ExitCode != 0)
-                return null;
-            return FirstVersion(process.StandardOutput.ReadToEnd(), process.StandardError.ReadToEnd());
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
+            // resource. That is not an authoritative version, so it is left unknown rather than
+            // substituted by a file-length token: the length differs across OS/packaging and would
+            // wrongly gate a cross-machine restore. The state then keys on emulator id + architecture.
+            //
+            // The emulator is deliberately never launched to read a version — GUI emulators treat an
+            // unknown argument as a fatal error and pop a modal dialog ("Unknown parameter: --version"
+            // on the Steam Deck), and the process never exits on its own.
             return null;
         }
     }

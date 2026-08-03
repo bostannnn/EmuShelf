@@ -7,7 +7,15 @@ namespace EmuShelf.Infrastructure.Storage;
 /// </summary>
 public static class AtomicFile
 {
-    private const int ReplaceAttempts = 8;
+    // Windows antivirus (Defender) transiently opens a just-written or just-renamed file to scan it,
+    // which can hold a sharing lock on the destination/temp for a second or more — especially on a
+    // loaded machine or CI runner. The replace retries generously (capped backoff, ~2.5s total) so a
+    // normal AV scan window is ridden out instead of surfacing as a spurious write failure.
+    private const int ReplaceAttempts = 16;
+    private const int MaxBackoffMilliseconds = 250;
+
+    private static TimeSpan ReplaceBackoff(int attempt) =>
+        TimeSpan.FromMilliseconds(Math.Min(25 * attempt, MaxBackoffMilliseconds));
 
     public static void WriteAllText(string path, string contents)
     {
@@ -70,7 +78,7 @@ public static class AtomicFile
             catch (Exception ex) when (
                 (ex is IOException or UnauthorizedAccessException) && attempt < ReplaceAttempts)
             {
-                Thread.Sleep(TimeSpan.FromMilliseconds(25 * attempt));
+                Thread.Sleep(ReplaceBackoff(attempt));
             }
         }
     }
@@ -90,7 +98,7 @@ public static class AtomicFile
             catch (Exception ex) when (
                 (ex is IOException or UnauthorizedAccessException) && attempt < ReplaceAttempts)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(25 * attempt), cancellationToken);
+                await Task.Delay(ReplaceBackoff(attempt), cancellationToken);
             }
         }
     }

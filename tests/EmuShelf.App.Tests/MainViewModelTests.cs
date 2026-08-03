@@ -797,6 +797,39 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task FocusedGameWidget_UpdatesWhenAchievementDetailsRefresh()
+    {
+        // #6: unlocking an achievement is reflected by a details refresh (from the achievements
+        // overlay or the post-exit pass). The focused-game dock widget must pick that up, not only a
+        // later full reload — previously the widget kept showing the pre-unlock count ("0/9").
+        var path = Path.Combine(_baseDirectory, "WidgetAchievements.cue");
+        File.WriteAllText(path, "FILE \"WidgetAchievements.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Widget game", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        const int raGameId = 9001;
+        var readStore = new MutableRetroAchievementsReadStore(gameId, raGameId);
+        var details = new RecordingRetroAchievementsDetailsService();
+        var vm = CreateViewModel(
+            retroAchievementsRead: readStore,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: details);
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        // The set is confirmed but no progress has loaded, so the widget shows the em dash.
+        Assert.Equal("—/—", vm.FocusedGame!.GamepadAchievementCountText);
+
+        // The unlock lands in the store, then a details refresh announces it.
+        readStore.SetProgress(raGameId, awarded: 1, total: 9);
+        details.Publish(new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(raGameId, "Widget game", 9, 1, 0, []),
+            DateTimeOffset.UtcNow));
+
+        Assert.Equal("1/9", vm.FocusedGame.GamepadAchievementCountText);
+        Assert.True(vm.FocusedGame.ShowAchievementMark);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadAchievements_StayInTheMainOverlayAndNeverRequestDesktopDialog()
     {
         var path = Path.Combine(_baseDirectory, "GamepadAchievements.cue");
@@ -1229,6 +1262,72 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadCovers_KeepCanonicalFrameWhenOffRatioArtworkLoads()
+    {
+        // Regression for the "covers only take half their space" report: a cover fills its
+        // platform's canonical frame (UniformToFill) instead of adopting its own bitmap ratio, so a
+        // single tall/off-ratio scan can never balloon the shared shelf and shrink every other cover.
+        var firstPath = Path.Combine(_baseDirectory, "ShelfCubeA.iso");
+        File.WriteAllText(firstPath, "x");
+        var secondPath = Path.Combine(_baseDirectory, "ShelfCubeB.iso");
+        File.WriteAllText(secondPath, "y");
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Shelf GC A", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Shelf GC B", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        var first = vm.Games.Single(game => game.Title == "Shelf GC A");
+        var second = vm.Games.Single(game => game.Title == "Shelf GC B");
+        var ratioBefore = first.CoverAspectRatio;
+        var shelfBefore = first.ShelfCoverHeight;
+        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+
+        // A very tall, narrow bitmap: under the reverted per-cover-ratio behavior this stretched the
+        // shared shelf to ~7x the cover width and rendered every other tile at a fraction of it.
+        first.CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+
+        Assert.Equal(ratioBefore, first.CoverAspectRatio, precision: 5);
+        Assert.Equal(shelfBefore, first.ShelfCoverHeight);
+        Assert.Equal(shelfBefore, second.ShelfCoverHeight);
+        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadColumnCount_SurvivesAnAsyncCoverLoad()
+    {
+        // Regression for "the selector can't move right / gets stuck": a cover finishing loading used
+        // to re-run the whole cover layout (via per-cover ratio adoption) and could reset the column
+        // count mid-navigation, which clamped Right partway across a row. The count is now derived
+        // purely by width arithmetic (matching UniformGridLayout), so it must be stable across an
+        // async cover load — the incoming bitmap changes one tile's art, never the grid's stride.
+        var firstPath = Path.Combine(_baseDirectory, "ColsCubeA.iso");
+        File.WriteAllText(firstPath, "x");
+        var secondPath = Path.Combine(_baseDirectory, "ColsCubeB.iso");
+        File.WriteAllText(secondPath, "y");
+        _library.AddGames(
+        [
+            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Cols GC A", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Cols GC B", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        vm.GamepadViewportWidth = 1280;
+
+        var columnsBefore = vm.GamepadColumnCount;
+        Assert.True(columnsBefore > 1); // the arithmetic produced a real multi-column layout
+
+        vm.Games[0].CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+
+        Assert.Equal(columnsBefore, vm.GamepadColumnCount);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadCovers_FilteredShelfUsesOnlyVisibleCoverRatios()
     {
         var ps1Path = Path.Combine(_baseDirectory, "FilteredAspectPs1.cue");
@@ -1311,21 +1410,22 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task GamepadMenu_SettingsHandsOffToDesktopAndQuitRequiresConfirmation()
+    public async Task GamepadMenu_SettingsStaysInWindowAndQuitRequiresConfirmation()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
         var lifetime = new RecordingApplicationLifetimeService();
         var vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
 
-        vm.RequestSettingsFromGamepadCommand.Execute(null);
-        Assert.Equal(GamepadOverlayKind.SettingsDesktopHandoff, vm.GamepadOverlay);
-        Assert.Equal(
-            ["Open Settings in Desktop mode"],
-            vm.GamepadOverlayOptions.Select(option => option.Label));
+        await vm.RequestSettingsFromGamepadCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.Settings, vm.GamepadOverlay);
+        Assert.Empty(vm.GamepadOverlayOptions);
+        Assert.NotNull(vm.GamepadSettings);
+        Assert.Equal(InterfaceMode.Gamepad, mode.Current);
+        Assert.Equal(0, _dialogs.SettingsShown);
 
-        await vm.OpenSettingsFromGamepadCommand.ExecuteAsync(null);
-        Assert.Equal(InterfaceMode.Desktop, mode.Current);
-        Assert.Equal(1, _dialogs.SettingsShown);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal("Settings", vm.GamepadOverlayOptions[vm.GamepadOverlaySelectionIndex].Label);
 
         mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
         vm = CreateViewModel(interfaceModeService: mode, applicationLifetime: lifetime);
@@ -1386,13 +1486,14 @@ public class MainViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// Regression: Right/Left clamp on GamepadColumnCount, and a too-small width estimate (e.g. the
-    /// default of 1 before the grid is measured) trapped the selector partway across a row — "stuck
-    /// at the second column." The view reports the true rendered column count, which navigation must
-    /// then honor.
+    /// Regression: Right/Left/Down step by GamepadColumnCount. The count is derived arithmetically
+    /// from the gamepad viewport (matching UniformGridLayout), and navigation must honor it — Right
+    /// steps one tile within a row, Down steps a whole row, and Left clamps at the row's first column
+    /// rather than wrapping into the previous row ("can't move left" was a corrupted count reading as
+    /// a divisor of the index, so index%columns was always 0).
     /// </summary>
     [AvaloniaFact]
-    public void RenderedColumnCountReportedByTheViewDrivesGridNavigation()
+    public void ArithmeticColumnCountDrivesGridNavigation()
     {
         var vm = CreateViewModel();
         vm.IsGamepadMode = true;
@@ -1410,19 +1511,24 @@ public class MainViewModelTests : IDisposable
             Ps1.AccentColor,
             coverAspectRatio: Ps1.CoverAspectRatio)));
 
-        // Arithmetic never ran (no viewport), so the count is the stale default of 1 that would trap
-        // Right at the first column.
-        Assert.Equal(1, vm.GamepadColumnCount);
-        vm.FocusedGame = vm.Games[1];
-        vm.MoveGamepadFocusRightCommand.Execute(null);
-        Assert.Same(vm.Games[1], vm.FocusedGame);
+        // A viewport that fits exactly four columns under UniformGridLayout's arithmetic; setting it
+        // recomputes GamepadColumnCount the same way the layout will pack the tiles.
+        vm.GamepadViewportWidth = 1100;
+        Assert.Equal(4, vm.GamepadColumnCount);
 
-        // Once the view reports the real four columns, Right and Down step correctly.
-        vm.SetRenderedGamepadColumnCount(4);
+        // Right steps within the row; Down steps a whole row (index + columns).
+        vm.FocusedGame = vm.Games[1];
         vm.MoveGamepadFocusRightCommand.Execute(null);
         Assert.Same(vm.Games[2], vm.FocusedGame);
         vm.MoveGamepadFocusDownCommand.Execute(null);
         Assert.Same(vm.Games[6], vm.FocusedGame);
+
+        // Left steps back within the row, and clamps at the row's first column (no wrap upward).
+        vm.FocusedGame = vm.Games[5];
+        vm.MoveGamepadFocusLeftCommand.Execute(null);
+        Assert.Same(vm.Games[4], vm.FocusedGame);
+        vm.MoveGamepadFocusLeftCommand.Execute(null);
+        Assert.Same(vm.Games[4], vm.FocusedGame);
     }
 
     [AvaloniaFact]
@@ -1853,6 +1959,8 @@ public class MainViewModelTests : IDisposable
 
         Assert.Equal(1, _dialogs.SettingsShown);
         Assert.NotNull(_dialogs.MaintenanceActions?.RescanSystem);
+        Assert.Same(vm.ThemeChoices, _dialogs.ThemeChoices);
+        Assert.Equal(ThemeCatalog.All.Count, _dialogs.ThemeChoices!.Count);
     }
 
     [AvaloniaFact]
@@ -1933,6 +2041,20 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Constructor_WithSavedNonSystemTheme_MarksThatThemeSelectedWithoutThrowing()
+    {
+        // Regression: a saved theme other than System fires OnCurrentThemeChanged during construction,
+        // which reads ThemeChoices — so the collection must exist before CurrentTheme is assigned.
+        var vm = CreateViewModel(themes: new RecordingThemeService(ThemePreference.Dark));
+
+        Assert.Equal(ThemePreference.Dark, vm.CurrentTheme);
+        Assert.True(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.Dark).IsSelected);
+        Assert.All(
+            vm.ThemeChoices.Where(choice => choice.Id != ThemePreference.Dark),
+            choice => Assert.False(choice.IsSelected));
+    }
+
+    [AvaloniaFact]
     public async Task SetTheme_AppliesAndUpdatesSelectionState()
     {
         var themes = new RecordingThemeService();
@@ -1941,8 +2063,9 @@ public class MainViewModelTests : IDisposable
         await vm.SetThemeCommand.ExecuteAsync(ThemePreference.Dark);
 
         Assert.Equal(ThemePreference.Dark, themes.Current);
-        Assert.True(vm.IsDarkTheme);
-        Assert.False(vm.IsSystemTheme);
+        Assert.Equal(ThemePreference.Dark, vm.CurrentTheme);
+        Assert.True(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.Dark).IsSelected);
+        Assert.False(vm.ThemeChoices.Single(choice => choice.Id == ThemePreference.System).IsSelected);
         Assert.Equal("Appearance set to dark", vm.StatusText);
     }
 
@@ -2606,7 +2729,8 @@ public class MainViewModelTests : IDisposable
 
         public Task<CloudSaveSyncOutcome> SyncSystemAsync(
             string systemId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
         {
             events.Add($"sync:{systemId}");
             var index = Math.Min(_nextOutcome++, outcomes.Length - 1);
@@ -2623,7 +2747,8 @@ public class MainViewModelTests : IDisposable
 
         public async Task<CloudSaveSyncOutcome> SyncSystemAsync(
             string systemId,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
         {
             events.Add($"sync:{systemId}");
             Started.TrySetResult();
@@ -2705,9 +2830,10 @@ public class MainViewModelTests : IDisposable
         }
     }
 
-    private sealed class RecordingThemeService : IAppThemeService
+    private sealed class RecordingThemeService(
+        ThemePreference initial = ThemePreference.System) : IAppThemeService
     {
-        public ThemePreference Current { get; private set; } = ThemePreference.System;
+        public ThemePreference Current { get; private set; } = initial;
 
         public Task SetThemeAsync(
             ThemePreference preference,
@@ -2823,6 +2949,33 @@ public class MainViewModelTests : IDisposable
 
         public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() =>
             new Dictionary<int, RetroAchievementsProgressSnapshot>();
+    }
+
+    private sealed class MutableRetroAchievementsReadStore(long localGameId, int retroAchievementsGameId)
+        : IRetroAchievementsReadStore
+    {
+        private readonly Dictionary<int, RetroAchievementsProgressSnapshot> _progress = new();
+
+        public void SetProgress(int raGameId, int awarded, int total) =>
+            _progress[raGameId] = new RetroAchievementsProgressSnapshot(
+                new RetroAchievementsGameProgress(raGameId, total, awarded, 0), DateTimeOffset.UtcNow);
+
+        public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks() =>
+            new Dictionary<long, RetroAchievementsGameLink>
+            {
+                [localGameId] = new RetroAchievementsGameLink(
+                    localGameId,
+                    RetroAchievementsIdentificationStatus.Hashed,
+                    "hash",
+                    "algorithm",
+                    "fingerprint",
+                    retroAchievementsGameId,
+                    true,
+                    DateTimeOffset.UtcNow,
+                    null),
+            };
+
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() => _progress;
     }
 
     private sealed class RecordingRetroAchievementsMatchingService : IRetroAchievementsMatchingService

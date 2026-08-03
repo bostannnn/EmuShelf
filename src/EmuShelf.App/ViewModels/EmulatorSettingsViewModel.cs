@@ -20,6 +20,7 @@ public enum SettingsSection
     ScreenScraper,
     Saves,
     TexturePacks,
+    Themes,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
@@ -52,6 +53,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsScreenScraperSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
+    [NotifyPropertyChangedFor(nameof(IsThemesSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
@@ -60,6 +62,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsScreenScraperSection => SelectedSection == SettingsSection.ScreenScraper;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
+    public bool IsThemesSection => SelectedSection == SettingsSection.Themes;
+
+    /// <summary>Appearance choices shown as a Themes section so Desktop and Gamepad settings both
+    /// expose theme selection; empty when the host did not provide them.</summary>
+    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
+
+    public bool HasThemes => ThemeChoices.Count > 0;
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -267,7 +276,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
-        ScreenScraperSettingsContext? screenScraper = null)
+        ScreenScraperSettingsContext? screenScraper = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -278,6 +288,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
         _logger = logger ?? NullAppLogger.Instance;
+        ThemeChoices = themeChoices ?? [];
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
         if (retroAchievements is not null)
@@ -288,6 +299,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             sections.Add(SettingsSection.Saves);
         if (texturePacks is not null)
             sections.Add(SettingsSection.TexturePacks);
+        if (HasThemes)
+            sections.Add(SettingsSection.Themes);
         Sections = sections;
         if (texturePacks is not null)
             ApplyTexturePackInventory();
@@ -1203,13 +1216,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         // Typed paths and folder-picker paths follow the same persistence rule. A configured
         // emulator still supplies the default when a platform's box is left empty.
         if (_cloudSaves.UpdateOverrides is { } updateOverrides)
-        {
             updateOverrides(CollectOverrides());
-            return;
-        }
+        else
+            foreach (var platform in CloudPlatforms)
+                _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
 
-        foreach (var platform in CloudPlatforms)
-            _cloudSaves.UpdateOverride(platform.SystemId, platform.NormalizedOverride);
+        // Save-state folders persist the same way as save folders, so a typed state path is not
+        // lost when the picker was not used.
+        if (_cloudSaves.UpdateStateOverride is { } updateStateOverride)
+            foreach (var platform in CloudPlatforms)
+                updateStateOverride(platform.SystemId, platform.NormalizedStateOverride);
     }
 
     /// <summary>The per-platform overrides as typed, keyed by system id for the connect call.</summary>

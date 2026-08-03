@@ -1,0 +1,396 @@
+using Avalonia.Headless.XUnit;
+using EmuShelf.App.Services;
+using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Input;
+using EmuShelf.Core.Launching;
+using EmuShelf.Core.SaveSync;
+using EmuShelf.Core.Settings;
+using EmuShelf.Core.TexturePacks;
+using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Systems;
+
+namespace EmuShelf.App.Tests;
+
+public sealed class GamepadSettingsViewModelTests
+{
+    private readonly FakeDialogService _dialogs = new();
+    private readonly RecordingConfigurationStore _configurations = new();
+
+    [AvaloniaFact]
+    public void ShoulderSections_ExcludeDeferredEmulatorsAndRestoreEachRowsFocus()
+    {
+        using var viewModel = CreateGamepadSettings(
+            retroAchievements: CreateRetroAchievementsContext(),
+            cloudSaves: CreateCloudContext(),
+            texturePacks: CreateTextureContext());
+
+        Assert.Equal(
+            [SettingsSection.General, SettingsSection.RetroAchievements, SettingsSection.Saves, SettingsSection.TexturePacks],
+            viewModel.Sections);
+        Assert.DoesNotContain(SettingsSection.Emulators, viewModel.Sections);
+
+        viewModel.Dispatch(GamepadAction.NavigateDown);
+        var rememberedGeneralRow = viewModel.FocusedRow!.Key;
+        Assert.True(viewModel.Dispatch(GamepadAction.NextPlatform));
+        Assert.Equal(SettingsSection.RetroAchievements, viewModel.SelectedSection);
+        viewModel.Dispatch(GamepadAction.NavigateDown);
+        var rememberedRetroRow = viewModel.FocusedRow!.Key;
+
+        viewModel.Dispatch(GamepadAction.PreviousPlatform);
+        Assert.Equal(rememberedGeneralRow, viewModel.FocusedRow!.Key);
+        viewModel.Dispatch(GamepadAction.NextPlatform);
+        Assert.Equal(rememberedRetroRow, viewModel.FocusedRow!.Key);
+
+        viewModel.SelectedSection = SettingsSection.TexturePacks;
+        viewModel.Dispatch(GamepadAction.NextPlatform);
+        Assert.Equal(SettingsSection.TexturePacks, viewModel.SelectedSection);
+    }
+
+    [AvaloniaFact]
+    public async Task TextAndSecretEntry_CommitToExistingModelWithoutExposingTheSecret()
+    {
+        var keyboard = new RecordingOnScreenKeyboardService();
+        using var viewModel = CreateGamepadSettings(
+            retroAchievements: CreateRetroAchievementsContext(),
+            onScreenKeyboard: keyboard);
+        viewModel.SelectedSection = SettingsSection.RetroAchievements;
+
+        var username = viewModel.Rows.Single(row => row.Key == "retro.username");
+        await username.SelectCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsTextEntryOpen);
+        Assert.False(viewModel.IsSecretEntry);
+        viewModel.DraftText = "couch-player";
+        viewModel.RequestOnScreenKeyboard();
+        viewModel.Dispatch(GamepadAction.Confirm);
+
+        Assert.Equal("couch-player", viewModel.Settings.RetroAchievementsUsername);
+        Assert.Equal("retro.username", viewModel.FocusedRow!.Key);
+        Assert.Equal(1, keyboard.Requests);
+        Assert.False(keyboard.LastRequest!.IsSecret);
+
+        var secret = viewModel.Rows.Single(row => row.Key == "retro.api-key");
+        await secret.SelectCommand.ExecuteAsync(null);
+        viewModel.DraftText = "do-not-display-this-key";
+        viewModel.RequestOnScreenKeyboard();
+        viewModel.Dispatch(GamepadAction.Confirm);
+
+        Assert.Equal("do-not-display-this-key", viewModel.Settings.RetroAchievementsApiKey);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Value.Contains("do-not-display", StringComparison.Ordinal));
+        Assert.Equal(string.Empty, viewModel.DraftText);
+        Assert.True(keyboard.LastRequest!.IsSecret);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveRow_UsesExistingPersistenceAndReportsSavedClose()
+    {
+        bool? showEmpty = null;
+        var metadata = new RecordingMetadataPreferences();
+        var maintenance = CreateMaintenance(value => showEmpty = value);
+        var settings = CreateSettings(maintenance: maintenance, metadataPreferences: metadata);
+        using var viewModel = new GamepadSettingsViewModel(settings);
+        bool? closedAsSaved = null;
+        viewModel.CloseRequested += saved => closedAsSaved = saved;
+
+        await viewModel.Rows.Single(row => row.Key == "general.empty-platforms").SelectCommand.ExecuteAsync(null);
+        await viewModel.Rows.Single(row => row.Key == "general.metadata-auto").SelectCommand.ExecuteAsync(null);
+        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.CloseRequested += value =>
+        {
+            if (value)
+                saved.TrySetResult();
+        };
+        Assert.True(viewModel.Dispatch(GamepadAction.Menu));
+        await saved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(closedAsSaved);
+        Assert.True(showEmpty);
+        Assert.True(metadata.AutomaticallyFetchAfterImport);
+        Assert.Equal(1, _configurations.BatchSaveCalls);
+    }
+
+    [AvaloniaFact]
+    public async Task SaveRow_IsControllerReachableWithUpThenA()
+    {
+        var settings = CreateSettings();
+        using var viewModel = new GamepadSettingsViewModel(settings);
+        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.CloseRequested += value =>
+        {
+            if (value)
+                saved.TrySetResult();
+        };
+
+        Assert.Equal("general.empty-platforms", viewModel.FocusedRow!.Key);
+        Assert.True(viewModel.Dispatch(GamepadAction.NavigateUp));
+        Assert.Same(viewModel.SaveRow, viewModel.FocusedRow);
+        Assert.True(viewModel.Dispatch(GamepadAction.Confirm));
+        await saved.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, _configurations.BatchSaveCalls);
+    }
+
+    [AvaloniaFact]
+    public async Task DestructiveSaveAction_DefaultsToCancelAndRestoresItsRowAfterConfirmation()
+    {
+        var forceCalls = 0;
+        using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(
+            connected: true,
+            force: (_, _, _, _) =>
+            {
+                forceCalls++;
+                return Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
+            }));
+        viewModel.SelectedSection = SettingsSection.Saves;
+        var replace = viewModel.Rows.Single(row => row.Key.EndsWith("replace-local", StringComparison.Ordinal));
+
+        await replace.SelectCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsConfirmationOpen);
+        Assert.False(viewModel.IsConfirmChoiceSelected);
+        viewModel.Dispatch(GamepadAction.Confirm);
+        Assert.False(viewModel.IsConfirmationOpen);
+        Assert.Equal(0, forceCalls);
+        Assert.Equal(replace.Key, viewModel.FocusedRow!.Key);
+
+        await viewModel.FocusedRow.SelectCommand.ExecuteAsync(null);
+        viewModel.Dispatch(GamepadAction.NavigateRight);
+        await viewModel.ChooseConfirmationConfirmCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, forceCalls);
+        Assert.False(viewModel.IsConfirmationOpen);
+        Assert.Equal(replace.Key, viewModel.FocusedRow!.Key);
+    }
+
+    [AvaloniaFact]
+    public async Task FolderPicker_ReturnsToTheSameControllerRowAndPersistsThroughExistingCallback()
+    {
+        _dialogs.FolderToReturn = "D:/Portable/Saves";
+        var persisted = new Dictionary<string, string?>(StringComparer.Ordinal);
+        using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(
+            updateOverride: (systemId, value) => persisted[systemId] = value));
+        viewModel.SelectedSection = SettingsSection.Saves;
+        var folder = viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder");
+
+        await folder.SelectCommand.ExecuteAsync(null);
+
+        Assert.Equal("D:/Portable/Saves", persisted["playstation2"]);
+        Assert.Equal(folder.Key, viewModel.FocusedRow!.Key);
+        Assert.Equal("D:/Portable/Saves", viewModel.FocusedRow.Value);
+    }
+
+    [AvaloniaFact]
+    public async Task TextureChoices_UseExistingFiltersAndKeepLogicalFocus()
+    {
+        using var viewModel = CreateGamepadSettings(texturePacks: CreateTextureContext());
+        viewModel.SelectedSection = SettingsSection.TexturePacks;
+        var status = viewModel.Rows.Single(row => row.Key == "textures.status-filter");
+        await status.SelectCommand.ExecuteAsync(null);
+
+        Assert.Equal("Matched", viewModel.Settings.TextureStatusFilter);
+        Assert.Equal(status.Key, viewModel.FocusedRow!.Key);
+        // Left now moves focus to the section rail rather than cycling the choice, which advances
+        // only with A/Right (NeoStation-style); the value is left unchanged.
+        viewModel.Dispatch(GamepadAction.NavigateLeft);
+        Assert.True(viewModel.IsRailFocused);
+        Assert.Equal("Matched", viewModel.Settings.TextureStatusFilter);
+    }
+
+    [AvaloniaFact]
+    public void NormalBack_CancelsWithoutInvokingTheExistingSaveCommand()
+    {
+        using var viewModel = CreateGamepadSettings();
+        bool? closeResult = null;
+        viewModel.CloseRequested += saved => closeResult = saved;
+
+        viewModel.Dispatch(GamepadAction.Cancel);
+
+        Assert.False(closeResult);
+        Assert.Equal(0, _configurations.BatchSaveCalls);
+    }
+
+    [AvaloniaFact]
+    public void RowsExposeDistinctControllerControlSemantics()
+    {
+        using var viewModel = CreateGamepadSettings(
+            retroAchievements: CreateRetroAchievementsContext(),
+            cloudSaves: CreateCloudContext(),
+            texturePacks: CreateTextureContext());
+
+        var toggle = viewModel.Rows.Single(row => row.Key == "general.empty-platforms");
+        var action = viewModel.Rows.Single(row => row.Key == "general.rescan");
+        Assert.True(toggle.IsToggle);
+        Assert.False(toggle.IsAction);
+        Assert.True(action.IsAction);
+        Assert.Equal("RESCAN", action.ActionButtonText);
+        Assert.Same(viewModel.Rows.Single(row => row.IsSaveRow), viewModel.SaveRow);
+
+        viewModel.SelectedSection = SettingsSection.RetroAchievements;
+        var secret = viewModel.Rows.Single(row => row.Key == "retro.api-key");
+        Assert.True(secret.IsEditableValue);
+        Assert.True(secret.ShowsActionButton);
+        Assert.Equal("EDIT", secret.ActionButtonText);
+
+        viewModel.SelectedSection = SettingsSection.Saves;
+        var folder = viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder");
+        Assert.True(folder.IsEditableValue);
+        Assert.Equal("CHOOSE", folder.ActionButtonText);
+
+        viewModel.SelectedSection = SettingsSection.TexturePacks;
+        Assert.True(viewModel.Rows.Single(row => row.Key == "textures.status-filter").IsChoice);
+        Assert.True(viewModel.Rows.Single(row => row.Key == "textures.empty").IsInformation);
+    }
+
+    private GamepadSettingsViewModel CreateGamepadSettings(
+        LibraryMaintenanceActions? maintenance = null,
+        IMetadataPreferencesService? metadataPreferences = null,
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null,
+        TexturePackSettingsContext? texturePacks = null,
+        IOnScreenKeyboardService? onScreenKeyboard = null) => new(
+            CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks),
+            onScreenKeyboard);
+
+    private EmulatorSettingsViewModel CreateSettings(
+        LibraryMaintenanceActions? maintenance = null,
+        IMetadataPreferencesService? metadataPreferences = null,
+        RetroAchievementsSettingsContext? retroAchievements = null,
+        CloudSaveSyncSettingsContext? cloudSaves = null,
+        TexturePackSettingsContext? texturePacks = null) => new(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(
+                system => system.Id,
+                _ => (EmulatorConfiguration?)null,
+                StringComparer.Ordinal),
+            _configurations,
+            _dialogs,
+            maintenance,
+            metadataPreferences,
+            retroAchievements: retroAchievements,
+            cloudSaves: cloudSaves,
+            texturePacks: texturePacks);
+
+    private static LibraryMaintenanceActions CreateMaintenance(Action<bool> setShowEmpty) => new(
+        _ => Task.FromResult(string.Empty),
+        () => Task.FromResult(string.Empty),
+        _ => Task.FromResult(string.Empty),
+        _ => Task.FromResult(string.Empty),
+        () => Task.FromResult(string.Empty),
+        () => false,
+        value =>
+        {
+            setShowEmpty(value);
+            return Task.CompletedTask;
+        });
+
+    private static RetroAchievementsSettingsContext CreateRetroAchievementsContext() => new(
+        null,
+        false,
+        (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(
+            RetroAchievementsConnectionResult.Connected)),
+        _ => Task.CompletedTask,
+        (_, _) => Task.FromResult<RetroAchievementsLibrarySyncSummary?>(null));
+
+    private static CloudSaveSyncSettingsContext CreateCloudContext(
+        bool connected = false,
+        Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>>? force = null,
+        Action<string, string?>? updateOverride = null)
+    {
+        var current = new CloudSaveSyncSettings
+        {
+            Enabled = connected,
+            RemoteName = connected ? "emushelf-gdrive" : null,
+            CloudFolder = connected ? "EmuShelf/Saves" : null,
+        };
+        var platform = new CloudSaveSyncPlatformContext(
+            "playstation2",
+            "PlayStation 2",
+            "PCSX2 memory cards and opted-in manual states.",
+            "Use the PCSX2-detected folder",
+            null,
+            null,
+            null,
+            SupportsSaveStates: true);
+        return new CloudSaveSyncSettingsContext(
+            current,
+            true,
+            "/portable/rclone",
+            "/portable/Logs/save-sync.log",
+            () => [platform],
+            (_, _) => Task.FromResult<string?>("/detected/pcsx2"),
+            (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            _ => Task.CompletedTask,
+            (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
+            force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
+            updateOverride ?? ((_, _) => { }),
+            _ => Task.FromResult(true));
+    }
+
+    private static TexturePackSettingsContext CreateTextureContext()
+    {
+        var result = new TexturePackInventoryResult(
+            TexturePackLibraryMap.Empty,
+            [new TexturePackPlatformState(
+                "gamecube",
+                "GameCube",
+                "/dolphin/Load/Textures",
+                false,
+                TexturePackRootStatus.Ready,
+                false,
+                TexturePackLoadingStatus.Enabled,
+                null)]);
+        return new TexturePackSettingsContext(
+            () => result,
+            () => true,
+            _ => Task.FromResult(result),
+            (_, _) => { },
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["gamecube"] = "Use the Dolphin-detected folder",
+            },
+            () => new Dictionary<long, string>());
+    }
+
+    private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore
+    {
+        public int BatchSaveCalls { get; private set; }
+
+        public EmulatorConfiguration? Get(string systemId) => null;
+
+        public void Save(EmulatorConfiguration configuration)
+        {
+        }
+
+        public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations) => BatchSaveCalls++;
+    }
+
+    private sealed class RecordingMetadataPreferences : IMetadataPreferencesService
+    {
+        public bool AutomaticallyFetchAfterImport { get; private set; }
+        public bool ConsentPromptShown => true;
+
+        public Task SaveAutomaticFetchAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            AutomaticallyFetchAfterImport = enabled;
+            return Task.CompletedTask;
+        }
+
+        public Task RecordConsentAsync(
+            MetadataConsentChoice choice,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class RecordingOnScreenKeyboardService : IOnScreenKeyboardService
+    {
+        public bool IsSupported => true;
+        public int Requests { get; private set; }
+        public OnScreenKeyboardRequest? LastRequest { get; private set; }
+
+        public bool TryShow(OnScreenKeyboardRequest request)
+        {
+            Requests++;
+            LastRequest = request;
+            return true;
+        }
+    }
+}

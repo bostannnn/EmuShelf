@@ -7,8 +7,8 @@ namespace EmuShelf.Integrations.Importing;
 
 /// <summary>
 /// Authoritative file-based import rules for PlayStation, PlayStation 2, PSP,
-/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Super Nintendo, Dreamcast, GameCube,
-/// and Wii. PS3 remains
+/// Mega Drive / Genesis, Nintendo DS, Game Boy Advance, Game Boy Color, NES, Super Nintendo,
+/// Dreamcast, GameCube, Wii, and Arcade. PS3 remains
 /// directory-based and is intentionally absent.
 /// </summary>
 public sealed class FileImportRules : IGameImportRules
@@ -25,6 +25,8 @@ public sealed class FileImportRules : IGameImportRules
     private const string WiiId = "wii";
     private const string ArcadeId = "arcade";
     private const string GameBoyColorId = "gbc";
+    private const string NesId = "nes";
+    private const string ThreeDsId = "3ds";
 
     private static readonly IReadOnlyDictionary<string, HashSet<string>> ExtensionsBySystem =
         new Dictionary<string, HashSet<string>>
@@ -44,9 +46,16 @@ public sealed class FileImportRules : IGameImportRules
             // layouts need their own read-only normalization contracts before they can join.
             [NintendoDsId] = new(StringComparer.OrdinalIgnoreCase) { ".nds" },
             [GameBoyAdvanceId] = new(StringComparer.OrdinalIgnoreCase) { ".gba" },
+            // Every container Azahar can load. The extension is a routing hint only: the reader
+            // validates each family's magic/structure (NCSD/NCCH/CIA/3DSX/ELF/seekable-Zstandard),
+            // so a renamed arbitrary file is never imported as a 3DS game.
+            [ThreeDsId] = new(Nintendo3dsRomReader.SupportedExtensions, StringComparer.OrdinalIgnoreCase),
             // The extension is a routing hint only: the reader requires the Game Boy boot logo, a
             // valid header checksum, and the CGB flag, so an original Game Boy ROM is never accepted.
             [GameBoyColorId] = new(StringComparer.OrdinalIgnoreCase) { ".gbc", ".gb" },
+            // The extension is a routing hint only: the reader requires the iNES "NES\x1A" magic and a
+            // length that fits the PRG/CHR banks the header declares, so a renamed file is rejected.
+            [NesId] = new(StringComparer.OrdinalIgnoreCase) { ".nes" },
             // The extension is a routing hint only: the reader requires a valid internal LoROM or
             // HiROM header. Copier formats (.fig/.swc) wait for their own normalization contract.
             [SuperNintendoId] = new(StringComparer.OrdinalIgnoreCase) { ".sfc", ".smc" },
@@ -101,8 +110,14 @@ public sealed class FileImportRules : IGameImportRules
         var gameBoyAdvanceHeader = ExtensionsBySystem[GameBoyAdvanceId].Contains(extension)
             ? GameBoyAdvanceRomReader.TryRecognize(path)
             : null;
+        var nintendo3dsRecognition = ExtensionsBySystem[ThreeDsId].Contains(extension)
+            ? Nintendo3dsRomReader.TryRecognize(path)
+            : null;
         var gameBoyColorHeader = ExtensionsBySystem[GameBoyColorId].Contains(extension)
             ? GameBoyColorRomReader.TryRecognize(path)
+            : null;
+        var nesHeader = ExtensionsBySystem[NesId].Contains(extension)
+            ? NesRomReader.TryRecognize(path)
             : null;
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
@@ -161,7 +176,13 @@ public sealed class FileImportRules : IGameImportRules
                 GameBoyAdvanceId => gameBoyAdvanceHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
+                ThreeDsId => nintendo3dsRecognition is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
                 GameBoyColorId => gameBoyColorHeader is null
+                    ? GameFileMatch.Incompatible
+                    : GameFileMatch.Compatible,
+                NesId => nesHeader is null
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
                 SuperNintendoId => superNintendoHeader is null
@@ -224,8 +245,12 @@ public sealed class FileImportRules : IGameImportRules
             return NintendoDsRomReader.TryRecognize(path) is not null;
         if (system.Id == GameBoyAdvanceId)
             return GameBoyAdvanceRomReader.TryRecognize(path) is not null;
+        if (system.Id == ThreeDsId)
+            return Nintendo3dsRomReader.TryRecognize(path) is not null;
         if (system.Id == GameBoyColorId)
             return GameBoyColorRomReader.TryRecognize(path) is not null;
+        if (system.Id == NesId)
+            return NesRomReader.TryRecognize(path) is not null;
         if (system.Id == SuperNintendoId)
             return SuperNintendoRomReader.TryRecognize(path) is not null;
         if (system.Id == DreamcastId)
@@ -337,6 +362,12 @@ public sealed class FileImportRules : IGameImportRules
                 gameBoyAdvanceEvidence.Sha1,
                 "Game Boy Advance ROM");
 
+        // 3DS carries no cheap whole-file hash (dumps are multi-gigabyte). Uncompressed NCSD/NCCH
+        // dumps supply a plaintext product code and title id; compressed, CIA, and homebrew files
+        // are recognized but yield no header identity, so they fall back to the filename for covers.
+        if (system.Id == ThreeDsId && Nintendo3dsRomReader.TryRead(path) is { } nintendo3dsEvidence)
+            return Create3dsMetadata(nintendo3dsEvidence);
+
         // The Game Boy Color header has no reliable commercial game code, so only the raw SHA-1 is
         // catalogue evidence — the same shape as Super Nintendo.
         if (system.Id == GameBoyColorId && GameBoyColorRomReader.TryRead(path) is { } gameBoyColorEvidence)
@@ -345,6 +376,16 @@ public sealed class FileImportRules : IGameImportRules
                 "Game Boy Color header",
                 gameBoyColorEvidence.Sha1,
                 "Game Boy Color ROM");
+
+        // The iNES header has no reliable commercial game code, so only the SHA-1 is catalogue
+        // evidence. Unlike SNES this keeps the 16-byte header, because the No-Intro NES set is keyed
+        // by the whole headered file; RetroAchievements strips the header in its own hasher instead.
+        if (system.Id == NesId && NesRomReader.TryRead(path) is { } nesEvidence)
+            return CreateCartridgeMetadata(
+                null,
+                "NES header",
+                nesEvidence.Sha1,
+                "NES ROM");
 
         // The SNES header has no reliable commercial game code, so only the headerless SHA-1 is
         // used as catalogue evidence; the Shift-JIS header title stays out of the display fields.
@@ -414,6 +455,32 @@ public sealed class FileImportRules : IGameImportRules
             sha1Source,
             IsPrimary: true));
         return new GameImportMetadata(null, identifiers);
+    }
+
+    private static GameImportMetadata Create3dsMetadata(Nintendo3dsEvidence evidence)
+    {
+        var identifiers = new List<GameIdentifier>();
+        // The NCCH product code (for example "CTR-P-AQNE") is the exact GameTDB cover key, so it is
+        // the primary evidence; the title id is retained as secondary evidence. This mirrors the
+        // identifiers produced by Nintendo3dsRomIdentifierExtractor during metadata enrichment.
+        if (evidence.ProductCode is not null)
+        {
+            identifiers.Add(new GameIdentifier(
+                GameIdentifierKind.Serial,
+                evidence.ProductCode,
+                "Nintendo 3DS NCCH product code",
+                IsPrimary: true));
+        }
+        if (evidence.TitleId is not null)
+        {
+            identifiers.Add(new GameIdentifier(
+                GameIdentifierKind.TitleId,
+                evidence.TitleId,
+                "Nintendo 3DS title id"));
+        }
+        return identifiers.Count == 0
+            ? GameImportMetadata.Empty
+            : new GameImportMetadata(null, identifiers);
     }
 
     private GameSystem? FindSystem(string id) =>

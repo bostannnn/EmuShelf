@@ -3152,3 +3152,720 @@ overlay backs out to the Actions menu. A successful apply refreshes the library 
 desktop window's post-apply reload. As with the rest of the Gamepad shell, final controller *feel*
 (focus hand-off to the Steam keyboard, gamescope) needs real Deck/controller acceptance and is out of
 scope for the headless view-model tests that cover the flow.
+
+## 2026-08-01 — Gamepad Settings projects the existing settings model
+
+The controller surface is a navigation adapter over `EmulatorSettingsViewModel`, not a second
+settings store. General, RetroAchievements, Saves, and Texture Packs are projected into stable row
+keys, with remembered focus per section and the same commands, child view models, validation, and
+portable persistence used by Desktop. Save is placed at the start of each virtualized section but
+initial focus remains on the first setting, making Save one Up press away without displacing the
+normal reading order. B cancels an active edit or confirmation first, then closes Settings without
+saving and restores focus to the Settings menu item.
+
+The first slice intentionally excludes emulator executable paths, arguments, cores, library-root
+management, and RPCS3 library maintenance. Those fields were audited with the rest of Desktop
+Settings but remain the next Phase 2 slice; cover search, themes, and ScreenScraper remain Phases 3,
+4, and 5 respectively. Texture-pack operations stay observational and limited to existing rescan,
+filter, picker, and clear services; opening the host file manager remains Desktop-only. EmuShelf
+still never edits emulator-owned texture configuration or pack contents.
+
+## 2026-08-01 — Controller text entry uses an optional host-keyboard capability
+
+Text and secret rows enter a focused in-window editor whose draft is committed only with A and
+discarded with B. Secret values remain masked in both the row and editor, and the draft is cleared
+after either outcome; the underlying settings view model continues to own secure persistence.
+Opening an editor requests an on-screen keyboard through a Core capability. The Windows adapter
+best-effort launches the system touch keyboard or OSK, while unsupported hosts retain an explicit
+hardware-keyboard or Steam+X path instead of adding a Steamworks dependency without its required
+lifecycle. This interface leaves room for a native Steam/Deck implementation later and keeps all
+platform-specific process behavior outside the cross-platform view model.
+
+Native dialogs are used only for values whose meaning is an actual file or folder. All choices,
+toggles, actions, text, secrets, and destructive confirmations remain controller-owned inside the
+Gamepad window; destructive rows always focus the non-destructive choice first.
+
+## 2026-08-01 — Gamepad Settings control shape communicates behavior
+
+A real populated-library screenshot rejected the initial Settings presentation even though its
+focus and containment assertions passed. Giving every field the same variably sized card plus a
+small `TOGGLE`, `ACTION`, or `FILE` badge hid how the field worked and allowed virtualized children
+to keep their desired widths. Geometry containment alone is therefore not visual acceptance.
+
+The replacement uses a full-height proportional section rail and one equal-width virtualized
+content column. Boolean fields render as conventional ON/OFF tracks with a moving checked/cleared
+thumb; choices render between directional chevrons; text, secret, file, and folder fields show their
+current value beside an explicit A Edit/Choose affordance; ordinary and destructive commands use
+distinct action treatments. This follows the reference's interaction vocabulary without copying
+its branding, type, icons, clock, or exact composition.
+
+The Save row remains first in the logical D-pad order, so Up from the initial setting still reaches
+it, but it is now rendered as a pinned action at the bottom of the section rail rather than as a
+generic content card. This supersedes only the visual-placement portion of the earlier projection
+decision. The repeater receives an explicit viewport-derived cross-axis width, and viewport resize
+re-reveals logical focus. Real-window tests cover 1280x800, 1280x720, and 2048x1152 so a fixed-size
+desktop dialog cannot satisfy the Gamepad geometry contract again.
+
+## 2026-08-01 — Desktop and Gamepad Settings parity is executable
+
+Gamepad Settings does not add preferences and does not own a second persistent settings object.
+`AutomaticallyFetchMetadataAfterImport`, including its metadata consent and persistence behavior,
+was already a Desktop field; both surfaces read and mutate the same `EmulatorSettingsViewModel`
+property and use its existing `IMetadataPreferencesService` save path.
+
+Every mutating control in General, RetroAchievements, Saves, and Texture Packs now carries the same
+stable field id in the Desktop window and the Gamepad row projection. A real-window test collects
+the effectively visible Desktop ids in each connection state and compares them with the complete
+controller projection. The controller list remains virtualized, so a second assertion checks that
+each realized row exposes its field id without requiring off-screen rows to be materialized.
+Read-only status/inventory content and external browser or file-manager links are deliberately not
+counted as settings mutations.
+
+The final control vocabulary uses reference-sized two-state tracks with a moving check/clear thumb,
+large circular edit/action targets, full-width section selections, and a full-width pinned Save
+action. It borrows the reference's conventional behavior without copying its typeface, branding,
+clock, theme system, or exact composition. START is a direct Save-and-close route; Up from a
+section's initial field followed by A remains an equivalent tested route, and B still exits without
+saving. This supersedes the earlier text-labelled action-capsule presentation.
+
+## 2026-08-01 — Full palettes swap an override dictionary; tokens stay `DynamicResource`
+
+The appearance system moved from Light/Dark theme-dictionaries plus a single accent to complete
+named palettes. `ThemePreference` gained `Oled`, `Cyberpunk`, and `Nord`; it still serializes as a
+string, so existing `System`/`Light`/`Dark` settings files keep parsing and no migration is needed.
+`ThemeCatalog` (Core) is the single source of built-in themes — id, display name, dark/light, and
+four preview-swatch hex colors — consumed by both the Desktop appearance menu and the controller
+theme gallery so a theme added there appears in both modes.
+
+Each extra palette is a flat `ResourceDictionary` under `Styles/Palettes/` that redefines every
+`EmuXxxBrush` token plus an `EmuFocusGlow` box-shadow. `AppThemeService` sets the base `ThemeVariant`
+(so stock Fluent chrome stays legible) and appends the selected palette last in the application's
+merged dictionaries, where its top-level tokens win over the base `EmuShelfTheme` set; System/Light/
+Dark append no override. Because every consumer already binds tokens with `DynamicResource`, swapping
+the dictionary re-colors the whole UI live. Built-in themes are an enum rather than a `Themes/` import
+because the roadmap defers a portable import format until the token contract is proven stable — which
+this work does by rendering OLED and Cyberpunk with no hardcoded color leaking through. A/B/X/Y and
+the green Play action remain fixed brushes outside every palette.
+
+## 2026-08-01 — Accent is separated from danger; the focused game is raised, not alarmed
+
+A populated-library review found the Gamepad UI read as a wall of alarm-red: the accent (`#EF4855`)
+was the same hue as the danger color, so selection, focus, section highlights, toggles, and every
+destructive action all looked like errors. The default accent moved to rose (`#F15C93` dark,
+`#D23A76` light), distinct from the unchanged red danger brush, so selection and focus read as brand
+rather than warning. Destructive settings rows now look ordinary until focused — the danger cue is
+the tinted action circle plus the existing confirmation gate, not a red title on every row — and the
+toggle thumb lost its busy ×/✓ pair for a plain sliding thumb.
+
+The focused game gained presence to match NeoStation's reference: a thicker accent ring, a
+theme-colored `EmuFocusGlow` halo, and a subtle non-layout scale so the selected cover lifts off the
+shelf without moving its neighbours. The glow is a themed `BoxShadows` resource, so it takes the
+active palette's accent.
+
+## 2026-08-01 — The controller theme gallery is a gamepad-only page with shared choices
+
+Theme selection previously lived only in the Desktop toolbar, so Gamepad mode could not change it —
+a parity gap. Gamepad Settings gained a Themes page presenting a NeoStation-style gallery: a
+three-column grid of cards, each rendering a miniature app window from that theme's own swatches,
+with the applied theme marked and the focused card carrying the strong-focus border. It is a
+gamepad-only page rather than a `SettingsSection` because appearance is not part of the settings
+model; the executable Desktop/Gamepad parity test therefore still compares only the four model
+sections. Both surfaces project the same `ThemeChoice` instances and apply through one path, so a
+change in either mode updates the other and persists once.
+
+Read-only texture-pack inventory is now bounded in Gamepad Settings: a large real library rendered
+as an endless wall of near-identical cards, so the controller list shows a capped, filterable window
+with a count and points at the filters and Desktop for the rest, and read-only rows (inventory,
+logs, connected account) render as a flat list instead of solid action-button cards. The full
+inventory remains browsable in Desktop; this is inventory display, not a settings field, so it does
+not affect executable parity.
+
+## 2026-08-01 — Focus frames the cover from outside; Gamepad Settings is grouped by platform
+
+A real zoomed render showed the earlier focus ring painting on top of the cover's dark edge read as
+a faint glow "behind" the art rather than a selection. The focus ring now sits 5px outside the cover
+on every side (negative margin, larger corner radius) so it reads unambiguously as a frame around the
+artwork, keeps the theme-colored `EmuFocusGlow`, and stays the topmost tile layer. The earlier
+non-layout scale-up was removed: the frame plus glow already give couch-distance presence, and the
+transform muddied where the border sat. Geometry tests now assert the frame is exactly 10px larger
+than the cover frame.
+
+Gamepad Settings gained the Desktop settings hierarchy. Saves and Texture Packs are grouped under
+non-focusable platform headers (platform artwork plus name); the platform's rows are indented beneath
+their header and carry the same platform artwork as their leading icon, so membership is unmistakable.
+Member labels drop the redundant platform-name prefix because the header carries it — the stable field
+ids (Keys) are unchanged, so executable Desktop/Gamepad parity still holds. Generic rows (General,
+maintenance, filters) show a category glyph in the same leading-icon slot; read-only inventory rows
+stay icon-free so a long list reads lightly. D-pad navigation and post-rebuild focus targeting skip
+header rows, and the geometry suite covers the indent width and that focus never lands on a header.
+
+## 2026-08-01 — Selector is an on-cover frame; inventories collapse; settings gain a rail column
+
+Rendering the focus frame against a real opaque cover (not the placeholder covers the tests used)
+showed the "outside the cover" negative-margin ring was clipped left/right by the tile width while
+top/bottom overflowed into the taller shelf cell — so selection looked broken on real artwork. The
+selector is now a 5px accent border drawn at the cover bounds (topmost tile layer, no overflow, so it
+can never be clipped) plus the themed glow; a real-cover regression test captures this. Lesson:
+gamepad-tile visuals must be verified with an opaque cover, not only the missing-artwork placeholder.
+
+The texture-pack inventory is collapsed by default in both modes because a real library holds
+hundreds of packs and the matched/attention totals are what a user needs. Gamepad shows an
+"N installed packs" control that reveals a bounded list on A; Desktop moves the full list into a
+collapsed Expander backed by a virtualizing ListBox so an expanded large library stays responsive.
+The gamepad reveal control is a view-state row excluded from executable Desktop/Gamepad parity.
+
+Gamepad Settings navigation added a left-rail focus column so the vertical section list responds to
+the D-pad, not only LB/RB. Left steps from the content into the rail; on the rail Up/Down move
+sections live and Right/A return to the content; LB/RB remain a shortcut from either column. Values
+change with A (or Right), NeoStation-style, which frees Left/Right for column movement; the active
+column is shown by filling the selected rail item and dimming the inactive content pane. The theme
+gallery integrates the same way — Left from its first column steps out to the rail.
+
+## 2026-08-01 — Themes is a real settings section in both modes; selector hardened
+
+The Desktop settings window now has its own Themes section, not only the toolbar menu, so it matches
+Gamepad settings — appearance is selectable from the settings surface in both modes. `SettingsSection`
+gained `Themes`; `EmulatorSettingsViewModel` adds it (and exposes the shared `ThemeChoice` list) only
+when the host supplies theme choices, and renders the same swatch gallery the Gamepad gallery uses.
+Gamepad continues to present themes as its dedicated gallery page and therefore excludes both Themes
+and the Desktop-only Emulators slice from its projected row sections. Emulators paths/arguments remain
+the one section that is still Desktop-only, pending the deferred Gamepad emulator-settings work.
+
+The read-only pack inventory Expander on Desktop was too small and narrow; it now stretches to the
+content width with a much taller virtualized list. The focused-cover selector was thickened to a 6px
+accent border, and — because the corner bleed reported on real hardware does not reproduce under the
+headless Skia renderer — the cover art is now clipped with a larger corner radius than the focus ring
+so the art corners are pulled inside the ring regardless of GPU anti-aliasing.
+
+## 2026-08-01 — Desktop theme selection lives in Settings
+
+The Desktop toolbar theme flyout was removed after Themes became a complete Settings section. Keeping
+both entry points duplicated the same catalog and crowded the small group of global toolbar actions;
+the gear is now the single Desktop configuration entry point. Gamepad mode retains its controller-native
+Themes page, and both settings surfaces continue to share the same theme-choice instances and persistence
+path so selection state stays synchronized.
+
+## 2026-08-02 — Covers fill one canonical per-platform frame again (Steam Deck grid fixes)
+
+Steam Deck testing reported three grid faults together: covers rendering at roughly half their
+expected height with empty space above, intermittent blank tiles, and the controller selector
+sometimes unable to move right / "stuck". They share one cause.
+
+Commit `232229b` (2026-07-25) had quietly reversed the 2026-07-17 "one canonical frame per platform"
+decision: `GameViewModel` began adopting each loaded bitmap's own aspect ratio (`SetCoverAspectRatio`,
+raising `CoverAspectRatioChanged`). Two consequences followed on a real mixed-provider library:
+
+- The shared cover shelf is `max(cover height)` across the view, and covers bottom-align in it. Once
+  tiles adopt their own ratios, a single tall or off-ratio scan balloons the shelf and every other
+  cover renders at a fraction of it — the "covers only take half their space" report.
+- Every cover finishing its async load fired `CoverAspectRatioChanged → UpdateCoverLayout()`, which
+  re-applied layout to all tiles and **recomputed `GamepadColumnCount` from width arithmetic**,
+  clobbering the authoritative rendered column count the view reports. A momentarily-low arithmetic
+  count made Right/Left clamp partway across a row (the 2026-07-31 "stuck at second column" fix,
+  re-broken), and the constant relayout churn as covers streamed in surfaced as blank/again-blank
+  tiles.
+
+The fix restores the documented behavior: `CoverAspectRatio` is the platform's canonical frame for
+the whole session, set once at construction, and the real cover fills it (`UniformToFill`, already in
+the tile templates), cropping at most the ~2px of outer bleed the 2026-07-17 decision accepted. A
+cover load now only toggles `HasCoverImage`; it never resizes the shelf or re-runs the column-count
+arithmetic. `SetCoverAspectRatio`, the `CoverAspectRatioChanged` event, and its `UpdateCoverLayout`
+subscription were removed. Arcade already used a fixed landscape frame, so its behavior is unchanged;
+now every platform behaves the same way it does. Regression tests assert an off-ratio cover load
+leaves a tile's canonical frame and the shared shelf untouched, and that a cover load no longer
+resets the rendered gamepad column count.
+
+## 2026-08-02 — Save states get their own detected folder and override, 1:1 with saves
+
+Steam Deck testing found arcade (RetroArch/FinalBurn Neo) save states were not syncing: a state was
+made and the post-exit pass reported "no saves were found to sync". Two gaps, now closed.
+
+- **Silent compatibility drop.** `AuxiliarySyncProvider` only enumerates states when a
+  `StateCompatibility` can be built, and for a RetroArch core that requires the core's
+  `display_version` from its `info/*.info` file. On a Flatpak RetroArch, or when the core file is
+  dropped in beside EmuShelf, that info file is often absent, so compatibility resolved to null and
+  every state was silently dropped with no upload. A libretro state is written by the core, so the
+  core identity is the compatibility key: when `display_version` is unavailable, EmuShelf now falls
+  back to a stable token derived from the core file's byte length (identical for the same build on
+  every machine, different across builds). Architecture still comes from the core binary. So state
+  sync resolves whenever the core file exists, while the "only restore a state from the same build"
+  guard is preserved.
+
+- **No way to correct the folder.** Save states now have their own detected-folder display and manual
+  override, mirroring the save folder exactly: `SaveLocationSettings.StateDirectoryOverride`,
+  `CloudSaveSyncSettings.GetStateOverride`/`WithStateOverride`, a `StateDirectoryOverride` on
+  `SaveProviderContext` that replaces the resolved state root in `AddStateSources`, and a second
+  path box + Browse button under the "Automatically sync save states" toggle in Settings. It persists
+  the same way the save override does (immediately on Browse, and in the Settings Save batch).
+
+## 2026-08-02 — The focused-game achievement widget follows a details refresh
+
+RetroAchievements progress that arrives from a detail refresh — opening the achievements overlay, or
+the one post-exit refresh — writes the account's new unlock count to the progress store, but only a
+full library reload re-applied it to a tile. So after unlocking an achievement the Gamepad focused-game
+dock widget kept showing the pre-unlock count ("0/9") even though the overlay already reflected it.
+`MainViewModel` now subscribes to `IRetroAchievementsDetailsService.DetailsRefreshed` and re-applies
+the achievement display for every loaded tile linked to that RA game (re-reading the same local
+stores the reload path uses, no network), marshaled to the UI thread. The dock widget and grid mark
+now update as soon as fresh progress is cached, whether from the overlay or the post-exit pass.
+
+## 2026-08-02 — State-compatibility versions never launch the emulator; Flatpak falls back to the build commit
+
+A second Steam Deck pass surfaced a modal "Unknown parameter: --version" dialog every time Saves
+settings opened. Version detection for save-state compatibility launched the configured emulator
+with `--version`; GUI emulators (DuckStation, PCSX2, RPCS3, Dolphin) treat an unknown argument as a
+fatal error and pop a dialog rather than printing a version — and the process never exits on its own,
+so it also blocked detection until a 5s kill. The subprocess is removed entirely. A binary with no
+embedded version resource (a typical Linux build) now keys compatibility off a stable file-length
+token (`exelen{bytes}` / `corelen{bytes}` via one shared helper) — identical per build across
+machines, different across builds — so nothing is ever run to read a version.
+
+The same pass found Flatpak PCSX2 reporting "the emulator/core version could not be detected, so
+states will not be synced": many Flathub emulators publish no `--show-version` string, which
+resolved compatibility to null and dropped every state. `flatpak info` now falls back to
+`--show-commit` (always present for an installed app, stable per build) when the version is empty, so
+compatibility resolves and states sync. Architecture still comes from `--show-arch` / the binary.
+
+## 2026-08-02 — A launch/exit state sync is scoped to the launched game
+
+This supersedes the launch/exit portion of "Manual state sync includes every eligible state"
+(2026-07-29). Because states live in one folder per emulator (not per game), launching any PS2 game
+made the launch/exit pass hash and sync *every* PS2 game's states — dozens of ~15 MB PCSX2 states,
+so the pass read GB on each launch and the first sync uploaded everything. The launch/exit state
+phase is now scoped to the launched game: `MainViewModel` builds the game's keys (its ROM file stem,
+how RetroArch names states, plus the serials/disc/title/arcade ids the metadata store extracted, how
+DuckStation, PCSX2, PPSSPP, Dolphin, and RPCS3 name them) and passes them to `SyncSystemAsync`;
+`AuxiliarySyncProvider` includes only states whose normalized file name contains a key, for both
+local enumeration and remote selection. Matching is deliberately fuzzy alphanumeric-contains: a
+false positive only syncs an extra state, and a game whose id is unknown simply isn't auto-synced on
+launch. A **manual Sync all passes no keys and still reconciles every state**, so nothing is ever
+permanently excluded — it is the exact escape hatch. Regular battery/memory-card saves are never
+scoped.
+
+## 2026-08-02 — Gamepad grid hardening: cover backstop and full-tile reveal
+
+Two Steam Deck grid faults beyond the cover-frame fix. Covers load off per-element
+AttachedToVisualTree / DataContextChanged events, which race during rapid LB/RB recycling and could
+leave a tile an empty cell; after the grid lays out, the view now requests the cover for every
+realized tile as a settle-time backstop (LoadCover is idempotent, so already-loaded/loading tiles
+are skipped). And on the Deck's short grid viewport a tall portrait tile (cover + title ≈ 324px)
+could be revealed bottom-aligned with its cover clipped ("half the cover"); after BringIntoView the
+view nudges the scroll, in content coordinates, so the whole focused tile stays inside the viewport,
+scrolling only when it is actually clipped.
+
+## 2026-08-02 — RetroArch save-state compatibility keys on the core, not the frontend
+
+Real cross-machine testing showed states uploaded from a Steam Deck never restored on Windows:
+Google Drive held them, but the Windows launch marked each "written by a different emulator version"
+and skipped it. Cause: the state-compatibility key mixed in the RetroArch *frontend* version
+(`ResolveEmulatorVersion`), and two machines almost never run the identical RetroArch build — so the
+Deck key and the Windows key differed even when the core was byte-identical.
+
+A libretro save state is produced by the core, so its portability depends on the core (name +
+version) and CPU architecture, not the frontend. The RetroArch key is now
+`retroarch:<coreId> | <arch> | <coreVersion> | <coreVersion>` with the frontend version removed. The
+core's published `display_version` (from its info file) is platform-independent, so a state made on
+Linux restores on Windows for the same core version; the file-length token remains a within-platform
+fallback only for when the info file is absent (a `.so` and a `.dll` differ in length, so cross-OS
+restore then needs the info file present on both). Standalone emulators (DuckStation, PCSX2, …) keep
+keying on their own version — that is the correct guard, since their states are version-specific.
+
+Consequence: states already uploaded under the old key keep it (an unchanged state retains its
+recorded compatibility, by design), so a fresh state must be made after both machines update before
+cross-machine restore is observable; new states carry the new, matching key.
+
+## 2026-08-02 — State compatibility is a structured, provenance-aware identity, not an opaque hash
+
+Real Deck↔Windows testing showed the core-keying fix above was necessary but not sufficient: states
+still did not restore. Two residual causes, both because the compatibility "version" could be an
+OS-specific token that two machines never agree on.
+
+- **RetroArch, no info file.** When the core's `display_version` is unavailable (a bare core dropped
+  beside EmuShelf, a Flatpak with no `info/` dir — the common Deck setup), the key fell back to a
+  core **file-length** token. A `.so` (Deck) and a `.dll` (Windows) of the same core have different
+  byte lengths, so the keys differed and Windows rejected every Deck state. It also broke
+  *asymmetrically*: one machine reading `display_version` while the other fell back never matched.
+- **Standalone (PCSX2), Flatpak.** A Flatpak that publishes no version fell back to a `commit<hash>`
+  token, which can never equal a native build's `2.x` version resource — so Deck-Flatpak → Windows
+  PCSX2 states were a guaranteed skip.
+
+The compatibility value is now a **structured, parseable** string —
+`st1|<emulatorId|retroarch:coreId>|<arch>|<auth|unk>:<version>` — compared component-wise rather than
+by exact-string/hash equality. Rule: the emulator/core **id and CPU architecture must always match**;
+the build **version is enforced only when BOTH machines recorded an *authoritative* one** (a core
+`display_version`, an executable version resource, a Flatpak's published version). When either side's
+version is unknown, the state is compatible on id+arch alone. The OS-specific length/commit tokens are
+removed entirely — an unavailable version is recorded as *unknown*, not substituted. This lets a
+bare-core Deck state restore on a Windows `.dll` of the same core (both x64, unknown version), lets a
+Flatpak-PCSX2 state reach a native Windows PCSX2, and still keeps two genuinely different *known*
+versions apart. Keys uploaded before this format are opaque slug-hashes: they fall back to exact-match,
+so a fresh state is still required to cross machines (as already documented above).
+
+This is safe to be permissive: sync never deletes, `SaveSyncService` backs up the losing copy before
+any overwrite, and RetroArch/PCSX2 both validate a state's own embedded version tag on load and refuse
+a genuinely incompatible one — so the worst case of an over-permissive match is "the emulator declines
+to load it," never data loss. The prior behaviour's worst case was the feature silently doing nothing.
+
+Diagnostics were extended to make a residual mismatch self-evident: the launch/exit state pass now logs
+the resolved `compatibilityKey` (two machines must print the same key to restore) and every distinct
+skip reason, to `Logs/EmuShelf-YYYY-MM-DD.log`.
+
+## 2026-08-02 — The gamepad grid is deterministic: reserved gutter, overlay selector, geometry reveal
+
+Real Steam Deck use surfaced three grid faults. Investigation (with adversarial verification) placed
+each precisely, and the fix makes the grid's focus and sizing deterministic instead of dependent on
+virtualization/compositor timing that the headless renderer can't reproduce.
+
+- **The selector sometimes vanished.** The accent focus ring was a `Border` *inside* the virtualized
+  item template (`IsVisible="{Binding IsFocused}"`), so it only existed while its tile was realized.
+  When focus moved to a row outside the realized window and the reveal stranded (it gave up silently
+  after five attempts, or a rapid d-pad repeat pre-empted it), no realized tile carried the ring and
+  the selector disappeared entirely. The ring is now a single **overlay** (`GamepadSelectorRing`) that
+  lives outside the `ItemsRepeater`, in the shared scroller content, positioned by the view from the
+  focused cover's geometry. It can never be virtualized away or occluded, and it scrolls glued to the
+  cover because it shares the content. It prefers the realized cover's real bounds and falls back to
+  computed geometry, so it is drawn the instant focus moves.
+- **The right column's cover/glow clipped.** The cover width was packed to fill the row to the
+  sub-pixel remainder with zero side inset, so the edge tile's focus glow (which blurs ~30px past the
+  cover) fell into a 0–4px gutter and was shaved by the scroller's clip; a stale cell width right after
+  a mode/platform switch could also push a whole column past the edge. The gamepad grid now reserves a
+  `GamepadGridSideGutter` (40px, > the glow radius) on each side — mirrored by the repeater's `Margin`
+  and subtracted in the column arithmetic — so the focused tile's glow always has room and the column
+  count is derived from the true content region.
+- **Reveal is now deterministic.** Instead of `BringIntoView` plus a manual nudge that read a possibly
+  stale element rectangle, the target scroll offset is computed from the focused index, the column
+  count, and the uniform row height, clamped to keep a full glow radius of clearance. This can't be
+  lost to a competing layout pass or a fast d-pad repeat — the mechanisms behind the strand.
+
+The `staggered/unpolished` perception was investigated and is **not** a bug: rows are uniform height,
+and the ragged tops are covers of different per-platform aspect ratios bottom-aligned on the shared
+shelf (the mandated OpenEmu-style framing, DECISIONS 2026-07-17/08-02). It is left as designed.
+
+Virtualization, asynchronous cover loading, and per-platform cover ratios are preserved. Because the
+residual timing faults cannot be reproduced off-device, a **fault-only** diagnostic (`LogGamepadGridFault`)
+logs to `Logs/EmuShelf-*.log` when the focused tile fails to realize, the selector cannot be placed, or
+the arithmetic and rendered column counts disagree — so a single Deck run pinpoints any remainder
+without flooding the log on every d-pad move.
+
+## 2026-08-03 — State architecture falls back to the host; grid nav trusts the rendered column count
+
+Real Steam Deck logs (with the diagnostics above) settled two things the RetroArch fix had left open.
+
+- **PCSX2 states never left the Deck** because `ResolveEmulatorArchitecture` returned null: a Deck
+  Flatpak/AppImage/wrapper PCSX2 exposes no binary whose header `ReadBinaryArchitecture` can parse, and
+  `flatpak --show-arch` wasn't available/usable, so `StateCompatibility.Create` returned null and every
+  state was silently dropped (`compatibilityKey=(none)` in the log). The emulator runs on *this*
+  machine, so the host's own architecture (`RuntimeInformation.OSArchitecture`) is a sound fallback — a
+  machine can't run a foreign-arch emulator natively. Both Deck and Windows now resolve `x64`, and since
+  a Flatpak PCSX2 publishes no version (→ `unk`), the Deck key `st1|pcsx2|x64|unk:` matches Windows'
+  `st1|pcsx2|x64|auth:2.7.469` via the unknown-version rule, so states cross. (A misconfiguration where
+  PCSX2's location points at the *memcards* subfolder still can't derive the state folder — that stays a
+  user-facing error with the `StateDirectoryOverride` escape hatch, not a silent drop.)
+
+- **The grid "can't move left from a mid-row tile" while Right/Up/Down work** is the exact signature of
+  `GamepadColumnCount` being larger than the rendered columns (so `index % columns == 0` wrongly). The
+  count is now refreshed from the realized layout (`SyncGamepadColumnCountFromLayout`) *immediately
+  before* each directional move, so nav math matches what's on screen rather than a width estimate that
+  can go stale. The same pre-move hook logs the full geometry (index, columns, computed column, the
+  focused row's realized width, viewport/cover widths, selector visibility) at Information level — the
+  earlier fault-only logging stayed silent while the bug happened, so this is promoted to always-on per
+  keypress (user-paced, not per-frame).
+
+- **Reverted: `GamepadColumnCount` is derived by width arithmetic alone, never read back from the
+  visual tree.** The two prior decisions above (`SetRenderedGamepadColumnCount`, and the pre-move
+  `SyncGamepadColumnCountFromLayout` refresh) tried to make the *rendered* layout the source of truth
+  for the column count, on the theory that the arithmetic could go stale. In practice that read-back was
+  the bug: it groups realized tiles by `Math.Round(Bounds.Y)` and takes the busiest row, but during fast
+  LB/RB the `ItemsRepeater` is mid-recycle (`Games.ReplaceAll`), so the tiles have stale/equal `Bounds.Y`
+  — they collapse into one Y bucket (count reads far too large → Up/Down clamp and the selector's
+  `index%columns` geometry lands off the right edge, "selector vanishes") or only a partial row is
+  realized (count reads too small/1 → `index%columns==0` always, "can't move left"). Reading it
+  *immediately before each move* sampled the tree at its least stable instant, which is why that change
+  made things worse. The arithmetic (`ColumnsThatFit`, using the same gutters + spacing as
+  `UniformGridLayout`) is provably exact — `TheFocusStrideMatchesTheRenderedColumnCount` locks it to the
+  layout formula — and, being a pure function of viewport + cover width, cannot race a recycle. So
+  `SetRenderedGamepadColumnCount`, `SyncGamepadColumnCountFromLayout`, and `PrepareGamepadNavigation` are
+  deleted; reveal and selector placement stay deterministic geometry from `index` + the arithmetic
+  column count. Covers still get their settle-time backstop (`RequestVisibleGamepadCovers`); that is a
+  separate concern from navigation correctness.
+
+- **The gamepad focus ring is revealed synchronously on `FocusedGame` change, not via a posted job.**
+  With the column-count race gone, one symptom survived: on a real controller the ring would freeze on a
+  tile while `FocusedGame` kept moving, so correct moves read as "Left does nothing" or "Up jumped a
+  column" (the user was steering by a stale ring, and the next quiet frame snapped it to the true focus).
+  Root cause: `OnGamepadViewModelPropertyChanged` posted `RevealFocusedGame` at
+  `DispatcherPriority.Input` — the *same* priority the SDL poll timer (16 ms) and Steam-Input keys arrive
+  on. Under d-pad auto-repeat / fast LB-RB that priority floods, so the reveal was starved and the ring
+  lagged (a headless test that pumps only `Render`, never `Input`, reproduces it: focus walks 0→1→2→3
+  while the ring stays pinned at x=44). The reveal's scroll offset and the ring's fallback placement are
+  both pure `index`/`columns` arithmetic, and `FocusedGame` only changes from an input handler or the
+  timer tick (never mid-layout), so the reveal is safe to run inline — placing the ring the instant focus
+  moves, no matter how fast the repeat. `GamepadGridSelectorTests` renders the real grid and locks in
+  both this (ring tracks focus while `Input` is starved) and that arithmetic columns == rendered columns
+  across every width 820–1960.
+
+- **The real "fast LB/RB breaks the grid" cause was a full library rebuild on every platform switch;
+  fixed with a per-scope view-model cache plus a switch debounce.** On-device diagnostics (`GPDIAG`
+  trace, gated by `EMUSHELF_GAMEPAD_DIAG`, on by default while chasing this) showed the grid logic was
+  correct — every `moveUp idx=0 … moved=False` was right — but a burst of `NextPlatform` was reloading
+  the library on each press: `games=` lurched 46→18→62→866→…→0 between consecutive events. Each RB/LB
+  ran `ReloadGamesAsync`, which synchronously cleared `Games` + nulled `FocusedGame` (`BeginScopeChange`)
+  and then re-queried the DB and rebuilt every `GameViewModel`. Fast cycling therefore blanked the grid,
+  dropped the selector, and reset focus to the top-left tile between presses — which is what read as
+  "Up/Left do nothing" and "covers go blank". Fix: (1) `_scopeCache` keyed by scope
+  (`system:{id}`/`AllGames`/`RecentlyAdded`) holds each scope's built view models; navigating to a
+  visited scope swaps them in synchronously (no DB, no rebuild, covers already warm). (2) The switch is
+  debounced (`PlatformReloadDebounceMs` 180): an *uncached* target clears the grid immediately (so one
+  platform's tiles never sit under another's title) and coalesces the heavy build to the platform the
+  user settles on; a *cached* target swaps in instantly with no debounce. (3) `ReloadGamesAsync(useCache)`
+  defaults to `false` (drop the whole cache and rebuild from the DB) so every mutation/refresh path
+  (add/remove/rename/rescan, availability + achievements passes — all of which persist to the DB first)
+  stays correct without per-call-site changes; only the navigation hot path opts into `useCache: true`.
+  The cache owns the view models: scopes not on screen are disposed on invalidation, and the on-screen
+  scope's view models live until their rebuilt replacement is ready. A cache-hit swap bumps
+  `_loadGeneration` so an in-flight slow reload cannot land afterward and overwrite the switched-to scope.
+
+- **The gamepad grid is a row-virtualized `ListBox`, not a virtualized cell grid.** After the cache/
+  debounce fix, two bugs remained, both traced with the `navProbe` diagnostic (which logged, per move,
+  the arithmetic column vs. the *rendered* column of the focused tile). First: `arithCol=0` but
+  `renderedCol=1` — every tile shifted one column right. Cause: `RevealFocusedGame` called
+  `GetOrCreateElement(index)` to force-realize a far-off tile; on the real compositor that makes
+  Avalonia's `UniformGridLayout` reserve cell 0 and place item 0 in cell 1 — a permanent one-column
+  "top-left hole" (the same defect the achievements grid already documented). It never reproduced in
+  headless. Second, after switching the reveal to scroll-by-offset: `focEl=(NaN,NaN)` — the focused tile
+  went off-screen because manually setting `ScrollViewer.Offset` and laying out only the repeater left
+  it realizing against the stale viewport. Both are symptoms of the same thing: **Avalonia's
+  `ItemsRepeater` + `UniformGridLayout` is unreliable for programmatic scroll-to-item.** A brief
+  non-virtualized `ItemsControl`+`UniformGrid` fixed correctness (rendered columns == `GamepadColumnCount`
+  by construction) but was too slow at 800+ games. The mature-frontend answer (Steam Big Picture,
+  EmulationStation) is to **virtualize rows, not cells**: the grid is a `ListBox` (`GamepadRowList`)
+  bound to `GamepadRows` — a projection of the flat `Games` list into rows of `GamepadColumnCount` —
+  with a vertical `VirtualizingStackPanel`. Each row template is a horizontal strip of the existing
+  tiles. Only the ~visible rows realize (a 300-game library materializes ~10 tiles top *and* bottom —
+  flat cost, proven by `GamepadGrid_VirtualizesRows_CostIsFlatFromTopToBottom`), vertical virtualization
+  has none of `UniformGridLayout`'s phantom-cell defects, each row holds exactly `GamepadColumnCount`
+  tiles so rendered columns can never disagree with the navigation stride, and scroll is native
+  `ListBox.ScrollIntoView(rowIndex)` — no manual offset math. Navigation still runs on the flat `Games`
+  list + `index % columns`; only rendering is virtualized. `GamepadRows` auto-rebuilds from
+  `Games.CollectionChanged` and on `GamepadColumnCount` change, so it can never go stale. The selection
+  ring lives inside the tile template (shown via opacity on the `.focused` state), so it is physically
+  part of the focused cover and cannot drift — the earlier floating-overlay ring (positioned by reading
+  realized bounds) is gone, and with it the "ring on the wrong tile" class. Covers load lazily on
+  attach (a tile attaches only when its row scrolls in). A post-`ScrollIntoView` nudge keeps a glow
+  radius of clearance from the viewport edge so the focus glow is never shaved.
+
+## 2026-08-03 — Built-in palettes reach NeoStation parity; the base variant follows the catalog
+
+`ThemePreference` and `ThemeCatalog` gained nine more built-in palettes — Valentine, Dracula, Coffee,
+Tokyo Night, Retro, Abyss, Aqua, Palenight, Horizon — so the set matches the reference gallery. Each
+is another flat `Styles/Palettes/*.axaml` dictionary redefining the full `EmuXxxBrush` token set plus
+`EmuFocusGlow`, mapped in `AppThemeService.PaletteUri`; nothing else in the swap machinery changed, so
+the addition is pure data. The catalog is ordered to match the reference gallery (System, Dark, Light,
+OLED, Valentine, Dracula, …) — the two settings surfaces render in catalog order, so this is the
+order users see in both.
+
+Unlike the reference (whose themes differ mostly by accent, so its dark palettes read alike), each
+palette here tints its whole surface stack — window, sidebar, toolbar, cards — with real hue and
+saturation, and the accents are spread around the wheel so no two dark themes collapse together: the
+grid is the dominant visual mass, and cover art is opaque, so pushing chroma into the backgrounds is
+what actually gives a theme identity while leaving art untouched. Concretely, the purples are split by
+accent (Dracula = violet + its signature hot pink, Palenight = grey-purple + lilac) and the blues by
+hue and lightness (OLED = pure black + electric blue, Nord = desaturated blue-grey + frost, Tokyo
+Night = indigo + periwinkle, Aqua = teal + cyan, Abyss = inky blue-black + lime). Verified by rendering
+every theme to PNG headlessly (`EMUSHELF_SNAPSHOT_DIR`).
+
+A later pass added three EmuShelf-original creative themes beyond the reference set — Matrix (phosphor
+green-on-black terminal, green *text* not just a green accent), Synthwave (saturated retro-outrun
+purple with hot magenta + cyan), Sunset (warm rust-ember with a tangerine accent) — appended after
+Horizon in the catalog so the reference-matched block stays intact and the extras read as extras. In
+the same pass Cyberpunk was reworked from deep-violet + magenta to the reference gallery's bolder read:
+a Night-City violet-black lit by an electric-yellow accent with a magenta/cyan/green neon triad. That
+retunes a pre-existing palette's accent, so the two `#FF3FA4` literals in `ThemeSupportTests`
+(the swap test and the construct-from-saved test) moved to `#F5EC1D` — those are the only tests that
+pin a specific palette's accent; the parametric `EveryCatalogTheme…` guard reads from the catalog and
+needs no per-theme edit.
+
+The one behavioral change: `AppThemeService.BaseVariant` no longer assumes every non-Light/Dark
+palette is dark. It now reads `ThemeCatalog.Get(id).IsDark`, so a light palette (Valentine, Retro)
+bases on `ThemeVariant.Light` and keeps stock Fluent chrome legible, while dark palettes stay on
+`ThemeVariant.Dark`. `IsDark` is thus the single fact deciding both the gallery swatch styling and the
+Fluent base. A headless guard (`AppThemeService_EveryCatalogThemeLoadsAndMatchesItsAccentSwatch`)
+applies every catalog theme and asserts its accent token equals the advertised swatch, so a mistyped
+palette file name or a swatch/palette drift fails a test rather than only surfacing when a user picks
+that theme.
+
+## 2026-08-03 — All 15 built-in themes adopt the authoritative NeoStation `themes.json` verbatim
+
+The reference owner supplied the real NeoStation theme table (`themes.json`: nine tokens — bg, surface,
+surfaceAlt, border, text, textMuted, accent, accentAlt, badge — plus a `mode` per theme). It replaces
+the hand-guessed colours from the passes above, which were wrong in kind, not just in shade. Notably
+**Cyberpunk is `mode: light`** — a saturated yellow field (`#F7E733`) with a coral-red accent and dark
+text everywhere, *not* a violet dark theme; **Nord is `mode: light`** (arctic snow-storm, not the dark
+frost variant); and Aqua is a royal blue (`#0C2C8F`), not teal. Each theme's every colour now comes
+straight from the spec.
+
+Because the spec's 9 tokens don't map 1:1 to EmuShelf's 34 `EmuXxxBrush` tokens, the palettes are
+**generated** by a script (kept in the scratchpad, `gen_themes.py`) that anchors on bg + surface,
+interpolates the neutral surface ramp between them (dark: chrome near bg, cards at surface; light:
+airy top bar, slightly-darker chrome), maps text/textMuted/border/accent directly, tints nav-selection
+with the accent, and holds the semantic status colours (success/warning/danger/info/achievement)
+constant per mode for legibility — the accent + surfaces carry identity, not the status set. It writes
+the twelve override files plus the base `EmuShelfTheme.axaml` (Light + Dark theme-dictionaries) from
+the same mapping, so base and overrides stay consistent. The fixed gamepad-button brushes are
+preserved.
+
+Per an explicit decision from the reference owner, the base **Dark/Light/System/OLED were rebased to
+the spec's indigo accent** (`#5B58D9` dark / `#7C6CE0` light), replacing the earlier deliberate rose
+accent. This supersedes the "rose accent" entry above for the *hue* only — the intent of that entry
+(keep the brand accent distinct from danger-red) still holds, since indigo is even further from red.
+The `App.axaml` Fluent `ColorPaletteResources` accents moved in lockstep. Two `ThemeSupportTests`
+literals that pin base/palette accents were updated (`#5B58D9` for Oled/Dark; the swap and construct
+tests now exercise Dracula rather than the now-light Cyberpunk, since their `ResolveAccentColor` helper
+queries the Dark variant). The three EmuShelf-original extras (Matrix, Synthwave, Sunset) are untouched
+and remain appended after the 15 spec themes.
+
+`AppThemeService.PaletteUri` was also generalized: instead of one `switch` arm per theme, it returns
+`avares://EmuShelf/Styles/Palettes/{preference}.axaml` for everything except System/Light/Dark (which
+have no override — they live in the base theme-dictionaries). The palette file is named for the enum
+member, so a new theme needs only its enum value, a matching `<Name>.axaml`, and a catalog row — no
+wiring edit. The `EveryCatalogTheme…` guard protects that convention.
+
+## 2026-08-03 — Four popular community palettes added as originals (Everforest, Gruvbox, Catppuccin Mocha, Kanagawa)
+
+Beyond the NeoStation set, four widely-used editor schemes were added from their published specs, each
+filling a gap the existing set left: Everforest (soft woodland green — the muted-natural-green slot, vs
+Matrix's neon and Aqua/Abyss's teal), Gruvbox (warm retro orange-on-earth, distinct from Coffee's
+mocha), Catppuccin Mocha (pastel mauve — the soft-pastel slot), Kanagawa (Hokusai ink-blue with warm
+parchment *text*, its identity being the warm-text-on-cool-dark contrast). They reuse the same
+`gen_themes.py` mapping (their 9-token specs live in an `EXTRAS` list in the script), so their surface
+ramps and derivation match the spec themes; each is one `Styles/Palettes/<Name>.axaml` + enum value +
+catalog row, appended after the creative trio. Verified by rendering all four to PNG. Note the enum
+member `CatppuccinMocha` must stay in sync with `CatppuccinMocha.axaml` for the name-based `PaletteUri`
+to resolve — the catalog-coverage guard enforces it.
+
+## 2026-08-03 — Kanagawa recolour + four gap-filling themes (Crimson, Graphite, Mint, Lavender)
+
+Kanagawa's original ink-blue base read too close to Catppuccin Mocha in the cover grid — both cool-dark
+surfaces with a cool light accent, and the one distinguishing feature (its warm parchment *text*) is a
+tiny share of the screen when opaque cover cards dominate. It was recoloured to warm sumi-ink taupe
+surfaces with a calm wave-aqua accent (keeping the parchment text): warm surfaces + a cool accent is a
+combination no other theme uses, so it now separates cleanly from both Catppuccin (cool + mauve) and
+the warm-orange themes (Coffee/Gruvbox/Sunset, which pair warm surfaces with warm accents).
+
+Four more themes were then added to occupy colour territory nothing held: Crimson (deep wine + vivid
+crimson — the first red theme), Graphite (pure neutral grayscale + silver — the only hueless theme;
+its semantic status colours stay coloured for legibility, since the identity is the grey surfaces and
+accent), Mint (pale light green — the first *light* green, as Matrix/Everforest/Abyss are all dark),
+and Lavender (soft light lilac — the first *light* purple, as Dracula/Palenight/Catppuccin/Synthwave
+are all dark). Same generation path and guard as the other extras; all verified by PNG render. Total
+is now 26 built-in themes.
+
+## 2026-08-03 — Four named developer schemes (Solarized, Rosé Pine, Oxocarbon, Ayu)
+
+The last of the well-known palettes, added from their published specs to round out the gallery:
+Solarized (the low-contrast teal-navy classic with a clean blue accent), Rosé Pine (muted plum with a
+soft dusty-rose accent), Oxocarbon (IBM-Carbon near-black with vivid magenta), and Ayu (cool near-black
+with a warm amber accent — its cool-base/warm-accent contrast mirrors, inverted, Kanagawa's warm-base/
+cool-accent). Two placements were chosen to avoid the crowding these near-black/plum schemes risk:
+Oxocarbon sits a step darker than Graphite and leads with magenta, so the two carbon themes read as
+"neon" vs "silver-mono" rather than as duplicates; Rosé Pine keeps a soft, desaturated dusty-rose
+accent so it stays distinct from Horizon's punchier coral on a similar plum base (the closest surviving
+pair, but separated by accent chroma). Same `EXTRAS`/`gen_themes.py` path and coverage guard as the
+other originals. 30 built-in themes total; the colour wheel is now covered across both light and dark,
+so future additions would be variants rather than new hues.
+
+## 2026-08-03 — Web API key now persists on Linux/macOS via an obfuscated portable blob
+
+Revisits the non-Windows half of the 2026-07-18 M10 §2 storage decision. The session-only in-memory
+store dropped the RetroAchievements Web API key on every launch, so real Linux use (Steam Deck) had to
+re-enter it after each app update — the update was only incidental; any restart lost it. The original
+blocker was "no verified portable at-rest protection," but the key is low-value: a read-only Web API
+key, never an emulator token, one-click resettable on the RA site, already excluded from settings.json
+and logs. That does not warrant keychain-grade protection.
+
+Non-Windows platforms now use `PortableObfuscatedCredentialStore`: the key is AES-GCM wrapped with an
+application-embedded 256-bit key and written to the same `Settings/retroachievements.key` blob the
+Windows DPAPI store uses (owner-only `0600` on Unix). This is deliberately obfuscation, not
+confidentiality — the wrap key ships in the binary — chosen so the blob stays fully portable across
+machines (a machine-bound scheme like DPAPI would not survive moving the drive) while keeping the key
+off disk as readable plaintext. The OS keychain route (Secret Service/libsecret, KWallet) was rejected:
+non-portable, heavy P/Invoke/D-Bus, and unreliable in exactly the target case — Steam Deck Game Mode
+with the passwordless `deck` user, where the keyring is often locked or unset. `SessionOnlyCredentialStore`
+remains as the non-persisting in-memory implementation used by tests. macOS could later gain a
+Keychain-backed store alongside Windows DPAPI, but is not required for the portable bar this sets.
+
+## 2026-08-03 — Nintendo 3DS ships behind Azahar with id-addressed covers and no hashing
+
+3DS support was added as a standalone-emulator handheld cartridge system. Azahar (the maintained
+Citra successor) is a new `EmulatorDefinition` alongside PPSSPP/Dolphin — its own executable, the
+game path passed as one argv entry — rather than a RetroArch core. The emulator and the `3ds`
+system are registered in the same change because `EmulatorSettingsViewModel` resolves each system's
+emulator with `emulators.First(e => e.Supports(id))`, which throws if none supports it.
+
+**Launch-all, identify-dumps scope.** `Nintendo3dsRomReader` recognizes every container Azahar
+loads by a bounded magic/structure check — NCSD (`.3ds`/`.cci`), NCCH (`.cxi`/`.app`), CIA
+(`.cia`), homebrew (`.3dsx`/`.elf`/`.axf`), and the seekable-Zstandard compressed variants
+(`.z3ds`/`.zcci`/`.zcxi`/`.zcia`/`.z3dsx`) — so all of them import and launch, while a renamed
+arbitrary file is rejected. Exact identity (the plaintext NCCH product code and title id) is read
+only from the uncompressed NCSD/NCCH dumps via targeted header reads: 3DS dumps are multi-gigabyte,
+so nothing hashes the whole file, and the header stays plaintext even on encrypted dumps (Azahar
+rejects encrypted content at launch). Compressed/CIA/homebrew files carry no header identity here
+and fall back to the filename for cover matching until a dedicated reader (Zstandard-frame metadata
+or CIA ticket/TMD) is added.
+
+**Covers are id-addressed via GameTDB.** No-Intro 3DS catalogues key on a whole-file hash EmuShelf
+deliberately never computes, so cover matching uses `GameTdb3dsArtworkProvider`, keyed by the NCCH
+product code's four-character game code (region from its fourth character, English/US fallbacks),
+mirroring the GameCube/Wii GameTDB route (DECISIONS 2026-07-17). It resolves covers without a
+catalogue title match; the No-Intro 3DS DAT and the Libretro title provider are supplied as
+best-effort fallbacks only. The `3ds` cover frame is 1.129, measured from GameTDB's fixed 768×680
+front-cover canvas.
+
+**Placeholder icon is original.** OpenEmu ships no 3DS asset and both the sidebar and
+`PlatformArtworkTests` require non-null platform art, so an original dual-screen clamshell
+(`PlatformConsoleArt/3ds.png`, no Nintendo/OpenEmu branding) is bundled and mapped in
+`PlatformArtwork.ConsoleAssets`.
+
+**RetroAchievements stays out.** `RetroAchievementsConsoles.ForSystem("3ds")` remains null, so 3DS
+displays as unsupported like PS3 — matching the requested "no RA yet" scope. Save sync is likewise
+deferred (no Azahar save-location provider yet).
+
+## 2026-08-03 — 3DS reaches save-sync and texture-pack parity with the other standalone emulators
+
+A parity review against the existing platforms found the first 3DS pass shipped the library, launch,
+metadata, and cover integration but not the two per-emulator adapters every comparable standalone
+emulator carries: a save-location provider (which every system has) and, for the HD-enhancement
+emulators, texture-pack adapters. Both are now implemented for Azahar, superseding the "save sync
+deferred" note in the entry above.
+
+**Save sync keys by stable id and rebases the console-unique path.** Azahar keeps in-game saves on
+its emulated SD card at `sdmc/Nintendo 3DS/<ID0>/<ID1>/title/<hi>/<lo>/data` (and `extdata/00000000/
+<id>`), where `<ID0>/<ID1>` is a console-unique pair that differs between installs.
+`AzaharSaveLocationProvider` therefore makes each title's save archive and each extdata archive a
+sync unit keyed by the machine-independent title id / extdata id, and resolves it under whichever
+console folder exists on the local machine — so a save moves between machines despite the differing
+on-disk path (a cross-console round-trip test proves this). Installed updates/DLC (the sibling
+`content` folder) and build-fragile save states are never synced, matching the M29 battery/memory-
+card boundary; a machine that has never created its SD card cannot materialize a remote unit until
+it does. The user directory follows Azahar's own `common_paths` (portable `user/` beside the
+executable, else `%APPDATA%\Azahar` / `~/.local/share/azahar-emu` / the `org.azahar_emu.Azahar`
+Flatpak), with the Settings override as the escape hatch.
+
+**Texture packs match by title id via a new exact rule.** Azahar loads custom textures from
+`<user>/load/textures/<title id>` and gates them on `qt-config.ini` `[Utility] custom_textures`. The
+texture inventory previously indexed only serials and disc ids, so a new
+`TexturePackMatchRule.Nintendo3dsTitleId` (appended last so the cached inventory's rule ordinals stay
+stable) plus `GameIdentifierKind.TitleId` indexing were added to `TexturePackMatcher` and
+`TexturePackLibraryMap`; a pack folder named by a 16-hex title id matches the game whose extracted
+title id equals it.
+
+Both adapters are unit-tested against synthetic directories and were then verified read-only against
+a real Windows Azahar install (an opt-in `EMUSHELF_TEST_AZAHAR_DIR` test): the save provider
+enumerated every title/data and extdata archive and resolved each to its real SD-card folder, the
+texture inventory found usable `load/textures/<title id>` packs keyed by title id, and `qt-config.ini
+[Utility] custom_textures` read correctly. The real install confirmed the portable `user/` layout,
+that the default console `ID0/ID1` is all zeros (so default installs share it and title-id keying
+crosses machines directly), that `title/<hi>/<lo>` folder names are lowercase while `extdata` ids are
+uppercase (the case-insensitive hex validation accepts both), and that the texture folders are
+uppercase 16-hex title ids matching the extractor's `X16` title id. A live rclone cloud round-trip
+and a manual emulator launch/return remain the only unverified paths.

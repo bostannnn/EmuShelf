@@ -25,7 +25,7 @@ public class EmulatorSettingsViewModelTests
         bool? closeResult = null;
         viewModel.CloseRequested += saved => closeResult = saved;
 
-        Assert.Equal(13, viewModel.Rows.Count);
+        Assert.Equal(15, viewModel.Rows.Count);
         Assert.Equal("Dolphin", gameCube.EmulatorName);
         Assert.Equal("Dolphin", wii.EmulatorName);
         Assert.Equal(gameCube.DefaultLaunchArguments, wii.DefaultLaunchArguments);

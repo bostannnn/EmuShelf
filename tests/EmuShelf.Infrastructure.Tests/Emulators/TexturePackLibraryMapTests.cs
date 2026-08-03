@@ -126,6 +126,29 @@ public sealed class TexturePackLibraryMapTests
     }
 
     [Fact]
+    public void UsablePack_MatchingAnImported3dsTitleId_IsMatchedAndMarksThatGame()
+    {
+        var map = Build(
+            Snapshot(Usable("0004000000033500", TexturePackMatchRule.Nintendo3dsTitleId, "0004000000033500")),
+            Library((7, GameIdentifierKind.TitleId, "0004000000033500")));
+
+        var classification = Assert.Single(map.Classifications);
+        Assert.Equal(TexturePackEntryStatus.Matched, classification.Status);
+        Assert.Equal([7L], classification.MatchedGameIds);
+        Assert.Equal("0004000000033500", Assert.Single(map.GetMatches(7)).PackKey);
+    }
+
+    [Fact]
+    public void Azahar3dsPack_ForATitleNoImportedGameDeclares_IsNoLibraryMatch()
+    {
+        var map = Build(
+            Snapshot(Usable("0004000000033500", TexturePackMatchRule.Nintendo3dsTitleId, "0004000000033500")),
+            Library((7, GameIdentifierKind.TitleId, "00040000000ABCDE")));
+
+        Assert.Equal(TexturePackEntryStatus.NoLibraryMatch, Assert.Single(map.Classifications).Status);
+    }
+
+    [Fact]
     public void MultiDiscTitle_IsMatchedWhenAnySingleDiscIs()
     {
         // These emulators key a multi-disc pack on one disc's serial, so a title set backed by
