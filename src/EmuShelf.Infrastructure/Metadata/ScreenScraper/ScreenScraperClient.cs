@@ -13,16 +13,21 @@ public sealed class ScreenScraperClient : IScreenScraperClient
     private readonly HttpClient _httpClient;
     private readonly ScreenScraperDeveloperCredentials _developerCredentials;
     private readonly ScreenScraperRequestCoordinator _requestCoordinator;
+    private readonly ScreenScraperDebugOptions? _debugOptions;
 
     public ScreenScraperClient(
         HttpClient httpClient,
         ScreenScraperDeveloperCredentials developerCredentials,
-        ScreenScraperRequestCoordinator? requestCoordinator = null)
+        ScreenScraperRequestCoordinator? requestCoordinator = null,
+        ScreenScraperDebugOptions? debugOptions = null)
     {
         _httpClient = httpClient;
         _developerCredentials = developerCredentials;
         _requestCoordinator = requestCoordinator ?? new ScreenScraperRequestCoordinator();
+        _debugOptions = debugOptions;
         ValidateDeveloperCredentials(developerCredentials);
+        if (debugOptions is not null && string.IsNullOrWhiteSpace(debugOptions.DebugPassword))
+            throw new ArgumentException("ScreenScraper debug password cannot be empty.", nameof(debugOptions));
     }
 
     public Task<ScreenScraperResult<ScreenScraperAccountInfo>> GetAccountInfoAsync(
@@ -77,6 +82,62 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             parameters,
             response => response.TryGetProperty("jeu", out var game) ? ParseGame(game) : null,
             cancellationToken);
+    }
+
+    public Task<ScreenScraperResult<IReadOnlyList<ScreenScraperSystem>>> GetSystemsAsync(
+        ScreenScraperUserCredentials userCredentials,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserCredentials(userCredentials);
+        return SendAsync(
+            "systemesListe.php",
+            userCredentials,
+            [],
+            ParseSystems,
+            cancellationToken);
+    }
+
+    public Task<ScreenScraperResult<IReadOnlyList<ScreenScraperGameMatch>>> SearchGamesAsync(
+        ScreenScraperUserCredentials userCredentials,
+        int systemId,
+        string query,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateUserCredentials(userCredentials);
+        if (string.IsNullOrWhiteSpace(query))
+            throw new ArgumentException("Search query cannot be empty.", nameof(query));
+
+        var parameters = new List<KeyValuePair<string, string>>
+        {
+            new("recherche", query.Trim()),
+        };
+        if (systemId > 0)
+            parameters.Add(new("systemeid", systemId.ToString(CultureInfo.InvariantCulture)));
+
+        return SendAsync("jeuRecherche.php", userCredentials, parameters, ParseSearchResults, cancellationToken);
+    }
+
+    private static IReadOnlyList<ScreenScraperGameMatch> ParseSearchResults(JsonElement response)
+    {
+        var matches = new List<ScreenScraperGameMatch>();
+        if (!response.TryGetProperty("jeux", out var games) || games.ValueKind != JsonValueKind.Array)
+            return matches;
+
+        foreach (var game in games.EnumerateArray())
+        {
+            var id = ReadString(game, "id");
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            var names = ParseLocalizedArray(game, "noms", languageProperty: null, regionProperty: "region");
+            var name = names.FirstOrDefault()?.Value ?? id;
+            var system = game.TryGetProperty("systeme", out var systemElement)
+                ? ReadString(systemElement, "text")
+                : null;
+            matches.Add(new ScreenScraperGameMatch(id, name, system));
+        }
+
+        return matches;
     }
 
     private async Task<ScreenScraperResult<T>> SendAsync<T>(
@@ -192,9 +253,57 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             new("sspassword", userCredentials.Password),
         };
         parameters.AddRange(requestParameters);
+        AppendDebugParameters(parameters);
         var query = string.Join("&", parameters.Select(parameter =>
             $"{Uri.EscapeDataString(parameter.Key)}={Uri.EscapeDataString(parameter.Value)}"));
         return new UriBuilder(new Uri(ApiBaseUri, endpoint)) { Query = query }.Uri;
+    }
+
+    private void AppendDebugParameters(ICollection<KeyValuePair<string, string>> parameters)
+    {
+        if (_debugOptions is not { } debug)
+            return;
+
+        parameters.Add(new("devdebugpassword", debug.DebugPassword));
+        if (debug.ForceUpdate)
+            parameters.Add(new("forceupdate", "1"));
+        AddIfPresent(parameters, "forceip", debug.ForceIp);
+        AddIntIfPresent(parameters, "forcelevel", debug.ForceLevel);
+        AddIntIfPresent(parameters, "forcerequestok", debug.ForceRequestOk);
+        AddIntIfPresent(parameters, "forcerequestko", debug.ForceRequestKo);
+        AddIntIfPresent(parameters, "forcerequestmin", debug.ForceRequestMin);
+    }
+
+    private static IReadOnlyList<ScreenScraperSystem>? ParseSystems(JsonElement response)
+    {
+        if (!response.TryGetProperty("systemes", out var systemes) || systemes.ValueKind != JsonValueKind.Array)
+            return null;
+
+        var systems = new List<ScreenScraperSystem>();
+        foreach (var system in systemes.EnumerateArray())
+        {
+            var id = ReadInt(system, "id");
+            if (id is null)
+                continue;
+
+            var names = new List<string>();
+            if (system.TryGetProperty("noms", out var noms) && noms.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var name in noms.EnumerateObject())
+                {
+                    if (name.Value.ValueKind == JsonValueKind.String &&
+                        name.Value.GetString() is { Length: > 0 } text)
+                    {
+                        names.Add(text);
+                    }
+                }
+            }
+
+            var primary = ReadString(system, "nom") ?? names.FirstOrDefault();
+            systems.Add(new ScreenScraperSystem(id.Value, primary, names));
+        }
+
+        return systems;
     }
 
     private static ScreenScraperGameInfo? ParseGame(JsonElement game)
@@ -381,6 +490,8 @@ public sealed class ScreenScraperClient : IScreenScraperClient
         var redacted = error
             .Replace(_developerCredentials.DeveloperPassword, "[redacted]", StringComparison.Ordinal)
             .Replace(userCredentials.Password, "[redacted]", StringComparison.Ordinal);
+        if (_debugOptions is { } debug)
+            redacted = redacted.Replace(debug.DebugPassword, "[redacted]", StringComparison.Ordinal);
         return redacted.Length <= 300 ? redacted : redacted[..300];
     }
 
@@ -446,13 +557,17 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             throw new ArgumentException("ROM name cannot be empty.", nameof(request));
 
         var hasForcedGameId = !string.IsNullOrWhiteSpace(request.ProviderGameId);
-        var hasHash = !string.IsNullOrWhiteSpace(request.Crc32) ||
-            !string.IsNullOrWhiteSpace(request.Md5) ||
-            !string.IsNullOrWhiteSpace(request.Sha1);
-        if (!hasForcedGameId && (!hasHash || request.RomSize <= 0))
+        var hasSerial = !string.IsNullOrWhiteSpace(request.Serial);
+        var hasHashAndSize = request.RomSize > 0 &&
+            (!string.IsNullOrWhiteSpace(request.Crc32) ||
+             !string.IsNullOrWhiteSpace(request.Md5) ||
+             !string.IsNullOrWhiteSpace(request.Sha1));
+        // ScreenScraper matches by a hash+size, a disc serial, or a confirmed game id. Serial is the
+        // route for compressed disc containers (CHD/CSO/…) whose container bytes are not the ROM.
+        if (!hasForcedGameId && !hasSerial && !hasHashAndSize)
         {
             throw new ArgumentException(
-                "Automatic ScreenScraper lookup requires a ROM hash and byte size.",
+                "Automatic ScreenScraper lookup requires a ROM hash and byte size, a serial, or a game id.",
                 nameof(request));
         }
     }
@@ -464,5 +579,14 @@ public sealed class ScreenScraperClient : IScreenScraperClient
     {
         if (!string.IsNullOrWhiteSpace(value))
             parameters.Add(new(key, value.Trim()));
+    }
+
+    private static void AddIntIfPresent(
+        ICollection<KeyValuePair<string, string>> parameters,
+        string key,
+        int? value)
+    {
+        if (value is { } number)
+            parameters.Add(new(key, number.ToString(CultureInfo.InvariantCulture)));
     }
 }

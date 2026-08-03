@@ -11,6 +11,21 @@ public sealed record ScreenScraperDeveloperCredentials(
     string DeveloperPassword,
     string SoftwareName);
 
+/// <summary>
+/// Developer-only debug parameters. This is never populated by user-facing flows: it forces
+/// cache updates, IP/level, and quota counters to validate behavior against the live API, and is
+/// capped by ScreenScraper at 100 uses per day. <see cref="DebugPassword"/> is a secret and must
+/// be redacted from every log, exception, and diagnostic exactly like the developer password.
+/// </summary>
+public sealed record ScreenScraperDebugOptions(
+    string DebugPassword,
+    bool ForceUpdate = false,
+    string? ForceIp = null,
+    int? ForceLevel = null,
+    int? ForceRequestOk = null,
+    int? ForceRequestKo = null,
+    int? ForceRequestMin = null);
+
 /// <summary>In-memory account credentials. These must never be serialized into AppSettings.</summary>
 public sealed record ScreenScraperUserCredentials(string Username, string Password);
 
@@ -110,6 +125,18 @@ public sealed record ScreenScraperGameInfo(
     string? Rating,
     IReadOnlyList<ScreenScraperMediaCandidate> Media);
 
+/// <summary>One entry from <c>systemesListe.php</c>, used to validate the EmuShelf system map.</summary>
+public sealed record ScreenScraperSystem(
+    int Id,
+    string? Name,
+    IReadOnlyList<string> Names);
+
+/// <summary>A ranked candidate from <c>jeuRecherche.php</c> for the manual title-search fallback.</summary>
+public sealed record ScreenScraperGameMatch(
+    string ProviderGameId,
+    string Name,
+    string? System);
+
 public interface IScreenScraperClient
 {
     Task<ScreenScraperResult<ScreenScraperAccountInfo>> GetAccountInfoAsync(
@@ -119,6 +146,18 @@ public interface IScreenScraperClient
     Task<ScreenScraperResult<ScreenScraperGameInfo>> GetGameInfoAsync(
         ScreenScraperUserCredentials userCredentials,
         ScreenScraperGameRequest request,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Returns the ScreenScraper system catalogue for auditing the EmuShelf system map.</summary>
+    Task<ScreenScraperResult<IReadOnlyList<ScreenScraperSystem>>> GetSystemsAsync(
+        ScreenScraperUserCredentials userCredentials,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Ranked title-search candidates (<c>jeuRecherche.php</c>) for the manual fallback.</summary>
+    Task<ScreenScraperResult<IReadOnlyList<ScreenScraperGameMatch>>> SearchGamesAsync(
+        ScreenScraperUserCredentials userCredentials,
+        int systemId,
+        string query,
         CancellationToken cancellationToken = default);
 }
 
@@ -144,7 +183,7 @@ public sealed record ScreenScraperGamePreview(
     IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> Media,
     GameDetails ExistingDetails,
     ScreenScraperQuota? Quota,
-    ScreenScraperFingerprintStatus FingerprintStatus);
+    ScreenScraperFingerprintStatus? FingerprintStatus);
 
 public sealed record ScreenScraperPreviewResult(
     ScreenScraperPreviewStatus Status,
@@ -161,5 +200,37 @@ public interface IScreenScraperPreviewService
         long gameId,
         Settings.ScreenScraperSettings settings,
         bool allowFingerprinting,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Ranked title-search candidates for the manual fallback when no exact match is found.</summary>
+    Task<ScreenScraperResult<IReadOnlyList<ScreenScraperGameMatch>>> SearchAsync(
+        long gameId,
+        string query,
+        Settings.ScreenScraperSettings settings,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Builds a preview for a user-chosen title-search result, keyed by its provider game id.</summary>
+    Task<ScreenScraperPreviewResult> PreviewByProviderGameIdAsync(
+        long gameId,
+        string providerGameId,
+        Settings.ScreenScraperSettings settings,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Scrapes many games in one pass. It matches only by hash/serial (never title search, so a rom-hack
+/// heavy run cannot exhaust the failed-lookup quota), applies with the caller's overwrite mode and
+/// field/media selection, reports cancellable progress, and stops cleanly on quota exhaustion — leaving
+/// completed work intact and the run resumable (fill-missing skips games already done).
+/// </summary>
+public interface IScreenScraperBatchService
+{
+    Task<GameScrapeBatchSummary> RunAsync(
+        IReadOnlyList<long> gameIds,
+        Settings.ScreenScraperSettings settings,
+        GameMetadataApplyMode mode,
+        IReadOnlySet<GameMetadataField>? includeFields,
+        IReadOnlySet<GameMediaKind>? includeMedia,
+        IProgress<GameScrapeBatchProgress>? progress,
         CancellationToken cancellationToken = default);
 }

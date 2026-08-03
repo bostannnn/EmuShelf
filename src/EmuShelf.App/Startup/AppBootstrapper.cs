@@ -128,7 +128,11 @@ public sealed class AppBootstrapper
                 ScreenScraperCredentialStore,
                 ScreenScraperFingerprints,
                 ScreenScraperClient,
-                KnownScreenScraperProfiles.All);
+                KnownScreenScraperProfiles.All,
+                KnownMetadataProfiles.All.ToDictionary(
+                    profile => profile.SystemId,
+                    profile => profile.IdentifierExtractor,
+                    StringComparer.OrdinalIgnoreCase));
         }
         var retroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
         RetroAchievementsStore = retroAchievementsStore;

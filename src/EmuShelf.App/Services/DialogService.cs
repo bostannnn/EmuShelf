@@ -10,6 +10,8 @@ using EmuShelf.App.Views;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.Metadata.ScreenScraper;
+using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.Services;
@@ -27,6 +29,11 @@ public sealed class DialogService : IDialogService
     private readonly IRetroAchievementsBadgeCache? _retroAchievementsBadges;
     private readonly IGameArtworkSearchProvider? _artworkSearch;
     private readonly IRemoteArtworkDownloader? _artworkDownloader;
+    private readonly IScreenScraperPreviewService? _screenScraperPreview;
+    private readonly IGameScrapeApplicationService? _scrapeApply;
+    private readonly IScreenScraperAccountService? _screenScraperAccount;
+    private readonly IScreenScraperBatchService? _batchScraper;
+    private readonly ISettingsService? _settingsService;
 
     public DialogService(
         IClassicDesktopStyleApplicationLifetime lifetime,
@@ -35,7 +42,12 @@ public sealed class DialogService : IDialogService
         IRetroAchievementsAccountService? retroAchievementsAccount = null,
         IRetroAchievementsBadgeCache? retroAchievementsBadges = null,
         IGameArtworkSearchProvider? artworkSearch = null,
-        IRemoteArtworkDownloader? artworkDownloader = null)
+        IRemoteArtworkDownloader? artworkDownloader = null,
+        IScreenScraperPreviewService? screenScraperPreview = null,
+        IGameScrapeApplicationService? scrapeApply = null,
+        IScreenScraperAccountService? screenScraperAccount = null,
+        IScreenScraperBatchService? batchScraper = null,
+        ISettingsService? settingsService = null)
     {
         _lifetime = lifetime;
         _logger = logger ?? NullAppLogger.Instance;
@@ -44,6 +56,11 @@ public sealed class DialogService : IDialogService
         _retroAchievementsBadges = retroAchievementsBadges;
         _artworkSearch = artworkSearch;
         _artworkDownloader = artworkDownloader;
+        _screenScraperPreview = screenScraperPreview;
+        _scrapeApply = scrapeApply;
+        _screenScraperAccount = screenScraperAccount;
+        _batchScraper = batchScraper;
+        _settingsService = settingsService;
     }
 
     private Window? Owner => _lifetime.MainWindow;
@@ -263,7 +280,8 @@ public sealed class DialogService : IDialogService
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null)
+        TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -284,7 +302,8 @@ public sealed class DialogService : IDialogService
             _logger,
             retroAchievements,
             cloudSaves,
-            texturePacks);
+            texturePacks,
+            screenScraper);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 
@@ -292,6 +311,57 @@ public sealed class DialogService : IDialogService
         try
         {
             await dialog.ShowDialog<bool>(owner);
+        }
+        finally
+        {
+            _activeDialog = null;
+        }
+    }
+
+    public async Task<bool> ShowScraperAsync(long gameId, string gameTitle)
+    {
+        var owner = Owner;
+        if (owner is null || _screenScraperPreview is null || _scrapeApply is null ||
+            _screenScraperAccount is null || _settingsService is null)
+        {
+            return false;
+        }
+
+        var settings = _settingsService.Load().Scraping.ScreenScraper;
+        var viewModel = new GameScraperViewModel(
+            gameId, gameTitle, _screenScraperPreview, _scrapeApply, _screenScraperAccount, settings,
+            _artworkDownloader, _logger);
+        var dialog = new ScraperWindow { DataContext = viewModel };
+        viewModel.CloseRequested += result => dialog.Close(result is not null);
+        dialog.Opened += (_, _) => _ = viewModel.LoadAsync();
+
+        _activeDialog = dialog;
+        try
+        {
+            return await dialog.ShowDialog<bool>(owner);
+        }
+        finally
+        {
+            _activeDialog = null;
+            viewModel.Dispose();
+        }
+    }
+
+    public async Task<bool> ShowBatchScraperAsync(IReadOnlyList<long> gameIds, string systemName)
+    {
+        var owner = Owner;
+        if (owner is null || _batchScraper is null || _settingsService is null || gameIds.Count == 0)
+            return false;
+
+        var settings = _settingsService.Load().Scraping.ScreenScraper;
+        var viewModel = new GameBatchScraperViewModel(gameIds, systemName, _batchScraper, settings, _logger);
+        var dialog = new BatchScraperWindow { DataContext = viewModel };
+        viewModel.CloseRequested += () => dialog.Close(viewModel.AppliedChanges);
+
+        _activeDialog = dialog;
+        try
+        {
+            return await dialog.ShowDialog<bool>(owner);
         }
         finally
         {

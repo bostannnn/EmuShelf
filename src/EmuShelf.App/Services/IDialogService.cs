@@ -75,8 +75,21 @@ public interface IDialogService
         IMetadataPreferencesService metadataPreferences,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null);
+        TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);
+
+    /// <summary>
+    /// Opens the ScreenScraper scrape/apply window for one game. Returns true when data was applied,
+    /// so the caller can refresh the library. Implementations without the provider return false.
+    /// </summary>
+    Task<bool> ShowScraperAsync(long gameId, string gameTitle) => Task.FromResult(false);
+
+    /// <summary>
+    /// Opens the batch scrape window for a set of games. Returns true when any game was scraped, so
+    /// the caller can refresh the library. Implementations without the provider return false.
+    /// </summary>
+    Task<bool> ShowBatchScraperAsync(IReadOnlyList<long> gameIds, string systemName) => Task.FromResult(false);
 }

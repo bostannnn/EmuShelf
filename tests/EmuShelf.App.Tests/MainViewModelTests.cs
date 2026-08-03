@@ -969,6 +969,35 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadScrape_IsOfferedInActions_AndHandsOffToDesktopMode()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadScrape.cue");
+        File.WriteAllText(path, "FILE \"GamepadScrape.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Gamepad scrape", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        vm.OpenFocusedGameActionsCommand.Execute(null);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Scrape with ScreenScraper");
+
+        await vm.ScrapeFocusedGameCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.ScraperDesktopHandoff, vm.GamepadOverlay);
+        Assert.True(vm.IsGamepadScraperHandoffOpen);
+        // The handoff completes the action: it leaves Gamepad mode and opens the scraper for the game.
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Scrape in Desktop mode");
+
+        var gameId = vm.FocusedGame!.Id;
+        await vm.ScrapeFromGamepadCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Equal(gameId, _dialogs.LastScraperGameId);
+        Assert.Equal("Gamepad scrape", _dialogs.LastScraperGameTitle);
+    }
+
+    [AvaloniaFact]
     public async Task PlatformShoulderButtons_FromOffListScope_SnapToAllGames()
     {
         var path = Path.Combine(_baseDirectory, "OffList.cue");

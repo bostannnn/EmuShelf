@@ -103,7 +103,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> RemoveCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
+    public IAsyncRelayCommand<GameViewModel?> ScrapeCommand { get; }
     public IAsyncRelayCommand RemoveSelectedCommand { get; }
+    public IAsyncRelayCommand ScrapeSelectedCommand { get; }
     public string? CoverPath { get; private set; }
     public int? RetroAchievementsGameId { get; private set; }
     public bool IsCoverLoading { get; set; }
@@ -159,6 +161,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Context-menu copy supplied by the library's shared selection model.</summary>
     [ObservableProperty]
     public partial string SelectionRemovalText { get; set; } = "Remove from library…";
+
+    [ObservableProperty]
+    public partial string SelectionScrapeText { get; set; } = "Scrape selected with ScreenScraper…";
+
+    /// <summary>Shown only when more than one game is selected; single games use the per-game scrape.</summary>
+    [ObservableProperty]
+    public partial bool CanScrapeSelection { get; set; }
 
     /// <summary>Whether the grid tile shows the achievement/trophy mark (a confirmed RA match).</summary>
     [ObservableProperty]
@@ -285,11 +294,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
         double coverAspectRatio = DefaultCoverAspectRatio,
         IAsyncRelayCommand<GameViewModel?>? openAchievementsCommand = null,
         IAsyncRelayCommand? removeSelectedCommand = null,
+        IAsyncRelayCommand? scrapeSelectedCommand = null,
         IReadOnlyList<GameDisc>? discs = null,
         GameDisc? selectedDisc = null,
         string? displayTitle = null,
         string? discSelectionKey = null,
-        Func<GameViewModel, GameDisc, Task>? launchDiscAction = null)
+        Func<GameViewModel, GameDisc, Task>? launchDiscAction = null,
+        IAsyncRelayCommand<GameViewModel?>? scrapeCommand = null)
     {
         Model = game;
         _discs = discs ?? [new GameDisc(1, game)];
@@ -333,7 +344,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
         RemoveCommand = removeCommand ?? NoGameCommand;
         LoadCoverCommand = loadCoverCommand ?? NoGameCommand;
         OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
+        ScrapeCommand = scrapeCommand ?? NoGameCommand;
         RemoveSelectedCommand = removeSelectedCommand ?? NoCommand;
+        ScrapeSelectedCommand = scrapeSelectedCommand ?? NoCommand;
     }
 
     /// <summary>Applies a successfully remembered disc to the currently displayed title set.</summary>

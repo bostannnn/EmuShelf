@@ -85,6 +85,17 @@ public static class ScreenScraperDeveloperCredentialSource
     public const string DeveloperIdVariable = "SCREENSCRAPER_DEV_ID";
     public const string DeveloperPasswordVariable = "SCREENSCRAPER_DEV_PASSWORD";
     public const string SoftwareNameVariable = "SCREENSCRAPER_SOFTNAME";
+    public const string DeveloperDebugPasswordVariable = "SCREENSCRAPER_DEV_DEBUG_PASSWORD";
+
+    /// <summary>
+    /// Reads the developer-only ScreenScraper debug password from the environment. Returns
+    /// <see langword="null"/> when it is absent, so debug mode is opt-in and never active by default.
+    /// </summary>
+    public static string? GetDebugPasswordFromEnvironment()
+    {
+        var value = Environment.GetEnvironmentVariable(DeveloperDebugPasswordVariable);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
 
     public static bool TryLoadFromEnvironment(out ScreenScraperDeveloperCredentials? credentials)
     {

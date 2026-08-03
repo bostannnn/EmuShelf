@@ -79,6 +79,44 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Preview_UsesSerial_ForDiscSystems_ExtractingOnDemand_WithoutHashing()
+    {
+        var game = AddGame("Game.chd", "compressed-container"u8.ToArray(), "playstation2");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        _client.Result = SuccessfulGameResult();
+        var resolver = new RelativePathResolver(AppPaths);
+        var preview = new ScreenScraperPreviewService(
+            _games,
+            _details,
+            _credentials,
+            new ScreenScraperFingerprintService(new SqliteGameFileFingerprintStore(_database, resolver)),
+            _client,
+            KnownScreenScraperProfiles.All,
+            new Dictionary<string, IGameIdentifierExtractor>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["playstation2"] = new StubExtractor([
+                    new GameIdentifier(GameIdentifierKind.Serial, "SLUS-12345", "test"),
+                ]),
+            });
+
+        // allowFingerprinting is false: a CHD cannot be whole-file hashed, yet the serial route matches.
+        var result = await preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("SLUS-12345", _client.LastRequest!.Serial);
+        Assert.Equal(0, _client.LastRequest.RomSize);
+        Assert.Equal(GameProviderMatchMethod.Serial, result.Preview!.Match.MatchMethod);
+        Assert.Null(result.Preview.FingerprintStatus);
+        // The extracted serial is persisted so later runs reuse it.
+        Assert.Contains(
+            _games.GetIdentifiers(game.Id),
+            identifier => identifier.Kind == GameIdentifierKind.Serial && identifier.Value == "SLUS-12345");
+    }
+
+    [Fact]
     public async Task Preview_RequiresSeparateFingerprintConsentBeforeCallingProvider()
     {
         var game = AddGame("Consent.nds", "content"u8.ToArray(), "nds");
@@ -210,6 +248,11 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
             new ScreenScraperQuota(2, 1, 1000, 0, 50, null),
             null);
 
+    private sealed class StubExtractor(IReadOnlyList<GameIdentifier> identifiers) : IGameIdentifierExtractor
+    {
+        public IReadOnlyList<GameIdentifier> Extract(Game game) => identifiers;
+    }
+
     private sealed class StubClient : IScreenScraperClient
     {
         public ScreenScraperResult<ScreenScraperGameInfo> Result { get; set; } = SuccessfulGameResult();
@@ -229,5 +272,18 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
             LastRequest = request;
             return Task.FromResult(Result);
         }
+
+        public Task<ScreenScraperResult<IReadOnlyList<ScreenScraperSystem>>> GetSystemsAsync(
+            ScreenScraperUserCredentials userCredentials,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ScreenScraperResult<IReadOnlyList<ScreenScraperGameMatch>> SearchResult { get; set; } =
+            new(ScreenScraperRequestStatus.Success, [], null, null);
+
+        public Task<ScreenScraperResult<IReadOnlyList<ScreenScraperGameMatch>>> SearchGamesAsync(
+            ScreenScraperUserCredentials userCredentials,
+            int systemId,
+            string query,
+            CancellationToken cancellationToken = default) => Task.FromResult(SearchResult);
     }
 }

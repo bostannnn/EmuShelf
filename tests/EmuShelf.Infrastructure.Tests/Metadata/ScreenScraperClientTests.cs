@@ -120,14 +120,35 @@ public class ScreenScraperClientTests
     }
 
     [Fact]
-    public async Task GetGameInfo_RejectsSerialOnlyAutomaticLookup()
+    public async Task GetGameInfo_AllowsSerialOnlyLookup_ForCompressedDiscContainers()
+    {
+        Uri? requestedUri = null;
+        using var httpClient = new HttpClient(new StubHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            return JsonResponse(GameFixture());
+        }));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(58, "game.chd", 0, Serial: "SLUS-12345"));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(requestedUri);
+        Assert.Contains("serialnum=SLUS-12345", requestedUri.Query);
+        Assert.DoesNotContain("romtaille=", requestedUri.Query);
+    }
+
+    [Fact]
+    public async Task GetGameInfo_RejectsLookupWithNoHashSerialOrGameId()
     {
         using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));
         var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
 
         await Assert.ThrowsAsync<ArgumentException>(() => client.GetGameInfoAsync(
             UserCredentials,
-            new ScreenScraperGameRequest(58, "game.iso", 100, Serial: "SLUS-12345")));
+            new ScreenScraperGameRequest(58, "game.iso", 0)));
     }
 
     [Fact]
@@ -198,8 +219,138 @@ public class ScreenScraperClientTests
         Assert.Equal("fanart", media[GameMediaKind.Fanart].ProviderMediaId);
     }
 
+    [Fact]
+    public async Task GetGameInfo_WithDebugOptions_AppendsDebugParametersToRequest()
+    {
+        Uri? requestedUri = null;
+        using var httpClient = new HttpClient(new StubHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            return JsonResponse(GameFixture());
+        }));
+        var debug = new ScreenScraperDebugOptions(
+            "debug-secret",
+            ForceUpdate: true,
+            ForceLevel: 30,
+            ForceRequestOk: 100,
+            ForceRequestKo: 5,
+            ForceRequestMin: 20);
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials, debugOptions: debug);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(requestedUri);
+        Assert.Contains("devdebugpassword=debug-secret", requestedUri.Query);
+        Assert.Contains("forceupdate=1", requestedUri.Query);
+        Assert.Contains("forcelevel=30", requestedUri.Query);
+        Assert.Contains("forcerequestok=100", requestedUri.Query);
+        Assert.Contains("forcerequestko=5", requestedUri.Query);
+        Assert.Contains("forcerequestmin=20", requestedUri.Query);
+    }
+
+    [Fact]
+    public async Task WithoutDebugOptions_NoDebugParametersAreSent()
+    {
+        Uri? requestedUri = null;
+        using var httpClient = new HttpClient(new StubHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            return JsonResponse(GameFixture());
+        }));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
+
+        Assert.NotNull(requestedUri);
+        Assert.DoesNotContain("devdebugpassword", requestedUri.Query);
+        Assert.DoesNotContain("forceupdate", requestedUri.Query);
+    }
+
+    [Fact]
+    public async Task DebugPassword_IsRedactedFromApiErrorMessages()
+    {
+        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(
+            "{\"header\":{\"success\":\"false\",\"error\":\"Bad devdebugpassword=debug-secret supplied\"}}")));
+        var debug = new ScreenScraperDebugOptions("debug-secret");
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials, debugOptions: debug);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
+
+        Assert.Equal(ScreenScraperRequestStatus.ApiRejected, result.Status);
+        Assert.NotNull(result.Error);
+        Assert.DoesNotContain("debug-secret", result.Error);
+    }
+
+    [Fact]
+    public async Task EmptyDebugPassword_IsRejected()
+    {
+        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));
+
+        Assert.Throws<ArgumentException>(() => new ScreenScraperClient(
+            httpClient,
+            DeveloperCredentials,
+            debugOptions: new ScreenScraperDebugOptions("   ")));
+    }
+
+    [Fact]
+    public async Task SearchGames_ParsesRankedCandidates_AndScopesToTheSystem()
+    {
+        Uri? requestedUri = null;
+        using var httpClient = new HttpClient(new StubHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            return JsonResponse(
+                "{\"header\":{\"success\":\"true\"},\"response\":{\"jeux\":[" +
+                "{\"id\":\"111\",\"noms\":[{\"region\":\"us\",\"text\":\"Zelda Hack\"}]," +
+                "\"systeme\":{\"id\":\"4\",\"text\":\"Super Nintendo\"}}," +
+                "{\"id\":\"222\",\"noms\":[{\"region\":\"wor\",\"text\":\"Another Game\"}]}]}}");
+        }));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        var result = await client.SearchGamesAsync(UserCredentials, 4, "zelda");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Data!.Count);
+        Assert.Equal("111", result.Data[0].ProviderGameId);
+        Assert.Equal("Zelda Hack", result.Data[0].Name);
+        Assert.Equal("Super Nintendo", result.Data[0].System);
+        Assert.NotNull(requestedUri);
+        Assert.EndsWith("/api2/jeuRecherche.php", requestedUri.AbsolutePath);
+        Assert.Contains("recherche=zelda", requestedUri.Query);
+        Assert.Contains("systemeid=4", requestedUri.Query);
+    }
+
+    [Fact]
+    public async Task GetSystems_ParsesSystemCatalogue()
+    {
+        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(SystemsFixture())));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        var result = await client.GetSystemsAsync(UserCredentials);
+
+        Assert.True(result.IsSuccess);
+        var systems = result.Data!;
+        Assert.Equal(3, systems.Count);
+        var megadrive = systems.Single(system => system.Id == 1);
+        Assert.Contains("Genesis", megadrive.Names);
+        Assert.Contains("Megadrive", megadrive.Names);
+        // The "id" field arrives as a JSON string for GameCube; it must still parse.
+        Assert.Contains(systems, system => system.Id == 13);
+        Assert.Contains(systems, system => system.Id == 58);
+    }
+
     private static string GameFixture() => File.ReadAllText(
         Path.Combine(AppContext.BaseDirectory, "Fixtures", "ScreenScraper", "game-info.json"));
+
+    private static string SystemsFixture() => File.ReadAllText(
+        Path.Combine(AppContext.BaseDirectory, "Fixtures", "ScreenScraper", "systemes-list.json"));
 
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)
     {

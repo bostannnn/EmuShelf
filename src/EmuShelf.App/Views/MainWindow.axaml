@@ -908,6 +908,12 @@
                                                   Command="{Binding BeginEditTitleCommand}" />
                                         <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="Scrape with ScreenScraper…"
+                                                  Command="{Binding ScrapeCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="{Binding SelectionScrapeText}"
+                                                  IsVisible="{Binding CanScrapeSelection}"
+                                                  Command="{Binding ScrapeSelectedCommand}" />
                                         <Separator />
                                         <MenuItem Header="{Binding SelectionRemovalText}"
                                                   Command="{Binding RemoveSelectedCommand}" />
@@ -1142,6 +1148,12 @@
                                                   Command="{Binding BeginEditTitleCommand}" />
                                         <MenuItem Header="Set cover…" Command="{Binding SetCoverCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="Scrape with ScreenScraper…"
+                                                  Command="{Binding ScrapeCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="{Binding SelectionScrapeText}"
+                                                  IsVisible="{Binding CanScrapeSelection}"
+                                                  Command="{Binding ScrapeSelectedCommand}" />
                                         <Separator />
                                         <MenuItem Header="{Binding SelectionRemovalText}"
                                                   Command="{Binding RemoveSelectedCommand}" />
@@ -1843,6 +1855,11 @@
                         <StackPanel IsVisible="{Binding IsGamepadCoverHandoffOpen}" Spacing="12">
                             <TextBlock Text="Set cover in Desktop mode" FontSize="20" FontWeight="Bold" />
                             <TextBlock Text="Choosing an image needs the platform file picker, which is not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
+                                       TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding IsGamepadScraperHandoffOpen}" Spacing="12">
+                            <TextBlock Text="Scrape in Desktop mode" FontSize="20" FontWeight="Bold" />
+                            <TextBlock Text="Reviewing metadata and picking artwork needs text entry and checkboxes, which are not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
                                        TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
                         </StackPanel>
                         <StackPanel IsVisible="{Binding IsGamepadDesktopModeConfirmationOpen}" Spacing="12">

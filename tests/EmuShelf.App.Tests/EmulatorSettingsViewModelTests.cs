@@ -1127,12 +1127,69 @@ public class EmulatorSettingsViewModelTests
         Assert.DoesNotContain("PlayStation 2", viewModel.CloudStatusText);
     }
 
+    [AvaloniaFact]
+    public async Task ScreenScraper_Connect_ShowsConnected_AndDisconnectClears()
+    {
+        var connectCalled = false;
+        var disconnectCalled = false;
+        var context = new ScreenScraperSettingsContext(
+            IsConnected: false,
+            Account: null,
+            ConnectAsync: (_, _, _) =>
+            {
+                connectCalled = true;
+                return Task.FromResult(new ScreenScraperConnectionSummary(ScreenScraperConnectionResult.Connected));
+            },
+            DisconnectAsync: _ =>
+            {
+                disconnectCalled = true;
+                return Task.CompletedTask;
+            });
+        var viewModel = CreateViewModel(screenScraper: context);
+
+        Assert.Contains(SettingsSection.ScreenScraper, viewModel.Sections);
+
+        viewModel.ScreenScraperUsername = "bostan";
+        viewModel.ScreenScraperPassword = "secret";
+        await viewModel.ConnectScreenScraperCommand.ExecuteAsync(null);
+
+        Assert.True(connectCalled);
+        Assert.True(viewModel.IsScreenScraperConnected);
+        Assert.Equal("bostan", viewModel.ScreenScraperConnectedName);
+        Assert.Empty(viewModel.ScreenScraperPassword);
+
+        await viewModel.DisconnectScreenScraperCommand.ExecuteAsync(null);
+
+        Assert.True(disconnectCalled);
+        Assert.True(viewModel.IsScreenScraperDisconnected);
+    }
+
+    [AvaloniaFact]
+    public async Task ScreenScraper_AuthFailure_StaysDisconnected_WithMessage()
+    {
+        var context = new ScreenScraperSettingsContext(
+            false,
+            null,
+            (_, _, _) => Task.FromResult(
+                new ScreenScraperConnectionSummary(ScreenScraperConnectionResult.AuthenticationFailed)),
+            _ => Task.CompletedTask);
+        var viewModel = CreateViewModel(screenScraper: context);
+
+        viewModel.ScreenScraperUsername = "bostan";
+        viewModel.ScreenScraperPassword = "wrong";
+        await viewModel.ConnectScreenScraperCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsScreenScraperDisconnected);
+        Assert.False(string.IsNullOrEmpty(viewModel.ScreenScraperStatusText));
+    }
+
     private EmulatorSettingsViewModel CreateViewModel(
         LibraryMaintenanceActions? maintenance = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null,
         TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null,
         FakeDialogService? dialogs = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
@@ -1145,7 +1202,8 @@ public class EmulatorSettingsViewModelTests
         maintenance,
         retroAchievements: retroAchievements,
         cloudSaves: cloudSaves,
-        texturePacks: texturePacks);
+        texturePacks: texturePacks,
+        screenScraper: screenScraper);
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,

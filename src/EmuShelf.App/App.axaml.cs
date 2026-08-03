@@ -10,6 +10,7 @@ using EmuShelf.Core.Launching;
 using EmuShelf.Infrastructure.Achievements;
 using EmuShelf.Infrastructure.Input;
 using EmuShelf.Infrastructure.Metadata;
+using EmuShelf.Infrastructure.Metadata.ScreenScraper;
 
 namespace EmuShelf.App;
 
@@ -96,6 +97,26 @@ public partial class App : Application
                 _webArtworkHttpClient,
                 Bootstrapper.Logger,
                 publicArtworkPolicy);
+            // ScreenScraper media are fetched through the SSRF-checked public downloader, then
+            // imported atomically under Data/Media/ by the provider-neutral apply service.
+            var scrapeApply = new GameScrapeApplicationService(
+                Bootstrapper.GameDetailsStore,
+                Bootstrapper.MetadataStore,
+                webArtworkDownloader,
+                Bootstrapper.Paths,
+                Bootstrapper.Logger);
+            var screenScraperAccount = new ScreenScraperAccountService(
+                Bootstrapper.SettingsService,
+                Bootstrapper.ScreenScraperCredentialStore,
+                Bootstrapper.ScreenScraperClient,
+                Bootstrapper.Logger);
+            var scrapeBatch = Bootstrapper.ScreenScraperPreview is null
+                ? null
+                : new ScreenScraperBatchService(
+                    Bootstrapper.ScreenScraperPreview,
+                    scrapeApply,
+                    Bootstrapper.MetadataStore,
+                    Bootstrapper.Logger);
             var metadataService = new GameMetadataService(
                 Bootstrapper.MetadataStore,
                 Bootstrapper.MetadataProfiles,
@@ -162,7 +183,12 @@ public partial class App : Application
                     new DuckDuckGoArtworkSearchProvider(
                         _metadataHttpClient,
                         publicArtworkPolicy),
-                    webArtworkDownloader),
+                    webArtworkDownloader,
+                    Bootstrapper.ScreenScraperPreview,
+                    scrapeApply,
+                    screenScraperAccount,
+                    scrapeBatch,
+                    Bootstrapper.SettingsService),
                 Bootstrapper.Systems,
                 launchService,
                 Bootstrapper.EmulatorConfigurations,
@@ -185,7 +211,8 @@ public partial class App : Application
                 Bootstrapper.CloudSaveSync,
                 applicationLifetime: new ApplicationLifetimeService(desktop),
                 texturePacks: Bootstrapper.TexturePacks,
-                libraryViewState: libraryViewState);
+                libraryViewState: libraryViewState,
+                screenScraperAccount: screenScraperAccount);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

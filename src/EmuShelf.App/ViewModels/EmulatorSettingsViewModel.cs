@@ -17,6 +17,7 @@ public enum SettingsSection
     General,
     Emulators,
     RetroAchievements,
+    ScreenScraper,
     Saves,
     TexturePacks,
 }
@@ -28,6 +29,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly LibraryMaintenanceActions? _maintenance;
     private readonly IMetadataPreferencesService? _metadataPreferences;
     private readonly RetroAchievementsSettingsContext? _retroAchievements;
+    private readonly ScreenScraperSettingsContext? _screenScraper;
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly TexturePackSettingsContext? _texturePacks;
     private readonly IAppLogger _logger;
@@ -38,6 +40,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public ObservableCollection<EmulatorSettingsRowViewModel> Rows { get; }
     public IReadOnlyList<SettingsSection> Sections { get; }
     public bool HasRetroAchievements => _retroAchievements is not null;
+    public bool HasScreenScraper => _screenScraper is not null;
     public bool HasCloudSaves => _cloudSaves is not null;
     public bool HasTexturePacks => _texturePacks is not null;
     public event Action<bool>? CloseRequested;
@@ -46,6 +49,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsGeneralSection))]
     [NotifyPropertyChangedFor(nameof(IsEmulatorsSection))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
+    [NotifyPropertyChangedFor(nameof(IsScreenScraperSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
@@ -53,6 +57,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
+    public bool IsScreenScraperSection => SelectedSection == SettingsSection.ScreenScraper;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
 
@@ -228,6 +233,28 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool HasCloudStatus => !string.IsNullOrWhiteSpace(CloudStatusText);
     public bool HasCloudSyncProgress => IsCloudBusy && CloudSyncProgressTotal > 0;
 
+    [ObservableProperty]
+    public partial string ScreenScraperUsername { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ScreenScraperPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsScreenScraperConnected))]
+    [NotifyPropertyChangedFor(nameof(IsScreenScraperDisconnected))]
+    public partial string? ScreenScraperConnectedName { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasScreenScraperStatus))]
+    public partial string ScreenScraperStatusText { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial bool IsScreenScraperBusy { get; set; }
+
+    public bool IsScreenScraperConnected => !string.IsNullOrEmpty(ScreenScraperConnectedName);
+    public bool IsScreenScraperDisconnected => !IsScreenScraperConnected;
+    public bool HasScreenScraperStatus => !string.IsNullOrWhiteSpace(ScreenScraperStatusText);
+
     public EmulatorSettingsViewModel(
         IReadOnlyList<GameSystem> systems,
         IReadOnlyList<EmulatorDefinition> emulators,
@@ -239,13 +266,15 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IAppLogger? logger = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null)
+        TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
         _maintenance = maintenance;
         _metadataPreferences = metadataPreferences;
         _retroAchievements = retroAchievements;
+        _screenScraper = screenScraper;
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
         _logger = logger ?? NullAppLogger.Instance;
@@ -253,6 +282,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
         if (retroAchievements is not null)
             sections.Add(SettingsSection.RetroAchievements);
+        if (screenScraper is not null)
+            sections.Add(SettingsSection.ScreenScraper);
         if (cloudSaves is not null)
             sections.Add(SettingsSection.Saves);
         if (texturePacks is not null)
@@ -294,6 +325,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 RetroAchievementsStatusText =
                     "Reconnect required: this platform keeps your Web API key only for the current session.";
             }
+        }
+        if (screenScraper is { IsConnected: true })
+        {
+            ScreenScraperConnectedName = screenScraper.Account?.Username ?? "Connected";
+            ScreenScraperStatusText = screenScraper.Account?.Quota is
+                { RequestsToday: { } used, MaxRequestsPerDay: { } max }
+                ? $"Connected. {used} / {max} requests used today."
+                : "Connected.";
         }
         var rows = systems.Select(system =>
         {
@@ -583,6 +622,82 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         finally
         {
             IsRetroAchievementsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ConnectScreenScraperAsync()
+    {
+        if (_screenScraper is null || IsScreenScraperBusy)
+            return;
+
+        var username = ScreenScraperUsername.Trim();
+        if (username.Length == 0 || string.IsNullOrEmpty(ScreenScraperPassword))
+        {
+            ScreenScraperStatusText = "Enter your ScreenScraper username and password.";
+            return;
+        }
+
+        IsScreenScraperBusy = true;
+        ScreenScraperStatusText = "Connecting…";
+        try
+        {
+            var outcome = await _screenScraper.ConnectAsync(username, ScreenScraperPassword, CancellationToken.None);
+            ScreenScraperStatusText = outcome.Result switch
+            {
+                ScreenScraperConnectionResult.Connected => outcome.Account?.Quota is
+                    { RequestsToday: { } used, MaxRequestsPerDay: { } max }
+                    ? $"Connected. {used} / {max} requests used today."
+                    : "Connected.",
+                ScreenScraperConnectionResult.AuthenticationFailed => "That username or password wasn't accepted.",
+                ScreenScraperConnectionResult.Offline => "Couldn't reach ScreenScraper. Check your connection.",
+                ScreenScraperConnectionResult.RateLimited => "ScreenScraper is busy right now. Try again shortly.",
+                ScreenScraperConnectionResult.QuotaExceeded => "Your ScreenScraper quota is used up. Try again later.",
+                ScreenScraperConnectionResult.ProviderUnavailable =>
+                    "ScreenScraper isn't configured in this build.",
+                ScreenScraperConnectionResult.LocalStorageFailed =>
+                    "Connected, but the login couldn't be saved on this machine.",
+                _ => "Couldn't connect. Try again.",
+            };
+            if (outcome.Result == ScreenScraperConnectionResult.Connected)
+            {
+                ScreenScraperConnectedName = username;
+                ScreenScraperPassword = string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ScreenScraper connection failed from Settings.", ex);
+            ScreenScraperStatusText = $"Couldn't connect: {ex.Message}";
+        }
+        finally
+        {
+            IsScreenScraperBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task DisconnectScreenScraperAsync()
+    {
+        if (_screenScraper is null || IsScreenScraperBusy)
+            return;
+
+        IsScreenScraperBusy = true;
+        try
+        {
+            await _screenScraper.DisconnectAsync(CancellationToken.None);
+            ScreenScraperConnectedName = null;
+            ScreenScraperUsername = string.Empty;
+            ScreenScraperStatusText = "Disconnected.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("ScreenScraper disconnect failed from Settings.", ex);
+            ScreenScraperStatusText = $"Couldn't disconnect: {ex.Message}";
+        }
+        finally
+        {
+            IsScreenScraperBusy = false;
         }
     }
 

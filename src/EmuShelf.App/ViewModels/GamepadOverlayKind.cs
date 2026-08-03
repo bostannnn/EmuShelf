@@ -16,6 +16,7 @@ public enum GamepadOverlayKind
     DiscSelection,
     RemoveConfirmation,
     CoverDesktopHandoff,
+    ScraperDesktopHandoff,
     SystemMenu,
     DesktopModeConfirmation,
     SettingsDesktopHandoff,
