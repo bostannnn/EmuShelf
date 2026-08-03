@@ -135,7 +135,12 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         }
 
         AppliedChanges = summary.Applied > 0;
+        // Mark Done before writing the summary so a late progress callback (Progress<T> delivers
+        // asynchronously when there is no captured SynchronizationContext) is ignored by OnProgress
+        // rather than clobbering the final message back to "Scraping… N of N".
         State = GameBatchScraperState.Done;
+        ProgressCompleted = ProgressTotal;
+        CurrentGameTitle = null;
         StatusMessage = Summarize(summary);
     }
 
@@ -155,6 +160,11 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
 
     private void OnProgress(GameScrapeBatchProgress progress)
     {
+        // A progress report queued before completion can be delivered after the run finishes; once
+        // the batch is Done its summary is authoritative, so drop the stale update.
+        if (State != GameBatchScraperState.Running)
+            return;
+
         ProgressCompleted = progress.Completed;
         ProgressTotal = progress.Total;
         CurrentGameTitle = progress.CurrentGameTitle;
