@@ -117,6 +117,31 @@ public static class EmulatorUserDirectories
         }
     }
 
+    /// <summary>
+    /// Azahar's user directory, which holds <c>sdmc/</c>, <c>config/qt-config.ini</c>, and
+    /// <c>load/textures/</c>. Azahar is portable when a <c>user</c> directory sits beside the
+    /// executable; otherwise it uses the platform data directory (Windows <c>%APPDATA%\Azahar</c>,
+    /// Linux <c>~/.local/share/azahar-emu</c>), matching Azahar's own <c>common_paths</c> names.
+    /// </summary>
+    public static string? FindAzahar(string? installationDirectory, bool isFlatpak)
+    {
+        return First(Candidates());
+
+        IEnumerable<string?> Candidates()
+        {
+            if (isFlatpak)
+            {
+                yield return Flatpak("org.azahar_emu.Azahar", "data", "azahar-emu");
+                yield break;
+            }
+
+            yield return Combine(installationDirectory, "user");
+            yield return AppData("Azahar");
+            yield return Home(".local", "share", "azahar-emu");
+            yield return Home("Library", "Application Support", "Azahar");
+        }
+    }
+
     private static string? First(IEnumerable<string?> candidates) =>
         candidates.Select(ExistingDirectory).FirstOrDefault(path => path is not null);
 
@@ -158,6 +183,9 @@ public static class EmulatorUserDirectories
 
     private static string? Documents(params string[] segments) =>
         Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), segments);
+
+    private static string? AppData(params string[] segments) =>
+        Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), segments);
 
     private static string? Flatpak(string applicationId, params string[] segments) =>
         Home([".var", "app", applicationId, .. segments]);

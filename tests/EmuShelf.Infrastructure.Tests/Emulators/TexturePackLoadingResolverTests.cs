@@ -1,4 +1,5 @@
 using EmuShelf.Core.TexturePacks;
+using EmuShelf.Integrations.Emulators.Azahar;
 using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Pcsx2;
@@ -155,6 +156,20 @@ public sealed class TexturePackLoadingResolverTests : IDisposable
         var resolution = await new PpssppTexturePackLoadingResolver("i", _root).ResolveAsync();
 
         Assert.Equal(TexturePackLoadingStatus.Disabled, resolution.Status);
+    }
+
+    [Fact]
+    public async Task Azahar_ReadsCustomTexturesFromQtConfigUtilitySection()
+    {
+        WriteIni("qt-config.ini", "[Utility]", "custom_textures=true");
+        Assert.Equal(
+            TexturePackLoadingStatus.Enabled,
+            (await new AzaharTexturePackLoadingResolver("i", _root).ResolveAsync()).Status);
+
+        WriteIni("qt-config.ini", "[Utility]", "custom_textures=false");
+        Assert.Equal(
+            TexturePackLoadingStatus.Disabled,
+            (await new AzaharTexturePackLoadingResolver("i", _root).ResolveAsync()).Status);
     }
 
     [Fact]

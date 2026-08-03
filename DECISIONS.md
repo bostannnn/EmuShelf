@@ -3350,3 +3350,79 @@ Real Steam Deck logs (with the diagnostics above) settled two things the RetroAr
   focused row's realized width, viewport/cover widths, selector visibility) at Information level — the
   earlier fault-only logging stayed silent while the bug happened, so this is promoted to always-on per
   keypress (user-paced, not per-frame).
+
+## 2026-08-03 — Nintendo 3DS ships behind Azahar with id-addressed covers and no hashing
+
+3DS support was added as a standalone-emulator handheld cartridge system. Azahar (the maintained
+Citra successor) is a new `EmulatorDefinition` alongside PPSSPP/Dolphin — its own executable, the
+game path passed as one argv entry — rather than a RetroArch core. The emulator and the `3ds`
+system are registered in the same change because `EmulatorSettingsViewModel` resolves each system's
+emulator with `emulators.First(e => e.Supports(id))`, which throws if none supports it.
+
+**Launch-all, identify-dumps scope.** `Nintendo3dsRomReader` recognizes every container Azahar
+loads by a bounded magic/structure check — NCSD (`.3ds`/`.cci`), NCCH (`.cxi`/`.app`), CIA
+(`.cia`), homebrew (`.3dsx`/`.elf`/`.axf`), and the seekable-Zstandard compressed variants
+(`.z3ds`/`.zcci`/`.zcxi`/`.zcia`/`.z3dsx`) — so all of them import and launch, while a renamed
+arbitrary file is rejected. Exact identity (the plaintext NCCH product code and title id) is read
+only from the uncompressed NCSD/NCCH dumps via targeted header reads: 3DS dumps are multi-gigabyte,
+so nothing hashes the whole file, and the header stays plaintext even on encrypted dumps (Azahar
+rejects encrypted content at launch). Compressed/CIA/homebrew files carry no header identity here
+and fall back to the filename for cover matching until a dedicated reader (Zstandard-frame metadata
+or CIA ticket/TMD) is added.
+
+**Covers are id-addressed via GameTDB.** No-Intro 3DS catalogues key on a whole-file hash EmuShelf
+deliberately never computes, so cover matching uses `GameTdb3dsArtworkProvider`, keyed by the NCCH
+product code's four-character game code (region from its fourth character, English/US fallbacks),
+mirroring the GameCube/Wii GameTDB route (DECISIONS 2026-07-17). It resolves covers without a
+catalogue title match; the No-Intro 3DS DAT and the Libretro title provider are supplied as
+best-effort fallbacks only. The `3ds` cover frame is 1.129, measured from GameTDB's fixed 768×680
+front-cover canvas.
+
+**Placeholder icon is original.** OpenEmu ships no 3DS asset and both the sidebar and
+`PlatformArtworkTests` require non-null platform art, so an original dual-screen clamshell
+(`PlatformConsoleArt/3ds.png`, no Nintendo/OpenEmu branding) is bundled and mapped in
+`PlatformArtwork.ConsoleAssets`.
+
+**RetroAchievements stays out.** `RetroAchievementsConsoles.ForSystem("3ds")` remains null, so 3DS
+displays as unsupported like PS3 — matching the requested "no RA yet" scope. Save sync is likewise
+deferred (no Azahar save-location provider yet).
+
+## 2026-08-03 — 3DS reaches save-sync and texture-pack parity with the other standalone emulators
+
+A parity review against the existing platforms found the first 3DS pass shipped the library, launch,
+metadata, and cover integration but not the two per-emulator adapters every comparable standalone
+emulator carries: a save-location provider (which every system has) and, for the HD-enhancement
+emulators, texture-pack adapters. Both are now implemented for Azahar, superseding the "save sync
+deferred" note in the entry above.
+
+**Save sync keys by stable id and rebases the console-unique path.** Azahar keeps in-game saves on
+its emulated SD card at `sdmc/Nintendo 3DS/<ID0>/<ID1>/title/<hi>/<lo>/data` (and `extdata/00000000/
+<id>`), where `<ID0>/<ID1>` is a console-unique pair that differs between installs.
+`AzaharSaveLocationProvider` therefore makes each title's save archive and each extdata archive a
+sync unit keyed by the machine-independent title id / extdata id, and resolves it under whichever
+console folder exists on the local machine — so a save moves between machines despite the differing
+on-disk path (a cross-console round-trip test proves this). Installed updates/DLC (the sibling
+`content` folder) and build-fragile save states are never synced, matching the M29 battery/memory-
+card boundary; a machine that has never created its SD card cannot materialize a remote unit until
+it does. The user directory follows Azahar's own `common_paths` (portable `user/` beside the
+executable, else `%APPDATA%\Azahar` / `~/.local/share/azahar-emu` / the `org.azahar_emu.Azahar`
+Flatpak), with the Settings override as the escape hatch.
+
+**Texture packs match by title id via a new exact rule.** Azahar loads custom textures from
+`<user>/load/textures/<title id>` and gates them on `qt-config.ini` `[Utility] custom_textures`. The
+texture inventory previously indexed only serials and disc ids, so a new
+`TexturePackMatchRule.Nintendo3dsTitleId` (appended last so the cached inventory's rule ordinals stay
+stable) plus `GameIdentifierKind.TitleId` indexing were added to `TexturePackMatcher` and
+`TexturePackLibraryMap`; a pack folder named by a 16-hex title id matches the game whose extracted
+title id equals it.
+
+Both adapters are unit-tested against synthetic directories and were then verified read-only against
+a real Windows Azahar install (an opt-in `EMUSHELF_TEST_AZAHAR_DIR` test): the save provider
+enumerated every title/data and extdata archive and resolved each to its real SD-card folder, the
+texture inventory found usable `load/textures/<title id>` packs keyed by title id, and `qt-config.ini
+[Utility] custom_textures` read correctly. The real install confirmed the portable `user/` layout,
+that the default console `ID0/ID1` is all zeros (so default installs share it and title-id keying
+crosses machines directly), that `title/<hi>/<lo>` folder names are lowercase while `extdata` ids are
+uppercase (the case-insensitive hex validation accepts both), and that the texture folders are
+uppercase 16-hex title ids matching the extractor's `X16` title id. A live rclone cloud round-trip
+and a manual emulator launch/return remain the only unverified paths.

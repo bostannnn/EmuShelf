@@ -1,6 +1,7 @@
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.TexturePacks;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Azahar;
 using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Pcsx2;
@@ -156,6 +157,34 @@ public static class TexturePackProviderRegistry
                     configurationDirectory is null
                         ? null
                         : new PpssppTexturePackLoadingResolver(installationId, configurationDirectory));
+            }),
+
+        new TextureProviderDescriptor(
+            SystemId: "3ds",
+            EmulatorId: AzaharDefinition.Instance.Id,
+            DisplayName: "Azahar",
+            OverridePlaceholder: "Use Azahar's load/textures folder, or choose one",
+            CreateProvider: static context =>
+            {
+                var userDirectory = EmulatorUserDirectories.FindAzahar(
+                    context.EmulatorDirectory,
+                    context.IsFlatpak);
+                if (userDirectory is null && context.DirectoryOverride is null)
+                    return null;
+
+                var installationId = InstallationId(
+                    AzaharDefinition.Instance.Id,
+                    userDirectory ?? context.DirectoryOverride!);
+                return new TexturePackProvider(
+                    installationId,
+                    new AzaharTextureRootResolver(
+                        installationId,
+                        userDirectory ?? context.Paths.BaseDirectory,
+                        context.DirectoryOverride),
+                    root => new AzaharTexturePackSource(installationId, root),
+                    userDirectory is null
+                        ? null
+                        : new AzaharTexturePackLoadingResolver(installationId, Path.Combine(userDirectory, "config")));
             }),
     ];
 

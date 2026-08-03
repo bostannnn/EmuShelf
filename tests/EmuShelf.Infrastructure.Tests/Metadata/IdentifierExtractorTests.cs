@@ -257,6 +257,41 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Nintendo3dsProfile_UsesNcchProductCodeAndTitleIdWithIdAddressedGameTdbCovers()
+    {
+        var path = Path.Combine(BaseDirectory, "Misleading 3DS title.3ds");
+        File.WriteAllBytes(path, Nintendo3dsRomReaderTests.BuildNcsd("CTR-P-AQNE", 0x0004000000033500));
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "3ds");
+
+        var identifiers = profile.IdentifierExtractor.Extract(NewGame("3ds", path));
+
+        Assert.Equal(GameIdentifierKind.Serial, profile.CatalogKeyKind);
+        Assert.EndsWith(
+            "/metadat/no-intro/Nintendo%20-%20Nintendo%203DS.dat",
+            profile.CatalogUri.AbsolutePath);
+        Assert.Equal("gametdb-3ds", profile.ArtworkProviders[0].Id);
+        Assert.Equal("libretro-thumbnails", profile.ArtworkProviders[1].Id);
+        Assert.Collection(
+            identifiers,
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
+                Assert.Equal("CTR-P-AQNE", identifier.Value);
+                Assert.True(identifier.IsPrimary);
+            },
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
+                Assert.Equal("0004000000033500", identifier.Value);
+                Assert.False(identifier.IsPrimary);
+            });
+        // The GameTDB route needs no catalogue match, so covers resolve without hashing the dump.
+        Assert.Equal(
+            "https://art.gametdb.com/3ds/coverHQ/US/AQNE.jpg",
+            profile.ArtworkProviders[0].GetCandidates(identifiers, match: null).First().SourceUri.AbsoluteUri);
+    }
+
+    [Fact]
     public void SuperNintendoProfile_UsesOnlyHeaderlessRomSha1AndCanonicalArtwork()
     {
         var path = Path.Combine(BaseDirectory, "Misleading SNES title.sfc");
@@ -456,6 +491,49 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         };
 
         Assert.Empty(new GameTdbArtworkProvider().GetCandidates(identifiers, match: null));
+    }
+
+    [Theory]
+    [InlineData("CTR-P-AQNE", "AQNE", "US")] // USA: region 'E'
+    [InlineData("CTR-P-AFAJ", "AFAJ", "JA")] // Japan: region 'J'
+    [InlineData("AQNE", "AQNE", "US")]       // a bare four-character code is accepted as-is
+    public void GameTdb3dsProvider_BuildsProductCodeCoverUrlsWithRegionFallback(
+        string serial,
+        string code,
+        string region)
+    {
+        var identifiers = new[]
+        {
+            new GameIdentifier(GameIdentifierKind.Serial, serial, "Nintendo 3DS NCCH product code", true),
+        };
+
+        var candidates = new GameTdb3dsArtworkProvider().GetCandidates(identifiers, match: null);
+
+        // The high-resolution front cover in the primary region folder is offered first.
+        Assert.Equal(
+            $"https://art.gametdb.com/3ds/coverHQ/{region}/{code}.jpg",
+            candidates[0].SourceUri.AbsoluteUri);
+        // The smaller `cover` set is probed after the high-resolution one so a game without a
+        // coverHQ image is not left without art.
+        Assert.Contains(
+            candidates,
+            candidate => candidate.SourceUri.AbsoluteUri ==
+                $"https://art.gametdb.com/3ds/cover/{region}/{code}.jpg");
+        Assert.All(candidates, candidate => Assert.Equal(".jpg", candidate.FileExtension));
+    }
+
+    [Fact]
+    public void GameTdb3dsProvider_IgnoresNonSerialAndMalformedCodes()
+    {
+        var provider = new GameTdb3dsArtworkProvider();
+
+        Assert.Empty(provider.GetCandidates(
+            [new GameIdentifier(GameIdentifierKind.TitleId, "0004000000033500", "Nintendo 3DS title id")],
+            match: null));
+        // A product code whose game-code segment is not four characters is ignored, never guessed.
+        Assert.Empty(provider.GetCandidates(
+            [new GameIdentifier(GameIdentifierKind.Serial, "CTR-P-TOOLONG", "x")],
+            match: null));
     }
 
     private static Game NewGame(string systemId, string path) => new()

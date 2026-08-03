@@ -25,6 +25,10 @@ public static class KnownSystems
         new("megadrive",    "Mega Drive / Genesis", "MD", "#3A6D74", 0.708),
         new("nds",          "Nintendo DS",   "DS",  "#7580B9", 1.115),
         new("gba",          "Game Boy Advance", "GBA", "#7065A7", 1.0),
+        // 3DS launches through the standalone Azahar emulator (not RetroArch). GameTDB serves its
+        // 2D front covers on a fixed 768×680 canvas (1.129, near-square landscape) — measured from
+        // representative coverHQ scans — so the frame matches the downloaded art with no letterbox.
+        new("3ds",          "Nintendo 3DS",  "3DS", "#C0568E", 1.129),
         // NES launches through RetroArch (an FCEUmm / Nestopia / Mesen core). The North-American
         // cardboard boxes are portrait, so the placeholder frame is portrait like the disc systems;
         // a loaded cover's own dimensions replace this ratio.

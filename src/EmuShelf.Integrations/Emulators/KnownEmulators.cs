@@ -1,4 +1,5 @@
 using EmuShelf.Core.Launching;
+using EmuShelf.Integrations.Emulators.Azahar;
 using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Pcsx2;
@@ -17,6 +18,7 @@ public static class KnownEmulators
         Rpcs3Definition.Instance,
         DolphinDefinition.Instance,
         PpssppDefinition.Instance,
+        AzaharDefinition.Instance,
         RetroArchDefinition.Instance,
     ];
 }

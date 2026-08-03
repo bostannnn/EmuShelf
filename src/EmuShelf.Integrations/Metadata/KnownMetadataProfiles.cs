@@ -16,6 +16,8 @@ public static class KnownMetadataProfiles
         new MegaDriveRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor NintendoDsExtractor =
         new NintendoDsRomIdentifierExtractor();
+    private static readonly IGameIdentifierExtractor Nintendo3dsExtractor =
+        new Nintendo3dsRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor GameBoyAdvanceExtractor =
         new GameBoyAdvanceRomIdentifierExtractor();
     private static readonly IGameIdentifierExtractor GameBoyColorExtractor =
@@ -105,6 +107,17 @@ public static class KnownMetadataProfiles
             RawCatalog("metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat"),
             GameBoyAdvanceExtractor,
             [new LibretroArtworkProvider("Nintendo - Game Boy Advance")]),
+        // 3DS covers come from the id-addressed GameTDB route (keyed by the NCCH product code), so
+        // they resolve without hashing a multi-gigabyte dump. The No-Intro DAT is supplied for a
+        // best-effort serial match and the Libretro title provider as a fallback; neither is needed
+        // for the GameTDB covers. Compressed/CIA/homebrew files carry no product code and match by
+        // filename only.
+        new(
+            "3ds",
+            GameIdentifierKind.Serial,
+            RawCatalog("metadat/no-intro/Nintendo%20-%20Nintendo%203DS.dat"),
+            Nintendo3dsExtractor,
+            [new GameTdb3dsArtworkProvider(), new LibretroArtworkProvider("Nintendo - Nintendo 3DS")]),
         // NES is keyed by the SHA-1 of the whole headered file, the form the No-Intro NES set uses.
         new(
             "nes",

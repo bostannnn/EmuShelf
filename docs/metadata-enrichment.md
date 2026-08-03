@@ -106,6 +106,7 @@ flight also wins the final database compare-and-set.
 | Nintendo DS | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 | Game Boy Advance | SHA-1 of the verified raw cartridge; header game code is retained only as local evidence | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
 | Super Nintendo | SHA-1 of the headerless ROM (optional 512-byte copier header normalized away); header title is display-only | Libretro No-Intro DAT, keyed by SHA-1 | Libretro source-indexed title match after the exact SHA-1 match |
+| Nintendo 3DS | NCCH product code (`CTR-P-XXXX`) and title id read from the uncompressed NCSD/NCCH header; multi-gigabyte dumps are never hashed | Libretro No-Intro DAT, keyed by normalized serial (best-effort) | GameTDB by product code with regional fallbacks, then Libretro by canonical title |
 
 A cartridge header game code is never a catalog key. A romhack patches the ROM but leaves that
 code untouched, so keying on it would resolve every hack to the original release and give the two
@@ -163,6 +164,19 @@ and never gates recognition. An optional 512-byte copier header (present when `s
 is normalized away before hashing, matching both the No-Intro sets and the rcheevos algorithm, so a
 headered `.smc` and a headerless `.sfc` of the same cartridge resolve to one SHA-1. `.fig`/`.swc`
 copier formats stay unsupported until their normalization has deterministic fixtures.
+
+The Nintendo 3DS reader recognizes every container Azahar loads by a bounded magic/structure check
+— NCSD (`.3ds`/`.cci`), NCCH (`.cxi`/`.app`), CIA (`.cia`), homebrew (`.3dsx`/`.elf`/`.axf`), and
+the seekable-Zstandard compressed variants (`.z3ds`/`.zcci`/`.zcxi`/`.zcia`/`.z3dsx`) — so all of
+them import and launch while a renamed arbitrary file is rejected. Exact identity is read only from
+the uncompressed NCSD/NCCH dumps: the plaintext NCCH product code (the GameTDB cover key, primary)
+and the title id, through targeted header reads with no decryption and no whole-file hash — 3DS
+dumps are multi-gigabyte, and the header stays plaintext even on an encrypted dump (which Azahar
+rejects at launch). CIA, homebrew, and the compressed containers carry no header identity, so they
+match covers by filename until a dedicated reader lands. Covers are addressed by the four-character
+game code through GameTDB (`coverHQ` before `cover`; the code's fourth character selects the region
+folder with `EN`/`US` fallbacks), which needs no catalog title match; the No-Intro DAT and the
+Libretro title provider are best-effort fallbacks only.
 
 The expansion artwork route uses the same official Libretro thumbnail server as the existing
 title-addressed fallback. A title-path lookup is intentionally never made from a filename, header

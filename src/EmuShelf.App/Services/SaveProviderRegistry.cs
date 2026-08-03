@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using EmuShelf.Integrations.Emulators.Azahar;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Dolphin;
 using EmuShelf.Integrations.Emulators.Pcsx2;
@@ -249,6 +250,35 @@ public static class SaveProviderRegistry
                     "Dolphin's shared StateSaves folder is configured once on the GameCube row.",
                     DescribeDolphinLocations(info));
             }),
+
+        new SaveProviderDescriptor(
+            SystemId: "3ds",
+            DisplayName: "Nintendo 3DS",
+            SaveShapeDescription:
+                "Azahar in-game save data · per-title save archives and extdata on the emulated SD card",
+            OverridePlaceholder: "Use configured Azahar, or choose its user data folder (contains sdmc)",
+            CreateProvider: static context =>
+            {
+                // A Flatpak Azahar has a documented fixed data location, so it can participate with
+                // neither an override nor a resolvable installation directory.
+                if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
+                    string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
+                    !context.IsFlatpak)
+                {
+                    return null;
+                }
+
+                return new AzaharSaveLocationProvider(
+                    context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+                    userDirectoryOverride: context.DirectoryOverride,
+                    isFlatpak: context.IsFlatpak);
+            },
+            DetectAsync: static async (provider, cancellationToken) =>
+                new SaveProviderDetection(
+                    await ((AzaharSaveLocationProvider)provider).GetSaveDataDirectoryAsync(cancellationToken),
+                    "3DS saves live on the emulated SD card under a console-unique ID folder. EmuShelf syncs " +
+                    "each game's save by its title id and places it under this machine's own SD card, so run " +
+                    "Azahar once on a new machine to create the SD card before the first download.")),
 
         // RetroArch serves several systems from one installation, so each row resolves the save
         // directory for its own configured core.
