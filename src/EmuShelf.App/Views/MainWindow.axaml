@@ -395,6 +395,36 @@
             <Setter Property="Width" Value="1120" />
             <Setter Property="Height" Value="640" />
         </Style>
+        <Style Selector="Border.gamepad-overlay.scraper">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Width" Value="1000" />
+            <Setter Property="Height" Value="640" />
+        </Style>
+        <!-- One controller-focusable row in the scraper overlay (a field/media toggle or candidate). -->
+        <Style Selector="Border.gamepad-scraper-row">
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Border.gamepad-scraper-row.focused">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Border.gamepad-scraper-cover">
+            <Setter Property="Width" Value="220" />
+            <Setter Property="Height" Value="294" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="Background" Value="{DynamicResource EmuCoverWellBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="TextBox.gamepad-scraper-field.focused">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
         <Style Selector="Button.gamepad-achievement-tab, Button.gamepad-achievement-command">
             <Setter Property="Height" Value="42" />
             <Setter Property="Padding" Value="16,8" />
@@ -1626,6 +1656,7 @@
             <Border Classes="gamepad-overlay" Classes.system-menu="{Binding IsGamepadSystemMenuOpen}"
                     Classes.side-sheet="{Binding IsGameActionsOpen}"
                     Classes.achievements="{Binding IsGamepadAchievementsOpen}"
+                    Classes.scraper="{Binding IsGamepadScraperOpen}"
                     VerticalAlignment="Center"
                     MaxHeight="{Binding #GamepadOverlayHost.Bounds.Height}"
                     MaxWidth="{Binding #GamepadOverlayHost.Bounds.Width}"
@@ -1857,11 +1888,259 @@
                             <TextBlock Text="Choosing an image needs the platform file picker, which is not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
                                        TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
                         </StackPanel>
-                        <StackPanel IsVisible="{Binding IsGamepadScraperHandoffOpen}" Spacing="12">
-                            <TextBlock Text="Scrape in Desktop mode" FontSize="20" FontWeight="Bold" />
-                            <TextBlock Text="Reviewing metadata and picking artwork needs text entry and checkboxes, which are not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
-                                       TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
-                        </StackPanel>
+                        <!-- Controller-native ScreenScraper scraper: the shared GameScraperViewModel
+                             with a D-pad focus model layered on top; never hands off to Desktop. -->
+                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadScraperOpen}">
+                            <Grid DataContext="{Binding GamepadScraperDetails}" x:DataType="vm:GamepadScraperViewModel"
+                                  RowDefinitions="Auto,*">
+                                <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
+                                    <TextBlock Text="{Binding Scraper.GameTitle}" FontSize="15" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Scraper.QuotaText}" FontSize="12"
+                                               IsVisible="{Binding Scraper.QuotaText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                </StackPanel>
+
+                                <Panel Grid.Row="1">
+                                    <!-- Loading -->
+                                    <StackPanel IsVisible="{Binding Scraper.ShowLoading}" Width="360"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                                        <ProgressBar IsIndeterminate="True" Height="4" />
+                                        <TextBlock Text="{Binding Scraper.StatusMessage}" TextAlignment="Center"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <!-- Terminal messages: applied / failure / unsupported -->
+                                    <StackPanel IsVisible="{Binding Scraper.ShowMessage}" Width="470"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+                                        <TextBlock Text="{Binding Scraper.StatusMessage}" TextWrapping="Wrap"
+                                                   TextAlignment="Center" FontSize="16" />
+                                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                                    HorizontalAlignment="Center">
+                                            <Border Classes="gamepad-key action-b"><TextBlock Text="B" /></Border>
+                                            <TextBlock Text="Back to library" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Fingerprint consent (auto-hash is default, but handle it) -->
+                                    <StackPanel IsVisible="{Binding Scraper.ShowConsent}" Width="450"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
+                                        <TextBlock Text="{Binding Scraper.StatusMessage}" TextWrapping="Wrap"
+                                                   TextAlignment="Center" FontSize="15"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsComputeFocused}"
+                                                HorizontalAlignment="Center" HorizontalContentAlignment="Center"
+                                                Command="{Binding Scraper.ComputeFingerprintCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                <TextBlock Text="Compute hash and match" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- Connect (not connected / provider disabled) -->
+                                    <StackPanel IsVisible="{Binding Scraper.ShowConnect}" Width="440"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                                        <TextBlock Text="Connect your ScreenScraper account" FontSize="18"
+                                                   FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Sign in with your screenscraper.fr username and password. Press Steam + X for the on-screen keyboard."
+                                                   TextWrapping="Wrap" TextAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <TextBox x:Name="GamepadScraperUsernameBox" Classes="gamepad-scraper-field"
+                                                 Classes.focused="{Binding IsUsernameFocused}" FontSize="18"
+                                                 Text="{Binding Scraper.Username, Mode=TwoWay}" PlaceholderText="Username"
+                                                 KeyDown="OnGamepadScraperTextKeyDown" />
+                                        <TextBox x:Name="GamepadScraperPasswordBox" Classes="gamepad-scraper-field"
+                                                 Classes.focused="{Binding IsPasswordFocused}" FontSize="18"
+                                                 Text="{Binding Scraper.Password, Mode=TwoWay}" PasswordChar="•"
+                                                 PlaceholderText="Password" KeyDown="OnGamepadScraperTextKeyDown" />
+                                        <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsConnectFocused}"
+                                                HorizontalContentAlignment="Center"
+                                                Command="{Binding Scraper.ConnectCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                <TextBlock Text="Connect" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                        <ProgressBar IsIndeterminate="True" Height="3"
+                                                     IsVisible="{Binding Scraper.IsConnecting}" />
+                                        <TextBlock Text="{Binding Scraper.ConnectStatus}" TextWrapping="Wrap"
+                                                   TextAlignment="Center"
+                                                   IsVisible="{Binding Scraper.ConnectStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    </StackPanel>
+
+                                    <!-- No exact match: title search + candidate list -->
+                                    <Grid IsVisible="{Binding Scraper.ShowSearch}" RowDefinitions="Auto,Auto,*" Margin="4">
+                                        <TextBlock Grid.Row="0" Text="{Binding Scraper.StatusMessage}"
+                                                   TextWrapping="Wrap" Margin="0,0,0,10"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,0,0,10">
+                                            <TextBox Grid.Column="0" x:Name="GamepadScraperSearchBox"
+                                                     Classes="gamepad-scraper-field"
+                                                     Classes.focused="{Binding IsSearchFieldFocused}" FontSize="18"
+                                                     Text="{Binding Scraper.SearchQuery, Mode=TwoWay}"
+                                                     PlaceholderText="Game title" KeyDown="OnGamepadScraperTextKeyDown" />
+                                            <Button Grid.Column="1" Classes="gamepad-modal-option" MinWidth="130"
+                                                    Classes.focused="{Binding IsSearchFocused}"
+                                                    HorizontalContentAlignment="Center"
+                                                    Command="{Binding Scraper.SearchCommand}">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                    <TextBlock Text="Search" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+                                        <ProgressBar Grid.Row="1" VerticalAlignment="Bottom" Height="2"
+                                                     IsIndeterminate="True" IsVisible="{Binding Scraper.IsSearching}" />
+                                        <ScrollViewer Grid.Row="2" Classes="gamepad-scroll"
+                                                      VerticalScrollBarVisibility="Auto">
+                                            <ItemsControl ItemsSource="{Binding Candidates}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:GamepadScraperCandidateViewModel">
+                                                        <Button Classes="gamepad-modal-option" Margin="0,3,0,0"
+                                                                Classes.focused="{Binding IsFocused}"
+                                                                Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).GamepadScraperDetails.Scraper.SelectCandidateCommand}"
+                                                                CommandParameter="{Binding Match}">
+                                                            <StackPanel Spacing="1">
+                                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding System}" FontSize="11"
+                                                                           IsVisible="{Binding HasSystem}"
+                                                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Grid>
+
+                                    <!-- Ready: pick fields + media, box art alongside, then Apply -->
+                                    <Grid IsVisible="{Binding Scraper.ShowData}" ColumnDefinitions="*,Auto"
+                                          RowDefinitions="*,Auto" ColumnSpacing="20">
+                                        <ScrollViewer Grid.Row="0" Grid.Column="0" Classes="gamepad-scroll"
+                                                      VerticalScrollBarVisibility="Auto">
+                                            <StackPanel Spacing="2">
+                                                <ItemsControl ItemsSource="{Binding Scraper.Fields}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:ScraperFieldRowViewModel">
+                                                            <Border Classes="gamepad-scraper-row"
+                                                                    Classes.focused="{Binding IsFocused}">
+                                                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                                                    <CheckBox IsChecked="{Binding IsSelected}"
+                                                                              IsEnabled="{Binding CanApply}"
+                                                                              VerticalAlignment="Top" />
+                                                                    <StackPanel Grid.Column="1" Spacing="2">
+                                                                        <TextBlock Text="{Binding Label}"
+                                                                                   FontWeight="SemiBold" />
+                                                                        <TextBlock Text="{Binding ProposedValue}"
+                                                                                   TextWrapping="Wrap" MaxLines="2"
+                                                                                   TextTrimming="CharacterEllipsis"
+                                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                                        <TextBlock Text="Kept — you edited this"
+                                                                                   FontSize="11"
+                                                                                   IsVisible="{Binding IsUserOwned}"
+                                                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+
+                                                <Border Classes="gamepad-scraper-row"
+                                                        Classes.focused="{Binding Scraper.BoxArtRow.IsFocused}"
+                                                        IsVisible="{Binding Scraper.BoxArtRow, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                    <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12">
+                                                        <CheckBox IsChecked="{Binding Scraper.BoxArtRow.IsSelected}"
+                                                                  IsEnabled="{Binding Scraper.BoxArtRow.CanApply}"
+                                                                  VerticalAlignment="Center" />
+                                                        <Border Grid.Column="1" Width="64" Height="84" CornerRadius="5"
+                                                                ClipToBounds="True" VerticalAlignment="Center"
+                                                                Background="{DynamicResource EmuCoverWellBrush}">
+                                                            <Image Source="{Binding Scraper.BoxArtRow.Preview}"
+                                                                   Stretch="Uniform" />
+                                                        </Border>
+                                                        <StackPanel Grid.Column="2" Spacing="2"
+                                                                    VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Scraper.BoxArtRow.Label}"
+                                                                       FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding Scraper.BoxArtRow.ProposedText}"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+
+                                                <ItemsControl ItemsSource="{Binding Scraper.OtherMedia}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:ScraperMediaRowViewModel">
+                                                            <Border Classes="gamepad-scraper-row"
+                                                                    Classes.focused="{Binding IsFocused}">
+                                                                <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12">
+                                                                    <CheckBox IsChecked="{Binding IsSelected}"
+                                                                              IsEnabled="{Binding CanApply}"
+                                                                              VerticalAlignment="Center" />
+                                                                    <Border Grid.Column="1" Width="64" Height="84"
+                                                                            CornerRadius="5" ClipToBounds="True"
+                                                                            VerticalAlignment="Center"
+                                                                            Background="{DynamicResource EmuCoverWellBrush}">
+                                                                        <Image Source="{Binding Preview}" Stretch="Uniform" />
+                                                                    </Border>
+                                                                    <StackPanel Grid.Column="2" Spacing="2"
+                                                                                VerticalAlignment="Center">
+                                                                        <TextBlock Text="{Binding Label}"
+                                                                                   FontWeight="SemiBold" />
+                                                                        <TextBlock Text="{Binding ProposedText}"
+                                                                                   TextTrimming="CharacterEllipsis"
+                                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                                        <TextBlock Text="Kept — your image" FontSize="11"
+                                                                                   IsVisible="{Binding IsUserOwned}"
+                                                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </ScrollViewer>
+
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="8" Margin="0,12,0,0">
+                                            <Border Classes="gamepad-scraper-row"
+                                                    Classes.focused="{Binding IsRefreshFocused}">
+                                                <CheckBox Content="Replace values ScreenScraper already set"
+                                                          IsChecked="{Binding Scraper.RefreshOwnedValues}" />
+                                            </Border>
+                                            <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsApplyFocused}"
+                                                    HorizontalContentAlignment="Center"
+                                                    Command="{Binding Scraper.ApplyCommand}">
+                                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                                    <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                    <TextBlock Text="Apply selected" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                            <TextBlock Text="{Binding Scraper.StatusMessage}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Spacing="8"
+                                                    VerticalAlignment="Top">
+                                            <Border Classes="gamepad-scraper-cover">
+                                                <Panel>
+                                                    <TextBlock Text="No box art" HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center" FontSize="12"
+                                                               IsVisible="{Binding Scraper.BoxArtPreview, Converter={x:Static ObjectConverters.IsNull}}"
+                                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                    <Image Source="{Binding Scraper.BoxArtPreview}" Stretch="Uniform" />
+                                                </Panel>
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Panel>
+                            </Grid>
+                        </Grid>
                         <StackPanel IsVisible="{Binding IsGamepadDesktopModeConfirmationOpen}" Spacing="12">
                             <TextBlock Text="Gamepad mode will close and the desktop library will be shown."
                                        TextWrapping="Wrap" FontSize="18" />
@@ -1884,7 +2163,7 @@
                         <ScrollViewer x:Name="GamepadOverlayOptionsScroller" Classes="gamepad-scroll"
                                       Grid.Row="1" MaxHeight="360"
                                       VerticalScrollBarVisibility="Auto"
-                                      IsVisible="{Binding !IsGamepadAchievementsOpen}">
+                                      IsVisible="{Binding IsGamepadOverlayOptionsVisible}">
                             <ItemsControl x:Name="GamepadOverlayOptions" Classes="gamepad-overlay-options"
                                           Margin="0,0,18,0"
                                           Classes.top-aligned="{Binding AreGamepadOverlayOptionsTopAligned}"
@@ -1935,6 +2214,17 @@
                                     IsVisible="{Binding IsGamepadRenameOpen}">
                             <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
                             <TextBlock Text="Save" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Back" />
+                        </StackPanel>
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding IsGamepadScraperOpen}">
+                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Move" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Select" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="Steam+X" /></Border>
+                            <TextBlock Text="Keyboard" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
                         </StackPanel>

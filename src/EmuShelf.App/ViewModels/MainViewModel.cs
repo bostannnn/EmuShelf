@@ -16,6 +16,7 @@ using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
@@ -64,6 +65,10 @@ public partial class MainViewModel : ViewModelBase
     private readonly IRetroAchievementsReadStore? _retroAchievementsRead;
     private readonly IRetroAchievementsAccountService? _retroAccount;
     private readonly IScreenScraperAccountService? _screenScraperAccount;
+    private readonly IScreenScraperPreviewService? _screenScraperPreview;
+    private readonly IGameScrapeApplicationService? _scrapeApply;
+    private readonly IRemoteArtworkDownloader? _artworkDownloader;
+    private readonly ISettingsService? _settingsService;
     private readonly IRetroAchievementsMatchingService? _retroMatching;
     private readonly IRetroAchievementsProgressService? _retroProgress;
     private readonly IRetroAchievementsDetailsService? _retroDetails;
@@ -221,6 +226,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial AchievementRowViewModel? FocusedGamepadAchievement { get; set; }
 
+    [ObservableProperty]
+    public partial GamepadScraperViewModel? GamepadScraperDetails { get; set; }
+
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
     public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename;
     public bool IsGamepadAchievementsOpen => GamepadOverlay == GamepadOverlayKind.Achievements;
@@ -230,7 +238,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadDiscSelectionOpen => GamepadOverlay == GamepadOverlayKind.DiscSelection;
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
-    public bool IsGamepadScraperHandoffOpen => GamepadOverlay == GamepadOverlayKind.ScraperDesktopHandoff;
+    public bool IsGamepadScraperOpen => GamepadOverlay == GamepadOverlayKind.Scraper;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadSettingsHandoffOpen => GamepadOverlay == GamepadOverlayKind.SettingsDesktopHandoff;
@@ -238,8 +246,13 @@ public partial class MainViewModel : ViewModelBase
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
+    // The Achievements and Scraper overlays render their own bespoke bodies, so the shared
+    // option-button list is hidden for them.
+    public bool IsGamepadOverlayOptionsVisible => GamepadOverlay is not
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Scraper);
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
-        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename);
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
+         GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
@@ -249,7 +262,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.Title} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
-        GamepadOverlayKind.ScraperDesktopHandoff => "Scrape with ScreenScraper",
+        GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
         GamepadOverlayKind.SystemMenu => "Menu",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
         GamepadOverlayKind.SettingsDesktopHandoff => "Open Settings?",
@@ -261,6 +274,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.Achievements => "D-pad Browse   X Refresh   B Back",
         GamepadOverlayKind.Search => "Steam + X Keyboard   B Back",
         GamepadOverlayKind.Rename => "A Save   B Back",
+        GamepadOverlayKind.Scraper => "D-pad Move   A Select   B Back",
         _ => "D-pad Choose   A Select   B Back",
     };
 
@@ -440,10 +454,18 @@ public partial class MainViewModel : ViewModelBase
         IApplicationLifetimeService? applicationLifetime = null,
         TexturePackCoordinator? texturePacks = null,
         ILibraryViewStateService? libraryViewState = null,
-        IScreenScraperAccountService? screenScraperAccount = null)
+        IScreenScraperAccountService? screenScraperAccount = null,
+        IScreenScraperPreviewService? screenScraperPreview = null,
+        IGameScrapeApplicationService? scrapeApply = null,
+        IRemoteArtworkDownloader? artworkDownloader = null,
+        ISettingsService? settingsService = null)
     {
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;
+        _screenScraperPreview = screenScraperPreview;
+        _scrapeApply = scrapeApply;
+        _artworkDownloader = artworkDownloader;
+        _settingsService = settingsService;
         _library = library;
         _scanner = scanner;
         _importRules = importRules;
@@ -868,15 +890,32 @@ public partial class MainViewModel : ViewModelBase
         if (FocusedGame is null)
             return Task.CompletedTask;
 
-        // The scraper is text/checkbox heavy, so — like Set cover and Settings — it hands off to
-        // Desktop mode rather than trying to be controller-native.
+        // Gamepad mode scrapes in a controller-native overlay that reuses the shared scraper view
+        // model — no Desktop handoff. Desktop keeps its own window.
         if (IsGamepadMode)
+            return OpenGamepadScraperAsync(FocusedGame);
+
+        return ScrapeGameAsync(FocusedGame);
+    }
+
+    private Task OpenGamepadScraperAsync(GameViewModel game)
+    {
+        if (_screenScraperPreview is null || _scrapeApply is null ||
+            _screenScraperAccount is null || _settingsService is null)
         {
-            OpenGamepadOverlay(GamepadOverlayKind.ScraperDesktopHandoff);
+            SetStatus("ScreenScraper is unavailable right now.", StatusSeverity.Error);
             return Task.CompletedTask;
         }
 
-        return ScrapeGameAsync(FocusedGame);
+        var settings = _settingsService.Load().Scraping.ScreenScraper;
+        var scraper = new GameScraperViewModel(
+            game.Id, game.Title, _screenScraperPreview, _scrapeApply, _screenScraperAccount,
+            settings, _artworkDownloader, _logger);
+        var details = new GamepadScraperViewModel(scraper);
+
+        OpenGamepadOverlay(GamepadOverlayKind.Scraper);
+        GamepadScraperDetails = details;
+        return scraper.LoadAsync();
     }
 
     [RelayCommand]
@@ -989,6 +1028,7 @@ public partial class MainViewModel : ViewModelBase
             FocusedGame.IsEditingTitle = false;
         }
         DisposeGamepadAchievementDetails();
+        DisposeGamepadScraperDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
@@ -999,13 +1039,28 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void BackFromGamepadOverlay()
     {
+        if (GamepadOverlay == GamepadOverlayKind.Scraper)
+        {
+            // Once a scrape reaches a terminal message (applied / failed / unsupported), B returns
+            // to the library; while it is still working, B steps back to the game's Actions menu.
+            if (GamepadScraperDetails?.Scraper.State is
+                GameScraperState.Applied or GameScraperState.Failure or GameScraperState.Unsupported)
+            {
+                CloseGamepadOverlay();
+            }
+            else
+            {
+                OpenGamepadOverlay(GamepadOverlayKind.Actions);
+            }
+            return;
+        }
+
         var returnOverlay = GamepadOverlay switch
         {
             GamepadOverlayKind.Rename or
             GamepadOverlayKind.DiscSelection or
             GamepadOverlayKind.RemoveConfirmation or
-            GamepadOverlayKind.CoverDesktopHandoff or
-            GamepadOverlayKind.ScraperDesktopHandoff => GamepadOverlayKind.Actions,
+            GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
             GamepadOverlayKind.DesktopModeConfirmation or
             GamepadOverlayKind.SettingsDesktopHandoff or
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
@@ -1074,9 +1129,36 @@ public partial class MainViewModel : ViewModelBase
         if (GamepadOverlayOwnsTextInput)
             return DispatchTextOverlayAction(action);
 
+        if (IsGamepadScraperOpen)
+            return DispatchScraperOverlayAction(action);
+
         return HasGamepadOverlay
             ? DispatchOverlayAction(action)
             : DispatchLibraryAction(action);
+    }
+
+    private bool DispatchScraperOverlayAction(GamepadAction action)
+    {
+        // The scraper overlay is modal and owns its own D-pad focus: only Up/Down move the ring,
+        // A activates the focused control, and B backs out. Every other action is swallowed so it
+        // cannot leak to the library beneath (e.g. LB/RB switching platforms mid-scrape).
+        switch (action)
+        {
+            case GamepadAction.NavigateUp:
+                GamepadScraperDetails?.MoveFocus(-1);
+                return true;
+            case GamepadAction.NavigateDown:
+                GamepadScraperDetails?.MoveFocus(1);
+                return true;
+            case GamepadAction.Confirm:
+                GamepadScraperDetails?.Activate();
+                return true;
+            case GamepadAction.Cancel:
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            default:
+                return true;
+        }
     }
 
     private bool DispatchTextOverlayAction(GamepadAction action)
@@ -1189,6 +1271,7 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         DisposeGamepadAchievementDetails();
+        DisposeGamepadScraperDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         GamepadOverlay = overlay;
@@ -1215,11 +1298,11 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.CoverDesktopHandoff:
                 AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 break;
-            case GamepadOverlayKind.ScraperDesktopHandoff:
-                AddOption("Scrape in Desktop mode", ScrapeFromGamepadCommand);
-                break;
             case GamepadOverlayKind.Achievements:
                 FocusFirstAchievement();
+                break;
+            case GamepadOverlayKind.Scraper:
+                // The scraper overlay renders its own body and owns its D-pad focus; no option list.
                 break;
             case GamepadOverlayKind.SystemMenu:
                 AddOption("Search", OpenGamepadSearchCommand);
@@ -1357,6 +1440,20 @@ public partial class MainViewModel : ViewModelBase
         GamepadAchievementDetails = null;
     }
 
+    private void DisposeGamepadScraperDetails()
+    {
+        if (GamepadScraperDetails is not { } details)
+            return;
+
+        // A successful apply projected a new cover and metadata: refresh the library so the focused
+        // tile reflects it, mirroring the desktop scraper's post-apply reload.
+        var reload = details.HasAppliedChanges;
+        details.Dispose();
+        GamepadScraperDetails = null;
+        if (reload)
+            _ = ReloadGamesAsync();
+    }
+
     private void NotifyGamepadOverlayState()
     {
         OnPropertyChanged(nameof(HasGamepadOverlay));
@@ -1368,12 +1465,13 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadDiscSelectionOpen));
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
-        OnPropertyChanged(nameof(IsGamepadScraperHandoffOpen));
+        OnPropertyChanged(nameof(IsGamepadScraperOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
+        OnPropertyChanged(nameof(IsGamepadOverlayOptionsVisible));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
         OnPropertyChanged(nameof(GamepadOverlayHelpText));
@@ -1407,16 +1505,6 @@ public partial class MainViewModel : ViewModelBase
         CloseGamepadOverlay();
         await SetInterfaceModeAsync(InterfaceMode.Desktop);
         await OpenSettingsAsync();
-    }
-
-    [RelayCommand]
-    private async Task ScrapeFromGamepadAsync()
-    {
-        // Capture the focused game before the overlay closes and the mode switch can move focus.
-        var game = FocusedGame;
-        CloseGamepadOverlay();
-        await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        await ScrapeGameAsync(game);
     }
 
     [RelayCommand]

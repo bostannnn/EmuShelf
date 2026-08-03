@@ -3124,3 +3124,31 @@ hands off rather than pretending to be controller-native. The overlay renders th
 `GamepadOverlayOptions`/title machinery (no bespoke focus code), and B returns to Actions. A
 controller-native scraper surface is not attempted; consistent with the whole Gamepad shell, any such
 work would be gated on real Deck/controller acceptance, which is out of scope for headless tests.
+
+## 2026-08-03 — Gamepad scraping is controller-native, reversing the Desktop handoff
+
+The earlier `ScraperDesktopHandoff` decision is reversed: the focused-game Actions entry "Scrape with
+ScreenScraper" now opens a controller-native overlay (`GamepadOverlayKind.Scraper`) that stays inside
+Gamepad mode, matching the Achievements overlay rather than the Set-cover / Settings handoffs. The
+handoff was the wrong call — the codebase already had both building blocks the scraper needs
+(D-pad-navigable focus from Achievements, controller-safe text entry via the Steam on-screen keyboard
+from Search/Rename), so "text- and checkbox-heavy, therefore hand off" did not hold. The
+`ScraperDesktopHandoff` overlay kind, its description panel, and `ScrapeFromGamepadCommand` are removed;
+Set cover still hands off because it needs the OS file picker, which is genuinely not controller-safe.
+
+The overlay does not re-implement any scrape logic. It reuses the shared `GameScraperViewModel`
+(states, `Fields`/`OtherMedia`/`BoxArtRow` rows, `BoxArtPreview`, and every command) and adds only a
+thin presentation wrapper, `GamepadScraperViewModel`, that layers a linear D-pad focus model on top:
+Up/Down move a ring across a per-state list of targets, A activates the focused one (toggle a
+field/media checkbox, run Connect/Search/Compute/Apply, or pick a title-search candidate), and B backs
+out. `MainViewModel` builds the scraper view model from the injected preview/apply/account/settings
+(the same services the desktop `ShowScraperAsync` uses) and routes controller input through a dedicated
+`DispatchScraperOverlayAction`, so native-pad and Steam-Input keyboard paths behave identically. The
+two scraper row view models gained an `IsFocused` flag (gamepad presentation only) so the focus ring
+binds directly to the reused rows.
+
+Terminal states (Applied / Failure / Unsupported) back out to the library on B; while still working the
+overlay backs out to the Actions menu. A successful apply refreshes the library on close, mirroring the
+desktop window's post-apply reload. As with the rest of the Gamepad shell, final controller *feel*
+(focus hand-off to the Steam keyboard, gamescope) needs real Deck/controller acceptance and is out of
+scope for the headless view-model tests that cover the flow.

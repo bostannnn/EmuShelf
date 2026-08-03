@@ -40,6 +40,10 @@ public sealed partial class ScraperFieldRowViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
+    /// <summary>Gamepad presentation only: true when the controller's focus ring is on this row.</summary>
+    [ObservableProperty]
+    public partial bool IsFocused { get; set; }
+
     public ScraperFieldRowViewModel(string label, string? currentValue, bool isUserOwned, GameMetadataValue value)
     {
         Label = label;
@@ -68,6 +72,10 @@ public sealed partial class ScraperMediaRowViewModel : ObservableObject, IDispos
 
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
+
+    /// <summary>Gamepad presentation only: true when the controller's focus ring is on this row.</summary>
+    [ObservableProperty]
+    public partial bool IsFocused { get; set; }
 
     [ObservableProperty]
     public partial Bitmap? Preview { get; set; }

@@ -212,7 +212,11 @@ public partial class App : Application
                 applicationLifetime: new ApplicationLifetimeService(desktop),
                 texturePacks: Bootstrapper.TexturePacks,
                 libraryViewState: libraryViewState,
-                screenScraperAccount: screenScraperAccount);
+                screenScraperAccount: screenScraperAccount,
+                screenScraperPreview: Bootstrapper.ScreenScraperPreview,
+                scrapeApply: scrapeApply,
+                artworkDownloader: webArtworkDownloader,
+                settingsService: Bootstrapper.SettingsService);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
