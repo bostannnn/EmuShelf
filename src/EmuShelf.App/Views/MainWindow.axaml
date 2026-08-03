@@ -231,6 +231,15 @@
         <Style Selector="Button.gamepad-game.controller-input:pointerover Border.gamepad-hover-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
+        <!-- Per-tile controller focus ring: hidden by default, shown on the focused tile. Opacity
+             (not IsVisible) so it never disturbs layout. No transition — the selection must track the
+             d-pad crisply and instantly, never lag or fade behind a fast move. -->
+        <Style Selector="Border.gamepad-focus-tile-ring">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-tile-ring">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
@@ -1517,24 +1526,57 @@
                 </Border>
             </Grid>
         </Border>
-        <ScrollViewer x:Name="GamepadLibraryScroller" Grid.Row="1" Margin="52,26,52,26"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Hidden"
-                      IsVisible="{Binding HasGames}"
-                      SizeChanged="OnGamepadLibrarySizeChanged"
-                      IsHitTestVisible="{Binding !HasGamepadOverlay}">
-            <Grid>
-              <ItemsRepeater x:Name="GamepadRepeater" ItemsSource="{Binding Games}" Margin="40,0,40,0">
-                <ItemsRepeater.Layout>
-                    <UniformGridLayout MinItemWidth="188" MinColumnSpacing="28" MinRowSpacing="28" />
-                </ItemsRepeater.Layout>
-                <ItemsRepeater.ItemTemplate>
-                    <DataTemplate x:DataType="vm:GameViewModel">
+        <!-- Row-virtualized grid: a ListBox renders one ROW per line and its VirtualizingStackPanel
+             realizes only the ~5 on-screen rows, so a 900-game library lays out ~40 tiles, not 900.
+             Each row is a horizontal strip holding exactly GamepadColumnCount tiles, so the rendered
+             column count always equals the navigation stride, and vertical virtualization has none of
+             the phantom-cell defects a virtualized UniformGridLayout had. The ListBox is a passive
+             renderer — navigation and the focus ring are driven by the flat Games list, not its
+             selection — so its selection/focus visuals are styled away below. -->
+        <ListBox x:Name="GamepadRowList" Grid.Row="1" Margin="52,26,52,26"
+                 ItemsSource="{Binding GamepadRows}"
+                 Background="Transparent" BorderThickness="0" Padding="0"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                 IsVisible="{Binding HasGames}"
+                 SizeChanged="OnGamepadLibrarySizeChanged"
+                 IsHitTestVisible="{Binding !HasGamepadOverlay}">
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel Orientation="Vertical" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="Margin" Value="0" />
+                    <Setter Property="MinHeight" Value="0" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="FocusAdorner" Value="{x:Null}" />
+                </Style>
+                <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
+                                 ListBoxItem:pointerover /template/ ContentPresenter">
+                    <Setter Property="Background" Value="Transparent" />
+                </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <!-- One row of tiles. 40px side gutter + 28px inter-tile spacing match the old grid. -->
+                    <ItemsControl ItemsSource="{Binding}" Margin="40,0,40,28">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="28" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GameViewModel">
                         <Button Classes="gamepad-game" Classes.focused="{Binding IsFocused}"
                                 Classes.unavailable="{Binding !IsAvailable}"
                                 Theme="{StaticResource GamepadGameButtonTheme}"
                                 Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                Width="{Binding CoverWidth}" Padding="0" Margin="0" Background="Transparent" BorderThickness="2"
+                                Width="{Binding CoverWidth}" Padding="0" Margin="0"
+                                VerticalAlignment="Top"
+                                Background="Transparent" BorderThickness="2"
                                 HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                                 Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).FocusGameCommand}"
                                 CommandParameter="{Binding}"
@@ -1548,6 +1590,9 @@
                                 <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
                                   <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                          Classes="gamepad-cover-stack" VerticalAlignment="Bottom">
+                                    <!-- Rows virtualize, so a tile attaches only when its row scrolls
+                                         into view — loading the cover on attach fetches just the
+                                         on-screen covers, and recycled tiles reload via DataContext. -->
                                     <Border Classes="gamepad-cover-frame" CornerRadius="12" Background="{DynamicResource EmuCoverWellBrush}"
                                             ClipToBounds="True"
                                             AttachedToVisualTree="OnGameCoverAttached"
@@ -1608,9 +1653,13 @@
                                     <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
                                             CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
                                             BorderThickness="2" />
-                                    <!-- The controller focus ring is no longer a per-tile layer (it
-                                         vanished whenever its tile was virtualized away). It is now the
-                                         GamepadSelectorRing overlay above, positioned to this cover. -->
+                                    <!-- Controller focus ring, drawn by the focused tile itself. Being part
+                                         of the item means it is always exactly on the focused cover — it can
+                                         never drift from focus the way a separately-positioned overlay could.
+                                         A focused tile scrolled into view is realized, so it cannot vanish. -->
+                                    <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
+                                            CornerRadius="12" BorderBrush="{DynamicResource EmuAccentBrush}"
+                                            BorderThickness="6" BoxShadow="{DynamicResource EmuFocusGlow}" />
                                   </Panel>
                                 </Grid>
                                 <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding Title}"
@@ -1620,21 +1669,12 @@
                                            VerticalAlignment="Top" MaxWidth="{Binding CoverWidth}" />
                             </Grid>
                         </Button>
-                    </DataTemplate>
-                </ItemsRepeater.ItemTemplate>
-              </ItemsRepeater>
-              <!-- The selector lives OUTSIDE the virtualized items, in this shared content Grid, so it
-                   scrolls with them yet can never be virtualized away or occluded by a cover. The view
-                   positions it (Canvas.Left/Top + size) from the focused cover's geometry, so it is
-                   always drawn wherever focus is — the fix for "the selector sometimes disappears". -->
-              <Canvas x:Name="GamepadSelectorLayer" IsHitTestVisible="False" ClipToBounds="False">
-                  <Border x:Name="GamepadSelectorRing" Classes="gamepad-focus-ring" IsVisible="False"
-                          IsHitTestVisible="False" CornerRadius="10"
-                          BorderBrush="{DynamicResource EmuAccentBrush}"
-                          BorderThickness="6" BoxShadow="{DynamicResource EmuFocusGlow}" />
-              </Canvas>
-            </Grid>
-        </ScrollViewer>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
         <StackPanel Grid.Row="1" IsVisible="{Binding IsLibraryEmpty}"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="520">
             <TextBlock Text="{Binding EmptyLibraryTitle}" FontSize="30" FontWeight="Bold"

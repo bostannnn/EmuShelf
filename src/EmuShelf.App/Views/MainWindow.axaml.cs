@@ -46,20 +46,30 @@ public partial class MainWindow : Window
     {
         // Moving focus down/up past the visible rows must scroll the virtualized grid, otherwise the
         // focus ring walks off-screen and the library looks stuck at the last visible row.
+        //
+        // Reveal SYNCHRONOUSLY, not via a posted job. Controller input (the SDL poll timer and Steam
+        // Input keys) arrives at DispatcherPriority.Input, and a reveal posted at that same priority is
+        // starved while input floods — so the ring froze on the old tile while FocusedGame kept moving.
+        // The user then read the stale ring as the selection: correct moves looked like "Left does
+        // nothing" or "Up jumped a column." Placing the ring inline the instant focus changes keeps it
+        // glued to the focused tile no matter how fast the d-pad repeats. FocusedGame only ever changes
+        // from an input handler or the input timer tick, never mid-layout, so the reveal's UpdateLayout
+        // is safe to run here.
         if (e.PropertyName is nameof(MainViewModel.FocusedGame))
         {
-            Dispatcher.UIThread.Post(RevealFocusedGame, DispatcherPriority.Input);
+            RevealFocusedGame();
             return;
         }
 
         // A mode switch re-sizes the covers for the newly visible viewport without either grid
-        // necessarily raising SizeChanged, so the cell width has to follow the value itself.
+        // necessarily raising SizeChanged, so the cell width has to follow the value itself. A resize
+        // also re-groups the rows into a new column count, moving the focused game to a different row —
+        // re-reveal it so the selection can't be left scrolled off-screen after the relayout.
         if (e.PropertyName is nameof(MainViewModel.GridCoverWidth) &&
             _gamepadViewModel is { } sizingViewModel)
         {
             ApplyCellWidth(sizingViewModel);
-            // The covers just resized, so the selector's cover no longer sits where it did.
-            Dispatcher.UIThread.Post(UpdateGamepadSelector, DispatcherPriority.Loaded);
+            Dispatcher.UIThread.Post(RevealFocusedGame, DispatcherPriority.Loaded);
             return;
         }
 
@@ -82,87 +92,44 @@ public partial class MainWindow : Window
     }
 
     // View-focused coordination only: the view model owns which game is focused; this window scrolls
-    // that game's tile into view. The target row may not be realized yet under virtualization, so it
-    // is realized on demand and laid out before being brought into view.
+    // that game's ROW into view. Rows are virtualized in a ListBox, so ScrollIntoView reliably realizes
+    // and reveals the target row (no manual offset math, no phantom cells). The focus ring is part of
+    // the tile, so it appears on the focused cover the instant that row realizes.
     private void RevealFocusedGame() => RevealFocusedGame(0);
 
-    // Mirror the gamepad grid's XAML layout so reveal/selector geometry matches what the layout
-    // renders. Keep these in sync with MainWindow.axaml (repeater Margin, UniformGridLayout spacing,
-    // the tile's fixed title row) and MainViewModel.GamepadGridSideGutter.
-    private const double GamepadColumnSpacing = 28; // UniformGridLayout MinColumnSpacing
-    private const double GamepadRowSpacing = 28;    // UniformGridLayout MinRowSpacing
-    private const double GamepadTitleRowHeight = 58; // the tile's fixed title row height
-    private const double GamepadRevealMargin = 34;   // >= EmuFocusGlow blur radius, so focus never clips
-
-    // Deterministic reveal: the target scroll offset comes from the focused index, the column count,
-    // and the uniform row height — not from reading a possibly-stale element rectangle after
-    // BringIntoView. That arithmetic can't be pre-empted by a competing layout pass or lost to a rapid
-    // d-pad repeat, which is what stranded the selector on an off-screen tile ("the selector
-    // disappears"). The focused tile is then realized so the overlay ring can hug its exact cover
-    // bounds; a geometry fallback keeps the ring on screen for the frame before realization settles.
     private void RevealFocusedGame(int attempt)
     {
         if (_gamepadViewModel is not { IsGamepadMode: true } viewModel ||
             viewModel.FocusedGame is not { } focused)
-        {
-            GamepadSelectorRing.IsVisible = false;
             return;
-        }
 
         var index = viewModel.Games.IndexOf(focused);
         if (index < 0)
-        {
-            GamepadSelectorRing.IsVisible = false;
             return;
-        }
 
         var columns = Math.Max(1, viewModel.GamepadColumnCount);
-        var row = index / columns;
-        var rowHeight = focused.ShelfCoverHeight + GamepadTitleRowHeight;
-        var rowTop = row * (rowHeight + GamepadRowSpacing);
-        var rowBottom = rowTop + rowHeight;
-
-        var viewport = GamepadLibraryScroller.Viewport.Height;
-        if (viewport > 0)
-        {
-            var offsetY = GamepadLibraryScroller.Offset.Y;
-            var target = offsetY;
-            // Keep a full glow radius of clearance top and bottom so the focused tile's accent glow
-            // is never shaved by the scroller's clip; scroll only when the row is actually outside it.
-            if (rowTop < offsetY + GamepadRevealMargin)
-                target = Math.Max(0, rowTop - GamepadRevealMargin);
-            else if (rowBottom > offsetY + viewport - GamepadRevealMargin)
-                target = rowBottom - viewport + GamepadRevealMargin;
-            if (Math.Abs(target - offsetY) > 0.5)
-                GamepadLibraryScroller.Offset = GamepadLibraryScroller.Offset.WithY(Math.Max(0, target));
-        }
-
-        var element = GamepadRepeater.TryGetElement(index) ?? GamepadRepeater.GetOrCreateElement(index);
-        GamepadRepeater.UpdateLayout();
-        SyncGamepadColumnCountFromLayout();
-        RequestVisibleGamepadCovers();
-        UpdateGamepadSelector();
-
-        if (element is null)
-        {
-            // The tile isn't realized yet (layout not settled). Retry, bounded; the overlay ring is
-            // already placed by the geometry fallback, so focus stays visible while we wait.
-            if (attempt < 5)
-            {
-                Dispatcher.UIThread.Post(() => RevealFocusedGame(attempt + 1), DispatcherPriority.Loaded);
-            }
-            else
-            {
-                viewModel.LogGamepadGridFault(
-                    $"focused tile index {index} did not realize after {attempt + 1} attempts " +
-                    $"(columns={columns}, rowTop={rowTop:F0}, viewport={viewport:F0}); ring placed by geometry.");
-            }
+        var rowIndex = index / columns;
+        if (rowIndex >= GamepadRowList.ItemCount)
             return;
-        }
 
+        GamepadRowList.ScrollIntoView(rowIndex);
+        // ScrollIntoView lands the row flush against the viewport edge, which shaves the focus glow.
+        // Nudge the scroll a glow-radius clear of the edge once the row has realized.
+        Dispatcher.UIThread.Post(() => NudgeGlowClearance(rowIndex), DispatcherPriority.Loaded);
+
+        // Take keyboard focus on the tile within the realized row for directional routing. The row may
+        // need a layout pass after ScrollIntoView before its container exists; retry briefly if so.
         if (viewModel.IsGamepadControllerInputActive && !viewModel.HasGamepadOverlay)
         {
-            var gameButton = element as Button ?? element.GetVisualDescendants()
+            var rowContainer = GamepadRowList.ContainerFromIndex(rowIndex);
+            if (rowContainer is null)
+            {
+                if (attempt < 5)
+                    Dispatcher.UIThread.Post(() => RevealFocusedGame(attempt + 1), DispatcherPriority.Loaded);
+                return;
+            }
+
+            var gameButton = rowContainer.GetVisualDescendants()
                 .OfType<Button>()
                 .FirstOrDefault(button => ReferenceEquals(button.DataContext, focused));
             if (gameButton is not null)
@@ -170,143 +137,28 @@ public partial class MainWindow : Window
         }
     }
 
-    // Covers load off per-element attach/data-context events, which race during rapid LB/RB
-    // recycling — a tile handed a new game while detached, or whose event was missed, can stay blank
-    // ("empty spaces instead of game covers"). This is the settle-time backstop: once the grid has
-    // laid out, request the cover for every realized tile. LoadCover is idempotent (a tile that
-    // already has, or is loading, its cover is skipped), so this only fills the ones that were missed.
-    private void RequestVisibleGamepadCovers()
+    private const double GamepadGlowMargin = 26; // >= EmuFocusGlow blur radius
+
+    // Keep a glow-radius of clearance between the focused row and the viewport edge. Only acts when the
+    // row settled against an edge (e.g. a d-pad move that scrolled); when the row is comfortably in view
+    // this is a no-op, so quiet moves never jitter the scroll.
+    private void NudgeGlowClearance(int rowIndex)
     {
-        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
+        if (GamepadRowList.ContainerFromIndex(rowIndex) is not { } rowContainer)
+            return;
+        if (GamepadRowList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is not { } scroller ||
+            scroller.Viewport.Height <= 0)
+            return;
+        if (rowContainer.TranslatePoint(new Point(0, 0), scroller) is not { } rowTopLeft)
             return;
 
-        for (var index = 0; index < viewModel.Games.Count; index++)
-        {
-            if (GamepadRepeater.TryGetElement(index) is { } element)
-                RequestGameCover(element);
-        }
-    }
-
-    // Positions the overlay focus ring over the focused game's cover. It prefers the realized cover
-    // element's real bounds (exact, matches the layout) and falls back to computed geometry when the
-    // tile is not yet realized, so the ring is present the instant focus moves and can never be
-    // virtualized away. Because the ring shares the scroller's content, it then scrolls glued to the
-    // cover with no per-frame updates. Called from reveal and after resizes/cover re-sizing.
-    private void UpdateGamepadSelector()
-    {
-        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel ||
-            viewModel.FocusedGame is not { } focused)
-        {
-            GamepadSelectorRing.IsVisible = false;
-            return;
-        }
-
-        var index = viewModel.Games.IndexOf(focused);
-        if (index < 0)
-        {
-            GamepadSelectorRing.IsVisible = false;
-            return;
-        }
-
-        if (GamepadRepeater.TryGetElement(index) is { } element &&
-            element.GetVisualDescendants().OfType<Border>()
-                .FirstOrDefault(border => border.Classes.Contains("gamepad-cover-frame")) is { Bounds.Width: > 0 } cover &&
-            cover.TranslatePoint(new Point(0, 0), GamepadSelectorLayer) is { } topLeft)
-        {
-            PlaceSelector(topLeft.X, topLeft.Y, cover.Bounds.Width, cover.Bounds.Height);
-            return;
-        }
-
-        // Fallback — compute the cover's position from the layout geometry (UniformGridLayout packing
-        // plus the repeater's side gutter and the bottom-aligned cover shelf), so a not-yet-realized
-        // focused tile still shows the ring rather than blinking out.
-        var columns = Math.Max(1, viewModel.GamepadColumnCount);
-        var cellWidth = focused.CoverWidth > 0 ? focused.CoverWidth : viewModel.GridCoverWidth;
-        if (cellWidth <= 0)
-        {
-            GamepadSelectorRing.IsVisible = false;
-            viewModel.LogGamepadGridFault(
-                $"cannot place selector for focused index {index}: no cover width yet (columns={columns}).");
-            return;
-        }
-
-        var column = index % columns;
-        var row = index / columns;
-        var coverHeight = focused.CoverHeight > 0 ? focused.CoverHeight : Math.Round(cellWidth / focused.CoverAspectRatio);
-        var rowHeight = focused.ShelfCoverHeight + GamepadTitleRowHeight;
-        var x = MainViewModel.GamepadGridSideGutterPixels + column * (cellWidth + GamepadColumnSpacing);
-        // Covers are bottom-aligned within the shared shelf, so the cover top sits below the cell top.
-        var y = row * (rowHeight + GamepadRowSpacing) + Math.Max(0, focused.ShelfCoverHeight - coverHeight);
-        PlaceSelector(x, y, cellWidth, coverHeight);
-    }
-
-    private void PlaceSelector(double x, double y, double width, double height)
-    {
-        Canvas.SetLeft(GamepadSelectorRing, x);
-        Canvas.SetTop(GamepadSelectorRing, y);
-        GamepadSelectorRing.Width = width;
-        GamepadSelectorRing.Height = height;
-        GamepadSelectorRing.IsVisible = true;
-    }
-
-    // The view lays the grid out, so it — not width arithmetic — is the source of truth for how many
-    // columns are on screen. A momentarily stale, too-small count made Right/Left clamp partway across
-    // a row ("stuck at the second column"); reading the realized tiles' rows corrects it regardless of
-    // what made the arithmetic disagree. Runs off a settled layout (after UpdateLayout / on resize).
-    private void SyncGamepadColumnCountFromLayout()
-    {
-        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel || viewModel.Games.Count == 0)
-            return;
-
-        // The most-populated realized row is the true column count: virtualization always keeps at
-        // least one full row realized (only the final row may be short), so its width is authoritative
-        // even when the grid is scrolled.
-        var rowCounts = new Dictionary<int, int>();
-        for (var index = 0; index < viewModel.Games.Count; index++)
-        {
-            if (GamepadRepeater.TryGetElement(index) is not { } element)
-                continue;
-            var row = (int)Math.Round(element.Bounds.Y);
-            rowCounts[row] = rowCounts.TryGetValue(row, out var count) ? count + 1 : 1;
-        }
-
-        if (rowCounts.Count > 0)
-            viewModel.SetRenderedGamepadColumnCount(rowCounts.Values.Max());
-    }
-
-    // Runs immediately before a directional move: refreshes the column count from the realized layout
-    // (the fix — nav then uses what is on screen, not a stale width estimate) and logs the exact
-    // geometry (the diagnostic — one Deck run shows why a move is blocked or the selector is missing).
-    private void PrepareGamepadNavigation(GamepadAction action)
-    {
-        SyncGamepadColumnCountFromLayout();
-        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel || viewModel.FocusedGame is not { } focused)
-            return;
-
-        var index = viewModel.Games.IndexOf(focused);
-        var columns = viewModel.GamepadColumnCount;
-        var column = columns > 0 && index >= 0 ? index % columns : -1;
-
-        // The realized width of the focused tile's own row — the ground truth the column count must
-        // match (unless the focused tile sits in the short final row).
-        var focusedRowRealized = 0;
-        if (index >= 0 && GamepadRepeater.TryGetElement(index) is { } focusedElement)
-        {
-            var focusedRow = (int)Math.Round(focusedElement.Bounds.Y);
-            for (var i = 0; i < viewModel.Games.Count; i++)
-            {
-                if (GamepadRepeater.TryGetElement(i) is { } element &&
-                    (int)Math.Round(element.Bounds.Y) == focusedRow)
-                {
-                    focusedRowRealized++;
-                }
-            }
-        }
-
-        viewModel.LogGamepadGrid(
-            $"nav {action}: index={index}/{viewModel.Games.Count}, columns={columns}, column={column}, " +
-            $"focusedRowRealized={focusedRowRealized}, viewportW={viewModel.GamepadViewportWidth:F0}, " +
-            $"coverW={viewModel.GridCoverWidth:F0}, selectorVisible={GamepadSelectorRing.IsVisible}");
+        var rowTop = rowTopLeft.Y;
+        var rowBottom = rowTop + rowContainer.Bounds.Height;
+        var offsetY = scroller.Offset.Y;
+        if (rowTop < GamepadGlowMargin)
+            scroller.Offset = scroller.Offset.WithY(Math.Max(0, offsetY - (GamepadGlowMargin - rowTop)));
+        else if (rowBottom > scroller.Viewport.Height - GamepadGlowMargin)
+            scroller.Offset = scroller.Offset.WithY(offsetY + (rowBottom - (scroller.Viewport.Height - GamepadGlowMargin)));
     }
 
     private void SyncGamepadAchievementColumnCountFromLayout()
@@ -559,17 +411,6 @@ public partial class MainWindow : Window
             // actions native pad input produces and route both through the one view-model dispatcher.
             if (MapKeyToGamepadAction(e) is { } action)
             {
-                // Grid navigation is index%columns math, so the column count must match what is
-                // actually on screen at the moment of the move. Refresh it from the realized layout
-                // (and log the geometry) right before dispatching a directional action, so a stale or
-                // over-estimated count can't make a mid-row tile read as column 0 (Left then does
-                // nothing while Right/Up/Down work).
-                if (action is GamepadAction.NavigateLeft or GamepadAction.NavigateRight or
-                    GamepadAction.NavigateUp or GamepadAction.NavigateDown)
-                {
-                    PrepareGamepadNavigation(action);
-                }
-
                 if (viewModel.DispatchGamepadAction(action))
                     e.Handled = true;
             }
@@ -762,26 +603,10 @@ public partial class MainWindow : Window
             return;
 
         viewModel.GamepadViewportWidth = e.NewSize.Width;
+        // Setting the viewport width above already recomputed GamepadColumnCount arithmetically
+        // (UpdateCoverLayout), matching what UniformGridLayout will render. The focus ring is part of
+        // each tile, so it re-sizes with its cover automatically — nothing to reposition here.
         ApplyCellWidth(viewModel);
-        // Correct the column count from the freshly relaid grid, so the first Left/Right after a
-        // resize or first show can't clamp against a stale width estimate, then reposition the
-        // selector for the new cover size. A persistent arithmetic-vs-rendered disagreement is the
-        // signature of the right-column clip, so it is logged for a Deck run.
-        Dispatcher.UIThread.Post(
-            () =>
-            {
-                var arithmetic = viewModel.GamepadColumnCount;
-                SyncGamepadColumnCountFromLayout();
-                if (viewModel.GamepadColumnCount != arithmetic)
-                {
-                    viewModel.LogGamepadGridFault(
-                        $"column count arithmetic={arithmetic} but rendered={viewModel.GamepadColumnCount} " +
-                        $"at viewport width {e.NewSize.Width:F0}; using rendered.");
-                }
-
-                UpdateGamepadSelector();
-            },
-            DispatcherPriority.Loaded);
     }
 
     private void OnGamepadAchievementsSizeChanged(object? sender, SizeChangedEventArgs e) =>
@@ -804,10 +629,11 @@ public partial class MainWindow : Window
         if (viewModel.GridCoverWidth <= 0)
             return;
 
+        // Only the desktop grid is a virtualizing ItemsRepeater whose cell width must be pushed to the
+        // layout. The gamepad grid is a UniformGrid; its tiles take their width from the CoverWidth
+        // binding and their column count from GamepadColumnCount, so there is nothing to set here.
         if (LibraryRepeater.Layout is UniformGridLayout desktopLayout)
             desktopLayout.MinItemWidth = viewModel.GridCoverWidth;
-        if (GamepadRepeater.Layout is UniformGridLayout gamepadLayout)
-            gamepadLayout.MinItemWidth = viewModel.GridCoverWidth;
     }
 
     // View wiring only: virtualization decides when a cover control is realized; the
@@ -815,8 +641,8 @@ public partial class MainWindow : Window
     private void OnGameCoverAttached(object? sender, VisualTreeAttachmentEventArgs e)
         => RequestGameCover(sender);
 
-    // A virtualized element may remain attached while ItemsRepeater gives it a new
-    // data context after a collection reset. Request the replacement game's cover too.
+    // A recycled tile stays attached while the virtualizing list hands it a different game (desktop
+    // ItemsRepeater, or a gamepad row scrolling in). Cut the crossfade and load the new game's cover.
     private void OnGameCoverDataContextChanged(object? sender, EventArgs e)
     {
         SnapCoverLayers(sender);
