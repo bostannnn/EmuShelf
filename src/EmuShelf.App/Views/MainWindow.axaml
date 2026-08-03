@@ -42,6 +42,7 @@
                                       Content="{TemplateBinding Content}"
                                       ContentTemplate="{TemplateBinding ContentTemplate}"
                                       Padding="{TemplateBinding Padding}"
+                                      ClipToBounds="False"
                                       HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
                                       VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
                 </ControlTemplate>
@@ -1561,11 +1562,18 @@
             </ListBox.Styles>
             <ListBox.ItemTemplate>
                 <DataTemplate>
-                    <!-- One row of tiles. 40px side gutter + 28px inter-tile spacing match the old grid. -->
-                    <ItemsControl ItemsSource="{Binding}" Margin="40,0,40,28">
+                    <!-- One row of tiles. 40px side gutter + 28px inter-row spacing match the old grid.
+                         The side gutter is Padding (not Margin) so the row container spans the full width:
+                         a first/last-column tile's focus frame overflows 6px into the gutter and stays
+                         INSIDE the container, so it is never clipped at the grid's edge.
+                         The 28px vertical gap is split top(10)/bottom(18) instead of all-bottom, so EVERY
+                         row — including the first and last against the scroll viewport — has room above and
+                         below for the focus frame's 6px overflow. Inter-row spacing is unchanged (10+18=28). -->
+                    <ItemsControl ItemsSource="{Binding}" Margin="0,10,0,18" Padding="40,0,40,0"
+                                  ClipToBounds="False">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="28" />
+                                <StackPanel Orientation="Horizontal" Spacing="28" ClipToBounds="False" />
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
@@ -1575,21 +1583,39 @@
                                 Theme="{StaticResource GamepadGameButtonTheme}"
                                 Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
                                 Width="{Binding CoverWidth}" Padding="0" Margin="0"
-                                VerticalAlignment="Top"
+                                ClipToBounds="False" VerticalAlignment="Top"
                                 Background="Transparent" BorderThickness="2"
                                 HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
                                 Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).FocusGameCommand}"
                                 CommandParameter="{Binding}"
                                 DoubleTapped="OnGameDoubleTapped">
-                            <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58">
+                            <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
                                 <!-- Each tile uses its platform's true cover frame (CoverHeight from
                                      GameSystem.CoverAspectRatio), matching the desktop grid. Frames
                                      bottom-align on a shared shelf sized to the tallest cover in the
                                      view, so mixed-platform All Games keeps one baseline and the
                                      titles still line up. -->
-                                <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
+                                <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}" ClipToBounds="False">
                                   <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
-                                         Classes="gamepad-cover-stack" VerticalAlignment="Bottom">
+                                         Classes="gamepad-cover-stack" VerticalAlignment="Bottom" ClipToBounds="False">
+                                    <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
+                                         larger on every side with a concentric corner radius (12 + 6), so
+                                         the opaque cover masks its centre and the accent reads as an even
+                                         6px frame. Its inner edge is the cover's own rounded corner, so
+                                         corners can never mismatch and no artwork is ever hidden — unlike a
+                                         stroked border on top, whose inner corner radius (radius − thickness)
+                                         cannot follow the cover. Must stay first/bottom-most. Shown by
+                                         opacity on .focused (styles below); no transition, tracks the d-pad. -->
+                                    <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
+                                            Margin="-6" CornerRadius="18"
+                                            Background="{DynamicResource EmuAccentBrush}"
+                                            BoxShadow="{DynamicResource EmuFocusGlow}" />
+                                    <!-- Opaque well between the focus pad and the cover, sized to the cover
+                                         (the pad is 6px larger). It is never dimmed, so when an unavailable
+                                         cover drops to 58% opacity its centre reveals this dark well rather
+                                         than the accent pad behind it — the pad stays a clean 6px edge frame. -->
+                                    <Border IsHitTestVisible="False" CornerRadius="12"
+                                            Background="{DynamicResource EmuCoverWellBrush}" />
                                     <!-- Rows virtualize, so a tile attaches only when its row scrolls
                                          into view — loading the cover on attach fetches just the
                                          on-screen covers, and recycled tiles reload via DataContext. -->
@@ -1653,13 +1679,6 @@
                                     <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
                                             CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
                                             BorderThickness="2" />
-                                    <!-- Controller focus ring, drawn by the focused tile itself. Being part
-                                         of the item means it is always exactly on the focused cover — it can
-                                         never drift from focus the way a separately-positioned overlay could.
-                                         A focused tile scrolled into view is realized, so it cannot vanish. -->
-                                    <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
-                                            CornerRadius="12" BorderBrush="{DynamicResource EmuAccentBrush}"
-                                            BorderThickness="6" BoxShadow="{DynamicResource EmuFocusGlow}" />
                                   </Panel>
                                 </Grid>
                                 <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding Title}"
