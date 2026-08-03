@@ -1,0 +1,40 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Catppuccin Mocha: Soft pastel lavender, pink and blue on a muted purple-grey base. Gentle and low-contrast.
+         Base variant follows its mode; every base token is redefined so the swap fully
+         re-colors the UI. Generated from themes.json. -->
+    <SolidColorBrush x:Key="EmuWindowBackgroundBrush" Color="#1E1E2E" />
+    <SolidColorBrush x:Key="EmuSidebarBrush" Color="#212132" />
+    <SolidColorBrush x:Key="EmuToolbarBrush" Color="#1F1F2F" />
+    <SolidColorBrush x:Key="EmuLibraryBrush" Color="#252636" />
+    <SolidColorBrush x:Key="EmuStatusBrush" Color="#202030" />
+    <SolidColorBrush x:Key="EmuCardBrush" Color="#313244" />
+    <SolidColorBrush x:Key="EmuPopoverBrush" Color="#3D3E4F" />
+    <SolidColorBrush x:Key="EmuInputBrush" Color="#2F3042" />
+    <SolidColorBrush x:Key="EmuSegmentBrush" Color="#2C2D3E" />
+    <SolidColorBrush x:Key="EmuAddButtonBrush" Color="#313244" />
+    <SolidColorBrush x:Key="EmuCoverWellBrush" Color="#2F3042" />
+    <SolidColorBrush x:Key="EmuPlaceholderMedallionBrush" Color="#54576C" />
+    <SolidColorBrush x:Key="EmuPlaceholderLabelBrush" Color="#6B1E1E2E" />
+    <SolidColorBrush x:Key="EmuFormatPillBrush" Color="#1EFFFFFF" />
+    <SolidColorBrush x:Key="EmuBorderBrush" Color="#484A63" />
+    <SolidColorBrush x:Key="EmuStrongBorderBrush" Color="#626379" />
+    <SolidColorBrush x:Key="EmuCoverBorderBrush" Color="#3F4057" />
+    <SolidColorBrush x:Key="EmuTextPrimaryBrush" Color="#CDD6F4" />
+    <SolidColorBrush x:Key="EmuTextSecondaryBrush" Color="#BAC2DE" />
+    <SolidColorBrush x:Key="EmuTextTertiaryBrush" Color="#A6ADC8" />
+    <SolidColorBrush x:Key="EmuHoverBrush" Color="#16FFFFFF" />
+    <SolidColorBrush x:Key="EmuNavSelectionBrush" Color="#2ECBA6F7" />
+    <SolidColorBrush x:Key="EmuNavIconWellBrush" Color="#2E2E40" />
+    <SolidColorBrush x:Key="EmuNavIconBorderBrush" Color="#626379" />
+    <SolidColorBrush x:Key="EmuAccentBrush" Color="#CBA6F7" />
+    <SolidColorBrush x:Key="EmuAccentMutedBrush" Color="#33CBA6F7" />
+    <SolidColorBrush x:Key="EmuSelectionBrush" Color="#CBA6F7" />
+    <SolidColorBrush x:Key="EmuAchievementBrush" Color="#F0BD55" />
+    <SolidColorBrush x:Key="EmuInfoBrush" Color="#6EBCE1" />
+    <SolidColorBrush x:Key="EmuProgressBrush" Color="#6EBCE1" />
+    <SolidColorBrush x:Key="EmuSuccessBrush" Color="#70D3A4" />
+    <SolidColorBrush x:Key="EmuWarningBrush" Color="#F0AE54" />
+    <SolidColorBrush x:Key="EmuDangerBrush" Color="#FF6673" />
+    <BoxShadows x:Key="EmuFocusGlow">0 0 12 0 #B0CBA6F7</BoxShadows>
+</ResourceDictionary>

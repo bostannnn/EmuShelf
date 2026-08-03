@@ -3350,3 +3350,123 @@ Real Steam Deck logs (with the diagnostics above) settled two things the RetroAr
   focused row's realized width, viewport/cover widths, selector visibility) at Information level — the
   earlier fault-only logging stayed silent while the bug happened, so this is promoted to always-on per
   keypress (user-paced, not per-frame).
+
+## 2026-08-03 — Built-in palettes reach NeoStation parity; the base variant follows the catalog
+
+`ThemePreference` and `ThemeCatalog` gained nine more built-in palettes — Valentine, Dracula, Coffee,
+Tokyo Night, Retro, Abyss, Aqua, Palenight, Horizon — so the set matches the reference gallery. Each
+is another flat `Styles/Palettes/*.axaml` dictionary redefining the full `EmuXxxBrush` token set plus
+`EmuFocusGlow`, mapped in `AppThemeService.PaletteUri`; nothing else in the swap machinery changed, so
+the addition is pure data. The catalog is ordered to match the reference gallery (System, Dark, Light,
+OLED, Valentine, Dracula, …) — the two settings surfaces render in catalog order, so this is the
+order users see in both.
+
+Unlike the reference (whose themes differ mostly by accent, so its dark palettes read alike), each
+palette here tints its whole surface stack — window, sidebar, toolbar, cards — with real hue and
+saturation, and the accents are spread around the wheel so no two dark themes collapse together: the
+grid is the dominant visual mass, and cover art is opaque, so pushing chroma into the backgrounds is
+what actually gives a theme identity while leaving art untouched. Concretely, the purples are split by
+accent (Dracula = violet + its signature hot pink, Palenight = grey-purple + lilac) and the blues by
+hue and lightness (OLED = pure black + electric blue, Nord = desaturated blue-grey + frost, Tokyo
+Night = indigo + periwinkle, Aqua = teal + cyan, Abyss = inky blue-black + lime). Verified by rendering
+every theme to PNG headlessly (`EMUSHELF_SNAPSHOT_DIR`).
+
+A later pass added three EmuShelf-original creative themes beyond the reference set — Matrix (phosphor
+green-on-black terminal, green *text* not just a green accent), Synthwave (saturated retro-outrun
+purple with hot magenta + cyan), Sunset (warm rust-ember with a tangerine accent) — appended after
+Horizon in the catalog so the reference-matched block stays intact and the extras read as extras. In
+the same pass Cyberpunk was reworked from deep-violet + magenta to the reference gallery's bolder read:
+a Night-City violet-black lit by an electric-yellow accent with a magenta/cyan/green neon triad. That
+retunes a pre-existing palette's accent, so the two `#FF3FA4` literals in `ThemeSupportTests`
+(the swap test and the construct-from-saved test) moved to `#F5EC1D` — those are the only tests that
+pin a specific palette's accent; the parametric `EveryCatalogTheme…` guard reads from the catalog and
+needs no per-theme edit.
+
+The one behavioral change: `AppThemeService.BaseVariant` no longer assumes every non-Light/Dark
+palette is dark. It now reads `ThemeCatalog.Get(id).IsDark`, so a light palette (Valentine, Retro)
+bases on `ThemeVariant.Light` and keeps stock Fluent chrome legible, while dark palettes stay on
+`ThemeVariant.Dark`. `IsDark` is thus the single fact deciding both the gallery swatch styling and the
+Fluent base. A headless guard (`AppThemeService_EveryCatalogThemeLoadsAndMatchesItsAccentSwatch`)
+applies every catalog theme and asserts its accent token equals the advertised swatch, so a mistyped
+palette file name or a swatch/palette drift fails a test rather than only surfacing when a user picks
+that theme.
+
+## 2026-08-03 — All 15 built-in themes adopt the authoritative NeoStation `themes.json` verbatim
+
+The reference owner supplied the real NeoStation theme table (`themes.json`: nine tokens — bg, surface,
+surfaceAlt, border, text, textMuted, accent, accentAlt, badge — plus a `mode` per theme). It replaces
+the hand-guessed colours from the passes above, which were wrong in kind, not just in shade. Notably
+**Cyberpunk is `mode: light`** — a saturated yellow field (`#F7E733`) with a coral-red accent and dark
+text everywhere, *not* a violet dark theme; **Nord is `mode: light`** (arctic snow-storm, not the dark
+frost variant); and Aqua is a royal blue (`#0C2C8F`), not teal. Each theme's every colour now comes
+straight from the spec.
+
+Because the spec's 9 tokens don't map 1:1 to EmuShelf's 34 `EmuXxxBrush` tokens, the palettes are
+**generated** by a script (kept in the scratchpad, `gen_themes.py`) that anchors on bg + surface,
+interpolates the neutral surface ramp between them (dark: chrome near bg, cards at surface; light:
+airy top bar, slightly-darker chrome), maps text/textMuted/border/accent directly, tints nav-selection
+with the accent, and holds the semantic status colours (success/warning/danger/info/achievement)
+constant per mode for legibility — the accent + surfaces carry identity, not the status set. It writes
+the twelve override files plus the base `EmuShelfTheme.axaml` (Light + Dark theme-dictionaries) from
+the same mapping, so base and overrides stay consistent. The fixed gamepad-button brushes are
+preserved.
+
+Per an explicit decision from the reference owner, the base **Dark/Light/System/OLED were rebased to
+the spec's indigo accent** (`#5B58D9` dark / `#7C6CE0` light), replacing the earlier deliberate rose
+accent. This supersedes the "rose accent" entry above for the *hue* only — the intent of that entry
+(keep the brand accent distinct from danger-red) still holds, since indigo is even further from red.
+The `App.axaml` Fluent `ColorPaletteResources` accents moved in lockstep. Two `ThemeSupportTests`
+literals that pin base/palette accents were updated (`#5B58D9` for Oled/Dark; the swap and construct
+tests now exercise Dracula rather than the now-light Cyberpunk, since their `ResolveAccentColor` helper
+queries the Dark variant). The three EmuShelf-original extras (Matrix, Synthwave, Sunset) are untouched
+and remain appended after the 15 spec themes.
+
+`AppThemeService.PaletteUri` was also generalized: instead of one `switch` arm per theme, it returns
+`avares://EmuShelf/Styles/Palettes/{preference}.axaml` for everything except System/Light/Dark (which
+have no override — they live in the base theme-dictionaries). The palette file is named for the enum
+member, so a new theme needs only its enum value, a matching `<Name>.axaml`, and a catalog row — no
+wiring edit. The `EveryCatalogTheme…` guard protects that convention.
+
+## 2026-08-03 — Four popular community palettes added as originals (Everforest, Gruvbox, Catppuccin Mocha, Kanagawa)
+
+Beyond the NeoStation set, four widely-used editor schemes were added from their published specs, each
+filling a gap the existing set left: Everforest (soft woodland green — the muted-natural-green slot, vs
+Matrix's neon and Aqua/Abyss's teal), Gruvbox (warm retro orange-on-earth, distinct from Coffee's
+mocha), Catppuccin Mocha (pastel mauve — the soft-pastel slot), Kanagawa (Hokusai ink-blue with warm
+parchment *text*, its identity being the warm-text-on-cool-dark contrast). They reuse the same
+`gen_themes.py` mapping (their 9-token specs live in an `EXTRAS` list in the script), so their surface
+ramps and derivation match the spec themes; each is one `Styles/Palettes/<Name>.axaml` + enum value +
+catalog row, appended after the creative trio. Verified by rendering all four to PNG. Note the enum
+member `CatppuccinMocha` must stay in sync with `CatppuccinMocha.axaml` for the name-based `PaletteUri`
+to resolve — the catalog-coverage guard enforces it.
+
+## 2026-08-03 — Kanagawa recolour + four gap-filling themes (Crimson, Graphite, Mint, Lavender)
+
+Kanagawa's original ink-blue base read too close to Catppuccin Mocha in the cover grid — both cool-dark
+surfaces with a cool light accent, and the one distinguishing feature (its warm parchment *text*) is a
+tiny share of the screen when opaque cover cards dominate. It was recoloured to warm sumi-ink taupe
+surfaces with a calm wave-aqua accent (keeping the parchment text): warm surfaces + a cool accent is a
+combination no other theme uses, so it now separates cleanly from both Catppuccin (cool + mauve) and
+the warm-orange themes (Coffee/Gruvbox/Sunset, which pair warm surfaces with warm accents).
+
+Four more themes were then added to occupy colour territory nothing held: Crimson (deep wine + vivid
+crimson — the first red theme), Graphite (pure neutral grayscale + silver — the only hueless theme;
+its semantic status colours stay coloured for legibility, since the identity is the grey surfaces and
+accent), Mint (pale light green — the first *light* green, as Matrix/Everforest/Abyss are all dark),
+and Lavender (soft light lilac — the first *light* purple, as Dracula/Palenight/Catppuccin/Synthwave
+are all dark). Same generation path and guard as the other extras; all verified by PNG render. Total
+is now 26 built-in themes.
+
+## 2026-08-03 — Four named developer schemes (Solarized, Rosé Pine, Oxocarbon, Ayu)
+
+The last of the well-known palettes, added from their published specs to round out the gallery:
+Solarized (the low-contrast teal-navy classic with a clean blue accent), Rosé Pine (muted plum with a
+soft dusty-rose accent), Oxocarbon (IBM-Carbon near-black with vivid magenta), and Ayu (cool near-black
+with a warm amber accent — its cool-base/warm-accent contrast mirrors, inverted, Kanagawa's warm-base/
+cool-accent). Two placements were chosen to avoid the crowding these near-black/plum schemes risk:
+Oxocarbon sits a step darker than Graphite and leads with magenta, so the two carbon themes read as
+"neon" vs "silver-mono" rather than as duplicates; Rosé Pine keeps a soft, desaturated dusty-rose
+accent so it stays distinct from Horizon's punchier coral on a similar plum base (the closest surviving
+pair, but separated by accent chroma). Same `EXTRAS`/`gen_themes.py` path and coverage guard as the
+other originals. 30 built-in themes total; the colour wheel is now covered across both light and dark,
+so future additions would be variants rather than new hues.
