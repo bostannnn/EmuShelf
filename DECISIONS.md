@@ -3553,3 +3553,23 @@ accent so it stays distinct from Horizon's punchier coral on a similar plum base
 pair, but separated by accent chroma). Same `EXTRAS`/`gen_themes.py` path and coverage guard as the
 other originals. 30 built-in themes total; the colour wheel is now covered across both light and dark,
 so future additions would be variants rather than new hues.
+
+## 2026-08-03 — Web API key now persists on Linux/macOS via an obfuscated portable blob
+
+Revisits the non-Windows half of the 2026-07-18 M10 §2 storage decision. The session-only in-memory
+store dropped the RetroAchievements Web API key on every launch, so real Linux use (Steam Deck) had to
+re-enter it after each app update — the update was only incidental; any restart lost it. The original
+blocker was "no verified portable at-rest protection," but the key is low-value: a read-only Web API
+key, never an emulator token, one-click resettable on the RA site, already excluded from settings.json
+and logs. That does not warrant keychain-grade protection.
+
+Non-Windows platforms now use `PortableObfuscatedCredentialStore`: the key is AES-GCM wrapped with an
+application-embedded 256-bit key and written to the same `Settings/retroachievements.key` blob the
+Windows DPAPI store uses (owner-only `0600` on Unix). This is deliberately obfuscation, not
+confidentiality — the wrap key ships in the binary — chosen so the blob stays fully portable across
+machines (a machine-bound scheme like DPAPI would not survive moving the drive) while keeping the key
+off disk as readable plaintext. The OS keychain route (Secret Service/libsecret, KWallet) was rejected:
+non-portable, heavy P/Invoke/D-Bus, and unreliable in exactly the target case — Steam Deck Game Mode
+with the passwordless `deck` user, where the keyring is often locked or unset. `SessionOnlyCredentialStore`
+remains as the non-persisting in-memory implementation used by tests. macOS could later gain a
+Keychain-backed store alongside Windows DPAPI, but is not required for the portable bar this sets.
