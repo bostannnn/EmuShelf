@@ -31,6 +31,11 @@ public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
     private const int ViewStateSaveDebounceMs = 500;
+    // Fast LB/RB cycling changes the selected platform many times a second; each change used to run a
+    // full clear-and-rebuild of the grid (BeginScopeChange + a fresh DB query + hundreds of new
+    // GameViewModels), which is what blanked covers, dropped the selector and reset focus mid-scroll.
+    // Coalesce a burst into one reload of the platform the user settles on.
+    private const int PlatformReloadDebounceMs = 180;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
     private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
         ? StringComparer.OrdinalIgnoreCase
@@ -80,6 +85,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _searchDebounce;
     private readonly DispatcherTimer _statusDismiss;
     private readonly DispatcherTimer _viewStateSave;
+    private readonly DispatcherTimer _platformReloadDebounce;
+    private TaskCompletionSource? _platformReloadCompletion;
     private readonly ILibraryViewStateService _libraryViewState;
     private bool _isRestoringViewState;
     private readonly List<GameViewModel> _systemGames = [];
@@ -91,6 +98,14 @@ public partial class MainViewModel : ViewModelBase
     private string? _displayedScopeKey;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
+    // Built GameViewModel lists per scope key (system:{id} / AllGames / RecentlyAdded). Navigating to
+    // an already-visited scope reuses its list instantly instead of re-querying the DB and rebuilding
+    // hundreds of view models, which is what made fast LB/RB cycling thrash. The cache owns these view
+    // models; it is dropped wholesale (forceRebuild) whenever the underlying library data changes
+    // (add/remove/rename/rescan, availability and achievements passes), so a rebuild always reflects
+    // the DB. Covers stay warm across switches because the same view models are reused.
+    private readonly Dictionary<string, List<GameViewModel>> _scopeCache = new(StringComparer.Ordinal);
+
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
@@ -100,6 +115,14 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<GameSystem> NavigationSystems { get; }
     public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
+
+    // Row projection of Games for the gamepad grid. The grid is rendered as a virtualized ListBox with
+    // one row per line, so only the ~5 visible rows realize (mature couch-UI pattern) — vastly cheaper
+    // than laying out every tile, and it avoids the phantom-cell defect of a virtualized UniformGrid.
+    // Each row holds exactly GamepadColumnCount games, so the rendered column count is guaranteed to
+    // equal the value navigation uses. Navigation still runs on the flat Games list + index%columns.
+    public BulkObservableCollection<IReadOnlyList<GameViewModel>> GamepadRows { get; } = [];
+
     public ObservableCollection<GamepadOverlayOptionViewModel> GamepadOverlayOptions { get; } = [];
 
     [ObservableProperty]
@@ -284,23 +307,55 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial double GamepadViewportWidth { get; set; }
 
-    public int GamepadColumnCount { get; private set; } = 1;
+    private int _gamepadColumnCount = 1;
+    // Observable so the gamepad grid's UniformGrid binds its Columns to it: the rendered column count
+    // is then guaranteed to equal the value navigation uses, so index%columns can never disagree with
+    // the layout.
+    public int GamepadColumnCount
+    {
+        get => _gamepadColumnCount;
+        private set
+        {
+            if (SetProperty(ref _gamepadColumnCount, value))
+                BuildGamepadRows(); // re-group into rows of the new width (e.g. on resize)
+        }
+    }
+
+    // Slice the flat Games list into rows of GamepadColumnCount for the virtualized row list. Called
+    // whenever Games or the column count changes; cheap (it allocates small arrays, not view models).
+    private void BuildGamepadRows()
+    {
+        if (!IsGamepadMode)
+        {
+            if (GamepadRows.Count > 0)
+                GamepadRows.Clear();
+            return;
+        }
+
+        var columns = Math.Max(1, GamepadColumnCount);
+        var rows = new List<IReadOnlyList<GameViewModel>>((Games.Count + columns - 1) / columns);
+        for (var start = 0; start < Games.Count; start += columns)
+        {
+            var take = Math.Min(columns, Games.Count - start);
+            var row = new GameViewModel[take];
+            for (var offset = 0; offset < take; offset++)
+                row[offset] = Games[start + offset];
+            rows.Add(row);
+        }
+
+        GamepadRows.ReplaceAll(rows);
+    }
     public int GamepadAchievementColumnCount { get; private set; } = 1;
     public int GamepadAchievementLayoutRevision { get; private set; }
     public bool HasFocusedGamepadAchievement => FocusedGamepadAchievement is not null;
 
-    /// <summary>
-    /// The view that lays the grid out reports the true rendered column count here, and it wins over
-    /// the width arithmetic in <see cref="UpdateCoverLayout"/>. That arithmetic can be momentarily
-    /// stale relative to the real layout, and a too-small count made Right/Left navigation clamp
-    /// partway across a row ("stuck at the second column"). The arithmetic remains the fallback for
-    /// before the grid has laid out (and for headless tests with no view).
-    /// </summary>
-    internal void SetRenderedGamepadColumnCount(int columns)
-    {
-        if (columns >= 1)
-            GamepadColumnCount = columns;
-    }
+    // GamepadColumnCount is derived purely by width arithmetic in UpdateCoverLayout, using the same
+    // formula and constants (gutters + spacing) as the real UniformGridLayout — so it always equals
+    // the rendered column count without reading the visual tree. An earlier design let the view
+    // overwrite it from realized tile bounds; during fast LB/RB the repeater is mid-recycle and those
+    // bounds are stale (tiles collapse into one Y row, or only a partial row is realized), which
+    // produced a garbage count that broke index%columns math — the stuck selector, blocked Left, and
+    // vanishing focus ring. The arithmetic value cannot race, so navigation now trusts it alone.
 
     internal void SetRenderedGamepadAchievementColumnCount(int columns)
     {
@@ -308,17 +363,9 @@ public partial class MainViewModel : ViewModelBase
             GamepadAchievementColumnCount = columns;
     }
 
-    // Diagnostics for the Steam Deck library grid. The view calls this ONLY on a fault condition —
-    // the focused tile could not be realized or positioned, or the arithmetic and rendered column
-    // counts disagree — so a single Deck run leaves a precise trail in Logs/EmuShelf-*.log (which
-    // machine, focused index, columns arithmetic-vs-rendered, reveal target, selector state) without
-    // flooding the log on every d-pad move. This is why the earlier "selector vanishes / column
-    // clipped" reports were unreproducible off-device: the fault is compositor/virtualization timing.
+    // The view reports a gamepad-grid fault here (e.g. a focused row's container did not realize after
+    // several attempts) so a Deck run leaves a warning in Logs/EmuShelf-*.log without per-move noise.
     internal void LogGamepadGridFault(string detail) => _logger.Warning($"Gamepad grid: {detail}");
-
-    // Always-on (per user action, not per frame) so a single Deck run captures the exact geometry when
-    // navigation misbehaves — the earlier fault-only logging stayed silent while Left was blocked.
-    internal void LogGamepadGrid(string detail) => _logger.Information($"Gamepad grid: {detail}");
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
@@ -541,6 +588,10 @@ public partial class MainViewModel : ViewModelBase
         GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
             navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
 
+        // Keep the gamepad row projection in lockstep with Games no matter how Games is changed
+        // (reload, filter, or a direct test mutation), so the virtualized row grid never goes stale.
+        Games.CollectionChanged += (_, _) => BuildGamepadRows();
+
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchDebounceMs) };
         _searchDebounce.Tick += (_, _) =>
         {
@@ -553,6 +604,28 @@ public partial class MainViewModel : ViewModelBase
         {
             _statusDismiss.Stop();
             StatusText = string.Empty;
+        };
+
+        _platformReloadDebounce = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(PlatformReloadDebounceMs),
+        };
+        _platformReloadDebounce.Tick += async (_, _) =>
+        {
+            _platformReloadDebounce.Stop();
+            var completion = _platformReloadCompletion;
+            _platformReloadCompletion = null;
+            try
+            {
+                // Navigation hot path: reuse the cached scope if we have visited it before.
+                await ReloadGamesAsync(useCache: true);
+            }
+            finally
+            {
+                // ReloadGamesAsync swallows its own errors, but complete the awaiter no matter what
+                // so a caller that awaited the selection change can never hang.
+                completion?.TrySetResult();
+            }
         };
 
         // Selecting a platform moves several of these properties at once. Coalesce them into one
@@ -706,7 +779,9 @@ public partial class MainViewModel : ViewModelBase
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
         ScheduleLibraryViewStateSave();
-        _selectedSystemLoad = ReloadGamesAsync();
+        // Debounced: the rail highlight and title above move immediately, but the heavy grid reload is
+        // coalesced so holding/tapping LB/RB does not rebuild the library on every press.
+        _selectedSystemLoad = RequestLibraryReload();
     }
 
     partial void OnCurrentLibraryScopeChanged(LibraryScope value)
@@ -1477,7 +1552,9 @@ public partial class MainViewModel : ViewModelBase
         }
         else
         {
-            await ReloadGamesAsync();
+            // Reached All Games / Recently Added directly (a menu, or an LB/RB stop that did not pass
+            // through a system). Debounce it the same way so cycling across this stop does not thrash.
+            await RequestLibraryReload();
         }
     }
 
@@ -1639,11 +1716,13 @@ public partial class MainViewModel : ViewModelBase
         {
             IsGamepadControllerInputActive = true;
             IsGridView = true;
+            BuildGamepadRows(); // populate the row list for the grid we're about to show
             RestoreFocusedGame();
         }
         else
         {
             CloseGamepadOverlay();
+            GamepadRows.Clear(); // drop the row tiles' view models while the gamepad grid is hidden
         }
     }
 
@@ -1788,12 +1867,82 @@ public partial class MainViewModel : ViewModelBase
             game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
     }
 
-    internal async Task ReloadGamesAsync()
+    // Entry point for reloads driven by a selection change (LB/RB platform cycling, or a scope switch).
+    // Returns a task that completes once the games for the new scope are on screen, so the few callers
+    // that set the selection and then await the load still observe the finished grid. Direct callers
+    // (rescan, add/remove, availability passes) keep calling ReloadGamesAsync so their reloads rebuild.
+    private Task RequestLibraryReload()
+    {
+        var scopeKey = DescribeScope(CurrentLibraryScope, SelectedSystem);
+
+        // Already built and still valid: swap it in synchronously so the correct games appear instantly
+        // — no blank frame, no debounce. ReloadGamesAsync's cache fast path returns without awaiting.
+        if (_scopeCache.ContainsKey(scopeKey))
+        {
+            _platformReloadDebounce.Stop();
+            var pending = _platformReloadCompletion;
+            _platformReloadCompletion = null;
+            var swap = ReloadGamesAsync(useCache: true);
+            pending?.TrySetResult();
+            return swap;
+        }
+
+        // Not built yet: clear the outgoing tiles now so one platform's library can't sit under
+        // another platform's title, then debounce the heavy build so cycling through several unvisited
+        // platforms only builds the one the user settles on.
+        if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
+            BeginScopeChange();
+        _platformReloadCompletion ??=
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _platformReloadDebounce.Stop();
+        _platformReloadDebounce.Start();
+        return _platformReloadCompletion.Task;
+    }
+
+    // Default (useCache: false) is the safe, data-changing reload used by every mutation and refresh
+    // path: it drops the whole scope cache so the rebuild reflects the DB. Only the navigation hot path
+    // (platform cycling) passes useCache: true to reuse a previously built scope. Defaulting to the
+    // safe behavior means a caller that forgets the flag rebuilds (correct, just not cached) rather
+    // than serving stale tiles.
+    internal async Task ReloadGamesAsync(bool useCache = false)
     {
         var system = SelectedSystem;
         var scope = CurrentLibraryScope;
         if (scope == LibraryScope.System && system is null)
             return;
+
+        var scopeKey = DescribeScope(scope, system);
+
+        // A data-changing reload: drop every cached scope so each rebuilds from the DB. Scopes that are
+        // not on screen are disposed now; the on-screen scope's view models stay alive until their
+        // freshly built replacement is ready (handled below), so the grid never shows disposed tiles.
+        if (!useCache)
+        {
+            foreach (var (key, list) in _scopeCache)
+            {
+                if (!string.Equals(key, _displayedScopeKey, StringComparison.Ordinal))
+                    foreach (var vm in list)
+                        vm.Dispose();
+            }
+            _scopeCache.Clear();
+        }
+
+        // Fast path: this scope has been built before and nothing has invalidated it. Reuse its view
+        // models instantly — no DB read, no rebuild, no dispose, covers already loaded. Synchronous, so
+        // it cannot be pre-empted by a competing reload.
+        if (useCache && _scopeCache.TryGetValue(scopeKey, out var cachedGames))
+        {
+            // Cancel any slow reload still in flight so it cannot land after us and overwrite the
+            // scope we just switched to.
+            ++_loadGeneration;
+            _systemGames.Clear();
+            _systemGames.AddRange(cachedGames);
+            UpdateCoverLayout(applyVisibleShelf: false);
+            ApplyFilter();
+            _displayedScopeKey = scopeKey;
+            IsLibraryLoading = false;
+            return;
+        }
 
         var generation = ++_loadGeneration;
 
@@ -1802,7 +1951,6 @@ public partial class MainViewModel : ViewModelBase
         // platform's tiles now so that gap shows an empty grid rather than one platform's library
         // sitting under another platform's name. A reload of the scope already on screen (an
         // availability pass, a rescan) keeps its tiles, so refreshes do not flash.
-        var scopeKey = DescribeScope(scope, system);
         if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
             BeginScopeChange();
 
@@ -1891,10 +2039,19 @@ public partial class MainViewModel : ViewModelBase
             }
 
             ClearSelection();
-            foreach (var existingGame in _systemGames)
-                existingGame.Dispose();
+
+            // Dispose the outgoing on-screen view models only if the cache is not keeping them. On a
+            // scope switch the previous scope stays cached, so its tiles must survive; on a forced
+            // rebuild its cache entry was dropped above, so now that the replacement is built they can
+            // be released here.
+            var outgoingRetained = _displayedScopeKey is { } outgoingKey && _scopeCache.ContainsKey(outgoingKey);
+            if (!outgoingRetained)
+                foreach (var existingGame in _systemGames)
+                    existingGame.Dispose();
+
             _systemGames.Clear();
             _systemGames.AddRange(games);
+            _scopeCache[scopeKey] = games;
             // Games still contains the previous scope here. ApplyFilter replaces it immediately
             // afterward and performs the authoritative visible-shelf pass.
             UpdateCoverLayout(applyVisibleShelf: false);

@@ -63,14 +63,44 @@ public class ThemeSupportTests
             await service.SetThemeAsync(ThemePreference.Oled);
             Assert.Equal(ThemePreference.Oled, settings.Current.Theme);
             Assert.Equal(ThemeVariant.Dark, Application.Current!.RequestedThemeVariant);
-            Assert.Equal(Color.Parse("#5A8CFF"), ResolveAccentColor());
+            Assert.Equal(Color.Parse("#5B58D9"), ResolveAccentColor());
 
-            await service.SetThemeAsync(ThemePreference.Cyberpunk);
-            Assert.Equal(Color.Parse("#FF3FA4"), ResolveAccentColor());
+            await service.SetThemeAsync(ThemePreference.Dracula);
+            Assert.Equal(Color.Parse("#BD93F9"), ResolveAccentColor());
 
             // Returning to a base variant must drop the override and restore the base token.
             await service.SetThemeAsync(ThemePreference.Dark);
-            Assert.Equal(Color.Parse("#F15C93"), ResolveAccentColor());
+            Assert.Equal(Color.Parse("#5B58D9"), ResolveAccentColor());
+        }
+        finally
+        {
+            await service.SetThemeAsync(ThemePreference.System);
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task AppThemeService_EveryCatalogThemeLoadsAndMatchesItsAccentSwatch()
+    {
+        // Applying each catalog theme must resolve its palette (a mistyped file name would only surface
+        // when a user picks that theme) and land the accent the gallery advertised, so no palette can
+        // drift from its swatch. System follows the OS with no fixed variant, so it is exercised
+        // separately below.
+        var settings = new InMemorySettingsService(new AppSettings());
+        var service = new AppThemeService(settings, settings.Current);
+        try
+        {
+            foreach (var theme in ThemeCatalog.All.Where(t => t.Id != ThemePreference.System))
+            {
+                await service.SetThemeAsync(theme.Id);
+                var variant = theme.IsDark ? ThemeVariant.Dark : ThemeVariant.Light;
+                Assert.True(
+                    Application.Current!.TryGetResource("EmuAccentBrush", variant, out var value),
+                    $"{theme.Id} did not resolve EmuAccentBrush");
+                Assert.Equal(
+                    Color.Parse(theme.PreviewAccent),
+                    Assert.IsAssignableFrom<ISolidColorBrush>(value).Color);
+            }
         }
         finally
         {
@@ -84,12 +114,12 @@ public class ThemeSupportTests
     {
         // A palette saved in settings must be applied when the service is built at startup, not only
         // via a later SetThemeAsync call.
-        var settings = new InMemorySettingsService(new AppSettings { Theme = ThemePreference.Cyberpunk });
+        var settings = new InMemorySettingsService(new AppSettings { Theme = ThemePreference.Dracula });
         var service = new AppThemeService(settings, settings.Current);
         try
         {
-            Assert.Equal(ThemePreference.Cyberpunk, service.Current);
-            Assert.Equal(Color.Parse("#FF3FA4"), ResolveAccentColor());
+            Assert.Equal(ThemePreference.Dracula, service.Current);
+            Assert.Equal(Color.Parse("#BD93F9"), ResolveAccentColor());
         }
         finally
         {

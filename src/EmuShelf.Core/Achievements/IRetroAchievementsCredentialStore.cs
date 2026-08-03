@@ -7,10 +7,10 @@ namespace EmuShelf.Core.Achievements;
 public sealed record RetroAchievementsAccount(string Username, string UserUlid);
 
 /// <summary>
-/// Platform-specific, secure storage for the RetroAchievements Web API key. Implementations must
-/// keep the key out of ordinary <c>settings.json</c>, diagnostics, and exception text. The v1
-/// recommendation is a DPAPI-protected blob under portable <c>Settings/</c> on Windows and a
-/// session-only (in-memory) provider on macOS; see DECISIONS.md.
+/// Platform-specific storage for the RetroAchievements Web API key. Implementations must keep the key
+/// out of ordinary <c>settings.json</c>, diagnostics, and exception text, and persist it beside the
+/// portable install so it survives restarts and updates. The shipped stores are a DPAPI-protected blob
+/// under portable <c>Settings/</c> on Windows and an AES-GCM obfuscated blob elsewhere; see DECISIONS.md.
 /// </summary>
 public interface IRetroAchievementsCredentialStore
 {
