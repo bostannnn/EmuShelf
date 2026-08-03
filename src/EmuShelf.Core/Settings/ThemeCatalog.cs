@@ -259,6 +259,42 @@ public static class ThemeCatalog
             PreviewSurface: "#FBF9FE",
             PreviewAccent: "#8257E6",
             PreviewText: "#2A2140"),
+        new(
+            ThemePreference.Solarized,
+            "Solarized",
+            "The precise low-contrast classic: desaturated teal-navy surfaces with a clean blue accent.",
+            IsDark: true,
+            PreviewBackground: "#002B36",
+            PreviewSurface: "#073642",
+            PreviewAccent: "#268BD2",
+            PreviewText: "#93A1A1"),
+        new(
+            ThemePreference.RosePine,
+            "Rosé Pine",
+            "Muted plum surfaces with a soft dusty-rose accent and gold and foam highlights. Cozy at dusk.",
+            IsDark: true,
+            PreviewBackground: "#191724",
+            PreviewSurface: "#1F1D2E",
+            PreviewAccent: "#EBBCBA",
+            PreviewText: "#E0DEF4"),
+        new(
+            ThemePreference.Oxocarbon,
+            "Oxocarbon",
+            "IBM Carbon-inspired near-black surfaces with a vivid magenta accent and cyan highlights.",
+            IsDark: true,
+            PreviewBackground: "#0F0F14",
+            PreviewSurface: "#18181F",
+            PreviewAccent: "#EE5396",
+            PreviewText: "#F2F4F8"),
+        new(
+            ThemePreference.Ayu,
+            "Ayu",
+            "Clean cool near-black surfaces lit by a warm amber accent. Crisp and focused.",
+            IsDark: true,
+            PreviewBackground: "#0B0E14",
+            PreviewSurface: "#131721",
+            PreviewAccent: "#FFB454",
+            PreviewText: "#BFBDB6"),
     ];
 
     public static AppTheme Get(ThemePreference id) =>

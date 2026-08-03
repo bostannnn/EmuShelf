@@ -34,4 +34,8 @@ public enum ThemePreference
     Graphite,
     Mint,
     Lavender,
+    Solarized,
+    RosePine,
+    Oxocarbon,
+    Ayu,
 }
