@@ -1212,10 +1212,11 @@ public class MainViewModelTests : IDisposable
     [AvaloniaFact]
     public async Task GamepadColumnCount_SurvivesAnAsyncCoverLoad()
     {
-        // Regression for "the selector can't move right / gets stuck": the view reports the true
-        // rendered column count and it must win over width arithmetic. A cover finishing loading used
-        // to re-run the whole cover layout (via per-cover ratio adoption) and reset the count to the
-        // width estimate mid-navigation, which clamped Right partway across a row.
+        // Regression for "the selector can't move right / gets stuck": a cover finishing loading used
+        // to re-run the whole cover layout (via per-cover ratio adoption) and could reset the column
+        // count mid-navigation, which clamped Right partway across a row. The count is now derived
+        // purely by width arithmetic (matching UniformGridLayout), so it must be stable across an
+        // async cover load — the incoming bitmap changes one tile's art, never the grid's stride.
         var firstPath = Path.Combine(_baseDirectory, "ColsCubeA.iso");
         File.WriteAllText(firstPath, "x");
         var secondPath = Path.Combine(_baseDirectory, "ColsCubeB.iso");
@@ -1230,12 +1231,12 @@ public class MainViewModelTests : IDisposable
         await vm.ShowAllGamesCommand.ExecuteAsync(null);
         vm.GamepadViewportWidth = 1280;
 
-        vm.SetRenderedGamepadColumnCount(5);
-        Assert.Equal(5, vm.GamepadColumnCount);
+        var columnsBefore = vm.GamepadColumnCount;
+        Assert.True(columnsBefore > 1); // the arithmetic produced a real multi-column layout
 
         vm.Games[0].CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
 
-        Assert.Equal(5, vm.GamepadColumnCount);
+        Assert.Equal(columnsBefore, vm.GamepadColumnCount);
     }
 
     [AvaloniaFact]
@@ -1397,13 +1398,14 @@ public class MainViewModelTests : IDisposable
     }
 
     /// <summary>
-    /// Regression: Right/Left clamp on GamepadColumnCount, and a too-small width estimate (e.g. the
-    /// default of 1 before the grid is measured) trapped the selector partway across a row — "stuck
-    /// at the second column." The view reports the true rendered column count, which navigation must
-    /// then honor.
+    /// Regression: Right/Left/Down step by GamepadColumnCount. The count is derived arithmetically
+    /// from the gamepad viewport (matching UniformGridLayout), and navigation must honor it — Right
+    /// steps one tile within a row, Down steps a whole row, and Left clamps at the row's first column
+    /// rather than wrapping into the previous row ("can't move left" was a corrupted count reading as
+    /// a divisor of the index, so index%columns was always 0).
     /// </summary>
     [AvaloniaFact]
-    public void RenderedColumnCountReportedByTheViewDrivesGridNavigation()
+    public void ArithmeticColumnCountDrivesGridNavigation()
     {
         var vm = CreateViewModel();
         vm.IsGamepadMode = true;
@@ -1421,19 +1423,24 @@ public class MainViewModelTests : IDisposable
             Ps1.AccentColor,
             coverAspectRatio: Ps1.CoverAspectRatio)));
 
-        // Arithmetic never ran (no viewport), so the count is the stale default of 1 that would trap
-        // Right at the first column.
-        Assert.Equal(1, vm.GamepadColumnCount);
-        vm.FocusedGame = vm.Games[1];
-        vm.MoveGamepadFocusRightCommand.Execute(null);
-        Assert.Same(vm.Games[1], vm.FocusedGame);
+        // A viewport that fits exactly four columns under UniformGridLayout's arithmetic; setting it
+        // recomputes GamepadColumnCount the same way the layout will pack the tiles.
+        vm.GamepadViewportWidth = 1100;
+        Assert.Equal(4, vm.GamepadColumnCount);
 
-        // Once the view reports the real four columns, Right and Down step correctly.
-        vm.SetRenderedGamepadColumnCount(4);
+        // Right steps within the row; Down steps a whole row (index + columns).
+        vm.FocusedGame = vm.Games[1];
         vm.MoveGamepadFocusRightCommand.Execute(null);
         Assert.Same(vm.Games[2], vm.FocusedGame);
         vm.MoveGamepadFocusDownCommand.Execute(null);
         Assert.Same(vm.Games[6], vm.FocusedGame);
+
+        // Left steps back within the row, and clamps at the row's first column (no wrap upward).
+        vm.FocusedGame = vm.Games[5];
+        vm.MoveGamepadFocusLeftCommand.Execute(null);
+        Assert.Same(vm.Games[4], vm.FocusedGame);
+        vm.MoveGamepadFocusLeftCommand.Execute(null);
+        Assert.Same(vm.Games[4], vm.FocusedGame);
     }
 
     [AvaloniaFact]

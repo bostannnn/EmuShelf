@@ -982,12 +982,12 @@ public class MainWindowVisualSnapshotTests
             var achievementWidget = window.FindControl<Border>("GamepadAchievementWidget");
             var playButton = window.FindControl<Button>("GamepadPlayButton");
             var focusedDock = window.FindControl<Border>("GamepadFocusedDock");
-            var libraryScroller = window.FindControl<ScrollViewer>("GamepadLibraryScroller");
+            var rowList = window.FindControl<ListBox>("GamepadRowList");
             Assert.NotNull(achievementWidget);
             Assert.NotNull(playButton);
             Assert.NotNull(focusedDock);
-            Assert.NotNull(libraryScroller);
-            Assert.Equal(ScrollBarVisibility.Hidden, libraryScroller.VerticalScrollBarVisibility);
+            Assert.NotNull(rowList);
+            Assert.Equal(ScrollBarVisibility.Hidden, ScrollViewer.GetVerticalScrollBarVisibility(rowList));
             Assert.InRange(focusedDock.Bounds.Height, 102, 106);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
@@ -1365,9 +1365,10 @@ public class MainWindowVisualSnapshotTests
             viewModel.FocusedGame = viewModel.Games[0];
             await PumpAsync();
 
-            var scroller = window.GetVisualDescendants()
-                .OfType<ScrollViewer>()
-                .Single(candidate => candidate.Name == "GamepadLibraryScroller");
+            // The virtualized row list owns the scroller inside its template.
+            var rowList = window.FindControl<ListBox>("GamepadRowList");
+            Assert.NotNull(rowList);
+            var scroller = rowList.GetVisualDescendants().OfType<ScrollViewer>().First();
             var initialOffset = scroller.Offset.Y;
 
             // Walk down far enough to leave the first viewport regardless of the resolved column count.
@@ -1569,15 +1570,13 @@ public class MainWindowVisualSnapshotTests
             var hoverRing = shortButton.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-hover-ring"));
-            // The controller focus ring is no longer a per-tile layer, so it can never appear inside a
-            // hovered non-focused tile: it is the single GamepadSelectorRing overlay, positioned over
-            // whichever tile is focused. Assert it is absent from this hovered short tile, and take the
-            // external overlay for the focus assertions below.
-            Assert.Empty(shortButton.GetVisualDescendants()
+            // The controller focus ring is drawn by the focused tile itself (a per-tile layer, shown via
+            // opacity on the .focused state). This short tile is not focused (tallGame is), so its own
+            // focus ring must be transparent here.
+            var focusRing = shortButton.GetVisualDescendants()
                 .OfType<Border>()
-                .Where(border => border.Classes.Contains("gamepad-focus-ring")));
-            var focusRing = window.FindControl<Border>("GamepadSelectorRing");
-            Assert.NotNull(focusRing);
+                .Single(border => border.Classes.Contains("gamepad-focus-tile-ring"));
+            Assert.Equal(0, focusRing.Opacity);
             viewModel.NotifyGamepadPointerInput();
             var pseudoClasses = (IPseudoClasses)shortButton.Classes;
             pseudoClasses.Add(":pointerover");
@@ -1604,10 +1603,14 @@ public class MainWindowVisualSnapshotTests
 
             viewModel.FocusedGame = shortGame;
             await PumpAsync();
-            Assert.True(focusRing.IsVisible);
-            // The focus frame is drawn at the cover bounds (no overflow) so it is never clipped.
-            Assert.Equal(coverFrame.Bounds.Height, focusRing.Bounds.Height, 1);
-            Assert.Equal(coverFrame.Bounds.Width, focusRing.Bounds.Width, 1);
+            // Focusing this tile makes its own ring opaque. The selector is an accent pad 6px larger
+            // than the cover on every side (Border.gamepad-focus-tile-ring, Margin -6), so its bounds
+            // exceed the cover frame by 12px in each dimension; the opaque cover masks the pad's centre,
+            // leaving an even 6px accent frame.
+            const double focusFrameInset = 6;
+            Assert.Equal(1, focusRing.Opacity);
+            Assert.Equal(coverFrame.Bounds.Height + (focusFrameInset * 2), focusRing.Bounds.Height, 1);
+            Assert.Equal(coverFrame.Bounds.Width + (focusFrameInset * 2), focusRing.Bounds.Width, 1);
         }
         finally
         {
