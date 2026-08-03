@@ -30,6 +30,16 @@ internal sealed class FakeDialogService : IDialogService
     public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
     public IReadOnlyList<ThemeChoiceViewModel>? ThemeChoices { get; private set; }
     public (string GameTitle, int RetroAchievementsGameId)? AchievementDetailsRequest { get; private set; }
+    public long? LastScraperGameId { get; private set; }
+    public string? LastScraperGameTitle { get; private set; }
+    public bool ScraperAppliedToReturn { get; set; }
+
+    public Task<bool> ShowScraperAsync(long gameId, string gameTitle)
+    {
+        LastScraperGameId = gameId;
+        LastScraperGameTitle = gameTitle;
+        return Task.FromResult(ScraperAppliedToReturn);
+    }
 
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult(FilesToReturn);
     public Task<string?> PickFolderAsync() => Task.FromResult(FolderToReturn);
@@ -88,6 +98,7 @@ internal sealed class FakeDialogService : IDialogService
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
     {
         SettingsShown++;

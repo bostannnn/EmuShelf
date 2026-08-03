@@ -2933,6 +2933,226 @@ retains the same badge still issues a layout revision because its position and r
 have changed even though its object identity did not. Pointer selection enters the same logical
 focus path as controller selection, keeping the badge ring and detail card synchronized.
 
+## 2026-08-01 — Rich scraping is capability-aware, provenance-first, and kept off the hot grid
+
+ScreenScraper is not an implementation of the artwork-only DuckDuckGo picker. Built-in exact
+enrichment, authenticated ScreenScraper data/media, and unverified DuckDuckGo image search share a
+provider registry and settings family, while capability and trust descriptors prevent an
+unverified web result from entering automatic metadata work. ScreenScraper remains disabled until
+an account is connected; DuckDuckGo remains manual-only.
+
+The library's `Game` record stays the small projection loaded by the virtualized shelf. SQLite v13
+stores title, developer, publisher, genre, locale-keyed descriptions, release date, players,
+rating, box front, screenshot, wheel, fanart, provider matches, and per-value provenance in
+on-demand detail tables. Fill-missing is conservative; a provider refresh may update only values
+owned by that same provider. User edits and user media selections are never replaced by provider
+refreshes. Selected box front will continue to project into the existing cover path when the apply
+coordinator lands.
+
+ScreenScraper automatic lookups require a hash plus byte size unless a confirmed provider game id
+is being reapplied; serial-only exceptions wait for written provider approval per system. User
+credentials use a separate DPAPI-protected portable blob on Windows and session-only memory on
+other platforms. Developer credentials come from the build/development environment and are never
+committed or stored in settings/SQLite/logs. The provisional version-1 system mapping and fixture
+parser may be developed without secrets, but live activation, attribution/caching behavior, and
+release provisioning remain gated on ScreenScraper's written approval.
+
+## 2026-08-01 — ScreenScraper fingerprints describe their byte scope; containers are never guessed
+
+A hash algorithm name is not enough evidence that the hashed bytes match ScreenScraper's ROM
+identity. EmuShelf therefore caches provider-scoped fingerprints with their source path, whole-file
+scope, byte size, last-write value, CRC32, MD5, SHA-1, and calculation time. All three hashes are
+calculated in one cancellable read after explicit consent. A cache entry is reused only while its
+portable path, size, timestamp, and scope still match; game files are opened read-only and their
+bytes/timestamps are verified unchanged by tests.
+
+Only an explicit per-system extension allowlist enters the whole-file path. Text playlists and
+descriptors, CHD/CSO/RVZ/WBFS and similar compressed containers, arcade ZIPs, Dreamcast GDI sets,
+and PS3 directories are rejected rather than hashed as if their container bytes were canonical ROM
+bytes. Those formats wait for a documented logical-content or approved serial rule. Preview may
+persist this fingerprint cache, but it never applies metadata, media, or a provider match.
+
+ScreenScraper requests share one process-wide coordinator. It begins at one active request, adopts
+the returned account `maxthreads` only up to EmuShelf's safety ceiling, locally reserves requests so
+parallel callers cannot overshoot a known remaining daily allowance, stops before HTTP on exhausted
+daily/failed-lookup quotas, and carries a 429 cooldown to queued callers. Single-game and future
+batch flows must use this same gate rather than maintaining separate counters.
+
+## 2026-08-03 — ScreenScraper developer access approved; live validation clears the mapping gate
+
+The project owner obtained ScreenScraper developer credentials, unblocking the previously gated
+live checks. Developer id/password/softname and the connected account password are provisioned only
+through environment variables (`SCREENSCRAPER_DEV_ID`, `SCREENSCRAPER_DEV_PASSWORD`,
+`SCREENSCRAPER_SOFTNAME`, plus `SCREENSCRAPER_SSID`/`SCREENSCRAPER_SSPASSWORD` for validation); none
+are committed, and the live client still composes only when the developer values are present.
+
+The provisional version-1 system map is now validated: an opt-in live test
+(`ScreenScraperLiveValidationTests`, gated on `EMUSHELF_TEST_SCREENSCRAPER` so a normal `dotnet test`
+never touches the network) authenticated the account and cross-checked every EmuShelf-to-ScreenScraper
+id against the live `systemesListe.php` catalogue (250 systems). All 13 mapped ids resolved to the
+expected system, so `ScreenScraperSystemMap` is no longer provisional. `systemesListe.php` gained a
+typed client method (`GetSystemsAsync`) to support this audit.
+
+Two operational facts were observed and matter downstream: the returned account `maxthreads` can be
+as low as 1 (so the coordinator's adoption of the server value — not an assumed ceiling — is what keeps
+batch scraping within the account's real allowance), and the daily request quota is large
+(20000/day for the validated account) with a separate failed-lookup quota (2000/day). ScreenScraper's
+per-endpoint error wording is unreliable as a per-credential diagnostic: `ssuserInfos.php` reports a
+"user credentials" error even when the developer id is wrong, while `systemesListe.php` correctly
+reports "developer credentials"; diagnosis should prefer the dev-only `systemesListe.php` probe.
+
+A developer-only debug surface (`ScreenScraperDebugOptions` + `SCREENSCRAPER_DEV_DEBUG_PASSWORD`) was
+added to force cache updates, user level, and quota counters for testing the coordinator against the
+live API (capped by ScreenScraper at 100 uses/day). The debug password is redacted like every other
+secret and is never populated by user-facing flows. Still open from the approval gate: capturing
+sanitized real response fixtures, and recording ScreenScraper's written attribution/caching/media-
+retention terms — the webapi2 documentation states developer-approval and quota rules but not explicit
+attribution or caching terms, so conservative defaults remain in force until confirmed.
+
+## 2026-08-03 — Scrape apply is a provider-neutral orchestrator over the existing store rules
+
+The apply step (Phase 4) is `IGameScrapeApplicationService` in Core with a single Infrastructure
+implementation, deliberately provider-neutral: it takes a `GameScrapeApplyRequest` of already-neutral
+`GameMetadataValue`s plus `GameMediaImport`s and does not depend on any provider's response type
+(`ScreenScraperApplyMapper` converts a preview into that request). All precedence lives in
+`SqliteGameDetailsStore` — `TryApplyMetadata` enforces fill-missing / refresh-same-provider /
+user-edit, and `SaveMedia` refuses to let provider media overwrite user-owned or another provider's
+asset — so the apply service only orchestrates: download, place, project, record. This keeps one copy
+of the overwrite rules and lets batch reuse the same service.
+
+Owned media is stored at `Data/Media/{gameId}/{providerId}-{kind}{ext}` — scoped by provider, not just
+kind, so ScreenScraper and DuckDuckGo box-fronts are separate files and cannot clobber each other, and
+one file backs one (provider, kind) asset. Before any download or file move, the service checks the
+existing detail rows and bails out (`SkippedProtected`) if a user-owned or foreign-provider asset
+already holds that path, so it can never overwrite a file this provider does not own; a stale
+other-extension file for the same asset is removed after a refresh. The selected box-front is projected
+into the fast `Games.CoverPath` grid column through the existing `TryApplyDownloadedCover` seam, which
+already fills only an empty or previously-downloaded cover and never a user cover. Per-media results
+are reported individually (`Imported` / `SkippedExisting` / `SkippedProtected` / `DownloadFailed`);
+there is no global "fully scraped" flag, and a download failure still records the provider match.
+
+## 2026-08-03 — The Desktop scraper is one shared view model; account connect is inline for now
+
+`GameScraperViewModel` is the surface-agnostic core both Desktop and (later) Gamepad render: it loads
+a non-mutating preview, exposes per-field and per-media rows (current vs. proposed, user-owned rows
+locked), maps every preview outcome to a state, and drives the apply service. The Desktop
+`ScraperWindow` is opened from a Grid/List context-menu entry ("Scrape with ScreenScraper…") routed
+through `GameViewModel.ScrapeCommand` → `MainViewModel.ScrapeGameCommand` →
+`IDialogService.ShowScraperAsync`, mirroring the existing cover-picker dialog flow; a successful apply
+refreshes the library so the projected cover appears.
+
+Account connect currently lives **inline in the scraper window's not-connected/disabled state**
+(username + password → `ScreenScraperAccountService`, which enables the provider and stores the login
+in the DPAPI credential store) rather than in a dedicated Settings card. This keeps connect where it
+is first needed and avoids threading a parallel account context through the large emulator-settings
+view model and its window for the first usable slice; a proper Settings connect card remains a
+follow-up. Developer/account credentials still never leave the environment variables and DPAPI store.
+
+## 2026-08-03 — Disc systems match by serial, which unlocks compressed containers (CHD/CSO/…)
+
+The conservative "hash-first only, serial routes wait for provider approval" gate is lifted: a live
+check confirmed `jeuInfos.php` returns the correct game from a disc serial in exactly the
+`SLUS-xxxxx`/`SCUS-xxxxx` form EmuShelf already extracts (Metal Gear Solid, Final Fantasy VII, Shadow
+of the Colossus all resolved). Because that serial is read from *inside* the container, a CHD/CSO/ZSO
+image — which cannot be whole-file hashed as canonical ROM bytes — now matches. The client accepts a
+serial-only lookup (hash+size OR serial OR game id), and `ScreenScraperPreviewService` prefers the
+stored serial for PlayStation-family disc systems (`playstation`, `playstation2`, `psp`), falling back
+to the whole-file hash for cartridge and raw-disc systems without a serial. Serial matching is scoped
+to systems whose extracted identifier is a disc product code; cartridge header codes are deliberately
+excluded so a rom hack is never matched to the original release by a shared code (the no-serial /
+no-hash case is what the planned title-search fallback covers). `ScreenScraperGamePreview.FingerprintStatus`
+became nullable because the serial route computes no hash. GameCube/Wii (disc id) and PS3 (title id)
+serial routes are not enabled until validated the same way.
+
+## 2026-08-03 — Fresh discs extract their serial on demand; no match falls back to title search
+
+Two follow-ups made serial matching actually usable. First, the scraper no longer requires a prior
+"Fetch metadata" pass: when a disc system has no stored serial, `ScreenScraperPreviewService` runs the
+same `IGameIdentifierExtractor` the metadata pipeline uses (a targeted boot-record read that works
+through CHD/CSO/…) and persists the result, so a freshly imported CHD scrapes in one step. The
+extractors are injected from `KnownMetadataProfiles`. Opening the scraper is treated as consent to that
+read, so the single-game flow fingerprints/extracts immediately instead of gating behind a second
+click.
+
+Second, when neither serial nor hash matches — rom hacks, unusual dumps, or anything ScreenScraper does
+not index — the scraper falls back to a manual title search. `jeuRecherche.php` (client
+`SearchGamesAsync`, preview `SearchAsync`) returns ranked candidates scoped to the game's system; the
+`NoMatch` state auto-runs a search seeded with the game title, the user refines the query and picks the
+right game, and `PreviewByProviderGameIdAsync` builds a normal preview from the chosen provider game id
+with match method `UserSelectedTitleSearch`. This is the only path that applies data from a non-exact
+match, and it is always user-confirmed. The scraper window also gained per-media image previews (loaded
+off the UI thread through the SSRF-checked downloader) and a larger layout.
+
+## 2026-08-03 — Batch scraping is hash/serial-only and fails safe on quota
+
+Phase 6 batch reuses the single-game preview and apply services rather than duplicating logic
+(`ScreenScraperBatchService`). Games are processed one at a time — the shared request coordinator
+already paces API calls to the account's real `maxthreads`, so a sequential loop cannot overshoot, and
+the code stays simple. The defining rule, from the request-economy review: **batch never title-searches.**
+A miss is recorded as `NoMatch` and left for manual single-game scraping; auto-searching every unmatched
+game (up to a few `jeuRecherche` calls each, plus the initial `jeuInfos` 404 that spends a failed-lookup)
+would let a rom-hack-heavy library exhaust the 431 failed-lookup quota. The batch also **stops early and
+fail-safe** the moment the provider reports daily-quota, failed-lookup, rate-limit, not-connected, or
+disabled — leaving completed work intact and later games untouched; the summary's stop reason and
+not-reached count make the run resumable, and fill-missing idempotence means a re-run naturally skips
+games already done. The apply mode (fill-missing vs refresh-owned) and per-field/per-media selection are
+chosen once for the whole run. Automatic after-import scraping remains off and separate.
+
+Also fixed in the same review: single-game auto-search was firing up to seven `jeuRecherche` requests
+(one per dropped word). It now walks a bounded ladder of at most four distinct queries (full → ~⅔ → ~⅓
+→ one word), still reaching a single word but roughly halving the request count.
+
+## 2026-08-03 — ScreenScraper gains a proper Settings connect card
+
+The follow-up promised when connect was first put inline is done: the emulator-settings window now has
+a ScreenScraper section (a new `SettingsSection.ScreenScraper` + `ScreenScraperSettingsContext`) that
+mirrors the RetroAchievements card — username/password when disconnected, a Connect/Disconnect state
+when connected, and status/quota text. It drives the same `ScreenScraperAccountService` (DPAPI credential
+store, provider-enable on connect) that the inline scraper-window connect uses; both paths remain, since
+connecting where the user first needs it is convenient and the Settings card is the discoverable home.
+The context is threaded from `MainViewModel` (which now holds the account service) through the existing
+`ShowEmulatorSettingsAsync`, keeping the settings view model unaware of the client or credential store.
+
+## 2026-08-03 — Gamepad scraping hands off to Desktop, matching Set cover and Settings
+
+The controller shell reaches scraping through the focused-game Actions overlay ("Scrape with
+ScreenScraper"), which opens a `ScraperDesktopHandoff` overlay whose only action is "Continue to
+Desktop mode". This deliberately mirrors the existing `CoverDesktopHandoff` and `SettingsDesktopHandoff`
+pattern: the scraper is text- and checkbox-heavy (connect fields, title search, per-field/media
+toggles) and is not controller-safe, so — like every other input-heavy feature in this codebase — it
+hands off rather than pretending to be controller-native. The overlay renders through the shared
+`GamepadOverlayOptions`/title machinery (no bespoke focus code), and B returns to Actions. A
+controller-native scraper surface is not attempted; consistent with the whole Gamepad shell, any such
+work would be gated on real Deck/controller acceptance, which is out of scope for headless tests.
+
+## 2026-08-03 — Gamepad scraping is controller-native, reversing the Desktop handoff
+
+The earlier `ScraperDesktopHandoff` decision is reversed: the focused-game Actions entry "Scrape with
+ScreenScraper" now opens a controller-native overlay (`GamepadOverlayKind.Scraper`) that stays inside
+Gamepad mode, matching the Achievements overlay rather than the Set-cover / Settings handoffs. The
+handoff was the wrong call — the codebase already had both building blocks the scraper needs
+(D-pad-navigable focus from Achievements, controller-safe text entry via the Steam on-screen keyboard
+from Search/Rename), so "text- and checkbox-heavy, therefore hand off" did not hold. The
+`ScraperDesktopHandoff` overlay kind, its description panel, and `ScrapeFromGamepadCommand` are removed;
+Set cover still hands off because it needs the OS file picker, which is genuinely not controller-safe.
+
+The overlay does not re-implement any scrape logic. It reuses the shared `GameScraperViewModel`
+(states, `Fields`/`OtherMedia`/`BoxArtRow` rows, `BoxArtPreview`, and every command) and adds only a
+thin presentation wrapper, `GamepadScraperViewModel`, that layers a linear D-pad focus model on top:
+Up/Down move a ring across a per-state list of targets, A activates the focused one (toggle a
+field/media checkbox, run Connect/Search/Compute/Apply, or pick a title-search candidate), and B backs
+out. `MainViewModel` builds the scraper view model from the injected preview/apply/account/settings
+(the same services the desktop `ShowScraperAsync` uses) and routes controller input through a dedicated
+`DispatchScraperOverlayAction`, so native-pad and Steam-Input keyboard paths behave identically. The
+two scraper row view models gained an `IsFocused` flag (gamepad presentation only) so the focus ring
+binds directly to the reused rows.
+
+Terminal states (Applied / Failure / Unsupported) back out to the library on B; while still working the
+overlay backs out to the Actions menu. A successful apply refreshes the library on close, mirroring the
+desktop window's post-apply reload. As with the rest of the Gamepad shell, final controller *feel*
+(focus hand-off to the Steam keyboard, gamescope) needs real Deck/controller acceptance and is out of
+scope for the headless view-model tests that cover the flow.
+
 ## 2026-08-01 — Gamepad Settings projects the existing settings model
 
 The controller surface is a navigation adapter over `EmulatorSettingsViewModel`, not a second

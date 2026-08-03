@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        x:Class="EmuShelf.App.Views.BatchScraperWindow"
+        x:DataType="vm:GameBatchScraperViewModel"
+        Title="Batch scrape with ScreenScraper"
+        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Width="560" Height="560" MinWidth="460" MinHeight="440"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="24">
+        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+            <TextBlock Text="{Binding Heading}" FontSize="22" FontWeight="SemiBold"
+                       Foreground="{DynamicResource EmuTextPrimaryBrush}" TextWrapping="Wrap" />
+            <TextBlock Text="ScreenScraper" FontSize="13"
+                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Background="{DynamicResource EmuLibraryBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                CornerRadius="10" ClipToBounds="True">
+            <Grid>
+                <!-- Configure -->
+                <ScrollViewer IsVisible="{Binding IsConfiguring}" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="20" Spacing="14">
+                        <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <CheckBox Content="Replace values ScreenScraper already set (otherwise only fill blanks)"
+                                  IsChecked="{Binding RefreshOwnedValues}" />
+
+                        <TextBlock Text="Apply" FontWeight="SemiBold" FontSize="14"
+                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                        <CheckBox Content="Metadata (title, developer, genre, descriptions…)"
+                                  IsChecked="{Binding IncludeMetadata}" />
+                        <CheckBox Content="Box art" IsChecked="{Binding IncludeBoxArt}" />
+                        <CheckBox Content="Screenshot" IsChecked="{Binding IncludeScreenshot}" />
+                        <CheckBox Content="Logo" IsChecked="{Binding IncludeWheel}" />
+                        <CheckBox Content="Fan art" IsChecked="{Binding IncludeFanart}" />
+
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                   Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                   Text="Only games matched by their hash or disc serial are scraped. Unmatched games are skipped — scrape those individually to search by title." />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Running -->
+                <StackPanel IsVisible="{Binding IsRunning}" VerticalAlignment="Center"
+                            HorizontalAlignment="Center" Spacing="12" Width="360">
+                    <ProgressBar Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressCompleted}"
+                                 Height="6" />
+                    <TextBlock Text="{Binding StatusMessage}" TextAlignment="Center"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    <TextBlock Text="{Binding CurrentGameTitle}" TextAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                </StackPanel>
+
+                <!-- Done -->
+                <StackPanel IsVisible="{Binding IsDone}" VerticalAlignment="Center"
+                            HorizontalAlignment="Center" Spacing="10" MaxWidth="420">
+                    <TextBlock Text="Batch complete" FontSize="18" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" TextAlignment="Center"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="9" Margin="0,16,0,0">
+            <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}"
+                    IsVisible="{Binding !IsDone}" />
+            <Button Grid.Column="1" Content="Close" Command="{Binding CloseCommand}"
+                    IsVisible="{Binding IsDone}" />
+            <Button Grid.Column="2" Content="Start" Classes="accent" IsDefault="True"
+                    IsVisible="{Binding IsConfiguring}" Command="{Binding StartCommand}" />
+        </Grid>
+    </Grid>
+</Window>

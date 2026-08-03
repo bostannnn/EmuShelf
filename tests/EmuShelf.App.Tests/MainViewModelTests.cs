@@ -10,6 +10,7 @@ using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
@@ -76,7 +77,11 @@ public class MainViewModelTests : IDisposable
         IEmulatorConfigurationStore? emulatorConfigurations = null,
         IInterfaceModeService? interfaceModeService = null,
         IGameSaveSyncService? gameSaveSync = null,
-        IApplicationLifetimeService? applicationLifetime = null)
+        IApplicationLifetimeService? applicationLifetime = null,
+        IScreenScraperPreviewService? screenScraperPreview = null,
+        IGameScrapeApplicationService? scrapeApply = null,
+        IScreenScraperAccountService? screenScraperAccount = null,
+        ISettingsService? settingsService = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -102,7 +107,11 @@ public class MainViewModelTests : IDisposable
             metadataStore: metadataStore,
             interfaceModeService: interfaceModeService,
             gameSaveSync: gameSaveSync,
-            applicationLifetime: applicationLifetime);
+            applicationLifetime: applicationLifetime,
+            screenScraperAccount: screenScraperAccount,
+            screenScraperPreview: screenScraperPreview,
+            scrapeApply: scrapeApply,
+            settingsService: settingsService);
     }
 
     private string MakeRomsFolder()
@@ -999,6 +1008,85 @@ public class MainViewModelTests : IDisposable
         var focusedBeforeUp = vm.FocusedGame;
         vm.MoveGamepadFocusUpCommand.Execute(null);
         Assert.Same(focusedBeforeUp, vm.FocusedGame);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadScrape_IsOfferedInActions_AndOpensControllerNativeOverlay()
+    {
+        var (vm, _) = await SetUpGamepadScraperAsync("GamepadScrape", ScraperFixtures.ReadyPreview());
+
+        vm.OpenFocusedGameActionsCommand.Execute(null);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Scrape with ScreenScraper");
+
+        await vm.ScrapeFocusedGameCommand.ExecuteAsync(null);
+
+        // Controller-native: the scraper opens inside Gamepad mode and never hands off to Desktop.
+        Assert.Equal(GamepadOverlayKind.Scraper, vm.GamepadOverlay);
+        Assert.True(vm.IsGamepadScraperOpen);
+        Assert.NotNull(vm.GamepadScraperDetails);
+        Assert.Equal(GameScraperState.Ready, vm.GamepadScraperDetails!.Scraper.State);
+        Assert.Null(_dialogs.LastScraperGameId);
+
+        // B, while still reviewing, steps back to the game's Actions menu (the overlay is disposed).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.Actions, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadScraperDetails);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadScraper_ControllerTogglesAndApplies_ThenReturnsToLibrary()
+    {
+        var (vm, apply) = await SetUpGamepadScraperAsync("GamepadScrapeApply", ScraperFixtures.ReadyPreview());
+        vm.OpenFocusedGameActionsCommand.Execute(null);
+        await vm.ScrapeFocusedGameCommand.ExecuteAsync(null);
+        var details = vm.GamepadScraperDetails!;
+        Assert.Equal(GamepadScraperTargetKind.Field, details.FocusedKind);
+
+        // A toggles the focused field through the shared gamepad dispatcher.
+        Assert.True(details.Scraper.Fields[0].IsSelected);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.False(details.Scraper.Fields[0].IsSelected);
+
+        // Down walks Field → BoxArt → Media → Refresh → Apply; A applies.
+        for (var i = 0; i < 4; i++)
+            Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal(GamepadScraperTargetKind.Apply, details.FocusedKind);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+
+        Assert.NotNull(apply.Request);
+        Assert.Equal(GameScraperState.Applied, details.Scraper.State);
+
+        // From the terminal Applied state, B returns all the way to the library and refreshes it.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadScraperDetails);
+        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        Assert.Single(vm.Games);
+    }
+
+    private async Task<(MainViewModel Vm, StubGameScrapeApplicationService Apply)> SetUpGamepadScraperAsync(
+        string name,
+        params ScreenScraperPreviewResult[] previews)
+    {
+        var path = Path.Combine(_baseDirectory, $"{name}.cue");
+        File.WriteAllText(path, $"FILE \"{name}.bin\" BINARY");
+        _library.AddGames([new Game
+        {
+            SystemId = Ps1.Id,
+            Path = path,
+            Title = "Gamepad scrape",
+            DateAdded = DateTimeOffset.UtcNow,
+        }]);
+        var apply = new StubGameScrapeApplicationService();
+        var vm = CreateViewModel(
+            screenScraperPreview: new StubScreenScraperPreviewService(previews),
+            scrapeApply: apply,
+            screenScraperAccount: new StubScreenScraperAccountService(),
+            settingsService: new StubSettingsService());
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        return (vm, apply);
     }
 
     [AvaloniaFact]

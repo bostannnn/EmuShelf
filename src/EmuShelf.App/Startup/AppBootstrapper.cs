@@ -6,6 +6,7 @@ using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Systems;
@@ -16,6 +17,7 @@ using EmuShelf.Infrastructure.Launching;
 using EmuShelf.Infrastructure.Library;
 using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Metadata;
+using EmuShelf.Infrastructure.Metadata.ScreenScraper;
 using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
@@ -41,6 +43,14 @@ public sealed class AppBootstrapper
     public IReadOnlyList<GameSystem> Systems { get; }
     public IGameLibrary Library { get; }
     public IGameMetadataStore MetadataStore { get; }
+    public IGameDetailsStore GameDetailsStore { get; }
+    public IGameScrapeProviderRegistry ScrapeProviders { get; }
+    public IScreenScraperCredentialStore ScreenScraperCredentialStore { get; }
+    public IGameFileFingerprintStore GameFileFingerprintStore { get; }
+    public IScreenScraperFingerprintService ScreenScraperFingerprints { get; }
+    public ScreenScraperRequestCoordinator ScreenScraperRequests { get; }
+    public IScreenScraperClient? ScreenScraperClient { get; }
+    public IScreenScraperPreviewService? ScreenScraperPreview { get; }
     public IRetroAchievementsStore RetroAchievementsStore { get; }
     public IRetroAchievementsReadStore RetroAchievementsReadStore { get; }
     public IRetroAchievementsProgressStore RetroAchievementsProgressStore { get; }
@@ -100,6 +110,30 @@ public sealed class AppBootstrapper
         Emulators = KnownEmulators.All;
         Library = new GameLibrary(database, PathResolver);
         MetadataStore = new SqliteGameMetadataStore(database, PathResolver);
+        GameDetailsStore = new SqliteGameDetailsStore(database, PathResolver);
+        ScrapeProviders = new GameScrapeProviderRegistry(KnownScrapeProviders.All);
+        ScreenScraperCredentialStore = ScreenScraperCredentialStoreFactory.Create(Paths, Logger);
+        GameFileFingerprintStore = new SqliteGameFileFingerprintStore(database, PathResolver);
+        ScreenScraperFingerprints = new ScreenScraperFingerprintService(GameFileFingerprintStore);
+        ScreenScraperRequests = new ScreenScraperRequestCoordinator();
+        if (ScreenScraperDeveloperCredentialSource.TryLoadFromEnvironment(out var developerCredentials))
+        {
+            ScreenScraperClient = new ScreenScraperClient(
+                new HttpClient { Timeout = TimeSpan.FromSeconds(45) },
+                developerCredentials!,
+                ScreenScraperRequests);
+            ScreenScraperPreview = new ScreenScraperPreviewService(
+                MetadataStore,
+                GameDetailsStore,
+                ScreenScraperCredentialStore,
+                ScreenScraperFingerprints,
+                ScreenScraperClient,
+                KnownScreenScraperProfiles.All,
+                KnownMetadataProfiles.All.ToDictionary(
+                    profile => profile.SystemId,
+                    profile => profile.IdentifierExtractor,
+                    StringComparer.OrdinalIgnoreCase));
+        }
         var retroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
         RetroAchievementsStore = retroAchievementsStore;
         RetroAchievementsReadStore = retroAchievementsStore;

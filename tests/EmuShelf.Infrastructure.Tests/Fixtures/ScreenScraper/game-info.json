@@ -1,0 +1,119 @@
+{
+  "header": {
+    "success": "true"
+  },
+  "response": {
+    "ssuser": {
+      "numid": "42",
+      "id": "fixture-user",
+      "niveau": "1",
+      "maxthreads": "3",
+      "requeststoday": "25",
+      "maxrequestsperday": "1000",
+      "requestskotoday": "2",
+      "maxrequestskoperday": "50",
+      "maxdownloadspeed": "2048"
+    },
+    "jeu": {
+      "id": "12345",
+      "rom": {
+        "id": "67890"
+      },
+      "noms": [
+        { "region": "wor", "text": "World Title" },
+        { "region": "us", "text": "US Title" }
+      ],
+      "synopsis": [
+        { "langue": "en", "text": "English description" },
+        { "langue": "fr", "text": "Description française" }
+      ],
+      "note": { "text": "18.5" },
+      "dates": [
+        { "region": "wor", "text": "2001-01-01" },
+        { "region": "us", "text": "2001-02-03" }
+      ],
+      "developpeur": { "text": "Fixture Developer" },
+      "editeur": { "text": "Fixture Publisher" },
+      "joueurs": { "text": "1-2" },
+      "genres": [
+        {
+          "noms": [
+            { "langue": "en", "text": "Action" },
+            { "langue": "fr", "text": "Jeu d'action" }
+          ]
+        }
+      ],
+      "medias": [
+        {
+          "id": "box-world",
+          "type": "box-2D",
+          "url": "https://media.example.test/box-world.png",
+          "format": "png",
+          "region": "wor",
+          "width": "600",
+          "height": "900",
+          "size": "100000"
+        },
+        {
+          "id": "box-us",
+          "type": "box-2D",
+          "url": "https://media.example.test/box-us.jpg",
+          "format": "jpg",
+          "region": "us",
+          "width": "600",
+          "height": "900",
+          "size": "110000"
+        },
+        {
+          "id": "shot",
+          "type": "ss",
+          "url": "https://media.example.test/shot.png",
+          "format": "png",
+          "region": "us",
+          "langue": "en"
+        },
+        {
+          "id": "shot-hd",
+          "type": "ss-hd",
+          "url": "https://media.example.test/shot-hd.png",
+          "format": "png",
+          "region": "us",
+          "langue": "en",
+          "crc": "A1B2C3D4",
+          "md5": "0123456789abcdef",
+          "sha1": "0123456789abcdef0123456789abcdef01234567"
+        },
+        {
+          "id": "wheel",
+          "type": "wheel",
+          "url": "https://media.example.test/wheel.png",
+          "format": "png",
+          "region": "us",
+          "langue": "fr"
+        },
+        {
+          "id": "wheel-hd",
+          "type": "wheel-hd",
+          "url": "https://media.example.test/wheel-hd.png",
+          "format": "png",
+          "region": "us",
+          "langue": "fr"
+        },
+        {
+          "id": "fanart",
+          "type": "fanart",
+          "url": "https://media.example.test/fanart.jpg",
+          "format": "jpg",
+          "region": "wor"
+        },
+        {
+          "id": "insecure",
+          "type": "fanart",
+          "url": "http://media.example.test/insecure.jpg",
+          "format": "jpg",
+          "region": "us"
+        }
+      ]
+    }
+  }
+}

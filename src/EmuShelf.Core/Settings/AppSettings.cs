@@ -14,6 +14,9 @@ public sealed record AppSettings
     /// <summary>Prevents the contextual consent prompt from appearing on every import.</summary>
     public bool MetadataConsentPromptShown { get; init; }
 
+    /// <summary>Provider toggles and non-secret scraping preferences.</summary>
+    public ScrapingSettings Scraping { get; init; } = new();
+
     /// <summary>Connected RetroAchievements username, or null when not connected. Not a secret.</summary>
     public string? RetroAchievementsUsername { get; init; }
 

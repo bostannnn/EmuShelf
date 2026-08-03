@@ -15,6 +15,7 @@ namespace EmuShelf.App.Views;
 public partial class MainWindow : Window
 {
     private MainViewModel? _gamepadViewModel;
+    private GamepadScraperViewModel? _gamepadScraper;
     private Point? _lastGamepadPointerPosition;
     private int _requestedSettingsTextEntryRevision = -1;
 
@@ -35,9 +36,34 @@ public partial class MainWindow : Window
         if (_gamepadViewModel is not null)
             _gamepadViewModel.PropertyChanged -= OnGamepadViewModelPropertyChanged;
 
+        SyncGamepadScraperSubscription(null);
+
         _gamepadViewModel = DataContext as MainViewModel;
         if (_gamepadViewModel is not null)
             _gamepadViewModel.PropertyChanged += OnGamepadViewModelPropertyChanged;
+    }
+
+    // The controller scraper overlay tracks its own focus index on the wrapped view model, so the
+    // window observes that view model directly to move keyboard focus onto the focused text box.
+    private void SyncGamepadScraperSubscription(GamepadScraperViewModel? scraper)
+    {
+        if (ReferenceEquals(_gamepadScraper, scraper))
+            return;
+
+        if (_gamepadScraper is not null)
+            _gamepadScraper.PropertyChanged -= OnGamepadScraperPropertyChanged;
+        _gamepadScraper = scraper;
+        if (_gamepadScraper is not null)
+            _gamepadScraper.PropertyChanged += OnGamepadScraperPropertyChanged;
+    }
+
+    private void OnGamepadScraperPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GamepadScraperViewModel.FocusIndex) or
+            nameof(GamepadScraperViewModel.FocusedKind))
+        {
+            Dispatcher.UIThread.Post(RevealGamepadScraperFocus, DispatcherPriority.Input);
+        }
     }
 
     // View-focused coordination only: the view model selects a logical platform; this window
@@ -58,6 +84,13 @@ public partial class MainWindow : Window
         if (e.PropertyName is nameof(MainViewModel.FocusedGame))
         {
             RevealFocusedGame();
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.GamepadScraperDetails))
+        {
+            SyncGamepadScraperSubscription(_gamepadViewModel?.GamepadScraperDetails);
+            Dispatcher.UIThread.Post(RevealGamepadScraperFocus, DispatcherPriority.Input);
             return;
         }
 
@@ -318,6 +351,82 @@ public partial class MainWindow : Window
                 focusedOption.BringIntoView();
                 FocusManager?.Focus(focusedOption, NavigationMethod.Directional);
             }
+        }
+    }
+
+    // Visual focus only for the scraper overlay: keyboard focus follows the wrapped view model's
+    // focus ring onto the matching text box (so the Steam on-screen keyboard types into it) or the
+    // focused command button. D-pad routing and modal state stay in the view models.
+    private void RevealGamepadScraperFocus()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadScraperOpen: true } viewModel ||
+            viewModel.GamepadScraperDetails is not { } scraper)
+        {
+            return;
+        }
+
+        // Text targets take real keyboard focus so the Steam on-screen keyboard types into them.
+        TextBox? textBox = scraper.FocusedKind switch
+        {
+            GamepadScraperTargetKind.Username => GamepadScraperUsernameBox,
+            GamepadScraperTargetKind.Password => GamepadScraperPasswordBox,
+            GamepadScraperTargetKind.SearchField => GamepadScraperSearchBox,
+            _ => null,
+        };
+        if (textBox is not null)
+        {
+            textBox.BringIntoView();
+            textBox.Focus();
+            return;
+        }
+
+        // Everything else (toggle rows, candidates, command buttons) carries the .focused class:
+        // scroll it into view so the ring never walks off-screen, and give buttons real focus.
+        var focused = FindFocusedScraperControl();
+        if (focused is null)
+            return;
+
+        focused.BringIntoView();
+        if (focused is Button && viewModel.IsGamepadControllerInputActive)
+            FocusManager?.Focus(focused, NavigationMethod.Directional);
+    }
+
+    private Control? FindFocusedScraperControl() =>
+        GamepadOverlayHost.GetVisualDescendants()
+            .OfType<Control>()
+            .FirstOrDefault(control => control.IsEffectivelyVisible &&
+                (control is Button || control.Classes.Contains("gamepad-scraper-row")) &&
+                control.Classes.Contains("focused"));
+
+    // Steam Input delivers controller buttons as keys; while a scraper text box holds focus they
+    // reach it here (the window-level tunnel ignores TextBox sources). Route D-pad/A/B to the same
+    // scraper navigation the native pad drives, and let plain typing fall through to the box.
+    private void OnGamepadScraperTextKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsGamepadMode: true } viewModel ||
+            viewModel.GamepadScraperDetails is not { } scraper)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Escape:
+                viewModel.BackFromGamepadOverlayCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                scraper.MoveFocus(-1);
+                e.Handled = true;
+                break;
+            case Key.Down:
+                scraper.MoveFocus(1);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                scraper.Activate();
+                e.Handled = true;
+                break;
         }
     }
 

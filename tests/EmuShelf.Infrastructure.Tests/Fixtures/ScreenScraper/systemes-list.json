@@ -1,0 +1,37 @@
+{
+  "header": {
+    "APIversion": "2",
+    "dateTime": "2026-08-03T00:00:00",
+    "commandRequested": "systemesListe.php",
+    "success": "true",
+    "error": ""
+  },
+  "response": {
+    "systemes": [
+      {
+        "id": 1,
+        "noms": {
+          "nom_eu": "Megadrive",
+          "nom_us": "Genesis",
+          "nom_recalbox": "megadrive"
+        },
+        "extensions": "68k,bin,gen,md,smd,zip"
+      },
+      {
+        "id": 58,
+        "noms": {
+          "nom_eu": "Playstation 2",
+          "nom_us": "Playstation 2",
+          "nom_recalbox": "ps2"
+        },
+        "extensions": "bin,cso,chd,cue,iso,m3u"
+      },
+      {
+        "id": "13",
+        "noms": {
+          "nom_eu": "GameCube"
+        }
+      }
+    ]
+  }
+}
