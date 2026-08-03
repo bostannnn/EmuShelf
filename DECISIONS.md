@@ -3350,3 +3350,156 @@ Real Steam Deck logs (with the diagnostics above) settled two things the RetroAr
   focused row's realized width, viewport/cover widths, selector visibility) at Information level — the
   earlier fault-only logging stayed silent while the bug happened, so this is promoted to always-on per
   keypress (user-paced, not per-frame).
+
+- **Reverted: `GamepadColumnCount` is derived by width arithmetic alone, never read back from the
+  visual tree.** The two prior decisions above (`SetRenderedGamepadColumnCount`, and the pre-move
+  `SyncGamepadColumnCountFromLayout` refresh) tried to make the *rendered* layout the source of truth
+  for the column count, on the theory that the arithmetic could go stale. In practice that read-back was
+  the bug: it groups realized tiles by `Math.Round(Bounds.Y)` and takes the busiest row, but during fast
+  LB/RB the `ItemsRepeater` is mid-recycle (`Games.ReplaceAll`), so the tiles have stale/equal `Bounds.Y`
+  — they collapse into one Y bucket (count reads far too large → Up/Down clamp and the selector's
+  `index%columns` geometry lands off the right edge, "selector vanishes") or only a partial row is
+  realized (count reads too small/1 → `index%columns==0` always, "can't move left"). Reading it
+  *immediately before each move* sampled the tree at its least stable instant, which is why that change
+  made things worse. The arithmetic (`ColumnsThatFit`, using the same gutters + spacing as
+  `UniformGridLayout`) is provably exact — `TheFocusStrideMatchesTheRenderedColumnCount` locks it to the
+  layout formula — and, being a pure function of viewport + cover width, cannot race a recycle. So
+  `SetRenderedGamepadColumnCount`, `SyncGamepadColumnCountFromLayout`, and `PrepareGamepadNavigation` are
+  deleted; reveal and selector placement stay deterministic geometry from `index` + the arithmetic
+  column count. Covers still get their settle-time backstop (`RequestVisibleGamepadCovers`); that is a
+  separate concern from navigation correctness.
+
+- **The gamepad focus ring is revealed synchronously on `FocusedGame` change, not via a posted job.**
+  With the column-count race gone, one symptom survived: on a real controller the ring would freeze on a
+  tile while `FocusedGame` kept moving, so correct moves read as "Left does nothing" or "Up jumped a
+  column" (the user was steering by a stale ring, and the next quiet frame snapped it to the true focus).
+  Root cause: `OnGamepadViewModelPropertyChanged` posted `RevealFocusedGame` at
+  `DispatcherPriority.Input` — the *same* priority the SDL poll timer (16 ms) and Steam-Input keys arrive
+  on. Under d-pad auto-repeat / fast LB-RB that priority floods, so the reveal was starved and the ring
+  lagged (a headless test that pumps only `Render`, never `Input`, reproduces it: focus walks 0→1→2→3
+  while the ring stays pinned at x=44). The reveal's scroll offset and the ring's fallback placement are
+  both pure `index`/`columns` arithmetic, and `FocusedGame` only changes from an input handler or the
+  timer tick (never mid-layout), so the reveal is safe to run inline — placing the ring the instant focus
+  moves, no matter how fast the repeat. `GamepadGridSelectorTests` renders the real grid and locks in
+  both this (ring tracks focus while `Input` is starved) and that arithmetic columns == rendered columns
+  across every width 820–1960.
+
+- **The real "fast LB/RB breaks the grid" cause was a full library rebuild on every platform switch;
+  fixed with a per-scope view-model cache plus a switch debounce.** On-device diagnostics (`GPDIAG`
+  trace, gated by `EMUSHELF_GAMEPAD_DIAG`, on by default while chasing this) showed the grid logic was
+  correct — every `moveUp idx=0 … moved=False` was right — but a burst of `NextPlatform` was reloading
+  the library on each press: `games=` lurched 46→18→62→866→…→0 between consecutive events. Each RB/LB
+  ran `ReloadGamesAsync`, which synchronously cleared `Games` + nulled `FocusedGame` (`BeginScopeChange`)
+  and then re-queried the DB and rebuilt every `GameViewModel`. Fast cycling therefore blanked the grid,
+  dropped the selector, and reset focus to the top-left tile between presses — which is what read as
+  "Up/Left do nothing" and "covers go blank". Fix: (1) `_scopeCache` keyed by scope
+  (`system:{id}`/`AllGames`/`RecentlyAdded`) holds each scope's built view models; navigating to a
+  visited scope swaps them in synchronously (no DB, no rebuild, covers already warm). (2) The switch is
+  debounced (`PlatformReloadDebounceMs` 180): an *uncached* target clears the grid immediately (so one
+  platform's tiles never sit under another's title) and coalesces the heavy build to the platform the
+  user settles on; a *cached* target swaps in instantly with no debounce. (3) `ReloadGamesAsync(useCache)`
+  defaults to `false` (drop the whole cache and rebuild from the DB) so every mutation/refresh path
+  (add/remove/rename/rescan, availability + achievements passes — all of which persist to the DB first)
+  stays correct without per-call-site changes; only the navigation hot path opts into `useCache: true`.
+  The cache owns the view models: scopes not on screen are disposed on invalidation, and the on-screen
+  scope's view models live until their rebuilt replacement is ready. A cache-hit swap bumps
+  `_loadGeneration` so an in-flight slow reload cannot land afterward and overwrite the switched-to scope.
+
+- **The gamepad grid is a row-virtualized `ListBox`, not a virtualized cell grid.** After the cache/
+  debounce fix, two bugs remained, both traced with the `navProbe` diagnostic (which logged, per move,
+  the arithmetic column vs. the *rendered* column of the focused tile). First: `arithCol=0` but
+  `renderedCol=1` — every tile shifted one column right. Cause: `RevealFocusedGame` called
+  `GetOrCreateElement(index)` to force-realize a far-off tile; on the real compositor that makes
+  Avalonia's `UniformGridLayout` reserve cell 0 and place item 0 in cell 1 — a permanent one-column
+  "top-left hole" (the same defect the achievements grid already documented). It never reproduced in
+  headless. Second, after switching the reveal to scroll-by-offset: `focEl=(NaN,NaN)` — the focused tile
+  went off-screen because manually setting `ScrollViewer.Offset` and laying out only the repeater left
+  it realizing against the stale viewport. Both are symptoms of the same thing: **Avalonia's
+  `ItemsRepeater` + `UniformGridLayout` is unreliable for programmatic scroll-to-item.** A brief
+  non-virtualized `ItemsControl`+`UniformGrid` fixed correctness (rendered columns == `GamepadColumnCount`
+  by construction) but was too slow at 800+ games. The mature-frontend answer (Steam Big Picture,
+  EmulationStation) is to **virtualize rows, not cells**: the grid is a `ListBox` (`GamepadRowList`)
+  bound to `GamepadRows` — a projection of the flat `Games` list into rows of `GamepadColumnCount` —
+  with a vertical `VirtualizingStackPanel`. Each row template is a horizontal strip of the existing
+  tiles. Only the ~visible rows realize (a 300-game library materializes ~10 tiles top *and* bottom —
+  flat cost, proven by `GamepadGrid_VirtualizesRows_CostIsFlatFromTopToBottom`), vertical virtualization
+  has none of `UniformGridLayout`'s phantom-cell defects, each row holds exactly `GamepadColumnCount`
+  tiles so rendered columns can never disagree with the navigation stride, and scroll is native
+  `ListBox.ScrollIntoView(rowIndex)` — no manual offset math. Navigation still runs on the flat `Games`
+  list + `index % columns`; only rendering is virtualized. `GamepadRows` auto-rebuilds from
+  `Games.CollectionChanged` and on `GamepadColumnCount` change, so it can never go stale. The selection
+  ring lives inside the tile template (shown via opacity on the `.focused` state), so it is physically
+  part of the focused cover and cannot drift — the earlier floating-overlay ring (positioned by reading
+  realized bounds) is gone, and with it the "ring on the wrong tile" class. Covers load lazily on
+  attach (a tile attaches only when its row scrolls in). A post-`ScrollIntoView` nudge keeps a glow
+  radius of clearance from the viewport edge so the focus glow is never shaved.
+
+## 2026-08-03 — Built-in palettes reach NeoStation parity; the base variant follows the catalog
+
+`ThemePreference` and `ThemeCatalog` gained nine more built-in palettes — Valentine, Dracula, Coffee,
+Tokyo Night, Retro, Abyss, Aqua, Palenight, Horizon — so the set matches the reference gallery. Each
+is another flat `Styles/Palettes/*.axaml` dictionary redefining the full `EmuXxxBrush` token set plus
+`EmuFocusGlow`, mapped in `AppThemeService.PaletteUri`; nothing else in the swap machinery changed, so
+the addition is pure data. The catalog is ordered to match the reference gallery (System, Dark, Light,
+OLED, Valentine, Dracula, …) — the two settings surfaces render in catalog order, so this is the
+order users see in both.
+
+Unlike the reference (whose themes differ mostly by accent, so its dark palettes read alike), each
+palette here tints its whole surface stack — window, sidebar, toolbar, cards — with real hue and
+saturation, and the accents are spread around the wheel so no two dark themes collapse together: the
+grid is the dominant visual mass, and cover art is opaque, so pushing chroma into the backgrounds is
+what actually gives a theme identity while leaving art untouched. Concretely, the purples are split by
+accent (Dracula = violet + its signature hot pink, Palenight = grey-purple + lilac) and the blues by
+hue and lightness (OLED = pure black + electric blue, Nord = desaturated blue-grey + frost, Tokyo
+Night = indigo + periwinkle, Aqua = teal + cyan, Abyss = inky blue-black + lime). Verified by rendering
+every theme to PNG headlessly (`EMUSHELF_SNAPSHOT_DIR`).
+
+A later pass added three EmuShelf-original creative themes beyond the reference set — Matrix (phosphor
+green-on-black terminal, green *text* not just a green accent), Synthwave (saturated retro-outrun
+purple with hot magenta + cyan), Sunset (warm rust-ember with a tangerine accent) — appended after
+Horizon in the catalog so the reference-matched block stays intact and the extras read as extras. In
+the same pass Cyberpunk was reworked from deep-violet + magenta to the reference gallery's bolder read:
+a Night-City violet-black lit by an electric-yellow accent with a magenta/cyan/green neon triad. That
+retunes a pre-existing palette's accent, so the two `#FF3FA4` literals in `ThemeSupportTests`
+(the swap test and the construct-from-saved test) moved to `#F5EC1D` — those are the only tests that
+pin a specific palette's accent; the parametric `EveryCatalogTheme…` guard reads from the catalog and
+needs no per-theme edit.
+
+The one behavioral change: `AppThemeService.BaseVariant` no longer assumes every non-Light/Dark
+palette is dark. It now reads `ThemeCatalog.Get(id).IsDark`, so a light palette (Valentine, Retro)
+bases on `ThemeVariant.Light` and keeps stock Fluent chrome legible, while dark palettes stay on
+`ThemeVariant.Dark`. `IsDark` is thus the single fact deciding both the gallery swatch styling and the
+Fluent base. A headless guard (`AppThemeService_EveryCatalogThemeLoadsAndMatchesItsAccentSwatch`)
+applies every catalog theme and asserts its accent token equals the advertised swatch, so a mistyped
+palette file name or a swatch/palette drift fails a test rather than only surfacing when a user picks
+that theme.
+
+## 2026-08-03 — All 15 built-in themes adopt the authoritative NeoStation `themes.json` verbatim
+
+The reference owner supplied the real NeoStation theme table (`themes.json`: nine tokens — bg, surface,
+surfaceAlt, border, text, textMuted, accent, accentAlt, badge — plus a `mode` per theme). It replaces
+the hand-guessed colours from the passes above, which were wrong in kind, not just in shade. Notably
+**Cyberpunk is `mode: light`** — a saturated yellow field (`#F7E733`) with a coral-red accent and dark
+text everywhere, *not* a violet dark theme; **Nord is `mode: light`** (arctic snow-storm, not the dark
+frost variant); and Aqua is a royal blue (`#0C2C8F`), not teal. Each theme's every colour now comes
+straight from the spec.
+
+Because the spec's 9 tokens don't map 1:1 to EmuShelf's 34 `EmuXxxBrush` tokens, the palettes are
+**generated** by a script (kept in the scratchpad, `gen_themes.py`) that anchors on bg + surface,
+interpolates the neutral surface ramp between them (dark: chrome near bg, cards at surface; light:
+airy top bar, slightly-darker chrome), maps text/textMuted/border/accent directly, tints nav-selection
+with the accent, and holds the semantic status colours (success/warning/danger/info/achievement)
+constant per mode for legibility — the accent + surfaces carry identity, not the status set. It writes
+the twelve override files plus the base `EmuShelfTheme.axaml` (Light + Dark theme-dictionaries) from
+the same mapping, so base and overrides stay consistent. The fixed gamepad-button brushes are
+preserved.
+
+Per an explicit decision from the reference owner, the base **Dark/Light/System/OLED were rebased to
+the spec's indigo accent** (`#5B58D9` dark / `#7C6CE0` light), replacing the earlier deliberate rose
+accent. This supersedes the "rose accent" entry above for the *hue* only — the intent of that entry
+(keep the brand accent distinct from danger-red) still holds, since indigo is even further from red.
+The `App.axaml` Fluent `ColorPaletteResources` accents moved in lockstep. Two `ThemeSupportTests`
+literals that pin base/palette accents were updated (`#5B58D9` for Oled/Dark; the swap and construct
+tests now exercise Dracula rather than the now-light Cyberpunk, since their `ResolveAccentColor` helper
+queries the Dark variant). The three EmuShelf-original extras (Matrix, Synthwave, Sunset) are untouched
+and remain appended after the 15 spec themes.

@@ -77,17 +77,18 @@ public sealed class AppThemeService : IAppThemeService
 
     private static ThemeVariant BaseVariant(ThemePreference preference) => preference switch
     {
-        ThemePreference.Light => ThemeVariant.Light,
         ThemePreference.System => ThemeVariant.Default,
-        // Dark and every additional palette read as dark, so stock Fluent chrome uses its dark set.
-        _ => ThemeVariant.Dark,
+        // The palette's own dark/light reading (from the catalog) decides which base Fluent chrome set
+        // stays legible: light palettes like Valentine/Retro base on Light, every other on Dark.
+        _ => ThemeCatalog.Get(preference).IsDark ? ThemeVariant.Dark : ThemeVariant.Light,
     };
 
     private static Uri? PaletteUri(ThemePreference preference) => preference switch
     {
-        ThemePreference.Oled => new Uri("avares://EmuShelf/Styles/Palettes/Oled.axaml"),
-        ThemePreference.Cyberpunk => new Uri("avares://EmuShelf/Styles/Palettes/Cyberpunk.axaml"),
-        ThemePreference.Nord => new Uri("avares://EmuShelf/Styles/Palettes/Nord.axaml"),
-        _ => null,
+        // System, Light and Dark are served by the base EmuShelfTheme theme-dictionaries; no override.
+        ThemePreference.System or ThemePreference.Light or ThemePreference.Dark => null,
+        // Every other theme is a flat override whose file is named for the enum member, so a new theme
+        // needs only its enum value and a matching Styles/Palettes/<Name>.axaml — no edit here.
+        _ => new Uri($"avares://EmuShelf/Styles/Palettes/{preference}.axaml"),
     };
 }
