@@ -1306,3 +1306,57 @@ suite are green on macOS; a real-romset launch on Windows is the remaining accep
       conflicts atomically.
 - [x] Deterministic view-model, persistence, launch-lifecycle, and save-provider tests; full build
       and test suite green.
+
+## M37 — Nintendo 3DS (Azahar)
+
+3DS is a standalone-emulator handheld cartridge system launched through Azahar (the maintained
+Citra successor), not RetroArch. The first pass recognizes and launches every Azahar container
+while extracting exact identity only from the uncompressed dumps.
+
+- [x] Register `3ds` as a stable, separately filterable system and `azahar` as a standalone
+      emulator (own executable, `"{GamePath}"` launch template), landing together so a system with
+      no emulator never breaks Settings. Bundle an original 3DS clamshell placeholder icon (OpenEmu
+      ships none) and a measured near-square 1.129 cover frame from GameTDB's fixed 768×680 canvas.
+- [x] Recognize and launch every format Azahar loads by a bounded magic/structure check: NCSD
+      cartridge (`.3ds`/`.cci`), NCCH title (`.cxi`/`.app`), CIA (`.cia`), homebrew (`.3dsx`/`.elf`/
+      `.axf`), and the seekable-Zstandard compressed variants (`.z3ds`/`.zcci`/`.zcxi`/`.zcia`/
+      `.z3dsx`). A renamed arbitrary file is never imported.
+- [x] Extract exact identity from uncompressed NCSD/NCCH dumps only — the plaintext NCCH product
+      code (primary, the GameTDB cover key) and title id — via targeted header reads, with no
+      decryption and no whole-file hashing (dumps are multi-gigabyte). Compressed, CIA, and homebrew
+      files carry no header identity and match covers by filename until their own reader lands.
+- [x] Resolve covers through an id-addressed GameTDB 3DS provider keyed by the product code, so
+      artwork resolves without a catalogue title match; the No-Intro 3DS DAT and Libretro title
+      provider are best-effort fallbacks. Reuse the existing opt-in consent, caching, downloader,
+      provenance, and user-ownership rules.
+- [x] Reader/launch/extractor/provider fixtures plus updated system-set assertions; full build and
+      test suite green on the dev SDK. RetroAchievements stays unmapped for 3DS (shown unsupported,
+      like PS3), matching the "no RA yet" scope.
+- [x] Save sync (parity with every other platform): `AzaharSaveLocationProvider` syncs each title's
+      SD-card save archive and each extdata archive by its machine-independent id, rebased under the
+      local console-unique `ID0/ID1`, so a save moves across machines; installed updates/DLC and
+      save states are excluded (the M29 boundary). Registered in `SaveProviderRegistry`, with a
+      cross-console round-trip test.
+- [x] Texture packs (parity with the HD-enhancement emulators): `load/textures/<title id>` inventory
+      keyed by a new `TexturePackMatchRule.Nintendo3dsTitleId` (with `GameIdentifierKind.TitleId`
+      indexing added to the matcher/library map) and `qt-config.ini [Utility] custom_textures`
+      loading state; registered in `TexturePackProviderRegistry`.
+- [ ] On real Windows with Azahar, verify import/metadata for a decrypted `.3ds`/`.cci` and a
+      `.cxi`, a `.z3ds`, a path containing spaces, missing-executable preflight, minimize/restore
+      after tracked zero and non-zero exits, and that neither the ROM nor Azahar data is modified.
+- [x] Verified read-only against a real Windows Azahar install (portable `user/`, opt-in
+      `EMUSHELF_TEST_AZAHAR_DIR` test): the save provider enumerated all 8 title/extdata save units
+      and resolved each to its real SD-card folder, the texture inventory found usable
+      `load/textures/<title id>` packs keyed by title id (11 pack folders), and `qt-config.ini
+      [Utility] custom_textures` read as a concrete state. Confirmed the portable `user/` layout, the
+      all-zero default console `ID0/ID1`, lowercase `title/<hi>/<lo>` vs uppercase `extdata` ids, and
+      uppercase 16-hex texture folder ids.
+- [ ] Remaining: a live rclone cloud save round-trip on real hardware, and a real emulator
+      launch/return of a game (both need a configured remote / manual play session).
+
+### Deferred follow-ups
+
+- Exact identity for the compressed `z*` and CIA containers (Zstandard-frame metadata / ticket-TMD
+  parsing), so those formats get precise covers rather than a filename match.
+- The SMDH short title from the NCCH ExeFS as an embedded display title.
+- RetroAchievements for 3DS once an exact, verified hash/console mapping exists.
