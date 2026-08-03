@@ -3522,3 +3522,20 @@ ramps and derivation match the spec themes; each is one `Styles/Palettes/<Name>.
 catalog row, appended after the creative trio. Verified by rendering all four to PNG. Note the enum
 member `CatppuccinMocha` must stay in sync with `CatppuccinMocha.axaml` for the name-based `PaletteUri`
 to resolve — the catalog-coverage guard enforces it.
+
+## 2026-08-03 — Kanagawa recolour + four gap-filling themes (Crimson, Graphite, Mint, Lavender)
+
+Kanagawa's original ink-blue base read too close to Catppuccin Mocha in the cover grid — both cool-dark
+surfaces with a cool light accent, and the one distinguishing feature (its warm parchment *text*) is a
+tiny share of the screen when opaque cover cards dominate. It was recoloured to warm sumi-ink taupe
+surfaces with a calm wave-aqua accent (keeping the parchment text): warm surfaces + a cool accent is a
+combination no other theme uses, so it now separates cleanly from both Catppuccin (cool + mauve) and
+the warm-orange themes (Coffee/Gruvbox/Sunset, which pair warm surfaces with warm accents).
+
+Four more themes were then added to occupy colour territory nothing held: Crimson (deep wine + vivid
+crimson — the first red theme), Graphite (pure neutral grayscale + silver — the only hueless theme;
+its semantic status colours stay coloured for legibility, since the identity is the grey surfaces and
+accent), Mint (pale light green — the first *light* green, as Matrix/Everforest/Abyss are all dark),
+and Lavender (soft light lilac — the first *light* purple, as Dracula/Palenight/Catppuccin/Synthwave
+are all dark). Same generation path and guard as the other extras; all verified by PNG render. Total
+is now 26 built-in themes.

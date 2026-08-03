@@ -30,4 +30,8 @@ public enum ThemePreference
     Gruvbox,
     CatppuccinMocha,
     Kanagawa,
+    Crimson,
+    Graphite,
+    Mint,
+    Lavender,
 }
