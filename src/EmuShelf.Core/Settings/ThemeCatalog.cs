@@ -187,6 +187,42 @@ public static class ThemeCatalog
             PreviewSurface: "#43231A",
             PreviewAccent: "#FF7A2E",
             PreviewText: "#FDEAE0"),
+        new(
+            ThemePreference.Everforest,
+            "Everforest",
+            "Soft, low-contrast woodland greens over a warm dark base. Cozy and gentle on the eyes.",
+            IsDark: true,
+            PreviewBackground: "#2D353B",
+            PreviewSurface: "#343F44",
+            PreviewAccent: "#A7C080",
+            PreviewText: "#D3C6AA"),
+        new(
+            ThemePreference.Gruvbox,
+            "Gruvbox",
+            "Warm earthy retro-terminal palette with a bright orange accent and yellow, green and aqua highlights.",
+            IsDark: true,
+            PreviewBackground: "#282828",
+            PreviewSurface: "#3C3836",
+            PreviewAccent: "#FE8019",
+            PreviewText: "#EBDBB2"),
+        new(
+            ThemePreference.CatppuccinMocha,
+            "Catppuccin Mocha",
+            "Soft pastel lavender, pink and blue on a muted purple-grey base. Gentle and low-contrast.",
+            IsDark: true,
+            PreviewBackground: "#1E1E2E",
+            PreviewSurface: "#313244",
+            PreviewAccent: "#CBA6F7",
+            PreviewText: "#CDD6F4"),
+        new(
+            ThemePreference.Kanagawa,
+            "Kanagawa",
+            "Hokusai-inspired ink-blue surfaces with warm parchment text and a crystal-blue wave accent.",
+            IsDark: true,
+            PreviewBackground: "#1F1F28",
+            PreviewSurface: "#2A2A37",
+            PreviewAccent: "#7E9CD8",
+            PreviewText: "#DCD7BA"),
     ];
 
     public static AppTheme Get(ThemePreference id) =>

@@ -26,4 +26,8 @@ public enum ThemePreference
     Matrix,
     Synthwave,
     Sunset,
+    Everforest,
+    Gruvbox,
+    CatppuccinMocha,
+    Kanagawa,
 }

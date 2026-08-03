@@ -3503,3 +3503,22 @@ literals that pin base/palette accents were updated (`#5B58D9` for Oled/Dark; th
 tests now exercise Dracula rather than the now-light Cyberpunk, since their `ResolveAccentColor` helper
 queries the Dark variant). The three EmuShelf-original extras (Matrix, Synthwave, Sunset) are untouched
 and remain appended after the 15 spec themes.
+
+`AppThemeService.PaletteUri` was also generalized: instead of one `switch` arm per theme, it returns
+`avares://EmuShelf/Styles/Palettes/{preference}.axaml` for everything except System/Light/Dark (which
+have no override — they live in the base theme-dictionaries). The palette file is named for the enum
+member, so a new theme needs only its enum value, a matching `<Name>.axaml`, and a catalog row — no
+wiring edit. The `EveryCatalogTheme…` guard protects that convention.
+
+## 2026-08-03 — Four popular community palettes added as originals (Everforest, Gruvbox, Catppuccin Mocha, Kanagawa)
+
+Beyond the NeoStation set, four widely-used editor schemes were added from their published specs, each
+filling a gap the existing set left: Everforest (soft woodland green — the muted-natural-green slot, vs
+Matrix's neon and Aqua/Abyss's teal), Gruvbox (warm retro orange-on-earth, distinct from Coffee's
+mocha), Catppuccin Mocha (pastel mauve — the soft-pastel slot), Kanagawa (Hokusai ink-blue with warm
+parchment *text*, its identity being the warm-text-on-cool-dark contrast). They reuse the same
+`gen_themes.py` mapping (their 9-token specs live in an `EXTRAS` list in the script), so their surface
+ramps and derivation match the spec themes; each is one `Styles/Palettes/<Name>.axaml` + enum value +
+catalog row, appended after the creative trio. Verified by rendering all four to PNG. Note the enum
+member `CatppuccinMocha` must stay in sync with `CatppuccinMocha.axaml` for the name-based `PaletteUri`
+to resolve — the catalog-coverage guard enforces it.
