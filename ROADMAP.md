@@ -1366,3 +1366,31 @@ while extracting exact identity only from the uncompressed dumps.
   parsing), so those formats get precise covers rather than a filename match.
 - The SMDH short title from the NCCH ExeFS as an embedded display title.
 - RetroAchievements for 3DS once an exact, verified hash/console mapping exists.
+
+## M38 — Recently Played collection ✅ (2026-08-04)
+
+A first-class smart collection beside All Games and Recently Added — the recency data layer a
+future Steam-style multi-shelf "home" view would compose from (that home view is deliberately out of
+scope here; see `DECISIONS.md`).
+
+- [x] Persist a launch time: schema v15 nullable `Games.LastPlayedUnixMilliseconds` (partial index
+      over played rows), surfaced as `Game.LastPlayedAt` (`DateTimeOffset?`, null = never played) with
+      an `IGameLibrary.SetLastPlayed` writer. A single column, not a play-history table; PlayCount /
+      playtime are a later, deliberate addition.
+- [x] Stamp at launch: written in the `beforeStart` callback, which fires only after preflight passes
+      and immediately before the emulator process starts, so failed-validation launches are never
+      recorded and a started game is recorded even if EmuShelf is killed mid-session. No game file is
+      touched.
+- [x] Add `LibraryScope.RecentlyPlayed`, mirroring Recently Added: excludes never-played games, groups
+      multi-disc title sets and surfaces each by its most recently played disc, orders most-recent
+      first, caps at 30. Reuses the scope cache, virtualized grid, empty states, desktop COLLECTIONS
+      sidebar entry, Gamepad Collections overlay, and scope persistence.
+- [x] Recency collections display in recency order: `SortGames` preserves the load order for
+      RecentlyAdded/RecentlyPlayed instead of applying the Title column sort (also fixing Recently
+      Added, previously only newest-first by title coincidence). A recorded play refreshes the
+      collection surgically — rebuild if viewing it, otherwise evict its cache for the next visit.
+- [x] Tests: `SetLastPlayed` round-trip + null default, schema-v15 migration version, and headless
+      scope coverage (never-played exclusion, recency order, empty-state copy, launch stamps + surfaces,
+      launch-from-within moves to front). `dotnet build`/`dotnet test` green on macOS (1208 tests).
+- [ ] On real Windows, launch a game and confirm it appears at the top of Recently Played on return,
+      persists across restart, and that no game file or emulator data was modified.

@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 14;
+    private const int CurrentSchemaVersion = 15;
 
     private readonly IAppPaths _appPaths;
 
@@ -132,7 +132,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 14)
+        {
             ApplyMigrationV14(connection);
+            version = 14;
+        }
+
+        if (version < 15)
+            ApplyMigrationV15(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -666,6 +672,29 @@ public sealed class LibraryDatabase
             );
 
             UPDATE SchemaVersion SET Version = 14;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV15(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        // A nullable column, so existing rows are "never played" (NULL) rather than a fabricated
+        // timestamp. AddGameColumnIfMissing heals a database interrupted mid-migration, matching v9/v10.
+        AddGameColumnIfMissing(connection, transaction, "LastPlayedUnixMilliseconds", "INTEGER NULL");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // Partial index over played rows only: the Recently Played query orders by this descending
+        // and never-played rows are filtered out, so indexing NULLs would only bloat the index.
+        command.CommandText =
+            """
+            CREATE INDEX IF NOT EXISTS IX_Games_LastPlayedUnixMilliseconds
+                ON Games (LastPlayedUnixMilliseconds DESC)
+                WHERE LastPlayedUnixMilliseconds IS NOT NULL;
+
+            UPDATE SchemaVersion SET Version = 15;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

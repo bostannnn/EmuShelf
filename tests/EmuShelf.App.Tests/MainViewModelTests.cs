@@ -2176,6 +2176,84 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task RecentlyPlayed_ShowsOnlyPlayedGamesMostRecentlyPlayedFirst()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Played First.cue"), Title = "Played First", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = Path.Combine(_baseDirectory, "Played Last.iso"), Title = "Played Last", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Never Played.cue"), Title = "Never Played", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+        var games = _library.GetGames();
+        _library.SetLastPlayed(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
+        _library.SetLastPlayed(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
+        var vm = CreateViewModel();
+
+        await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsRecentlyPlayedSelected);
+        Assert.Equal("Recently Played", vm.LibraryTitle);
+        // Never-played games are excluded; the rest sort most-recently-played first.
+        Assert.Equal(["Played Last", "Played First"], vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task RecentlyPlayed_WithNoPlayedGames_ShowsEmptyState()
+    {
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Unplayed.cue"), Title = "Unplayed", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel();
+
+        await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
+
+        Assert.True(vm.IsRecentlyPlayedSelected);
+        Assert.Empty(vm.Games);
+        Assert.Equal("No recently played games", vm.EmptyLibraryTitle);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_StampsLastPlayedAndSurfacesInRecentlyPlayed()
+    {
+        var path = Path.Combine(_baseDirectory, "Ridge Racer.cue");
+        File.WriteAllText(path, "ps1");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Ridge Racer", IsAvailable = true, DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(launchService: new RecordingLaunchService(new GameLaunchResult(true, "Ridge Racer finished")));
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.NotNull(_library.GetGames().Single().LastPlayedAt);
+
+        await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
+        Assert.Equal(["Ridge Racer"], vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_WhileViewingRecentlyPlayed_MovesTheGameToTheFront()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var alpha = Path.Combine(_baseDirectory, "Alpha.cue");
+        var beta = Path.Combine(_baseDirectory, "Beta.cue");
+        File.WriteAllText(alpha, "ps1");
+        File.WriteAllText(beta, "ps1");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = alpha, Title = "Alpha", IsAvailable = true, DateAdded = now },
+            new Game { SystemId = Ps1.Id, Path = beta, Title = "Beta", IsAvailable = true, DateAdded = now },
+        ]);
+        var games = _library.GetGames();
+        // Relative to now so the assertion never depends on the test machine's wall clock.
+        _library.SetLastPlayed(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
+        _library.SetLastPlayed(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
+        var vm = CreateViewModel(launchService: new RecordingLaunchService(new GameLaunchResult(true, "Alpha finished")));
+        await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
+        Assert.Equal(["Beta", "Alpha"], vm.Games.Select(game => game.Title));
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single(game => game.Title == "Alpha"));
+
+        Assert.Equal(["Alpha", "Beta"], vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
     public async Task SortBy_OrdersLibraryByColumnAndTogglesDirection()
     {
         var now = DateTimeOffset.UtcNow;

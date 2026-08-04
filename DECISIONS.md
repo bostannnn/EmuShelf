@@ -3912,3 +3912,35 @@ border-recolour + drop-shadow so selection reads as the same even accent frame e
 `.focused` class is data-driven from `IsFocused` (independent of keyboard focus), so it lives on the
 outer Panel — the required ancestor of the ring — while the tile Border keeps the `gamepad-achievement`
 class the tests query; the opaque tile masks the pad centre exactly as the opaque cover does.
+
+## 2026-08-04 — Recently Played is a smart collection, stamped at launch
+
+Recently Played ships as a first-class smart collection — a new `LibraryScope.RecentlyPlayed`
+alongside `AllGames` and `RecentlyAdded` — rather than a Steam-style multi-shelf "home" view. The
+desktop shell has no home surface (it shows one virtualized scope at a time), and a shelf is just the
+top-N of a collection rendered as a row, so the collection is the data layer a future home view would
+compose from. It reuses the sibling's entire machinery: the scope cache, virtualized grid, empty
+states, the desktop COLLECTIONS sidebar list, the Gamepad Collections overlay, and scope persistence
+(the restore path already `Enum.TryParse`s the scope). Direction chosen with the user; a Steam-style
+home is tracked as a separate future milestone.
+
+Storage is a single nullable `Games.LastPlayedUnixMilliseconds` column (schema v15), not a play-history
+table. It mirrors `DateAddedUnixMilliseconds` (nullable = never played, partial index over played rows
+only) and keeps the change minimal; a `PlayCount`/"Most Played" or per-session playtime would be a
+later column or a history table, added deliberately. `Game.LastPlayedAt` is `DateTimeOffset?`.
+
+The stamp is written in the launch flow's `beforeStart` callback, which `EmulatorLaunchService` invokes
+only *after* preflight passes and immediately *before* the emulator process starts. So a launch that
+fails validation is never recorded, and one that starts is recorded even if EmuShelf is killed
+mid-session — closer to "last played" than stamping on exit, and it never touches the game file. A
+recorded play refreshes Recently Played surgically: if the user launched from within it, the current
+scope rebuilds so the game jumps to the front on return; otherwise only that scope's cache entry is
+evicted so the *next* visit rebuilds — no cover reflow of the scope they returned to.
+
+Recency collections now display in recency order. `SortGames` short-circuits for
+`RecentlyAdded`/`RecentlyPlayed` and preserves the load order (newest activity first) instead of
+applying the default Title column sort. This also fixes `RecentlyAdded`, whose own
+`Collections_…RecentlyAddedNewestFirst` test asserted newest-first but was previously only satisfied by
+a coincidental title ordering — the column sort silently overrode the intended recency order. Trade-off:
+the list-view column-sort headers are inert within these two collections, accepted because recency *is*
+their sort; a deliberate "sort within a collection" affordance can revisit that later.

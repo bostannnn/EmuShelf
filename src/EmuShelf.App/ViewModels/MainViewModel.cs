@@ -508,6 +508,7 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
+    public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
@@ -531,12 +532,14 @@ public partial class MainViewModel : ViewModelBase
     {
         LibraryScope.AllGames => "All Games",
         LibraryScope.RecentlyAdded => "Recently Added",
+        LibraryScope.RecentlyPlayed => "Recently Played",
         _ => SelectedSystem?.Name ?? "Library",
     };
     public string LibraryShortName => CurrentLibraryScope switch
     {
         LibraryScope.AllGames => "ALL",
         LibraryScope.RecentlyAdded => "NEW",
+        LibraryScope.RecentlyPlayed => "PLAYED",
         _ => SelectedSystem?.ShortName ?? "LIB",
     };
     public string LibraryAccentColor => SelectedSystem?.AccentColor ?? "#E04B52";
@@ -544,13 +547,17 @@ public partial class MainViewModel : ViewModelBase
     {
         LibraryScope.AllGames => "Your game library is empty",
         LibraryScope.RecentlyAdded => "No recently added games",
+        LibraryScope.RecentlyPlayed => "No recently played games",
         _ => $"Your {SelectedSystem?.Name ?? "game"} library is empty",
     };
-    public string EmptyLibraryDescription => CurrentLibraryScope == LibraryScope.RecentlyAdded
-        ? "Games you import will appear here in newest-first order."
-        : SelectedSystem?.Id == "playstation3"
+    public string EmptyLibraryDescription => CurrentLibraryScope switch
+    {
+        LibraryScope.RecentlyAdded => "Games you import will appear here in newest-first order.",
+        LibraryScope.RecentlyPlayed => "Games you launch will appear here, most recently played first.",
+        _ => SelectedSystem?.Id == "playstation3"
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
-        : "Add game files or a dedicated folder to begin building this shelf.";
+            : "Add game files or a dedicated folder to begin building this shelf.",
+    };
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -879,6 +886,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsAllGamesSelected));
         OnPropertyChanged(nameof(IsRecentlyAddedSelected));
+        OnPropertyChanged(nameof(IsRecentlyPlayedSelected));
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
         ScheduleLibraryViewStateSave();
@@ -958,6 +966,9 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private Task ShowRecentlyAddedAsync() => ShowCollectionAsync(LibraryScope.RecentlyAdded);
+
+    [RelayCommand]
+    private Task ShowRecentlyPlayedAsync() => ShowCollectionAsync(LibraryScope.RecentlyPlayed);
 
     [RelayCommand]
     private async Task PreviousPlatformAsync() => await MovePlatformAsync(-1);
@@ -1500,6 +1511,7 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.Search:
                 break;
             case GamepadOverlayKind.Collections:
+                AddOption("Recently Played", ShowGamepadRecentlyPlayedCommand);
                 AddOption("Recently Added", ShowGamepadRecentlyAddedCommand);
                 break;
             case GamepadOverlayKind.Rename:
@@ -1733,6 +1745,13 @@ public partial class MainViewModel : ViewModelBase
         CloseGamepadOverlay();
     }
 
+    [RelayCommand]
+    private async Task ShowGamepadRecentlyPlayedAsync()
+    {
+        await ShowRecentlyPlayedAsync();
+        CloseGamepadOverlay();
+    }
+
     private async Task ShowCollectionAsync(LibraryScope scope)
     {
         CurrentLibraryScope = scope;
@@ -1819,6 +1838,7 @@ public partial class MainViewModel : ViewModelBase
     {
         LibraryScope.AllGames => "all",
         LibraryScope.RecentlyAdded => "recent",
+        LibraryScope.RecentlyPlayed => "played",
         _ => "system:" + (SelectedSystem?.Id ?? string.Empty),
     };
 
@@ -2201,8 +2221,9 @@ public partial class MainViewModel : ViewModelBase
                 var loaded = scope switch
                 {
                     // Group before limiting. Limiting raw rows first can split a title when one of
-                    // its discs falls just outside the newest 30 imported files.
+                    // its discs falls just outside the newest 30 imported/played files.
                     LibraryScope.RecentlyAdded => _library.GetGames(),
+                    LibraryScope.RecentlyPlayed => _library.GetGames(),
                     LibraryScope.System => _library.GetGames(system!.Id),
                     _ => _library.GetGames(),
                 };
@@ -2214,6 +2235,19 @@ public partial class MainViewModel : ViewModelBase
                         .OrderByDescending(titleSet => titleSet.Discs.Max(disc => disc.Game.DateAdded))
                         .ThenBy(titleSet => titleSet.DisplayTitle, StringComparer.OrdinalIgnoreCase)
                         .Take(30)
+                        .ToArray();
+                }
+                else if (scope == LibraryScope.RecentlyPlayed)
+                {
+                    // A set surfaces by its most recently played disc; never-played sets (every disc
+                    // LastPlayedAt == null) are excluded so the collection only shows games you've launched.
+                    titleSets = titleSets
+                        .Select(titleSet => (titleSet, lastPlayed: titleSet.Discs.Max(disc => disc.Game.LastPlayedAt)))
+                        .Where(entry => entry.lastPlayed is not null)
+                        .OrderByDescending(entry => entry.lastPlayed)
+                        .ThenBy(entry => entry.titleSet.DisplayTitle, StringComparer.OrdinalIgnoreCase)
+                        .Take(30)
+                        .Select(entry => entry.titleSet)
                         .ToArray();
                 }
                 var viewModels = new List<GameViewModel>(titleSets.Count);
@@ -2580,8 +2614,17 @@ public partial class MainViewModel : ViewModelBase
         ApplyFilter();
     }
 
+    // The Recently Added / Recently Played collections define their own order — newest activity
+    // first — when the load worker builds them. Applying the column sort on top would override that
+    // and make a "Recently …" collection read like an A–Z list, so these scopes keep their load order.
+    private bool IsRecencyOrderedScope =>
+        CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed;
+
     private IEnumerable<GameViewModel> SortGames(IEnumerable<GameViewModel> games)
     {
+        if (IsRecencyOrderedScope)
+            return games;
+
         var text = StringComparer.OrdinalIgnoreCase;
         IOrderedEnumerable<GameViewModel> By<TKey>(
             Func<GameViewModel, TKey> key, IComparer<TKey>? comparer = null) =>
@@ -3295,6 +3338,10 @@ public partial class MainViewModel : ViewModelBase
         IsBusy = true;
         SetStatus($"Launching {game.Title}…", StatusSeverity.Progress);
         SuspendFrontendUiWork();
+        // Hoisted so the Recently Played refresh runs in finally: it must happen whenever a play was
+        // recorded (including a game stamped just before a start failure), and a refresh error must
+        // never be able to overwrite the launch-completion status with a false failure message.
+        var recordedPlay = false;
         try
         {
             CloudSaveSyncOutcome? beforeSync = null;
@@ -3311,6 +3358,13 @@ public partial class MainViewModel : ViewModelBase
                             ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
                             : $"Launching {game.Title}…",
                         StatusSeverity.Progress);
+                    // This callback runs only after preflight passes and immediately before the
+                    // emulator process starts, so a game whose launch fails validation is never
+                    // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
+                    await Task.Run(
+                        () => _library.SetLastPlayed(launchGame.Id, DateTimeOffset.UtcNow),
+                        cancellationToken);
+                    recordedPlay = true;
                 });
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
@@ -3340,6 +3394,43 @@ public partial class MainViewModel : ViewModelBase
         {
             ResumeFrontendUiWork();
             IsBusy = false;
+            if (recordedPlay)
+            {
+                // Cache refresh only — never touches the launch status. Guarded so a reload failure
+                // cannot turn a completed launch into a reported error.
+                try
+                {
+                    await RefreshAfterPlayRecordedAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Could not refresh the Recently Played collection after a launch.", ex);
+                }
+            }
+        }
+    }
+
+    // A just-recorded play makes the Recently Played collection stale. If the user launched from
+    // within it, rebuild it now so the game jumps to the front on return; otherwise just drop its
+    // cached tiles so the next visit rebuilds from the DB — no reflow of the scope they returned to.
+    private async Task RefreshAfterPlayRecordedAsync()
+    {
+        if (CurrentLibraryScope == LibraryScope.RecentlyPlayed)
+            await ReloadGamesAsync();
+        else
+            InvalidateScopeCache(LibraryScope.RecentlyPlayed);
+    }
+
+    // Evicts one built scope from the navigation cache so its next visit rebuilds from the DB.
+    // Disposes the evicted view models unless that scope is the one currently on screen.
+    private void InvalidateScopeCache(LibraryScope scope)
+    {
+        var key = DescribeScope(scope, scope == LibraryScope.System ? SelectedSystem : null);
+        if (_scopeCache.Remove(key, out var evicted) &&
+            !string.Equals(key, _displayedScopeKey, StringComparison.Ordinal))
+        {
+            foreach (var viewModel in evicted)
+                viewModel.Dispose();
         }
     }
 

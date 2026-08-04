@@ -20,6 +20,12 @@ public interface IGameLibrary
     IReadOnlyList<Game> GetRecentlyAddedGames(int limit);
 
     /// <summary>
+    /// Records that a game was launched. Stamps its last-played time so it surfaces in the
+    /// Recently Played collection. Only EmuShelf's own record changes; no game file is touched.
+    /// </summary>
+    void SetLastPlayed(long gameId, DateTimeOffset playedAt);
+
+    /// <summary>
     /// Inserts games that aren't already present (matched by path). Returns the
     /// number actually added. Existing entries are left untouched.
     /// </summary>
