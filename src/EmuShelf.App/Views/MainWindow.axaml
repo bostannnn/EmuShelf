@@ -210,7 +210,7 @@
         <!-- Gamepad controls draw one explicit logical-focus treatment. Keep native Avalonia
              focus for routing/accessibility, but suppress Fluent's second focus-adorners: on
              Linux/SteamOS that extra compositor layer can render as black corner rectangles. -->
-        <Style Selector="Button.gamepad-game, Button.gamepad-platform, Button.gamepad-modal-option, Button.gamepad-play-action, Button.gamepad-empty-action, Button.gamepad-achievement-tab, Button.gamepad-achievement-command, Button.gamepad-settings-nav, Button.gamepad-settings-save, Button.gamepad-settings-row, Button.gamepad-settings-confirm, Border.gamepad-achievement">
+        <Style Selector="Button.gamepad-game, Button.gamepad-platform, Button.gamepad-modal-option, Button.gamepad-play-action, Button.gamepad-empty-action, Button.gamepad-achievement-tab, Button.gamepad-achievement-command, Button.gamepad-settings-nav, Button.gamepad-settings-save, Button.gamepad-settings-row, Button.gamepad-settings-confirm, Panel.gamepad-achievement-tile">
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.gamepad-game.focused">
@@ -625,10 +625,11 @@
         <Style Selector="ItemsControl.gamepad-overlay-options.top-aligned">
             <Setter Property="VerticalAlignment" Value="Top" />
         </Style>
-        <Style Selector="Border.gamepad-achievement.focused">
-            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
-            <Setter Property="BoxShadow" Value="0 10 26 0 #62000000" />
+        <!-- Controller focus is the same accent-frame ring the library grid uses: a pad behind the
+             tile revealed on .focused (styled at Border.gamepad-focus-tile-ring above), not a border
+             recolour. Shown via opacity so it never disturbs layout and tracks the d-pad instantly. -->
+        <Style Selector="Panel.gamepad-achievement-tile.focused Border.gamepad-focus-tile-ring">
+            <Setter Property="Opacity" Value="1" />
         </Style>
         <Style Selector="Grid.gamepad-achievement-badge.locked">
             <Setter Property="Opacity" Value="0.48" />
@@ -1984,39 +1985,85 @@
                                     </Grid>
                                 </Border>
 
-                                <ScrollViewer x:Name="GamepadAchievementsScroller" Grid.Column="1"
-                                              Classes="gamepad-scroll"
-                                              SizeChanged="OnGamepadAchievementsSizeChanged"
-                                              VerticalScrollBarVisibility="Hidden"
-                                              HorizontalScrollBarVisibility="Disabled">
-                                    <ItemsRepeater x:Name="GamepadAchievementsRepeater"
-                                                   ItemsSource="{Binding GamepadAchievementDetails.VisibleAchievements}">
-                                        <ItemsRepeater.Layout>
-                                            <UniformGridLayout MinItemWidth="100"
-                                                               MinColumnSpacing="12" MinRowSpacing="12" />
-                                        </ItemsRepeater.Layout>
-                                        <ItemsRepeater.ItemTemplate>
-                                            <DataTemplate x:DataType="vm:AchievementRowViewModel">
-                                                <Border Classes="gamepad-achievement"
-                                                        Classes.focused="{Binding IsFocused}"
-                                                        Focusable="True"
-                                                        PointerPressed="OnGamepadAchievementPointerPressed"
-                                                        AttachedToVisualTree="OnGamepadAchievementAttached"
-                                                        DataContextChanged="OnGamepadAchievementDataContextChanged">
-                                                    <Grid Classes="gamepad-achievement-badge"
-                                                          Classes.locked="{Binding IsLocked}">
-                                                        <PathIcon Width="30" Height="30"
-                                                                  IsVisible="{Binding !HasBadge}"
-                                                                  Data="{StaticResource AchievementTrophyGeometry}"
-                                                                  Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                        <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}"
-                                                               Stretch="UniformToFill" />
-                                                    </Grid>
-                                                </Border>
-                                            </DataTemplate>
-                                        </ItemsRepeater.ItemTemplate>
-                                    </ItemsRepeater>
-                                </ScrollViewer>
+                                <!-- Row-virtualized grid: a ListBox renders one ROW per line and its
+                                     VirtualizingStackPanel realizes only the on-screen rows. Each row
+                                     holds exactly GamepadAchievementColumnCount tiles, so the rendered
+                                     column count always equals the navigation stride, and it has none of
+                                     the phantom-cell / top-left-hole defects a virtualized
+                                     UniformGridLayout had (which dropped achievement tiles). The ListBox
+                                     is a passive renderer — the focus ring is driven by IsFocused on the
+                                     flat VisibleAchievements list, not its selection — so its
+                                     selection/focus visuals are styled away below. -->
+                                <ListBox x:Name="GamepadAchievementRowList" Grid.Column="1"
+                                         ItemsSource="{Binding GamepadAchievementRows}"
+                                         Background="Transparent" BorderThickness="0" Padding="0"
+                                         SizeChanged="OnGamepadAchievementsSizeChanged"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         ScrollViewer.VerticalScrollBarVisibility="Hidden">
+                                    <ListBox.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <VirtualizingStackPanel Orientation="Vertical" />
+                                        </ItemsPanelTemplate>
+                                    </ListBox.ItemsPanel>
+                                    <ListBox.Styles>
+                                        <Style Selector="ListBoxItem">
+                                            <Setter Property="Padding" Value="0" />
+                                            <Setter Property="Margin" Value="0" />
+                                            <Setter Property="MinHeight" Value="0" />
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Setter Property="FocusAdorner" Value="{x:Null}" />
+                                        </Style>
+                                        <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
+                                                         ListBoxItem:pointerover /template/ ContentPresenter">
+                                            <Setter Property="Background" Value="Transparent" />
+                                        </Style>
+                                    </ListBox.Styles>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <!-- One row of badge tiles. 6px side padding gives the first/last
+                                                 tile's focus glow room inside the row container; 12px gutters
+                                                 match the old grid. -->
+                                            <ItemsControl ItemsSource="{Binding}" Margin="0,6,0,6" Padding="6,0,6,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" Spacing="12" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                                                        <Panel Classes="gamepad-achievement-tile"
+                                                               Classes.focused="{Binding IsFocused}"
+                                                               ClipToBounds="False" Focusable="True"
+                                                               PointerPressed="OnGamepadAchievementPointerPressed"
+                                                               AttachedToVisualTree="OnGamepadAchievementAttached"
+                                                               DataContextChanged="OnGamepadAchievementDataContextChanged">
+                                                            <!-- Same accent frame as the library grid: a solid pad
+                                                                 BEHIND the tile, 6px larger with a concentric radius
+                                                                 (14 + 6), so the opaque tile masks its centre and it
+                                                                 reads as an even 6px accent frame. Must stay
+                                                                 first/bottom-most; shown by opacity on .focused. -->
+                                                            <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
+                                                                    Margin="-6" CornerRadius="20"
+                                                                    Background="{DynamicResource EmuAccentBrush}"
+                                                                    BoxShadow="{DynamicResource EmuFocusGlow}" />
+                                                            <Border Classes="gamepad-achievement">
+                                                                <Grid Classes="gamepad-achievement-badge"
+                                                                      Classes.locked="{Binding IsLocked}">
+                                                                    <PathIcon Width="30" Height="30"
+                                                                              IsVisible="{Binding !HasBadge}"
+                                                                              Data="{StaticResource AchievementTrophyGeometry}"
+                                                                              Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                                    <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}"
+                                                                           Stretch="UniformToFill" />
+                                                                </Grid>
+                                                            </Border>
+                                                        </Panel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
                             </Grid>
 
                             <Border Grid.Row="1"

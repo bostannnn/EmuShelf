@@ -3870,6 +3870,49 @@ uppercase (the case-insensitive hex validation accepts both), and that the textu
 uppercase 16-hex title ids matching the extractor's `X16` title id. A live rclone cloud round-trip
 and a manual emulator launch/return remain the only unverified paths.
 
+## 2026-08-04 — The gamepad achievements grid is row-virtualized too, matching the library grid
+
+The achievements overlay's badge grid was the last surface still built on `ItemsRepeater` +
+`UniformGridLayout` inside a `ScrollViewer` — the exact construct the library grid was torn out of on
+2026-08-03 for its phantom-cell defect. On the real Deck compositor it reproduced the same "top-left
+hole": force-realizing an anchor tile during reveal made `UniformGridLayout` reserve cell 0 and shift
+every tile one column right, so badges went missing from the grid (visible as blank gaps in a
+controller screenshot). It never reproduced headless. Worse, this grid derived its column count the
+way the library grid explicitly abandoned — `SyncGamepadAchievementColumnCountFromLayout` read the
+*realized* tile bounds, which race the compositor mid-recycle and yield a garbage stride.
+
+The fix mirrors the library grid one-for-one. The grid is now a `ListBox` (`GamepadAchievementRowList`)
+bound to `GamepadAchievementRows`, a projection of the flat `VisibleAchievements` list into rows of
+`GamepadAchievementColumnCount` (`BuildGamepadAchievementRows`, the twin of `BuildGamepadRows`), with a
+vertical `VirtualizingStackPanel`; each row is a horizontal strip of the existing 100px badge tiles.
+Only the on-screen rows realize (an 86-tile grid materializes ~24 tiles, proven by
+`GamepadAchievements_LargeVirtualizedGridStartsInTheTopLeftCell`), each row holds exactly the column
+count so rendered columns can never disagree with the navigation stride, and reveal is native
+`ScrollIntoView(rowIndex)` — the bounds-reading reveal/column machinery is deleted. The column count is
+now derived by pure width arithmetic (`ColumnsThatFit(width, 100, spacing:12)`, gaining a
+spacing-parameter overload) from the ListBox's `SizeChanged`, exactly like `GamepadColumnCount`;
+navigation still runs on the flat `VisibleAchievements` list + `index % columns`. `GamepadAchievementRows`
+auto-rebuilds on the column count changing, on the visible set changing (filter/sort/refresh, via the
+existing `HandleGamepadAchievementDetailsPropertyChanged`), and on the overlay opening. The
+`VisibleAchievements`-change subscription moved into an `OnGamepadAchievementDetailsChanged` partial so
+the projection stays wired whether details are assigned through the open command or directly (as the
+snapshot tests do). Because every visible achievement always lands in some row, the count can no longer
+be dropped regardless of a transient column-count value —
+`GamepadAchievements_RowProjectionSlicesEveryAchievementAndReflowsOnWidth` proves the flattened rows
+reproduce the visible list exactly across width and filter changes. The top-left-hole regression and
+the scroll-containment behavior are still asserted, now against the row ListBox rather than the removed
+repeater/scroller. Correctness is covered headlessly; the on-device reveal timing shares the library
+grid's already-verified path.
+
+Controller focus was then unified with the library grid too: each badge tile is wrapped in a
+`Panel.gamepad-achievement-tile` holding the same `Border.gamepad-focus-tile-ring` accent pad the covers
+use — a solid `EmuAccentBrush` pad 6px behind the tile with a concentric radius (14 + 6) and
+`EmuFocusGlow`, revealed by opacity on the shared `.focused` selector. It replaced the old
+border-recolour + drop-shadow so selection reads as the same even accent frame everywhere. The
+`.focused` class is data-driven from `IsFocused` (independent of keyboard focus), so it lives on the
+outer Panel — the required ancestor of the ring — while the tile Border keeps the `gamepad-achievement`
+class the tests query; the opaque tile masks the pad centre exactly as the opaque cover does.
+
 ## 2026-08-04 — Application-identity credentials are embedded into the build
 
 The 2026-08-03 decision provisioned the ScreenScraper developer credentials only from runtime

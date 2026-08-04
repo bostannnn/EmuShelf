@@ -92,6 +92,33 @@ public class MainWindowVisualSnapshotTests
         }
     }
 
+    // The gamepad achievements grid renders as a row-virtualized ListBox (GamepadAchievementRowList),
+    // one ItemsControl row per line; each realized badge tile is a Border.gamepad-achievement. These
+    // helpers gather and locate those tiles the way the old flat ItemsRepeater's TryGetElement did.
+    private static IReadOnlyList<Border> RealizedAchievementTiles(Window window) =>
+        window.GetVisualDescendants()
+            .OfType<Border>()
+            .Where(control => control.Classes.Contains("gamepad-achievement"))
+            .ToArray();
+
+    private static Border AchievementTileFor(Window window, object dataContext) =>
+        Assert.Single(RealizedAchievementTiles(window), tile => ReferenceEquals(tile.DataContext, dataContext));
+
+    // Regression guard for the phantom-cell defect: the top-left item must sit at the minimum X and Y
+    // of every realized tile — never pushed out of the top-left corner by a reserved empty cell.
+    private static void AssertAchievementTopLeftCellIsOccupied(Window window, object topLeftDataContext)
+    {
+        var positioned = RealizedAchievementTiles(window)
+            .Select(tile => (tile, origin: tile.TranslatePoint(default, window)))
+            .Where(entry => entry.origin is not null)
+            .Select(entry => (entry.tile, x: entry.origin!.Value.X, y: entry.origin!.Value.Y))
+            .ToArray();
+        Assert.NotEmpty(positioned);
+        var first = Assert.Single(positioned, p => ReferenceEquals(p.tile.DataContext, topLeftDataContext));
+        Assert.Equal(positioned.Min(p => p.x), first.x, 1);
+        Assert.Equal(positioned.Min(p => p.y), first.y, 1);
+    }
+
     private static void AssertPointerCanReach(Window window, Control target)
     {
         var center = new Point(target.Bounds.Width / 2, target.Bounds.Height / 2);
@@ -809,9 +836,8 @@ public class MainWindowVisualSnapshotTests
             Assert.True(achievementTiles.Length >= 18);
             Assert.All(achievementTiles, tile => Assert.Equal(tile.Bounds.Width, tile.Bounds.Height, 1));
             Assert.Equal("First victory", viewModel.FocusedGamepadAchievement.Title);
-            var achievementRepeater = window.FindControl<ItemsRepeater>("GamepadAchievementsRepeater");
-            Assert.NotNull(achievementRepeater);
-            var pointerTarget = Assert.IsAssignableFrom<Control>(achievementRepeater.TryGetElement(1));
+            var pointerTarget = AchievementTileFor(
+                window, viewModel.GamepadAchievementDetails.VisibleAchievements[1]);
             var pointerPosition = pointerTarget.TranslatePoint(
                 new Point(pointerTarget.Bounds.Width / 2, pointerTarget.Bounds.Height / 2),
                 window);
@@ -829,7 +855,7 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(AchievementDisplayFilter.Locked, viewModel.GamepadAchievementDetails.SelectedFilter);
             Assert.Equal(17, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
             Assert.Equal(8, viewModel.FocusedGamepadAchievement?.AchievementId);
-            Assert.Same(viewModel.FocusedGamepadAchievement, achievementRepeater.TryGetElement(0)?.DataContext);
+            AssertAchievementTopLeftCellIsOccupied(window, viewModel.FocusedGamepadAchievement!);
             viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
             await PumpAsync();
             Assert.Equal(AchievementDisplayFilter.Unlocked, viewModel.GamepadAchievementDetails.SelectedFilter);
@@ -869,20 +895,22 @@ public class MainWindowVisualSnapshotTests
                         "emushelf-gamepad-achievements-sorted-1280x800.png");
                 }
 
+                // Every realized tile maps to a distinct visible achievement, is square, and occupies
+                // its own slot — the re-sort must not leave two tiles overlapping or a stale mapping.
+                AssertAchievementTopLeftCellIsOccupied(window, viewModel.FocusedGamepadAchievement!);
                 var positions = new HashSet<(int X, int Y)>();
-                for (var index = 0;
-                     index < viewModel.GamepadAchievementDetails.VisibleAchievements.Count;
-                     index++)
+                var seenContexts = new HashSet<object>();
+                foreach (var tile in RealizedAchievementTiles(window))
                 {
-                    var element = achievementRepeater.TryGetElement(index);
-                    Assert.NotNull(element);
-                    Assert.Same(
-                        viewModel.GamepadAchievementDetails.VisibleAchievements[index],
-                        element.DataContext);
-                    Assert.Equal(element.Bounds.Width, element.Bounds.Height, 1);
+                    var row = Assert.IsType<AchievementRowViewModel>(tile.DataContext);
+                    Assert.Contains(row, viewModel.GamepadAchievementDetails.VisibleAchievements);
+                    Assert.True(seenContexts.Add(row), "a visible achievement realized more than once");
+                    Assert.Equal(tile.Bounds.Width, tile.Bounds.Height, 1);
+                    var origin = tile.TranslatePoint(default, window);
+                    Assert.NotNull(origin);
                     Assert.True(positions.Add(
-                        ((int)Math.Round(element.Bounds.X), (int)Math.Round(element.Bounds.Y))),
-                        $"achievement index {index} overlaps another sorted grid element");
+                        ((int)Math.Round(origin.Value.X), (int)Math.Round(origin.Value.Y))),
+                        "two achievement tiles overlap in the sorted grid");
                 }
             }
             viewModel.OpenGamepadSearchCommand.Execute(null);
@@ -1080,9 +1108,10 @@ public class MainWindowVisualSnapshotTests
             }
             await PumpAsync();
 
-            var repeater = window.FindControl<ItemsRepeater>("GamepadAchievementsRepeater");
-            Assert.NotNull(repeater);
-            AssertTopLeftCellIsOccupied(repeater, achievements.Length);
+            AssertAchievementTopLeftCellIsOccupied(
+                window, viewModel.GamepadAchievementDetails.VisibleAchievements[0]);
+            // Row virtualization: an 86-tile grid realizes only the on-screen rows, not every tile.
+            Assert.InRange(RealizedAchievementTiles(window).Count, 13, achievements.Length - 1);
 
             viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[7];
             var revisionBeforeFilter = viewModel.GamepadAchievementLayoutRevision;
@@ -1093,8 +1122,8 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(0, viewModel.GamepadAchievementDetails.VisibleAchievements
                 .IndexOf(viewModel.FocusedGamepadAchievement!));
             Assert.Equal(revisionBeforeFilter + 1, viewModel.GamepadAchievementLayoutRevision);
-            Assert.Same(viewModel.FocusedGamepadAchievement, repeater.TryGetElement(0)?.DataContext);
-            AssertTopLeftCellIsOccupied(repeater, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
+            // After filtering, focus falls to the first visible achievement, which renders top-left.
+            AssertAchievementTopLeftCellIsOccupied(window, viewModel.FocusedGamepadAchievement!);
 
             viewModel.DispatchGamepadAction(GamepadAction.PreviousPlatform);
             await PumpAsync();
@@ -1104,7 +1133,8 @@ public class MainWindowVisualSnapshotTests
             {
                 viewModel.DispatchGamepadAction(GamepadAction.Actions);
                 await PumpAsync();
-                AssertTopLeftCellIsOccupied(repeater, achievements.Length);
+                AssertAchievementTopLeftCellIsOccupied(
+                    window, viewModel.GamepadAchievementDetails.VisibleAchievements[0]);
             }
 
             await SaveGamepadOverlaySnapshotAsync(
@@ -1116,20 +1146,6 @@ public class MainWindowVisualSnapshotTests
         {
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             window.Close();
-        }
-
-        static void AssertTopLeftCellIsOccupied(ItemsRepeater repeater, int count)
-        {
-            var realized = Enumerable.Range(0, count)
-                .Select(repeater.TryGetElement)
-                .Where(element => element is not null)
-                .Cast<Control>()
-                .ToArray();
-            Assert.True(realized.Length > 12);
-            var first = repeater.TryGetElement(0);
-            Assert.NotNull(first);
-            Assert.Equal(realized.Min(element => element.Bounds.X), first.Bounds.X, 1);
-            Assert.Equal(realized.Min(element => element.Bounds.Y), first.Bounds.Y, 1);
         }
     }
 
@@ -1229,13 +1245,15 @@ public class MainWindowVisualSnapshotTests
             await PumpAsync();
             var host = window.FindControl<Panel>("GamepadOverlayHost");
             var hints = window.FindControl<StackPanel>("GamepadOverlayHints");
-            var scroller = window.FindControl<ScrollViewer>("GamepadAchievementsScroller");
+            var rowList = window.FindControl<ListBox>("GamepadAchievementRowList");
             var overlay = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(control => control.Classes.Contains("gamepad-overlay"));
             Assert.NotNull(host);
             Assert.NotNull(hints);
-            Assert.NotNull(scroller);
+            Assert.NotNull(rowList);
+            // The row-virtualized ListBox owns the scroller inside its template.
+            var scroller = rowList.GetVisualDescendants().OfType<ScrollViewer>().First();
 
             var overlayOrigin = overlay.TranslatePoint(default, window);
             var hostOrigin = host.TranslatePoint(default, window);
@@ -1254,8 +1272,11 @@ public class MainWindowVisualSnapshotTests
             var scrollBar = scroller.GetVisualDescendants()
                 .OfType<ScrollBar>()
                 .Single(control => control.Orientation == Orientation.Vertical);
-            Assert.InRange(cards.Length, 1, achievements.Length - 1);
-            Assert.Equal(ScrollBarVisibility.Hidden, scroller.VerticalScrollBarVisibility);
+            Assert.NotEmpty(cards);
+            // The grid is taller than the clipped viewport, so it virtualizes and scrolls rather than
+            // overflowing the overlay.
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
+            Assert.Equal(ScrollBarVisibility.Hidden, ScrollViewer.GetVerticalScrollBarVisibility(rowList));
             Assert.Equal(0, scrollBar.Bounds.Width, 1);
             var cardOrigin = cards[0].TranslatePoint(default, scroller);
             Assert.NotNull(cardOrigin);
