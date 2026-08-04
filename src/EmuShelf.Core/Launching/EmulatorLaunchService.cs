@@ -110,6 +110,13 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return LaunchPreparation.Failed(
                 $"Configure {emulator.Name} for this system in Settings before launching.");
 
+        // A macOS emulator is a `.app` bundle — a directory, not a file — so File.Exists rejects it
+        // and Process.Start cannot exec it. Resolve it to the real inner binary once, up front, so the
+        // preflight, target inspection, and the start spec all see the executable. No-op on
+        // Windows/Linux and for a normal file path.
+        if (target is DirectExecutableTarget bundleTarget)
+            target = new DirectExecutableTarget(ResolveExecutablePath(bundleTarget.Path));
+
         if (target is DirectExecutableTarget directTarget && !File.Exists(directTarget.Path))
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: the configured {emulator.Name} executable was not found.");
@@ -183,7 +190,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                     Path.GetDirectoryName(direct.Path) ?? Environment.CurrentDirectory),
                 FlatpakApplicationTarget flatpak => new ProcessStartSpec(
                     "flatpak",
-                    ["run", .. BuildReadOnlyFilesystemGrants(dependencies.Paths), flatpak.AppId, .. arguments],
+                    ["run", .. BuildReadOnlyFilesystemGrants(dependencies.Paths, configuration.CorePath), flatpak.AppId, .. arguments],
                     Path.GetDirectoryName(game.Path) ?? Environment.CurrentDirectory),
                 _ => throw new InvalidOperationException("Unsupported launch target."),
             };
@@ -206,11 +213,22 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
     // exits, so EmuShelf never persistently alters the emulator's stored Flatpak permissions and
     // never widens access beyond the files being launched. Read-only honors the rule that game
     // files are never modified.
-    private static IReadOnlyList<string> BuildReadOnlyFilesystemGrants(IReadOnlyList<string> requiredPaths)
+    //
+    // The libretro core (RetroArch's -L target) is granted the same way: it lives outside the
+    // sandbox's default-visible directories in a portable install, so without a grant the sandboxed
+    // emulator cannot read the core file and fails to load it even though EmuShelf's host-side core
+    // preflight passed. Read-only is enough — RetroArch only reads the core.
+    private static IReadOnlyList<string> BuildReadOnlyFilesystemGrants(
+        IReadOnlyList<string> requiredPaths,
+        string? corePath = null)
     {
+        var paths = new List<string>(requiredPaths);
+        if (!string.IsNullOrWhiteSpace(corePath))
+            paths.Add(corePath);
+
         var grants = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var path in requiredPaths)
+        foreach (var path in paths)
         {
             var directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
             if (string.IsNullOrEmpty(directory) || !seen.Add(directory))
@@ -219,6 +237,74 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         }
 
         return grants;
+    }
+
+    // A macOS application is a `.app` bundle — a directory, not a Mach-O file — so File.Exists rejects
+    // it and Process.Start (UseShellExecute=false) cannot exec it. Resolve the bundle to the real
+    // binary at Contents/MacOS/<executable>, named by Info.plist's CFBundleExecutable, falling back to
+    // a binary named after the bundle, then to the sole file under Contents/MacOS. On any other
+    // platform, or for a path that is not an existing `.app` directory, the input is returned
+    // unchanged so Windows/Linux launches are completely unaffected.
+    internal static string ResolveExecutablePath(string path)
+    {
+        if (!OperatingSystem.IsMacOS() ||
+            !path.EndsWith(".app", StringComparison.OrdinalIgnoreCase) ||
+            !Directory.Exists(path))
+        {
+            return path;
+        }
+
+        var macOsDirectory = Path.Combine(path, "Contents", "MacOS");
+        if (!Directory.Exists(macOsDirectory))
+            return path;
+
+        var declaredName = ReadBundleExecutableName(Path.Combine(path, "Contents", "Info.plist"));
+        if (!string.IsNullOrWhiteSpace(declaredName))
+        {
+            var declaredPath = Path.Combine(macOsDirectory, declaredName);
+            if (File.Exists(declaredPath))
+                return declaredPath;
+        }
+
+        var namedAfterBundle = Path.Combine(macOsDirectory, Path.GetFileNameWithoutExtension(path));
+        if (File.Exists(namedAfterBundle))
+            return namedAfterBundle;
+
+        var candidates = Directory.GetFiles(macOsDirectory);
+        return candidates.Length == 1 ? candidates[0] : path;
+    }
+
+    // Info.plist is an XML property list: its root <dict> holds alternating <key>/<value> elements.
+    // Read the string that follows the CFBundleExecutable key. A binary plist or an unreadable file
+    // returns null so the caller falls back to its name-based heuristics.
+    private static string? ReadBundleExecutableName(string infoPlistPath)
+    {
+        if (!File.Exists(infoPlistPath))
+            return null;
+        try
+        {
+            var dictionary = System.Xml.Linq.XDocument.Load(infoPlistPath).Root?.Element("dict");
+            if (dictionary is null)
+                return null;
+            var elements = dictionary.Elements().ToList();
+            for (var index = 0; index < elements.Count - 1; index++)
+            {
+                if (elements[index].Name.LocalName == "key" &&
+                    string.Equals(elements[index].Value, "CFBundleExecutable", StringComparison.Ordinal) &&
+                    elements[index + 1].Name.LocalName == "string")
+                {
+                    var value = elements[index + 1].Value.Trim();
+                    return string.IsNullOrWhiteSpace(value) ? null : value;
+                }
+            }
+        }
+        catch (Exception ex) when (
+            ex is System.Xml.XmlException or IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            // Binary plist, malformed XML, or an unreadable file — fall back to the name heuristics.
+        }
+
+        return null;
     }
 
     private static GameLaunchResult Failure(string status) => new(false, status);

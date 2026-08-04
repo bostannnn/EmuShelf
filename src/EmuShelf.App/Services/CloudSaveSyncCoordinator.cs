@@ -574,8 +574,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             throw;
         }
         catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or ArgumentException or
-                SaveProviderConfigurationException)
+            ex is IOException or InvalidDataException or System.Text.Json.JsonException or
+                InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
             ForgetCloudFolderIdAfterOperationalFailure(ex);
@@ -668,8 +668,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             throw;
         }
         catch (Exception ex) when (
-            ex is IOException or InvalidOperationException or ArgumentException or
-                SaveProviderConfigurationException)
+            ex is IOException or InvalidDataException or System.Text.Json.JsonException or
+                InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
         {
             _logger.Error("Cloud save sync failed.", ex);
             ForgetCloudFolderIdAfterOperationalFailure(ex);

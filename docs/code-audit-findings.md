@@ -7,6 +7,14 @@ Integrations, App). The goal was to find **real, verifiable problems** — bugs 
 produce wrong behavior, data-loss/robustness risks, resource leaks, and cross-platform
 breakage — not style nits.
 
+> **Fix status (this branch):** B1, S1, S2, S3, M1, L1, L2 have source fixes committed here,
+> with tests added for M1 (filename-fallback rejection) and S1 (unreadable-unit skip). These
+> are **not build-verified** — no .NET 10 SDK was available in the environment — so run
+> `dotnet build` + `dotnet test` before merging. Note the initial S1 attempt also guarded the
+> *apply* loop, which would have swallowed the corrupt-download / offline-remote integrity
+> errors that `SaveSyncServiceTests` deliberately asserts propagate; the committed fix guards
+> only the planning-loop local snapshot. The remaining Low-severity items are not yet addressed.
+
 ## How this was produced
 
 1. **Fan-out (6 agents).** One deep-read pass per high-stakes subsystem: Save-sync/cloud,

@@ -22,6 +22,12 @@ public sealed class SaveSyncService
         _manifests = manifests;
     }
 
+    // A folder save that contains a symlink/reparse point, a file locked by a running emulator, or a
+    // file this machine cannot read must cost only its own unit, not the whole multi-platform pass.
+    private const string UnreadableLocalReason =
+        "This machine could not read the local save — it may be open in an emulator, a symlinked " +
+        "folder, or otherwise unreadable — so it was skipped this pass.";
+
     /// <summary>
     /// Automatically reconciles every unit that exists locally or remotely for the provider's
     /// system, using the last-synced baseline to choose a safe direction for each.
@@ -98,6 +104,14 @@ public sealed class SaveSyncService
                     item.UnitId,
                     SaveSyncAction.Skipped,
                     DescribeUnresolvable(ex)));
+                continue;
+            }
+            catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                results.Add(new SaveUnitSyncResult(
+                    item.UnitId,
+                    SaveSyncAction.Skipped,
+                    UnreadableLocalReason));
                 continue;
             }
 
@@ -289,7 +303,17 @@ public sealed class SaveSyncService
                 if (remoteSnapshots.TryGetValue(unit.UnitId, out var existingRemote) &&
                     !ContentEquals(existingRemote.ContentHash, localSnapshot.ContentHash))
                 {
-                    await BackupRemoteAsync(_local, unit.UnitId, "Overwritten by a forced upload.", cancellationToken);
+                    try
+                    {
+                        await BackupRemoteAsync(_local, unit.UnitId, "Overwritten by a forced upload.", cancellationToken);
+                    }
+                    catch (CloudPayloadMissingException)
+                    {
+                        // The remote index lists this unit but its payload is gone, so there is nothing
+                        // to back up. The user's intent is to push the local copy regardless — the exact
+                        // recovery this force-upload exists for — so proceed to the upload instead of
+                        // letting one stale entry abort every unit.
+                    }
                 }
 
                 await UploadAsync(_local, unit.UnitId, localSnapshot, cancellationToken);

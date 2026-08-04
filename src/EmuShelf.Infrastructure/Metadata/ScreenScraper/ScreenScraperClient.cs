@@ -53,7 +53,7 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             cancellationToken);
     }
 
-    public Task<ScreenScraperResult<ScreenScraperGameInfo>> GetGameInfoAsync(
+    public async Task<ScreenScraperResult<ScreenScraperGameInfo>> GetGameInfoAsync(
         ScreenScraperUserCredentials userCredentials,
         ScreenScraperGameRequest request,
         CancellationToken cancellationToken = default)
@@ -76,12 +76,53 @@ public sealed class ScreenScraperClient : IScreenScraperClient
         AddIfPresent(parameters, "serialnum", request.Serial);
         AddIfPresent(parameters, "langue", request.Language);
 
-        return SendAsync(
+        var result = await SendAsync(
             "jeuInfos.php",
             userCredentials,
             parameters,
             response => response.TryGetProperty("jeu", out var game) ? ParseGame(game) : null,
             cancellationToken);
+
+        // ScreenScraper always receives romnom (the file name) alongside any hash, and documents a
+        // filename fallback: when the queried hash is not in its database it can still return a
+        // DIFFERENT game that merely shares the name — a rom-hack, a bad dump, or a renamed file. The
+        // response never states which criterion matched, so verify it here. If the lookup asked by
+        // hash and the returned ROM carries a hash of the same kind that does not equal ours, the
+        // match was by name only; reject it so a wrong game is never reported as an exact hash match
+        // and can never overwrite correct metadata.
+        if (result.IsSuccess && !ReturnedRomMatchesRequestedHash(request, result.Data!))
+        {
+            return new ScreenScraperResult<ScreenScraperGameInfo>(
+                ScreenScraperRequestStatus.NotFound,
+                null,
+                result.Quota,
+                "ScreenScraper matched by file name only, not by the ROM hash, so the result was ignored.");
+        }
+
+        return result;
+    }
+
+    // True unless the returned ROM can be proven to be a different game than the one asked for. Only a
+    // hash-initiated lookup is verifiable here (a serial-only or game-id lookup carries no ROM hash),
+    // and only when ScreenScraper echoes a hash of a kind we queried — otherwise there is nothing to
+    // compare and the result is accepted rather than risk rejecting a legitimate match on missing data.
+    private static bool ReturnedRomMatchesRequestedHash(
+        ScreenScraperGameRequest request,
+        ScreenScraperGameInfo game)
+    {
+        var comparisons = new[]
+        {
+            (Queried: request.Crc32, Returned: game.RomCrc32),
+            (Queried: request.Md5, Returned: game.RomMd5),
+            (Queried: request.Sha1, Returned: game.RomSha1),
+        };
+        var comparable = comparisons
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.Queried) && !string.IsNullOrWhiteSpace(pair.Returned))
+            .ToList();
+        if (comparable.Count == 0)
+            return true;
+        return comparable.Any(pair =>
+            string.Equals(pair.Queried!.Trim(), pair.Returned!.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
     public Task<ScreenScraperResult<IReadOnlyList<ScreenScraperSystem>>> GetSystemsAsync(
@@ -313,12 +354,23 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             return null;
 
         string? romId = null;
+        string? romCrc32 = null;
+        string? romMd5 = null;
+        string? romSha1 = null;
         if (game.TryGetProperty("rom", out var rom) && rom.ValueKind == JsonValueKind.Object)
+        {
             romId = ReadString(rom, "id");
+            romCrc32 = ReadString(rom, "romcrc");
+            romMd5 = ReadString(rom, "rommd5");
+            romSha1 = ReadString(rom, "romsha1");
+        }
 
         return new ScreenScraperGameInfo(
             gameId,
             romId,
+            romCrc32,
+            romMd5,
+            romSha1,
             ParseLocalizedArray(game, "noms", languageProperty: null, regionProperty: "region"),
             ParseLocalizedArray(game, "synopsis", "langue", regionProperty: null),
             ParseGenres(game),
