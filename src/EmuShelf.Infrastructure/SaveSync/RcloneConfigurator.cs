@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using EmuShelf.Core.Storage;
+using EmuShelf.Infrastructure.Build;
 
 namespace EmuShelf.Infrastructure.SaveSync;
 
@@ -28,7 +29,8 @@ public sealed class RcloneConfigurator
     /// Runs rclone's Google Drive OAuth and stores the resulting remote in the portable config.
     /// </summary>
     /// <param name="clientId">
-    /// An optional Google OAuth client id. Without one rclone uses its own shared client, which is
+    /// An optional Google OAuth client id. Without one EmuShelf falls back to the client baked into
+    /// the build; without that (an unconfigured build) rclone uses its own shared client, which is
     /// heavily rate-limited — the cause of multi-second waits before a launch — and which Google is
     /// retiring during 2026.
     /// </param>
@@ -43,21 +45,47 @@ public sealed class RcloneConfigurator
         string? clientSecret = null)
     {
         ValidateRemoteName(remoteName);
-        var arguments = new List<string> { "config", "create", remoteName, "drive" };
-        if (!string.IsNullOrWhiteSpace(clientId))
-        {
-            // Both halves or neither: a client id without its secret authenticates as nothing and
-            // would fail the OAuth flow with a message that does not explain why.
-            if (string.IsNullOrWhiteSpace(clientSecret))
-                throw new ArgumentException("A Google client id also needs its client secret.", nameof(clientSecret));
 
+        // Both halves or neither for a user-supplied client: a client id without its secret
+        // authenticates as nothing and would fail the OAuth flow with a message that does not explain why.
+        if (!string.IsNullOrWhiteSpace(clientId) && string.IsNullOrWhiteSpace(clientSecret))
+            throw new ArgumentException("A Google client id also needs its client secret.", nameof(clientSecret));
+
+        var arguments = new List<string> { "config", "create", remoteName, "drive" };
+        var client = ResolveGoogleClient(
+            clientId,
+            clientSecret,
+            EmbeddedSecrets.GoogleOAuthClientId,
+            EmbeddedSecrets.GoogleOAuthClientSecret);
+        if (client is { } resolved)
+        {
             arguments.Add("client_id");
-            arguments.Add(ValidateConfigValue(clientId, nameof(clientId)));
+            arguments.Add(ValidateConfigValue(resolved.ClientId, nameof(clientId)));
             arguments.Add("client_secret");
-            arguments.Add(ValidateConfigValue(clientSecret, nameof(clientSecret)));
+            arguments.Add(ValidateConfigValue(resolved.ClientSecret, nameof(clientSecret)));
         }
 
         return RunAsync(arguments, cancellationToken);
+    }
+
+    /// <summary>
+    /// Chooses which OAuth client the remote should use: a user-supplied client wins so a personal,
+    /// higher-quota client always takes precedence; otherwise the client embedded in the build; and
+    /// if neither is present, <see langword="null"/> so rclone falls back to its shared client.
+    /// </summary>
+    internal static (string ClientId, string ClientSecret)? ResolveGoogleClient(
+        string? userClientId,
+        string? userClientSecret,
+        string? embeddedClientId,
+        string? embeddedClientSecret)
+    {
+        if (!string.IsNullOrWhiteSpace(userClientId) && !string.IsNullOrWhiteSpace(userClientSecret))
+            return (userClientId.Trim(), userClientSecret.Trim());
+
+        if (!string.IsNullOrWhiteSpace(embeddedClientId) && !string.IsNullOrWhiteSpace(embeddedClientSecret))
+            return (embeddedClientId.Trim(), embeddedClientSecret.Trim());
+
+        return null;
     }
 
     /// <summary>Creates the cloud save folder if it does not already exist (idempotent).</summary>

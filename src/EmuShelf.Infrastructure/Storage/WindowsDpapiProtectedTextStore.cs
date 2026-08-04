@@ -7,7 +7,7 @@ namespace EmuShelf.Infrastructure.Storage;
 
 /// <summary>Internal reusable DPAPI boundary for portable credential blobs on Windows.</summary>
 [SupportedOSPlatform("windows")]
-internal sealed class WindowsDpapiProtectedTextStore
+internal sealed class WindowsDpapiProtectedTextStore : IProtectedTextStore
 {
     private readonly string _blobPath;
     private readonly string _credentialName;
