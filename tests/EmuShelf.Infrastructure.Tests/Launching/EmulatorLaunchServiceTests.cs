@@ -198,10 +198,14 @@ public class EmulatorLaunchServiceTests : IDisposable
 
         Assert.True(result.Succeeded);
         Assert.Equal("flatpak", _runner.StartSpec!.FileName);
+        // The sandbox is granted read-only access to both the game's directory and the core's
+        // directory: the core lives outside the sandbox's default-visible paths, so without its own
+        // grant RetroArch cannot load it even though EmuShelf's host-side preflight passed.
         Assert.Equal(
             [
                 "run",
                 $"--filesystem={_directory}:ro",
+                $"--filesystem={Path.GetDirectoryName(core)}:ro",
                 "org.libretro.RetroArch",
                 "-L",
                 core,
