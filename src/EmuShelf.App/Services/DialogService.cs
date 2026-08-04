@@ -282,7 +282,9 @@ public sealed class DialogService : IDialogService
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
+        bool ambientThemeFromArtwork = false,
+        Func<bool, Task>? setAmbientThemeFromArtwork = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -305,7 +307,9 @@ public sealed class DialogService : IDialogService
             cloudSaves,
             texturePacks,
             screenScraper,
-            themeChoices);
+            themeChoices,
+            ambientThemeFromArtwork,
+            setAmbientThemeFromArtwork);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 

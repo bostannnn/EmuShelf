@@ -2978,6 +2978,10 @@ public class MainViewModelTests : IDisposable
     {
         public ThemePreference Current { get; private set; } = initial;
 
+        public bool AmbientFromArtwork { get; private set; }
+
+        public event EventHandler? AmbientFromArtworkChanged;
+
         public Task SetThemeAsync(
             ThemePreference preference,
             CancellationToken cancellationToken = default)
@@ -2985,6 +2989,17 @@ public class MainViewModelTests : IDisposable
             Current = preference;
             return Task.CompletedTask;
         }
+
+        public Task SetAmbientFromArtworkAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            AmbientFromArtwork = enabled;
+            AmbientFromArtworkChanged?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }
+
+        public void ApplyArtworkPalette(ArtworkPalette palette) { }
+
+        public void ClearArtworkPalette() { }
     }
 
     private sealed class RecordingMetadataService : IGameMetadataService

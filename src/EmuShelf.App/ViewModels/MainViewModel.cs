@@ -104,6 +104,14 @@ public partial class MainViewModel : ViewModelBase
     private string? _displayedScopeKey;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
+    // "Match colours to artwork": as focus settles on a game its cover drives a live palette. Debounced
+    // so fast scrolling does not thrash, cached per cover so re-focus is instant, and the last dark/light
+    // reading is carried forward so the factory's hysteresis stops the whole UI strobing between covers.
+    private readonly DispatcherTimer _ambientThemeDebounce;
+    private readonly Dictionary<string, ArtworkPalette> _ambientPaletteCache = new(StringComparer.Ordinal);
+    private GameViewModel? _ambientPendingGame;
+    private bool? _ambientLastIsDark;
+
     // Built GameViewModel lists per scope key (system:{id} / AllGames / RecentlyAdded). Navigating to
     // an already-visited scope reuses its list instantly instead of re-querying the DB and rebuilding
     // hundreds of view models, which is what made fast LB/RB cycling thrash. The cache owns these view
@@ -228,6 +236,11 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
+
+    /// <summary>When true, the couch UI recolours from the focused game's artwork; the chosen theme is
+    /// the fallback for artwork with no usable colour. Offered next to the theme gallery in both modes.</summary>
+    [ObservableProperty]
+    public partial bool AmbientThemeFromArtwork { get; set; }
 
     /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
     /// theme gallery projects the same instances so both modes stay in lock-step.</summary>
@@ -674,6 +687,15 @@ public partial class MainViewModel : ViewModelBase
         CurrentTheme = _themeService.Current;
         foreach (var choice in ThemeChoices)
             choice.IsSelected = choice.Id == CurrentTheme;
+
+        _ambientThemeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _ambientThemeDebounce.Tick += (_, _) =>
+        {
+            _ambientThemeDebounce.Stop();
+            ApplyAmbientThemeForPendingGame();
+        };
+        // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
+        AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
 
         Systems = new ObservableCollection<GameSystem>(systems);
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
@@ -1890,6 +1912,91 @@ public partial class MainViewModel : ViewModelBase
             newValue.IsFocused = true;
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
         }
+
+        ScheduleAmbientThemeUpdate(newValue);
+    }
+
+    private void ScheduleAmbientThemeUpdate(GameViewModel? game)
+    {
+        if (!IsGamepadMode || !AmbientThemeFromArtwork)
+            return;
+
+        _ambientPendingGame = game;
+        _ambientThemeDebounce.Stop();
+        _ambientThemeDebounce.Start();
+    }
+
+    partial void OnAmbientThemeFromArtworkChanged(bool value)
+    {
+        _ = _themeService.SetAmbientFromArtworkAsync(value);
+        if (value)
+        {
+            _ambientPendingGame = FocusedGame;
+            ApplyAmbientThemeForPendingGame();
+        }
+        else
+        {
+            _ambientThemeDebounce?.Stop();
+            _themeService.ClearArtworkPalette();
+        }
+    }
+
+    private void ApplyAmbientThemeForPendingGame()
+    {
+        if (!AmbientThemeFromArtwork || !IsGamepadMode)
+            return;
+
+        var game = _ambientPendingGame;
+        if (game is null)
+            return;
+
+        var key = game.CoverPath;
+        if (string.IsNullOrEmpty(key))
+        {
+            // No cover for this game → show the chosen theme rather than the previous game's colour.
+            _themeService.ClearArtworkPalette();
+            return;
+        }
+
+        if (_ambientPaletteCache.TryGetValue(key, out var cached))
+        {
+            _ambientLastIsDark = cached.IsDark;
+            _themeService.ApplyArtworkPalette(cached);
+            return;
+        }
+
+        var image = game.CoverImage;
+        if (image is null)
+            return; // cover not decoded yet; keep the current palette until it loads
+
+        var pixels = ArtworkPaletteExtractor.CopyPixels(image);
+        if (pixels is null)
+            return;
+
+        _ = AnalyzeAndApplyAmbientAsync(game, key, pixels, _ambientLastIsDark);
+    }
+
+    private async Task AnalyzeAndApplyAmbientAsync(
+        GameViewModel game,
+        string key,
+        byte[] pixels,
+        bool? previousIsDark)
+    {
+        var palette = await Task.Run(() => ArtworkPaletteExtractor.FromBgraPixels(pixels, previousIsDark));
+
+        // Focus or mode may have changed while extracting; only apply if this is still the pending game.
+        if (!AmbientThemeFromArtwork || !IsGamepadMode || !ReferenceEquals(_ambientPendingGame, game))
+            return;
+
+        if (palette is null)
+        {
+            _themeService.ClearArtworkPalette();
+            return;
+        }
+
+        _ambientPaletteCache[key] = palette;
+        _ambientLastIsDark = palette.IsDark;
+        _themeService.ApplyArtworkPalette(palette);
     }
 
     partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
@@ -1950,11 +2057,20 @@ public partial class MainViewModel : ViewModelBase
             IsGridView = true;
             BuildGamepadRows(); // populate the row list for the grid we're about to show
             RestoreFocusedGame();
+            if (AmbientThemeFromArtwork)
+            {
+                _ambientPendingGame = FocusedGame;
+                ApplyAmbientThemeForPendingGame();
+            }
         }
         else
         {
             CloseGamepadOverlay();
             GamepadRows.Clear(); // drop the row tiles' view models while the gamepad grid is hidden
+            // Desktop keeps the chosen theme; the artwork palette is a couch-mode effect.
+            _ambientThemeDebounce?.Stop();
+            if (AmbientThemeFromArtwork)
+                _themeService.ClearArtworkPalette();
         }
     }
 
@@ -3973,7 +4089,9 @@ public partial class MainViewModel : ViewModelBase
                 _cloudSaveSync?.CreateSettingsContext(),
                 CreateTexturePackSettingsContext(),
                 CreateScreenScraperSettingsContext(),
-                ThemeChoices);
+                ThemeChoices,
+                AmbientThemeFromArtwork,
+                SetAmbientThemeFromArtworkAsync);
         }
         catch (Exception ex)
         {
@@ -4003,7 +4121,16 @@ public partial class MainViewModel : ViewModelBase
             // ScreenScraper connect is reached from the controller-native scraper overlay, so the
             // Gamepad settings projection omits its text-entry-heavy section for now.
             screenScraper: null,
-            themeChoices: ThemeChoices);
+            themeChoices: ThemeChoices,
+            ambientThemeFromArtwork: AmbientThemeFromArtwork,
+            setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync);
+    }
+
+    private Task SetAmbientThemeFromArtworkAsync(bool value)
+    {
+        // Route through the source-of-truth property so persistence and the live retint fire once.
+        AmbientThemeFromArtwork = value;
+        return Task.CompletedTask;
     }
 
     private LibraryMaintenanceActions CreateLibraryMaintenanceActions() => new(

@@ -147,7 +147,9 @@ internal sealed class NullDialogService : IDialogService
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null) => Task.CompletedTask;
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
+        bool ambientThemeFromArtwork = false,
+        Func<bool, Task>? setAmbientThemeFromArtwork = null) => Task.CompletedTask;
     public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
         Task.CompletedTask;
 }

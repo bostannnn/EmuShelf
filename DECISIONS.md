@@ -3969,3 +3969,36 @@ applying the default Title column sort. This also fixes `RecentlyAdded`, whose o
 a coincidental title ordering — the column sort silently overrode the intended recency order. Trade-off:
 the list-view column-sort headers are inert within these two collections, accepted because recency *is*
 their sort; a deliberate "sort within a collection" affordance can revisit that later.
+
+## 2026-08-04 — Ambient theming: the couch UI recolours from the focused game's artwork
+
+"Match colours to artwork" reuses the existing theme hot-swap seam rather than a new mechanism. Every
+UI colour is an `EmuXxxBrush` token consumed via `DynamicResource`, so `AppThemeService` already
+re-colours the whole app live by swapping a palette dictionary. Ambient mode generates that dictionary
+at runtime from a game's artwork (`ApplyArtworkPalette`) and appends it *above* the chosen theme's
+override, so the picked theme becomes the fallback and stays live for artwork with no usable colour.
+`RequestedThemeVariant` follows the artwork's brightness, which is what flips a bright cover's panel to
+light while a dark cover stays dark — the same dark/light switch the built-in themes already flip.
+
+Colour derivation is a pure Core function (`ArtworkPaletteFactory`, tested without Avalonia); the App
+only extracts (`ArtworkPaletteExtractor`). The extractor buckets pixels by hue and picks the most
+saturation-weighted swatch, plus the mean WCAG luminance. The factory takes the *hue* from the art but
+*forces* every surface/text lightness into a safe band, so no cover can turn the menu into an unreadable
+smear; body text is pushed toward pure white/near-black until it clears a 4.5:1 floor, and the
+on-accent glyph colour is chosen by contrast. The dark/light decision carries a hysteresis dead zone
+(stay dark ≤0.58, stay light ≥0.42) so scrolling a run of mid-brightness covers never strobes the shell.
+
+It samples the on-screen **cover** (the already-decoded `CoverImage`), not fan art. Fan art can be
+scraped but is never displayed anywhere yet, and the cover is what the user is actually looking at, so
+its colour matches the screen; when a fan-art/hero display lands, the sampler can prefer it with a
+one-line source change. Pixels are copied on the UI thread and analysed on a worker, the result is
+cached per cover path so re-focus is instant, and grayscale/low-saturation art returns null so the
+chosen theme shows through. The effect is a couch-mode feature: it is driven by the Gamepad
+`FocusedGame` (debounced 120 ms) and cleared when returning to Desktop.
+
+The toggle (`AppSettings.AmbientThemeFromArtwork`) lives in the Desktop settings Appearance section,
+right with the theme gallery. A Gamepad-settings toggle row was deliberately deferred: the couch Themes
+section is a gallery with no row support, and adding the toggle to the General section broke the
+Desktop/Gamepad per-section parity contract its snapshot tests enforce. Integrating a toggle into the
+couch Themes-gallery focus model is a follow-up; until then the setting is reached from Desktop
+settings and the live effect is visible in Gamepad mode.
