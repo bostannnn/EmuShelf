@@ -894,6 +894,19 @@
                         </Grid>
                     </Button>
                     <Button Classes="collection-item"
+                            Classes.selected="{Binding IsRecentlyPlayedSelected}"
+                            Command="{Binding ShowRecentlyPlayedCommand}">
+                        <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                            <Border Classes="nav-icon-well">
+                                <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
+                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Recently Played" FontSize="13.5"
+                                       FontWeight="Medium" VerticalAlignment="Center"
+                                       IsVisible="{Binding !IsNavigationCollapsed}" />
+                        </Grid>
+                    </Button>
+                    <Button Classes="collection-item"
                             Classes.selected="{Binding IsRecentlyAddedSelected}"
                             Command="{Binding ShowRecentlyAddedCommand}">
                         <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
@@ -1633,14 +1646,15 @@
                                 CommandParameter="{Binding}"
                                 DoubleTapped="OnGameDoubleTapped">
                             <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
-                                <!-- Each tile uses its platform's true cover frame (CoverHeight from
-                                     GameSystem.CoverAspectRatio), matching the desktop grid. Frames
-                                     bottom-align on a shared shelf sized to the tallest cover in the
-                                     view, so mixed-platform All Games keeps one baseline and the
-                                     titles still line up. -->
-                                <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}" ClipToBounds="False">
-                                  <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
-                                         Classes="gamepad-cover-stack" VerticalAlignment="Bottom" ClipToBounds="False">
+                                <!-- Every gamepad tile is one uniform frame (GamepadCoverHeight,
+                                     a fixed ratio independent of platform) rather than the desktop
+                                     grid's per-platform frames bottom-aligned on a shared shelf. A
+                                     mixed All Games view is then an even grid on one baseline with
+                                     no empty void above short covers, and the tile shape never
+                                     shifts as you switch platforms. Off-ratio art is letterboxed on
+                                     the cover well (Image Stretch=Uniform below). -->
+                                  <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding GamepadCoverHeight}"
+                                         Classes="gamepad-cover-stack" ClipToBounds="False">
                                     <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
                                          larger on every side with a concentric corner radius (12 + 6), so
                                          the opaque cover masks its centre and the accent reads as an even
@@ -1682,11 +1696,13 @@
                                                                LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
                                             </Grid>
-                                            <!-- The frame is the platform's true scan ratio, so filling it
-                                                 bleeds a hair rather than letterboxing. -->
+                                            <!-- Uniform, not UniformToFill: the frame is one fixed shape for
+                                                 every platform, so art whose ratio differs is letterboxed on
+                                                 the cover well (a clean matte inside the card) rather than
+                                                 cropped. Disc-system covers match the frame and fill it. -->
                                             <Image Source="{Binding CoverImage}" Classes="cover-image"
                                                    Classes.loaded="{Binding HasCoverImage}"
-                                                   Stretch="UniformToFill" />
+                                                   Stretch="Uniform" />
                                             <Border IsVisible="{Binding IsMultiDisc}" Background="#D9000000"
                                                     CornerRadius="4" Padding="9,5" Margin="10"
                                                     HorizontalAlignment="Left" VerticalAlignment="Bottom">
@@ -1723,7 +1739,6 @@
                                             CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
                                             BorderThickness="2" />
                                   </Panel>
-                                </Grid>
                                 <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding Title}"
                                            Margin="2,10,2,0" TextWrapping="Wrap" MaxLines="2"
                                            TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"

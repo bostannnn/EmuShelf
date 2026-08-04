@@ -27,6 +27,16 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Default frame ratio when a caller omits one.</summary>
     private const double DefaultCoverAspectRatio = 0.708;
 
+    /// <summary>Frame ratio for the gamepad grid, which draws EVERY tile into this one shape
+    /// regardless of platform. It is deliberately fixed (unlike <see cref="CoverAspectRatio"/>)
+    /// so a mixed "All Games" view is an even grid on one baseline instead of covers of five
+    /// different heights bottom-aligned on a shelf sized to the tallest. 0.708 matches the disc
+    /// systems the library is mostly made of, so those covers fill it exactly; off-ratio art
+    /// (square PS1, wide SNES) is letterboxed on the cover well rather than cropped. The tile
+    /// shape never changes as you switch platforms, which is the couch-UI look OpenEmu and Steam
+    /// Big Picture have. See DECISIONS 2026-08-04.</summary>
+    private const double GamepadUniformAspectRatio = 0.708;
+
     /// <summary>Fixed list-row thumbnail height; the width follows the platform ratio so the
     /// list thumbnail keeps each platform's true cover shape (square for PS1, portrait for
     /// disc-case systems) instead of cropping every cover into one hardcoded portrait box.</summary>
@@ -56,6 +66,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     private double _coverWidth;
     private double _coverHeight;
     private double _shelfCoverHeight;
+    private double _gamepadCoverHeight;
 
     /// <summary>Width of this tile's cover. The library recomputes it from the viewport width
     /// (see <see cref="ApplyCoverLayout"/>) so a whole number of columns fills the row.</summary>
@@ -82,13 +93,25 @@ public partial class GameViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _shelfCoverHeight, value);
     }
 
+    /// <summary>Height of the uniform gamepad tile frame for the current cover width. Unlike
+    /// <see cref="CoverHeight"/> this ignores the platform ratio, so every gamepad tile is the
+    /// same size and no tile carries an empty void above a short cover. See
+    /// <see cref="GamepadUniformAspectRatio"/>.</summary>
+    public double GamepadCoverHeight
+    {
+        get => _gamepadCoverHeight;
+        private set => SetProperty(ref _gamepadCoverHeight, value);
+    }
+
     /// <summary>Sets the cover width (recomputed from the current viewport) and the shared shelf
-    /// height; the cover height follows from the platform aspect ratio.</summary>
+    /// height; the desktop cover height follows the platform aspect ratio, while the gamepad frame
+    /// height is uniform.</summary>
     public void ApplyCoverLayout(double coverWidth, double shelfCoverHeight)
     {
         CoverWidth = coverWidth;
         CoverHeight = Math.Round(coverWidth / CoverAspectRatio);
         ShelfCoverHeight = shelfCoverHeight;
+        GamepadCoverHeight = Math.Round(coverWidth / GamepadUniformAspectRatio);
     }
     public IAsyncRelayCommand<GameViewModel?> LaunchCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SaveTitleCommand { get; }

@@ -3913,6 +3913,31 @@ border-recolour + drop-shadow so selection reads as the same even accent frame e
 outer Panel — the required ancestor of the ring — while the tile Border keeps the `gamepad-achievement`
 class the tests query; the opaque tile masks the pad centre exactly as the opaque cover does.
 
+## 2026-08-04 — Gamepad grid uses one uniform cover frame, not per-platform frames
+
+The desktop grid gives every tile its platform's true cover frame (`CoverHeight` from
+`GameSystem.CoverAspectRatio`) and bottom-aligns them on a shared shelf sized to the tallest cover in
+the view. In a single-system view that is uniform, but in a mixed "All Games" view the aspect ratios
+span from PSP's `0.581` (tall) to SNES's `1.434` (short and wide), so bottom-aligning them leaves a
+large empty void above every short cover and a ragged top edge — chaotic at couch scale where tiles are
+~2× bigger with more spacing. The desktop grid keeps this behaviour; the gamepad grid was the complaint.
+
+The gamepad grid now draws every tile into one fixed frame regardless of platform:
+`GameViewModel.GamepadCoverHeight = round(CoverWidth / GamepadUniformAspectRatio)` with
+`GamepadUniformAspectRatio = 0.708`, the disc-system ratio the library is mostly made of. The
+row-`ListBox` tile ([MainWindow.axaml]) dropped its `ShelfCoverHeight` shelf + bottom-aligned
+`CoverHeight` panel for a single `GamepadCoverHeight` frame, and the cover `Image` switched from
+`UniformToFill` to `Uniform`: disc-system art fills the frame exactly, while off-ratio art (square PS1,
+wide SNES) is letterboxed on the cover well rather than cropped, so no box art is ever chopped. The
+existing `Border.gamepad-cover-frame` card border + `BoxShadow` now read as an intentional matte behind
+the letterbox bars. The tile shape never changes as you switch platforms — the stable-tile look of
+OpenEmu and Steam Big Picture. `GamepadCoverHeight` is gamepad-only, so `CoverHeight`/`ShelfCoverHeight`
+and the desktop grid are untouched;
+`GamepadCoverHeight_IsUniformAcrossPlatforms_WhileDesktopHeightFollowsAspect` locks in that a square and
+a portrait platform share one gamepad frame height while their desktop heights still differ. Trade-off:
+a single-system view of a landscape platform (SNES/Arcade) now shows matte bars instead of a tight
+short frame, accepted for one consistent couch grid across every platform switch.
+
 ## 2026-08-04 — Recently Played is a smart collection, stamped at launch
 
 Recently Played ships as a first-class smart collection — a new `LibraryScope.RecentlyPlayed`
