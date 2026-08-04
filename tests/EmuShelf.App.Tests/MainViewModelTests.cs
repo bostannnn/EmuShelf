@@ -930,7 +930,10 @@ public class MainViewModelTests : IDisposable
         await vm.ReloadGamesAsync();
         vm.FocusedGame = Assert.Single(vm.Games);
         await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
-        vm.SetRenderedGamepadAchievementColumnCount(2);
+        // Column count is derived arithmetically from the grid width (100px tiles, 12px gutters); a
+        // 250px viewport yields 2 columns. Headless tests raise no SizeChanged, so set it directly.
+        vm.GamepadAchievementViewportWidth = 250;
+        Assert.Equal(2, vm.GamepadAchievementColumnCount);
 
         Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
@@ -942,14 +945,15 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
         Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
 
-        vm.SetRenderedGamepadAchievementColumnCount(3);
+        vm.GamepadAchievementViewportWidth = 400; // -> 3 columns
+        Assert.Equal(3, vm.GamepadAchievementColumnCount);
         vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails!.VisibleAchievements[1];
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
         Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
         vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails.VisibleAchievements[3];
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
         Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
-        vm.SetRenderedGamepadAchievementColumnCount(2);
+        vm.GamepadAchievementViewportWidth = 250; // -> 2 columns
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
         Assert.Equal(AchievementDisplayFilter.Locked, vm.GamepadAchievementDetails!.SelectedFilter);
@@ -974,6 +978,67 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
         Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
         Assert.Equal(revisionBeforeSort + 2, vm.GamepadAchievementLayoutRevision);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadAchievements_RowProjectionSlicesEveryAchievementAndReflowsOnWidth()
+    {
+        var path = Path.Combine(_baseDirectory, "GamepadAchievementRows.cue");
+        File.WriteAllText(path, "FILE \"GamepadAchievementRows.bin\" BINARY");
+        _library.AddGames([new Game
+        {
+            SystemId = Ps1.Id,
+            Path = path,
+            Title = "Achievement rows",
+            DateAdded = DateTimeOffset.UtcNow,
+        }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var achievements = Enumerable.Range(1, 23)
+            .Select(index => new RetroAchievementsAchievement(
+                index, $"Achievement {index}", "", 5, "", index,
+                index <= 4 ? DateTimeOffset.UtcNow : null, null))
+            .ToArray();
+        var cached = new RetroAchievementsDetailsSnapshot(
+            new RetroAchievementsGameDetails(4321, "Achievement rows", 23, 4, 0, achievements),
+            DateTimeOffset.UtcNow);
+        var vm = CreateViewModel(
+            retroAchievementsRead: new StaticRetroAchievementsReadStore(gameId, 4321),
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true),
+            retroDetails: new RecordingRetroAchievementsDetailsService(cached));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+        await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
+
+        // A 620px grid holds 5 fixed 100px tiles with 12px gutters.
+        vm.GamepadAchievementViewportWidth = 620;
+        Assert.Equal(5, vm.GamepadAchievementColumnCount);
+        AssertRowsCover(vm, columns: 5);
+
+        // Narrowing to 4 columns must re-slice, still covering every achievement in order.
+        vm.GamepadAchievementViewportWidth = 500;
+        Assert.Equal(4, vm.GamepadAchievementColumnCount);
+        AssertRowsCover(vm, columns: 4);
+
+        // Filtering replaces the visible set; the rows must follow and never strand a tile.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.Equal(AchievementDisplayFilter.Locked, vm.GamepadAchievementDetails!.SelectedFilter);
+        Assert.Equal(19, vm.GamepadAchievementDetails.VisibleAchievements.Count);
+        AssertRowsCover(vm, columns: 4);
+
+        return;
+
+        static void AssertRowsCover(MainViewModel vm, int columns)
+        {
+            var visible = vm.GamepadAchievementDetails!.VisibleAchievements;
+            var rows = vm.GamepadAchievementRows;
+            Assert.Equal((visible.Count + columns - 1) / columns, rows.Count);
+            Assert.All(rows.Take(rows.Count - 1), row => Assert.Equal(columns, row.Count));
+            Assert.InRange(rows[^1].Count, 1, columns);
+            // Flattening the rows top-to-bottom, left-to-right reproduces the visible list exactly —
+            // so no achievement is dropped or duplicated by the projection.
+            Assert.Equal(visible, rows.SelectMany(row => row).ToArray());
+        }
     }
 
     [AvaloniaFact]
