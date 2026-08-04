@@ -150,7 +150,10 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
             releaseFirstUpdate.Wait();
             return settings with { Theme = ThemePreference.Dark };
         }));
-        Assert.True(firstUpdateEntered.Wait(TimeSpan.FromSeconds(2)));
+        // The callback is entered the instant the cross-instance lock is taken, so a passing run
+        // returns immediately; this generous bound only absorbs a loaded CI runner being slow to
+        // acquire the lock. The former 2s bound flaked on Windows CI (release build for v1.0.3).
+        Assert.True(firstUpdateEntered.Wait(TimeSpan.FromSeconds(30)));
 
         var secondUpdate = Task.Run(() => secondService.Update(settings =>
         {
