@@ -27,15 +27,14 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Default frame ratio when a caller omits one.</summary>
     private const double DefaultCoverAspectRatio = 0.708;
 
-    /// <summary>Frame ratio for the gamepad grid, which draws EVERY tile into this one shape
-    /// regardless of platform. It is deliberately fixed (unlike <see cref="CoverAspectRatio"/>)
-    /// so a mixed "All Games" view is an even grid on one baseline instead of covers of five
-    /// different heights bottom-aligned on a shelf sized to the tallest. 0.708 matches the disc
-    /// systems the library is mostly made of, so those covers fill it exactly; off-ratio art
-    /// (square PS1, wide SNES) is letterboxed on the cover well rather than cropped. The tile
-    /// shape never changes as you switch platforms, which is the couch-UI look OpenEmu and Steam
-    /// Big Picture have. See DECISIONS 2026-08-04.</summary>
-    private const double GamepadUniformAspectRatio = 0.708;
+    /// <summary>Cover ratio the gamepad grid falls back to ONLY when a view mixes platforms (All
+    /// Games and the like). A single-platform view keeps that platform's true cover shape, so its
+    /// covers fill the frame with no letterbox bars; only a mixed view — which would otherwise be a
+    /// ragged skyline of covers at five different heights — is unified into this one frame, its
+    /// covers cropped to fill. 0.708 is the disc-system ratio the library is mostly made of. The
+    /// library decides per view whether a tile gets its true height or this one (see
+    /// <c>MainViewModel.GamepadCoverHeightFor</c>). See DECISIONS 2026-08-04.</summary>
+    internal const double GamepadMixedCoverAspectRatio = 0.708;
 
     /// <summary>Fixed list-row thumbnail height; the width follows the platform ratio so the
     /// list thumbnail keeps each platform's true cover shape (square for PS1, portrait for
@@ -93,25 +92,26 @@ public partial class GameViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _shelfCoverHeight, value);
     }
 
-    /// <summary>Height of the uniform gamepad tile frame for the current cover width. Unlike
-    /// <see cref="CoverHeight"/> this ignores the platform ratio, so every gamepad tile is the
-    /// same size and no tile carries an empty void above a short cover. See
-    /// <see cref="GamepadUniformAspectRatio"/>.</summary>
+    /// <summary>Height of this tile's gamepad cover frame. In a single-platform view it equals
+    /// <see cref="CoverHeight"/> (the platform's true shape, no bars); in a mixed view the library
+    /// passes one uniform height for every tile so the grid is even. See
+    /// <see cref="GamepadMixedCoverAspectRatio"/>.</summary>
     public double GamepadCoverHeight
     {
         get => _gamepadCoverHeight;
         private set => SetProperty(ref _gamepadCoverHeight, value);
     }
 
-    /// <summary>Sets the cover width (recomputed from the current viewport) and the shared shelf
-    /// height; the desktop cover height follows the platform aspect ratio, while the gamepad frame
-    /// height is uniform.</summary>
-    public void ApplyCoverLayout(double coverWidth, double shelfCoverHeight)
+    /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
+    /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame
+    /// height is decided per view by the library — null means "use this platform's true height",
+    /// which a single-platform view always does; a mixed view passes one uniform height.</summary>
+    public void ApplyCoverLayout(double coverWidth, double shelfCoverHeight, double? gamepadCoverHeight = null)
     {
         CoverWidth = coverWidth;
         CoverHeight = Math.Round(coverWidth / CoverAspectRatio);
         ShelfCoverHeight = shelfCoverHeight;
-        GamepadCoverHeight = Math.Round(coverWidth / GamepadUniformAspectRatio);
+        GamepadCoverHeight = gamepadCoverHeight ?? CoverHeight;
     }
     public IAsyncRelayCommand<GameViewModel?> LaunchCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SaveTitleCommand { get; }

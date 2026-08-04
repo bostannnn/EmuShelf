@@ -4079,3 +4079,23 @@ offset: a virtualizing panel discards an offset set into a not-yet-realized regi
 pass (observed: a manual jump to the last row was reset to the top), whereas `ScrollIntoView` realizes
 and positions the far row reliably. Row height for the centre maths is read from any realized row
 (uniform per view), falling back to `ShelfCoverHeight + 90` chrome before the first row realizes.
+
+## 2026-08-04 — Gamepad uniform cover frame applies only to mixed views (revises the entry above)
+
+The earlier "Gamepad grid uses one uniform cover frame" decision was too broad. Drawing every tile
+into one fixed frame regardless of platform also barred single-platform views — a landscape SNES or
+square PS1 view, whose covers already share a shape and never needed unifying, gained letterbox bars
+top and bottom, which read as worse than the ragged mixed view the change was meant to fix (user
+feedback). Corrected to be scope-aware. `MainViewModel.GamepadCoverHeightFor(games, coverWidth)`
+returns the platform's true height when the visible view holds a single system, and the uniform
+`GameViewModel.GamepadMixedCoverAspectRatio` (0.708) height only when the view mixes platforms (All
+Games and the like). A single-platform view is therefore back to the desktop cover shape; only a
+genuinely mixed view is flattened onto one frame. The cover `Image` also went from `Uniform`
+(letterbox) back to `UniformToFill`, so covers fill the frame with no bars anywhere: a single-platform
+frame matches its art exactly, and the mixed frame crops the off-ratio minority (wide SNES, square
+PS1) to fill rather than barring it. `ApplyCoverLayout`'s gamepad height is nullable and defaults to
+the tile's own `CoverHeight`, which every single-platform caller and the constructor rely on. Covered
+by `GamepadCoverHeightFor_UsesTheTrueHeightForOnePlatform_AndAUniformHeightForAMix` and the rewritten
+`GamepadCoverHeight_DefaultsToTheTrueFrame_ButHonorsAnExplicitUniformHeight`. Trade-off accepted:
+in a mixed All Games view the wide/square minority is cropped rather than shown whole — the couch grid
+stays even and bar-free, which the crop preserves and letterboxing did not.
