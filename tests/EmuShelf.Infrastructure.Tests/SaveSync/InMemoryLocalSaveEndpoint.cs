@@ -12,6 +12,10 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
 
     public Func<string, string?>? CompatibilityResolver { get; set; }
 
+    // When set, runs before the normal snapshot so a test can simulate a local read that throws
+    // (a reparse point/symlink or a file locked by a running emulator).
+    public Action<string>? SnapshotHook { get; set; }
+
     public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
         _units[unitId] = new LiveUnit(content, modifiedUtc);
 
@@ -21,6 +25,7 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
 
     public Task<SaveUnitSnapshot?> SnapshotAsync(string unitId, CancellationToken cancellationToken = default)
     {
+        SnapshotHook?.Invoke(unitId);
         if (!_units.TryGetValue(unitId, out var unit))
             return Task.FromResult<SaveUnitSnapshot?>(null);
         return Task.FromResult<SaveUnitSnapshot?>(

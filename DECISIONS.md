@@ -4002,3 +4002,80 @@ section is a gallery with no row support, and adding the toggle to the General s
 Desktop/Gamepad per-section parity contract its snapshot tests enforce. Integrating a toggle into the
 couch Themes-gallery focus model is a follow-up; until then the setting is reached from Desktop
 settings and the live effect is visible in Gamepad mode.
+## 2026-08-04 — Application-identity credentials are embedded into the build
+
+The 2026-08-03 decision provisioned the ScreenScraper developer credentials only from runtime
+environment variables, and cloud sync fell back to rclone's shared Google client when the user
+supplied none. That works when the app is launched from a shell that exports those variables (a
+developer's machine) but not from a Steam Deck / desktop / gamescope session, which inherits none of
+them — so a shipped install reported "ScreenScraper isn't configured in this build" and cloud sync
+ran on the rate-limited shared client. This amends that rule: **application-identity credentials are
+now baked into the build.** This is how every comparable frontend (EmulationStation, Skyscraper,
+Batocera, Skraper) ships ScreenScraper access, and it is what ScreenScraper's model expects — the
+`devid` identifies EmuShelf-the-app, not a user, and is meant to be shared across every install.
+
+What is embedded, and only this: the ScreenScraper `devid`/`devpassword`/`softname`, and the Google
+Drive OAuth **client** id + secret. The Google *client* is app identity (Google treats a desktop
+OAuth client secret as non-confidential); each user still runs their own OAuth flow and syncs into
+their **own** Drive. The per-user connected-Drive token is never embedded — doing so would funnel
+every user's saves into one account. A user-supplied client still wins over the embedded default, and
+a developer environment variable still wins per field over the embedded value, so existing workflows
+are unchanged; when neither source has a field the app falls back to its prior behaviour (ScreenScraper
+stays unconfigured, rclone uses its shared client).
+
+Mechanism: `src/EmuShelf.Infrastructure/Build/EmbeddedSecrets.targets` reads the build-time
+environment variables (`SCREENSCRAPER_DEV_ID`, `SCREENSCRAPER_DEV_PASSWORD`, `SCREENSCRAPER_SOFTNAME`,
+`EMUSHELF_GOOGLE_OAUTH_CLIENT_ID`, `EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET`) and generates a partial
+`EmbeddedSecrets` class into `obj/` — so the secret still never enters the repository (obj/ is
+gitignored), only the shipped binary. Values are XOR+Base64 encoded: Base64 guarantees the generated
+C# literal is always valid regardless of the raw bytes, and the XOR only keeps the strings out of a
+naive `strings`/scraper sweep — it is not a security boundary, consistent with these being
+non-confidential shared credentials. `ScreenScraperDeveloperCredentialSource.Resolve` and
+`RcloneConfigurator.ResolveGoogleClient` hold the precedence/all-or-nothing logic and are unit-tested;
+the encode↔decode round-trip is guarded by a test that mirrors the build encoder.
+
+CI wiring: `.github/workflows/build.yml` passes the five values as step-level `env:` on each
+`dotnet publish` (Windows, Linux/AppImage, macOS) from repository secrets of the same names. Secrets
+are unavailable to fork pull requests, and the matrix `build`/`test` job is deliberately left without
+them, so only same-repo packaged artifacts carry credentials while every other build still compiles.
+
+The *user's* ScreenScraper login is now persisted on every platform too, closing the earlier
+session-only gap on Linux/Steam Deck and macOS. `WindowsScreenScraperCredentialStore` became the
+platform-neutral `TextBackedScreenScraperCredentialStore` over a new `IProtectedTextStore`: DPAPI on
+Windows, and a portable AES-GCM blob (`PortableObfuscatedTextStore`) elsewhere — the same
+obfuscation-not-confidentiality trade-off already used for the RetroAchievements key, writing the same
+`Settings/screenscraper.account` file so the login survives restarts and updates.
+
+## 2026-08-04 — Gamepad grid: the selector is centre-anchored and the scroll eases instead of snapping
+
+Controller navigation felt choppy and the selector landed unpredictably — top on one platform, middle
+or bottom on another. Root cause was the reveal in `RevealFocusedGame`: it called
+`GamepadRowList.ScrollIntoView(rowIndex)`, which scrolls the *minimum* to make a row visible (so the
+selector walks to whichever viewport edge it hits and sticks there), then posted a *second* instant
+offset change in `NudgeGlowClearance`. Two hard jumps per d-pad step, and because rows are taller on
+portrait-cover platforms (PSP 0.581, PS2 0.708) than on wide ones (SNES 1.434), the number of visible
+rows — and thus where the edge-stuck selector sat — differed per platform.
+
+Both are now replaced by a single rule: **anchor the focused row on the viewport's vertical centre**
+(clamped at the ends) and **ease the `ScrollViewer.Offset` toward that anchor**. Centre-anchoring makes
+the selector position aspect-ratio-independent — the focused tile settles on the same line on every
+platform (asserted for PSP/SNES/PS2 in `SelectorIsCentered_DeepInList_RegardlessOfAspectRatio`). The
+ease turns a held d-pad into one continuous scroll: a retarget mid-flight just moves the goal the follow
+chases, so fast auto-repeat no longer strobes row-to-row.
+
+The ease is deliberately **not** a wall-clock `DispatcherTimer`. It self-reposts at
+`DispatcherPriority.Render`, advancing a fixed fraction (0.3) of the remaining distance per step. At
+runtime that is ~one step per frame (smooth, and it stops reposting the instant it settles, so an idle
+grid and the Deck battery cost nothing); under the headless test pump the same `Render` flushes advance
+it deterministically with no real time passing — matching the repo convention that reveal work settle
+via dispatcher priority, never a timer, so `GamepadGridSelectorTests` stays reliable. A generation token
+guarantees exactly one live loop when a jump interleaves with a queued step, and the loop terminates the
+instant the offset stops advancing (arrived, or the panel clamped it), so it can never spin.
+
+Big discrete jumps (LB/RB platform switch resetting focus to the first game, restoring a deep remembered
+row, landing on an end) **snap** rather than ease — a move of more than 1.5 viewports is not a d-pad
+step, and easing across many screens only feels sluggish. A jump uses `ScrollIntoView`, not a manual
+offset: a virtualizing panel discards an offset set into a not-yet-realized region on the next layout
+pass (observed: a manual jump to the last row was reset to the top), whereas `ScrollIntoView` realizes
+and positions the far row reliably. Row height for the centre maths is read from any realized row
+(uniform per view), falling back to `ShelfCoverHeight + 90` chrome before the first row realizes.

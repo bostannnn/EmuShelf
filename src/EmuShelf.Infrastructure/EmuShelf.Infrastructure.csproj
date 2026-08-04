@@ -1,5 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- Bakes application-identity credentials into the build from environment variables. -->
+  <Import Project="Build\EmbeddedSecrets.targets" />
+
   <ItemGroup>
     <ProjectReference Include="..\EmuShelf.Core\EmuShelf.Core.csproj" />
   </ItemGroup>

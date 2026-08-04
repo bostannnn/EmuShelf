@@ -63,6 +63,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
       - name: Publish self-contained Windows build
+        # Application-identity credentials are baked in here (see Build/EmbeddedSecrets.targets). They
+        # are only available on same-repo events, so fork PR builds simply ship without them.
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+          SCREENSCRAPER_SOFTNAME: ${{ secrets.SCREENSCRAPER_SOFTNAME }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_ID }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET }}
         run: >-
           dotnet publish src/EmuShelf.App
           -c Release
@@ -135,6 +143,14 @@ jobs:
         # ldconfig, so they must be installed here for the bundle step to find them.
         run: sudo apt-get update && sudo apt-get install -y libice6 libsm6
       - name: Publish self-contained Linux build
+        # Application-identity credentials are baked in here (see Build/EmbeddedSecrets.targets); this
+        # is the build the Steam Deck runs. Absent secrets (fork PRs) just ship without them.
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+          SCREENSCRAPER_SOFTNAME: ${{ secrets.SCREENSCRAPER_SOFTNAME }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_ID }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET }}
         run: >-
           dotnet publish src/EmuShelf.App -c Release -r linux-x64 --self-contained true
           -p:InvariantGlobalization=false -o publish/EmuShelf
@@ -187,6 +203,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
       - name: Publish self-contained macOS build
+        # Application-identity credentials are baked in here (see Build/EmbeddedSecrets.targets).
+        # Absent secrets (fork PRs) just ship without them.
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+          SCREENSCRAPER_SOFTNAME: ${{ secrets.SCREENSCRAPER_SOFTNAME }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_ID }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET }}
         run: >-
           dotnet publish src/EmuShelf.App -c Release -r osx-arm64 --self-contained true
           -p:InvariantGlobalization=false -o publish/mac

@@ -1767,7 +1767,10 @@ public class MainWindowVisualSnapshotTests
                 Override: null,
                 LastSuccessUtc: null,
                 LastError: null,
-                SupportsSaveStates: descriptor.SystemId is "playstation2" or "psp")).ToArray(),
+                SupportsSaveStates: descriptor.SystemId is "playstation2" or "psp",
+                // Turn states sync on so Desktop reveals the save-state folder override; this is what
+                // exposes the `saves.{id}.states-folder` field to the parity comparison below.
+                SyncSaveStates: descriptor.SystemId is "playstation2" or "psp")).ToArray(),
             (systemId, _) => Task.FromResult<string?>(@"D:\Saves\" + systemId),
             (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,

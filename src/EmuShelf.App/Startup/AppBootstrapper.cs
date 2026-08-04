@@ -116,7 +116,7 @@ public sealed class AppBootstrapper
         GameFileFingerprintStore = new SqliteGameFileFingerprintStore(database, PathResolver);
         ScreenScraperFingerprints = new ScreenScraperFingerprintService(GameFileFingerprintStore);
         ScreenScraperRequests = new ScreenScraperRequestCoordinator();
-        if (ScreenScraperDeveloperCredentialSource.TryLoadFromEnvironment(out var developerCredentials))
+        if (ScreenScraperDeveloperCredentialSource.TryLoad(out var developerCredentials))
         {
             ScreenScraperClient = new ScreenScraperClient(
                 new HttpClient { Timeout = TimeSpan.FromSeconds(45) },

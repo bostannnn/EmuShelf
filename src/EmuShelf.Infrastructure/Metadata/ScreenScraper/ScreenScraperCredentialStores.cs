@@ -1,12 +1,19 @@
-using System.Runtime.Versioning;
 using System.Text.Json;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.Storage;
+using EmuShelf.Infrastructure.Build;
 using EmuShelf.Infrastructure.Storage;
 
 namespace EmuShelf.Infrastructure.Metadata.ScreenScraper;
 
+/// <summary>
+/// Chooses the platform-appropriate credential store, both writing the same portable
+/// <c>Settings/screenscraper.account</c> blob so the login survives restarts and updates: a
+/// DPAPI-protected blob on Windows (the v1 ship target), and an AES-GCM obfuscated blob elsewhere
+/// (Linux/Steam Deck, macOS) where no OS keychain is wired in. Both go through
+/// <see cref="TextBackedScreenScraperCredentialStore"/>; only the at-rest protection differs.
+/// </summary>
 public static class ScreenScraperCredentialStoreFactory
 {
     public const string BlobFileName = "screenscraper.account";
@@ -15,14 +22,11 @@ public static class ScreenScraperCredentialStoreFactory
         IAppPaths paths,
         IAppLogger? logger = null)
     {
-        if (OperatingSystem.IsWindows())
-        {
-            return new WindowsScreenScraperCredentialStore(
-                Path.Combine(paths.SettingsDirectory, BlobFileName),
-                logger);
-        }
-
-        return new SessionOnlyScreenScraperCredentialStore();
+        var blobPath = Path.Combine(paths.SettingsDirectory, BlobFileName);
+        IProtectedTextStore textStore = OperatingSystem.IsWindows()
+            ? new WindowsDpapiProtectedTextStore(blobPath, "ScreenScraper", logger)
+            : new PortableObfuscatedTextStore(blobPath, "ScreenScraper", logger);
+        return new TextBackedScreenScraperCredentialStore(textStore, logger);
     }
 }
 
@@ -41,15 +45,20 @@ public sealed class SessionOnlyScreenScraperCredentialStore : IScreenScraperCred
     public void ClearCredentials() => _credentials = null;
 }
 
-[SupportedOSPlatform("windows")]
-public sealed class WindowsScreenScraperCredentialStore : IScreenScraperCredentialStore
+/// <summary>
+/// Serializes the account login to JSON and hands it to a platform <see cref="IProtectedTextStore"/>,
+/// so the username and password are never written as readable plaintext. The username is part of the
+/// secret (it is an authentication field), so the whole record lives in the protected blob and nothing
+/// account-identifying reaches settings.json.
+/// </summary>
+public sealed class TextBackedScreenScraperCredentialStore : IScreenScraperCredentialStore
 {
-    private readonly WindowsDpapiProtectedTextStore _store;
+    private readonly IProtectedTextStore _store;
     private readonly IAppLogger _logger;
 
-    public WindowsScreenScraperCredentialStore(string blobPath, IAppLogger? logger = null)
+    internal TextBackedScreenScraperCredentialStore(IProtectedTextStore store, IAppLogger? logger = null)
     {
-        _store = new WindowsDpapiProtectedTextStore(blobPath, "ScreenScraper", logger);
+        _store = store;
         _logger = logger ?? NullAppLogger.Instance;
     }
 
@@ -97,23 +106,46 @@ public static class ScreenScraperDeveloperCredentialSource
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
-    public static bool TryLoadFromEnvironment(out ScreenScraperDeveloperCredentials? credentials)
+    /// <summary>
+    /// Resolves the developer credentials for the live client. Each field prefers its environment
+    /// variable (so a developer machine keeps overriding freely) and falls back to the value baked
+    /// into the build. Returns <see langword="false"/> only when a field is missing from both.
+    /// </summary>
+    public static bool TryLoad(out ScreenScraperDeveloperCredentials? credentials)
     {
-        var developerId = Environment.GetEnvironmentVariable(DeveloperIdVariable);
-        var developerPassword = Environment.GetEnvironmentVariable(DeveloperPasswordVariable);
-        var softwareName = Environment.GetEnvironmentVariable(SoftwareNameVariable);
-        if (string.IsNullOrWhiteSpace(developerId) ||
-            string.IsNullOrWhiteSpace(developerPassword) ||
-            string.IsNullOrWhiteSpace(softwareName))
-        {
-            credentials = null;
-            return false;
-        }
+        credentials = Resolve(
+            Environment.GetEnvironmentVariable(DeveloperIdVariable),
+            Environment.GetEnvironmentVariable(DeveloperPasswordVariable),
+            Environment.GetEnvironmentVariable(SoftwareNameVariable),
+            EmbeddedSecrets.ScreenScraperDevId,
+            EmbeddedSecrets.ScreenScraperDevPassword,
+            EmbeddedSecrets.ScreenScraperSoftName);
+        return credentials is not null;
+    }
 
-        credentials = new ScreenScraperDeveloperCredentials(
-            developerId.Trim(),
-            developerPassword.Trim(),
-            softwareName.Trim());
-        return true;
+    internal static ScreenScraperDeveloperCredentials? Resolve(
+        string? environmentId,
+        string? environmentPassword,
+        string? environmentSoftName,
+        string? embeddedId,
+        string? embeddedPassword,
+        string? embeddedSoftName)
+    {
+        var developerId = FirstNonBlank(environmentId, embeddedId);
+        var developerPassword = FirstNonBlank(environmentPassword, embeddedPassword);
+        var softwareName = FirstNonBlank(environmentSoftName, embeddedSoftName);
+        if (developerId is null || developerPassword is null || softwareName is null)
+            return null;
+
+        return new ScreenScraperDeveloperCredentials(developerId, developerPassword, softwareName);
+    }
+
+    private static string? FirstNonBlank(string? preferred, string? fallback)
+    {
+        if (!string.IsNullOrWhiteSpace(preferred))
+            return preferred.Trim();
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return fallback.Trim();
+        return null;
     }
 }

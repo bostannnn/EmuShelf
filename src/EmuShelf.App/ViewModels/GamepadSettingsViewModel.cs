@@ -1061,6 +1061,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     platform.IsIdle,
                     isGrouped: true,
                     systemId: platform.SystemId);
+                // Mirror Desktop: once states sync, the save-state folder gets its own override so a
+                // mis-detected state folder can be corrected the same way as the save folder above.
+                if (platform.SyncSaveStates)
+                {
+                    yield return ActionRow(
+                        $"saves.{platform.SystemId}.states-folder",
+                        "Save-state folder",
+                        "Correct a mis-detected save-state folder. Leave it detected to follow the emulator.",
+                        string.IsNullOrEmpty(platform.NormalizedStateOverride)
+                            ? "Use the detected save-state folder"
+                            : platform.NormalizedStateOverride,
+                        platform.PickStateDirectoryCommand,
+                        platform.IsIdle,
+                        GamepadSettingsRowKind.Folder,
+                        isGrouped: true,
+                        systemId: platform.SystemId);
+                }
             }
             if (_settings.IsCloudConnected)
             {

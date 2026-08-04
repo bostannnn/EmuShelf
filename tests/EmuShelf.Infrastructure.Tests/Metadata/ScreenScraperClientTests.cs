@@ -141,6 +141,44 @@ public class ScreenScraperClientTests
     }
 
     [Fact]
+    public async Task GetGameInfo_RejectsFilenameFallback_WhenReturnedRomHashDiffersFromQueriedHash()
+    {
+        // ScreenScraper found no hash match and fell back to the file name, returning a different
+        // game whose ROM sha1 is not the one we asked for. The result must be rejected so a wrong
+        // game is never applied as an exact hash match.
+        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(
+            "{\"header\":{\"success\":\"true\"},\"response\":{\"jeu\":{\"id\":\"12345\"," +
+            "\"rom\":{\"id\":\"67890\",\"romsha1\":\"1111111111111111111111111111111111111111\"}}}}")));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(
+                58, "Renamed Game.iso", 100, Sha1: "abcdef0000000000000000000000000000000000"));
+
+        Assert.Equal(ScreenScraperRequestStatus.NotFound, result.Status);
+        Assert.Null(result.Data);
+    }
+
+    [Fact]
+    public async Task GetGameInfo_AcceptsMatch_WhenReturnedRomHashEqualsQueriedHashIgnoringCase()
+    {
+        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(
+            "{\"header\":{\"success\":\"true\"},\"response\":{\"jeu\":{\"id\":\"12345\"," +
+            "\"rom\":{\"id\":\"67890\",\"romsha1\":\"ABCDEF0000000000000000000000000000000000\"}}}}")));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(
+                58, "Game.iso", 100, Sha1: "abcdef0000000000000000000000000000000000"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("12345", result.Data!.ProviderGameId);
+        Assert.Equal("ABCDEF0000000000000000000000000000000000", result.Data.RomSha1);
+    }
+
+    [Fact]
     public async Task GetGameInfo_RejectsLookupWithNoHashSerialOrGameId()
     {
         using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));
