@@ -104,9 +104,9 @@ public class ScreenScraperLiveValidationTests(ITestOutputHelper output)
             return false;
         }
 
-        if (!ScreenScraperDeveloperCredentialSource.TryLoadFromEnvironment(out developer))
+        if (!ScreenScraperDeveloperCredentialSource.TryLoad(out developer))
         {
-            output.WriteLine("skipped: developer credentials are not present in the environment.");
+            output.WriteLine("skipped: developer credentials are not present.");
             return false;
         }
 
