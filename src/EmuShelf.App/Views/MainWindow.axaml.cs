@@ -19,6 +19,14 @@ public partial class MainWindow : Window
     private Point? _lastGamepadPointerPosition;
     private int _requestedSettingsTextEntryRevision = -1;
 
+    // Smooth follow-scroll for the gamepad grid. The focused row is anchored to one fixed line in the
+    // viewport (its centre) and the scroll offset eases toward that anchor, so the selector sits in the
+    // same place on every platform and a held d-pad scrolls continuously instead of snapping row to row.
+    private ScrollViewer? _gamepadScroller;
+    private double _gamepadScrollTarget;
+    private bool _gamepadScrollAnimating;
+    private int _gamepadScrollGeneration;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -124,10 +132,10 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(RevealGamepadOverlayFocus, DispatcherPriority.Input);
     }
 
-    // View-focused coordination only: the view model owns which game is focused; this window scrolls
-    // that game's ROW into view. Rows are virtualized in a ListBox, so ScrollIntoView reliably realizes
-    // and reveals the target row (no manual offset math, no phantom cells). The focus ring is part of
-    // the tile, so it appears on the focused cover the instant that row realizes.
+    // View-focused coordination only: the view model owns which game is focused; this window anchors
+    // that game's ROW at a fixed line in the viewport and eases the scroll offset toward it. A single
+    // anchor rule (centre, clamped at the ends) keeps the selector in the same place on every platform
+    // regardless of cover aspect ratio, and the eased offset makes a held d-pad scroll smoothly.
     private void RevealFocusedGame() => RevealFocusedGame(0);
 
     private void RevealFocusedGame(int attempt)
@@ -145,53 +153,183 @@ public partial class MainWindow : Window
         if (rowIndex >= GamepadRowList.ItemCount)
             return;
 
-        GamepadRowList.ScrollIntoView(rowIndex);
-        // ScrollIntoView lands the row flush against the viewport edge, which shaves the focus glow.
-        // Nudge the scroll a glow-radius clear of the edge once the row has realized.
-        Dispatcher.UIThread.Post(() => NudgeGlowClearance(rowIndex), DispatcherPriority.Loaded);
-
-        // Take keyboard focus on the tile within the realized row for directional routing. The row may
-        // need a layout pass after ScrollIntoView before its container exists; retry briefly if so.
-        if (viewModel.IsGamepadControllerInputActive && !viewModel.HasGamepadOverlay)
+        var scroller = ResolveGamepadScroller();
+        if (scroller is null || scroller.Viewport.Height <= 0)
         {
-            var rowContainer = GamepadRowList.ContainerFromIndex(rowIndex);
-            if (rowContainer is null)
-            {
-                if (attempt < 5)
-                    Dispatcher.UIThread.Post(() => RevealFocusedGame(attempt + 1), DispatcherPriority.Loaded);
-                return;
-            }
-
-            var gameButton = rowContainer.GetVisualDescendants()
-                .OfType<Button>()
-                .FirstOrDefault(button => ReferenceEquals(button.DataContext, focused));
-            if (gameButton is not null)
-                FocusManager?.Focus(gameButton, NavigationMethod.Directional);
+            // Layout is not ready (first reveal after a mode/scope switch, before the grid is measured).
+            // Retry briefly so the initial selection still lands on its anchor.
+            if (attempt < 5)
+                Dispatcher.UIThread.Post(() => RevealFocusedGame(attempt + 1), DispatcherPriority.Loaded);
+            return;
         }
+
+        var rowHeight = ResolveGamepadRowHeight(focused);
+        if (rowHeight <= 0)
+        {
+            // Nothing realized to measure yet and no shelf height to fall back on; make the row visible
+            // so the next move can measure a real row, then bail.
+            GamepadRowList.ScrollIntoView(rowIndex);
+            return;
+        }
+
+        // Anchor the focused row on the viewport's vertical centre, clamped so the first/last rows don't
+        // leave a half-empty viewport. Rows are uniform height within a view, so row r's top is r*height.
+        var viewportHeight = scroller.Viewport.Height;
+        var extentHeight = Math.Max(scroller.Extent.Height, GamepadRowList.ItemCount * rowHeight);
+        var target = rowIndex * rowHeight + rowHeight / 2 - viewportHeight / 2;
+        target = Math.Clamp(target, 0, Math.Max(0, extentHeight - viewportHeight));
+
+        // Ease small step-to-step moves for smoothness; jump big discrete moves (platform switch, restoring
+        // a deep row, landing on an end) straight to the row. A d-pad step never retargets more than ~one
+        // row, so a jump of many screens is discrete. ScrollIntoView — not a manual offset — realizes and
+        // positions a far row reliably: a virtualizing panel drops an offset set into a not-yet-realized
+        // region, so a big manual jump would be discarded on the next layout pass.
+        if (Math.Abs(target - scroller.Offset.Y) > viewportHeight * GamepadScrollSnapViewports)
+        {
+            CancelGamepadScroll();
+            GamepadRowList.ScrollIntoView(rowIndex);
+        }
+        else
+        {
+            StartGamepadScroll(scroller, target);
+        }
+
+        // Small moves keep the target row realized, so take keyboard focus at once for directional
+        // routing; longer scrolls realize the row as they arrive and focus is taken when the ease settles.
+        if (viewModel.IsGamepadControllerInputActive && !viewModel.HasGamepadOverlay)
+            FocusGamepadRowTile(rowIndex, focused);
     }
 
-    private const double GamepadGlowMargin = 26; // >= EmuFocusGlow blur radius
+    private const double GamepadScrollSmoothing = 0.3;   // fraction of the remaining distance eased per step
+    private const double GamepadScrollSnapViewports = 1.5; // jumps farther than this ease-skip straight to the anchor
+    private const double GamepadRowChromeHeight = 90;    // title row (58) + inter-row margins (28) + tile border (4)
 
-    // Keep a glow-radius of clearance between the focused row and the viewport edge. Only acts when the
-    // row settled against an edge (e.g. a d-pad move that scrolled); when the row is comfortably in view
-    // this is a no-op, so quiet moves never jitter the scroll.
-    private void NudgeGlowClearance(int rowIndex)
+    // Cache the grid's ScrollViewer; it is stable once the ListBox realizes, but re-resolve if the
+    // cached instance was detached (e.g. after a template reload).
+    private ScrollViewer? ResolveGamepadScroller()
     {
-        if (GamepadRowList.ContainerFromIndex(rowIndex) is not { } rowContainer)
+        if (_gamepadScroller is { } cached && cached.IsAttachedToVisualTree())
+            return cached;
+
+        _gamepadScroller = GamepadRowList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+        return _gamepadScroller;
+    }
+
+    // Uniform row height for the current view. Read from any realized row for pixel accuracy, falling
+    // back to the focused game's shelf height plus the fixed tile chrome before the first row realizes.
+    private double ResolveGamepadRowHeight(GameViewModel focused)
+    {
+        foreach (var container in GamepadRowList.GetRealizedContainers())
+        {
+            if (container.Bounds.Height > 0)
+                return container.Bounds.Height;
+        }
+
+        return focused.ShelfCoverHeight > 0 ? focused.ShelfCoverHeight + GamepadRowChromeHeight : 0;
+    }
+
+    // Ease the scroll offset toward a new anchor. Retargeting mid-flight only moves the goal the follow
+    // chases, so a fast d-pad hold produces one continuous scroll rather than a stack of per-row snaps.
+    private void StartGamepadScroll(ScrollViewer scroller, double target)
+    {
+        _gamepadScroller = scroller;
+        _gamepadScrollTarget = target;
+
+        if (Math.Abs(scroller.Offset.Y - target) < 0.5)
+        {
+            scroller.Offset = scroller.Offset.WithY(target);
+            CancelGamepadScroll();
             return;
-        if (GamepadRowList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is not { } scroller ||
-            scroller.Viewport.Height <= 0)
+        }
+
+        if (_gamepadScrollAnimating)
+            return; // the active loop chases the updated target — never start a second one
+
+        _gamepadScrollAnimating = true;
+        var generation = ++_gamepadScrollGeneration;
+        Dispatcher.UIThread.Post(() => StepGamepadScroll(generation), DispatcherPriority.Render);
+    }
+
+    // Cancel any in-flight ease so a queued step (posted before this) no-ops: bumping the generation
+    // invalidates its token, and clearing the flag lets the next move start a fresh single loop.
+    private void CancelGamepadScroll()
+    {
+        _gamepadScrollAnimating = false;
+        _gamepadScrollGeneration++;
+    }
+
+    // Ease one step toward the anchor and re-post until settled. Driven by dispatcher Render passes
+    // rather than a wall-clock timer: at runtime that is one step per frame (smooth, and it stops
+    // reposting the instant it settles, so an idle grid costs nothing), while under the headless test
+    // pump the same Render flushes advance it deterministically without any real time passing. The
+    // generation token guarantees exactly one live loop even when a jump interleaves with a step.
+    private void StepGamepadScroll(int generation)
+    {
+        if (generation != _gamepadScrollGeneration)
+            return; // superseded by a newer move (jump, snap, or a fresh ease)
+
+        if (_gamepadScroller is not { } scroller || !scroller.IsAttachedToVisualTree() ||
+            _gamepadViewModel is not { IsGamepadMode: true })
+        {
+            _gamepadScrollAnimating = false;
             return;
-        if (rowContainer.TranslatePoint(new Point(0, 0), scroller) is not { } rowTopLeft)
+        }
+
+        var current = scroller.Offset.Y;
+        var distance = _gamepadScrollTarget - current;
+        if (Math.Abs(distance) >= 0.5)
+            scroller.Offset = scroller.Offset.WithY(current + distance * GamepadScrollSmoothing);
+
+        // Stop the instant the offset can no longer advance toward the anchor — either it has arrived,
+        // or the viewer clamped it at an end (its real extent can sit a hair under the estimate used to
+        // pick the target). Terminating on "did not move" guarantees the ease can never spin.
+        if (Math.Abs(scroller.Offset.Y - current) < 0.5)
+        {
+            _gamepadScrollAnimating = false;
+            FocusSettledRowTile();
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => StepGamepadScroll(generation), DispatcherPriority.Render);
+    }
+
+    // Once the ease settles, take keyboard focus on the (now current) focused tile for directional
+    // routing — during a long scroll its row only realizes as it arrives.
+    private void FocusSettledRowTile()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadControllerInputActive: true } viewModel ||
+            viewModel.HasGamepadOverlay || viewModel.FocusedGame is not { } focused)
             return;
 
-        var rowTop = rowTopLeft.Y;
-        var rowBottom = rowTop + rowContainer.Bounds.Height;
-        var offsetY = scroller.Offset.Y;
-        if (rowTop < GamepadGlowMargin)
-            scroller.Offset = scroller.Offset.WithY(Math.Max(0, offsetY - (GamepadGlowMargin - rowTop)));
-        else if (rowBottom > scroller.Viewport.Height - GamepadGlowMargin)
-            scroller.Offset = scroller.Offset.WithY(offsetY + (rowBottom - (scroller.Viewport.Height - GamepadGlowMargin)));
+        var index = viewModel.Games.IndexOf(focused);
+        if (index < 0)
+            return;
+
+        FocusGamepadRowTile(index / Math.Max(1, viewModel.GamepadColumnCount), focused);
+    }
+
+    // Take keyboard focus on the focused tile for directional routing. A row scrolled or jumped to may
+    // need a layout pass before its container exists, so retry briefly — but abort if focus has since
+    // moved on (held navigation) or an overlay opened, so a stale attempt never grabs the wrong tile.
+    private void FocusGamepadRowTile(int rowIndex, GameViewModel focused, int attempt = 0)
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadControllerInputActive: true } viewModel ||
+            viewModel.HasGamepadOverlay || !ReferenceEquals(viewModel.FocusedGame, focused) ||
+            rowIndex >= GamepadRowList.ItemCount)
+            return;
+
+        if (GamepadRowList.ContainerFromIndex(rowIndex) is not { } rowContainer)
+        {
+            if (attempt < 5)
+                Dispatcher.UIThread.Post(() => FocusGamepadRowTile(rowIndex, focused, attempt + 1), DispatcherPriority.Loaded);
+            return;
+        }
+
+        var gameButton = rowContainer.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => ReferenceEquals(button.DataContext, focused));
+        if (gameButton is not null)
+            FocusManager?.Focus(gameButton, NavigationMethod.Directional);
     }
 
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
