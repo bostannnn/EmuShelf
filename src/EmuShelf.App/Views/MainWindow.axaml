@@ -1646,13 +1646,13 @@
                                 CommandParameter="{Binding}"
                                 DoubleTapped="OnGameDoubleTapped">
                             <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
-                                <!-- Every gamepad tile is one uniform frame (GamepadCoverHeight,
-                                     a fixed ratio independent of platform) rather than the desktop
-                                     grid's per-platform frames bottom-aligned on a shared shelf. A
-                                     mixed All Games view is then an even grid on one baseline with
-                                     no empty void above short covers, and the tile shape never
-                                     shifts as you switch platforms. Off-ratio art is letterboxed on
-                                     the cover well (Image Stretch=Uniform below). -->
+                                <!-- The tile frame is GamepadCoverHeight. In a single-platform view
+                                     that is the platform's true cover height, so covers fill it
+                                     (UniformToFill below) with no bars — exactly the desktop shape.
+                                     A mixed view (All Games and the like) instead passes one uniform
+                                     height to every tile, so the grid is even with no ragged skyline
+                                     and the off-ratio minority crops to fill. The desktop grid's
+                                     per-platform frames on a shared shelf are untouched. -->
                                   <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding GamepadCoverHeight}"
                                          Classes="gamepad-cover-stack" ClipToBounds="False">
                                     <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
@@ -1696,13 +1696,13 @@
                                                                LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
                                             </Grid>
-                                            <!-- Uniform, not UniformToFill: the frame is one fixed shape for
-                                                 every platform, so art whose ratio differs is letterboxed on
-                                                 the cover well (a clean matte inside the card) rather than
-                                                 cropped. Disc-system covers match the frame and fill it. -->
+                                            <!-- UniformToFill so covers fill the frame with no letterbox bars.
+                                                 In a single-platform view the frame is that platform's true
+                                                 shape, so this is an exact fill; only a mixed view's uniform
+                                                 frame crops the off-ratio minority (wide SNES, square PS1). -->
                                             <Image Source="{Binding CoverImage}" Classes="cover-image"
                                                    Classes.loaded="{Binding HasCoverImage}"
-                                                   Stretch="Uniform" />
+                                                   Stretch="UniformToFill" />
                                             <Border IsVisible="{Binding IsMultiDisc}" Background="#D9000000"
                                                     CornerRadius="4" Padding="9,5" Margin="10"
                                                     HorizontalAlignment="Left" VerticalAlignment="Bottom">

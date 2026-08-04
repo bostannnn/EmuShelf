@@ -2196,8 +2196,9 @@ public partial class MainViewModel : ViewModelBase
 
         var shelfCoverHeight = _systemGames.Max(
             game => Math.Round(coverWidth / game.CoverAspectRatio));
+        var gamepadCoverHeight = GamepadCoverHeightFor(_systemGames, coverWidth);
         foreach (var game in _systemGames)
-            game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
+            game.ApplyCoverLayout(coverWidth, shelfCoverHeight, gamepadCoverHeight);
 
         if (applyVisibleShelf)
             ApplyVisibleCoverShelf(coverWidth);
@@ -2221,8 +2222,35 @@ public partial class MainViewModel : ViewModelBase
 
         var shelfCoverHeight = Games.Max(
             game => Math.Round(coverWidth / game.CoverAspectRatio));
+        var gamepadCoverHeight = GamepadCoverHeightFor(Games, coverWidth);
         foreach (var game in Games)
-            game.ApplyCoverLayout(coverWidth, shelfCoverHeight);
+            game.ApplyCoverLayout(coverWidth, shelfCoverHeight, gamepadCoverHeight);
+    }
+
+    // The gamepad grid unifies tile heights ONLY when a view mixes platforms. A single-platform view
+    // (any System scope, or a collection that happens to hold one system) keeps that platform's true
+    // cover shape, so its covers fill the frame with no letterbox bars — only a genuinely mixed view,
+    // which would otherwise be a ragged skyline of covers at different heights, is flattened onto one
+    // frame (covers cropped to fill). Returns the gamepad frame height every tile in this view uses.
+    internal static double GamepadCoverHeightFor(IReadOnlyList<GameViewModel> games, double coverWidth)
+    {
+        if (games.Count == 0)
+            return 0;
+
+        var firstSystem = games[0].SystemId;
+        var mixed = false;
+        for (var i = 1; i < games.Count; i++)
+        {
+            if (!string.Equals(games[i].SystemId, firstSystem, StringComparison.Ordinal))
+            {
+                mixed = true;
+                break;
+            }
+        }
+
+        return mixed
+            ? Math.Round(coverWidth / GameViewModel.GamepadMixedCoverAspectRatio)
+            : Math.Round(coverWidth / games[0].CoverAspectRatio);
     }
 
     // Entry point for reloads driven by a selection change (LB/RB platform cycling, or a scope switch).

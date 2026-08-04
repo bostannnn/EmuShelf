@@ -695,8 +695,9 @@ public class MainWindowVisualSnapshotTests
             displayTitle: "Final Fantasy X",
             discSelectionKey: "playstation2\u001FFINAL FANTASY X");
         var sharedShelfHeight = gamepadGames.Max(game => game.CoverHeight);
+        var gamepadCoverHeight = MainViewModel.GamepadCoverHeightFor(gamepadGames, gamepadGames[0].CoverWidth);
         foreach (var game in gamepadGames)
-            game.ApplyCoverLayout(game.CoverWidth, sharedShelfHeight);
+            game.ApplyCoverLayout(game.CoverWidth, sharedShelfHeight, gamepadCoverHeight);
         viewModel.Games.ReplaceAll(gamepadGames);
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
@@ -981,8 +982,9 @@ public class MainWindowVisualSnapshotTests
             .ToArray();
         const double coverWidth = 202;
         var shelfHeight = games.Max(game => Math.Round(coverWidth / game.CoverAspectRatio));
+        var gamepadCoverHeight = MainViewModel.GamepadCoverHeightFor(games, coverWidth);
         foreach (var game in games)
-            game.ApplyCoverLayout(coverWidth, shelfHeight);
+            game.ApplyCoverLayout(coverWidth, shelfHeight, gamepadCoverHeight);
         games[6].ApplyAchievementsDisplay(new RetroAchievementsDisplay(
             ShowMark: true,
             ColumnText: "12/50",
@@ -1562,8 +1564,10 @@ public class MainWindowVisualSnapshotTests
         var shelfHeight = Math.Max(
             Math.Round(coverWidth / tallSystem.CoverAspectRatio),
             Math.Round(coverWidth / shortSystem.CoverAspectRatio));
-        tallGame.ApplyCoverLayout(coverWidth, shelfHeight);
-        shortGame.ApplyCoverLayout(coverWidth, shelfHeight);
+        // A mixed view, so both tiles get one uniform gamepad frame height.
+        var gamepadCoverHeight = MainViewModel.GamepadCoverHeightFor([tallGame, shortGame], coverWidth);
+        tallGame.ApplyCoverLayout(coverWidth, shelfHeight, gamepadCoverHeight);
+        shortGame.ApplyCoverLayout(coverWidth, shelfHeight, gamepadCoverHeight);
         viewModel.Games.ReplaceAll([tallGame, shortGame]);
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
