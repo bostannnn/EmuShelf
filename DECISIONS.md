@@ -3913,6 +3913,95 @@ border-recolour + drop-shadow so selection reads as the same even accent frame e
 outer Panel — the required ancestor of the ring — while the tile Border keeps the `gamepad-achievement`
 class the tests query; the opaque tile masks the pad centre exactly as the opaque cover does.
 
+## 2026-08-04 — Gamepad grid uses one uniform cover frame, not per-platform frames
+
+The desktop grid gives every tile its platform's true cover frame (`CoverHeight` from
+`GameSystem.CoverAspectRatio`) and bottom-aligns them on a shared shelf sized to the tallest cover in
+the view. In a single-system view that is uniform, but in a mixed "All Games" view the aspect ratios
+span from PSP's `0.581` (tall) to SNES's `1.434` (short and wide), so bottom-aligning them leaves a
+large empty void above every short cover and a ragged top edge — chaotic at couch scale where tiles are
+~2× bigger with more spacing. The desktop grid keeps this behaviour; the gamepad grid was the complaint.
+
+The gamepad grid now draws every tile into one fixed frame regardless of platform:
+`GameViewModel.GamepadCoverHeight = round(CoverWidth / GamepadUniformAspectRatio)` with
+`GamepadUniformAspectRatio = 0.708`, the disc-system ratio the library is mostly made of. The
+row-`ListBox` tile ([MainWindow.axaml]) dropped its `ShelfCoverHeight` shelf + bottom-aligned
+`CoverHeight` panel for a single `GamepadCoverHeight` frame, and the cover `Image` switched from
+`UniformToFill` to `Uniform`: disc-system art fills the frame exactly, while off-ratio art (square PS1,
+wide SNES) is letterboxed on the cover well rather than cropped, so no box art is ever chopped. The
+existing `Border.gamepad-cover-frame` card border + `BoxShadow` now read as an intentional matte behind
+the letterbox bars. The tile shape never changes as you switch platforms — the stable-tile look of
+OpenEmu and Steam Big Picture. `GamepadCoverHeight` is gamepad-only, so `CoverHeight`/`ShelfCoverHeight`
+and the desktop grid are untouched;
+`GamepadCoverHeight_IsUniformAcrossPlatforms_WhileDesktopHeightFollowsAspect` locks in that a square and
+a portrait platform share one gamepad frame height while their desktop heights still differ. Trade-off:
+a single-system view of a landscape platform (SNES/Arcade) now shows matte bars instead of a tight
+short frame, accepted for one consistent couch grid across every platform switch.
+
+## 2026-08-04 — Recently Played is a smart collection, stamped at launch
+
+Recently Played ships as a first-class smart collection — a new `LibraryScope.RecentlyPlayed`
+alongside `AllGames` and `RecentlyAdded` — rather than a Steam-style multi-shelf "home" view. The
+desktop shell has no home surface (it shows one virtualized scope at a time), and a shelf is just the
+top-N of a collection rendered as a row, so the collection is the data layer a future home view would
+compose from. It reuses the sibling's entire machinery: the scope cache, virtualized grid, empty
+states, the desktop COLLECTIONS sidebar list, the Gamepad Collections overlay, and scope persistence
+(the restore path already `Enum.TryParse`s the scope). Direction chosen with the user; a Steam-style
+home is tracked as a separate future milestone.
+
+Storage is a single nullable `Games.LastPlayedUnixMilliseconds` column (schema v15), not a play-history
+table. It mirrors `DateAddedUnixMilliseconds` (nullable = never played, partial index over played rows
+only) and keeps the change minimal; a `PlayCount`/"Most Played" or per-session playtime would be a
+later column or a history table, added deliberately. `Game.LastPlayedAt` is `DateTimeOffset?`.
+
+The stamp is written in the launch flow's `beforeStart` callback, which `EmulatorLaunchService` invokes
+only *after* preflight passes and immediately *before* the emulator process starts. So a launch that
+fails validation is never recorded, and one that starts is recorded even if EmuShelf is killed
+mid-session — closer to "last played" than stamping on exit, and it never touches the game file. A
+recorded play refreshes Recently Played surgically: if the user launched from within it, the current
+scope rebuilds so the game jumps to the front on return; otherwise only that scope's cache entry is
+evicted so the *next* visit rebuilds — no cover reflow of the scope they returned to.
+
+Recency collections now display in recency order. `SortGames` short-circuits for
+`RecentlyAdded`/`RecentlyPlayed` and preserves the load order (newest activity first) instead of
+applying the default Title column sort. This also fixes `RecentlyAdded`, whose own
+`Collections_…RecentlyAddedNewestFirst` test asserted newest-first but was previously only satisfied by
+a coincidental title ordering — the column sort silently overrode the intended recency order. Trade-off:
+the list-view column-sort headers are inert within these two collections, accepted because recency *is*
+their sort; a deliberate "sort within a collection" affordance can revisit that later.
+
+## 2026-08-04 — Ambient theming: the couch UI recolours from the focused game's artwork
+
+"Match colours to artwork" reuses the existing theme hot-swap seam rather than a new mechanism. Every
+UI colour is an `EmuXxxBrush` token consumed via `DynamicResource`, so `AppThemeService` already
+re-colours the whole app live by swapping a palette dictionary. Ambient mode generates that dictionary
+at runtime from a game's artwork (`ApplyArtworkPalette`) and appends it *above* the chosen theme's
+override, so the picked theme becomes the fallback and stays live for artwork with no usable colour.
+`RequestedThemeVariant` follows the artwork's brightness, which is what flips a bright cover's panel to
+light while a dark cover stays dark — the same dark/light switch the built-in themes already flip.
+
+Colour derivation is a pure Core function (`ArtworkPaletteFactory`, tested without Avalonia); the App
+only extracts (`ArtworkPaletteExtractor`). The extractor buckets pixels by hue and picks the most
+saturation-weighted swatch, plus the mean WCAG luminance. The factory takes the *hue* from the art but
+*forces* every surface/text lightness into a safe band, so no cover can turn the menu into an unreadable
+smear; body text is pushed toward pure white/near-black until it clears a 4.5:1 floor, and the
+on-accent glyph colour is chosen by contrast. The dark/light decision carries a hysteresis dead zone
+(stay dark ≤0.58, stay light ≥0.42) so scrolling a run of mid-brightness covers never strobes the shell.
+
+It samples the on-screen **cover** (the already-decoded `CoverImage`), not fan art. Fan art can be
+scraped but is never displayed anywhere yet, and the cover is what the user is actually looking at, so
+its colour matches the screen; when a fan-art/hero display lands, the sampler can prefer it with a
+one-line source change. Pixels are copied on the UI thread and analysed on a worker, the result is
+cached per cover path so re-focus is instant, and grayscale/low-saturation art returns null so the
+chosen theme shows through. The effect is a couch-mode feature: it is driven by the Gamepad
+`FocusedGame` (debounced 120 ms) and cleared when returning to Desktop.
+
+The toggle (`AppSettings.AmbientThemeFromArtwork`) lives in the Desktop settings Appearance section,
+right with the theme gallery. A Gamepad-settings toggle row was deliberately deferred: the couch Themes
+section is a gallery with no row support, and adding the toggle to the General section broke the
+Desktop/Gamepad per-section parity contract its snapshot tests enforce. Integrating a toggle into the
+couch Themes-gallery focus model is a follow-up; until then the setting is reached from Desktop
+settings and the live effect is visible in Gamepad mode.
 ## 2026-08-04 — Application-identity credentials are embedded into the build
 
 The 2026-08-03 decision provisioned the ScreenScraper developer credentials only from runtime

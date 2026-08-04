@@ -26,4 +26,8 @@ public sealed record Game
     public bool? IsPresentInExternalSource { get; init; }
     public bool IsAvailable { get; init; } = true;
     public DateTimeOffset DateAdded { get; init; }
+    /// <summary>When the game was last launched, or null if it has never been played. Stamped at
+    /// launch start (not exit) so it survives an app kill mid-session. Drives the Recently Played
+    /// collection.</summary>
+    public DateTimeOffset? LastPlayedAt { get; init; }
 }

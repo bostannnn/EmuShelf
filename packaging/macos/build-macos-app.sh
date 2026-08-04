@@ -30,4 +30,20 @@ chmod +x "$APP_PATH/Contents/MacOS/$EXECUTABLE"
 
 sed "s/@VERSION@/$VERSION/g" "$SCRIPT_DIR/Info.plist" > "$APP_PATH/Contents/Info.plist"
 
+# A .app that is zipped and later unarchived — or downloaded in any way — is tagged with
+# com.apple.quarantine. This bundle carries only the .NET apphost's ad-hoc signature (it is not
+# notarized), so Gatekeeper then refuses to launch it: "\"EmuShelf\" is damaged and can't be
+# opened." Strip the attribute from the freshly built bundle so a local run is clean.
+#
+# This cannot travel with the app: copying the .app to another Mac (or re-downloading it)
+# re-applies quarantine on the receiving machine. Distributing to other Macs requires either a
+# Developer ID signature + notarization, or the recipient running this once:
+#
+#     xattr -dr com.apple.quarantine /path/to/EmuShelf.app
+#
+# (Ad-hoc code signing does NOT satisfy Gatekeeper for a quarantined app, so it is deliberately
+# not attempted here — it would only fail the build on the runtime data the portable app writes
+# beside its own executable.)
+xattr -dr com.apple.quarantine "$APP_PATH" 2>/dev/null || true
+
 echo "Built $APP_PATH (version $VERSION)"

@@ -28,7 +28,8 @@ public sealed class GameLibrary : IGameLibrary
         command.CommandText =
             """
             SELECT Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
-                   ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent, IsAvailable, DateAdded
+                   ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent, IsAvailable, DateAdded,
+                   LastPlayedUnixMilliseconds
             FROM Games
             WHERE ($systemId IS NULL OR SystemId = $systemId)
             ORDER BY Title COLLATE NOCASE;
@@ -65,7 +66,8 @@ public sealed class GameLibrary : IGameLibrary
         command.CommandText =
             """
             SELECT Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
-                   ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent, IsAvailable, DateAdded
+                   ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent, IsAvailable, DateAdded,
+                   LastPlayedUnixMilliseconds
             FROM Games
             ORDER BY DateAddedUnixMilliseconds DESC, Id DESC
             LIMIT $limit;
@@ -487,6 +489,17 @@ public sealed class GameLibrary : IGameLibrary
         transaction.Commit();
     }
 
+    public void SetLastPlayed(long gameId, DateTimeOffset playedAt)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE Games SET LastPlayedUnixMilliseconds = $lastPlayed WHERE Id = $id;";
+        command.Parameters.AddWithValue("$lastPlayed", playedAt.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
     public void UpdateTitle(long gameId, string title)
     {
         using var connection = _database.CreateConnection();
@@ -774,6 +787,9 @@ public sealed class GameLibrary : IGameLibrary
         // Written with the invariant round-trip ("O") format; parse the same way so a
         // non-Gregorian current culture can't shift the year or throw.
         DateAdded = DateTimeOffset.Parse(reader.GetString(11), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+        LastPlayedAt = reader.IsDBNull(12)
+            ? null
+            : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(12)),
     };
 
     private sealed record ExistingExternalEntry(long Id, GameTitleOrigin TitleOrigin);

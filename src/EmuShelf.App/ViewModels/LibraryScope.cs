@@ -5,4 +5,5 @@ public enum LibraryScope
     System,
     AllGames,
     RecentlyAdded,
+    RecentlyPlayed,
 }

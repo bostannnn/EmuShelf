@@ -104,6 +104,14 @@ public partial class MainViewModel : ViewModelBase
     private string? _displayedScopeKey;
     private readonly Dictionary<string, long> _focusedGameByScope = new(StringComparer.Ordinal);
 
+    // "Match colours to artwork": as focus settles on a game its cover drives a live palette. Debounced
+    // so fast scrolling does not thrash, cached per cover so re-focus is instant, and the last dark/light
+    // reading is carried forward so the factory's hysteresis stops the whole UI strobing between covers.
+    private readonly DispatcherTimer _ambientThemeDebounce;
+    private readonly Dictionary<string, ArtworkPalette> _ambientPaletteCache = new(StringComparer.Ordinal);
+    private GameViewModel? _ambientPendingGame;
+    private bool? _ambientLastIsDark;
+
     // Built GameViewModel lists per scope key (system:{id} / AllGames / RecentlyAdded). Navigating to
     // an already-visited scope reuses its list instantly instead of re-querying the DB and rebuilding
     // hundreds of view models, which is what made fast LB/RB cycling thrash. The cache owns these view
@@ -228,6 +236,11 @@ public partial class MainViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
+
+    /// <summary>When true, the couch UI recolours from the focused game's artwork; the chosen theme is
+    /// the fallback for artwork with no usable colour. Offered next to the theme gallery in both modes.</summary>
+    [ObservableProperty]
+    public partial bool AmbientThemeFromArtwork { get; set; }
 
     /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
     /// theme gallery projects the same instances so both modes stay in lock-step.</summary>
@@ -508,6 +521,7 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsAllGamesSelected => CurrentLibraryScope == LibraryScope.AllGames;
     public bool IsRecentlyAddedSelected => CurrentLibraryScope == LibraryScope.RecentlyAdded;
+    public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
@@ -531,12 +545,14 @@ public partial class MainViewModel : ViewModelBase
     {
         LibraryScope.AllGames => "All Games",
         LibraryScope.RecentlyAdded => "Recently Added",
+        LibraryScope.RecentlyPlayed => "Recently Played",
         _ => SelectedSystem?.Name ?? "Library",
     };
     public string LibraryShortName => CurrentLibraryScope switch
     {
         LibraryScope.AllGames => "ALL",
         LibraryScope.RecentlyAdded => "NEW",
+        LibraryScope.RecentlyPlayed => "PLAYED",
         _ => SelectedSystem?.ShortName ?? "LIB",
     };
     public string LibraryAccentColor => SelectedSystem?.AccentColor ?? "#E04B52";
@@ -544,13 +560,17 @@ public partial class MainViewModel : ViewModelBase
     {
         LibraryScope.AllGames => "Your game library is empty",
         LibraryScope.RecentlyAdded => "No recently added games",
+        LibraryScope.RecentlyPlayed => "No recently played games",
         _ => $"Your {SelectedSystem?.Name ?? "game"} library is empty",
     };
-    public string EmptyLibraryDescription => CurrentLibraryScope == LibraryScope.RecentlyAdded
-        ? "Games you import will appear here in newest-first order."
-        : SelectedSystem?.Id == "playstation3"
+    public string EmptyLibraryDescription => CurrentLibraryScope switch
+    {
+        LibraryScope.RecentlyAdded => "Games you import will appear here in newest-first order.",
+        LibraryScope.RecentlyPlayed => "Games you launch will appear here, most recently played first.",
+        _ => SelectedSystem?.Id == "playstation3"
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
-        : "Add game files or a dedicated folder to begin building this shelf.";
+            : "Add game files or a dedicated folder to begin building this shelf.",
+    };
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -667,6 +687,15 @@ public partial class MainViewModel : ViewModelBase
         CurrentTheme = _themeService.Current;
         foreach (var choice in ThemeChoices)
             choice.IsSelected = choice.Id == CurrentTheme;
+
+        _ambientThemeDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+        _ambientThemeDebounce.Tick += (_, _) =>
+        {
+            _ambientThemeDebounce.Stop();
+            ApplyAmbientThemeForPendingGame();
+        };
+        // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
+        AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
 
         Systems = new ObservableCollection<GameSystem>(systems);
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
@@ -879,6 +908,7 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsAllGamesSelected));
         OnPropertyChanged(nameof(IsRecentlyAddedSelected));
+        OnPropertyChanged(nameof(IsRecentlyPlayedSelected));
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
         ScheduleLibraryViewStateSave();
@@ -958,6 +988,9 @@ public partial class MainViewModel : ViewModelBase
 
     [RelayCommand]
     private Task ShowRecentlyAddedAsync() => ShowCollectionAsync(LibraryScope.RecentlyAdded);
+
+    [RelayCommand]
+    private Task ShowRecentlyPlayedAsync() => ShowCollectionAsync(LibraryScope.RecentlyPlayed);
 
     [RelayCommand]
     private async Task PreviousPlatformAsync() => await MovePlatformAsync(-1);
@@ -1500,6 +1533,7 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.Search:
                 break;
             case GamepadOverlayKind.Collections:
+                AddOption("Recently Played", ShowGamepadRecentlyPlayedCommand);
                 AddOption("Recently Added", ShowGamepadRecentlyAddedCommand);
                 break;
             case GamepadOverlayKind.Rename:
@@ -1733,6 +1767,13 @@ public partial class MainViewModel : ViewModelBase
         CloseGamepadOverlay();
     }
 
+    [RelayCommand]
+    private async Task ShowGamepadRecentlyPlayedAsync()
+    {
+        await ShowRecentlyPlayedAsync();
+        CloseGamepadOverlay();
+    }
+
     private async Task ShowCollectionAsync(LibraryScope scope)
     {
         CurrentLibraryScope = scope;
@@ -1819,6 +1860,7 @@ public partial class MainViewModel : ViewModelBase
     {
         LibraryScope.AllGames => "all",
         LibraryScope.RecentlyAdded => "recent",
+        LibraryScope.RecentlyPlayed => "played",
         _ => "system:" + (SelectedSystem?.Id ?? string.Empty),
     };
 
@@ -1870,6 +1912,91 @@ public partial class MainViewModel : ViewModelBase
             newValue.IsFocused = true;
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
         }
+
+        ScheduleAmbientThemeUpdate(newValue);
+    }
+
+    private void ScheduleAmbientThemeUpdate(GameViewModel? game)
+    {
+        if (!IsGamepadMode || !AmbientThemeFromArtwork)
+            return;
+
+        _ambientPendingGame = game;
+        _ambientThemeDebounce.Stop();
+        _ambientThemeDebounce.Start();
+    }
+
+    partial void OnAmbientThemeFromArtworkChanged(bool value)
+    {
+        _ = _themeService.SetAmbientFromArtworkAsync(value);
+        if (value)
+        {
+            _ambientPendingGame = FocusedGame;
+            ApplyAmbientThemeForPendingGame();
+        }
+        else
+        {
+            _ambientThemeDebounce?.Stop();
+            _themeService.ClearArtworkPalette();
+        }
+    }
+
+    private void ApplyAmbientThemeForPendingGame()
+    {
+        if (!AmbientThemeFromArtwork || !IsGamepadMode)
+            return;
+
+        var game = _ambientPendingGame;
+        if (game is null)
+            return;
+
+        var key = game.CoverPath;
+        if (string.IsNullOrEmpty(key))
+        {
+            // No cover for this game → show the chosen theme rather than the previous game's colour.
+            _themeService.ClearArtworkPalette();
+            return;
+        }
+
+        if (_ambientPaletteCache.TryGetValue(key, out var cached))
+        {
+            _ambientLastIsDark = cached.IsDark;
+            _themeService.ApplyArtworkPalette(cached);
+            return;
+        }
+
+        var image = game.CoverImage;
+        if (image is null)
+            return; // cover not decoded yet; keep the current palette until it loads
+
+        var pixels = ArtworkPaletteExtractor.CopyPixels(image);
+        if (pixels is null)
+            return;
+
+        _ = AnalyzeAndApplyAmbientAsync(game, key, pixels, _ambientLastIsDark);
+    }
+
+    private async Task AnalyzeAndApplyAmbientAsync(
+        GameViewModel game,
+        string key,
+        byte[] pixels,
+        bool? previousIsDark)
+    {
+        var palette = await Task.Run(() => ArtworkPaletteExtractor.FromBgraPixels(pixels, previousIsDark));
+
+        // Focus or mode may have changed while extracting; only apply if this is still the pending game.
+        if (!AmbientThemeFromArtwork || !IsGamepadMode || !ReferenceEquals(_ambientPendingGame, game))
+            return;
+
+        if (palette is null)
+        {
+            _themeService.ClearArtworkPalette();
+            return;
+        }
+
+        _ambientPaletteCache[key] = palette;
+        _ambientLastIsDark = palette.IsDark;
+        _themeService.ApplyArtworkPalette(palette);
     }
 
     partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
@@ -1930,11 +2057,20 @@ public partial class MainViewModel : ViewModelBase
             IsGridView = true;
             BuildGamepadRows(); // populate the row list for the grid we're about to show
             RestoreFocusedGame();
+            if (AmbientThemeFromArtwork)
+            {
+                _ambientPendingGame = FocusedGame;
+                ApplyAmbientThemeForPendingGame();
+            }
         }
         else
         {
             CloseGamepadOverlay();
             GamepadRows.Clear(); // drop the row tiles' view models while the gamepad grid is hidden
+            // Desktop keeps the chosen theme; the artwork palette is a couch-mode effect.
+            _ambientThemeDebounce?.Stop();
+            if (AmbientThemeFromArtwork)
+                _themeService.ClearArtworkPalette();
         }
     }
 
@@ -2201,8 +2337,9 @@ public partial class MainViewModel : ViewModelBase
                 var loaded = scope switch
                 {
                     // Group before limiting. Limiting raw rows first can split a title when one of
-                    // its discs falls just outside the newest 30 imported files.
+                    // its discs falls just outside the newest 30 imported/played files.
                     LibraryScope.RecentlyAdded => _library.GetGames(),
+                    LibraryScope.RecentlyPlayed => _library.GetGames(),
                     LibraryScope.System => _library.GetGames(system!.Id),
                     _ => _library.GetGames(),
                 };
@@ -2214,6 +2351,19 @@ public partial class MainViewModel : ViewModelBase
                         .OrderByDescending(titleSet => titleSet.Discs.Max(disc => disc.Game.DateAdded))
                         .ThenBy(titleSet => titleSet.DisplayTitle, StringComparer.OrdinalIgnoreCase)
                         .Take(30)
+                        .ToArray();
+                }
+                else if (scope == LibraryScope.RecentlyPlayed)
+                {
+                    // A set surfaces by its most recently played disc; never-played sets (every disc
+                    // LastPlayedAt == null) are excluded so the collection only shows games you've launched.
+                    titleSets = titleSets
+                        .Select(titleSet => (titleSet, lastPlayed: titleSet.Discs.Max(disc => disc.Game.LastPlayedAt)))
+                        .Where(entry => entry.lastPlayed is not null)
+                        .OrderByDescending(entry => entry.lastPlayed)
+                        .ThenBy(entry => entry.titleSet.DisplayTitle, StringComparer.OrdinalIgnoreCase)
+                        .Take(30)
+                        .Select(entry => entry.titleSet)
                         .ToArray();
                 }
                 var viewModels = new List<GameViewModel>(titleSets.Count);
@@ -2580,8 +2730,17 @@ public partial class MainViewModel : ViewModelBase
         ApplyFilter();
     }
 
+    // The Recently Added / Recently Played collections define their own order — newest activity
+    // first — when the load worker builds them. Applying the column sort on top would override that
+    // and make a "Recently …" collection read like an A–Z list, so these scopes keep their load order.
+    private bool IsRecencyOrderedScope =>
+        CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed;
+
     private IEnumerable<GameViewModel> SortGames(IEnumerable<GameViewModel> games)
     {
+        if (IsRecencyOrderedScope)
+            return games;
+
         var text = StringComparer.OrdinalIgnoreCase;
         IOrderedEnumerable<GameViewModel> By<TKey>(
             Func<GameViewModel, TKey> key, IComparer<TKey>? comparer = null) =>
@@ -3295,6 +3454,10 @@ public partial class MainViewModel : ViewModelBase
         IsBusy = true;
         SetStatus($"Launching {game.Title}…", StatusSeverity.Progress);
         SuspendFrontendUiWork();
+        // Hoisted so the Recently Played refresh runs in finally: it must happen whenever a play was
+        // recorded (including a game stamped just before a start failure), and a refresh error must
+        // never be able to overwrite the launch-completion status with a false failure message.
+        var recordedPlay = false;
         try
         {
             CloudSaveSyncOutcome? beforeSync = null;
@@ -3311,6 +3474,13 @@ public partial class MainViewModel : ViewModelBase
                             ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
                             : $"Launching {game.Title}…",
                         StatusSeverity.Progress);
+                    // This callback runs only after preflight passes and immediately before the
+                    // emulator process starts, so a game whose launch fails validation is never
+                    // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
+                    await Task.Run(
+                        () => _library.SetLastPlayed(launchGame.Id, DateTimeOffset.UtcNow),
+                        cancellationToken);
+                    recordedPlay = true;
                 });
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
@@ -3340,6 +3510,43 @@ public partial class MainViewModel : ViewModelBase
         {
             ResumeFrontendUiWork();
             IsBusy = false;
+            if (recordedPlay)
+            {
+                // Cache refresh only — never touches the launch status. Guarded so a reload failure
+                // cannot turn a completed launch into a reported error.
+                try
+                {
+                    await RefreshAfterPlayRecordedAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Could not refresh the Recently Played collection after a launch.", ex);
+                }
+            }
+        }
+    }
+
+    // A just-recorded play makes the Recently Played collection stale. If the user launched from
+    // within it, rebuild it now so the game jumps to the front on return; otherwise just drop its
+    // cached tiles so the next visit rebuilds from the DB — no reflow of the scope they returned to.
+    private async Task RefreshAfterPlayRecordedAsync()
+    {
+        if (CurrentLibraryScope == LibraryScope.RecentlyPlayed)
+            await ReloadGamesAsync();
+        else
+            InvalidateScopeCache(LibraryScope.RecentlyPlayed);
+    }
+
+    // Evicts one built scope from the navigation cache so its next visit rebuilds from the DB.
+    // Disposes the evicted view models unless that scope is the one currently on screen.
+    private void InvalidateScopeCache(LibraryScope scope)
+    {
+        var key = DescribeScope(scope, scope == LibraryScope.System ? SelectedSystem : null);
+        if (_scopeCache.Remove(key, out var evicted) &&
+            !string.Equals(key, _displayedScopeKey, StringComparison.Ordinal))
+        {
+            foreach (var viewModel in evicted)
+                viewModel.Dispose();
         }
     }
 
@@ -3882,7 +4089,9 @@ public partial class MainViewModel : ViewModelBase
                 _cloudSaveSync?.CreateSettingsContext(),
                 CreateTexturePackSettingsContext(),
                 CreateScreenScraperSettingsContext(),
-                ThemeChoices);
+                ThemeChoices,
+                AmbientThemeFromArtwork,
+                SetAmbientThemeFromArtworkAsync);
         }
         catch (Exception ex)
         {
@@ -3912,7 +4121,16 @@ public partial class MainViewModel : ViewModelBase
             // ScreenScraper connect is reached from the controller-native scraper overlay, so the
             // Gamepad settings projection omits its text-entry-heavy section for now.
             screenScraper: null,
-            themeChoices: ThemeChoices);
+            themeChoices: ThemeChoices,
+            ambientThemeFromArtwork: AmbientThemeFromArtwork,
+            setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync);
+    }
+
+    private Task SetAmbientThemeFromArtworkAsync(bool value)
+    {
+        // Route through the source-of-truth property so persistence and the live retint fire once.
+        AmbientThemeFromArtwork = value;
+        return Task.CompletedTask;
     }
 
     private LibraryMaintenanceActions CreateLibraryMaintenanceActions() => new(

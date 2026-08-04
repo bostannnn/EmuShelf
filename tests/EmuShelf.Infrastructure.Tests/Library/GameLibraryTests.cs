@@ -143,6 +143,36 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void LastPlayed_DefaultsToNull_AndSetLastPlayedRoundTrips()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        Assert.Null(game.LastPlayedAt);
+
+        var playedAt = DateTimeOffset.FromUnixTimeMilliseconds(
+            DateTimeOffset.Parse("2026-08-04T09:15:00+00:00").ToUnixTimeMilliseconds());
+        _library.SetLastPlayed(game.Id, playedAt);
+
+        Assert.Equal(playedAt, _library.GetGames("playstation").Single().LastPlayedAt);
+    }
+
+    [Fact]
+    public void SetLastPlayed_OverwritesTheEarlierTimestamp()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var first = DateTimeOffset.Parse("2026-08-01T00:00:00+00:00");
+        var later = DateTimeOffset.Parse("2026-08-04T00:00:00+00:00");
+
+        _library.SetLastPlayed(game.Id, first);
+        _library.SetLastPlayed(game.Id, later);
+
+        Assert.Equal(
+            later.ToUnixTimeMilliseconds(),
+            _library.GetGames("playstation").Single().LastPlayedAt!.Value.ToUnixTimeMilliseconds());
+    }
+
+    [Fact]
     public void SetAvailability_Persists()
     {
         _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);

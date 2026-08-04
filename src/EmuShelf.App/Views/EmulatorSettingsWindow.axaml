@@ -955,6 +955,22 @@
                                                FontSize="12"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </StackPanel>
+                                <Border Background="{DynamicResource EmuInputBrush}"
+                                        BorderBrush="{DynamicResource EmuBorderBrush}"
+                                        BorderThickness="1" CornerRadius="8" Padding="14,10">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="Match colours to game artwork"
+                                                       FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                            <TextBlock Text="In Gamepad mode the interface recolours from the highlighted game. The theme above is the fallback."
+                                                       FontSize="12" TextWrapping="Wrap" MaxWidth="460"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch Grid.Column="1" VerticalAlignment="Center"
+                                                      IsChecked="{Binding AmbientThemeFromArtwork, Mode=TwoWay}" />
+                                    </Grid>
+                                </Border>
                                 <ItemsControl ItemsSource="{Binding ThemeChoices}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>

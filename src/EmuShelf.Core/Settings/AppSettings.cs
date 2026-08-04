@@ -5,6 +5,10 @@ public sealed record AppSettings
 {
     public ThemePreference Theme { get; init; } = ThemePreference.System;
 
+    /// <summary>When true, the couch UI recolours itself from the focused game's artwork; the chosen
+    /// <see cref="Theme"/> becomes the fallback for artwork with no usable colour.</summary>
+    public bool AmbientThemeFromArtwork { get; init; }
+
     /// <summary>Persisted library layout. Steam Input maps controller actions to keyboard input.</summary>
     public InterfaceMode InterfaceMode { get; init; } = InterfaceMode.Desktop;
 

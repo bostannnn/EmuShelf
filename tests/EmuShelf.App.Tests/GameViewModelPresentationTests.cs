@@ -58,6 +58,31 @@ public sealed class GameViewModelPresentationTests
         Assert.Equal("Sample Game (Disc 2).chd", viewModel.GamepadSubtitle);
     }
 
+    [Fact]
+    public void GamepadCoverHeight_IsUniformAcrossPlatforms_WhileDesktopHeightFollowsAspect()
+    {
+        // A square PS1 cover and a portrait PS2 cover: the desktop grid keeps each platform's true
+        // frame, but the gamepad grid draws both into one uniform frame so a mixed view is an even
+        // grid with no void above the shorter cover.
+        var square = new GameViewModel(
+            CreateModel(1, "/games/square.cue"),
+            "PlayStation", "PS1", "#8A8FA3",
+            platformArtwork: new DrawingImage(),
+            coverAspectRatio: 1.0);
+        var portrait = new GameViewModel(
+            CreateModel(2, "/games/portrait.chd"),
+            "PlayStation 2", "PS2", "#4657D7",
+            platformArtwork: new DrawingImage(),
+            coverAspectRatio: 0.708);
+
+        square.ApplyCoverLayout(200, shelfCoverHeight: 300);
+        portrait.ApplyCoverLayout(200, shelfCoverHeight: 300);
+
+        Assert.NotEqual(square.CoverHeight, portrait.CoverHeight);
+        Assert.Equal(square.GamepadCoverHeight, portrait.GamepadCoverHeight);
+        Assert.True(square.GamepadCoverHeight > 0);
+    }
+
     private static GameViewModel CreateGame() => new(
         CreateModel(1, "/games/sample.chd"),
         "PlayStation 2",

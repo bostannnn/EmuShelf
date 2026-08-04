@@ -29,6 +29,8 @@ internal sealed class FakeDialogService : IDialogService
     public int SettingsShown { get; private set; }
     public LibraryMaintenanceActions? MaintenanceActions { get; private set; }
     public IReadOnlyList<ThemeChoiceViewModel>? ThemeChoices { get; private set; }
+    public bool AmbientThemeFromArtwork { get; private set; }
+    public Func<bool, Task>? SetAmbientThemeFromArtwork { get; private set; }
     public (string GameTitle, int RetroAchievementsGameId)? AchievementDetailsRequest { get; private set; }
     public long? LastScraperGameId { get; private set; }
     public string? LastScraperGameTitle { get; private set; }
@@ -99,7 +101,9 @@ internal sealed class FakeDialogService : IDialogService
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
+        bool ambientThemeFromArtwork = false,
+        Func<bool, Task>? setAmbientThemeFromArtwork = null)
     {
         SettingsShown++;
         TexturePacks = texturePacks;
@@ -107,6 +111,8 @@ internal sealed class FakeDialogService : IDialogService
         RetroAchievementsContext = retroAchievements;
         CloudSaveSyncContext = cloudSaves;
         ThemeChoices = themeChoices;
+        AmbientThemeFromArtwork = ambientThemeFromArtwork;
+        SetAmbientThemeFromArtwork = setAmbientThemeFromArtwork;
         if (SettingsException is not null)
             return Task.FromException(SettingsException);
         return Task.CompletedTask;

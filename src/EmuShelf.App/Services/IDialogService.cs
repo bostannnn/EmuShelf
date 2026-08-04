@@ -78,7 +78,9 @@ public interface IDialogService
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null);
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
+        bool ambientThemeFromArtwork = false,
+        Func<bool, Task>? setAmbientThemeFromArtwork = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);

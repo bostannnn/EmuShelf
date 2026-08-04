@@ -27,6 +27,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 {
     private readonly IEmulatorConfigurationStore _configurations;
     private readonly IDialogService _dialogs;
+    private readonly Func<bool, Task>? _setAmbientThemeFromArtwork;
+    private bool _suppressAmbientCallback;
     private readonly LibraryMaintenanceActions? _maintenance;
     private readonly IMetadataPreferencesService? _metadataPreferences;
     private readonly RetroAchievementsSettingsContext? _retroAchievements;
@@ -69,6 +71,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
 
     public bool HasThemes => ThemeChoices.Count > 0;
+
+    /// <summary>Sits with the theme gallery: recolours the couch UI from the focused game's artwork,
+    /// falling back to the chosen theme. Applied live through the host callback.</summary>
+    [ObservableProperty]
+    public partial bool AmbientThemeFromArtwork { get; set; }
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -277,7 +284,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null)
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
+        bool ambientThemeFromArtwork = false,
+        Func<bool, Task>? setAmbientThemeFromArtwork = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -289,6 +298,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _texturePacks = texturePacks;
         _logger = logger ?? NullAppLogger.Instance;
         ThemeChoices = themeChoices ?? [];
+        _setAmbientThemeFromArtwork = setAmbientThemeFromArtwork;
+        // Seed the toggle without firing the host callback (which would re-apply on open).
+        _suppressAmbientCallback = true;
+        AmbientThemeFromArtwork = ambientThemeFromArtwork;
+        _suppressAmbientCallback = false;
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
         if (retroAchievements is not null)
@@ -392,6 +406,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
         ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
+    }
+
+    partial void OnAmbientThemeFromArtworkChanged(bool value)
+    {
+        if (_suppressAmbientCallback)
+            return;
+        _ = _setAmbientThemeFromArtwork?.Invoke(value);
     }
 
     partial void OnIsSavingChanged(bool value)

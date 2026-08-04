@@ -1521,8 +1521,13 @@ public class MainWindowVisualSnapshotTests
         }
     }
 
+    /// <summary>
+    /// The gamepad grid draws every platform into one uniform frame (GamepadCoverHeight), so a mixed
+    /// view is an even grid with no void above short covers. A short NDS cover and a tall PS2 cover
+    /// must therefore render the same cover-frame height, and the hover ring must track that frame.
+    /// </summary>
     [AvaloniaFact]
-    public async Task GamepadPointerHoverFollowsTheShortCoverInsteadOfTheMixedShelfCell()
+    public async Task GamepadTilesShareOneUniformCoverFrameAcrossMixedPlatforms()
     {
         var tallSystem = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
         var shortSystem = KnownSystems.All.Single(candidate => candidate.Id == "nds");
@@ -1584,10 +1589,13 @@ public class MainWindowVisualSnapshotTests
                 .Where(button => button.Classes.Contains("gamepad-game"))
                 .ToArray();
             Assert.Equal(2, gameButtons.Length);
+            var tallButton = gameButtons[0];
             var shortButton = gameButtons[1];
-            var coverFrame = shortButton.GetVisualDescendants()
+            static Border CoverFrameOf(Button tile) => tile.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-cover-frame"));
+            var coverFrame = CoverFrameOf(shortButton);
+            var tallCoverFrame = CoverFrameOf(tallButton);
             var hoverRing = shortButton.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-hover-ring"));
@@ -1605,16 +1613,19 @@ public class MainWindowVisualSnapshotTests
 
             Assert.False(viewModel.IsGamepadControllerInputActive);
             Assert.Equal(1, hoverRing.Opacity);
-            Assert.Equal(shortGame.CoverHeight, coverFrame.Bounds.Height, 1);
+            // The short NDS cover fills the same uniform frame as the tall PS2 cover instead of
+            // bottom-aligning inside a taller mixed shelf cell: both frames are GamepadCoverHeight.
+            // (The per-platform desktop frame really did differ — CoverHeight is shorter — so this
+            // proves the gamepad grid ignores it.)
+            Assert.NotEqual(shortGame.CoverHeight, shortGame.GamepadCoverHeight);
+            Assert.Equal(shortGame.GamepadCoverHeight, coverFrame.Bounds.Height, 1);
+            Assert.Equal(tallCoverFrame.Bounds.Height, coverFrame.Bounds.Height, 1);
             Assert.Equal(coverFrame.Bounds.Height, hoverRing.Bounds.Height, 1);
-            Assert.True(
-                shortButton.Bounds.Height > hoverRing.Bounds.Height + 20,
-                "the regression requires a button hit target taller than the short cover");
             Assert.Equal(0, Assert.IsAssignableFrom<ISolidColorBrush>(shortButton.Background).Color.A);
             await SaveGamepadOverlaySnapshotAsync(
                 window,
                 Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR"),
-                "emushelf-gamepad-short-cover-hover-1280x800.png");
+                "emushelf-gamepad-uniform-cover-hover-1280x800.png");
 
             pseudoClasses.Add(":pressed");
             await PumpAsync();
