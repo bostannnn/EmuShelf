@@ -194,27 +194,6 @@ public partial class MainWindow : Window
             scroller.Offset = scroller.Offset.WithY(offsetY + (rowBottom - (scroller.Viewport.Height - GamepadGlowMargin)));
     }
 
-    private void SyncGamepadAchievementColumnCountFromLayout()
-    {
-        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadAchievementsOpen: true } viewModel ||
-            viewModel.GamepadAchievementDetails?.VisibleAchievements is not { Count: > 0 } achievements)
-        {
-            return;
-        }
-
-        var rowCounts = new Dictionary<int, int>();
-        for (var index = 0; index < achievements.Count; index++)
-        {
-            if (GamepadAchievementsRepeater.TryGetElement(index) is not { } element)
-                continue;
-            var row = (int)Math.Round(element.Bounds.Y);
-            rowCounts[row] = rowCounts.TryGetValue(row, out var count) ? count + 1 : 1;
-        }
-
-        if (rowCounts.Count > 0)
-            viewModel.SetRenderedGamepadAchievementColumnCount(rowCounts.Values.Max());
-    }
-
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
     private void RevealGamepadOverlayFocus() => RevealGamepadOverlayFocus(0);
 
@@ -301,13 +280,12 @@ public partial class MainWindow : Window
             if (index < 0)
                 return;
 
-            // Do not manually realize the anchor before the overlay has a final viewport. On the
-            // real compositor that can reserve cell 0 during the first measure, then place item 0
-            // in cell 1 and leave a permanent top-left hole.
-            GamepadAchievementsScroller.UpdateLayout();
-            GamepadAchievementsRepeater.UpdateLayout();
-            if (GamepadAchievementsScroller.Bounds.Width <= 0 ||
-                GamepadAchievementsScroller.Bounds.Height <= 0)
+            // Rows are virtualized in a ListBox, so ScrollIntoView reliably realizes and reveals the
+            // target row (no manual offset math, no phantom cells). The focus ring is IsFocused on the
+            // tile, so it appears the instant that row realizes.
+            var columns = Math.Max(1, viewModel.GamepadAchievementColumnCount);
+            var rowIndex = index / columns;
+            if (rowIndex >= GamepadAchievementRowList.ItemCount)
             {
                 if (attempt < 5)
                 {
@@ -318,27 +296,25 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var element = GamepadAchievementsRepeater.TryGetElement(index) ??
-                GamepadAchievementsRepeater.GetOrCreateElement(index);
-            GamepadAchievementsRepeater.UpdateLayout();
-            if (element is null || element.Bounds.Width <= 0 || element.Bounds.Height <= 0)
+            GamepadAchievementRowList.ScrollIntoView(rowIndex);
+
+            if (!viewModel.IsGamepadControllerInputActive)
+                return;
+
+            // The row may need a layout pass after ScrollIntoView before its container exists; retry
+            // briefly if so, then take keyboard focus on the focused tile for directional routing.
+            var rowContainer = GamepadAchievementRowList.ContainerFromIndex(rowIndex);
+            if (rowContainer is null)
             {
                 if (attempt < 5)
-                {
-                    Dispatcher.UIThread.Post(
-                        () => RevealGamepadOverlayFocus(attempt + 1),
-                        DispatcherPriority.Loaded);
-                }
+                    Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
                 return;
             }
 
-            SyncGamepadAchievementColumnCountFromLayout();
-            var achievementControl = element as Control ?? element.GetVisualDescendants()
+            var achievementControl = rowContainer.GetVisualDescendants()
                 .OfType<Control>()
                 .FirstOrDefault(control => ReferenceEquals(control.DataContext, achievement));
-            achievementControl?.BringIntoView();
-            Dispatcher.UIThread.Post(SyncGamepadAchievementColumnCountFromLayout, DispatcherPriority.Loaded);
-            if (viewModel.IsGamepadControllerInputActive && achievementControl is not null)
+            if (achievementControl is not null)
                 FocusManager?.Focus(achievementControl, NavigationMethod.Directional);
         }
         else if (viewModel.HasGamepadOverlay && viewModel.IsGamepadControllerInputActive)
@@ -718,8 +694,16 @@ public partial class MainWindow : Window
         ApplyCellWidth(viewModel);
     }
 
-    private void OnGamepadAchievementsSizeChanged(object? sender, SizeChangedEventArgs e) =>
-        Dispatcher.UIThread.Post(SyncGamepadAchievementColumnCountFromLayout, DispatcherPriority.Loaded);
+    private void OnGamepadAchievementsSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel)
+            return;
+
+        // Setting the width recomputes GamepadAchievementColumnCount arithmetically and re-slices the
+        // achievement rows to match — the rendered column count then always equals the navigation
+        // stride, with no reading of realized tile bounds.
+        viewModel.GamepadAchievementViewportWidth = e.NewSize.Width;
+    }
 
     private void OnGamepadSettingsScrollerSizeChanged(object? sender, SizeChangedEventArgs e)
     {

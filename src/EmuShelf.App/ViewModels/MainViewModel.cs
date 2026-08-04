@@ -129,6 +129,14 @@ public partial class MainViewModel : ViewModelBase
     // equal the value navigation uses. Navigation still runs on the flat Games list + index%columns.
     public BulkObservableCollection<IReadOnlyList<GameViewModel>> GamepadRows { get; } = [];
 
+    // Row projection of the focused game's visible achievements for the gamepad achievements grid.
+    // Same row-virtualized ListBox pattern as GamepadRows: only the on-screen rows realize, and it
+    // avoids the phantom-cell / top-left-hole defect a virtualized UniformGridLayout produced, which
+    // dropped achievement tiles out of the grid entirely. Each row holds exactly
+    // GamepadAchievementColumnCount tiles, so the rendered column count always equals the navigation
+    // stride. Navigation still runs on the flat VisibleAchievements list + index%columns.
+    public BulkObservableCollection<IReadOnlyList<AchievementRowViewModel>> GamepadAchievementRows { get; } = [];
+
     public ObservableCollection<GamepadOverlayOptionViewModel> GamepadOverlayOptions { get; } = [];
 
     [ObservableProperty]
@@ -359,23 +367,73 @@ public partial class MainViewModel : ViewModelBase
 
         GamepadRows.ReplaceAll(rows);
     }
-    public int GamepadAchievementColumnCount { get; private set; } = 1;
+    private int _gamepadAchievementColumnCount = 1;
+    // Derived purely by width arithmetic (UpdateGamepadAchievementColumnCount) using the same tile
+    // width + spacing the grid renders, so it always equals the rendered column count without reading
+    // the visual tree. An earlier design read it back from realized tile bounds; during a refresh or
+    // filter change the repeater is mid-recycle and those bounds are stale (tiles collapse into one Y
+    // row, or only a partial row is realized), which produced a garbage count and, with the virtualized
+    // UniformGridLayout, dropped tiles out of the grid. The arithmetic value cannot race.
+    public int GamepadAchievementColumnCount
+    {
+        get => _gamepadAchievementColumnCount;
+        private set
+        {
+            if (SetProperty(ref _gamepadAchievementColumnCount, value))
+                BuildGamepadAchievementRows(); // re-slice into rows of the new width
+        }
+    }
+
+    // Width of the achievements grid viewport (the row ListBox), reported by the view's SizeChanged.
+    [ObservableProperty]
+    public partial double GamepadAchievementViewportWidth { get; set; }
+
+    partial void OnGamepadAchievementViewportWidthChanged(double value)
+    {
+        if (value > 0)
+            UpdateGamepadAchievementColumnCount();
+    }
+
+    private void UpdateGamepadAchievementColumnCount()
+    {
+        if (GamepadAchievementViewportWidth <= 0)
+            return;
+        GamepadAchievementColumnCount = ColumnsThatFit(
+            Math.Max(0, GamepadAchievementViewportWidth - GamepadAchievementGridHorizontalPadding),
+            AchievementTileWidth,
+            AchievementTileSpacing);
+    }
+
+    // Slice the focused game's visible achievements into rows of GamepadAchievementColumnCount for the
+    // virtualized row list. Called when the visible set or the column count changes; cheap (it slices
+    // references, not view models).
+    private void BuildGamepadAchievementRows()
+    {
+        if (!IsGamepadMode || !IsGamepadAchievementsOpen ||
+            GamepadAchievementDetails?.VisibleAchievements is not { Count: > 0 } achievements)
+        {
+            if (GamepadAchievementRows.Count > 0)
+                GamepadAchievementRows.Clear();
+            return;
+        }
+
+        var columns = Math.Max(1, GamepadAchievementColumnCount);
+        var rows = new List<IReadOnlyList<AchievementRowViewModel>>(
+            (achievements.Count + columns - 1) / columns);
+        for (var start = 0; start < achievements.Count; start += columns)
+        {
+            var take = Math.Min(columns, achievements.Count - start);
+            var row = new AchievementRowViewModel[take];
+            for (var offset = 0; offset < take; offset++)
+                row[offset] = achievements[start + offset];
+            rows.Add(row);
+        }
+
+        GamepadAchievementRows.ReplaceAll(rows);
+    }
+
     public int GamepadAchievementLayoutRevision { get; private set; }
     public bool HasFocusedGamepadAchievement => FocusedGamepadAchievement is not null;
-
-    // GamepadColumnCount is derived purely by width arithmetic in UpdateCoverLayout, using the same
-    // formula and constants (gutters + spacing) as the real UniformGridLayout — so it always equals
-    // the rendered column count without reading the visual tree. An earlier design let the view
-    // overwrite it from realized tile bounds; during fast LB/RB the repeater is mid-recycle and those
-    // bounds are stale (tiles collapse into one Y row, or only a partial row is realized), which
-    // produced a garbage count that broke index%columns math — the stuck selector, blocked Left, and
-    // vanishing focus ring. The arithmetic value cannot race, so navigation now trusts it alone.
-
-    internal void SetRenderedGamepadAchievementColumnCount(int columns)
-    {
-        if (columns >= 1)
-            GamepadAchievementColumnCount = columns;
-    }
 
     // The view reports a gamepad-grid fault here (e.g. a focused row's container did not realize after
     // several attempts) so a Deck run leaves a warning in Logs/EmuShelf-*.log without per-move noise.
@@ -401,6 +459,15 @@ public partial class MainViewModel : ViewModelBase
     private const double MinCoverWidth = 188;
     private const double MaxCoverWidth = 232;
     private const double CoverColumnSpacing = 28;    // matches UniformGridLayout MinColumnSpacing
+
+    // Gamepad achievements grid: fixed 100px badge tiles with 12px gutters (mirrors the
+    // Border.gamepad-achievement style and the old UniformGridLayout). The column count is derived
+    // from the row ListBox width by the same arithmetic; the horizontal padding reserves the scroll
+    // gutter and the row's own side padding so a row of that many tiles never overflows the viewport
+    // and clips its right-hand tile.
+    private const double AchievementTileWidth = 100;
+    private const double AchievementTileSpacing = 12;
+    private const double GamepadAchievementGridHorizontalPadding = 28;
 
     // Each mode measures a different element, so each has its own inset. Desktop measures the
     // ScrollViewer, and the ItemsRepeater inside it carries Margin 32/28 that the measurement
@@ -1573,6 +1640,7 @@ public partial class MainViewModel : ViewModelBase
             ? details.VisibleAchievements.FirstOrDefault(row => row.AchievementId == achievementId) ??
               details.VisibleAchievements.FirstOrDefault()
             : details.VisibleAchievements.FirstOrDefault();
+        BuildGamepadAchievementRows(); // re-slice the replaced visible set into rows
         GamepadAchievementLayoutRevision++;
         OnPropertyChanged(nameof(GamepadAchievementLayoutRevision));
     }
@@ -1582,9 +1650,10 @@ public partial class MainViewModel : ViewModelBase
         if (GamepadAchievementDetails is not { } details)
             return;
 
-        details.PropertyChanged -= HandleGamepadAchievementDetailsPropertyChanged;
-        details.Dispose();
+        // Clearing the property unsubscribes the change handler and empties the row list
+        // (OnGamepadAchievementDetailsChanged) before the view model is disposed.
         GamepadAchievementDetails = null;
+        details.Dispose();
     }
 
     private void DisposeGamepadScraperDetails()
@@ -1803,7 +1872,14 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    partial void OnGamepadOverlayChanged(GamepadOverlayKind value) => NotifyGamepadOverlayState();
+    partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
+    {
+        NotifyGamepadOverlayState();
+        // Details may have been assigned before the overlay opened (row build is deferred while it is
+        // closed), so slice the rows now that it is showing. SizeChanged corrects the column count.
+        if (value == GamepadOverlayKind.Achievements)
+            BuildGamepadAchievementRows();
+    }
 
     partial void OnGamepadOverlaySelectionIndexChanged(int value) => UpdateGamepadOverlayOptionFocus();
 
@@ -1816,6 +1892,20 @@ public partial class MainViewModel : ViewModelBase
         if (newValue is not null)
             newValue.IsFocused = true;
         OnPropertyChanged(nameof(HasFocusedGamepadAchievement));
+    }
+
+    partial void OnGamepadAchievementDetailsChanged(
+        AchievementDetailsViewModel? oldValue,
+        AchievementDetailsViewModel? newValue)
+    {
+        // Wire the row projection to whichever details are current, whether assigned by the open
+        // command or directly (as tests do). The handler rebuilds rows when the visible set changes
+        // (filter/sort/refresh); this initial build covers the set the constructor already populated.
+        if (oldValue is not null)
+            oldValue.PropertyChanged -= HandleGamepadAchievementDetailsPropertyChanged;
+        if (newValue is not null)
+            newValue.PropertyChanged += HandleGamepadAchievementDetailsPropertyChanged;
+        BuildGamepadAchievementRows();
     }
 
     partial void OnIsGamepadModeChanged(bool value)
@@ -1981,9 +2071,12 @@ public partial class MainViewModel : ViewModelBase
     /// How many cells of <paramref name="itemWidth"/> fit in <paramref name="available"/>, matching
     /// UniformGridLayout's own arithmetic so the view model and the layout never disagree.
     /// </summary>
-    private static int ColumnsThatFit(double available, double itemWidth) => Math.Max(
+    private static int ColumnsThatFit(double available, double itemWidth) =>
+        ColumnsThatFit(available, itemWidth, CoverColumnSpacing);
+
+    private static int ColumnsThatFit(double available, double itemWidth, double spacing) => Math.Max(
         1,
-        (int)((available + CoverColumnSpacing) / (itemWidth + CoverColumnSpacing)));
+        (int)((available + spacing) / (itemWidth + spacing)));
 
     private void ApplyVisibleCoverShelf(double coverWidth)
     {
@@ -3452,8 +3545,10 @@ public partial class MainViewModel : ViewModelBase
                     logger: _logger,
                     deferBadgeLoading: true);
                 OpenGamepadOverlay(GamepadOverlayKind.Achievements);
+                // Assigning the details subscribes the change handler and slices the initial rows
+                // (OnGamepadAchievementDetailsChanged); a stale column count is corrected by the
+                // ListBox's SizeChanged during this overlay's layout pass.
                 GamepadAchievementDetails = details;
-                details.PropertyChanged += HandleGamepadAchievementDetailsPropertyChanged;
                 FocusFirstAchievement();
                 _ = details.RefreshIfStaleAsync();
                 return;
