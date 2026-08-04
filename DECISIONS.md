@@ -3956,3 +3956,37 @@ platform-neutral `TextBackedScreenScraperCredentialStore` over a new `IProtected
 Windows, and a portable AES-GCM blob (`PortableObfuscatedTextStore`) elsewhere — the same
 obfuscation-not-confidentiality trade-off already used for the RetroAchievements key, writing the same
 `Settings/screenscraper.account` file so the login survives restarts and updates.
+
+## 2026-08-04 — Gamepad grid: the selector is centre-anchored and the scroll eases instead of snapping
+
+Controller navigation felt choppy and the selector landed unpredictably — top on one platform, middle
+or bottom on another. Root cause was the reveal in `RevealFocusedGame`: it called
+`GamepadRowList.ScrollIntoView(rowIndex)`, which scrolls the *minimum* to make a row visible (so the
+selector walks to whichever viewport edge it hits and sticks there), then posted a *second* instant
+offset change in `NudgeGlowClearance`. Two hard jumps per d-pad step, and because rows are taller on
+portrait-cover platforms (PSP 0.581, PS2 0.708) than on wide ones (SNES 1.434), the number of visible
+rows — and thus where the edge-stuck selector sat — differed per platform.
+
+Both are now replaced by a single rule: **anchor the focused row on the viewport's vertical centre**
+(clamped at the ends) and **ease the `ScrollViewer.Offset` toward that anchor**. Centre-anchoring makes
+the selector position aspect-ratio-independent — the focused tile settles on the same line on every
+platform (asserted for PSP/SNES/PS2 in `SelectorIsCentered_DeepInList_RegardlessOfAspectRatio`). The
+ease turns a held d-pad into one continuous scroll: a retarget mid-flight just moves the goal the follow
+chases, so fast auto-repeat no longer strobes row-to-row.
+
+The ease is deliberately **not** a wall-clock `DispatcherTimer`. It self-reposts at
+`DispatcherPriority.Render`, advancing a fixed fraction (0.3) of the remaining distance per step. At
+runtime that is ~one step per frame (smooth, and it stops reposting the instant it settles, so an idle
+grid and the Deck battery cost nothing); under the headless test pump the same `Render` flushes advance
+it deterministically with no real time passing — matching the repo convention that reveal work settle
+via dispatcher priority, never a timer, so `GamepadGridSelectorTests` stays reliable. A generation token
+guarantees exactly one live loop when a jump interleaves with a queued step, and the loop terminates the
+instant the offset stops advancing (arrived, or the panel clamped it), so it can never spin.
+
+Big discrete jumps (LB/RB platform switch resetting focus to the first game, restoring a deep remembered
+row, landing on an end) **snap** rather than ease — a move of more than 1.5 viewports is not a d-pad
+step, and easing across many screens only feels sluggish. A jump uses `ScrollIntoView`, not a manual
+offset: a virtualizing panel discards an offset set into a not-yet-realized region on the next layout
+pass (observed: a manual jump to the last row was reset to the top), whereas `ScrollIntoView` realizes
+and positions the far row reliably. Row height for the centre maths is read from any realized row
+(uniform per view), falling back to `ShelfCoverHeight + 90` chrome before the first row realizes.

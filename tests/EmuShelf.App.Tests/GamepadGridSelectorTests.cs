@@ -323,6 +323,102 @@ public class GamepadGridSelectorTests
         }
     }
 
+    // The selector is normalized: after a step-move deep in the list, the focused row is anchored to the
+    // SAME vertical line — the viewport centre — no matter the platform's cover aspect ratio. This is the
+    // fix for "sometimes the selector is at the top, sometimes the middle, sometimes the bottom." Portrait
+    // PSP (0.581) and wide SNES (1.434) rows differ hugely in height, yet both settle the focused tile on
+    // the centre line, so the selector position is predictable across platforms.
+    [AvaloniaTheory]
+    [InlineData("psp")]        // tall portrait cover
+    [InlineData("snes")]       // short wide cover
+    [InlineData("playstation2")] // standard disc box
+    public async Task SelectorIsCentered_DeepInList_RegardlessOfAspectRatio(string systemId)
+    {
+        var system = KnownSystems.All.First(s => s.Id == systemId);
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+
+        var games = Enumerable.Range(0, 200)
+            .Select(index => new GameViewModel(
+                new Game
+                {
+                    Id = index + 1,
+                    SystemId = system.Id,
+                    Path = $"/Games/{system.Id}/Game {index + 1}.bin",
+                    Title = $"Game {index + 1}",
+                    IsAvailable = true,
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                system.Name,
+                system.ShortName,
+                system.AccentColor,
+                coverAspectRatio: system.CoverAspectRatio))
+            .ToArray();
+        viewModel.Games.ReplaceAll(games);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.FocusedGame = games[0];
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await Pump();
+
+            // Land deep in the list (a big jump), then take ONE d-pad step so the eased anchor centres the
+            // new row — a row far from either end, where centring is not clamped.
+            viewModel.FocusedGame = games[100];
+            await Pump();
+            viewModel.DispatchGamepadAction(GamepadAction.NavigateDown);
+            await SettleScroll(window);
+
+            var scroller = GamepadScroller(window);
+            var viewportCentreY = scroller.TranslatePoint(new Point(0, scroller.Viewport.Height / 2), window)!.Value.Y;
+
+            var focused = viewModel.FocusedGame!;
+            var tile = RealizedTiles(window).First(t => ReferenceEquals(t.Game, focused)).Tile;
+            var tileCentreY = tile.TranslatePoint(new Point(0, tile.Bounds.Height / 2), window)!.Value.Y;
+
+            var offset = Math.Abs(tileCentreY - viewportCentreY);
+            _output.WriteLine(
+                $"system={systemId} tileH={tile.Bounds.Height:F0} viewportCentre={viewportCentreY:F0} " +
+                $"tileCentre={tileCentreY:F0} offset={offset:F0}");
+
+            // The focused tile sits on the centre line (a small, aspect-independent bias from the row's
+            // 10/18 top/bottom gutters aside); top- or bottom-anchoring would miss by well over 200px.
+            Assert.True(offset < 40, $"selector for {systemId} is {offset:F0}px off centre (expected < 40)");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static ScrollViewer GamepadScroller(Window window) =>
+        window.GetVisualDescendants().OfType<ListBox>()
+            .First(list => list.Name == "GamepadRowList")
+            .GetVisualDescendants().OfType<ScrollViewer>().First();
+
+    // Pump until the eased scroll offset stops moving, so an assertion reads the settled position rather
+    // than a mid-ease frame. The ease advances one step per Render flush, so this converges quickly.
+    private static async Task<double> SettleScroll(Window window)
+    {
+        var scroller = GamepadScroller(window);
+        var last = double.NaN;
+        for (var i = 0; i < 60; i++)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            var y = scroller.Offset.Y;
+            if (!double.IsNaN(last) && Math.Abs(y - last) < 0.5)
+                return y;
+            last = y;
+        }
+
+        return scroller.Offset.Y;
+    }
+
     // The focus ring is part of each tile (Border.gamepad-focus-tile-ring, shown via opacity on the
     // .focused state). "The ring is on the focused game" therefore means: the focused tile's ring is
     // opaque and no other realized tile's ring is. Position is guaranteed by construction — the ring is
