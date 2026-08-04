@@ -111,6 +111,22 @@ public sealed class SaveSyncServiceTests
     }
 
     [Fact]
+    public async Task UnreadableLocalSave_IsSkipped_InsteadOfAbortingTheSync()
+    {
+        // A reparse point/symlink inside a folder save (InvalidDataException) or a file locked by a
+        // running emulator (IOException) makes the local snapshot throw during planning. That unit must
+        // sit out and be reported as Skipped — it must not propagate and abort the whole pass.
+        _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);
+        _local.SnapshotHook = _ => throw new IOException("the save file is in use by the emulator");
+
+        var report = await CreateService().SyncAsync(Provider(FileCard));
+
+        var skipped = Assert.Single(report.Skipped);
+        Assert.Contains("could not read the local save", skipped.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, _remote.Uploads);
+    }
+
+    [Fact]
     public async Task UnchangedSince_LastSync_DoesNothing()
     {
         _local.Seed(FileCard.UnitId, Bytes("save-A"), T0);

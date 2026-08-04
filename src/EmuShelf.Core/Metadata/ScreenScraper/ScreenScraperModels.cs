@@ -115,6 +115,9 @@ public sealed record ScreenScraperMediaCandidate(
 public sealed record ScreenScraperGameInfo(
     string ProviderGameId,
     string? ProviderRomId,
+    string? RomCrc32,
+    string? RomMd5,
+    string? RomSha1,
     IReadOnlyList<ScreenScraperLocalizedText> Names,
     IReadOnlyList<ScreenScraperLocalizedText> Descriptions,
     IReadOnlyList<ScreenScraperLocalizedText> Genres,

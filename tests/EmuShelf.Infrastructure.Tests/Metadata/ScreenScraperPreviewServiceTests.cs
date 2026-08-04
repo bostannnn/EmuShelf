@@ -222,6 +222,9 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
             new ScreenScraperGameInfo(
                 "provider-game",
                 "provider-rom",
+                RomCrc32: null,
+                RomMd5: null,
+                RomSha1: null,
                 [new ScreenScraperLocalizedText("Provider title", null, "wor")],
                 [new ScreenScraperLocalizedText("Description", "en", null)],
                 [new ScreenScraperLocalizedText("Action", "en", null)],

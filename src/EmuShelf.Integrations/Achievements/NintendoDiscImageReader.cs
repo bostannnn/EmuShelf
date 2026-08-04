@@ -1346,7 +1346,7 @@ internal abstract class NintendoDiscImageReader : IDisposable
                     destination[index] = (byte)((byteIndex + index) switch
                     {
                         0 => word >> 24,
-                        1 => word >> 18,
+                        1 => word >> 16,
                         2 => word >> 8,
                         _ => word,
                     });
