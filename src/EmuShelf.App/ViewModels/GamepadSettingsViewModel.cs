@@ -338,9 +338,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         _themeChoices = themeChoices ?? [];
         _applyTheme = applyTheme;
         // Emulators is a Desktop-only slice for now; Themes is presented as the gamepad gallery page
-        // rather than a projected row section, so both are excluded from the derived section list.
+        // rather than a projected row section; About is a Desktop-only read-only detail page (the
+        // gamepad shell only projects interactive row sections). All three are excluded here.
         Sections = settings.Sections
-            .Where(section => section is not (SettingsSection.Emulators or SettingsSection.Themes))
+            .Where(section => section is not (
+                SettingsSection.Emulators or SettingsSection.Themes or SettingsSection.About))
             .ToArray();
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;

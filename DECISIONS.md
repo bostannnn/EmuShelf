@@ -4329,6 +4329,44 @@ only when a hash was queried (`ReturnedRomMatchesRequestedHash`). The batch scra
 matching for free — `romnom` is a single deterministic request, not the multi-request title search it
 still refuses to run.
 
+## 2026-08-05 — Navigation motion: gamepad repeat accelerates; nav moments animate via mounted layers
+
+Inspired by comparing against the neostation frontend, whose smoothness comes from an accelerating
+d-pad auto-repeat plus in-place animated state changes (never route transitions, never hard cuts).
+
+- **Gamepad auto-repeat now accelerates.** `GamepadNavigationController` held-direction repeats used
+  to fire at a fixed 110 ms after a 400 ms initial delay. They now start at 90 ms after a 320 ms delay
+  and ramp down to a 38 ms floor over `_rampRepeats` steps, so a long hold glides toward the target
+  instead of crawling. Letter/page-jump escalation was deliberately left out of this slice.
+- **Navigation surfaces animate by staying mounted + driving `Opacity`/`RenderTransform`,** not by
+  toggling `IsVisible` (which can't animate — a collapsed element isn't rendered). New motion, all on
+  composited properties at 130–280 ms with `CubicEaseOut`, matching the existing cover/toast layer:
+  the gamepad overlay fades its scrim and lifts the sheet from scale(0.97); the focused couch cover
+  scales to 1.045 (the focus *ring* stays instant — it tracks the d-pad); the library grid dips out
+  and eases back on `IsLibraryLoading`.
+- **The focused-tile scale is applied to the whole cover *stack*** (`Panel.gamepad-cover-stack`), not
+  the cover Border alone. The focus frame is a concentric accent pad *behind* the cover (radius 18, 6px
+  larger) masked to an even 6px border by the opaque cover (radius 12); scaling only the cover grows it
+  into the fixed pad and clips the frame at the corners. Scaling the stack keeps ring + well + cover
+  concentric.
+- **The overlay sheet animates in but snaps out** (its `Transitions` live in the `.overlay-open` state,
+  not the base). On close the sheet's size/alignment class drops and it reverts to the default centred
+  620px card; with a symmetric fade that reverted card flashed for a frame ("a second menu"). Snapping
+  opacity to 0 hides the revert; the scrim keeps fading out, so the close still reads as a soft dissolve.
+- **Cached scope switches intentionally stay instant.** The library crossfade keys off
+  `IsLibraryLoading`, which a cached scope sets true→false synchronously (never rendered), so only the
+  slower uncached loads fade. No frame is deferred to force a fade on the fast path.
+- **The spotlight backdrop uses a `TransitioningContentControl` + `CrossFade`** over an always-present
+  gradient base, so fan art dissolves between focused games (and when a late-decoded bitmap arrives)
+  instead of hard-cutting; the gradient shows through no-art games and mid-fade.
+- **The toolbar search animates its width open** rather than cross-fading in place: its column is
+  `Auto`, so mounting both the icon and the box would permanently shrink the `*` title column. The box
+  eases width 0→218 and the trigger hides, preserving the collapsed layout.
+- **The focused couch tile carries no shadow or glow — only the solid accent ring and the scale lift.**
+  Once the tile scales up, the cover's drop shadow and the ring's `EmuFocusGlow` both spilled a halo
+  past the 6px ring frame, which read as a "weird shadow." The focused cover's `BoxShadow` is set to
+  `none` and the library tile ring drops its inline `EmuFocusGlow`; unfocused tiles keep their shadow,
+  and the spotlight Play/Achievements rings keep their glow (they sit over dark art where it reads).
 ## 2026-08-05 — Spotlight: themed list surface + a self-scrolling marquee title
 
 Two couch-mode refinements from testing:
@@ -4348,7 +4386,6 @@ Two couch-mode refinements from testing:
   shell (Exo 2) and size/weight/foreground are forwarded. The hero title stack was switched to stretch
   so the marquee gets the full hero width to measure overflow against. `IsOverflowing` is exposed for a
   headless test of the fits-vs-scrolls decision.
-
 ## 2026-08-05 — Multiple emulators per console via per-system "profiles" (PS1 gets RetroArch)
 
 EmuShelf assumed one emulator per system everywhere: launch picked
@@ -4404,3 +4441,56 @@ emulator profile** was introduced.
   filename-keyed format is not interchangeable with DuckStation's serial-keyed packs — so a Beetle
   provider would be a separate per-game sibling-folder inventory, not a reuse of the DuckStation
   adapter. Deferred, not blocked; see the refactor doc.
+
+## 2026-08-05 — App version comes from the git tag at build time; Settings → About shows version + commit
+
+The displayed version was stuck at the hardcoded `<Version>0.1.0</Version>` in
+`src/EmuShelf.App/EmuShelf.App.csproj` while GitHub releases had moved to `v1.0.8`, so the app and
+the repo disagreed and `--version` only printed `EmuShelf`.
+
+- **`git describe` (nearest `vX.Y.Z` tag) is the single source of truth for the version.** A
+  `StampGitVersion` MSBuild target (runs `BeforeTargets="GetAssemblyVersion"`) reads the newest tag
+  and sets `Version` from it, so tagging a release on GitHub is the only place the number lives — no
+  separate csproj bump. The csproj `<Version>` is now only a fallback for tag-less/git-less builds
+  (source tarballs). The target is best-effort: missing git, tags, or `.git` never fails the build.
+- **The exact commit is pinned into the assembly**, not just the version: the short hash is appended
+  to `AssemblyInformationalVersion` (`1.0.8+3f2383650`) and both the hash and the ISO commit date go
+  in as `AssemblyMetadata`. `AppBuildInfo` reads these back by reflection at runtime (no process/file
+  access), feeding Settings → About and `--version`.
+- **CI checkout switched to `fetch-depth: 0`** in `.github/workflows/build.yml` (all four build/
+  package jobs). The default shallow clone fetches no tags, so `git describe` would otherwise find
+  nothing and every release binary would fall back to the csproj version.
+- **About is a Desktop-only settings section.** It renders a read-only info card, but the Gamepad
+  settings shell only projects interactive *row* sections, so About is filtered out of the derived
+  gamepad list alongside the existing Desktop-only `Emulators` and gallery-page `Themes`. About is
+  otherwise always present (it needs no host context) and sits at the permanent tail of the list.
+- **Caveat:** incremental local builds may show a stale commit if the assembly-info generation is
+  skipped as up-to-date; clean/Release/CI builds (which the shipped binaries use) always re-stamp.
+
+## 2026-08-05 — Spotlight crash: no cross-fade over disposed fan-art bitmaps
+
+Selecting the couch spotlight crashed the macOS build (SIGABRT in SkiaSharp on the render thread).
+Cause: the spotlight backdrop was switched to a `TransitioningContentControl` with a `CrossFade`
+(motion-polish pass) whose `Content` binds to `FocusedGame.FanartImage` — a `Bitmap`. But the
+spotlight deliberately **disposes** the focused game's fan-art bitmap as focus moves (`OnFocusedGame
+Changed` → `oldValue.FanartImage = null` → `Dispose`) so a long list never accumulates ~1080p images.
+The cross-fade keeps the *outgoing* bitmap rendered for its 280 ms fade, so it draws a disposed
+`Bitmap` and the render thread aborts.
+
+Reverted the backdrop to a plain `Image` (instant swap, as before). The cross-fade and the eager
+per-focus disposal are fundamentally at odds; bringing the cross-fade back needs deferred disposal
+(release the outgoing bitmap only after the transition completes, or retain the last N), not a bind to
+the disposable bitmap. The rest of the motion-polish pass (grid dissolve, overlay fade, focused-tile
+lift, search expand, accelerating repeat) is unaffected and kept.
+## 2026-08-05 — macOS data lives in Application Support, not beside the executable
+
+On macOS the app runs from a `.app` bundle whose executable sits at `Contents/MacOS/`, so the
+Windows/Linux "portable, beside the executable" rule would bury `Data/Covers/Cache/Logs/Settings/Saves`
+*inside* the bundle. That is hidden from Finder, wiped whenever the user drags a new build over the old
+one, and unwritable once Gatekeeper translocates a quarantined bundle to a read-only mount.
+`AppPaths.ResolveBaseDirectory()` (renamed from `ResolvePortableBaseDirectory`) therefore returns
+`~/Library/Application Support/EmuShelf` on macOS, keeping AppImage and Windows/Linux portable behavior
+unchanged. The home directory is used directly because `SpecialFolder.ApplicationData` maps to `~/.config`
+on .NET for macOS, not the Cocoa location. This is the "non-portable data location" the 2026-07-12 macOS
+entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
+(threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.

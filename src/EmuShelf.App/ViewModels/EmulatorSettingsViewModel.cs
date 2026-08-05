@@ -21,6 +21,7 @@ public enum SettingsSection
     Saves,
     TexturePacks,
     Themes,
+    About,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
@@ -56,6 +57,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
     [NotifyPropertyChangedFor(nameof(IsThemesSection))]
+    [NotifyPropertyChangedFor(nameof(IsAboutSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
@@ -65,6 +67,22 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
     public bool IsThemesSection => SelectedSection == SettingsSection.Themes;
+    public bool IsAboutSection => SelectedSection == SettingsSection.About;
+
+    /// <summary>App version stamped from the newest git tag at build time, e.g. "1.0.8".</summary>
+    public string AppVersionDisplay => AppBuildInfo.Version;
+
+    /// <summary>Short hash of the last commit compiled into this build, or a fallback note.</summary>
+    public string AppCommitDisplay => string.IsNullOrEmpty(AppBuildInfo.CommitHash)
+        ? "unavailable (built without git)"
+        : AppBuildInfo.CommitHash;
+
+    /// <summary>Local date/time of that commit; empty when it was not stamped.</summary>
+    public string AppCommitDateDisplay => AppBuildInfo.CommitDate is { } date
+        ? date.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+        : string.Empty;
+
+    public bool HasCommitDate => AppBuildInfo.CommitDate is not null;
 
     /// <summary>Appearance choices shown as a Themes section so Desktop and Gamepad settings both
     /// expose theme selection; empty when the host did not provide them.</summary>
@@ -161,6 +179,17 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial bool ShowEmptyPlatforms { get; set; }
+
+    /// <summary>EmuShelf's data folder (database, covers, settings, saves), shown in General so the
+    /// user can open it. Empty when the host did not supply it (design-time and tests).</summary>
+    public string DataDirectory => _maintenance?.DataDirectory ?? string.Empty;
+    public bool HasDataDirectory => !string.IsNullOrWhiteSpace(_maintenance?.DataDirectory);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDataFolderStatus))]
+    public partial string DataFolderStatusText { get; set; } = string.Empty;
+
+    public bool HasDataFolderStatus => !string.IsNullOrWhiteSpace(DataFolderStatusText);
 
     [ObservableProperty]
     public partial string CloudRemoteName { get; set; } = "emushelf-gdrive";
@@ -316,6 +345,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             sections.Add(SettingsSection.TexturePacks);
         if (HasThemes)
             sections.Add(SettingsSection.Themes);
+        // About is always present — it just reads build metadata and needs no host context.
+        sections.Add(SettingsSection.About);
         Sections = sections;
         if (texturePacks is not null)
             ApplyTexturePackInventory();
@@ -442,6 +473,29 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _maintenance?.RescanAll,
         "Rescanning remembered folders…",
         message => MaintenanceStatusText = message);
+
+    /// <summary>Reveals EmuShelf's data folder in the desktop file manager. Nothing there is modified.</summary>
+    [RelayCommand]
+    private void OpenDataFolder()
+    {
+        var path = _maintenance?.DataDirectory;
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not open the data folder '{path}': {ex.Message}");
+            DataFolderStatusText = "Couldn't open the data folder.";
+        }
+    }
 
     [RelayCommand]
     private async Task FetchAllMetadataAsync()

@@ -21,6 +21,26 @@ public sealed class RcloneExecutableTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Resolve_FindsRcloneBundledBesideTheAppBinary()
+    {
+        // Mirrors macOS: the data directory (Application Support) holds no rclone, but the bundled
+        // copy sits beside the app binary — AppContext.BaseDirectory, i.e. the .app's Contents/MacOS.
+        var bundled = Path.Combine(AppContext.BaseDirectory, RcloneExecutable.FileName);
+        var alreadyPresent = File.Exists(bundled);
+        if (!alreadyPresent)
+            File.WriteAllText(bundled, "binary");
+        try
+        {
+            Assert.Equal(bundled, WithAppDir(null, () => RcloneExecutable.Resolve(AppPaths)));
+        }
+        finally
+        {
+            if (!alreadyPresent)
+                File.Delete(bundled);
+        }
+    }
+
+    [Fact]
     public void Resolve_PrefersTheAppImageMountWhenPresent()
     {
         var appDir = Path.Combine(BaseDirectory, "mount");

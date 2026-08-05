@@ -2,7 +2,9 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>EmuShelf</AssemblyName>
-    <!-- Product version: drives the assembly version and the AppImage version string. Bump per release. -->
+    <!-- Fallback product version. The real number comes from the newest `vX.Y.Z` git tag at build
+         time (see the StampGitVersion target below), so this is only used when building without git
+         history/tags — e.g. a source tarball. Tagging a release on GitHub is the source of truth. -->
     <Version>0.1.0</Version>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -67,4 +69,53 @@
     <ProjectReference Include="..\EmuShelf.Infrastructure\EmuShelf.Infrastructure.csproj" />
     <ProjectReference Include="..\EmuShelf.Integrations\EmuShelf.Integrations.csproj" />
   </ItemGroup>
+
+  <!--
+    Stamp the build with the version and commit taken from git so Settings, About always matches
+    GitHub. `git describe` (nearest tag) gives the newest reachable `vX.Y.Z` tag, which becomes the
+    assembly version, so publishing a tag on GitHub is the only place the version number lives, with
+    no separate csproj bump. The short commit hash and its date pin the exact build the binary was
+    compiled from.
+
+    Best-effort by design: no git on PATH, no tags, or a source tarball with no .git simply falls
+    back to the <Version> above and stamps no commit, and the build never fails on this. CI must
+    check out with fetch-depth 0 so the tags are present (see .github/workflows/build.yml). Runs
+    before GetAssemblyVersion so the values it sets flow into AssemblyVersion/FileVersion and the
+    generated assembly-info attributes. Set EmuShelfSkipGitStamp=true to opt out.
+  -->
+  <Target Name="StampGitVersion"
+          BeforeTargets="GetAssemblyVersion"
+          Condition="'$(EmuShelfSkipGitStamp)' != 'true'">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=9 HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExit" />
+    </Exec>
+    <!-- The rest is meaningless without a commit, so gate it on the cheap rev-parse succeeding. -->
+    <Exec Condition="'$(_GitExit)' == '0'"
+          Command="git -C &quot;$(MSBuildProjectDirectory)&quot; show -s --format=%cI HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitDate" />
+    </Exec>
+    <Exec Condition="'$(_GitExit)' == '0'"
+          Command="git -C &quot;$(MSBuildProjectDirectory)&quot; describe --tags --abbrev=0"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitTag" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitTagExit" />
+    </Exec>
+    <PropertyGroup>
+      <!-- `vX.Y.Z` tag -> X.Y.Z assembly version. Untagged builds keep the csproj <Version>. -->
+      <Version Condition="'$(_GitTagExit)' == '0' and '$(_GitTag)' != ''">$(_GitTag.Trim().TrimStart('v'))</Version>
+      <!-- Append the commit so two builds of the same tag are still distinguishable. -->
+      <InformationalVersion Condition="'$(_GitCommit)' != ''">$(Version)+$(_GitCommit.Trim())</InformationalVersion>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_GitCommit)' != ''">
+      <AssemblyMetadata Include="CommitHash" Value="$(_GitCommit.Trim())" />
+      <AssemblyMetadata Include="CommitDate" Value="$(_GitCommitDate.Trim())"
+                        Condition="'$(_GitCommitDate)' != ''" />
+    </ItemGroup>
+  </Target>
 </Project>
