@@ -1555,7 +1555,8 @@
                                 Command="{Binding ShowAllGamesCommand}"
                                 Classes.selected="{Binding IsAllGamesSelected}"
                                 MinHeight="54" Padding="22,10">
-                            <TextBlock Text="All Games" VerticalAlignment="Center" />
+                            <TextBlock Text="All Games" VerticalAlignment="Center"
+                                       FontSize="{DynamicResource EmuGpLabelSize}" />
                         </Button>
                         <ItemsControl ItemsSource="{Binding GamepadPlatforms}">
                             <ItemsControl.ItemsPanel>
@@ -1571,7 +1572,8 @@
                                         <Grid ColumnDefinitions="26,*" ColumnSpacing="9">
                                             <Image Grid.Column="0" Width="26" Height="26" Source="{Binding Artwork}"
                                                    RenderOptions.BitmapInterpolationMode="None" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                                       FontSize="{DynamicResource EmuGpLabelSize}" />
                                         </Grid>
                                     </Button>
                                 </DataTemplate>
@@ -1742,7 +1744,7 @@
                                   </Panel>
                                 <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding Title}"
                                            Margin="2,10,2,0" TextWrapping="Wrap" MaxLines="2"
-                                           TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="SemiBold"
                                            TextAlignment="Center" HorizontalAlignment="Stretch"
                                            VerticalAlignment="Top" MaxWidth="{Binding CoverWidth}" />
                             </Grid>
@@ -1814,12 +1816,12 @@
             <Grid x:Name="GamepadDockPrimaryRow" IsVisible="{Binding HasGames}"
                   ColumnDefinitions="*,Auto,Auto" ColumnSpacing="14">
                 <StackPanel MinWidth="0" Margin="0,0,12,0" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="11" FontWeight="Bold"
-                               LetterSpacing="1.2" Foreground="{DynamicResource EmuAccentBrush}" />
-                    <TextBlock Text="{Binding FocusedGame.Title}" FontSize="23" FontWeight="Bold"
+                    <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="{DynamicResource EmuGpCaptionSize}"
+                               FontWeight="Bold" LetterSpacing="1.2" Foreground="{DynamicResource EmuAccentBrush}" />
+                    <TextBlock Text="{Binding FocusedGame.Title}" FontSize="{DynamicResource EmuGpTitleSize}" FontWeight="Bold"
                                MaxLines="1" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="GamepadFocusedSubtitle" Text="{Binding FocusedGame.GamepadSubtitle}"
-                               FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis"
+                               FontSize="{DynamicResource EmuGpCaptionSize}" MaxLines="1" TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 </StackPanel>
 
@@ -1932,7 +1934,7 @@
                                 <Image Width="34" Height="34" Source="{Binding FocusedGame.PlatformArtwork}"
                                        RenderOptions.BitmapInterpolationMode="None" />
                                 <TextBlock Text="{Binding FocusedGame.SystemName}" VerticalAlignment="Center"
-                                           FontSize="17" FontWeight="Bold" LetterSpacing="0.6"
+                                           FontSize="{DynamicResource EmuGpHeadingSize}" FontWeight="Bold" LetterSpacing="0.6"
                                            Foreground="White" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Border>
@@ -1964,7 +1966,8 @@
                             </ListBox.Styles>
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:GameViewModel">
-                                    <TextBlock Text="{Binding SpotlightDisplayTitle}" Margin="18,14" FontSize="19"
+                                    <TextBlock Text="{Binding SpotlightDisplayTitle}" Margin="18,13"
+                                               FontSize="{DynamicResource EmuGpBodySize}"
                                                FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -1987,12 +1990,13 @@
                                                   Opacity="0.7" />
                             </Image.Effect>
                         </Image>
-                        <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="13" FontWeight="Bold"
-                                   LetterSpacing="1.4" Foreground="{DynamicResource EmuAccentBrush}" />
-                        <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}" FontSize="42" FontWeight="Bold"
+                        <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="{DynamicResource EmuGpCaptionSize}"
+                                   FontWeight="Bold" LetterSpacing="1.4" Foreground="{DynamicResource EmuAccentBrush}" />
+                        <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
+                                   FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
                                    Foreground="White" MaxLines="2" TextWrapping="Wrap"
                                    TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="15"
+                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="{DynamicResource EmuGpLabelSize}"
                                    Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
@@ -2004,7 +2008,7 @@
                                     <PathIcon Width="22" Height="22"
                                               Data="M12,2 L15.09,8.26 L22,9.27 L17,14.14 L18.18,21.02 L12,17.77 L5.82,21.02 L7,14.14 L2,9.27 L8.91,8.26 Z"
                                               Foreground="{DynamicResource EmuAchievementBrush}" />
-                                    <TextBlock Text="{Binding FocusedGame.RatingText}" FontSize="22"
+                                    <TextBlock Text="{Binding FocusedGame.RatingText}" FontSize="{DynamicResource EmuGpHeadingSize}"
                                                FontWeight="Bold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Border>
@@ -2023,7 +2027,7 @@
                                     <Grid Grid.Column="1" RowDefinitions="Auto,4" RowSpacing="5"
                                           VerticalAlignment="Center">
                                         <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
-                                                   FontSize="15" FontWeight="Bold" />
+                                                   FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="Bold" />
                                         <Border Grid.Row="1" Width="118" Height="4" CornerRadius="2"
                                                 HorizontalAlignment="Left" ClipToBounds="True"
                                                 Background="{DynamicResource EmuFormatPillBrush}">
