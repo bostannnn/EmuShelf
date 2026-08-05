@@ -4510,3 +4510,14 @@ layout. Added a headless test that shows an overflowing marquee in a window and 
 starts without throwing (the path the crash lived on). The correct Animation-API route would have been
 to animate the child Visual's `RenderTransform` with `TransformOperations`, but the timer is simpler and
 gives full control over the cadence.
+## 2026-08-05 — Gamepad grid: gentler vertical auto-repeat floor than horizontal
+
+The accelerating auto-repeat (90 → 38 ms floor) felt great moving Left/Right in the couch grid but
+janky moving Up/Down — rows "blinking and jumping" on Steam Deck. Cause: Left/Right steps within a row
+(no scroll), but each Up/Down step scrolls a whole row and drives the centre-reveal, which falls back
+to a hard `ScrollIntoView` snap whenever the target row hasn't virtualized yet. At the 38 ms floor the
+vertical hold outruns row virtualization, so the snap path dominates and covers pop in/out.
+
+`GamepadNavigationController` now ramps vertical (Up/Down) to a gentler `verticalMinRepeatIntervalMs`
+(72 ms) while horizontal keeps the fast 38 ms floor, so the reveal keeps up and the grid glides both
+ways. Per-axis floor, unit-tested. The value is tunable; the reveal logic itself is untouched.
