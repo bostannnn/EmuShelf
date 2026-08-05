@@ -4,8 +4,10 @@ namespace EmuShelf.Infrastructure.SaveSync;
 
 /// <summary>
 /// Resolves the rclone executable. An explicit path wins; otherwise a bundled copy is preferred —
-/// inside the AppImage mount (<c>$APPDIR/usr/bin</c>) on Linux, or beside the executable — falling
-/// back to the portable base directory so a "not found" error still names a sensible location.
+/// inside the AppImage mount (<c>$APPDIR/usr/bin</c>) on Linux, or beside the app binary (the .app
+/// bundle's <c>Contents/MacOS</c> on macOS) — then a copy in the writable data directory (where
+/// "Get rclone" downloads it), falling back to that data directory so a "not found" error still
+/// names a sensible, writable location.
 /// </summary>
 public static class RcloneExecutable
 {
@@ -38,6 +40,11 @@ public static class RcloneExecutable
             yield return Path.Combine(appDir, "usr", "bin", FileName);
             yield return Path.Combine(appDir, FileName);
         }
+
+        // The bundled rclone travels beside the app binary. On Windows/Linux portable this is the
+        // same as the data directory below, but on macOS the binary lives in the read-only .app
+        // bundle while data lives in Application Support, so the two must be checked separately.
+        yield return Path.Combine(AppContext.BaseDirectory, FileName);
 
         yield return Path.Combine(appPaths.BaseDirectory, FileName);
     }
