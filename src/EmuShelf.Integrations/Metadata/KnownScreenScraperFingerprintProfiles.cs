@@ -18,6 +18,8 @@ public static class KnownScreenScraperFingerprintProfiles
             Profile("gba", ".gba"),
             Profile("snes", ".sfc", ".smc"),
             Profile("dreamcast"),
+            // Arcade has no whole-file hash (a repacked set archive isn't byte-stable); it matches by
+            // ROM file name instead — see ScreenScraperPreviewService.FileNameMatchSystems.
             Profile("arcade"),
             Profile("gbc", ".gb", ".gbc"),
             Profile("nes", ".nes"),

@@ -630,8 +630,11 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
     {
         ScreenScraperPreviewStatus.NotConnected => GameScraperState.NotConnected,
         ScreenScraperPreviewStatus.ProviderDisabled => GameScraperState.ProviderDisabled,
-        ScreenScraperPreviewStatus.UnsupportedSystem or
-            ScreenScraperPreviewStatus.UnsupportedFormat => GameScraperState.Unsupported,
+        ScreenScraperPreviewStatus.UnsupportedSystem => GameScraperState.Unsupported,
+        // The format has no whole-file hash rule (arcade sets, 3DS, disc-id systems, or a stray
+        // container under an otherwise hashable system), but the platform is still mapped to a
+        // ScreenScraper system — so fall back to the title search instead of dead-ending.
+        ScreenScraperPreviewStatus.UnsupportedFormat => GameScraperState.NoMatch,
         ScreenScraperPreviewStatus.FingerprintConsentRequired => GameScraperState.ConsentRequired,
         ScreenScraperPreviewStatus.ProviderFailure when
             result.RequestStatus == ScreenScraperRequestStatus.NotFound => GameScraperState.NoMatch,

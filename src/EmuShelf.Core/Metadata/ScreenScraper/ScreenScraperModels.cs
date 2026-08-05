@@ -51,7 +51,11 @@ public sealed record ScreenScraperGameRequest(
     string? Sha1 = null,
     string? Serial = null,
     string? ProviderGameId = null,
-    string? Language = null);
+    string? Language = null,
+    // A deliberate file-name-only lookup: the caller vouches that this system is matched by ROM
+    // file name (arcade romsets), so a lookup with no hash/serial/game id is intentional and safe.
+    // Off by default so a stray under-specified request for a hashable system is still rejected.
+    bool AllowFileNameMatch = false);
 
 public enum ScreenScraperRequestStatus
 {
@@ -221,8 +225,9 @@ public interface IScreenScraperPreviewService
 }
 
 /// <summary>
-/// Scrapes many games in one pass. It matches only by hash/serial (never title search, so a rom-hack
-/// heavy run cannot exhaust the failed-lookup quota), applies with the caller's overwrite mode and
+/// Scrapes many games in one pass. It matches only by hash, serial, or (for arcade) ROM file name —
+/// each a single deterministic request per game, never the multi-request title search, so a rom-hack
+/// heavy run cannot exhaust the failed-lookup quota. It applies with the caller's overwrite mode and
 /// field/media selection, reports cancellable progress, and stops cleanly on quota exhaustion — leaving
 /// completed work intact and the run resumable (fill-missing skips games already done).
 /// </summary>
