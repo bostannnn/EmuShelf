@@ -9,6 +9,10 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://EmuShelf/Styles/EmuShelfTheme.axaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Bundled couch display font (Exo 2, SIL OFL — see THIRD-PARTY-NOTICES.md). Applied to the
+                 Gamepad shell only; Desktop keeps the default Inter UI font. -->
+            <FontFamily x:Key="EmuGamepadFontFamily">avares://EmuShelf/Assets/Fonts/Exo2.ttf#Exo 2</FontFamily>
         </ResourceDictionary>
     </Application.Resources>
 

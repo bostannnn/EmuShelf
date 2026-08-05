@@ -139,3 +139,11 @@ the source project's terms and to the rights of their respective publishers.
   EmuShelf. rclone is distributed under the
   [MIT License](https://github.com/rclone/rclone/blob/master/COPYING); its license ships beside the
   executable at `ThirdParty/rclone/LICENSE.txt`.
+
+## Bundled fonts
+
+- [Exo 2](https://fonts.google.com/specimen/Exo+2), by Natanael Gama and the Exo 2 Project Authors,
+  is bundled as the Gamepad (couch) mode UI font at `src/EmuShelf.App/Assets/Fonts/Exo2.ttf` — a
+  single variable font covering every weight. It is unmodified, and Desktop mode does not use it.
+- License: SIL Open Font License 1.1; the complete text ships at `ThirdParty/Fonts/Exo2-OFL.txt` and
+  is retained in `src/EmuShelf.App/Assets/ThirdParty/Exo2-OFL.txt`.

@@ -1539,6 +1539,7 @@
          It does not replace the desktop selection model or list view. -->
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
           IsVisible="{Binding IsGamepadMode}" RowDefinitions="100,*,104"
+          TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}"
           Background="{DynamicResource EmuLibraryBrush}" PointerMoved="OnGamepadPointerMoved">
         <Border Grid.Row="0" Padding="42,18,42,12" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
