@@ -2000,7 +2000,7 @@
                              so a wide/tall logo stays contained, and given a soft drop shadow so the
                              transparent art lifts off the busy fan-art backdrop instead of blending in. -->
                         <Image Source="{Binding FocusedGame.WheelImage}" Stretch="Uniform"
-                               MaxHeight="118" MaxWidth="440" HorizontalAlignment="Left"
+                               MaxHeight="118" MaxWidth="440" HorizontalAlignment="Center"
                                Margin="0,0,0,4" IsVisible="{Binding FocusedGame.HasWheelImage}">
                             <Image.Effect>
                                 <DropShadowEffect Color="Black" BlurRadius="22" OffsetX="0" OffsetY="6"
@@ -2011,7 +2011,7 @@
                         <controls:MarqueeTextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
                                                    FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
                                                    Foreground="White" HorizontalAlignment="Stretch" />
-                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="{DynamicResource EmuGpLabelSize}"
+                        <TextBlock Text="{Binding FocusedGame.SpotlightSubtitle}" FontSize="{DynamicResource EmuGpLabelSize}"
                                    Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
@@ -2021,18 +2021,29 @@
                          between Achievements and Play (A fires the armed one; Play is the default), and
                          Achievements is also clickable. -->
                     <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                        <!-- Star rating (not an action). -->
-                        <Border Grid.Column="0" Classes="spotlight-pill" Width="176" VerticalAlignment="Center"
-                                IsVisible="{Binding FocusedGame.HasRating}">
-                            <StackPanel Orientation="Horizontal" Spacing="10"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <PathIcon Width="22" Height="22"
-                                          Data="M12,2 L15.09,8.26 L22,9.27 L17,14.14 L18.18,21.02 L12,17.77 L5.82,21.02 L7,14.14 L2,9.27 L8.91,8.26 Z"
-                                          Foreground="{DynamicResource EmuAchievementBrush}" />
-                                <TextBlock Text="{Binding FocusedGame.RatingText}" FontSize="{DynamicResource EmuGpHeadingSize}"
-                                           FontWeight="Bold" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
+                        <!-- Star rating + an optional "texture pack installed" indicator. When no pack
+                             is installed the indicator collapses and the rating keeps its place. -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                            <Border Classes="spotlight-pill" Width="176" VerticalAlignment="Center"
+                                    IsVisible="{Binding FocusedGame.HasRating}">
+                                <StackPanel Orientation="Horizontal" Spacing="10"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <PathIcon Width="22" Height="22"
+                                              Data="M12,2 L15.09,8.26 L22,9.27 L17,14.14 L18.18,21.02 L12,17.77 L5.82,21.02 L7,14.14 L2,9.27 L8.91,8.26 Z"
+                                              Foreground="{DynamicResource EmuAchievementBrush}" />
+                                    <TextBlock Text="{Binding FocusedGame.RatingText}" FontSize="{DynamicResource EmuGpHeadingSize}"
+                                               FontWeight="Bold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                            <Border Classes="spotlight-pill" Width="64" VerticalAlignment="Center"
+                                    IsVisible="{Binding FocusedGame.ShowTextureMark}"
+                                    ToolTip.Tip="Texture pack installed">
+                                <PathIcon Width="26" Height="26"
+                                          Data="{StaticResource TexturePackLayersGeometry}"
+                                          Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
 
                         <!-- Achievements — armed with Left, opens on A or a click; fills the middle. -->
                         <Panel Grid.Column="1" Classes="spotlight-action"

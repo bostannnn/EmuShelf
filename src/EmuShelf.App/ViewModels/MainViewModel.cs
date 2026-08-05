@@ -2202,7 +2202,7 @@ public partial class MainViewModel : ViewModelBase
                 var resolved = await Task.Run(() => ResolveSpotlightDetails(game.Id));
                 if (generation != _spotlightHeroGeneration)
                     return; // focus moved on while the details were being read
-                game.ApplySpotlightDetails(resolved.FanartPath, resolved.WheelPath, resolved.RatingText);
+                game.ApplySpotlightDetails(resolved.FanartPath, resolved.WheelPath, resolved.RatingText, resolved.InfoLine);
             }
 
             await LoadSpotlightBitmapAsync(
@@ -2254,16 +2254,40 @@ public partial class MainViewModel : ViewModelBase
         assign(image);
     }
 
-    private (string? FanartPath, string? WheelPath, string? RatingText) ResolveSpotlightDetails(long gameId)
+    private (string? FanartPath, string? WheelPath, string? RatingText, string? InfoLine) ResolveSpotlightDetails(long gameId)
     {
         if (_gameDetails is null)
-            return (null, null, null);
+            return (null, null, null, null);
 
         var details = _gameDetails.GetDetails(gameId);
         return (
             SelectSpotlightMedia(details.Media, GameMediaKind.Fanart),
             SelectSpotlightMedia(details.Media, GameMediaKind.Wheel),
-            FormatSpotlightRating(details.Metadata));
+            FormatSpotlightRating(details.Metadata),
+            ComposeSpotlightInfo(details.Metadata));
+    }
+
+    // The spotlight hero's info line: genre · year · players · developer · publisher, from the scraped
+    // metadata, joined with the parts that are present. The filename is appended by the view model.
+    internal static string? ComposeSpotlightInfo(IReadOnlyList<GameMetadataValue> metadata)
+    {
+        string? Field(GameMetadataField field) =>
+            metadata.FirstOrDefault(value => value.Field == field)?.Value is { Length: > 0 } v ? v : null;
+
+        var year = Field(GameMetadataField.ReleaseDate) is { } date && date.Length >= 4 ? date[..4] : null;
+        var players = Field(GameMetadataField.Players) is { } count ? $"{count}P" : null;
+
+        var parts = new[]
+        {
+            Field(GameMetadataField.Genre),
+            year,
+            players,
+            Field(GameMetadataField.Developer),
+            Field(GameMetadataField.Publisher),
+        }.Where(part => !string.IsNullOrWhiteSpace(part));
+
+        var line = string.Join("  ·  ", parts);
+        return line.Length == 0 ? null : line;
     }
 
     private static string? SelectSpotlightMedia(IReadOnlyList<GameMediaAsset> media, GameMediaKind kind) =>

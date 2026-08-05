@@ -233,6 +233,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasRating => RatingText is not null;
 
+    /// <summary>The spotlight hero's info line: scraped genre · year · players · developer · publisher
+    /// with the filename appended, or just the filename before the details resolve / when unscraped.</summary>
+    [ObservableProperty]
+    public partial string SpotlightSubtitle { get; set; } = string.Empty;
+
     private string? _canonicalSpotlightTitle;
 
     /// <summary>The title shown in the spotlight list and hero — the canonical ScreenScraper name
@@ -405,6 +410,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
         ListCoverHeight = ListCoverFrameHeight;
         ListCoverWidth = Math.Round(ListCoverFrameHeight * coverAspectRatio);
         FormatLabel = GetFormatLabel(LaunchModel);
+        // Shows the filename until the spotlight resolves the richer scraped info line.
+        SpotlightSubtitle = GamepadSubtitle;
         DraftTitle = game.Title;
         LaunchCommand = launchCommand ?? NoGameCommand;
         SaveTitleCommand = saveTitleCommand ?? NoGameCommand;
@@ -484,14 +491,18 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     partial void OnRatingTextChanged(string? value) => OnPropertyChanged(nameof(HasRating));
 
-    /// <summary>Records the fan-art path, logo path, and formatted rating resolved from this game's
-    /// scraped details. The bitmaps are loaded separately, only while the game is the spotlight hero.</summary>
-    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText)
+    /// <summary>Records the fan-art path, logo path, formatted rating, and scraped info line resolved
+    /// from this game's details. The bitmaps are loaded separately, only while it is the spotlight hero.
+    /// The info line (genre/year/players/developer/publisher) gets the filename appended as a tail.</summary>
+    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText, string? infoLine)
     {
         FanartPath = fanartPath;
         HasFanart = !string.IsNullOrEmpty(fanartPath);
         WheelPath = wheelPath;
         RatingText = ratingText;
+        SpotlightSubtitle = string.IsNullOrEmpty(infoLine)
+            ? GamepadSubtitle
+            : $"{infoLine}  ·  {GamepadSubtitle}";
         AreSpotlightDetailsLoaded = true;
     }
 
