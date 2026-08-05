@@ -4495,6 +4495,39 @@ on .NET for macOS, not the Cocoa location. This is the "non-portable data locati
 entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
 (threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.
 
+## 2026-08-05 — Gamepad grid: a fast held Up/Down glides into not-yet-realized rows instead of snapping
+
+The position-relative ease (entry above) already made a held d-pad a continuous scroll — but only while the
+*target* row was realized: `RevealFocusedGame`'s ease branch was gated on
+`ContainerFromIndex(rowIndex) is { } easeRow`. A held Down auto-repeats ~one row per 110ms
+(`GamepadNavigationController`), while the ease closes 28% of the remaining distance per frame and takes
+~300ms to settle one row, so **focus outruns the glide**: after a couple of repeats the target row sits
+below the realized set, the ease gate fails, and the reveal fell through to the `ScrollIntoView` snap — a
+hard jump that broke the glide. That intermittent snap mid-hold was the residual "Up/Down isn't as smooth
+as Left/Right" (Left/Right moves inside one row and never scrolls, so it can't exhibit this).
+
+Fix: when a **near** step (≤ `GamepadMaxEaseRowStep`) has an unrealized target, keep easing instead of
+snapping. The target is computed **position-relative to the still-realized PREVIOUS row**: centre prev
+(`Offset + prevDelta`) and shift by `(rowIndex − prev) × prevRow.Bounds.Height`. Rows are uniform per view
+(the invariant the whole centring relies on), so prev's own container height *is* the row stride, and the
+result lands the not-yet-realized row on the centre line. Because the eased offset flows **continuously**
+into the adjacent region — the panel realizes each row as the offset enters it — it never teleports far, so
+it cannot desync the `VirtualizingStackPanel`'s estimated extent the way the reverted absolute
+`rowIndex × rowHeight` write did (the 2026-08-04 revert). At steady state during a fast hold the offset
+trails focus by ~half a row (28%/frame vs. one row/6.6 frames), so the focused tile rides slightly below
+centre while held and re-centres on release — the couch-UI momentum feel, and it never walks off-screen.
+Covers are already pre-warmed 3 rows ahead (`PrefetchCoversAroundFocus`), so the row the glide uncovers is
+painted, not a blank pop. Only the realized-target read is the fast path (most accurate); the stride
+fallback engages solely when focus has outrun realization; everything that is not a near step still snaps.
+
+Guarded by `FastDownBurst_GlidesIntoUnrealizedRows_AndSettlesCentered` (a 24-row Down burst pumping only
+`Render`, so focus lands on unrealized rows): the focused tile stays realized through the burst and settles
+on the centre line. The eight existing `GamepadGridSelectorTests` (incl. the snes short-cover deep-list
+case that a re-entrant-layout misimplementation stack-overflowed) stay green. **Caveat:** the previous two
+eased designs shipped headless-green but corrupted on the real Steam Deck compositor (phantom extent,
+selector off-screen) — that class of failure is real-compositor-only, so this still needs on-device
+verification of a fast held Up/Down deep in a long single-platform (short-cover snes) and mixed All-Games
+library before it is trusted.
 ## 2026-08-05 — Marquee scroll via a timer, not Avalonia's Animation API
 
 The spotlight hero's `MarqueeTextBlock` drove its scroll with `Animation.RunAsync(_transform, …)` where

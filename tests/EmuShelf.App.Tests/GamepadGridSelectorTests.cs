@@ -456,6 +456,76 @@ public class GamepadGridSelectorTests
         }
     }
 
+    // A fast held Down deep into a long library: d-pad auto-repeat outruns the glide, so each revealed row
+    // is not yet materialized when its reveal runs — the path that used to fall through to a ScrollIntoView
+    // snap (the residual Up/Down jank Left/Right never had). The fix keeps easing, position-relative to the
+    // still-realized previous row, so the vertical scroll stays one continuous glide. This asserts the
+    // invariant that guards: through the whole burst focus is never scrolled off-screen (its tile stays
+    // realized), and once released the focused row settles on the centre line like a single step does.
+    [AvaloniaFact]
+    public async Task FastDownBurst_GlidesIntoUnrealizedRows_AndSettlesCentered()
+    {
+        var system = KnownSystems.All.First(s => s.Id == "playstation2");
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+
+        var games = Enumerable.Range(0, 200)
+            .Select(index => new GameViewModel(
+                new Game
+                {
+                    Id = index + 1,
+                    SystemId = system.Id,
+                    Path = $"/Games/{system.Id}/Game {index + 1}.bin",
+                    Title = $"Game {index + 1}",
+                    IsAvailable = true,
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                system.Name,
+                system.ShortName,
+                system.AccentColor,
+                coverAspectRatio: system.CoverAspectRatio))
+            .ToArray();
+        viewModel.Games.ReplaceAll(games);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.FocusedGame = games[0];
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await Pump();
+
+            // Fire a long run of Down flushing ONLY Render between moves, so focus races ahead of the
+            // easing offset and lands on rows below the realized set — exactly the fast-hold regime.
+            for (var i = 0; i < 24; i++)
+            {
+                viewModel.DispatchGamepadAction(GamepadAction.NavigateDown);
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            }
+            await SettleScroll(window);
+            // Let the final centred row realize so its tile can be measured.
+            await Pump();
+
+            var focused = viewModel.FocusedGame!;
+            var match = RealizedTiles(window).FirstOrDefault(t => ReferenceEquals(t.Game, focused));
+            Assert.NotNull(match.Tile); // focus was never scrolled off-screen during the burst
+
+            var scroller = GamepadScroller(window);
+            var viewportCentreY = scroller.TranslatePoint(new Point(0, scroller.Viewport.Height / 2), window)!.Value.Y;
+            var tileCentreY = match.Tile.TranslatePoint(new Point(0, match.Tile.Bounds.Height / 2), window)!.Value.Y;
+            var offset = Math.Abs(tileCentreY - viewportCentreY);
+            _output.WriteLine($"final focus={viewModel.Games.IndexOf(focused)} offset={offset:F0}");
+
+            Assert.True(offset < 40, $"after a fast Down burst the focused tile is {offset:F0}px off centre (expected < 40)");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static ScrollViewer GamepadScroller(Window window) =>
         window.GetVisualDescendants().OfType<ListBox>()
             .First(list => list.Name == "GamepadRowList")
