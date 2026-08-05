@@ -51,6 +51,8 @@ public sealed class MarqueeTextBlock : Decorator
     /// <summary>True after layout when the text is wider than the slot (so it scrolls). Exposed for tests.</summary>
     internal bool IsOverflowing { get; private set; }
 
+    private bool IsScrolling => _timer is { IsEnabled: true };
+
     static MarqueeTextBlock()
     {
         ClipToBoundsProperty.OverrideDefaultValue<MarqueeTextBlock>(true);
@@ -126,6 +128,7 @@ public sealed class MarqueeTextBlock : Decorator
     {
         base.OnDetachedFromVisualTree(e);
         StopScroll();
+        _timer = null; // fully release on detach; StopScroll keeps the instance for reuse mid-life
         _lastTextWidth = double.NaN;
         _lastViewWidth = double.NaN;
     }
@@ -133,7 +136,6 @@ public sealed class MarqueeTextBlock : Decorator
     private void StopScroll()
     {
         _timer?.Stop();
-        _timer = null;
         _transform.X = 0;
     }
 
@@ -148,7 +150,7 @@ public sealed class MarqueeTextBlock : Decorator
         // would jump the title back to the start).
         static bool Close(double a, double b) => Math.Abs(a - b) < 0.5;
         if (Close(textWidth, _lastTextWidth) && Close(viewWidth, _lastViewWidth) &&
-            shouldScroll == (_timer is not null))
+            shouldScroll == IsScrolling)
             return;
         _lastTextWidth = textWidth;
         _lastViewWidth = viewWidth;
@@ -165,7 +167,9 @@ public sealed class MarqueeTextBlock : Decorator
         _cycleMs = _backStartMs + scrollMs;
 
         _startTicks = Environment.TickCount64;
-        _timer = new DispatcherTimer(TimeSpan.FromMilliseconds(FrameMs), DispatcherPriority.Render, OnTick);
+        // Reuse one timer instance — the focused game (and so the title) changes on every list step,
+        // which would otherwise churn a DispatcherTimer per move.
+        _timer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(FrameMs), DispatcherPriority.Render, OnTick);
         _timer.Start();
     }
 
@@ -173,6 +177,15 @@ public sealed class MarqueeTextBlock : Decorator
     // transform offset directly — no layout read, no animator — so it can never re-enter layout.
     private void OnTick(object? sender, EventArgs e)
     {
+        // The spotlight can be toggled back to the cover grid without detaching this control, which
+        // would leave the timer ticking on a hidden hero. Self-stop when not visible; the next layout
+        // pass (when the spotlight is shown again) restarts it.
+        if (!IsEffectivelyVisible)
+        {
+            StopScroll();
+            return;
+        }
+
         var elapsed = (Environment.TickCount64 - _startTicks) % (long)Math.Max(1, _cycleMs);
         double offset;
         if (elapsed < _outStartMs)
