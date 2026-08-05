@@ -171,6 +171,18 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsGamepadSpotlightView { get; set; }
 
+    /// <summary>In the spotlight hero, whether the Achievements action is armed (so A opens it)
+    /// instead of Play, the default. Left/Right move between the two; it resets to Play whenever the
+    /// focused game changes or the couch layout toggles.</summary>
+    [ObservableProperty]
+    public partial bool IsSpotlightAchievementsFocused { get; set; }
+
+    /// <summary>Play is armed when the spotlight is showing and Achievements isn't. Drives its ring.</summary>
+    public bool IsSpotlightPlayFocused => IsGamepadSpotlightView && !IsSpotlightAchievementsFocused;
+
+    partial void OnIsSpotlightAchievementsFocusedChanged(bool value) =>
+        OnPropertyChanged(nameof(IsSpotlightPlayFocused));
+
     [ObservableProperty]
     public partial LibrarySortColumn SortColumn { get; set; } = LibrarySortColumn.Title;
 
@@ -207,6 +219,8 @@ public partial class MainViewModel : ViewModelBase
         ScheduleLibraryViewStateSave();
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        IsSpotlightAchievementsFocused = false; // the hero always opens on Play
+        OnPropertyChanged(nameof(IsSpotlightPlayFocused));
         if (value)
             LoadSpotlightHero(FocusedGame);
         else
@@ -1566,7 +1580,13 @@ public partial class MainViewModel : ViewModelBase
                 NextPlatformCommand.Execute(null);
                 return true;
             case GamepadAction.Confirm:
-                LaunchFocusedGameCommand.Execute(null);
+                // In the spotlight, A fires whichever hero action is armed (Play by default, or the
+                // Achievements widget when Left has selected it); the grid always launches.
+                if (IsGamepadSpotlightView && IsSpotlightAchievementsFocused &&
+                    FocusedGame?.ShowAchievementMark == true)
+                    OpenFocusedAchievementsCommand.Execute(null);
+                else
+                    LaunchFocusedGameCommand.Execute(null);
                 return true;
             case GamepadAction.Cancel:
                 // Nothing to back out of at the top level; swallow B/Escape so it can't bubble.
@@ -1580,14 +1600,22 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.Menu:
                 OpenGamepadMenuCommand.Execute(null);
                 return true;
-            // The spotlight is a single-column list: Up/Down step one game and Left/Right are inert.
-            // The cover grid keeps its 2-D movement (Up/Down span a full row).
+            // The spotlight is a single-column list: Up/Down step one game. Left/Right instead move the
+            // hero action ring — Left arms the Achievements widget (only when the game has a set),
+            // Right arms Play. The cover grid keeps its 2-D movement (Up/Down span a full row).
             case GamepadAction.NavigateLeft:
-                if (!IsGamepadSpotlightView)
+                if (IsGamepadSpotlightView)
+                {
+                    if (FocusedGame?.ShowAchievementMark == true)
+                        IsSpotlightAchievementsFocused = true;
+                }
+                else
                     MoveGamepadFocusLeftCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateRight:
-                if (!IsGamepadSpotlightView)
+                if (IsGamepadSpotlightView)
+                    IsSpotlightAchievementsFocused = false;
+                else
                     MoveGamepadFocusRightCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateUp:
@@ -2016,6 +2044,9 @@ public partial class MainViewModel : ViewModelBase
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
             PrefetchCoversAroundFocus(newValue);
         }
+
+        // Picking a new game re-arms Play, so A always launches the freshly focused game by default.
+        IsSpotlightAchievementsFocused = false;
 
         ScheduleAmbientThemeUpdate(newValue);
         if (IsGamepadSpotlightView)

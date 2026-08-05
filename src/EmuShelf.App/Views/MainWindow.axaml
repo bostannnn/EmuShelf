@@ -241,6 +241,22 @@
         <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-tile-ring">
             <Setter Property="Opacity" Value="1" />
         </Style>
+        <!-- Spotlight hero actions (Play / Achievements) reuse the grid's accent focus pad. -->
+        <Style Selector="Panel.spotlight-action.focused Border.gamepad-focus-tile-ring">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <!-- The clickable Achievements widget is a bare button wrapping the pill, so it keeps the
+             pill's own visuals and never draws its own chrome or focus adorner. -->
+        <Style Selector="Button.spotlight-action-button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.spotlight-action-button:pointerover /template/ ContentPresenter,
+                         Button.spotlight-action-button:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
@@ -1539,6 +1555,7 @@
          It does not replace the desktop selection model or list view. -->
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
           IsVisible="{Binding IsGamepadMode}" RowDefinitions="100,*,104"
+          TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}"
           Background="{DynamicResource EmuLibraryBrush}" PointerMoved="OnGamepadPointerMoved">
         <Border Grid.Row="0" Padding="42,18,42,12" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
@@ -1554,7 +1571,8 @@
                                 Command="{Binding ShowAllGamesCommand}"
                                 Classes.selected="{Binding IsAllGamesSelected}"
                                 MinHeight="54" Padding="22,10">
-                            <TextBlock Text="All Games" VerticalAlignment="Center" />
+                            <TextBlock Text="All Games" VerticalAlignment="Center"
+                                       FontSize="{DynamicResource EmuGpLabelSize}" />
                         </Button>
                         <ItemsControl ItemsSource="{Binding GamepadPlatforms}">
                             <ItemsControl.ItemsPanel>
@@ -1570,7 +1588,8 @@
                                         <Grid ColumnDefinitions="26,*" ColumnSpacing="9">
                                             <Image Grid.Column="0" Width="26" Height="26" Source="{Binding Artwork}"
                                                    RenderOptions.BitmapInterpolationMode="None" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                                       FontSize="{DynamicResource EmuGpLabelSize}" />
                                         </Grid>
                                     </Button>
                                 </DataTemplate>
@@ -1741,7 +1760,7 @@
                                   </Panel>
                                 <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding Title}"
                                            Margin="2,10,2,0" TextWrapping="Wrap" MaxLines="2"
-                                           TextTrimming="CharacterEllipsis" FontSize="16" FontWeight="SemiBold"
+                                           TextTrimming="CharacterEllipsis" FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="SemiBold"
                                            TextAlignment="Center" HorizontalAlignment="Stretch"
                                            VerticalAlignment="Top" MaxWidth="{Binding CoverWidth}" />
                             </Grid>
@@ -1813,12 +1832,12 @@
             <Grid x:Name="GamepadDockPrimaryRow" IsVisible="{Binding HasGames}"
                   ColumnDefinitions="*,Auto,Auto" ColumnSpacing="14">
                 <StackPanel MinWidth="0" Margin="0,0,12,0" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="11" FontWeight="Bold"
-                               LetterSpacing="1.2" Foreground="{DynamicResource EmuAccentBrush}" />
-                    <TextBlock Text="{Binding FocusedGame.Title}" FontSize="23" FontWeight="Bold"
+                    <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="{DynamicResource EmuGpCaptionSize}"
+                               FontWeight="Bold" LetterSpacing="1.2" Foreground="{DynamicResource EmuAccentBrush}" />
+                    <TextBlock Text="{Binding FocusedGame.Title}" FontSize="{DynamicResource EmuGpTitleSize}" FontWeight="Bold"
                                MaxLines="1" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="GamepadFocusedSubtitle" Text="{Binding FocusedGame.GamepadSubtitle}"
-                               FontSize="12" MaxLines="1" TextTrimming="CharacterEllipsis"
+                               FontSize="{DynamicResource EmuGpCaptionSize}" MaxLines="1" TextTrimming="CharacterEllipsis"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 </StackPanel>
 
@@ -1931,14 +1950,14 @@
                                 <Image Width="34" Height="34" Source="{Binding FocusedGame.PlatformArtwork}"
                                        RenderOptions.BitmapInterpolationMode="None" />
                                 <TextBlock Text="{Binding FocusedGame.SystemName}" VerticalAlignment="Center"
-                                           FontSize="17" FontWeight="Bold" LetterSpacing="0.6"
+                                           FontSize="{DynamicResource EmuGpHeadingSize}" FontWeight="Bold" LetterSpacing="0.6"
                                            Foreground="White" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Border>
                         <ListBox Grid.Row="1" x:Name="GamepadSpotlightList"
                                  ItemsSource="{Binding Games}"
                                  SelectedItem="{Binding FocusedGame, Mode=TwoWay}"
-                                 Background="Transparent" BorderThickness="0" Padding="8,10"
+                                 Background="Transparent" BorderThickness="0" Padding="8,12,8,28"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.Styles>
@@ -1963,7 +1982,8 @@
                             </ListBox.Styles>
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:GameViewModel">
-                                    <TextBlock Text="{Binding SpotlightDisplayTitle}" Margin="18,14" FontSize="19"
+                                    <TextBlock Text="{Binding SpotlightDisplayTitle}" Margin="18,13"
+                                               FontSize="{DynamicResource EmuGpBodySize}"
                                                FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
@@ -1986,63 +2006,82 @@
                                                   Opacity="0.7" />
                             </Image.Effect>
                         </Image>
-                        <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="13" FontWeight="Bold"
-                                   LetterSpacing="1.4" Foreground="{DynamicResource EmuAccentBrush}" />
-                        <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}" FontSize="42" FontWeight="Bold"
+                        <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
+                                   FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
                                    Foreground="White" MaxLines="2" TextWrapping="Wrap"
                                    TextTrimming="CharacterEllipsis" />
-                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="15"
+                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="{DynamicResource EmuGpLabelSize}"
                                    Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
-                    <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
-                            <!-- Star rating. -->
-                            <Border Classes="gamepad-dock-pill" VerticalAlignment="Center"
-                                    IsVisible="{Binding FocusedGame.HasRating}">
-                                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                                    <PathIcon Width="22" Height="22"
-                                              Data="M12,2 L15.09,8.26 L22,9.27 L17,14.14 L18.18,21.02 L12,17.77 L5.82,21.02 L7,14.14 L2,9.27 L8.91,8.26 Z"
-                                              Foreground="{DynamicResource EmuAchievementBrush}" />
-                                    <TextBlock Text="{Binding FocusedGame.RatingText}" FontSize="22"
-                                               FontWeight="Bold" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Border>
+                    <!-- Rating, achievements and Play sit together with equal spacing. The D-pad Left/Right
+                         moves the accent focus ring between Achievements and Play (A fires the armed one;
+                         Play is the default), and Achievements is also clickable. -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Left">
+                        <!-- Star rating (not an action). -->
+                        <Border Classes="gamepad-dock-pill" VerticalAlignment="Center"
+                                IsVisible="{Binding FocusedGame.HasRating}">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <PathIcon Width="22" Height="22"
+                                          Data="M12,2 L15.09,8.26 L22,9.27 L17,14.14 L18.18,21.02 L12,17.77 L5.82,21.02 L7,14.14 L2,9.27 L8.91,8.26 Z"
+                                          Foreground="{DynamicResource EmuAchievementBrush}" />
+                                <TextBlock Text="{Binding FocusedGame.RatingText}" FontSize="{DynamicResource EmuGpHeadingSize}"
+                                           FontWeight="Bold" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
 
-                            <!-- Achievement progress (only on a confirmed RA match). -->
-                            <Border Grid.Column="1" Classes="gamepad-dock-pill" VerticalAlignment="Center"
-                                    ToolTip.Tip="{Binding FocusedGame.AchievementsTooltip}"
-                                    IsVisible="{Binding FocusedGame.ShowAchievementMark}">
-                                <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
-                                    <Border Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center"
-                                            Background="{DynamicResource EmuFormatPillBrush}">
-                                        <PathIcon Width="17" Height="17"
-                                                  Data="{StaticResource AchievementTrophyGeometry}"
-                                                  Foreground="{DynamicResource EmuAchievementBrush}" />
-                                    </Border>
-                                    <Grid Grid.Column="1" RowDefinitions="Auto,4" RowSpacing="5"
-                                          VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
-                                                   FontSize="15" FontWeight="Bold" />
-                                        <Border Grid.Row="1" Width="118" Height="4" CornerRadius="2"
-                                                HorizontalAlignment="Left" ClipToBounds="True"
+                        <!-- Achievements — armed with Left, opens on A or a click. -->
+                        <Panel Classes="spotlight-action"
+                               Classes.focused="{Binding IsSpotlightAchievementsFocused}"
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding FocusedGame.ShowAchievementMark}">
+                            <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
+                                    Margin="-5" CornerRadius="17"
+                                    Background="{DynamicResource EmuAccentBrush}"
+                                    BoxShadow="{DynamicResource EmuFocusGlow}" />
+                            <Button Classes="spotlight-action-button"
+                                    Command="{Binding OpenFocusedAchievementsCommand}"
+                                    ToolTip.Tip="{Binding FocusedGame.AchievementsTooltip}">
+                                <Border Classes="gamepad-dock-pill">
+                                    <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                        <Border Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center"
                                                 Background="{DynamicResource EmuFormatPillBrush}">
-                                            <Border Background="{DynamicResource EmuAchievementBrush}"
-                                                    RenderTransformOrigin="0%,50%">
-                                                <Border.RenderTransform>
-                                                    <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
-                                                </Border.RenderTransform>
-                                            </Border>
+                                            <PathIcon Width="17" Height="17"
+                                                      Data="{StaticResource AchievementTrophyGeometry}"
+                                                      Foreground="{DynamicResource EmuAchievementBrush}" />
                                         </Border>
+                                        <Grid Grid.Column="1" RowDefinitions="Auto,4" RowSpacing="5"
+                                              VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
+                                                       FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="Bold" />
+                                            <Border Grid.Row="1" Width="118" Height="4" CornerRadius="2"
+                                                    HorizontalAlignment="Left" ClipToBounds="True"
+                                                    Background="{DynamicResource EmuFormatPillBrush}">
+                                                <Border Background="{DynamicResource EmuAchievementBrush}"
+                                                        RenderTransformOrigin="0%,50%">
+                                                    <Border.RenderTransform>
+                                                        <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
+                                                    </Border.RenderTransform>
+                                                </Border>
+                                            </Border>
+                                        </Grid>
                                     </Grid>
-                                </Grid>
-                            </Border>
+                                </Border>
+                            </Button>
+                        </Panel>
 
-                            <!-- Launch. -->
-                            <Button Grid.Column="3" Classes="gamepad-play-action"
+                        <!-- Play — the default action. -->
+                        <Panel Classes="spotlight-action"
+                               Classes.focused="{Binding IsSpotlightPlayFocused}"
+                               VerticalAlignment="Center">
+                            <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
+                                    Margin="-5" CornerRadius="17"
+                                    Background="{DynamicResource EmuAccentBrush}"
+                                    BoxShadow="{DynamicResource EmuFocusGlow}" />
+                            <Button Classes="gamepad-play-action"
                                     Classes.controller-input="{Binding IsGamepadControllerInputActive}"
                                     Command="{Binding LaunchFocusedGameCommand}"
-                                    IsEnabled="{Binding FocusedGame.IsAvailable}"
-                                    VerticalAlignment="Center">
+                                    IsEnabled="{Binding FocusedGame.IsAvailable}">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <Border Classes="gamepad-key action-a" Width="32" Height="32">
                                         <TextBlock Text="A" FontSize="13" />
@@ -2050,7 +2089,8 @@
                                     <TextBlock Text="PLAY" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                        </Grid>
+                        </Panel>
+                    </StackPanel>
                     </Grid>
                 </Grid>
         </Panel>

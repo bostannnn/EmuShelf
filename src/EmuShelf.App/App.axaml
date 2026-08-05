@@ -9,6 +9,20 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceInclude Source="avares://EmuShelf/Styles/EmuShelfTheme.axaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Bundled couch display font (Exo 2, SIL OFL — see THIRD-PARTY-NOTICES.md). Applied to the
+                 Gamepad shell only; Desktop keeps the default Inter UI font. -->
+            <FontFamily x:Key="EmuGamepadFontFamily">avares://EmuShelf/Assets/Fonts/Exo2.ttf#Exo 2</FontFamily>
+
+            <!-- Gamepad type scale — deliberately larger than Desktop for TV / Steam Deck viewing
+                 distance. The couch library views route their font sizes through these six tokens, so
+                 rescaling the whole thing is a matter of nudging these numbers. -->
+            <x:Double x:Key="EmuGpDisplaySize">52</x:Double>
+            <x:Double x:Key="EmuGpTitleSize">30</x:Double>
+            <x:Double x:Key="EmuGpHeadingSize">24</x:Double>
+            <x:Double x:Key="EmuGpBodySize">22</x:Double>
+            <x:Double x:Key="EmuGpLabelSize">18</x:Double>
+            <x:Double x:Key="EmuGpCaptionSize">14</x:Double>
         </ResourceDictionary>
     </Application.Resources>
 
