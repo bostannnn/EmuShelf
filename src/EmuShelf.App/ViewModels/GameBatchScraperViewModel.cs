@@ -26,6 +26,14 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
     private readonly IAppLogger _logger;
     private CancellationTokenSource? _run;
 
+    // Serializes the terminal state/message write against a late Progress<T> callback. RunAsync
+    // reports its final "N of N" progress just before returning, and Progress<T> can deliver that
+    // callback after the run's continuation has already written the summary (it runs on the thread
+    // pool when no SynchronizationContext is captured). Holding this lock across both writes makes
+    // them atomic: OnProgress either runs entirely before completion (and is harmlessly overwritten)
+    // or observes State == Done and does nothing — so the summary is always the last word.
+    private readonly Lock _statusGate = new();
+
     public string SystemName { get; }
 
     public int GameCount => _gameIds.Count;
@@ -129,19 +137,22 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("The ScreenScraper batch failed.", ex);
-            State = GameBatchScraperState.Done;
-            StatusMessage = "The batch could not be completed.";
+            lock (_statusGate)
+            {
+                State = GameBatchScraperState.Done;
+                StatusMessage = "The batch could not be completed.";
+            }
             return;
         }
 
-        AppliedChanges = summary.Applied > 0;
-        // Mark Done before writing the summary so a late progress callback (Progress<T> delivers
-        // asynchronously when there is no captured SynchronizationContext) is ignored by OnProgress
-        // rather than clobbering the final message back to "Scraping… N of N".
-        State = GameBatchScraperState.Done;
-        ProgressCompleted = ProgressTotal;
-        CurrentGameTitle = null;
-        StatusMessage = Summarize(summary);
+        lock (_statusGate)
+        {
+            AppliedChanges = summary.Applied > 0;
+            State = GameBatchScraperState.Done;
+            ProgressCompleted = ProgressTotal;
+            CurrentGameTitle = null;
+            StatusMessage = Summarize(summary);
+        }
     }
 
     private IReadOnlySet<GameMediaKind> SelectedMediaKinds()
@@ -160,15 +171,20 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
 
     private void OnProgress(GameScrapeBatchProgress progress)
     {
-        // A progress report queued before completion can be delivered after the run finishes; once
-        // the batch is Done its summary is authoritative, so drop the stale update.
-        if (State != GameBatchScraperState.Running)
-            return;
+        lock (_statusGate)
+        {
+            // A progress report queued before completion can be delivered after the run finishes; once
+            // the batch is Done its summary is authoritative, so drop the stale update. Reading State
+            // and writing the message under _statusGate keeps this check-then-write atomic with the
+            // completion block, so a late callback can never overwrite the final summary.
+            if (State != GameBatchScraperState.Running)
+                return;
 
-        ProgressCompleted = progress.Completed;
-        ProgressTotal = progress.Total;
-        CurrentGameTitle = progress.CurrentGameTitle;
-        StatusMessage = $"Scraping… {progress.Completed} of {progress.Total}";
+            ProgressCompleted = progress.Completed;
+            ProgressTotal = progress.Total;
+            CurrentGameTitle = progress.CurrentGameTitle;
+            StatusMessage = $"Scraping… {progress.Completed} of {progress.Total}";
+        }
     }
 
     private static string Summarize(GameScrapeBatchSummary summary)

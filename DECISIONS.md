@@ -4140,3 +4140,22 @@ Two supporting fixes found while debugging this:
   overlay's live text focus.
 - The reveal's ScrollViewer/viewport-not-ready retry is kept for the first frame after a mode/scope
   switch.
+
+## 2026-08-05 — Batch-scraper final status message is lock-guarded against late progress callbacks
+
+`GameBatchScraperViewModel` reports progress through `Progress<T>`, which delivers its callback on
+the thread pool when no `SynchronizationContext` is captured (i.e. in unit tests). `RunAsync` reports
+the final "N of N" progress just before returning, so that callback can be delivered *after* the
+run's continuation has already written the summary. The original guard — flip `State` to `Done`
+first, then have `OnProgress` bail when `State != Running` — was insufficient: `OnProgress` could
+read `State == Running` before completion flipped it, then write `"Scraping… N of N"` after
+completion wrote the summary, clobbering it (reproduced ~15/3000 times under thread-pool saturation;
+surfaced as an intermittent failure of `Done_SummaryReportsMixedOutcomes_AndEarlyStop`).
+
+Fixed by serializing the two writes with a `System.Threading.Lock`: the completion block (set `Done` +
+summary) and `OnProgress` (check `State` + write message) each run under the same lock, making the
+check-then-write atomic. A late callback therefore either runs entirely before completion (and is
+harmlessly overwritten) or observes `Done` and does nothing — the summary is always the last word.
+In production both already run serialized on the Avalonia UI thread, so the lock is uncontended there;
+it only closes the test-visible race. Verified with a 3000-iteration stress harness (0 clobbers after
+the fix) and repeated full `dotnet test` runs.
