@@ -24,16 +24,29 @@ public sealed class GamepadNavigationController
     ];
 
     private readonly long _initialRepeatDelayMs;
-    private readonly long _repeatIntervalMs;
+    private readonly long _repeatStartIntervalMs;
+    private readonly long _minRepeatIntervalMs;
+    private readonly int _rampRepeats;
     private readonly Dictionary<GamepadAction, long> _directionNextRepeat = new();
+    private readonly Dictionary<GamepadAction, int> _directionRepeatCount = new();
 
     private GamepadButtons _previousButtons;
     private bool _wasConnected;
 
-    public GamepadNavigationController(long initialRepeatDelayMs = 400, long repeatIntervalMs = 110)
+    /// <param name="initialRepeatDelayMs">Delay before the first auto-repeat once a direction is held.</param>
+    /// <param name="repeatIntervalMs">Interval before the first repeat; a held direction accelerates from here.</param>
+    /// <param name="minRepeatIntervalMs">Fastest interval the acceleration ramp reaches on a long hold.</param>
+    /// <param name="rampRepeats">Repeats taken to ramp from <paramref name="repeatIntervalMs"/> down to <paramref name="minRepeatIntervalMs"/>.</param>
+    public GamepadNavigationController(
+        long initialRepeatDelayMs = 320,
+        long repeatIntervalMs = 90,
+        long minRepeatIntervalMs = 38,
+        int rampRepeats = 8)
     {
         _initialRepeatDelayMs = initialRepeatDelayMs;
-        _repeatIntervalMs = repeatIntervalMs;
+        _repeatStartIntervalMs = repeatIntervalMs;
+        _minRepeatIntervalMs = minRepeatIntervalMs;
+        _rampRepeats = Math.Max(1, rampRepeats);
     }
 
     /// <summary>Advances state to <paramref name="reading"/> at <paramref name="timestampMs"/> and returns the actions to fire this tick.</summary>
@@ -52,6 +65,7 @@ public sealed class GamepadNavigationController
             _wasConnected = true;
             _previousButtons = reading.Buttons;
             _directionNextRepeat.Clear();
+            _directionRepeatCount.Clear();
             return [];
         }
 
@@ -78,6 +92,7 @@ public sealed class GamepadNavigationController
         if (!active)
         {
             _directionNextRepeat.Remove(action);
+            _directionRepeatCount.Remove(action);
             return;
         }
 
@@ -86,13 +101,21 @@ public sealed class GamepadNavigationController
             // Fresh press: fire now, schedule the first repeat after the initial delay.
             actions.Add(action);
             _directionNextRepeat[action] = timestampMs + _initialRepeatDelayMs;
+            _directionRepeatCount[action] = 0;
             return;
         }
 
         if (timestampMs >= nextRepeat)
         {
             actions.Add(action);
-            _directionNextRepeat[action] = timestampMs + _repeatIntervalMs;
+            // A held direction accelerates: each repeat's interval ramps from the start interval down
+            // to the floor over _rampRepeats steps, so a long hold glides toward the target instead of
+            // crawling at one fixed cadence.
+            var count = _directionRepeatCount[action] = _directionRepeatCount.GetValueOrDefault(action) + 1;
+            var progress = Math.Min(1.0, count / (double)_rampRepeats);
+            var interval = (long)Math.Round(
+                _repeatStartIntervalMs + (_minRepeatIntervalMs - _repeatStartIntervalMs) * progress);
+            _directionNextRepeat[action] = timestampMs + interval;
         }
     }
 
@@ -106,6 +129,7 @@ public sealed class GamepadNavigationController
         _wasConnected = false;
         _previousButtons = GamepadButtons.None;
         _directionNextRepeat.Clear();
+        _directionRepeatCount.Clear();
     }
 
     /// <summary>

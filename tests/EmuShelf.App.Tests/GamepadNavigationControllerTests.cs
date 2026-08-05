@@ -59,15 +59,43 @@ public class GamepadNavigationControllerTests
     }
 
     [Fact]
-    public void Poll_DpadDirection_FiresImmediatelyThenAutoRepeats()
+    public void Poll_DpadDirection_FiresImmediatelyThenAutoRepeatsAfterTheInitialDelay()
     {
         _controller.Poll(Connected(), 0);
 
         Assert.Equal([GamepadAction.NavigateDown], _controller.Poll(Connected(GamepadButtons.DpadDown), 0));
         Assert.Empty(_controller.Poll(Connected(GamepadButtons.DpadDown), 399)); // before initial repeat delay
         Assert.Equal([GamepadAction.NavigateDown], _controller.Poll(Connected(GamepadButtons.DpadDown), 400));
-        Assert.Empty(_controller.Poll(Connected(GamepadButtons.DpadDown), 499));
-        Assert.Equal([GamepadAction.NavigateDown], _controller.Poll(Connected(GamepadButtons.DpadDown), 500));
+    }
+
+    [Fact]
+    public void Poll_DpadHeld_AutoRepeatAcceleratesToAFloor()
+    {
+        // A long hold should ramp from the start interval down to the floor and never overshoot it,
+        // so navigating a big library glides instead of crawling at one fixed cadence.
+        var controller = new GamepadNavigationController(
+            initialRepeatDelayMs: 300, repeatIntervalMs: 90, minRepeatIntervalMs: 40, rampRepeats: 5);
+        controller.Poll(Connected(), 0);
+
+        var fireTimes = new List<long>();
+        for (long t = 0; t <= 3000 && fireTimes.Count < 12; t++)
+        {
+            if (controller.Poll(Connected(GamepadButtons.DpadDown), t).Contains(GamepadAction.NavigateDown))
+                fireTimes.Add(t);
+        }
+
+        // Immediate press, then the first repeat waits the full initial delay.
+        Assert.Equal(0, fireTimes[0]);
+        Assert.Equal(300, fireTimes[1] - fireTimes[0]);
+
+        var gaps = new List<long>();
+        for (var i = 2; i < fireTimes.Count; i++)
+            gaps.Add(fireTimes[i] - fireTimes[i - 1]);
+
+        // Gaps shrink monotonically toward the floor and then hold at it.
+        for (var i = 1; i < gaps.Count; i++)
+            Assert.True(gaps[i] <= gaps[i - 1], $"repeat gap {gaps[i]} should not exceed the previous {gaps[i - 1]}");
+        Assert.Equal(40, gaps[^1]);
     }
 
     [Fact]
