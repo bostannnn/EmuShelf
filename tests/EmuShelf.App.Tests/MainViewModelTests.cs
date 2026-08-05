@@ -1462,7 +1462,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            ["Search", "Collections", "Spotlight view", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
@@ -1548,6 +1548,60 @@ public class MainViewModelTests : IDisposable
         vm.FocusedGame = vm.Games[1];
         vm.MoveGamepadFocusUpCommand.Execute(null);
         Assert.Same(vm.Games[1], vm.FocusedGame);
+    }
+
+    [AvaloniaFact]
+    public void GamepadSpotlightView_TogglesLayout_StepsOneGame_AndPersists()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 6).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Game {index + 1}.cue",
+                Title = $"Game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+        vm.HasGames = true;
+        vm.GamepadViewportWidth = 1000;
+        Assert.Equal(4, vm.GamepadColumnCount);
+
+        // The cover grid is the default couch layout.
+        Assert.False(vm.IsGamepadSpotlightView);
+        Assert.True(vm.ShowGamepadGrid);
+        Assert.False(vm.ShowGamepadSpotlight);
+
+        // Toggle to the spotlight list + hero.
+        vm.ToggleGamepadViewCommand.Execute(null);
+        Assert.True(vm.IsGamepadSpotlightView);
+        Assert.False(vm.ShowGamepadGrid);
+        Assert.True(vm.ShowGamepadSpotlight);
+        Assert.True(vm.BuildLibraryViewState().GamepadSpotlightView);
+
+        // In the single-column spotlight, Down/Up step exactly one game and Left/Right are inert —
+        // unlike the cover grid, where Down spans a whole GamepadColumnCount-wide row.
+        vm.FocusedGame = vm.Games[1];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Same(vm.Games[2], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+
+        // Toggling back restores the grid layout and the persisted flag.
+        vm.ToggleGamepadViewCommand.Execute(null);
+        Assert.False(vm.IsGamepadSpotlightView);
+        Assert.True(vm.ShowGamepadGrid);
+        Assert.False(vm.ShowGamepadSpotlight);
+        Assert.False(vm.BuildLibraryViewState().GamepadSpotlightView);
     }
 
     /// <summary>

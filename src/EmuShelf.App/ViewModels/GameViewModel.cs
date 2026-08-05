@@ -201,6 +201,32 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasCoverImage => CoverImage is not null;
 
+    /// <summary>The large fan-art image shown behind the gamepad spotlight hero. Only the focused
+    /// game keeps a decoded bitmap; it is released when focus moves so memory stays bounded.</summary>
+    [ObservableProperty]
+    public partial Bitmap? FanartImage { get; set; }
+
+    public bool HasFanartImage => FanartImage is not null;
+
+    /// <summary>Absolute path to the selected fan-art asset, or null when the game has none. Set the
+    /// first time the spotlight view resolves this game's scraped details.</summary>
+    public string? FanartPath { get; private set; }
+
+    /// <summary>Whether a fan-art asset exists to load (drives the spotlight hero fallback).</summary>
+    [ObservableProperty]
+    public partial bool HasFanart { get; set; }
+
+    /// <summary>Star score (0–10) shown in the spotlight hero, already formatted, or null when the
+    /// game is unrated. Derived from the scraped provider rating in the library view model.</summary>
+    [ObservableProperty]
+    public partial string? RatingText { get; set; }
+
+    public bool HasRating => RatingText is not null;
+
+    /// <summary>Guards the one-time-per-game details resolve (fan-art path + rating) the spotlight
+    /// hero needs, so scrolling the list re-loads a game's details at most once.</summary>
+    public bool AreSpotlightDetailsLoaded { get; set; }
+
     /// <summary>Sort key for the Achievements column: -1 when the game has no set, 0 when a set
     /// exists but progress hasn't loaded, otherwise the number of unlocked achievements.</summary>
     public int AchievementSortKey { get; private set; } = -1;
@@ -410,6 +436,26 @@ public partial class GameViewModel : ObservableObject, IDisposable
     // off-ratio scan from ballooning the shared shelf. So loading a cover only toggles HasCoverImage.
     partial void OnCoverImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasCoverImage));
 
+    partial void OnFanartImageChanging(Bitmap? value)
+    {
+        if (!ReferenceEquals(FanartImage, value))
+            FanartImage?.Dispose();
+    }
+
+    partial void OnFanartImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasFanartImage));
+
+    partial void OnRatingTextChanged(string? value) => OnPropertyChanged(nameof(HasRating));
+
+    /// <summary>Records the fan-art path and formatted rating resolved from this game's scraped
+    /// details. The bitmap itself is loaded separately, only while the game is the spotlight hero.</summary>
+    public void ApplySpotlightDetails(string? fanartPath, string? ratingText)
+    {
+        FanartPath = fanartPath;
+        HasFanart = !string.IsNullOrEmpty(fanartPath);
+        RatingText = ratingText;
+        AreSpotlightDetailsLoaded = true;
+    }
+
     [RelayCommand]
     private void BeginEditTitle()
     {
@@ -445,7 +491,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
         CoverImage = null;
     }
 
-    public void Dispose() => CoverImage = null;
+    public void Dispose()
+    {
+        CoverImage = null;
+        FanartImage = null;
+    }
 
     /// <summary>Up-to-two-letter monogram for the placeholder cover.</summary>
     public string Initials

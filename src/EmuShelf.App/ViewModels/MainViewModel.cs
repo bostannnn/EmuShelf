@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -61,6 +62,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IGameCoverService _covers;
+    private readonly IGameDetailsStore? _gameDetails;
     private readonly IAppThemeService _themeService;
     private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IApplicationLifetimeService? _applicationLifetime;
@@ -112,6 +114,11 @@ public partial class MainViewModel : ViewModelBase
     private GameViewModel? _ambientPendingGame;
     private bool? _ambientLastIsDark;
 
+    // The spotlight hero shows the focused game's fan art + rating. Only one game's fan-art bitmap is
+    // ever decoded at a time (released as focus moves) so a long list never accumulates full-size
+    // images. A generation counter discards a decode that finished after focus moved on.
+    private int _spotlightHeroGeneration;
+
     // Built GameViewModel lists per scope key (system:{id} / AllGames / RecentlyAdded). Navigating to
     // an already-visited scope reuses its list instantly instead of re-querying the DB and rebuilding
     // hundreds of view models, which is what made fast LB/RB cycling thrash. The cache owns these view
@@ -159,6 +166,11 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsGridView { get; set; } = true;
 
+    /// <summary>Gamepad (couch) mode only: the spotlight layout (list + fanart hero) when true, the
+    /// cover grid when false. Toggled from the couch toolbar and remembered across launches.</summary>
+    [ObservableProperty]
+    public partial bool IsGamepadSpotlightView { get; set; }
+
     [ObservableProperty]
     public partial LibrarySortColumn SortColumn { get; set; } = LibrarySortColumn.Title;
 
@@ -190,6 +202,34 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsGridViewChanged(bool value) => ScheduleLibraryViewStateSave();
 
+    partial void OnIsGamepadSpotlightViewChanged(bool value)
+    {
+        ScheduleLibraryViewStateSave();
+        OnPropertyChanged(nameof(ShowGamepadGrid));
+        OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        if (value)
+            LoadSpotlightHero(FocusedGame);
+        else
+            ClearSpotlightHero();
+    }
+
+    /// <summary>Flips the couch layout between the cover grid and the spotlight list + hero.</summary>
+    [RelayCommand]
+    private void ToggleGamepadView()
+    {
+        if (IsGamepadMode)
+            IsGamepadSpotlightView = !IsGamepadSpotlightView;
+    }
+
+    /// <summary>The system-menu entry point: switch the couch layout, then close the menu so the
+    /// change is immediately visible.</summary>
+    [RelayCommand]
+    private void ToggleGamepadViewFromMenu()
+    {
+        ToggleGamepadView();
+        CloseGamepadOverlay();
+    }
+
     private void NotifySortGlyphs()
     {
         OnPropertyChanged(nameof(TitleSortGlyph));
@@ -219,6 +259,19 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>True when the current filter yields at least one game (drives the views).</summary>
     [ObservableProperty]
     public partial bool HasGames { get; set; }
+
+    /// <summary>The couch cover grid is on screen: gamepad mode, games present, spotlight off.</summary>
+    public bool ShowGamepadGrid => IsGamepadMode && HasGames && !IsGamepadSpotlightView;
+
+    /// <summary>The couch spotlight (list + fanart hero) is on screen: gamepad mode, games present,
+    /// spotlight on.</summary>
+    public bool ShowGamepadSpotlight => IsGamepadMode && HasGames && IsGamepadSpotlightView;
+
+    partial void OnHasGamesChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowGamepadGrid));
+        OnPropertyChanged(nameof(ShowGamepadSpotlight));
+    }
 
     /// <summary>True only when the selected system has no games at all — drives the "add your first game" prompt.</summary>
     [ObservableProperty]
@@ -625,7 +678,8 @@ public partial class MainViewModel : ViewModelBase
         IGameScrapeApplicationService? scrapeApply = null,
         IRemoteArtworkDownloader? artworkDownloader = null,
         ISettingsService? settingsService = null,
-        IOnScreenKeyboardService? onScreenKeyboard = null)
+        IOnScreenKeyboardService? onScreenKeyboard = null,
+        IGameDetailsStore? gameDetails = null)
     {
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;
@@ -642,6 +696,7 @@ public partial class MainViewModel : ViewModelBase
         _emulatorConfigurations = emulatorConfigurations ?? new NullEmulatorConfigurationStore();
         _emulators = emulators ?? KnownEmulators.All;
         _covers = covers ?? new NullGameCoverService();
+        _gameDetails = gameDetails;
         _themeService = themeService ?? new NullAppThemeService();
         _interfaceModeService = interfaceModeService;
         _applicationLifetime = applicationLifetime;
@@ -657,6 +712,8 @@ public partial class MainViewModel : ViewModelBase
                 // a list-view user in a grid and, on their next unrelated change, persist that
                 // grid over the preference they never changed.
                 IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
+                if (!IsGamepadMode)
+                    ClearSpotlightHero(); // release the hero bitmap when leaving couch mode
             };
         }
         _metadataService = metadataService ?? new NullGameMetadataService();
@@ -775,6 +832,8 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             IsGridView = state.IsGridView;
+            // Couch-only preference, independent of the desktop grid/list choice above.
+            IsGamepadSpotlightView = state.GamepadSpotlightView;
             SortColumn = Enum.TryParse<LibrarySortColumn>(state.SortColumn, out var column)
                 ? column
                 : LibrarySortColumn.Title;
@@ -815,6 +874,7 @@ public partial class MainViewModel : ViewModelBase
         // Gamepad mode forces a grid to render its tiles, which is not a statement about what the
         // user wants on the desktop. Keep the stored desktop preference while that mode is active.
         IsGridView = IsGamepadMode ? _libraryViewState.Current.IsGridView : IsGridView,
+        GamepadSpotlightView = IsGamepadSpotlightView,
         SortColumn = SortColumn.ToString(),
         SortDescending = SortDescending,
         IsNavigationCollapsed = IsNavigationCollapsed,
@@ -1506,17 +1566,27 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.Menu:
                 OpenGamepadMenuCommand.Execute(null);
                 return true;
+            // The spotlight is a single-column list: Up/Down step one game and Left/Right are inert.
+            // The cover grid keeps its 2-D movement (Up/Down span a full row).
             case GamepadAction.NavigateLeft:
-                MoveGamepadFocusLeftCommand.Execute(null);
+                if (!IsGamepadSpotlightView)
+                    MoveGamepadFocusLeftCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateRight:
-                MoveGamepadFocusRightCommand.Execute(null);
+                if (!IsGamepadSpotlightView)
+                    MoveGamepadFocusRightCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateUp:
-                MoveGamepadFocusUpCommand.Execute(null);
+                if (IsGamepadSpotlightView)
+                    FocusPreviousGameCommand.Execute(null);
+                else
+                    MoveGamepadFocusUpCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateDown:
-                MoveGamepadFocusDownCommand.Execute(null);
+                if (IsGamepadSpotlightView)
+                    FocusNextGameCommand.Execute(null);
+                else
+                    MoveGamepadFocusDownCommand.Execute(null);
                 return true;
             default:
                 return false;
@@ -1566,6 +1636,9 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.SystemMenu:
                 AddOption("Search", OpenGamepadSearchCommand);
                 AddOption("Collections", OpenGamepadCollectionsCommand);
+                AddOption(
+                    IsGamepadSpotlightView ? "Cover grid view" : "Spotlight view",
+                    ToggleGamepadViewFromMenuCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
@@ -1916,7 +1989,12 @@ public partial class MainViewModel : ViewModelBase
     partial void OnFocusedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
     {
         if (oldValue is not null)
+        {
             oldValue.IsFocused = false;
+            // Only the current hero keeps a decoded fan-art bitmap, so scrolling a long list never
+            // accumulates full-size images. The path/rating stay cached for an instant re-focus.
+            oldValue.FanartImage = null;
+        }
         if (newValue is not null)
         {
             newValue.IsFocused = true;
@@ -1924,6 +2002,8 @@ public partial class MainViewModel : ViewModelBase
         }
 
         ScheduleAmbientThemeUpdate(newValue);
+        if (IsGamepadSpotlightView)
+            LoadSpotlightHero(newValue);
     }
 
     private void ScheduleAmbientThemeUpdate(GameViewModel? game)
@@ -2009,6 +2089,97 @@ public partial class MainViewModel : ViewModelBase
         _themeService.ApplyArtworkPalette(palette);
     }
 
+    // Fan art (typically ~1920×1080) is decoded to fit this box for the hero; one bitmap exists at a
+    // time, so this is a safe upper bound on the spotlight's image memory.
+    private const int SpotlightFanartMaxWidth = 1920;
+    private const int SpotlightFanartMaxHeight = 1080;
+
+    /// <summary>Resolves the focused game's fan art + rating for the spotlight hero. Its scraped
+    /// details are read once per game (off the UI thread) and cached on the view model, then the
+    /// fan-art bitmap is decoded — only for the current hero, and only while focus has not moved on.</summary>
+    private void LoadSpotlightHero(GameViewModel? game)
+    {
+        if (!IsGamepadMode || !IsGamepadSpotlightView || game is null)
+            return;
+
+        // The cover grid is hidden in spotlight mode, so its tile-attach path never realizes the
+        // focused cover. Load it here for the ambient palette and as the hero's no-fanart fallback.
+        if (game.CoverImage is null && game.LoadCoverCommand.CanExecute(game))
+            game.LoadCoverCommand.Execute(game);
+
+        var generation = ++_spotlightHeroGeneration;
+        _ = LoadSpotlightHeroAsync(game, generation);
+    }
+
+    private async Task LoadSpotlightHeroAsync(GameViewModel game, int generation)
+    {
+        try
+        {
+            if (!game.AreSpotlightDetailsLoaded && _gameDetails is not null)
+            {
+                var resolved = await Task.Run(() => ResolveSpotlightDetails(game.Id));
+                if (generation != _spotlightHeroGeneration)
+                    return; // focus moved on while the details were being read
+                game.ApplySpotlightDetails(resolved.FanartPath, resolved.RatingText);
+            }
+
+            if (!game.HasFanart || game.FanartImage is not null ||
+                game.FanartPath is not { Length: > 0 } path)
+                return;
+
+            var image = await Task.Run(() =>
+                SafeImageDecoder.DecodeToFit(path, SpotlightFanartMaxWidth, SpotlightFanartMaxHeight));
+
+            if (generation != _spotlightHeroGeneration || !ReferenceEquals(FocusedGame, game))
+            {
+                image.Dispose();
+                return;
+            }
+
+            game.FanartImage = image;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load the spotlight hero art for {game.Title}: {ex.Message}");
+        }
+    }
+
+    private (string? FanartPath, string? RatingText) ResolveSpotlightDetails(long gameId)
+    {
+        if (_gameDetails is null)
+            return (null, null);
+
+        var details = _gameDetails.GetDetails(gameId);
+        var fanart = details.Media
+            .Where(media => media.Kind == GameMediaKind.Fanart)
+            .OrderByDescending(media => media.IsSelected)
+            .Select(media => media.LocalPath)
+            .FirstOrDefault(path => !string.IsNullOrEmpty(path) && File.Exists(path));
+        return (fanart, FormatSpotlightRating(details.Metadata));
+    }
+
+    private static string? FormatSpotlightRating(IReadOnlyList<GameMetadataValue> metadata)
+    {
+        var raw = metadata.FirstOrDefault(value => value.Field == GameMetadataField.Rating)?.Value;
+        if (raw is null ||
+            !double.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var provider))
+            return null;
+
+        // ScreenScraper stores its rating on a 0–20 scale; present it as the 0–10 star score the
+        // spotlight hero shows (e.g. 14/20 → "7.0").
+        var score = Math.Clamp(provider / 2.0, 0, 10);
+        return score.ToString("0.0", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Releases the hero's decoded fan art (leaving couch mode) so it is not held while the
+    /// spotlight is off screen; the cheap path/rating cache is kept for an instant re-focus.</summary>
+    private void ClearSpotlightHero()
+    {
+        _spotlightHeroGeneration++;
+        if (FocusedGame is { } game)
+            game.FanartImage = null;
+    }
+
     partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
     {
         NotifyGamepadOverlayState();
@@ -2061,6 +2232,9 @@ public partial class MainViewModel : ViewModelBase
         // mode's dimensions.
         UpdateCoverLayout();
 
+        OnPropertyChanged(nameof(ShowGamepadGrid));
+        OnPropertyChanged(nameof(ShowGamepadSpotlight));
+
         if (value)
         {
             IsGamepadControllerInputActive = true;
@@ -2072,6 +2246,8 @@ public partial class MainViewModel : ViewModelBase
                 _ambientPendingGame = FocusedGame;
                 ApplyAmbientThemeForPendingGame();
             }
+            if (IsGamepadSpotlightView)
+                LoadSpotlightHero(FocusedGame); // decode the hero for the restored focus
         }
         else
         {
