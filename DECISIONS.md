@@ -4328,3 +4328,42 @@ arbitrary, hack-prone label, and the client already rejects a provider result th
 only when a hash was queried (`ReturnedRomMatchesRequestedHash`). The batch scraper gets arcade
 matching for free — `romnom` is a single deterministic request, not the multi-request title search it
 still refuses to run.
+
+## 2026-08-05 — Navigation motion: gamepad repeat accelerates; nav moments animate via mounted layers
+
+Inspired by comparing against the neostation frontend, whose smoothness comes from an accelerating
+d-pad auto-repeat plus in-place animated state changes (never route transitions, never hard cuts).
+
+- **Gamepad auto-repeat now accelerates.** `GamepadNavigationController` held-direction repeats used
+  to fire at a fixed 110 ms after a 400 ms initial delay. They now start at 90 ms after a 320 ms delay
+  and ramp down to a 38 ms floor over `_rampRepeats` steps, so a long hold glides toward the target
+  instead of crawling. Letter/page-jump escalation was deliberately left out of this slice.
+- **Navigation surfaces animate by staying mounted + driving `Opacity`/`RenderTransform`,** not by
+  toggling `IsVisible` (which can't animate — a collapsed element isn't rendered). New motion, all on
+  composited properties at 130–280 ms with `CubicEaseOut`, matching the existing cover/toast layer:
+  the gamepad overlay fades its scrim and lifts the sheet from scale(0.97); the focused couch cover
+  scales to 1.045 (the focus *ring* stays instant — it tracks the d-pad); the library grid dips out
+  and eases back on `IsLibraryLoading`.
+- **The focused-tile scale is applied to the whole cover *stack*** (`Panel.gamepad-cover-stack`), not
+  the cover Border alone. The focus frame is a concentric accent pad *behind* the cover (radius 18, 6px
+  larger) masked to an even 6px border by the opaque cover (radius 12); scaling only the cover grows it
+  into the fixed pad and clips the frame at the corners. Scaling the stack keeps ring + well + cover
+  concentric.
+- **The overlay sheet animates in but snaps out** (its `Transitions` live in the `.overlay-open` state,
+  not the base). On close the sheet's size/alignment class drops and it reverts to the default centred
+  620px card; with a symmetric fade that reverted card flashed for a frame ("a second menu"). Snapping
+  opacity to 0 hides the revert; the scrim keeps fading out, so the close still reads as a soft dissolve.
+- **Cached scope switches intentionally stay instant.** The library crossfade keys off
+  `IsLibraryLoading`, which a cached scope sets true→false synchronously (never rendered), so only the
+  slower uncached loads fade. No frame is deferred to force a fade on the fast path.
+- **The spotlight backdrop uses a `TransitioningContentControl` + `CrossFade`** over an always-present
+  gradient base, so fan art dissolves between focused games (and when a late-decoded bitmap arrives)
+  instead of hard-cutting; the gradient shows through no-art games and mid-fade.
+- **The toolbar search animates its width open** rather than cross-fading in place: its column is
+  `Auto`, so mounting both the icon and the box would permanently shrink the `*` title column. The box
+  eases width 0→218 and the trigger hides, preserving the collapsed layout.
+- **The focused couch tile carries no shadow or glow — only the solid accent ring and the scale lift.**
+  Once the tile scales up, the cover's drop shadow and the ring's `EmuFocusGlow` both spilled a halo
+  past the 6px ring frame, which read as a "weird shadow." The focused cover's `BoxShadow` is set to
+  `none` and the library tile ring drops its inline `EmuFocusGlow`; unfocused tiles keep their shadow,
+  and the spotlight Play/Achievements rings keep their glow (they sit over dark art where it reads).

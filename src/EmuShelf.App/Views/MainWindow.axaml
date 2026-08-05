@@ -138,6 +138,78 @@
                 </Transitions>
             </Setter>
         </Style>
+
+        <!-- Library surface: dips out and eases back as a new scope loads, so switching platform or
+             collection dissolves instead of blanking and popping the incoming grid in. A cached scope
+             swaps synchronously (the flag never renders as true), so it stays instant with no fade. -->
+        <Style Selector="ScrollViewer.library-surface, Grid.library-surface, ListBox.library-surface">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="ScrollViewer.library-surface.loading, Grid.library-surface.loading, ListBox.library-surface.loading">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+
+        <!-- The gamepad overlay (menus, achievements, settings, scraper) fades its scrim in and lifts
+             the sheet from a slight scale-down, mirroring the status toast. Both layers stay rendered and
+             driven by Opacity so the sheet can animate — IsVisible would snap. Pointer hit testing is
+             gated separately on the scrim so a closed overlay never swallows input behind it. -->
+        <Style Selector="Grid.gamepad-scrim">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Grid.gamepad-root.overlay-open Grid.gamepad-scrim">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.gamepad-overlay">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="RenderTransform" Value="scale(0.97)" />
+        </Style>
+        <!-- Transitions live in the open state, so the sheet animates IN but snaps OUT. On close the
+             sheet's size/alignment class drops and it would otherwise revert to the default centred
+             620px card, flashing for a frame while it faded; snapping opacity to 0 hides that. The scrim
+             above still fades out, so the close still reads as a soft dissolve rather than a hard cut. -->
+        <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-overlay">
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.16" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- The toolbar search grows from the trigger rather than snapping open: the box eases its width
+             and opacity while the * title column absorbs the change. Width animates layout, but this is a
+             one-off deliberate action, and the box clips its contents as it expands. -->
+        <Style Selector="Border.search-box">
+            <Setter Property="Width" Value="0" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="ClipToBounds" Value="True" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Width" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.search-box.open">
+            <Setter Property="Width" Value="218" />
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
         <!-- ========================== End motion ========================== -->
 
         <Style Selector="Button.toolbar-button">
@@ -759,8 +831,30 @@
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="BoxShadow" Value="0 8 20 0 #40000000" />
         </Style>
+        <!-- On focus the solid accent ring is the sole depth cue. The cover drops its shadow entirely
+             (even the base 0 8 20 shadow spills past the 6px ring frame) and the ring's own EmuFocusGlow
+             is removed at the tile (inline, above), so nothing haloes the ring. Unfocused tiles keep
+             their shadow for depth against the library background. -->
         <Style Selector="Button.gamepad-game.focused Border.gamepad-cover-frame">
-            <Setter Property="BoxShadow" Value="0 16 36 0 #78000000" />
+            <Setter Property="BoxShadow" Value="none" />
+        </Style>
+        <!-- The focused tile lifts with a small scale. It is applied to the whole cover STACK (accent
+             ring + well + cover together) so the concentric focus frame scales as one unit and its even
+             6px border is preserved. Scaling only the cover grows it into the fixed ring and eats the
+             frame at the corners. RenderTransform is composited and post-layout, so no row reflow; the
+             ring's opacity (which tile is focused) stays instant — only the size eases. -->
+        <Style Selector="Panel.gamepad-cover-stack">
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="RenderTransform" Value="none" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.13" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.gamepad-game.focused Panel.gamepad-cover-stack">
+            <Setter Property="RenderTransform" Value="scale(1.045)" />
         </Style>
         <!-- Couch-distance counterpart to the desktop cover marks (Button.achievement-mark
              and Border.texture-mark), which are sized for a pointer at desk distance. -->
@@ -1000,8 +1094,9 @@
                         <PathIcon Width="16" Height="16"
                                   Data="F0 M9,2 A7,7 0 1 0 9,16 A7,7 0 1 0 9,2 Z M9,5 A4,4 0 1 1 9,13 A4,4 0 1 1 9,5 Z M13.2,12.5 L20,19.3 L19.3,20 L12.5,13.2 Z" />
                     </Button>
-                    <Border x:Name="ExpandedSearch" Width="218" Height="36" CornerRadius="18"
-                            IsVisible="{Binding IsSearchOpen}"
+                    <Border x:Name="ExpandedSearch" Height="36" CornerRadius="18"
+                            Classes="search-box" Classes.open="{Binding IsSearchOpen}"
+                            HorizontalAlignment="Right"
                             Background="{DynamicResource EmuInputBrush}"
                             BorderBrush="{DynamicResource EmuAccentBrush}" BorderThickness="1">
                         <Grid ColumnDefinitions="30,*,30" Margin="5,0">
@@ -1071,6 +1166,7 @@
         <Panel Grid.Row="2" Grid.Column="1"
                Background="{DynamicResource EmuLibraryBrush}">
             <ScrollViewer x:Name="LibraryGridScroller" IsVisible="{Binding IsGridView}"
+                          Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
                           SizeChanged="OnLibrarySizeChanged">
                 <ItemsRepeater x:Name="LibraryRepeater" ItemsSource="{Binding Games}"
                                Margin="32,28,28,34">
@@ -1267,7 +1363,8 @@
                 </ItemsRepeater>
             </ScrollViewer>
 
-            <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20">
+            <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20"
+                  Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}">
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
                     <Grid Classes="list-header" ColumnDefinitions="84,*,150,90,96,92,100">
@@ -1611,6 +1708,7 @@
              selection — so its selection/focus visuals are styled away below. -->
         <ListBox x:Name="GamepadRowList" Grid.Row="1" Margin="52,26,52,26"
                  ItemsSource="{Binding GamepadRows}"
+                 Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
                  Background="Transparent" BorderThickness="0" Padding="0"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  ScrollViewer.VerticalScrollBarVisibility="Hidden"
@@ -1684,8 +1782,7 @@
                                          opacity on .focused (styles below); no transition, tracks the d-pad. -->
                                     <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
                                             Margin="-6" CornerRadius="18"
-                                            Background="{DynamicResource EmuAccentBrush}"
-                                            BoxShadow="{DynamicResource EmuFocusGlow}" />
+                                            Background="{DynamicResource EmuAccentBrush}" />
                                     <!-- Opaque well between the focus pad and the cover, sized to the cover
                                          (the pad is 6px larger). It is never dimmed, so when an unavailable
                                          cover drops to 58% opacity its centre reveals this dark well rather
@@ -1901,12 +1998,10 @@
             <!-- Backdrop: the focused game's fan art, edge to edge behind everything. UniformToFill
                  overflows its bounds by design, so the Panel clips it to the content area (never over
                  the platform rail or window edges). -->
-            <Image Source="{Binding FocusedGame.FanartImage}" Stretch="UniformToFill"
-                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                   IsVisible="{Binding FocusedGame.HasFanartImage}" />
-            <!-- No-fanart fallback: a themed gradient (dark base + an accent glow that fades),
-                 so the backdrop still recolours with the ambient palette. -->
-            <Panel IsVisible="{Binding !FocusedGame.HasFanartImage}">
+            <!-- Themed gradient base (dark base + an accent glow that fades). Always present so it
+                 recolours with the ambient palette, stands in for games with no fan art, and shows
+                 through while the fan art cross-fades over it. -->
+            <Panel>
                 <Border Background="{DynamicResource EmuLibraryBrush}" />
                 <Border Background="{DynamicResource EmuAccentBrush}" Opacity="0.30">
                     <Border.OpacityMask>
@@ -1917,6 +2012,24 @@
                     </Border.OpacityMask>
                 </Border>
             </Panel>
+            <!-- Fan art, edge to edge over the gradient. Cross-fades whenever the focused game (or its
+                 late-decoded bitmap) changes, so scrolling the spotlight list dissolves between backdrops
+                 instead of hard-cutting. UniformToFill overflows by design; ClipToBounds keeps it inside
+                 the content area (never over the platform rail or window edges). -->
+            <TransitioningContentControl Content="{Binding FocusedGame.FanartImage}"
+                                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                                         ClipToBounds="True">
+                <TransitioningContentControl.PageTransition>
+                    <CrossFade Duration="0:0:0.28" />
+                </TransitioningContentControl.PageTransition>
+                <TransitioningContentControl.ContentTemplate>
+                    <DataTemplate>
+                        <Image Source="{Binding}" Stretch="UniformToFill"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </DataTemplate>
+                </TransitioningContentControl.ContentTemplate>
+            </TransitioningContentControl>
             <!-- Legibility scrims: darken the bottom (title/actions) and the left (list). -->
             <Border IsHitTestVisible="False">
                 <Border.Background>
@@ -2096,7 +2209,7 @@
         </Panel>
 
         <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window. -->
-        <Grid Grid.RowSpan="3" IsVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
+        <Grid Grid.RowSpan="3" Classes="gamepad-scrim" IsHitTestVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
             <!-- The panel is the overlay's height budget: it keeps a margin off the screen edges,
                  and the overlay's MaxHeight tracks it so a 720p or windowed viewport shrinks the
                  sheet instead of clipping it. Height is the preferred size, not the actual one. -->
