@@ -1,6 +1,9 @@
+using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Threading;
 using EmuShelf.App.Controls;
 
 namespace EmuShelf.App.Tests;
@@ -22,5 +25,32 @@ public sealed class MarqueeTextBlockTests
         marquee.Measure(new Size(240, 120));
         marquee.Arrange(new Rect(0, 0, 240, 120));
         Assert.True(marquee.IsOverflowing);
+    }
+
+    [AvaloniaFact]
+    public async Task Scrolling_AnAttachedOverflowingTitle_DoesNotThrow()
+    {
+        // A long title in a shown window is attached, visible and overflowing, so it starts its
+        // scroll during layout. Regression: driving that scroll via Animation.RunAsync against a bare
+        // TranslateTransform threw (InvalidCastException) here and crashed the render pass.
+        var marquee = new MarqueeTextBlock
+        {
+            FontSize = 42,
+            FontWeight = FontWeight.Bold,
+            Text = "Teenage Mutant Ninja Turtles: Turtles in Time (World, Deluxe Edition)",
+            Width = 240,
+            Height = 72,
+        };
+        var window = new Window { Width = 320, Height = 220, Content = marquee };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            Assert.True(marquee.IsOverflowing);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 }

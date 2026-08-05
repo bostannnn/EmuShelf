@@ -1,12 +1,9 @@
 using System;
-using System.Threading;
 using Avalonia;
-using Avalonia.Animation;
-using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Styling;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace EmuShelf.App.Controls;
@@ -16,13 +13,19 @@ namespace EmuShelf.App.Controls;
 /// only when it is too wide for its slot, and sits still otherwise. Used for the spotlight hero title
 /// so a long game name reads in full without wrapping to a second line. Font family is inherited from
 /// the surrounding Gamepad shell; size/weight/foreground are forwarded to the inner text.
+///
+/// The scroll is driven by a plain timer that writes the transform offset directly, NOT Avalonia's
+/// animation API: running an <c>Animation</c> against a bare <c>TranslateTransform</c> makes the
+/// transform animator cast it to <c>Visual</c> and throw (InvalidCastException), which crashed the
+/// render pass the moment a long title started scrolling.
 /// </summary>
 public sealed class MarqueeTextBlock : Decorator
 {
     private const double PixelsPerSecond = 55;
-    private const double StartPauseSeconds = 0.8;
-    private const double EndPauseSeconds = 1.1;
+    private const double StartPauseMs = 800;
+    private const double EndPauseMs = 1100;
     private const double TailGap = 12;
+    private const double FrameMs = 16;
 
     public static readonly StyledProperty<string?> TextProperty =
         AvaloniaProperty.Register<MarqueeTextBlock, string?>(nameof(Text));
@@ -38,12 +41,17 @@ public sealed class MarqueeTextBlock : Decorator
 
     private readonly TextBlock _text;
     private readonly TranslateTransform _transform = new();
-    private CancellationTokenSource? _animation;
+    private DispatcherTimer? _timer;
+    private long _startTicks;
+    private double _distance;
+    private double _outStartMs, _outEndMs, _backStartMs, _cycleMs;
     private double _lastTextWidth = double.NaN;
     private double _lastViewWidth = double.NaN;
 
     /// <summary>True after layout when the text is wider than the slot (so it scrolls). Exposed for tests.</summary>
     internal bool IsOverflowing { get; private set; }
+
+    private bool IsScrolling => _timer is { IsEnabled: true };
 
     static MarqueeTextBlock()
     {
@@ -119,11 +127,16 @@ public sealed class MarqueeTextBlock : Decorator
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
-        _animation?.Cancel();
-        _animation = null;
-        _transform.X = 0;
+        StopScroll();
+        _timer = null; // fully release on detach; StopScroll keeps the instance for reuse mid-life
         _lastTextWidth = double.NaN;
         _lastViewWidth = double.NaN;
+    }
+
+    private void StopScroll()
+    {
+        _timer?.Stop();
+        _transform.X = 0;
     }
 
     private void StartOrStop(double textWidth, double viewWidth)
@@ -133,51 +146,64 @@ public sealed class MarqueeTextBlock : Decorator
         var shouldScroll = IsOverflowing && this.IsAttachedToVisualTree() && IsEffectivelyVisible;
 
         // Layout can run several passes; if the text width and slot are unchanged and the loop is
-        // already in the right state, leave the running animation alone rather than restart it (which
+        // already in the right state, leave the running scroll alone rather than restart it (which
         // would jump the title back to the start).
         static bool Close(double a, double b) => Math.Abs(a - b) < 0.5;
         if (Close(textWidth, _lastTextWidth) && Close(viewWidth, _lastViewWidth) &&
-            shouldScroll == (_animation is not null))
+            shouldScroll == IsScrolling)
             return;
         _lastTextWidth = textWidth;
         _lastViewWidth = viewWidth;
 
-        _animation?.Cancel();
-        _animation = null;
-        _transform.X = 0;
-
+        StopScroll();
         if (!shouldScroll)
             return; // it fits (or isn't shown) — leave it static
 
-        var distance = overflow + TailGap;
-        var scroll = distance / PixelsPerSecond;
-        var total = StartPauseSeconds + scroll + EndPauseSeconds + scroll;
+        _distance = overflow + TailGap;
+        var scrollMs = _distance / PixelsPerSecond * 1000.0;
+        _outStartMs = StartPauseMs;
+        _outEndMs = _outStartMs + scrollMs;
+        _backStartMs = _outEndMs + EndPauseMs;
+        _cycleMs = _backStartMs + scrollMs;
 
-        double Cue(double seconds) => seconds / total;
-
-        var animation = new Animation
-        {
-            Duration = TimeSpan.FromSeconds(total),
-            IterationCount = IterationCount.Infinite,
-            Easing = new SineEaseInOut(),
-            Children =
-            {
-                Frame(0, 0),
-                Frame(Cue(StartPauseSeconds), 0),
-                Frame(Cue(StartPauseSeconds + scroll), -distance),
-                Frame(Cue(StartPauseSeconds + scroll + EndPauseSeconds), -distance),
-                Frame(1, 0),
-            },
-        };
-
-        var cts = new CancellationTokenSource();
-        _animation = cts;
-        _ = animation.RunAsync(_transform, cts.Token);
+        _startTicks = Environment.TickCount64;
+        // Reuse one timer instance — the focused game (and so the title) changes on every list step,
+        // which would otherwise churn a DispatcherTimer per move.
+        _timer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(FrameMs), DispatcherPriority.Render, OnTick);
+        _timer.Start();
     }
 
-    private static KeyFrame Frame(double cue, double x) => new()
+    // One frame of the there-and-back scroll: hold at each end, ease across the middle. Writes the
+    // transform offset directly — no layout read, no animator — so it can never re-enter layout.
+    private void OnTick(object? sender, EventArgs e)
     {
-        Cue = new Cue(cue),
-        Setters = { new Setter(TranslateTransform.XProperty, x) },
-    };
+        // The spotlight can be toggled back to the cover grid without detaching this control, which
+        // would leave the timer ticking on a hidden hero. Self-stop when not visible; the next layout
+        // pass (when the spotlight is shown again) restarts it.
+        if (!IsEffectivelyVisible)
+        {
+            StopScroll();
+            return;
+        }
+
+        var elapsed = (Environment.TickCount64 - _startTicks) % (long)Math.Max(1, _cycleMs);
+        double offset;
+        if (elapsed < _outStartMs)
+            offset = 0;
+        else if (elapsed < _outEndMs)
+            offset = Ease((elapsed - _outStartMs) / (_outEndMs - _outStartMs)) * _distance;
+        else if (elapsed < _backStartMs)
+            offset = _distance;
+        else
+            offset = (1 - Ease((elapsed - _backStartMs) / (_cycleMs - _backStartMs))) * _distance;
+
+        _transform.X = -offset;
+    }
+
+    // Smoothstep, so the title eases in and out at each end rather than jerking.
+    private static double Ease(double progress)
+    {
+        var p = Math.Clamp(progress, 0, 1);
+        return p * p * (3 - 2 * p);
+    }
 }
