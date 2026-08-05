@@ -4554,3 +4554,19 @@ vertical hold outruns row virtualization, so the snap path dominates and covers 
 `GamepadNavigationController` now ramps vertical (Up/Down) to a gentler `verticalMinRepeatIntervalMs`
 (72 ms) while horizontal keeps the fast 38 ms floor, so the reveal keeps up and the grid glides both
 ways. Per-axis floor, unit-tested. The value is tunable; the reveal logic itself is untouched.
+
+## 2026-08-05 — Opening Settings reads every system's remembered folders in one connection
+
+A follow-up to the earlier `IEmulatorConfigurationStore.GetAll` batching (which killed the
+per-system config connection opens on the settings-open path). That fix missed a second per-system
+database read on the same path: `EmulatorSettingsRowViewModel`'s constructor calls
+`GetLibraryFolders(systemId)` once per system, and connection pooling is deliberately off, so every
+call is a fresh open of `library.db` — N sequential opens on the UI thread while the panel builds,
+worst cold and on a portable/external drive. The remaining "significant delay before Settings opens."
+
+`LibraryFolderManagementActions` gained a batched `GetAll`, and both open paths now read every
+system's folders once, off the UI thread, in the same `Task.Run` that already batched configs and
+profiles. The grouped result seeds each row (an empty seed for a system with no folders still counts,
+so a zero-folder system never reopens the database either). A null map — a caller that supplies only
+the per-system `Get`, i.e. tests — preserves the old per-row read. Later refreshes after a folder
+edit still read the current rows directly.

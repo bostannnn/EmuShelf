@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Launching;
 
@@ -144,7 +145,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         LibraryFolderManagementActions? folderActions = null,
         Func<Func<Task<string>>, Action<string>, Task>? runFolderMaintenance = null,
         IReadOnlyList<EmulatorDefinition>? supportedEmulators = null,
-        SystemEmulatorProfiles? profiles = null)
+        SystemEmulatorProfiles? profiles = null,
+        IReadOnlyList<LibraryFolder>? initialLibraryFolders = null)
     {
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
@@ -208,7 +210,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
 
         RefreshAvailableCores();
         IsExpanded = isExpanded;
-        RefreshLibraryFolders();
+        RefreshLibraryFolders(initialLibraryFolders);
     }
 
     private static ProfileDraft DraftFor(
@@ -537,12 +539,14 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         }
     }
 
-    private void RefreshLibraryFolders()
+    // <paramref name="seeded"/> is the row's folders pre-read off the UI thread when Settings opened;
+    // an on-demand refresh after a folder edit passes null and reads the current rows directly.
+    private void RefreshLibraryFolders(IReadOnlyList<LibraryFolder>? seeded = null)
     {
         LibraryFolders.Clear();
         if (_folderActions is not null)
         {
-            foreach (var folder in _folderActions.Get(SystemId))
+            foreach (var folder in seeded ?? _folderActions.Get(SystemId))
             {
                 var row = new LibraryFolderRowViewModel(
                     folder,

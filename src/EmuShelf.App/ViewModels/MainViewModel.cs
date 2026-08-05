@@ -3375,6 +3375,12 @@ public partial class MainViewModel : ViewModelBase
     private IReadOnlyList<LibraryFolder> GetLibraryFoldersForSettings(string systemId) =>
         _library.GetLibraryFolders(systemId);
 
+    // Every system's remembered folders in one query/connection. Opening Settings seeds each row from
+    // this instead of reading the database once per system on the UI thread (a cold-open freeze on a
+    // portable/external drive, where every unpooled connection open is a fresh file open).
+    private IReadOnlyList<LibraryFolder> GetAllLibraryFoldersForSettings() =>
+        _library.GetLibraryFolders();
+
     private async Task<string> AddLibraryFolderFromSettingsAsync(string systemId, string folderPath)
     {
         if (IsBusy)
@@ -4500,8 +4506,12 @@ public partial class MainViewModel : ViewModelBase
     private async Task<EmulatorSettingsViewModel> CreateSettingsViewModelAsync()
     {
         var systemIds = Systems.Select(system => system.Id).ToArray();
-        var (configured, profiles) = await Task.Run(() =>
-            (_emulatorConfigurations.GetAll(systemIds), _emulatorConfigurations.GetAllProfiles(systemIds)));
+        // Read every database source the panel needs — configs, profiles, and all remembered folders —
+        // in one worker pass so building the rows never reopens a connection per system on the UI thread.
+        var (configured, profiles, libraryFolders) = await Task.Run(() =>
+            (_emulatorConfigurations.GetAll(systemIds),
+             _emulatorConfigurations.GetAllProfiles(systemIds),
+             EmulatorSettingsViewModel.GroupLibraryFolders(GetAllLibraryFoldersForSettings())));
         return new EmulatorSettingsViewModel(
             Systems,
             _emulators,
@@ -4520,7 +4530,8 @@ public partial class MainViewModel : ViewModelBase
             themeChoices: ThemeChoices,
             ambientThemeFromArtwork: AmbientThemeFromArtwork,
             setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync,
-            profiles: profiles);
+            profiles: profiles,
+            libraryFolders: libraryFolders);
     }
 
     private Task SetAmbientThemeFromArtworkAsync(bool value)
@@ -4542,7 +4553,8 @@ public partial class MainViewModel : ViewModelBase
             GetLibraryFoldersForSettings,
             AddLibraryFolderFromSettingsAsync,
             ChangeLibraryFolderFromSettingsAsync,
-            ForgetLibraryFolderFromSettingsAsync),
+            ForgetLibraryFolderFromSettingsAsync,
+            GetAll: GetAllLibraryFoldersForSettings),
         DataDirectory: _dataDirectory);
 
     private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>

@@ -6,6 +6,7 @@ using EmuShelf.Infrastructure.SaveSync;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Systems;
 using EmuShelf.Core.TexturePacks;
@@ -316,7 +317,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
-        IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null)
+        IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null,
+        IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -427,7 +429,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                     "Updating remembered folders…",
                     report),
                 supportedEmulators: supportedEmulators,
-                profiles: systemProfiles);
+                profiles: systemProfiles,
+                // When the caller pre-fetched every system's folders (one connection, off the UI
+                // thread), seed the row from that — including an empty list — so a system with no
+                // remembered folders still never reopens the database on the UI thread. A null map
+                // (tests) leaves the row to read its own folders as before.
+                initialLibraryFolders: libraryFolders is null
+                    ? null
+                    : libraryFolders.GetValueOrDefault(system.Id) ?? []);
         }).ToArray();
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
         foreach (var row in Rows)
@@ -444,6 +453,23 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
         ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
     }
+
+    /// <summary>
+    /// Groups every system's remembered folders by system id so the constructor can seed each row
+    /// from a single off-the-UI-thread read. A null input (the batched read was unavailable) returns
+    /// null, which leaves each row to read its own folders; an empty list returns an empty map, so a
+    /// library with no remembered folders still never reopens the database while Settings builds.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? GroupLibraryFolders(
+        IReadOnlyList<LibraryFolder>? folders) =>
+        folders is null
+            ? null
+            : folders
+                .GroupBy(folder => folder.SystemId, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<LibraryFolder>)group.ToArray(),
+                    StringComparer.Ordinal);
 
     partial void OnAmbientThemeFromArtworkChanged(bool value)
     {
