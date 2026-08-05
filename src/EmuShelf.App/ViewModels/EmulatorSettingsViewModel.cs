@@ -21,6 +21,7 @@ public enum SettingsSection
     Saves,
     TexturePacks,
     Themes,
+    About,
 }
 
 public partial class EmulatorSettingsViewModel : ViewModelBase
@@ -56,6 +57,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
     [NotifyPropertyChangedFor(nameof(IsThemesSection))]
+    [NotifyPropertyChangedFor(nameof(IsAboutSection))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
@@ -65,6 +67,22 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
     public bool IsThemesSection => SelectedSection == SettingsSection.Themes;
+    public bool IsAboutSection => SelectedSection == SettingsSection.About;
+
+    /// <summary>App version stamped from the newest git tag at build time, e.g. "1.0.8".</summary>
+    public string AppVersionDisplay => AppBuildInfo.Version;
+
+    /// <summary>Short hash of the last commit compiled into this build, or a fallback note.</summary>
+    public string AppCommitDisplay => string.IsNullOrEmpty(AppBuildInfo.CommitHash)
+        ? "unavailable (built without git)"
+        : AppBuildInfo.CommitHash;
+
+    /// <summary>Local date/time of that commit; empty when it was not stamped.</summary>
+    public string AppCommitDateDisplay => AppBuildInfo.CommitDate is { } date
+        ? date.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+        : string.Empty;
+
+    public bool HasCommitDate => AppBuildInfo.CommitDate is not null;
 
     /// <summary>Appearance choices shown as a Themes section so Desktop and Gamepad settings both
     /// expose theme selection; empty when the host did not provide them.</summary>
@@ -315,6 +333,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             sections.Add(SettingsSection.TexturePacks);
         if (HasThemes)
             sections.Add(SettingsSection.Themes);
+        // About is always present — it just reads build metadata and needs no host context.
+        sections.Add(SettingsSection.About);
         Sections = sections;
         if (texturePacks is not null)
             ApplyTexturePackInventory();

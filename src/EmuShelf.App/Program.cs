@@ -16,7 +16,7 @@ sealed class Program
     {
         if (args.Contains("--version", StringComparer.OrdinalIgnoreCase))
         {
-            Console.WriteLine("EmuShelf");
+            Console.WriteLine(AppBuildInfo.Summary);
             return;
         }
         AppLaunchOptions.InterfaceModeOverride =
