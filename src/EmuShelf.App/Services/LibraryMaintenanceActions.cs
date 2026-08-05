@@ -24,4 +24,8 @@ public sealed record LibraryFolderManagementActions(
     Func<string, IReadOnlyList<LibraryFolder>> Get,
     Func<string, string, Task<string>> Add,
     Func<string, long, string, Task<string>> Change,
-    Func<string, long, Task<string>> Forget);
+    Func<string, long, Task<string>> Forget,
+    // Reads every system's remembered folders in one database connection so opening Settings can seed
+    // all rows off the UI thread, instead of opening one connection per system while it builds. Null
+    // when a caller only supplies the per-system Get (tests), which keeps the old per-row read.
+    Func<IReadOnlyList<LibraryFolder>>? GetAll = null);

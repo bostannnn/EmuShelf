@@ -292,8 +292,14 @@ public sealed class DialogService : IDialogService
             return;
 
         var systemIds = systems.Select(system => system.Id).ToArray();
-        var (configured, profiles) = await Task.Run(() =>
-            (configurations.GetAll(systemIds), configurations.GetAllProfiles(systemIds)));
+        var folderReader = maintenance.Folders?.GetAll;
+        // One worker pass for every database read the panel needs: active configs, all profiles, and
+        // every system's remembered folders. Building the rows on the UI thread afterwards no longer
+        // opens a connection per system — the cold-open "slight delay" on the settings button.
+        var (configured, profiles, libraryFolders) = await Task.Run(() =>
+            (configurations.GetAll(systemIds),
+             configurations.GetAllProfiles(systemIds),
+             EmulatorSettingsViewModel.GroupLibraryFolders(folderReader?.Invoke())));
         var viewModel = new EmulatorSettingsViewModel(
             systems,
             emulators,
@@ -311,7 +317,8 @@ public sealed class DialogService : IDialogService
             ambientThemeFromArtwork,
             setAmbientThemeFromArtwork,
             profiles,
-            updates);
+            updates,
+            libraryFolders);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 
