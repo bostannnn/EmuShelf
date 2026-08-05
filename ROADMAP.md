@@ -1394,3 +1394,27 @@ scope here; see `DECISIONS.md`).
       launch-from-within moves to front). `dotnet build`/`dotnet test` green on macOS (1208 tests).
 - [ ] On real Windows, launch a game and confirm it appears at the top of Recently Played on return,
       persists across restart, and that no game file or emulator data was modified.
+
+## M39 — In-app auto-update from GitHub ✅ (2026-08-05)
+
+Notify → update → relaunch, from GitHub Releases, without leaving SteamOS gaming mode. Reuses the
+per-platform portable artifacts + `.sha256` CI already publishes; no packaging changes. Full design
+in `docs/auto-update.md`; the framework-vs-hand-rolled call is in `DECISIONS.md`.
+
+- [x] Core `Updates/`: `SemanticVersion` (tolerant `vX.Y.Z` parse/compare), result models, and the
+      `IUpdateService` / `IUpdateApplier` interfaces. `UpdateSettings` (opt-out, last-check throttle,
+      skipped version) added to `AppSettings`.
+- [x] `GitHubUpdateService`: reads `releases/latest`, selects this platform's asset, streams it to
+      `Cache/updates/`, and **verifies SHA-256 against the release's checksum file before use** — a
+      mismatch deletes the file and aborts.
+- [x] Per-platform appliers: AppImage replace + `execv` (same PID → gaming mode retained on the Steam
+      Deck); Windows `.cmd` overlay that preserves portable user data; macOS bundle swap with
+      quarantine cleared. Selected by `UpdateApplierFactory`; a no-op fallback keeps dev runs safe.
+- [x] `AppUpdateCoordinator`: throttled launch check + notification banner (`Update & restart` /
+      `Later` / `Skip this version`) and the download→apply flow. Controller-operable via Settings →
+      General; Desktop adds Settings → About "Check for updates".
+- [x] Tests: version parse/compare, asset selection per RID, release-JSON + checksum parsing,
+      end-to-end check/download/verify (including a tampered-checksum abort), settings round-trip, and
+      coordinator throttle/skip/apply logic. `dotnet build`/`dotnet test` green on macOS (1318 tests).
+- [ ] On real Windows and a real Steam Deck (gaming mode), install an update end to end and confirm
+      the relaunch keeps portable data intact (Windows) and never drops to the desktop (SteamOS).

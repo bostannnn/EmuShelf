@@ -4495,6 +4495,38 @@ on .NET for macOS, not the Cocoa location. This is the "non-portable data locati
 entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
 (threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.
 
+## 2026-08-05 — In-app auto-update from GitHub Releases (hand-rolled, not a framework)
+
+EmuShelf now checks its GitHub Releases on launch (throttled, opt-out) and can download, verify, and
+install a newer build in place, then relaunch — surfaced as a banner plus Settings → About
+(Desktop) and Settings → General (Gamepad). See `docs/auto-update.md`.
+
+**Hand-rolled over Velopack/NetSparkle.** CI already publishes the update source: portable per-platform
+artifacts + `.sha256` on every `vX.Y.Z` tag, and the app already knows its version from the tag.
+Velopack insists on owning packaging (it would replace the working zip/AppImage/.app pipeline and
+fights the portable "data beside the executable" model); NetSparkle gives an appcast + UI but still
+leaves the portable in-place swap and the gaming-mode restart to us. Both fights were avoidable, so a
+small `IUpdateService` (Core interface) + `GitHubUpdateService` (Infrastructure) + per-platform
+`IUpdateApplier` reuses the existing artifacts as-is with no packaging change.
+
+**The download is always SHA-256 verified against the release's own checksum file before use** — a
+mismatch deletes the file and aborts. The check hits only the public API; no token, nothing about the
+user is sent.
+
+**Gaming mode is never left, per platform.** A process can't hot-swap its own code, so a restart is
+unavoidable — but "stay in gaming mode / never hit the desktop" is met:
+
+- **SteamOS/Linux:** the build is a single AppImage. The applier replaces the file and `execv()`s the
+  same path, keeping the *same PID*, so a non-Steam shortcut's tracked process never exits and Steam
+  never sees the game stop. No Steam wrapper script needed — this is why the AppImage single-file model
+  was worth preserving.
+- **Windows/macOS:** a short-lived helper waits for exit, swaps files, and relaunches. Windows overlays
+  only program files so portable user data survives; macOS swaps the whole bundle (data lives in
+  Application Support) and clears `com.apple.quarantine` on the downloaded, un-notarized bundle so
+  Gatekeeper allows the relaunch.
+
+**Deferred:** delta updates, macOS notarization, Windows code-signing. Documented in
+`docs/auto-update.md`.
 ## 2026-08-05 — Gamepad grid: a fast held Up/Down glides into not-yet-realized rows instead of snapping
 
 The position-relative ease (entry above) already made a held d-pad a continuous scroll — but only while the

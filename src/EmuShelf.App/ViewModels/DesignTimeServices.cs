@@ -149,7 +149,8 @@ internal sealed class NullDialogService : IDialogService
         ScreenScraperSettingsContext? screenScraper = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
-        Func<bool, Task>? setAmbientThemeFromArtwork = null) => Task.CompletedTask;
+        Func<bool, Task>? setAmbientThemeFromArtwork = null,
+        AppUpdateCoordinator? updates = null) => Task.CompletedTask;
     public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
         Task.CompletedTask;
 }

@@ -967,6 +967,30 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
             _settings.FetchAllMetadataCommand,
             _settings.CanFetchAllMetadata);
+        // The update actions live here rather than an About page so a controller can reach them: an
+        // AppImage update re-execs in place, so installing from gaming mode never drops to the desktop.
+        if (_settings.HasUpdateChecker)
+        {
+            yield return ActionRow(
+                "general.check-updates",
+                "Check for updates",
+                _settings.HasUpdateStatus
+                    ? _settings.UpdateStatusText
+                    : "Look on GitHub for a newer EmuShelf.",
+                _settings.IsUpdateBusy ? "WORKING" : "A CHECK",
+                _settings.CheckForUpdatesCommand,
+                !_settings.IsUpdateBusy);
+            if (_settings.IsUpdateAvailable)
+            {
+                yield return ActionRow(
+                    "general.install-update",
+                    "Install update",
+                    "Download the new version and restart. On the Steam Deck this stays in gaming mode.",
+                    _settings.IsUpdateBusy ? "WORKING" : "A UPDATE",
+                    _settings.InstallUpdateCommand,
+                    !_settings.IsUpdateBusy);
+            }
+        }
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildRetroAchievementsRows()

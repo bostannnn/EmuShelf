@@ -1594,6 +1594,48 @@
                 <Button Content="Clear Search" Command="{Binding ClearSearchCommand}" />
             </StackPanel>
 
+            <!-- Auto-update notification. A passive banner with pad-focusable actions; in gaming mode
+                 the same update is always reachable from Settings → General, so no press is stranded. -->
+            <Border IsVisible="{Binding Updates.IsBannerVisible, FallbackValue=False}"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    MaxWidth="560" Margin="18" Padding="16,13" ZIndex="30"
+                    CornerRadius="10" Background="{DynamicResource EmuPopoverBrush}"
+                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
+                    BoxShadow="0 10 28 0 #60000000">
+                <StackPanel Spacing="11">
+                    <StackPanel Orientation="Horizontal" Spacing="11">
+                        <PathIcon Width="18" Height="18" VerticalAlignment="Center"
+                                  Foreground="{DynamicResource EmuInfoBrush}"
+                                  Data="M7,2 L11,2 L11,8 L14,8 L9,15 L4,8 L7,8 Z" />
+                        <TextBlock Text="{Binding Updates.Headline}" FontSize="14" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding Updates.StatusText}" FontSize="12" TextWrapping="Wrap"
+                               IsVisible="{Binding Updates.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    <ProgressBar Height="6" Minimum="0" Maximum="100"
+                                 IsVisible="{Binding Updates.IsBusy}"
+                                 IsIndeterminate="{Binding Updates.IsProgressIndeterminate}"
+                                 Value="{Binding Updates.DownloadPercent}" />
+                    <Panel IsVisible="{Binding Updates.IsIdle}">
+                        <!-- Desktop: the actions are buttons. The controller navigator is a custom
+                             model that doesn't focus arbitrary buttons, so in Gamepad mode the same
+                             update is installed from Settings ▸ General; point the user there. -->
+                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+                                    IsVisible="{Binding !IsGamepadMode}">
+                            <Button Content="Skip this version" Command="{Binding Updates.SkipVersionCommand}" />
+                            <Button Content="Later" Command="{Binding Updates.DismissCommand}" />
+                            <Button Content="Update &amp; restart" Classes="accent"
+                                    Command="{Binding Updates.UpdateNowCommand}" />
+                        </StackPanel>
+                        <TextBlock IsVisible="{Binding IsGamepadMode}" FontSize="12"
+                                   Text="Open Settings ▸ General to install this update."
+                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                    </Panel>
+                </StackPanel>
+            </Border>
+
             <!-- Operational feedback appears only when there is something useful to say. -->
             <Border Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
                     Classes.progress="{Binding IsStatusProgress}"
