@@ -4099,3 +4099,20 @@ by `GamepadCoverHeightFor_UsesTheTrueHeightForOnePlatform_AndAUniformHeightForAM
 `GamepadCoverHeight_DefaultsToTheTrueFrame_ButHonorsAnExplicitUniformHeight`. Trade-off accepted:
 in a mixed All Games view the wide/square minority is cropped rather than shown whole — the couch grid
 stays even and bar-free, which the crop preserves and letterboxing did not.
+
+## 2026-08-05 — Batch scraper serialises progress against finalisation with a lock
+
+`GameBatchScraperViewModel` reports progress through `Progress<GameScrapeBatchProgress>`. In the real
+app that captures Avalonia's `SynchronizationContext`, so `OnProgress` and the completion continuation
+both run ordered on the UI thread and the final summary always wins. Under test there is no captured
+context, so `Progress<T>` delivers callbacks on the thread pool, unordered — a `"Scraping… N of N"`
+report queued mid-run can land *after* the summary is written and overwrite `StatusMessage` back from
+`"N scraped"`. The prior mitigation (set `State = Done` before writing the summary, and have
+`OnProgress` drop reports when `State != Running`) is a cross-thread check-then-act with no barrier, so
+it still raced — it surfaced as an intermittent Ubuntu CI failure of
+`Start_WithEverythingSelected_RunsFillMissing_AllFields_AllMedia` (macOS/Windows passed the same
+commit). Fixed by serialising both `OnProgress` and the run's finalisation on one `_statusGate` lock, so
+the "still Running?" check and the status write are atomic against completion: a late report either ran
+before finalisation or, acquiring the lock afterwards, sees `Done` and drops itself. The lock is
+uncontended in production (single UI thread) and adds no behaviour there; it only makes the ordering
+deterministic where no context serialises it.
