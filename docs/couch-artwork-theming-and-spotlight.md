@@ -93,12 +93,25 @@ back to the cover until the backdrop decodes, and `LoadSpotlightHero` re-trigger
 once the fan art is ready. Cached per art path; requires the "Match colours to artwork"
 toggle (Desktop Settings ▸ Appearance) to be on.
 
+### 3c. Typography, navigable actions, marquee ✅ (2026-08-05)
+
+- **Exo 2** is bundled (SIL OFL) and applied to the whole couch shell; the couch library views
+  route their sizes through six `EmuGp*Size` tokens (larger, for TV/Deck distance). Desktop is
+  untouched. See the DECISIONS entries.
+- The hero **rating / achievements / Play** sit together with equal spacing; D-pad Left/Right move
+  an accent focus ring between Achievements and Play (A fires the armed one), and Achievements is
+  clickable.
+- The spotlight **list follows the theme** (themed surface/text brushes, not a fixed dark wash).
+- Long hero titles **scroll** on one line via `MarqueeTextBlock` instead of wrapping.
+
 ## Not done — next
 
-### 3c. Remaining hero polish ⛔
+### 3d. Remaining hero polish ⛔
 
 - Favourites hearts/filter in the list rows.
-- A display-font / spacing pass to match the mockups' typography.
+- A themed *translucent* list surface (currently opaque themed) if the see-through-to-fanart look
+  is wanted back.
+- Tune the type-scale tokens, marquee speed/pauses, and rating-pill width on real hardware.
 
 **Dropped (per user, 2026-08-05):** the left-edge button-hint column and the floating icon
 toolbar. Couch navigation stays exactly as it is (top platform rail, Start ▸ Menu).
