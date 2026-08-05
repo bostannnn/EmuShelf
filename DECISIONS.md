@@ -4494,3 +4494,19 @@ unchanged. The home directory is used directly because `SpecialFolder.Applicatio
 on .NET for macOS, not the Cocoa location. This is the "non-portable data location" the 2026-07-12 macOS
 entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
 (threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.
+
+## 2026-08-05 — Marquee scroll via a timer, not Avalonia's Animation API
+
+The spotlight hero's `MarqueeTextBlock` drove its scroll with `Animation.RunAsync(_transform, …)` where
+`_transform` is a bare `TranslateTransform`. Avalonia's transform animator casts the animated object to
+`Visual`, so this threw `InvalidCastException` synchronously during the arrange pass — crashing the
+whole app the instant a title was long enough to actually scroll. It slipped through because the unit
+test arranges the control detached (never starts the scroll) and short titles never overflow, so it
+only surfaced on a Steam Deck with a long arcade title.
+
+Rewrote the scroll to a plain `DispatcherTimer` that writes `TranslateTransform.X` directly each frame
+(there-and-back with end pauses, smoothstep easing) — no animator, no cast, and it can never re-enter
+layout. Added a headless test that shows an overflowing marquee in a window and asserts the scroll
+starts without throwing (the path the crash lived on). The correct Animation-API route would have been
+to animate the child Visual's `RenderTransform` with `TransformOperations`, but the timer is simpler and
+gives full control over the cadence.
