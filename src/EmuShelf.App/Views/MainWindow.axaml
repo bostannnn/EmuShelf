@@ -1975,10 +1975,17 @@
                 <Grid Grid.Column="1" VerticalAlignment="Bottom" Margin="6,0,6,10"
                       RowDefinitions="Auto,Auto" RowSpacing="22">
                     <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Left">
-                        <!-- Game logo (ScreenScraper wheel); nothing shows when there is none. -->
+                        <!-- Game logo (ScreenScraper wheel); nothing shows when there is none. Capped
+                             so a wide/tall logo stays contained, and given a soft drop shadow so the
+                             transparent art lifts off the busy fan-art backdrop instead of blending in. -->
                         <Image Source="{Binding FocusedGame.WheelImage}" Stretch="Uniform"
-                               MaxHeight="150" HorizontalAlignment="Left"
-                               IsVisible="{Binding FocusedGame.HasWheelImage}" />
+                               MaxHeight="118" MaxWidth="440" HorizontalAlignment="Left"
+                               Margin="0,0,0,4" IsVisible="{Binding FocusedGame.HasWheelImage}">
+                            <Image.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="22" OffsetX="0" OffsetY="6"
+                                                  Opacity="0.7" />
+                            </Image.Effect>
+                        </Image>
                         <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="13" FontWeight="Bold"
                                    LetterSpacing="1.4" Foreground="{DynamicResource EmuAccentBrush}" />
                         <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}" FontSize="42" FontWeight="Bold"
