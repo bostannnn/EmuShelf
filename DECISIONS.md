@@ -4528,3 +4528,29 @@ eased designs shipped headless-green but corrupted on the real Steam Deck compos
 selector off-screen) — that class of failure is real-compositor-only, so this still needs on-device
 verification of a fast held Up/Down deep in a long single-platform (short-cover snes) and mixed All-Games
 library before it is trusted.
+## 2026-08-05 — Marquee scroll via a timer, not Avalonia's Animation API
+
+The spotlight hero's `MarqueeTextBlock` drove its scroll with `Animation.RunAsync(_transform, …)` where
+`_transform` is a bare `TranslateTransform`. Avalonia's transform animator casts the animated object to
+`Visual`, so this threw `InvalidCastException` synchronously during the arrange pass — crashing the
+whole app the instant a title was long enough to actually scroll. It slipped through because the unit
+test arranges the control detached (never starts the scroll) and short titles never overflow, so it
+only surfaced on a Steam Deck with a long arcade title.
+
+Rewrote the scroll to a plain `DispatcherTimer` that writes `TranslateTransform.X` directly each frame
+(there-and-back with end pauses, smoothstep easing) — no animator, no cast, and it can never re-enter
+layout. Added a headless test that shows an overflowing marquee in a window and asserts the scroll
+starts without throwing (the path the crash lived on). The correct Animation-API route would have been
+to animate the child Visual's `RenderTransform` with `TransformOperations`, but the timer is simpler and
+gives full control over the cadence.
+## 2026-08-05 — Gamepad grid: gentler vertical auto-repeat floor than horizontal
+
+The accelerating auto-repeat (90 → 38 ms floor) felt great moving Left/Right in the couch grid but
+janky moving Up/Down — rows "blinking and jumping" on Steam Deck. Cause: Left/Right steps within a row
+(no scroll), but each Up/Down step scrolls a whole row and drives the centre-reveal, which falls back
+to a hard `ScrollIntoView` snap whenever the target row hasn't virtualized yet. At the 38 ms floor the
+vertical hold outruns row virtualization, so the snap path dominates and covers pop in/out.
+
+`GamepadNavigationController` now ramps vertical (Up/Down) to a gentler `verticalMinRepeatIntervalMs`
+(72 ms) while horizontal keeps the fast 38 ms floor, so the reveal keeps up and the grid glides both
+ways. Per-axis floor, unit-tested. The value is tunable; the reveal logic itself is untouched.
