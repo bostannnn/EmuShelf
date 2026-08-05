@@ -2036,12 +2036,17 @@
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
                                             <!-- One row of badge tiles. 6px side padding gives the first/last
-                                                 tile's focus glow room inside the row container; 12px gutters
-                                                 match the old grid. -->
-                                            <ItemsControl ItemsSource="{Binding}" Margin="0,6,0,6" Padding="6,0,6,0">
+                                                 tile's focus frame room inside the row container; 12px gutters
+                                                 match the old grid. ClipToBounds="False" on the row and its
+                                                 StackPanel is what lets the focus ring's 6px vertical overflow
+                                                 (Margin="-6") render past the tile-height row box — without it
+                                                 the ring is clipped flat at the tile's top and bottom edges,
+                                                 exactly as the library grid guards against. -->
+                                            <ItemsControl ItemsSource="{Binding}" Margin="0,6,0,6" Padding="6,0,6,0"
+                                                          ClipToBounds="False">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
-                                                        <StackPanel Orientation="Horizontal" Spacing="12" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="12" ClipToBounds="False" />
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
