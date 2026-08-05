@@ -199,16 +199,37 @@ public partial class MainWindow : Window
         // in a scope (previous row unknown) also snaps.
         var previousRow = _lastRevealedRowIndex;
         _lastRevealedRowIndex = rowIndex;
-        if (animate && previousRow is { } prev && Math.Abs(rowIndex - prev) <= GamepadMaxEaseRowStep &&
-            GamepadRowList.ContainerFromIndex(rowIndex) is { } easeRow &&
-            TryMeasureCentreDelta(scroller, easeRow, out var easeDelta))
+        if (animate && previousRow is { } prev && Math.Abs(rowIndex - prev) <= GamepadMaxEaseRowStep)
         {
-            // Measure the target's centre offset ONCE here (a realized-row read, the safe context the snap
-            // uses) and ease toward that fixed number. The loop itself never touches the visual tree — a
-            // per-frame TranslatePoint/Bounds read forces a re-entrant layout that stack-overflows the
-            // virtualizing panel on short-cover rows. A held d-pad just retargets the one running loop.
-            StartOrRetargetGamepadScroll(scroller, Math.Max(0, scroller.Offset.Y + easeDelta));
-            return;
+            // Preferred: the target row is realized. Measure its centre offset ONCE here (a realized-row
+            // read, the safe context the snap uses) and ease toward that fixed number. The loop itself never
+            // touches the visual tree — a per-frame TranslatePoint/Bounds read forces a re-entrant layout
+            // that stack-overflows the virtualizing panel on short-cover rows. A held d-pad just retargets
+            // the one running loop.
+            if (GamepadRowList.ContainerFromIndex(rowIndex) is { } easeRow &&
+                TryMeasureCentreDelta(scroller, easeRow, out var easeDelta))
+            {
+                StartOrRetargetGamepadScroll(scroller, Math.Max(0, scroller.Offset.Y + easeDelta));
+                return;
+            }
+
+            // A fast held d-pad outran realization: the target row is not materialized yet. Rather than
+            // ScrollIntoView (a hard jump that breaks the glide — the residual Up/Down jank Left/Right never
+            // has), keep gliding by centring the still-realized PREVIOUS row and shifting one uniform
+            // row-stride per row moved. Rows are uniform per view (the invariant the whole centring relies
+            // on), so prev's own container height IS the stride, and the target lands the not-yet-realized
+            // row on centre. This is position-relative to a realized row — the sanctioned pattern — so the
+            // eased offset flows CONTINUOUSLY into the adjacent region (the panel realizes each row as the
+            // offset enters it) and never teleports far, so it cannot desync the estimated extent the way an
+            // absolute rowIndex*rowHeight jump did (DECISIONS 2026-08-05). Covers are pre-warmed
+            // (PrefetchCoversAroundFocus), so the row the glide uncovers is already painted, not a blank pop.
+            if (GamepadRowList.ContainerFromIndex(prev) is { Bounds.Height: > 0 } prevRow &&
+                TryMeasureCentreDelta(scroller, prevRow, out var prevDelta))
+            {
+                var target = scroller.Offset.Y + prevDelta + (rowIndex - prev) * prevRow.Bounds.Height;
+                StartOrRetargetGamepadScroll(scroller, Math.Max(0, target));
+                return;
+            }
         }
 
         // Snap path. Cancel any in-flight ease so it can't fight this landing. If the row is realized,
