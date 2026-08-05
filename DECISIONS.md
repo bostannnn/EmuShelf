@@ -4387,6 +4387,21 @@ Two couch-mode refinements from testing:
   so the marquee gets the full hero width to measure overflow against. `IsOverflowing` is exposed for a
   headless test of the fits-vs-scrolls decision.
 
+## 2026-08-05 — Spotlight crash: no cross-fade over disposed fan-art bitmaps
+
+Selecting the couch spotlight crashed the macOS build (SIGABRT in SkiaSharp on the render thread).
+Cause: the spotlight backdrop was switched to a `TransitioningContentControl` with a `CrossFade`
+(motion-polish pass) whose `Content` binds to `FocusedGame.FanartImage` — a `Bitmap`. But the
+spotlight deliberately **disposes** the focused game's fan-art bitmap as focus moves (`OnFocusedGame
+Changed` → `oldValue.FanartImage = null` → `Dispose`) so a long list never accumulates ~1080p images.
+The cross-fade keeps the *outgoing* bitmap rendered for its 280 ms fade, so it draws a disposed
+`Bitmap` and the render thread aborts.
+
+Reverted the backdrop to a plain `Image` (instant swap, as before). The cross-fade and the eager
+per-focus disposal are fundamentally at odds; bringing the cross-fade back needs deferred disposal
+(release the outgoing bitmap only after the transition completes, or retain the last N), not a bind to
+the disposable bitmap. The rest of the motion-polish pass (grid dissolve, overlay fade, focused-tile
+lift, search expand, accelerating repeat) is unaffected and kept.
 ## 2026-08-05 — macOS data lives in Application Support, not beside the executable
 
 On macOS the app runs from a `.app` bundle whose executable sits at `Contents/MacOS/`, so the
