@@ -37,6 +37,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly ScreenScraperSettingsContext? _screenScraper;
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly TexturePackSettingsContext? _texturePacks;
+    private readonly AppUpdateCoordinator? _updates;
     private readonly IAppLogger _logger;
     // Held only for the duration of one cloud operation so the Stop button can reach it.
     private CancellationTokenSource? _cloudCancellation;
@@ -84,6 +85,81 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         : string.Empty;
 
     public bool HasCommitDate => AppBuildInfo.CommitDate is not null;
+
+    /// <summary>Whether in-app update checking is wired up (false in tests/design-time).</summary>
+    public bool HasUpdateChecker => _updates is not null;
+
+    /// <summary>Result of the most recent manual check, shown under the button.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUpdateStatus))]
+    public partial string UpdateStatusText { get; set; } = string.Empty;
+
+    public bool HasUpdateStatus => !string.IsNullOrWhiteSpace(UpdateStatusText);
+
+    /// <summary>True once a check has found a newer version, so the install action can appear.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    public partial bool IsUpdateAvailable { get; set; }
+
+    /// <summary>True while a check or an install/download is running.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CheckForUpdatesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(InstallUpdateCommand))]
+    public partial bool IsUpdateBusy { get; set; }
+
+    [RelayCommand(CanExecute = nameof(CanCheckForUpdates))]
+    private async Task CheckForUpdatesAsync()
+    {
+        if (_updates is null || IsUpdateBusy)
+            return;
+
+        IsUpdateBusy = true;
+        UpdateStatusText = "Checking for updates…";
+        try
+        {
+            UpdateStatusText = await _updates.CheckManuallyAsync();
+            IsUpdateAvailable = _updates.HasAvailableUpdate;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Update check failed from Settings.", ex);
+            UpdateStatusText = "Couldn't check for updates.";
+        }
+        finally
+        {
+            IsUpdateBusy = false;
+        }
+    }
+
+    private bool CanCheckForUpdates() => _updates is not null && !IsUpdateBusy;
+
+    [RelayCommand(CanExecute = nameof(CanInstallUpdate))]
+    private async Task InstallUpdateAsync()
+    {
+        if (_updates is null || !_updates.HasAvailableUpdate || IsUpdateBusy)
+            return;
+
+        IsUpdateBusy = true;
+        UpdateStatusText = "Downloading the update…";
+        try
+        {
+            // Returns on Windows/macOS just before the app exits to relaunch; on the AppImage build it
+            // re-execs and never returns. The coordinator surfaces any failure through its own status.
+            await _updates.InstallAsync();
+            UpdateStatusText = _updates.HasError ? _updates.StatusText : "Restarting to finish the update…";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Installing the update failed from Settings.", ex);
+            UpdateStatusText = "Couldn't install the update.";
+        }
+        finally
+        {
+            IsUpdateBusy = false;
+        }
+    }
+
+    private bool CanInstallUpdate() => _updates is not null && IsUpdateAvailable && !IsUpdateBusy;
 
     /// <summary>Appearance choices shown as a Themes section so Desktop and Gamepad settings both
     /// expose theme selection; empty when the host did not provide them.</summary>
@@ -318,6 +394,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null,
+        AppUpdateCoordinator? updates = null,
         IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null)
     {
         _configurations = configurations;
@@ -328,6 +405,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _screenScraper = screenScraper;
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
+        _updates = updates;
+        IsUpdateAvailable = updates?.HasAvailableUpdate ?? false;
         _logger = logger ?? NullAppLogger.Instance;
         ThemeChoices = themeChoices ?? [];
         _setAmbientThemeFromArtwork = setAmbientThemeFromArtwork;

@@ -69,6 +69,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IAppThemeService _themeService;
     private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IApplicationLifetimeService? _applicationLifetime;
+    private readonly AppUpdateCoordinator? _updates;
     private readonly IOnScreenKeyboardService _onScreenKeyboard;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
@@ -615,6 +616,9 @@ public partial class MainViewModel : ViewModelBase
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
     public bool IsStatusProgress => StatusSeverity == StatusSeverity.Progress;
     public bool IsStatusInfo => StatusSeverity == StatusSeverity.Info;
+
+    /// <summary>In-app auto-update state, bound by the update banner. Null in design-time and tests.</summary>
+    public AppUpdateCoordinator? Updates => _updates;
     /// <summary>
     /// True while an emulator owns the game session, plus a short return guard that absorbs the
     /// controller/key used to close it. Input services poll this directly, so it remains accurate
@@ -711,9 +715,11 @@ public partial class MainViewModel : ViewModelBase
         ISettingsService? settingsService = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
         IGameDetailsStore? gameDetails = null,
-        IAppPaths? appPaths = null)
+        IAppPaths? appPaths = null,
+        AppUpdateCoordinator? updates = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
+        _updates = updates;
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;
         _screenScraperPreview = screenScraperPreview;
@@ -4494,7 +4500,8 @@ public partial class MainViewModel : ViewModelBase
                 CreateScreenScraperSettingsContext(),
                 ThemeChoices,
                 AmbientThemeFromArtwork,
-                SetAmbientThemeFromArtworkAsync);
+                SetAmbientThemeFromArtworkAsync,
+                Updates);
         }
         catch (Exception ex)
         {
@@ -4531,6 +4538,7 @@ public partial class MainViewModel : ViewModelBase
             ambientThemeFromArtwork: AmbientThemeFromArtwork,
             setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync,
             profiles: profiles,
+            updates: Updates,
             libraryFolders: libraryFolders);
     }
 

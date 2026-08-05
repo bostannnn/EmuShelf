@@ -7,10 +7,12 @@ using EmuShelf.App.Startup;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Updates;
 using EmuShelf.Infrastructure.Achievements;
 using EmuShelf.Infrastructure.Input;
 using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Metadata.ScreenScraper;
+using EmuShelf.Infrastructure.Updates;
 
 namespace EmuShelf.App;
 
@@ -20,6 +22,7 @@ public partial class App : Application
     private HttpClient? _metadataHttpClient;
     private HttpClient? _webArtworkHttpClient;
     private HttpClient? _retroAchievementsHttpClient;
+    private HttpClient? _updateHttpClient;
     private GamepadInputService? _gamepadInput;
 
     public override void Initialize()
@@ -169,6 +172,23 @@ public partial class App : Application
                 Bootstrapper.Paths,
                 _retroAchievementsHttpClient,
                 Bootstrapper.Logger);
+            // In-app auto-update from GitHub Releases. The check hits only the public API; the applier
+            // is platform-specific (AppImage re-exec on the Steam Deck, helper swap on Windows/macOS).
+            _updateHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+            _updateHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"EmuShelf/{AppBuildInfo.Version}");
+            var updateApplier = UpdateApplierFactory.Create(Bootstrapper.Paths, Bootstrapper.Logger);
+            var updateService = new GitHubUpdateService(
+                _updateHttpClient,
+                SemanticVersion.ParseOrZero(AppBuildInfo.Version),
+                Bootstrapper.Paths,
+                Bootstrapper.Logger);
+            var updateCoordinator = new AppUpdateCoordinator(
+                updateService,
+                updateApplier,
+                Bootstrapper.SettingsService,
+                Bootstrapper.Settings,
+                Bootstrapper.Logger,
+                requestExit: () => desktop.Shutdown());
             var viewModel = new MainViewModel(
                 Bootstrapper.Library,
                 Bootstrapper.FolderScanner,
@@ -219,7 +239,8 @@ public partial class App : Application
                 settingsService: Bootstrapper.SettingsService,
                 onScreenKeyboard: new PlatformOnScreenKeyboardService(),
                 gameDetails: Bootstrapper.GameDetailsStore,
-                appPaths: Bootstrapper.Paths);
+                appPaths: Bootstrapper.Paths,
+                updates: updateCoordinator);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
@@ -244,6 +265,7 @@ public partial class App : Application
                     _ = viewModel.RefreshAvailabilityAsync();
                     _ = viewModel.RefreshRetroAchievementsProgressAtStartupAsync();
                     _ = viewModel.LoadTexturePacksAtStartupAsync();
+                    _ = viewModel.Updates?.CheckOnLaunchAsync();
                 }, DispatcherPriority.Background);
             desktop.Exit += (_, _) =>
             {
@@ -251,6 +273,7 @@ public partial class App : Application
                 _webArtworkHttpClient?.Dispose();
                 _metadataHttpClient?.Dispose();
                 _retroAchievementsHttpClient?.Dispose();
+                _updateHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");
             };
 
