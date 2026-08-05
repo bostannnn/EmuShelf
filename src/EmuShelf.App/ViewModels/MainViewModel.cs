@@ -1991,9 +1991,10 @@ public partial class MainViewModel : ViewModelBase
         if (oldValue is not null)
         {
             oldValue.IsFocused = false;
-            // Only the current hero keeps a decoded fan-art bitmap, so scrolling a long list never
-            // accumulates full-size images. The path/rating stay cached for an instant re-focus.
+            // Only the current hero keeps decoded backdrop/logo bitmaps, so scrolling a long list
+            // never accumulates full-size images. The path/rating stay cached for an instant re-focus.
             oldValue.FanartImage = null;
+            oldValue.WheelImage = null;
         }
         if (newValue is not null)
         {
@@ -2040,10 +2041,14 @@ public partial class MainViewModel : ViewModelBase
         if (game is null)
             return;
 
-        var key = game.CoverPath;
+        // The spotlight's fan-art backdrop fills the screen, so recolour from it there; the cover
+        // drives the grid. Until the fan art has decoded, fall back to the cover so the tint still
+        // moves with focus (LoadSpotlightHero re-triggers this once the backdrop is ready).
+        var useFanart = IsGamepadSpotlightView && game.FanartImage is not null;
+        var key = useFanart ? game.FanartPath : game.CoverPath;
         if (string.IsNullOrEmpty(key))
         {
-            // No cover for this game → show the chosen theme rather than the previous game's colour.
+            // No art for this game → show the chosen theme rather than the previous game's colour.
             _themeService.ClearArtworkPalette();
             return;
         }
@@ -2055,9 +2060,9 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var image = game.CoverImage;
+        var image = useFanart ? game.FanartImage : game.CoverImage;
         if (image is null)
-            return; // cover not decoded yet; keep the current palette until it loads
+            return; // art not decoded yet; keep the current palette until it loads
 
         var pixels = ArtworkPaletteExtractor.CopyPixels(image);
         if (pixels is null)
@@ -2131,6 +2136,11 @@ public partial class MainViewModel : ViewModelBase
                 () => game.FanartImage is not null,
                 image => game.FanartImage = image,
                 SpotlightFanartMaxWidth, SpotlightFanartMaxHeight);
+
+            // The cover-based tint was a placeholder while the backdrop decoded; recolour from the
+            // fan art now that it exists so the accent matches what fills the screen.
+            if (game.FanartImage is not null && generation == _spotlightHeroGeneration)
+                ScheduleAmbientThemeUpdate(game);
 
             await LoadSpotlightBitmapAsync(
                 game, generation,

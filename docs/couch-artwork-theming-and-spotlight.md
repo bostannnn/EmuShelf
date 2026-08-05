@@ -85,12 +85,18 @@ Turned the boxed hero into a proper console dashboard:
   new bulk `IGameMetadataStore.GetProviderTitles()` at scope build; `Title`, the grid, and the
   desktop are untouched. Test: `GetProviderTitles_ReturnsScrapedTitles_PreferringTheNeutralLocale`.
 
+### 3b. Ambient palette from the fan art ✅
+
+`ApplyAmbientThemeForPendingGame` now samples the **fan-art backdrop** in the spotlight
+(the cover still drives the grid), so the accent matches what fills the screen. It falls
+back to the cover until the backdrop decodes, and `LoadSpotlightHero` re-triggers the tint
+once the fan art is ready. Cached per art path; requires the "Match colours to artwork"
+toggle (Desktop Settings ▸ Appearance) to be on.
+
 ## Not done — next
 
-### 3b. Remaining hero polish ⛔
+### 3c. Remaining hero polish ⛔
 
-- Point the colour engine at the fan art instead of the cover
-  (`ApplyAmbientThemeForPendingGame` still samples `CoverImage`).
 - Favourites hearts/filter in the list rows.
 - A display-font / spacing pass to match the mockups' typography.
 
