@@ -69,18 +69,20 @@ public class GamepadNavigationControllerTests
     }
 
     [Fact]
-    public void Poll_DpadHeld_AutoRepeatAcceleratesToAFloor()
+    public void Poll_HorizontalHeld_AutoRepeatAcceleratesToTheFastFloor()
     {
         // A long hold should ramp from the start interval down to the floor and never overshoot it,
-        // so navigating a big library glides instead of crawling at one fixed cadence.
+        // so navigating a big library glides instead of crawling at one fixed cadence. Left/Right moves
+        // within a row (no scroll), so it reaches the fast floor.
         var controller = new GamepadNavigationController(
-            initialRepeatDelayMs: 300, repeatIntervalMs: 90, minRepeatIntervalMs: 40, rampRepeats: 5);
+            initialRepeatDelayMs: 300, repeatIntervalMs: 90, minRepeatIntervalMs: 40, rampRepeats: 5,
+            verticalMinRepeatIntervalMs: 72);
         controller.Poll(Connected(), 0);
 
         var fireTimes = new List<long>();
         for (long t = 0; t <= 3000 && fireTimes.Count < 12; t++)
         {
-            if (controller.Poll(Connected(GamepadButtons.DpadDown), t).Contains(GamepadAction.NavigateDown))
+            if (controller.Poll(Connected(GamepadButtons.DpadRight), t).Contains(GamepadAction.NavigateRight))
                 fireTimes.Add(t);
         }
 
@@ -96,6 +98,29 @@ public class GamepadNavigationControllerTests
         for (var i = 1; i < gaps.Count; i++)
             Assert.True(gaps[i] <= gaps[i - 1], $"repeat gap {gaps[i]} should not exceed the previous {gaps[i - 1]}");
         Assert.Equal(40, gaps[^1]);
+    }
+
+    [Fact]
+    public void Poll_VerticalHeld_RampsToAGentlerFloorThanHorizontal()
+    {
+        // Up/Down scrolls a whole row, so a held vertical direction ramps to a higher (gentler) floor
+        // than horizontal — a too-fast vertical hold outruns the grid's row virtualization/centre-reveal
+        // and reads as rows blinking and jumping.
+        var controller = new GamepadNavigationController(
+            initialRepeatDelayMs: 300, repeatIntervalMs: 90, minRepeatIntervalMs: 40, rampRepeats: 5,
+            verticalMinRepeatIntervalMs: 72);
+        controller.Poll(Connected(), 0);
+
+        var fireTimes = new List<long>();
+        for (long t = 0; t <= 4000 && fireTimes.Count < 12; t++)
+        {
+            if (controller.Poll(Connected(GamepadButtons.DpadDown), t).Contains(GamepadAction.NavigateDown))
+                fireTimes.Add(t);
+        }
+
+        var lastGap = fireTimes[^1] - fireTimes[^2];
+        Assert.Equal(72, lastGap);       // reaches the gentler vertical floor
+        Assert.True(lastGap > 40, "vertical should settle slower than the horizontal floor");
     }
 
     [Fact]

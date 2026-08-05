@@ -4494,3 +4494,15 @@ unchanged. The home directory is used directly because `SpecialFolder.Applicatio
 on .NET for macOS, not the Cocoa location. This is the "non-portable data location" the 2026-07-12 macOS
 entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
 (threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.
+
+## 2026-08-05 — Gamepad grid: gentler vertical auto-repeat floor than horizontal
+
+The accelerating auto-repeat (90 → 38 ms floor) felt great moving Left/Right in the couch grid but
+janky moving Up/Down — rows "blinking and jumping" on Steam Deck. Cause: Left/Right steps within a row
+(no scroll), but each Up/Down step scrolls a whole row and drives the centre-reveal, which falls back
+to a hard `ScrollIntoView` snap whenever the target row hasn't virtualized yet. At the 38 ms floor the
+vertical hold outruns row virtualization, so the snap path dominates and covers pop in/out.
+
+`GamepadNavigationController` now ramps vertical (Up/Down) to a gentler `verticalMinRepeatIntervalMs`
+(72 ms) while horizontal keeps the fast 38 ms floor, so the reveal keeps up and the grid glides both
+ways. Per-axis floor, unit-tested. The value is tunable; the reveal logic itself is untouched.
