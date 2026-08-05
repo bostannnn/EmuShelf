@@ -39,6 +39,8 @@ public sealed class MarqueeTextBlock : Decorator
     private readonly TextBlock _text;
     private readonly TranslateTransform _transform = new();
     private CancellationTokenSource? _animation;
+    private double _lastTextWidth = double.NaN;
+    private double _lastViewWidth = double.NaN;
 
     /// <summary>True after layout when the text is wider than the slot (so it scrolls). Exposed for tests.</summary>
     internal bool IsOverflowing { get; private set; }
@@ -120,17 +122,31 @@ public sealed class MarqueeTextBlock : Decorator
         _animation?.Cancel();
         _animation = null;
         _transform.X = 0;
+        _lastTextWidth = double.NaN;
+        _lastViewWidth = double.NaN;
     }
 
     private void StartOrStop(double textWidth, double viewWidth)
     {
+        var overflow = textWidth - viewWidth;
+        IsOverflowing = overflow > 1 && viewWidth > 0;
+        var shouldScroll = IsOverflowing && this.IsAttachedToVisualTree() && IsEffectivelyVisible;
+
+        // Layout can run several passes; if the text width and slot are unchanged and the loop is
+        // already in the right state, leave the running animation alone rather than restart it (which
+        // would jump the title back to the start).
+        static bool Close(double a, double b) => Math.Abs(a - b) < 0.5;
+        if (Close(textWidth, _lastTextWidth) && Close(viewWidth, _lastViewWidth) &&
+            shouldScroll == (_animation is not null))
+            return;
+        _lastTextWidth = textWidth;
+        _lastViewWidth = viewWidth;
+
         _animation?.Cancel();
         _animation = null;
         _transform.X = 0;
 
-        var overflow = textWidth - viewWidth;
-        IsOverflowing = overflow > 1 && viewWidth > 0;
-        if (!IsOverflowing || !this.IsAttachedToVisualTree())
+        if (!shouldScroll)
             return; // it fits (or isn't shown) — leave it static
 
         var distance = overflow + TailGap;
