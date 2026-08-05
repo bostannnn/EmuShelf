@@ -2075,7 +2075,7 @@
                                Classes.focused="{Binding IsSpotlightPlayFocused}"
                                VerticalAlignment="Center">
                             <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
-                                    Margin="-5" CornerRadius="21"
+                                    Margin="-5" CornerRadius="17"
                                     Background="{DynamicResource EmuAccentBrush}"
                                     BoxShadow="{DynamicResource EmuFocusGlow}" />
                             <Button Classes="gamepad-play-action"
