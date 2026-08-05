@@ -2121,7 +2121,7 @@
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     </StackPanel>
                                     <Border Grid.Row="1" Height="1" Background="{DynamicResource EmuBorderBrush}" />
-                                    <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+                                    <Grid Grid.Row="2" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
                                         <Button Grid.Row="0" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsGeneralSection}"
                                                 Focusable="False"
@@ -2148,6 +2148,19 @@
                                             </Grid>
                                         </Button>
                                         <Button Grid.Row="2" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
+                                                Classes.selected="{Binding GamepadSettings.IsScreenScraperSection}"
+                                                IsVisible="{Binding GamepadSettings.Settings.HasScreenScraper}"
+                                                Focusable="False"
+                                                Command="{Binding GamepadSettings.SelectSectionCommand}"
+                                                CommandParameter="{x:Static vm:SettingsSection.ScreenScraper}">
+                                            <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
+                                                <Border Width="5" CornerRadius="3"
+                                                        Background="{DynamicResource EmuAccentBrush}"
+                                                        IsVisible="{Binding GamepadSettings.IsScreenScraperSection}" />
+                                                <TextBlock Grid.Column="1" Text="ScreenScraper" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
+                                        <Button Grid.Row="3" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsSavesSection}"
                                                 IsVisible="{Binding GamepadSettings.Settings.HasCloudSaves}"
                                                 Focusable="False"
@@ -2160,7 +2173,7 @@
                                                 <TextBlock Grid.Column="1" Text="Saves" VerticalAlignment="Center" />
                                             </Grid>
                                         </Button>
-                                        <Button Grid.Row="3" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
+                                        <Button Grid.Row="4" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsTexturePacksSection}"
                                                 IsVisible="{Binding GamepadSettings.Settings.HasTexturePacks}"
                                                 Focusable="False"
@@ -2173,7 +2186,7 @@
                                                 <TextBlock Grid.Column="1" Text="Texture Packs" VerticalAlignment="Center" />
                                             </Grid>
                                         </Button>
-                                        <Button Grid.Row="4" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
+                                        <Button Grid.Row="5" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsThemesSection}"
                                                 IsVisible="{Binding GamepadSettings.ShowThemes}"
                                                 Focusable="False"

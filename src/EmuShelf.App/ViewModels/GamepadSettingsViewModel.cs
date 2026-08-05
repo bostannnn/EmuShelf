@@ -187,6 +187,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private Func<Task>? _pendingConfirmation;
     private Action<string>? _commitText;
     private bool _synchronizingSection;
+    private bool _applyingLocalEdit;
     private bool _texturePackListExpanded;
     private bool _disposed;
 
@@ -276,6 +277,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     public string SectionTitle => IsThemesSection ? "Themes" : SelectedSection switch
     {
         SettingsSection.RetroAchievements => "RetroAchievements",
+        SettingsSection.ScreenScraper => "ScreenScraper",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
         _ => "General",
@@ -287,6 +289,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         SettingsSection.RetroAchievements =>
             "Read achievement sets and your progress. Emulators still own unlocks and submission.",
+        SettingsSection.ScreenScraper =>
+            "Sign in to fetch titles and artwork from ScreenScraper. Game files are never uploaded.",
         SettingsSection.Saves =>
             "Reconcile emulator saves through your own rclone remote. Game files are never included.",
         SettingsSection.TexturePacks =>
@@ -299,6 +303,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.RetroAchievements => FirstNonEmpty(
             _settings.RetroAchievementsProgressText,
             _settings.RetroAchievementsStatusText),
+        SettingsSection.ScreenScraper => _settings.ScreenScraperStatusText,
         SettingsSection.Saves => FirstNonEmpty(
             _settings.CloudSyncProgressText,
             _settings.CloudStatusText),
@@ -316,6 +321,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
     public bool IsGeneralSection => !IsThemesSection && SelectedSection == SettingsSection.General;
     public bool IsRetroAchievementsSection => !IsThemesSection && SelectedSection == SettingsSection.RetroAchievements;
+    public bool IsScreenScraperSection => !IsThemesSection && SelectedSection == SettingsSection.ScreenScraper;
     public bool IsSavesSection => !IsThemesSection && SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => !IsThemesSection && SelectedSection == SettingsSection.TexturePacks;
 
@@ -747,7 +753,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         if (!IsTextEntryOpen)
             return;
 
-        _commitText?.Invoke(DraftText);
+        RunLocalEdit(() => _commitText?.Invoke(DraftText));
         CloseTextEntry();
         RebuildRows();
     }
@@ -817,6 +823,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasStatus));
         OnPropertyChanged(nameof(IsGeneralSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
+        OnPropertyChanged(nameof(IsScreenScraperSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
         OnPropertyChanged(nameof(IsRowsVisible));
@@ -844,6 +851,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
         OnPropertyChanged(nameof(IsGeneralSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
+        OnPropertyChanged(nameof(IsScreenScraperSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
         RebuildRows(_focusedRowBySection.GetValueOrDefault(value));
@@ -915,6 +923,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         foreach (var row in SelectedSection switch
         {
             SettingsSection.RetroAchievements => BuildRetroAchievementsRows(),
+            SettingsSection.ScreenScraper => BuildScreenScraperRows(),
             SettingsSection.Saves => BuildSaveRows(),
             SettingsSection.TexturePacks => BuildTextureRows(),
             _ => BuildGeneralRows(),
@@ -1011,6 +1020,51 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsRetroAchievementsBusy ? "CONNECTING…" : "A CONNECT",
             _settings.ConnectRetroAchievementsCommand,
             !_settings.IsRetroAchievementsBusy);
+    }
+
+    private IEnumerable<GamepadSettingsRowSpec> BuildScreenScraperRows()
+    {
+        if (_settings.IsScreenScraperConnected)
+        {
+            yield return InformationRow(
+                "scraper.account",
+                "Connected account",
+                "Titles and artwork are fetched on demand from the per-game scraper.",
+                _settings.ScreenScraperConnectedName ?? string.Empty);
+            yield return ActionRow(
+                "scraper.disconnect",
+                "Disconnect ScreenScraper",
+                "Remove the locally stored login. Your ScreenScraper account is not changed.",
+                "A DISCONNECT",
+                _settings.DisconnectScreenScraperCommand,
+                !_settings.IsScreenScraperBusy,
+                isDestructive: true,
+                confirmationTitle: "Disconnect ScreenScraper?",
+                confirmationText: "EmuShelf will remove its saved login. Your ScreenScraper account stays untouched.");
+            yield break;
+        }
+
+        yield return TextRow(
+            "scraper.username",
+            "Username",
+            "Your ScreenScraper account name.",
+            _settings.ScreenScraperUsername,
+            false,
+            value => _settings.ScreenScraperUsername = value);
+        yield return TextRow(
+            "scraper.password",
+            "Password",
+            "Passed directly to ScreenScraper to sign in. It is masked, never logged, and never written to settings.json.",
+            _settings.ScreenScraperPassword,
+            true,
+            value => _settings.ScreenScraperPassword = value);
+        yield return ActionRow(
+            "scraper.connect",
+            "Connect",
+            "Validate the account so per-game scraping can fetch titles and artwork.",
+            _settings.IsScreenScraperBusy ? "CONNECTING…" : "A CONNECT",
+            _settings.ConnectScreenScraperCommand,
+            !_settings.IsScreenScraperBusy);
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildSaveRows()
@@ -1328,7 +1382,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         bool isGrouped = false,
         string? systemId = null)
     {
-        void Toggle(int _) => set(!value);
+        void Toggle(int _) => RunLocalEdit(() => set(!value));
         return new GamepadSettingsRowSpec(
             key,
             label,
@@ -1338,7 +1392,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             enabled,
             Activate: () =>
             {
-                set(!value);
+                RunLocalEdit(() => set(!value));
                 return Task.CompletedTask;
             },
             Adjust: Toggle,
@@ -1362,7 +1416,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             var index = choices.ToList().IndexOf(value);
             if (index < 0)
                 index = 0;
-            set(choices[Math.Clamp(index + Math.Sign(delta), 0, choices.Count - 1)]);
+            RunLocalEdit(() => set(choices[Math.Clamp(index + Math.Sign(delta), 0, choices.Count - 1)]));
         }
 
         return new GamepadSettingsRowSpec(
@@ -1440,11 +1494,29 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (_synchronizingSection)
+        // A local toggle/choice/text edit writes to the settings model, which echoes PropertyChanged
+        // back here. Skip the rebuild for those: the caller that made the edit runs one explicit
+        // RebuildRows itself, so honoring this echo too would rebuild the entire list twice per press.
+        if (_synchronizingSection || _applyingLocalEdit)
             return;
         RebuildRows();
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
+    }
+
+    // A synchronous edit that writes straight to the Desktop settings model. Suppresses the echoed
+    // rebuild (see OnSettingsPropertyChanged) so only the caller's explicit RebuildRows runs.
+    private void RunLocalEdit(Action edit)
+    {
+        _applyingLocalEdit = true;
+        try
+        {
+            edit();
+        }
+        finally
+        {
+            _applyingLocalEdit = false;
+        }
     }
 
     private void OnSettingsCloseRequested(bool saved) => CloseRequested?.Invoke(saved);

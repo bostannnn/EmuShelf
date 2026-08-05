@@ -82,6 +82,60 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task ScreenScraperSection_ConnectsThroughExistingModelAndSwitchesToConnectedRows()
+    {
+        string? connectedUser = null;
+        string? connectedPassword = null;
+        using var viewModel = CreateGamepadSettings(
+            screenScraper: CreateScreenScraperContext(
+                onConnect: (username, password) =>
+                {
+                    connectedUser = username;
+                    connectedPassword = password;
+                }));
+
+        Assert.Contains(SettingsSection.ScreenScraper, viewModel.Sections);
+
+        viewModel.SelectedSection = SettingsSection.ScreenScraper;
+        Assert.True(viewModel.IsScreenScraperSection);
+        Assert.Equal("ScreenScraper", viewModel.SectionTitle);
+
+        // Disconnected: the section offers username, a masked password, and connect.
+        var username = viewModel.Rows.Single(row => row.Key == "scraper.username");
+        await username.SelectCommand.ExecuteAsync(null);
+        viewModel.DraftText = "collector";
+        viewModel.Dispatch(GamepadAction.Confirm);
+
+        var password = viewModel.Rows.Single(row => row.Key == "scraper.password");
+        await password.SelectCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsSecretEntry);
+        viewModel.DraftText = "s3cret-pass";
+        viewModel.Dispatch(GamepadAction.Confirm);
+
+        Assert.Equal("collector", viewModel.Settings.ScreenScraperUsername);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Value.Contains("s3cret", StringComparison.Ordinal));
+
+        var connect = viewModel.Rows.Single(row => row.Key == "scraper.connect");
+        await connect.SelectCommand.ExecuteAsync(null);
+
+        Assert.Equal("collector", connectedUser);
+        Assert.Equal("s3cret-pass", connectedPassword);
+        Assert.Equal("collector", viewModel.Settings.ScreenScraperConnectedName);
+
+        // Connected: the entry rows collapse into the account summary and a disconnect action.
+        Assert.Contains(viewModel.Rows, row => row.Key == "scraper.disconnect");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.connect");
+    }
+
+    [AvaloniaFact]
+    public void ScreenScraperSection_IsOmittedWhenNoAccountContextIsProvided()
+    {
+        using var viewModel = CreateGamepadSettings(retroAchievements: CreateRetroAchievementsContext());
+
+        Assert.DoesNotContain(SettingsSection.ScreenScraper, viewModel.Sections);
+    }
+
+    [AvaloniaFact]
     public async Task SaveRow_UsesExistingPersistenceAndReportsSavedClose()
     {
         bool? showEmpty = null;
@@ -246,8 +300,9 @@ public sealed class GamepadSettingsViewModelTests
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null,
         IOnScreenKeyboardService? onScreenKeyboard = null) => new(
-            CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks),
+            CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks, screenScraper),
             onScreenKeyboard);
 
     private EmulatorSettingsViewModel CreateSettings(
@@ -255,7 +310,8 @@ public sealed class GamepadSettingsViewModelTests
         IMetadataPreferencesService? metadataPreferences = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
-        TexturePackSettingsContext? texturePacks = null) => new(
+        TexturePackSettingsContext? texturePacks = null,
+        ScreenScraperSettingsContext? screenScraper = null) => new(
             KnownSystems.All,
             KnownEmulators.All,
             KnownSystems.All.ToDictionary(
@@ -268,7 +324,8 @@ public sealed class GamepadSettingsViewModelTests
             metadataPreferences,
             retroAchievements: retroAchievements,
             cloudSaves: cloudSaves,
-            texturePacks: texturePacks);
+            texturePacks: texturePacks,
+            screenScraper: screenScraper);
 
     private static LibraryMaintenanceActions CreateMaintenance(Action<bool> setShowEmpty) => new(
         _ => Task.FromResult(string.Empty),
@@ -290,6 +347,24 @@ public sealed class GamepadSettingsViewModelTests
             RetroAchievementsConnectionResult.Connected)),
         _ => Task.CompletedTask,
         (_, _) => Task.FromResult<RetroAchievementsLibrarySyncSummary?>(null));
+
+    private static ScreenScraperSettingsContext CreateScreenScraperContext(
+        bool connected = false,
+        Action<string, string>? onConnect = null,
+        Action? onDisconnect = null) => new(
+        connected,
+        null,
+        (username, password, _) =>
+        {
+            onConnect?.Invoke(username, password);
+            return Task.FromResult(new ScreenScraperConnectionSummary(
+                ScreenScraperConnectionResult.Connected));
+        },
+        _ =>
+        {
+            onDisconnect?.Invoke();
+            return Task.CompletedTask;
+        });
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         bool connected = false,

@@ -290,10 +290,8 @@ public sealed class DialogService : IDialogService
         if (owner is null)
             return;
 
-        var configured = await Task.Run(() => systems.ToDictionary(
-            system => system.Id,
-            system => configurations.Get(system.Id),
-            StringComparer.Ordinal));
+        var configured = await Task.Run(() =>
+            configurations.GetAll(systems.Select(system => system.Id)));
         var viewModel = new EmulatorSettingsViewModel(
             systems,
             emulators,

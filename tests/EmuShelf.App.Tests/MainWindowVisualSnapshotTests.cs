@@ -1818,6 +1818,12 @@ public class MainWindowVisualSnapshotTests
                 ["gamecube"] = "Use the Dolphin-detected folder",
             },
             () => new Dictionary<long, string>());
+        var screenScraper = new ScreenScraperSettingsContext(
+            false,
+            null,
+            (_, _, _) => Task.FromResult(new ScreenScraperConnectionSummary(
+                ScreenScraperConnectionResult.Connected)),
+            _ => Task.CompletedTask);
         var desktopSettings = new EmulatorSettingsViewModel(
             KnownSystems.All,
             KnownEmulators.All,
@@ -1830,7 +1836,8 @@ public class MainWindowVisualSnapshotTests
             maintenance,
             retroAchievements: retroAchievements,
             cloudSaves: cloudSaves,
-            texturePacks: texturePacks);
+            texturePacks: texturePacks,
+            screenScraper: screenScraper);
         var gamepadSettings = new GamepadSettingsViewModel(desktopSettings)
         {
             SelectedSection = SettingsSection.General,
@@ -1839,6 +1846,7 @@ public class MainWindowVisualSnapshotTests
         {
             (SettingsSection.General, "general."),
             (SettingsSection.RetroAchievements, "retro."),
+            (SettingsSection.ScreenScraper, "scraper."),
             (SettingsSection.Saves, "saves."),
             (SettingsSection.TexturePacks, "textures."),
         };
@@ -1895,7 +1903,7 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Button>()
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-nav"))
                 .ToArray();
-            Assert.Equal(4, navigationButtons.Length);
+            Assert.Equal(5, navigationButtons.Length);
             Assert.All(
                 navigationButtons,
                 button => Assert.Equal(navigationButtons[0].Bounds.Width, button.Bounds.Width, 1));
@@ -1910,6 +1918,10 @@ public class MainWindowVisualSnapshotTests
                 outputDirectory,
                 "emushelf-gamepad-settings-retro-1280x800.png");
             AssertGamepadSettingsParity(SettingsSection.RetroAchievements, "retro.");
+
+            gamepadSettings.SelectedSection = SettingsSection.ScreenScraper;
+            await PumpAsync();
+            AssertGamepadSettingsParity(SettingsSection.ScreenScraper, "scraper.");
 
             gamepadSettings.SelectedSection = SettingsSection.TexturePacks;
             await PumpAsync();
@@ -2036,6 +2048,16 @@ public class MainWindowVisualSnapshotTests
             gamepadSettings.SelectedSection = SettingsSection.RetroAchievements;
             await PumpAsync();
             AssertGamepadSettingsParity(SettingsSection.RetroAchievements, "retro.");
+
+            // Connected ScreenScraper swaps the entry rows for the account summary and a disconnect
+            // action, so re-check parity in that state to cover the disconnect row on both surfaces.
+            desktopSettings.ScreenScraperConnectedName = "Parity Player";
+            desktopFieldIds[SettingsSection.ScreenScraper] = await CaptureDesktopFieldIdsAsync(
+                SettingsSection.ScreenScraper,
+                "scraper.");
+            gamepadSettings.SelectedSection = SettingsSection.ScreenScraper;
+            await PumpAsync();
+            AssertGamepadSettingsParity(SettingsSection.ScreenScraper, "scraper.");
 
             desktopSettings.IsCloudConnected = false;
             desktopFieldIds[SettingsSection.Saves] = await CaptureDesktopFieldIdsAsync(
