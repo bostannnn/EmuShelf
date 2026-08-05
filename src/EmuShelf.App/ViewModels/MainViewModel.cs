@@ -2110,8 +2110,10 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         // The cover grid is hidden in spotlight mode, so its tile-attach path never realizes the
-        // focused cover. Load it here for the ambient palette and as the hero's no-fanart fallback.
-        if (game.CoverImage is null && game.LoadCoverCommand.CanExecute(game))
+        // focused cover. The spotlight itself doesn't show the cover (the no-fanart backdrop is a
+        // themed gradient), so decode it only when the ambient palette needs a source before the
+        // fan art has loaded.
+        if (AmbientThemeFromArtwork && game.CoverImage is null && game.LoadCoverCommand.CanExecute(game))
             game.LoadCoverCommand.Execute(game);
 
         var generation = ++_spotlightHeroGeneration;
@@ -2868,9 +2870,6 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
-    // the achievement pass this is local-only and runs on the load worker: the map was already
-    // built in one background pass, so a row never reads a directory or the database itself.
     // Overlays the scraped canonical title onto each game for spotlight display, in one bulk read.
     // Runs on the build worker before the view models are bound, so no cross-thread notify occurs.
     private void ApplySpotlightTitles(IReadOnlyList<GameViewModel> viewModels)
@@ -2894,6 +2893,9 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
+    // the achievement pass this is local-only and runs on the load worker: the map was already
+    // built in one background pass, so a row never reads a directory or the database itself.
     private void ApplyTexturePackDisplays(IReadOnlyList<GameViewModel> viewModels)
     {
         if (_texturePacks is null || viewModels.Count == 0)

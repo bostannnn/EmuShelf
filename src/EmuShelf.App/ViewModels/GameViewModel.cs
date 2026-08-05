@@ -233,16 +233,21 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasRating => RatingText is not null;
 
+    private string? _canonicalSpotlightTitle;
+
     /// <summary>The title shown in the spotlight list and hero — the canonical ScreenScraper name
-    /// when one was scraped, otherwise the game's own title. Spotlight-only, so the grid, desktop,
-    /// and the underlying record keep <see cref="Title"/> untouched.</summary>
-    [ObservableProperty]
-    public partial string SpotlightDisplayTitle { get; set; } = string.Empty;
+    /// when one was scraped, otherwise the game's own title (so a rename still shows through).
+    /// Spotlight-only, so the grid, desktop, and the underlying record keep <see cref="Title"/>
+    /// untouched.</summary>
+    public string SpotlightDisplayTitle => _canonicalSpotlightTitle ?? Title;
 
     /// <summary>Applies the canonical provider title for spotlight display; a null/blank value keeps
     /// the game's own title.</summary>
-    public void ApplySpotlightTitle(string? canonicalTitle) =>
-        SpotlightDisplayTitle = string.IsNullOrWhiteSpace(canonicalTitle) ? Title : canonicalTitle;
+    public void ApplySpotlightTitle(string? canonicalTitle)
+    {
+        _canonicalSpotlightTitle = string.IsNullOrWhiteSpace(canonicalTitle) ? null : canonicalTitle;
+        OnPropertyChanged(nameof(SpotlightDisplayTitle));
+    }
 
     /// <summary>Guards the one-time-per-game details resolve (fan-art/logo paths + rating) the
     /// spotlight hero needs, so scrolling the list re-loads a game's details at most once.</summary>
@@ -381,7 +386,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         SystemId = game.SystemId;
         Path = game.Path;
         Title = displayTitle ?? game.Title;
-        SpotlightDisplayTitle = Title;
         IsAvailable = LaunchModel.IsAvailable;
         CoverPath = game.CoverPath;
         SystemName = systemName;
@@ -445,6 +449,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
         Model = Model with { Title = value };
         OnPropertyChanged(nameof(Initials));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
+        // The spotlight title falls back to Title when no canonical name was scraped, so a rename
+        // (which updates the view model in place, without a scope rebuild) must refresh it too.
+        if (_canonicalSpotlightTitle is null)
+            OnPropertyChanged(nameof(SpotlightDisplayTitle));
     }
 
     partial void OnCoverImageChanging(Bitmap? value)

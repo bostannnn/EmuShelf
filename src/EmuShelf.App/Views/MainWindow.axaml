@@ -1877,8 +1877,11 @@
              the list is a passive selection surface (SelectedItem tracks FocusedGame, auto-scrolling
              it into view). -->
         <Panel Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding ShowGamepadSpotlight}"
+               ClipToBounds="True"
                IsHitTestVisible="{Binding !HasGamepadOverlay}">
-            <!-- Backdrop: the focused game's fan art, edge to edge behind everything. -->
+            <!-- Backdrop: the focused game's fan art, edge to edge behind everything. UniformToFill
+                 overflows its bounds by design, so the Panel clips it to the content area (never over
+                 the platform rail or window edges). -->
             <Image Source="{Binding FocusedGame.FanartImage}" Stretch="UniformToFill"
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    IsVisible="{Binding FocusedGame.HasFanartImage}" />
