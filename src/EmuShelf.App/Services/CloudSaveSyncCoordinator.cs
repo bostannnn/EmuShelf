@@ -19,7 +19,8 @@ public sealed record SaveEmulatorInstallation(
     string? CorePath = null,
     string? LaunchArguments = null,
     string? ExecutablePath = null,
-    string? FlatpakApplicationId = null);
+    string? FlatpakApplicationId = null,
+    string? EmulatorId = null);
 
 /// <summary>
 /// Composes the save-sync pipeline (registry-provided provider + filesystem endpoint + rclone
@@ -783,7 +784,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             installation?.LaunchArguments,
             ResolvePortablePath(installation?.ExecutablePath),
             installation?.FlatpakApplicationId,
-            ResolvePortablePath(configuration.GetStateOverride(systemId)));
+            ResolvePortablePath(configuration.GetStateOverride(systemId)),
+            installation?.EmulatorId);
     }
 
     private static async Task<(string? Summary, IReadOnlyList<OptionalContentDetection> Locations)> DescribeOptionalContentAsync(

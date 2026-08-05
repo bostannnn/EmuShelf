@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 15;
+    private const int CurrentSchemaVersion = 16;
 
     private readonly IAppPaths _appPaths;
 
@@ -138,7 +138,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 15)
+        {
             ApplyMigrationV15(connection);
+            version = 15;
+        }
+
+        if (version < 16)
+            ApplyMigrationV16(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -695,6 +701,73 @@ public sealed class LibraryDatabase
                 WHERE LastPlayedUnixMilliseconds IS NOT NULL;
 
             UPDATE SchemaVersion SET Version = 15;
+            """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV16(SqliteConnection connection)
+    {
+        // Several emulators can now serve one system (a "profile" per console), so an EmulatorConfigs
+        // row is keyed by (SystemId, EmulatorId) rather than SystemId alone, and a separate table
+        // records which profile is active per system. The whole migration runs in one transaction, so
+        // an interruption rolls back rather than leaving a half-renamed table.
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            -- A database migrated from a version below v8 (or a partially-created one) may not have
+            -- EmulatorConfigs yet; heal it before rekeying, matching the v8/v11 IF NOT EXISTS pattern.
+            CREATE TABLE IF NOT EXISTS EmulatorConfigs (
+                SystemId TEXT PRIMARY KEY,
+                ExecutablePath TEXT NULL,
+                LaunchArguments TEXT NULL,
+                EmulatorId TEXT NULL,
+                EmulatorInstallationId TEXT NULL,
+                CorePath TEXT NULL
+            );
+
+            -- Heal any row that never received an emulator id (pre-v8 or interrupted), because it
+            -- becomes part of the new primary key. Mirrors the v8 default mapping.
+            UPDATE EmulatorConfigs
+            SET EmulatorId = CASE SystemId
+                WHEN 'playstation' THEN 'duckstation'
+                WHEN 'playstation2' THEN 'pcsx2'
+                WHEN 'playstation3' THEN 'rpcs3'
+                WHEN 'gamecube' THEN 'dolphin'
+                WHEN 'wii' THEN 'dolphin'
+                WHEN 'psp' THEN 'ppsspp'
+                ELSE SystemId
+            END
+            WHERE EmulatorId IS NULL OR trim(EmulatorId) = '';
+
+            DROP TABLE IF EXISTS EmulatorConfigs_v16;
+            CREATE TABLE EmulatorConfigs_v16 (
+                SystemId TEXT NOT NULL,
+                EmulatorId TEXT NOT NULL,
+                ExecutablePath TEXT NULL,
+                LaunchArguments TEXT NULL,
+                EmulatorInstallationId TEXT NULL,
+                CorePath TEXT NULL,
+                PRIMARY KEY (SystemId, EmulatorId)
+            );
+            INSERT INTO EmulatorConfigs_v16 (
+                SystemId, EmulatorId, ExecutablePath, LaunchArguments, EmulatorInstallationId, CorePath)
+            SELECT SystemId, EmulatorId, ExecutablePath, LaunchArguments, EmulatorInstallationId, CorePath
+            FROM EmulatorConfigs;
+            DROP TABLE EmulatorConfigs;
+            ALTER TABLE EmulatorConfigs_v16 RENAME TO EmulatorConfigs;
+
+            CREATE TABLE IF NOT EXISTS SystemEmulatorSelection (
+                SystemId TEXT PRIMARY KEY,
+                EmulatorId TEXT NOT NULL
+            );
+            -- The existing single row per system was authoritative, so its emulator stays active.
+            INSERT OR IGNORE INTO SystemEmulatorSelection (SystemId, EmulatorId)
+            SELECT SystemId, EmulatorId FROM EmulatorConfigs;
+
+            UPDATE SchemaVersion SET Version = 16;
             """;
         command.ExecuteNonQuery();
         transaction.Commit();

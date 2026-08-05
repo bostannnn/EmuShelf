@@ -286,7 +286,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         ScreenScraperSettingsContext? screenScraper = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
-        Func<bool, Task>? setAmbientThemeFromArtwork = null)
+        Func<bool, Task>? setAmbientThemeFromArtwork = null,
+        IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -364,19 +365,18 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         var rows = systems.Select(system =>
         {
             var emulator = emulators.First(candidate => candidate.Supports(system.Id));
+            var supportedEmulators = emulators.Where(candidate => candidate.Supports(system.Id)).ToList();
             configured.TryGetValue(system.Id, out var configuration);
-            var installationId = configuration?.EmulatorInstallationId
+            // The full profile set (all stored emulators for this system) drives the picker; when the
+            // caller only supplied the active configuration, fall back to a single-profile view of it.
+            var systemProfiles = profiles?.GetValueOrDefault(system.Id)
+                ?? new SystemEmulatorProfiles(
+                    system.Id,
+                    configuration?.EmulatorId,
+                    configuration is null ? [] : [configuration]);
+            var installationId = systemProfiles.Active?.EmulatorInstallationId
+                ?? configuration?.EmulatorInstallationId
                 ?? emulator.GetDefaultInstallationId(system.Id);
-            var isShared = systems.Count(otherSystem =>
-            {
-                var otherEmulator = emulators.First(candidate => candidate.Supports(otherSystem.Id));
-                configured.TryGetValue(otherSystem.Id, out var otherConfiguration);
-                return string.Equals(
-                    otherConfiguration?.EmulatorInstallationId
-                        ?? otherEmulator.GetDefaultInstallationId(otherSystem.Id),
-                    installationId,
-                    StringComparison.Ordinal);
-            }) > 1;
             return new EmulatorSettingsRowViewModel(
                 system,
                 emulator,
@@ -388,13 +388,15 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                     : null,
                 isExpanded: false,
                 emulatorInstallationId: installationId,
-                isExecutableShared: isShared,
+                isExecutableShared: false,
                 logger: _logger,
                 folderActions: system.Id == "playstation3" ? null : maintenance?.Folders,
                 runFolderMaintenance: (action, report) => RunMaintenanceAsync(
                     action,
                     "Updating remembered folders…",
-                    report));
+                    report),
+                supportedEmulators: supportedEmulators,
+                profiles: systemProfiles);
         }).ToArray();
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
         foreach (var row in Rows)
@@ -402,7 +404,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             row.ExecutablePathEdited += SynchronizeSharedExecutable;
             row.TargetKindEdited += SynchronizeSharedTargetKind;
             row.FlatpakAppIdEdited += SynchronizeSharedFlatpakAppId;
+            row.ProfileChanged += OnRowProfileChanged;
         }
+        // The active installation of a row can change when its profile changes, so "shared" is derived
+        // from the rows themselves rather than the seed configuration.
+        RecomputeSharedInstallations();
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
         ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
@@ -508,6 +514,39 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             row.IsMaintenanceBlocked = IsWorking;
     }
 
+    // A row's active installation can change when its profile changes, so recompute which rows share
+    // an installation and seed a switched-to shared installation from a sibling that already has one.
+    private void OnRowProfileChanged(EmulatorSettingsRowViewModel source)
+    {
+        RecomputeSharedInstallations();
+
+        if (!source.IsExecutableShared || !string.IsNullOrWhiteSpace(source.ExecutablePath))
+            return;
+
+        var sibling = Rows.FirstOrDefault(row =>
+            row != source &&
+            string.Equals(row.EmulatorInstallationId, source.EmulatorInstallationId, StringComparison.Ordinal) &&
+            (!string.IsNullOrWhiteSpace(row.ExecutablePath) || row.TargetKind == "Flatpak"));
+        if (sibling is null)
+            return;
+
+        source.TargetKind = sibling.TargetKind;
+        source.ExecutablePath = sibling.ExecutablePath;
+        source.FlatpakAppId = sibling.FlatpakAppId;
+    }
+
+    private void RecomputeSharedInstallations()
+    {
+        foreach (var row in Rows)
+        {
+            var sharedCount = Rows.Count(other => string.Equals(
+                other.EmulatorInstallationId,
+                row.EmulatorInstallationId,
+                StringComparison.Ordinal));
+            row.SetExecutableShared(sharedCount > 1);
+        }
+    }
+
     private void SynchronizeSharedExecutable(EmulatorSettingsRowViewModel source, string path) =>
         SynchronizeSharedInstallation(source, row => row.ExecutablePath = path);
 
@@ -553,8 +592,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         StatusText = string.Empty;
         try
         {
-            var configurations = Rows.Select(row => row.ToConfiguration()).ToArray();
-            await Task.Run(() => _configurations.SaveAll(configurations));
+            // Persist every configured profile (not just the active one) so a system's alternative
+            // emulator setup survives, then pin the active profile the user has selected per system.
+            var configurations = Rows.SelectMany(row => row.ToConfigurations()).ToArray();
+            var activeBySystem = Rows.ToDictionary(row => row.SystemId, row => row.EmulatorId, StringComparer.Ordinal);
+            await Task.Run(() =>
+            {
+                _configurations.SaveAll(configurations);
+                foreach (var (systemId, emulatorId) in activeBySystem)
+                    _configurations.SetActiveEmulator(systemId, emulatorId);
+            });
             if (_metadataPreferences is not null)
             {
                 await _metadataPreferences.SaveAutomaticFetchAsync(

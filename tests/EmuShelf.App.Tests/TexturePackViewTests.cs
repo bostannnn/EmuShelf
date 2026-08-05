@@ -61,6 +61,37 @@ public class TexturePackViewTests
     }
 
     [AvaloniaFact]
+    public void SettingsWindow_MultiEmulatorRow_RendersTheEmulatorProfilePicker()
+    {
+        // The PlayStation row now has two profiles (DuckStation / RetroArch), so its picker must
+        // render and bind. Nothing else renders the Emulators section, so this is its binding proof.
+        var viewModel = CreateSettingsViewModel();
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        var window = new EmulatorSettingsWindow { DataContext = viewModel };
+        window.Show();
+        try
+        {
+            viewModel.Rows.Single(row => row.SystemId == "playstation").IsExpanded = true;
+            Dispatcher.UIThread.RunJobs();
+
+            var profileNames = window.GetVisualDescendants()
+                .OfType<ComboBox>()
+                .Select(box => box.ItemsSource)
+                .OfType<IEnumerable<EmulatorSettingsRowViewModel.EmulatorProfileOption>>()
+                .SelectMany(options => options)
+                .Select(option => option.EmulatorName)
+                .ToArray();
+
+            Assert.Contains("DuckStation", profileNames);
+            Assert.Contains("RetroArch", profileNames);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void SettingsWindow_OffersNoDestructivePackActionInTheTextureSection()
     {
         var viewModel = CreateSettingsViewModel();

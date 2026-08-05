@@ -18,17 +18,28 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private readonly LibraryFolderManagementActions? _folderActions;
     private readonly Func<Func<Task<string>>, Action<string>, Task>? _runFolderMaintenance;
     private readonly string _homeDirectory;
+    // The emulator definitions that can serve this system, keyed by id, and one saved draft per
+    // emulator so switching the profile picker keeps each profile's edits.
+    private readonly Dictionary<string, EmulatorDefinition> _emulatorsById;
+    private readonly Dictionary<string, ProfileDraft> _drafts = new(StringComparer.Ordinal);
+    private bool _switchingProfile;
 
     public string SystemId { get; }
     public string SystemName { get; }
     public string SystemShortName { get; }
     public string AccentColor { get; }
-    public string EmulatorName { get; }
-    public string DefaultLaunchArguments { get; }
-    public string EmulatorId { get; }
-    public string EmulatorInstallationId { get; }
-    public bool RequiresCorePath { get; }
-    public bool IsExecutableShared { get; }
+    public string EmulatorName { get; private set; }
+    public string DefaultLaunchArguments { get; private set; }
+    public string EmulatorId { get; private set; }
+    public string EmulatorInstallationId { get; private set; }
+    public bool RequiresCorePath { get; private set; }
+    public bool IsExecutableShared { get; private set; }
+
+    /// <summary>Every emulator that can serve this system, in registration order, for the picker.</summary>
+    public IReadOnlyList<EmulatorProfileOption> AvailableProfiles { get; }
+
+    /// <summary>The picker is only meaningful when a system has more than one supported emulator.</summary>
+    public bool HasMultipleProfiles => AvailableProfiles.Count > 1;
     /// <summary>Flatpak targets are meaningful only on Linux.</summary>
     public bool CanSelectFlatpakTarget => OperatingSystem.IsLinux();
     public bool IsLaunchTargetPickerVisible => CanSelectFlatpakTarget;
@@ -58,6 +69,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     internal event Action<EmulatorSettingsRowViewModel, string>? ExecutablePathEdited;
     internal event Action<EmulatorSettingsRowViewModel, string>? TargetKindEdited;
     internal event Action<EmulatorSettingsRowViewModel, string>? FlatpakAppIdEdited;
+    /// <summary>Raised after the active emulator profile changes, so the parent can recompute which
+    /// executables are shared and seed a switched-to shared installation.</summary>
+    internal event Action<EmulatorSettingsRowViewModel>? ProfileChanged;
 
     [ObservableProperty]
     public partial string ExecutablePath { get; set; }
@@ -73,6 +87,11 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial string LaunchArguments { get; set; }
+
+    /// <summary>The active emulator profile for this system. Changing it swaps the editable fields to
+    /// that profile's saved draft; the previous profile's edits are kept for when it is picked again.</summary>
+    [ObservableProperty]
+    public partial EmulatorProfileOption? SelectedProfile { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCorePath))]
@@ -123,7 +142,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         IAppLogger? logger = null,
         string? homeDirectory = null,
         LibraryFolderManagementActions? folderActions = null,
-        Func<Func<Task<string>>, Action<string>, Task>? runFolderMaintenance = null)
+        Func<Func<Task<string>>, Action<string>, Task>? runFolderMaintenance = null,
+        IReadOnlyList<EmulatorDefinition>? supportedEmulators = null,
+        SystemEmulatorProfiles? profiles = null)
     {
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
@@ -136,33 +157,155 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         SystemName = system.Name;
         SystemShortName = system.ShortName;
         AccentColor = system.AccentColor;
-        EmulatorName = emulator.Name;
-        EmulatorId = configuration?.EmulatorId ?? emulator.Id;
-        EmulatorInstallationId = configuration?.EmulatorInstallationId
-            ?? emulatorInstallationId
-            ?? emulator.Id;
-        DefaultLaunchArguments = emulator.DefaultLaunchArguments;
-        RequiresCorePath = emulator.RequiresCorePath;
-        IsExecutableShared = isExecutableShared;
-        ExecutablePath = configuration?.ExecutablePath ?? string.Empty;
-        TargetKind = configuration?.LaunchTarget is FlatpakApplicationTarget ? "Flatpak" : "Direct";
-        FlatpakAppId = (configuration?.LaunchTarget as FlatpakApplicationTarget)?.AppId ?? string.Empty;
-        if (CanSelectFlatpakTarget)
+
+        // The picker lists every emulator that can serve this system; when only one can (most
+        // systems) it collapses to a single profile and the picker stays hidden.
+        var available = (supportedEmulators is { Count: > 0 } ? supportedEmulators : [emulator])
+            .Where(candidate => candidate.Supports(system.Id))
+            .ToList();
+        if (available.Count == 0)
+            available = [emulator];
+        _emulatorsById = available.ToDictionary(candidate => candidate.Id, StringComparer.Ordinal);
+        AvailableProfiles = available
+            .Select(candidate => new EmulatorProfileOption(candidate.Id, candidate.Name))
+            .ToList();
+
+        // One editable draft per emulator so switching the picker keeps each profile's own edits.
+        foreach (var candidate in available)
         {
-            foreach (var appId in new FlatpakApplicationDiscovery().FindInstalledForEmulator(EmulatorId))
-                AvailableFlatpakApplicationIds.Add(appId);
+            var candidateConfig = profiles is not null
+                ? profiles.ForEmulator(candidate.Id)
+                : string.Equals(candidate.Id, emulator.Id, StringComparison.Ordinal)
+                    ? configuration
+                    : null;
+            var fallbackInstallationId = string.Equals(candidate.Id, emulator.Id, StringComparison.Ordinal)
+                ? emulatorInstallationId
+                : null;
+            _drafts[candidate.Id] = DraftFor(system.Id, candidate, candidateConfig, fallbackInstallationId);
         }
-        LaunchArguments = configuration?.LaunchArguments ?? emulator.DefaultLaunchArguments;
-        CorePath = configuration?.CorePath ?? string.Empty;
+
+        var activeEmulatorId =
+            profiles?.ActiveEmulatorId is { } chosen && _emulatorsById.ContainsKey(chosen) ? chosen
+            : configuration?.EmulatorId is { } configured && _emulatorsById.ContainsKey(configured) ? configured
+            : _emulatorsById.ContainsKey(emulator.Id) ? emulator.Id
+            : available[0].Id;
+
+        // Identity and editable fields are set by LoadProfile under the switch guard so seeding never
+        // fires the shared-installation propagation before the parent has wired it up.
+        EmulatorName = string.Empty;
+        EmulatorId = string.Empty;
+        EmulatorInstallationId = string.Empty;
+        DefaultLaunchArguments = string.Empty;
+        ExecutablePath = string.Empty;
+        LaunchArguments = string.Empty;
+        CorePath = string.Empty;
+        IsExecutableShared = isExecutableShared;
+        _switchingProfile = true;
+        LoadProfile(activeEmulatorId);
+        _switchingProfile = false;
+        SelectedProfile = AvailableProfiles.First(option =>
+            string.Equals(option.EmulatorId, activeEmulatorId, StringComparison.Ordinal));
+
         RefreshAvailableCores();
         IsExpanded = isExpanded;
         RefreshLibraryFolders();
     }
 
+    private static ProfileDraft DraftFor(
+        string systemId,
+        EmulatorDefinition emulator,
+        EmulatorConfiguration? configuration,
+        string? fallbackInstallationId)
+    {
+        var installationId = configuration?.EmulatorInstallationId
+            ?? fallbackInstallationId
+            ?? emulator.GetDefaultInstallationId(systemId);
+        return new ProfileDraft(
+            installationId,
+            configuration?.ExecutablePath ?? string.Empty,
+            configuration?.LaunchTarget is FlatpakApplicationTarget ? "Flatpak" : "Direct",
+            (configuration?.LaunchTarget as FlatpakApplicationTarget)?.AppId ?? string.Empty,
+            configuration?.LaunchArguments ?? emulator.DefaultLaunchArguments,
+            configuration?.CorePath ?? string.Empty);
+    }
+
+    // Applies one profile's emulator identity and its editable draft to the live fields. Runs under
+    // the switch guard so the field setters do not re-broadcast a shared-installation edit.
+    private void LoadProfile(string emulatorId)
+    {
+        var emulator = _emulatorsById[emulatorId];
+        var draft = _drafts[emulatorId];
+        EmulatorName = emulator.Name;
+        EmulatorId = emulator.Id;
+        DefaultLaunchArguments = emulator.DefaultLaunchArguments;
+        RequiresCorePath = emulator.RequiresCorePath;
+        EmulatorInstallationId = draft.InstallationId;
+        ExecutablePath = draft.ExecutablePath;
+        TargetKind = draft.TargetKind;
+        FlatpakAppId = draft.FlatpakAppId;
+        LaunchArguments = draft.LaunchArguments;
+        CorePath = draft.CorePath;
+        OnPropertyChanged(nameof(EmulatorName));
+        OnPropertyChanged(nameof(EmulatorId));
+        OnPropertyChanged(nameof(DefaultLaunchArguments));
+        OnPropertyChanged(nameof(RequiresCorePath));
+        OnPropertyChanged(nameof(EmulatorInstallationId));
+        OnPropertyChanged(nameof(ExecutableDescription));
+        RefreshFlatpakApplicationIds();
+    }
+
+    private void RefreshFlatpakApplicationIds()
+    {
+        AvailableFlatpakApplicationIds.Clear();
+        if (!CanSelectFlatpakTarget)
+            return;
+        foreach (var appId in new FlatpakApplicationDiscovery().FindInstalledForEmulator(EmulatorId))
+            AvailableFlatpakApplicationIds.Add(appId);
+    }
+
+    partial void OnSelectedProfileChanged(EmulatorProfileOption? value)
+    {
+        if (_switchingProfile ||
+            value is null ||
+            !_emulatorsById.ContainsKey(value.EmulatorId) ||
+            string.Equals(value.EmulatorId, EmulatorId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _switchingProfile = true;
+        try
+        {
+            // Snapshot the profile we are leaving so its edits return when it is picked again.
+            _drafts[EmulatorId] = new ProfileDraft(
+                EmulatorInstallationId, ExecutablePath, TargetKind, FlatpakAppId, LaunchArguments, CorePath);
+            LoadProfile(value.EmulatorId);
+        }
+        finally
+        {
+            _switchingProfile = false;
+        }
+
+        RefreshAvailableCores();
+        ProfileChanged?.Invoke(this);
+    }
+
+    /// <summary>Recomputes whether this row's executable is shared with other systems. Parent-driven,
+    /// because sharing depends on how many rows point at the same installation after a profile switch.</summary>
+    public void SetExecutableShared(bool shared)
+    {
+        if (IsExecutableShared == shared)
+            return;
+        IsExecutableShared = shared;
+        OnPropertyChanged(nameof(IsExecutableShared));
+        OnPropertyChanged(nameof(ExecutableDescription));
+    }
+
     partial void OnExecutablePathChanged(string value)
     {
         RefreshAvailableCores();
-        ExecutablePathEdited?.Invoke(this, value);
+        if (!_switchingProfile)
+            ExecutablePathEdited?.Invoke(this, value);
     }
 
     partial void OnTargetKindChanged(string value)
@@ -172,13 +315,15 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsDirectTarget));
         OnPropertyChanged(nameof(IsUnsupportedFlatpakTarget));
         RefreshAvailableCores();
-        TargetKindEdited?.Invoke(this, value);
+        if (!_switchingProfile)
+            TargetKindEdited?.Invoke(this, value);
     }
 
     partial void OnFlatpakAppIdChanged(string value)
     {
         RefreshAvailableCores();
-        FlatpakAppIdEdited?.Invoke(this, value);
+        if (!_switchingProfile)
+            FlatpakAppIdEdited?.Invoke(this, value);
     }
 
     partial void OnCorePathChanged(string value)
@@ -410,18 +555,76 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasRememberedFolders));
     }
 
-    public EmulatorConfiguration ToConfiguration() => new(
-        SystemId,
-        IsFlatpakTarget || string.IsNullOrWhiteSpace(ExecutablePath) ? null : ExecutablePath.Trim(),
-        LaunchArguments)
+    /// <summary>The active profile's configuration. Kept for callers that only need the current one.</summary>
+    public EmulatorConfiguration ToConfiguration()
     {
-        LaunchTarget = IsFlatpakTarget
-            ? (string.IsNullOrWhiteSpace(FlatpakAppId) ? null : new FlatpakApplicationTarget(FlatpakAppId.Trim()))
-            : (string.IsNullOrWhiteSpace(ExecutablePath) ? null : new DirectExecutableTarget(ExecutablePath.Trim())),
-        EmulatorId = EmulatorId,
-        EmulatorInstallationId = EmulatorInstallationId,
-        CorePath = string.IsNullOrWhiteSpace(CorePath) ? null : CorePath.Trim(),
-    };
+        CaptureActiveDraft();
+        return ConfigurationFrom(EmulatorId, _drafts[EmulatorId]);
+    }
+
+    /// <summary>
+    /// Every profile worth persisting for this system: the active one always, plus any alternative
+    /// the user has actually configured, so a second emulator's setup is not lost and an untouched
+    /// alternative does not create an empty row.
+    /// </summary>
+    public IReadOnlyList<EmulatorConfiguration> ToConfigurations()
+    {
+        CaptureActiveDraft();
+        var configurations = new List<EmulatorConfiguration>();
+        foreach (var option in AvailableProfiles)
+        {
+            var isActive = string.Equals(option.EmulatorId, EmulatorId, StringComparison.Ordinal);
+            var draft = _drafts[option.EmulatorId];
+            if (isActive || IsConfigured(option.EmulatorId, draft))
+                configurations.Add(ConfigurationFrom(option.EmulatorId, draft));
+        }
+
+        return configurations;
+    }
+
+    private void CaptureActiveDraft() =>
+        _drafts[EmulatorId] = new ProfileDraft(
+            EmulatorInstallationId, ExecutablePath, TargetKind, FlatpakAppId, LaunchArguments, CorePath);
+
+    private bool IsConfigured(string emulatorId, ProfileDraft draft) =>
+        !string.IsNullOrWhiteSpace(draft.ExecutablePath) ||
+        !string.IsNullOrWhiteSpace(draft.CorePath) ||
+        (draft.TargetKind == "Flatpak" && !string.IsNullOrWhiteSpace(draft.FlatpakAppId)) ||
+        !string.Equals(
+            draft.LaunchArguments,
+            _emulatorsById[emulatorId].DefaultLaunchArguments,
+            StringComparison.Ordinal);
+
+    private EmulatorConfiguration ConfigurationFrom(string emulatorId, ProfileDraft draft)
+    {
+        var isFlatpak = draft.TargetKind == "Flatpak";
+        var executablePath = string.IsNullOrWhiteSpace(draft.ExecutablePath) ? null : draft.ExecutablePath.Trim();
+        return new EmulatorConfiguration(
+            SystemId,
+            isFlatpak ? null : executablePath,
+            draft.LaunchArguments)
+        {
+            LaunchTarget = isFlatpak
+                ? (string.IsNullOrWhiteSpace(draft.FlatpakAppId) ? null : new FlatpakApplicationTarget(draft.FlatpakAppId.Trim()))
+                : (executablePath is null ? null : new DirectExecutableTarget(executablePath)),
+            EmulatorId = emulatorId,
+            EmulatorInstallationId = draft.InstallationId,
+            CorePath = string.IsNullOrWhiteSpace(draft.CorePath) ? null : draft.CorePath.Trim(),
+        };
+    }
 
     public sealed record LibretroCoreOption(string Name, string Path);
+
+    /// <summary>One selectable emulator profile in the picker.</summary>
+    public sealed record EmulatorProfileOption(string EmulatorId, string EmulatorName);
+
+    // The editable state of one emulator profile, cached per emulator so switching the picker keeps
+    // each profile's own edits until Save.
+    private sealed record ProfileDraft(
+        string InstallationId,
+        string ExecutablePath,
+        string TargetKind,
+        string FlatpakAppId,
+        string LaunchArguments,
+        string CorePath);
 }

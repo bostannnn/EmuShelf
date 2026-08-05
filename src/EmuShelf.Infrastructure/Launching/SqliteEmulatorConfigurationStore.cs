@@ -48,12 +48,37 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             ON installations.InstallationId = configurations.EmulatorInstallationId
         """;
 
+    // Selects only the row whose emulator matches the system's active selection. When no selection
+    // exists the COALESCE falls back to the row's own emulator (always true), so the ORDER BY + LIMIT
+    // still yields one deterministic row rather than throwing on an unconfigured legacy database.
+    private const string ActiveEmulatorPredicate =
+        """
+        configurations.EmulatorId = COALESCE(
+            (SELECT EmulatorId FROM SystemEmulatorSelection WHERE SystemId = configurations.SystemId),
+            configurations.EmulatorId)
+        """;
+
     public EmulatorConfiguration? Get(string systemId)
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = SelectColumns + "\nWHERE configurations.SystemId = $systemId;";
+        command.CommandText = SelectColumns +
+            $"\nWHERE configurations.SystemId = $systemId AND {ActiveEmulatorPredicate}" +
+            "\nORDER BY configurations.EmulatorId\nLIMIT 1;";
         command.Parameters.AddWithValue("$systemId", systemId);
+
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? Materialize(reader) : null;
+    }
+
+    public EmulatorConfiguration? GetForEmulator(string systemId, string emulatorId)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = SelectColumns +
+            "\nWHERE configurations.SystemId = $systemId AND configurations.EmulatorId = $emulatorId;";
+        command.Parameters.AddWithValue("$systemId", systemId);
+        command.Parameters.AddWithValue("$emulatorId", emulatorId);
 
         using var reader = command.ExecuteReader();
         return reader.Read() ? Materialize(reader) : null;
@@ -69,18 +94,93 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
 
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText = SelectColumns + ";";
+        command.CommandText = SelectColumns +
+            $"\nWHERE {ActiveEmulatorPredicate}" +
+            "\nORDER BY configurations.SystemId, configurations.EmulatorId;";
 
         using var reader = command.ExecuteReader();
         while (reader.Read())
         {
             var configuration = Materialize(reader);
-            // Ignore stray rows for systems the caller didn't ask about.
-            if (result.ContainsKey(configuration.SystemId))
+            // Ignore stray rows for systems the caller didn't ask about, and keep the first active
+            // row per system (a degenerate no-selection database could return more than one).
+            if (result.TryGetValue(configuration.SystemId, out var existing) && existing is null)
                 result[configuration.SystemId] = configuration;
         }
 
         return result;
+    }
+
+    public string? GetActiveEmulatorId(string systemId)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT EmulatorId FROM SystemEmulatorSelection WHERE SystemId = $systemId;";
+        command.Parameters.AddWithValue("$systemId", systemId);
+        return command.ExecuteScalar() as string;
+    }
+
+    public SystemEmulatorProfiles GetProfiles(string systemId) =>
+        GetAllProfiles([systemId])[systemId];
+
+    public IReadOnlyDictionary<string, SystemEmulatorProfiles> GetAllProfiles(IEnumerable<string> systemIds)
+    {
+        var requested = systemIds.ToArray();
+        var configurations = new Dictionary<string, List<EmulatorConfiguration>>(StringComparer.Ordinal);
+        var active = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var systemId in requested)
+            configurations[systemId] = [];
+
+        using var connection = _database.CreateConnection();
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = SelectColumns +
+                "\nORDER BY configurations.SystemId, configurations.EmulatorId;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var configuration = Materialize(reader);
+                if (configurations.TryGetValue(configuration.SystemId, out var list))
+                    list.Add(configuration);
+            }
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT SystemId, EmulatorId FROM SystemEmulatorSelection;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var systemId = reader.GetString(0);
+                if (configurations.ContainsKey(systemId))
+                    active[systemId] = reader.GetString(1);
+            }
+        }
+
+        return requested.ToDictionary(
+            systemId => systemId,
+            systemId => new SystemEmulatorProfiles(
+                systemId,
+                active.GetValueOrDefault(systemId),
+                configurations[systemId]),
+            StringComparer.Ordinal);
+    }
+
+    public void SetActiveEmulator(string systemId, string emulatorId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(emulatorId);
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            INSERT INTO SystemEmulatorSelection (SystemId, EmulatorId)
+            VALUES ($systemId, $emulatorId)
+            ON CONFLICT(SystemId) DO UPDATE SET EmulatorId = excluded.EmulatorId;
+            """;
+        command.Parameters.AddWithValue("$systemId", systemId);
+        command.Parameters.AddWithValue("$emulatorId", emulatorId.Trim());
+        command.ExecuteNonQuery();
     }
 
     private EmulatorConfiguration Materialize(SqliteDataReader reader)
@@ -161,10 +261,9 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                 VALUES (
                     $systemId, $executablePath, $launchArguments, $emulatorId,
                     $installationId, $corePath)
-                ON CONFLICT(SystemId) DO UPDATE SET
+                ON CONFLICT(SystemId, EmulatorId) DO UPDATE SET
                     ExecutablePath = excluded.ExecutablePath,
                     LaunchArguments = excluded.LaunchArguments,
-                    EmulatorId = excluded.EmulatorId,
                     EmulatorInstallationId = excluded.EmulatorInstallationId,
                     CorePath = excluded.CorePath;
                 """;
@@ -189,6 +288,29 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                 corePath.Value = string.IsNullOrWhiteSpace(configuration.CorePath)
                     ? DBNull.Value
                     : _pathResolver.ToStorablePath(configuration.CorePath);
+                command.ExecuteNonQuery();
+            }
+        }
+
+        // Saving a profile makes it the active one for its system: a single-emulator system stays
+        // exactly as before, and configuring a system's alternative emulator switches launch/saves to
+        // it. When several profiles for one system are saved together, the last one wins here; the
+        // caller can pin a different active profile afterwards with SetActiveEmulator.
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText =
+                """
+                INSERT INTO SystemEmulatorSelection (SystemId, EmulatorId)
+                VALUES ($systemId, $emulatorId)
+                ON CONFLICT(SystemId) DO UPDATE SET EmulatorId = excluded.EmulatorId;
+                """;
+            var systemId = command.Parameters.Add("$systemId", SqliteType.Text);
+            var emulatorId = command.Parameters.Add("$emulatorId", SqliteType.Text);
+            foreach (var configuration in normalized)
+            {
+                systemId.Value = configuration.SystemId;
+                emulatorId.Value = configuration.EmulatorId!;
                 command.ExecuteNonQuery();
             }
         }
