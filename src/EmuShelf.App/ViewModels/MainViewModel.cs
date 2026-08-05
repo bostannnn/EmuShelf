@@ -21,6 +21,7 @@ using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Storage;
 using EmuShelf.Core.Systems;
 using EmuShelf.Core.TexturePacks;
 using EmuShelf.Integrations.Systems;
@@ -58,6 +59,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IGameImportRules _importRules;
     private readonly IAvailabilityChecker _availabilityChecker;
     private readonly IDialogService _dialogs;
+    // EmuShelf's data root, surfaced in Settings so the user can reveal it. Null in design/tests.
+    private readonly string? _dataDirectory;
     private readonly IEmulatorLaunchService _launchService;
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
@@ -707,8 +710,10 @@ public partial class MainViewModel : ViewModelBase
         IRemoteArtworkDownloader? artworkDownloader = null,
         ISettingsService? settingsService = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
-        IGameDetailsStore? gameDetails = null)
+        IGameDetailsStore? gameDetails = null,
+        IAppPaths? appPaths = null)
     {
+        _dataDirectory = appPaths?.BaseDirectory;
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;
         _screenScraperPreview = screenScraperPreview;
@@ -4535,7 +4540,8 @@ public partial class MainViewModel : ViewModelBase
             GetLibraryFoldersForSettings,
             AddLibraryFolderFromSettingsAsync,
             ChangeLibraryFolderFromSettingsAsync,
-            ForgetLibraryFolderFromSettingsAsync));
+            ForgetLibraryFolderFromSettingsAsync),
+        DataDirectory: _dataDirectory);
 
     private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>
         _retroAccount is null
