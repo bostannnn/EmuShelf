@@ -233,6 +233,15 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasRating => RatingText is not null;
 
+    private string? _spotlightInfoLine;
+
+    /// <summary>The spotlight hero's info line: scraped genre · year · players · developer · publisher
+    /// with the filename appended, or just the filename before the details resolve / when unscraped.
+    /// Computed so it tracks the filename (which changes with the selected disc).</summary>
+    public string SpotlightSubtitle => string.IsNullOrEmpty(_spotlightInfoLine)
+        ? GamepadSubtitle
+        : $"{_spotlightInfoLine}  ·  {GamepadSubtitle}";
+
     private string? _canonicalSpotlightTitle;
 
     /// <summary>The title shown in the spotlight list and hero — the canonical ScreenScraper name
@@ -434,6 +443,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
         OnPropertyChanged(nameof(GamepadSubtitle));
+        OnPropertyChanged(nameof(SpotlightSubtitle));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
         foreach (var option in DiscOptions)
             option.IsCurrent = option.Disc.Game.Id == selectedDisc.Game.Id;
@@ -484,14 +494,17 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     partial void OnRatingTextChanged(string? value) => OnPropertyChanged(nameof(HasRating));
 
-    /// <summary>Records the fan-art path, logo path, and formatted rating resolved from this game's
-    /// scraped details. The bitmaps are loaded separately, only while the game is the spotlight hero.</summary>
-    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText)
+    /// <summary>Records the fan-art path, logo path, formatted rating, and scraped info line resolved
+    /// from this game's details. The bitmaps are loaded separately, only while it is the spotlight hero.
+    /// The info line (genre/year/players/developer/publisher) gets the filename appended as a tail.</summary>
+    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText, string? infoLine)
     {
         FanartPath = fanartPath;
         HasFanart = !string.IsNullOrEmpty(fanartPath);
         WheelPath = wheelPath;
         RatingText = ratingText;
+        _spotlightInfoLine = infoLine;
+        OnPropertyChanged(nameof(SpotlightSubtitle));
         AreSpotlightDetailsLoaded = true;
     }
 

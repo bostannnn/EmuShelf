@@ -4367,3 +4367,22 @@ d-pad auto-repeat plus in-place animated state changes (never route transitions,
   past the 6px ring frame, which read as a "weird shadow." The focused cover's `BoxShadow` is set to
   `none` and the library tile ring drops its inline `EmuFocusGlow`; unfocused tiles keep their shadow,
   and the spotlight Play/Achievements rings keep their glow (they sit over dark art where it reads).
+## 2026-08-05 — Spotlight: themed list surface + a self-scrolling marquee title
+
+Two couch-mode refinements from testing:
+
+- **The spotlight game list follows the theme.** Its panel was a fixed dark wash (`#BF15171E`)
+  with hardcoded white text, so it ignored the palette (and was illegible on a light theme). It now
+  uses the themed surface/text brushes (`EmuPopoverBrush`, `EmuTextPrimaryBrush`, `EmuBorderBrush`,
+  `EmuHoverBrush`), so it recolours with the chosen theme and the artwork-ambient palette like the
+  rest of the shell. This trades the faint see-through-to-fanart effect for legible, on-theme colour;
+  a themed *translucent* surface would need a new palette token and can be revisited.
+
+- **Long hero titles scroll instead of wrapping.** New `MarqueeTextBlock` control
+  (`src/EmuShelf.App/Controls/`) shows the spotlight title on one line and, only when it is wider than
+  its slot, runs a gentle there-and-back scroll with a pause at each end (a `TranslateTransform`
+  animation on the inner text; distance/duration computed from the measured overflow). Titles that fit
+  stay static. It's a `Decorator` hosting one `TextBlock`; font family is inherited from the Gamepad
+  shell (Exo 2) and size/weight/foreground are forwarded. The hero title stack was switched to stretch
+  so the marquee gets the full hero width to measure overflow against. `IsOverflowing` is exposed for a
+  headless test of the fits-vs-scrolls decision.

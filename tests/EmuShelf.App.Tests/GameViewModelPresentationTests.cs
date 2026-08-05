@@ -59,6 +59,23 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
+    public void SpotlightSubtitle_IsTheFilename_UntilScrapedInfoIsAppended()
+    {
+        var viewModel = CreateGame();
+
+        // Before details resolve it's just the filename.
+        Assert.Equal("sample.chd", viewModel.SpotlightSubtitle);
+
+        // A scraped info line is shown with the filename appended as a tail.
+        viewModel.ApplySpotlightDetails(null, null, null, "Beat 'em up  ·  1994  ·  2P");
+        Assert.Equal("Beat 'em up  ·  1994  ·  2P  ·  sample.chd", viewModel.SpotlightSubtitle);
+
+        // No scraped info → back to just the filename.
+        viewModel.ApplySpotlightDetails(null, null, null, null);
+        Assert.Equal("sample.chd", viewModel.SpotlightSubtitle);
+    }
+
+    [Fact]
     public void GamepadSubtitle_TracksTheSourceSelectedForMultiDiscLaunch()
     {
         var disc1 = CreateModel(1, "/games/Sample Game (Disc 1).chd");

@@ -1659,6 +1659,27 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.IsSpotlightPlayFocused);
     }
 
+    [Fact]
+    public void ComposeSpotlightInfo_JoinsPresentFields_WithYearAndPlayers()
+    {
+        static GameMetadataValue Value(GameMetadataField field, string value) =>
+            new(1, field, value, null, GameMetadataValueOrigin.Provider, "ss", null, null, DateTimeOffset.UtcNow);
+
+        var line = MainViewModel.ComposeSpotlightInfo(
+        [
+            Value(GameMetadataField.Genre, "Beat 'em up"),
+            Value(GameMetadataField.ReleaseDate, "1994-03-01"),
+            Value(GameMetadataField.Players, "1-2"),
+            Value(GameMetadataField.Developer, "Konami"),
+            Value(GameMetadataField.Publisher, "Konami"),
+        ]);
+        Assert.Equal("Beat 'em up  ·  1994  ·  1-2P  ·  Konami  ·  Konami", line);
+
+        // Missing fields are skipped; empty metadata yields null (so the filename shows on its own).
+        Assert.Equal("Sports", MainViewModel.ComposeSpotlightInfo([Value(GameMetadataField.Genre, "Sports")]));
+        Assert.Null(MainViewModel.ComposeSpotlightInfo([]));
+    }
+
     /// <summary>
     /// Regression: Right/Left/Down step by GamepadColumnCount. The count is derived arithmetically
     /// from the gamepad viewport (matching UniformGridLayout), and navigation must honor it — Right
