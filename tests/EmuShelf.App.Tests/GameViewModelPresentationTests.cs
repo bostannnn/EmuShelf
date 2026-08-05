@@ -40,6 +40,25 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
+    public void SpotlightDisplayTitle_PrefersTheCanonicalName_ButFallsBackToTitleAndTracksRenames()
+    {
+        var viewModel = CreateGame();
+
+        // No canonical name scraped yet → the game's own title, and it follows an in-place rename.
+        Assert.Equal("Sample Game", viewModel.SpotlightDisplayTitle);
+        viewModel.CompleteTitleEdit("Renamed Game");
+        Assert.Equal("Renamed Game", viewModel.SpotlightDisplayTitle);
+
+        // A scraped canonical name wins over the (filename-derived) title.
+        viewModel.ApplySpotlightTitle("Canonical Name");
+        Assert.Equal("Canonical Name", viewModel.SpotlightDisplayTitle);
+
+        // A blank canonical name clears the override and reverts to the current title.
+        viewModel.ApplySpotlightTitle("   ");
+        Assert.Equal("Renamed Game", viewModel.SpotlightDisplayTitle);
+    }
+
+    [Fact]
     public void GamepadSubtitle_TracksTheSourceSelectedForMultiDiscLaunch()
     {
         var disc1 = CreateModel(1, "/games/Sample Game (Disc 1).chd");

@@ -4271,6 +4271,35 @@ Deferred (tracked in `docs/couch-artwork-theming-and-spotlight.md`): sampling th
 the fan art instead of the cover; the list's favourites hearts/filter; the screenshots' left-edge
 button-hint column and floating icon toolbar; the couch-side ambient toggle. Desktop is untouched.
 
+## 2026-08-05 — Spotlight hero restructure: full-bleed fan-art backdrop, game logo, canonical titles
+
+Phase A of making the couch spotlight look finished (screenshots in the plan doc). Three
+changes, all reusing the loaders already built for the first slice:
+
+- **Fan art is the full-window backdrop.** It now fills the whole content area behind the
+  floating list and the hero text, instead of being boxed in a right-hand card. Two scrims
+  (bottom + left) keep the title/actions and list legible over any art; the list panel is
+  translucent so the backdrop shows through.
+- **No-fan-art fallback is a themed gradient**, not the cover (user choice): a dark base
+  (`EmuLibraryBrush`) plus an `EmuAccentBrush` glow faded by an opacity mask, so an art-less
+  game still recolours with the ambient palette. Built from the ambient *brushes* because the
+  palette swap exposes brushes, not colours — a gradient of `DynamicResource` colours was not
+  available without touching every theme file.
+- **Game logo** (`GameMediaKind.Wheel`) renders above the title; when a game has no logo,
+  nothing shows there (the title text is directly below, so no placeholder is needed).
+- **Canonical titles.** The list and hero show the scraped ScreenScraper name instead of the
+  filename. This is spotlight-only and non-destructive: a new bulk
+  `IGameMetadataStore.GetProviderTitles()` (default-interface method so the 4 test stubs need
+  no change; real SQLite override reads `GameMetadataValues` Field=Title in one query,
+  preferring the neutral locale) fills `GameViewModel.SpotlightDisplayTitle` at scope build.
+  `Game.Title`, the cover grid, and the desktop keep the original title.
+
+Per-hero art (fan art + logo) is loaded generation-guarded so a fast scroll never leaks a
+bitmap onto a stale view model, and only the current hero holds decoded bitmaps.
+
+**Dropped from the original mockups (user, 2026-08-05):** the left-edge button-hint column and
+the floating icon toolbar. Couch navigation is unchanged (top platform rail, Start ▸ Menu). The
+rating scale mapping (ScreenScraper /20 → /10) is unchanged from the first slice.
 ## 2026-08-05 — ScreenScraper `UnsupportedFormat` falls back to title search, not a dead end
 
 Formats with no whole-file hash rule (arcade sets, 3DS, disc-id systems like Dreamcast/PS3, or a

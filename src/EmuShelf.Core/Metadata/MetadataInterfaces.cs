@@ -73,6 +73,13 @@ public interface IGameMetadataStore
     /// </summary>
     IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers();
 
+    /// <summary>
+    /// Every scraped canonical title, by game id, in one query. The gamepad spotlight list and hero
+    /// show these instead of the filename-derived title, without rewriting the game record; games
+    /// with no scraped title are absent. Defaults to empty for stores that hold no metadata.
+    /// </summary>
+    IReadOnlyDictionary<long, string> GetProviderTitles() => new Dictionary<long, string>();
+
     void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers);
 
     bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle);

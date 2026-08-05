@@ -189,6 +189,39 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
         Assert.True(metadataGame.IsPresentInExternalSource);
     }
 
+    [Fact]
+    public void GetProviderTitles_ReturnsScrapedTitles_PreferringTheNeutralLocale()
+    {
+        var scraped = AddGame("Pokemon - FireRed Version (USA, Europe) (Rev 1).gba", GameTitleOrigin.Filename);
+        var unscraped = AddGame("Some Other Game.iso", GameTitleOrigin.Filename);
+
+        var details = new SqliteGameDetailsStore(_database, new RelativePathResolver(AppPaths));
+        // A localized name and the neutral (empty-locale) canonical name; the neutral one wins.
+        Assert.True(details.TryApplyMetadata(
+            TitleValue(scraped.Id, "Pokemon FireRed (Europe)", locale: "en"),
+            GameMetadataApplyMode.FillMissing));
+        Assert.True(details.TryApplyMetadata(
+            TitleValue(scraped.Id, "Pokémon FireRed", locale: null),
+            GameMetadataApplyMode.FillMissing));
+
+        var titles = _metadata.GetProviderTitles();
+
+        Assert.Equal("Pokémon FireRed", titles[scraped.Id]);
+        Assert.False(titles.ContainsKey(unscraped.Id));
+    }
+
+    private static GameMetadataValue TitleValue(long gameId, string value, string? locale) =>
+        new(
+            gameId,
+            GameMetadataField.Title,
+            value,
+            locale,
+            GameMetadataValueOrigin.Provider,
+            "screenscraper",
+            "provider-game-id",
+            null,
+            DateTimeOffset.UtcNow);
+
     private Game AddGame(string filename, GameTitleOrigin origin)
     {
         var path = Path.Combine(BaseDirectory, "Games", filename);

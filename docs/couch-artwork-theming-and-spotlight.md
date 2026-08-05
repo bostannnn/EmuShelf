@@ -67,15 +67,41 @@ Start ▸ Menu ▸ "Spotlight view" / "Cover grid view".
   one game and Left/Right are inert (branched in `DispatchLibraryAction`); the grid keeps
   its 2-D row-stride movement. Tests: `GamepadSpotlightView_TogglesLayout_StepsOneGame_AndPersists`.
 
+### 3a. Hero restructure ✅ (Phase A — full-bleed backdrop, logo, clean titles)
+
+Turned the boxed hero into a proper console dashboard:
+
+- **Fan art is now the full-window backdrop**, edge to edge behind both the floating list
+  and the hero text (not a small right-hand card). Legibility scrims darken the bottom
+  (title/actions) and the left (list). The list panel is translucent so the art shows through.
+- **No-fanart fallback is a themed gradient** (dark base + an ambient-accent glow that fades),
+  so an art-less game still recolours with the palette. (Was the cover; changed per request.)
+- **Game logo** (`GameMediaKind.Wheel`) renders large above the title; nothing shows when a
+  game has no logo (the title text sits directly below). `GameViewModel.WheelImage`, loaded
+  by the same generation-guarded per-hero path as fan art.
+- **Normalized titles** — the list and hero show the canonical ScreenScraper name instead of
+  the filename (`Pokemon - FireRed Version (USA, Europe) (Rev 1)` → `Pokémon FireRed`).
+  Spotlight-only and non-destructive: `GameViewModel.SpotlightDisplayTitle` is filled from a
+  new bulk `IGameMetadataStore.GetProviderTitles()` at scope build; `Title`, the grid, and the
+  desktop are untouched. Test: `GetProviderTitles_ReturnsScrapedTitles_PreferringTheNeutralLocale`.
+
+### 3b. Ambient palette from the fan art ✅
+
+`ApplyAmbientThemeForPendingGame` now samples the **fan-art backdrop** in the spotlight
+(the cover still drives the grid), so the accent matches what fills the screen. It falls
+back to the cover until the backdrop decodes, and `LoadSpotlightHero` re-triggers the tint
+once the fan art is ready. Cached per art path; requires the "Match colours to artwork"
+toggle (Desktop Settings ▸ Appearance) to be on.
+
 ## Not done — next
 
-### 3b. Spotlight chrome + polish ⛔ (remaining screenshot fidelity)
+### 3c. Remaining hero polish ⛔
 
-- Point the colour engine at the fan art instead of the cover
-  (`ApplyAmbientThemeForPendingGame` still samples `CoverImage`).
 - Favourites hearts/filter in the list rows.
-- The screenshots' left-edge button-hint column and floating icon toolbar (search / grid /
-  screenshots / achievements / settings); a pointer/touch toolbar toggle.
+- A display-font / spacing pass to match the mockups' typography.
+
+**Dropped (per user, 2026-08-05):** the left-edge button-hint column and the floating icon
+toolbar. Couch navigation stays exactly as it is (top platform rail, Start ▸ Menu).
 
 ### 4. Desktop detail-split view mode ⛔
 
