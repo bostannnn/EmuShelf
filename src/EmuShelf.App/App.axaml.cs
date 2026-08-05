@@ -217,7 +217,8 @@ public partial class App : Application
                 scrapeApply: scrapeApply,
                 artworkDownloader: webArtworkDownloader,
                 settingsService: Bootstrapper.SettingsService,
-                onScreenKeyboard: new PlatformOnScreenKeyboardService());
+                onScreenKeyboard: new PlatformOnScreenKeyboardService(),
+                gameDetails: Bootstrapper.GameDetailsStore);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

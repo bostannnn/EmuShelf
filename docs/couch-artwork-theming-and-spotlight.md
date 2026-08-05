@@ -35,29 +35,47 @@ live from the focused game's cover as selection moves.
 
 Decision record: see `DECISIONS.md` (2026-08-04 entry).
 
+## Done
+
+### 2. Fanart display (dependency for the hero) ✅
+
+Fan art now renders in the spotlight hero — it was scrapeable (`GameMediaKind.Fanart`)
+but never shown. Implemented in the library view model, not per-tile:
+
+- `GameViewModel` gained `FanartImage`/`HasFanartImage`, `FanartPath`, `HasFanart`,
+  `RatingText`/`HasRating`, and `ApplySpotlightDetails(...)`.
+- `MainViewModel.LoadSpotlightHero` reads the focused game's scraped details once per
+  game off the UI thread (`IGameDetailsStore`, threaded in via the constructor), caches
+  the fan-art path + rating on the view model, then decodes the fan-art bitmap
+  (`SafeImageDecoder`, ≤1920×1080). Only the current hero keeps a decoded bitmap; it is
+  released as focus moves (generation-guarded), so a long list never accumulates images.
+- No-fanart games fall back to the cover on the themed surface. The focused **cover** is
+  also loaded here (the grid isn't realizing tiles in spotlight mode), so the fallback and
+  the ambient palette still have an image.
+
+### 3. Gamepad spotlight layout ✅ (switchable, not a replacement)
+
+Added as a **second** couch view alongside the cover grid (grid stays the default;
+`LibraryViewSettings.GamepadSpotlightView`, remembered across launches). Toggle via
+Start ▸ Menu ▸ "Spotlight view" / "Cover grid view".
+
+- Left: virtualized game **list** (`GamepadSpotlightList`, a passive `ListBox` whose
+  `SelectedItem` tracks `FocusedGame` and auto-scrolls into view), platform header.
+- Right: fan-art hero + system name, title, filename subtitle, star rating, achievement
+  progress, Play — reusing the dock's `FocusedGame.*` bindings.
+- Reuses the couch focus model + virtualization. In the single-column list Down/Up step
+  one game and Left/Right are inert (branched in `DispatchLibraryAction`); the grid keeps
+  its 2-D row-stride movement. Tests: `GamepadSpotlightView_TogglesLayout_StepsOneGame_AndPersists`.
+
 ## Not done — next
 
-### 2. Fanart display (dependency for the hero) ⛔
+### 3b. Spotlight chrome + polish ⛔ (remaining screenshot fidelity)
 
-The giant background image in the screenshots is **fan art**, and nothing in the app
-displays fan art today (it can be scraped, but is never shown). This is the gate for
-the spotlight layout.
-
-- Fetch/display a fan-art asset per game (reuse the existing `GameMediaKind.Fanart`
-  scrape path and `GameMediaAssets` storage; add a load path like covers have).
-- Fallback for games with no fan art (blurred/darkened cover, or system art).
-- Once fan art is on screen, point the colour engine at it instead of the cover
-  (one line in `ApplyAmbientThemeForPendingGame`: sample the fan-art asset).
-
-### 3. Gamepad spotlight layout ⛔ (the big piece)
-
-Replace the cover grid in Gamepad mode with the list + hero view:
-
-- Left: virtualized game **list** (text rows), selected row highlighted; favourites
-  filter (heart on Y already exists in the shell).
-- Right: fan-art hero + title, filename subtitle, star rating, achievements progress,
-  Play button. Top toolbar tabs (search / grid / screenshots / achievements / settings).
-- Keep the couch focus model (one focus, d-pad) and virtualization intact.
+- Point the colour engine at the fan art instead of the cover
+  (`ApplyAmbientThemeForPendingGame` still samples `CoverImage`).
+- Favourites hearts/filter in the list rows.
+- The screenshots' left-edge button-hint column and floating icon toolbar (search / grid /
+  screenshots / achievements / settings); a pointer/touch toolbar toggle.
 
 ### 4. Desktop detail-split view mode ⛔
 
@@ -86,8 +104,7 @@ Add it to the couch Themes-gallery focus model when the spotlight lands.
 3. Desktop detail view (#4) — independent; can run in parallel.
 4. Couch ambient toggle (#5) — once the spotlight Themes surface exists.
 
-## Open question
+## Resolved question
 
-Are the spotlight screenshots a mockup, or is that layout already running somewhere
-(there is a second checkout at `~/Documents/OpenEmu`)? If it exists, #3 builds on it
-rather than starting fresh.
+The spotlight screenshots were a mockup — the layout did not exist in this tree or the
+second checkout at `~/Documents/OpenEmu`, so #3 was built from scratch (2026-08-05).

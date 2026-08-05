@@ -4238,3 +4238,35 @@ GPU upload and per-cover memory — most valuable when a run of covers lands tog
 
 `SelectorIsCentered_DeepInList_RegardlessOfAspectRatio` still asserts the settled centre (its `SettleScroll`
 helper pumps the ease to rest); the smoothing/snap constants and the ease loop's generation token are back.
+## 2026-08-05 — Gamepad spotlight view: a switchable list + fanart hero beside the cover grid
+
+Added the couch-mode "spotlight" layout from the target screenshots — a scrolling game **list** on
+the left and a large **fanart hero** (title, filename subtitle, star rating, achievement progress,
+Play) on the right — as a **second, switchable** gamepad view rather than a replacement for the
+existing cover grid. The grid is mature and tested, and the target toolbar itself implies multiple
+views, so the two coexist and the grid stays the default (`LibraryViewSettings.GamepadSpotlightView`,
+off by default, remembered across launches; a couch-only preference kept independent of the desktop
+`IsGridView`).
+
+Design choices:
+- **Reuses the existing `FocusedGame` model.** LB/RB, A/Y, and every overlay behave exactly as over
+  the grid. The window-level *tunnel* key handler consumes the d-pad before the list can see it, so
+  the list is a passive selection surface (`SelectedItem` tracks `FocusedGame`, auto-scrolling into
+  view) — no second input path. In the single-column list, Down/Up step one game and Left/Right are
+  inert, branched in `DispatchLibraryAction` (the grid keeps its `GamepadColumnCount`-stride 2-D
+  movement).
+- **Fan art is displayed for the first time.** It was scrapeable (`GameMediaKind.Fanart`) but never
+  shown. The focused game's scraped details (fan-art path + rating) are read once per game off the UI
+  thread and cached on the view model; only the current hero keeps a decoded bitmap (released as focus
+  moves, generation-guarded), so a long list never accumulates full-size images. No-fanart games fall
+  back to the cover on the themed surface. The grid isn't realizing tiles in spotlight mode, so the
+  focused **cover** is loaded here too (for the ambient palette and the fallback).
+- **Rating scale.** ScreenScraper stores its rating on a 0–20 scale; the hero presents it as the 0–10
+  star score the screenshots show (e.g. 14/20 → "7.0").
+- **Switching.** Controller/keyboard toggle via Start ▸ Menu ▸ "Spotlight view" / "Cover grid view"
+  (toggles then closes the menu). A dedicated pointer/touch toolbar toggle and the full floating-
+  toolbar chrome from the screenshots are deferred to a polish pass.
+
+Deferred (tracked in `docs/couch-artwork-theming-and-spotlight.md`): sampling the ambient palette from
+the fan art instead of the cover; the list's favourites hearts/filter; the screenshots' left-edge
+button-hint column and floating icon toolbar; the couch-side ambient toggle. Desktop is untouched.

@@ -11,6 +11,13 @@ public sealed record LibraryViewSettings
     /// <summary>Cover grid when true, list view when false.</summary>
     public bool IsGridView { get; init; } = true;
 
+    /// <summary>
+    /// Gamepad (couch) mode only: the spotlight layout — a scrolling game list beside a large
+    /// fanart hero — when true, or the cover grid when false. Independent of <see cref="IsGridView"/>,
+    /// which stays a desktop preference the couch mode does not touch.
+    /// </summary>
+    public bool GamepadSpotlightView { get; init; }
+
     /// <summary>Name of the sort column, e.g. "Title". Unknown names fall back to the default.</summary>
     public string SortColumn { get; init; } = "Title";
 
