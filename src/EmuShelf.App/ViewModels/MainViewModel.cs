@@ -529,6 +529,15 @@ public partial class MainViewModel : ViewModelBase
     private const double MaxCoverWidth = 232;
     private const double CoverColumnSpacing = 28;    // matches UniformGridLayout MinColumnSpacing
 
+    // Rows either side of the focused row whose covers are warmed ahead of the scroll (see
+    // PrefetchCoversAroundFocus). A held d-pad steps ~one row per 110ms, so a few rows of lead lets the
+    // off-thread decode stay ahead of the glide and the incoming tile is already painted.
+    private const int GamepadCoverPrefetchRows = 3;
+
+    // On-disk cover thumbnails are generated at this max width (mirrors GameCoverService.ThumbnailWidth).
+    // A cover is decoded to the displayed pixel size, capped here so it is never upscaled past the source.
+    private const int CoverThumbnailNativeWidth = 300;
+
     // Gamepad achievements grid: fixed 100px badge tiles with 12px gutters (mirrors the
     // Border.gamepad-achievement style and the old UniformGridLayout). The column count is derived
     // from the row ListBox width by the same arithmetic; the horizontal padding reserves the scroll
@@ -564,6 +573,11 @@ public partial class MainViewModel : ViewModelBase
     /// the uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
     [ObservableProperty]
     public partial double GridCoverWidth { get; set; }
+
+    /// <summary>The window's render scaling (device pixels per logical pixel), pushed in by the view.
+    /// Covers are decoded to their displayed pixel size, which needs this to stay crisp on a HiDPI
+    /// display; it defaults to 1 so a decode before the view reports scaling is still valid.</summary>
+    public double CoverRenderScale { get; set; } = 1.0;
 
     // Only one mode is on screen at a time, so exactly one viewport is authoritative. Reading the
     // active one — rather than letting whichever view last raised SizeChanged win — is what keeps
@@ -1999,11 +2013,39 @@ public partial class MainViewModel : ViewModelBase
         {
             newValue.IsFocused = true;
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
+            PrefetchCoversAroundFocus(newValue);
         }
 
         ScheduleAmbientThemeUpdate(newValue);
         if (IsGamepadSpotlightView)
             LoadSpotlightHero(newValue);
+    }
+
+    // Warm the covers a few rows either side of the focused tile so the grid glides over already-loaded
+    // artwork instead of blank frames that pop in a beat late. Cover loads are gated on tile realization
+    // (OnGameCoverAttached), which is one row too late for a smooth scroll; this decouples the load from
+    // realization and runs slightly ahead of it. Loading a cover already loaded/loading is a synchronous
+    // no-op, and covers persist on the view model, so re-warming the same window each step is cheap.
+    private void PrefetchCoversAroundFocus(GameViewModel focused)
+    {
+        if (!IsGamepadMode || Games.Count == 0)
+            return;
+
+        var index = Games.IndexOf(focused);
+        if (index < 0)
+            return;
+
+        var columns = Math.Max(1, GamepadColumnCount);
+        var rowIndex = index / columns;
+        var startRow = Math.Max(0, rowIndex - GamepadCoverPrefetchRows);
+        var start = startRow * columns;
+        var end = Math.Min(Games.Count - 1, (rowIndex + GamepadCoverPrefetchRows + 1) * columns - 1);
+        for (var i = start; i <= end; i++)
+        {
+            var game = Games[i];
+            if (game.LoadCoverCommand.CanExecute(game))
+                game.LoadCoverCommand.Execute(game);
+        }
     }
 
     private void ScheduleAmbientThemeUpdate(GameViewModel? game)
@@ -2894,7 +2936,19 @@ public partial class MainViewModel : ViewModelBase
             if (thumbnailPath is null)
                 return;
 
-            var image = await Task.Run(() => new Bitmap(thumbnailPath));
+            // Decode to the tile's displayed pixel size rather than the full thumbnail: the grid never
+            // renders a cover wider than MaxCoverWidth, so decoding to that (× render scale, capped at the
+            // source width so it is never upscaled) yields a crisp tile with a smaller bitmap — a lighter
+            // GPU upload and less memory, which matters most when a run of covers lands in one scroll.
+            var decodeWidth = Math.Clamp(
+                (int)Math.Ceiling(MaxCoverWidth * CoverRenderScale),
+                1,
+                CoverThumbnailNativeWidth);
+            var image = await Task.Run(() =>
+            {
+                using var stream = File.OpenRead(thumbnailPath);
+                return Bitmap.DecodeToWidth(stream, decodeWidth, BitmapInterpolationMode.HighQuality);
+            });
             if (generation == _loadGeneration &&
                 coverRevision == game.CoverRevision &&
                 _systemGames.Contains(game) &&
