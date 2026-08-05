@@ -284,7 +284,8 @@ public sealed class DialogService : IDialogService
         ScreenScraperSettingsContext? screenScraper = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
-        Func<bool, Task>? setAmbientThemeFromArtwork = null)
+        Func<bool, Task>? setAmbientThemeFromArtwork = null,
+        AppUpdateCoordinator? updates = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -309,7 +310,8 @@ public sealed class DialogService : IDialogService
             themeChoices,
             ambientThemeFromArtwork,
             setAmbientThemeFromArtwork,
-            profiles);
+            profiles,
+            updates);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 

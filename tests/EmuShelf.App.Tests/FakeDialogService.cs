@@ -103,7 +103,8 @@ internal sealed class FakeDialogService : IDialogService
         ScreenScraperSettingsContext? screenScraper = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
-        Func<bool, Task>? setAmbientThemeFromArtwork = null)
+        Func<bool, Task>? setAmbientThemeFromArtwork = null,
+        AppUpdateCoordinator? updates = null)
     {
         SettingsShown++;
         TexturePacks = texturePacks;

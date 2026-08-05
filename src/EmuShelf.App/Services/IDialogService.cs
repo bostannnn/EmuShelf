@@ -80,7 +80,8 @@ public interface IDialogService
         ScreenScraperSettingsContext? screenScraper = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
-        Func<bool, Task>? setAmbientThemeFromArtwork = null);
+        Func<bool, Task>? setAmbientThemeFromArtwork = null,
+        AppUpdateCoordinator? updates = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);

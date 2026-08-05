@@ -38,4 +38,7 @@ public sealed record AppSettings
 
     /// <summary>Main-window size, position, and maximized state, restored at launch.</summary>
     public WindowLayoutSettings WindowLayout { get; init; } = new();
+
+    /// <summary>In-app auto-update preferences (GitHub release checks).</summary>
+    public UpdateSettings Updates { get; init; } = new();
 }
