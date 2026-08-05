@@ -4187,6 +4187,57 @@ Two supporting fixes found while debugging this:
 - The reveal's ScrollViewer/viewport-not-ready retry is kept for the first frame after a mode/scope
   switch.
 
+## 2026-08-05 — Gamepad grid: re-introduce smooth scroll as a position-relative ease, and warm covers ahead of it (revises the "drop the eased scroll" entry above)
+
+The single-jump reveal above was reliable but still read as janky: a held d-pad auto-repeats ~one row
+every 110ms (`GamepadNavigationController`), and each repeat teleported the grid a whole row, so a hold
+produced a staccato staircase rather than a glide. The couch-UI expectation is a continuous scroll under
+a stationary centred selector. The previous eased design was reverted because it wrote
+`ScrollViewer.Offset` **absolutely** (`rowIndex * rowHeight`), which desynced the `VirtualizingStackPanel`'s
+*estimated* extent on the real compositor. This entry brings the ease back in the form that entry
+explicitly sanctioned — **position-relative** — plus the cover work that stops the ease from flashing.
+
+Three coupled changes (`MainWindow.axaml.cs`, `MainViewModel.cs`):
+
+- **Position-relative ease toward a FIXED target (`StartOrRetargetGamepadScroll` + `StepGamepadScroll`).**
+  A d-pad move (`RevealFocusedGame(animate: true)`) measures the target row's centre offset **once**, in
+  the same safe (input/loaded) context the snap uses (`TryMeasureCentreDelta`), and computes an absolute
+  target `currentOffset + delta` — position-relative (never `rowIndex*rowHeight`), so it cannot desync the
+  panel's estimated extent (the failure that forced the revert). A self-reposting `Render`-priority loop
+  then eases the offset a fraction (`GamepadScrollSmoothing = 0.28`) of the remaining distance to that
+  fixed number. **The loop does pure offset arithmetic — it never reads the visual tree.** An earlier
+  attempt re-measured the row (`TranslatePoint`/`Bounds`) every frame; that read forces a re-entrant layout
+  that **stack-overflows the `VirtualizingStackPanel` on short-cover rows** (reproduced deterministically
+  by the `snes` case of `SelectorIsCentered…`, which crashed the test host; the tall-cover `psp`/`ps2`
+  cases survived, so it shipped-looking-green in the earlier eased design too). Measuring once and lerping
+  a stored number is exactly the structure of the pre-revert ease, which was headless-safe. A held d-pad
+  retargets the one running loop (no stacked snaps); it settles within a few frames of release and stops
+  reposting, so an idle grid burns no CPU. Termination is covered on both ends: within
+  `GamepadScrollSettleThreshold` (0.5px) it lands exactly and stops, and if a step produces no offset
+  movement it is clamped at a list end (first/last rows can't be centred) and stops.
+- **Snap is kept for everything that is not a one-row step.** `RevealFocusedGame` eases only when the row
+  moved ≤ `GamepadMaxEaseRowStep` (2) from the last revealed row; a scope restore of a deep row, a pointer
+  tap on a distant tile, or the first reveal in a scope snaps via the old measured nudge / `ScrollIntoView`.
+  Easing across many screens is exactly what realizes and flashes a cover on every intermediate row, which
+  is why far moves must not ease. `_lastRevealedRowIndex` is reset on a scope/platform switch so the
+  post-switch landing is treated as fresh (snap), and the non-animate reveals (resize, GridCoverWidth)
+  stay snaps.
+- **Cover prefetch (`PrefetchCoversAroundFocus`).** Cover loads were gated on tile realization
+  (`OnGameCoverAttached`), one row too late for a smooth scroll — the row arrived blank and the art popped
+  in a beat behind. On every focus change the view model now also warms the covers `GamepadCoverPrefetchRows`
+  (3) either side of the focused row, decoupling the load from realization so the glide passes over
+  already-painted tiles. Re-warming an already-loaded/loading cover is a synchronous no-op and covers
+  persist on the view model, so re-running the window each step is cheap.
+
+Also, an unrelated-but-adjacent perf win in the shared cover path: `LoadGameCoverAsync` now decodes each
+thumbnail to the tile's displayed pixel width (`Bitmap.DecodeToWidth`, `MaxCoverWidth × CoverRenderScale`,
+capped at the source's `CoverThumbnailNativeWidth` so it is never upscaled) instead of the full 300×400.
+The grid never renders a cover wider than `MaxCoverWidth`, so this is visually identical while cutting the
+GPU upload and per-cover memory — most valuable when a run of covers lands together during a fast scroll.
+`CoverRenderScale` is pushed in from the view (`ApplyCellWidth`) so the decode stays crisp on HiDPI.
+
+`SelectorIsCentered_DeepInList_RegardlessOfAspectRatio` still asserts the settled centre (its `SettleScroll`
+helper pumps the ease to rest); the smoothing/snap constants and the ease loop's generation token are back.
 ## 2026-08-05 — Gamepad spotlight view: a switchable list + fanart hero beside the cover grid
 
 Added the couch-mode "spotlight" layout from the target screenshots — a scrolling game **list** on
@@ -4249,3 +4300,31 @@ bitmap onto a stale view model, and only the current hero holds decoded bitmaps.
 **Dropped from the original mockups (user, 2026-08-05):** the left-edge button-hint column and
 the floating icon toolbar. Couch navigation is unchanged (top platform rail, Start ▸ Menu). The
 rating scale mapping (ScreenScraper /20 → /10) is unchanged from the first slice.
+## 2026-08-05 — ScreenScraper `UnsupportedFormat` falls back to title search, not a dead end
+
+Formats with no whole-file hash rule (arcade sets, 3DS, disc-id systems like Dreamcast/PS3, or a
+stray container under an otherwise hashable system) return `ScreenScraperPreviewStatus.UnsupportedFormat`
+from the preview. The single-game scraper (`GameScraperViewModel.MapFailureState`) used to route that
+to the read-only `Unsupported` message — a dead end — even though the fingerprint-profile comments
+already promised these systems "fall back to title search." It now routes `UnsupportedFormat` to
+`NoMatch`, which auto-searches by cleaned title so the user can pick a match; `UnsupportedSystem`
+(platform not mapped to ScreenScraper at all, so nothing to search within) stays the dead-end message.
+The batch scraper keeps treating both as `Unsupported`: it can't interactively confirm a title-search
+guess, and auto-applying one risks mismatching rom hacks to their originals.
+
+## 2026-08-05 — Arcade matches ScreenScraper by ROM file name (`romnom`)
+
+Arcade sets have no whole-file hash (a repacked FBNeo/MAME archive isn't byte-stable), so they used
+to reach only the title-search fallback. But the set's file name (e.g. `tmnt.zip`) *is* the identity
+ScreenScraper indexes for arcade — the same role a disc serial plays for PlayStation. So arcade now
+takes a dedicated file-name route in `ScreenScraperPreviewService` (`FileNameMatchSystems`): a single
+`romnom`-only lookup, no file read and no fingerprint-consent gate, recorded as
+`GameProviderMatchMethod.FileName`. An unknown or renamed set returns `NotFound`, which still falls
+through to the title search.
+
+File-name-only matching is opt-in per request (`ScreenScraperGameRequest.AllowFileNameMatch`) and
+enabled only for arcade. Console systems are deliberately excluded: there the file name is an
+arbitrary, hack-prone label, and the client already rejects a provider result that matched by name
+only when a hash was queried (`ReturnedRomMatchesRequestedHash`). The batch scraper gets arcade
+matching for free — `romnom` is a single deterministic request, not the multi-request title search it
+still refuses to run.

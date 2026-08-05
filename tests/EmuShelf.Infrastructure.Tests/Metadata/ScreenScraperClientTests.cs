@@ -190,6 +190,29 @@ public class ScreenScraperClientTests
     }
 
     [Fact]
+    public async Task GetGameInfo_AllowsFileNameOnlyLookup_WhenOptedIn_ForArcadeSets()
+    {
+        Uri? requestedUri = null;
+        using var httpClient = new HttpClient(new StubHandler(request =>
+        {
+            requestedUri = request.RequestUri;
+            return JsonResponse(GameFixture());
+        }));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(75, "tmnt.zip", 0, AllowFileNameMatch: true));
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(requestedUri);
+        Assert.Contains("romnom=tmnt.zip", requestedUri.Query);
+        Assert.DoesNotContain("crc=", requestedUri.Query);
+        Assert.DoesNotContain("serialnum=", requestedUri.Query);
+        Assert.DoesNotContain("romtaille=", requestedUri.Query);
+    }
+
+    [Fact]
     public async Task GetGameInfo_AllowsConfirmedProviderGameIdWithoutHash()
     {
         using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));

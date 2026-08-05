@@ -165,6 +165,10 @@ public enum GameProviderMatchMethod
     Serial,
     ProviderGameId,
     UserSelectedTitleSearch,
+    // The ROM file name matched a set the provider indexes by name (arcade romsets), where the
+    // file name is the canonical game identity rather than an arbitrary, hack-prone label.
+    // Persisted as an ordinal, so this must stay last.
+    FileName,
 }
 
 public sealed record GameProviderMatch(

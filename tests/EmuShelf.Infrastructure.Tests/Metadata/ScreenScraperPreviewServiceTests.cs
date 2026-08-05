@@ -117,6 +117,50 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Preview_MatchesArcadeBySetFileName_WithoutHashingOrConsent()
+    {
+        var game = AddGame("tmnt.zip", "arcade-set-archive"u8.ToArray(), "arcade");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        _client.Result = SuccessfulGameResult();
+
+        // allowFingerprinting is false: an arcade set has no whole-file hash, but the file name
+        // (the FBNeo/MAME set id ScreenScraper indexes) matches without reading any bytes.
+        var result = await _preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("tmnt.zip", _client.LastRequest!.RomName);
+        Assert.True(_client.LastRequest.AllowFileNameMatch);
+        Assert.Null(_client.LastRequest.Serial);
+        Assert.Null(_client.LastRequest.Sha1);
+        Assert.Equal(0, _client.LastRequest.RomSize);
+        Assert.Equal(75, _client.LastRequest.SystemId);
+        Assert.Equal(GameProviderMatchMethod.FileName, result.Preview!.Match.MatchMethod);
+        Assert.Equal("tmnt.zip", result.Preview.Match.EvidenceValue);
+        Assert.Null(result.Preview.FingerprintStatus);
+    }
+
+    [Fact]
+    public async Task Preview_ArcadeSetNotFound_SurfacesProviderNotFound_ForTitleSearchFallback()
+    {
+        var game = AddGame("renamed arcade game.zip", "arcade-set-archive"u8.ToArray(), "arcade");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        _client.Result = new ScreenScraperResult<ScreenScraperGameInfo>(
+            ScreenScraperRequestStatus.NotFound, null, null, "No match");
+
+        var result = await _preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: false);
+
+        // An unknown/renamed set is a normal provider miss — the UI turns this into a title search.
+        Assert.Equal(ScreenScraperPreviewStatus.ProviderFailure, result.Status);
+        Assert.Equal(ScreenScraperRequestStatus.NotFound, result.RequestStatus);
+    }
+
+    [Fact]
     public async Task Preview_RequiresSeparateFingerprintConsentBeforeCallingProvider()
     {
         var game = AddGame("Consent.nds", "content"u8.ToArray(), "nds");

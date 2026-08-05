@@ -202,6 +202,46 @@ public class GameScraperViewModelTests
     }
 
     [Fact]
+    public async Task Load_UnsupportedFormat_FallsBackToTitleSearch()
+    {
+        // Arcade sets (and other no-hash formats) can't be whole-file fingerprinted, but the
+        // platform is still mapped — so the user should land in the title search, not a dead end.
+        var preview = new FakePreviewService(Failure(ScreenScraperPreviewStatus.UnsupportedFormat))
+        {
+            SearchCandidates =
+                [new ScreenScraperGameMatch("42", "Teenage Mutant Ninja Turtles", "Arcade")],
+        };
+        var vm = CreateViewModel(preview, new FakeApplyService());
+
+        await vm.LoadAsync();
+
+        Assert.Equal(GameScraperState.NoMatch, vm.State);
+        Assert.True(vm.ShowSearch);
+        Assert.False(vm.ShowMessage);
+        Assert.Single(vm.Candidates);
+        Assert.True(vm.HasCandidates);
+    }
+
+    [Fact]
+    public async Task Load_UnsupportedSystem_StaysADeadEnd()
+    {
+        // A platform ScreenScraper doesn't map at all has no system to search within, so it must
+        // remain the read-only "unsupported" message rather than kicking off a title search.
+        var preview = new FakePreviewService(Failure(ScreenScraperPreviewStatus.UnsupportedSystem))
+        {
+            SearchCandidates = [new ScreenScraperGameMatch("1", "Should Not Appear", "Whatever")],
+        };
+        var vm = CreateViewModel(preview, new FakeApplyService());
+
+        await vm.LoadAsync();
+
+        Assert.Equal(GameScraperState.Unsupported, vm.State);
+        Assert.True(vm.ShowMessage);
+        Assert.False(vm.ShowSearch);
+        Assert.Empty(vm.Candidates);
+    }
+
+    [Fact]
     public async Task NoMatch_AutoSearches_AndSelectingACandidateBuildsAPreview()
     {
         var preview = new FakePreviewService(
