@@ -3,7 +3,7 @@ namespace EmuShelf.Infrastructure.Tests.Storage;
 public class AppPathsTests : TempAppDirectoryTestBase
 {
     [Fact]
-    public void ResolvePortableBaseDirectory_UsesAppImageParent()
+    public void ResolveBaseDirectory_UsesAppImageParent()
     {
         var previous = Environment.GetEnvironmentVariable("APPIMAGE");
         try
@@ -13,7 +13,34 @@ public class AppPathsTests : TempAppDirectoryTestBase
 
             Assert.Equal(
                 AppPaths.BaseDirectory,
-                EmuShelf.Infrastructure.Storage.AppPaths.ResolvePortableBaseDirectory());
+                EmuShelf.Infrastructure.Storage.AppPaths.ResolveBaseDirectory());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("APPIMAGE", previous);
+        }
+    }
+
+    [Fact]
+    public void ResolveBaseDirectory_OnMacOS_UsesApplicationSupport()
+    {
+        // The macOS branch is only reachable on macOS; skip elsewhere rather than assert nothing.
+        if (!OperatingSystem.IsMacOS())
+            return;
+
+        var previous = Environment.GetEnvironmentVariable("APPIMAGE");
+        try
+        {
+            // APPIMAGE takes precedence, so clear it to exercise the macOS fallback.
+            Environment.SetEnvironmentVariable("APPIMAGE", null);
+
+            var expected = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "Library", "Application Support", "EmuShelf");
+
+            Assert.Equal(
+                expected,
+                EmuShelf.Infrastructure.Storage.AppPaths.ResolveBaseDirectory());
         }
         finally
         {

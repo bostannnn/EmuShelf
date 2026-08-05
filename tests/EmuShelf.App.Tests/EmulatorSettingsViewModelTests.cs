@@ -45,6 +45,29 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void DataFolder_IsSurfacedFromMaintenance_WhenProvided()
+    {
+        var maintenance = new LibraryMaintenanceActions(
+            RescanSystem: _ => Task.FromResult(string.Empty),
+            RescanAll: () => Task.FromResult(string.Empty),
+            DataDirectory: "/portable/EmuShelf");
+
+        var viewModel = CreateViewModel(maintenance: maintenance);
+
+        Assert.True(viewModel.HasDataDirectory);
+        Assert.Equal("/portable/EmuShelf", viewModel.DataDirectory);
+    }
+
+    [AvaloniaFact]
+    public void DataFolder_IsHidden_WhenMaintenanceOmitsIt()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.False(viewModel.HasDataDirectory);
+        Assert.Equal(string.Empty, viewModel.DataDirectory);
+    }
+
+    [AvaloniaFact]
     public async Task RetroArchRows_ShareTheExecutableButKeepIndependentCores()
     {
         _dialogs.LibretroCoreToReturn = "/portable/RetroArch/cores/melonds_libretro.dll";

@@ -218,7 +218,8 @@ public partial class App : Application
                 artworkDownloader: webArtworkDownloader,
                 settingsService: Bootstrapper.SettingsService,
                 onScreenKeyboard: new PlatformOnScreenKeyboardService(),
-                gameDetails: Bootstrapper.GameDetailsStore);
+                gameDetails: Bootstrapper.GameDetailsStore,
+                appPaths: Bootstrapper.Paths);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;

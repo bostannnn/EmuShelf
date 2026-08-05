@@ -4386,3 +4386,16 @@ Two couch-mode refinements from testing:
   shell (Exo 2) and size/weight/foreground are forwarded. The hero title stack was switched to stretch
   so the marquee gets the full hero width to measure overflow against. `IsOverflowing` is exposed for a
   headless test of the fits-vs-scrolls decision.
+
+## 2026-08-05 — macOS data lives in Application Support, not beside the executable
+
+On macOS the app runs from a `.app` bundle whose executable sits at `Contents/MacOS/`, so the
+Windows/Linux "portable, beside the executable" rule would bury `Data/Covers/Cache/Logs/Settings/Saves`
+*inside* the bundle. That is hidden from Finder, wiped whenever the user drags a new build over the old
+one, and unwritable once Gatekeeper translocates a quarantined bundle to a read-only mount.
+`AppPaths.ResolveBaseDirectory()` (renamed from `ResolvePortableBaseDirectory`) therefore returns
+`~/Library/Application Support/EmuShelf` on macOS, keeping AppImage and Windows/Linux portable behavior
+unchanged. The home directory is used directly because `SpecialFolder.ApplicationData` maps to `~/.config`
+on .NET for macOS, not the Cocoa location. This is the "non-portable data location" the 2026-07-12 macOS
+entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
+(threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.
