@@ -4130,3 +4130,59 @@ Gamepad settings model now receives the real `CreateScreenScraperSettingsContext
 disconnected; account summary + destructive disconnect when connected), mirroring RetroAchievements.
 The section rail gained a ScreenScraper button, shown only when an account context exists
 (`Settings.HasScreenScraper`), so builds without ScreenScraper credentials are unchanged.
+## 2026-08-05 — Batch scraper serialises progress against finalisation with a lock
+
+`GameBatchScraperViewModel` reports progress through `Progress<GameScrapeBatchProgress>`. In the real
+app that captures Avalonia's `SynchronizationContext`, so `OnProgress` and the completion continuation
+both run ordered on the UI thread and the final summary always wins. Under test there is no captured
+context, so `Progress<T>` delivers callbacks on the thread pool, unordered — a `"Scraping… N of N"`
+report queued mid-run can land *after* the summary is written and overwrite `StatusMessage` back from
+`"N scraped"`. The prior mitigation (set `State = Done` before writing the summary, and have
+`OnProgress` drop reports when `State != Running`) is a cross-thread check-then-act with no barrier, so
+it still raced — it surfaced as an intermittent Ubuntu CI failure of
+`Start_WithEverythingSelected_RunsFillMissing_AllFields_AllMedia` (macOS/Windows passed the same
+commit). Fixed by serialising both `OnProgress` and the run's finalisation on one `_statusGate` lock, so
+the "still Running?" check and the status write are atomic against completion: a late report either ran
+before finalisation or, acquiring the lock afterwards, sees `Done` and drops itself. The lock is
+uncontended in production (single UI thread) and adds no behaviour there; it only makes the ordering
+deterministic where no context serialises it.
+## 2026-08-05 — Gamepad grid: centre by ScrollIntoView + one relative nudge, drop the eased scroll (revises the centre-anchor entry above)
+
+The "centre-anchor + ease" change above regressed on the real Steam Deck compositor: the selector could
+land off-screen, a ton of phantom empty space appeared above the content, and the grid felt chaotic
+after LB/RB switches. Root cause: that design wrote `ScrollViewer.Offset` **directly, every frame, to an
+absolute value computed as `rowIndex * rowHeight`**. Avalonia's `VirtualizingStackPanel` has no real
+extent — it *estimates* one from the average height of realized rows — so external absolute offset writes
+desync its accounting and it renders realized rows with phantom space before them. It never reproduced
+headless (both the centring test and a fresh platform-switch repro pass), which is why it shipped green;
+the corruption is real-compositor-only. Easing also *worsened* the cover-recycle flashing, because it
+scrolls *through* every intermediate row (each realizes and loads a cover) instead of jumping.
+
+Reverted to the stable pattern the pre-PR reveal used — `ScrollIntoView` plus a **single relative
+nudge** — but nudging to *centre* instead of edge-clearance. `RevealFocusedGame` now: if the focused
+row's container is realized, `CentreRealizedRow` reads its measured position and does one relative
+`Offset` nudge so the row's centre lands on the viewport centre (a one-row move nudges by one row, the
+grid scrolling under a stationary selector); if the row is NOT realized (a far jump), it `ScrollIntoView`s
+and retries so the centring runs in a *later* pass (mixing `ScrollIntoView`, which schedules its own
+scroll, with the nudge in one pass makes the two fight). No per-frame writes, no absolute `rowHeight`
+math, no `Extent` reads — so nothing can desync the panel. The selector is still centred and
+aspect-ratio-independent (`SelectorIsCentered_DeepInList_RegardlessOfAspectRatio` still passes); the
+scroll is now a clean single jump per step rather than an animation. Deleted the ease loop, its
+generation token, and the smoothing/snap constants. Smooth animation was dropped deliberately (user
+chose reliability over animation) and can be revisited later with a position-relative ease.
+
+Two supporting fixes found while debugging this:
+- **The grid tiles take no keyboard focus.** The old reveal focused the tile "for directional routing",
+  but gamepad input is routed by the window-level *tunnel* `OnWindowKeyDown` (which runs before any
+  focused control) and the ring is `IsFocused`-driven, so the focus was unnecessary — and
+  `FocusManager.Focus(tile, Directional)` raises a bring-into-view that scrolled the freshly focused tile
+  to an edge (measured: centred at offset 8543, focus shoved it to 8868), fighting the centring. Removing
+  it is what makes the centre stick. Taking no focus is also safe on return from a text overlay: those
+  hide via `IsVisible`, so Avalonia drops focus off their `TextBox` to null on close (verified — the
+  focused element becomes null), and the window tunnel then handles the d-pad. (An interim guard that
+  re-focused the row list on a lingering `TextBox` was dropped: it was a no-op — `ListBox.Focus()` returns
+  false here — for a case that never arises.) Guarded by
+  `Reveal_DoesNotStealFocus_FromOpenSearchBox`, which also pins that the reveal never disturbs an open
+  overlay's live text focus.
+- The reveal's ScrollViewer/viewport-not-ready retry is kept for the first frame after a mode/scope
+  switch.

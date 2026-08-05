@@ -366,8 +366,8 @@ public class GamepadGridSelectorTests
         {
             await Pump();
 
-            // Land deep in the list (a big jump), then take ONE d-pad step so the eased anchor centres the
-            // new row — a row far from either end, where centring is not clamped.
+            // Land deep in the list (a big jump), then take ONE d-pad step so the reveal centres the new
+            // row — a row far from either end, where centring is not clamped.
             viewModel.FocusedGame = games[100];
             await Pump();
             viewModel.DispatchGamepadAction(GamepadAction.NavigateDown);
@@ -388,6 +388,67 @@ public class GamepadGridSelectorTests
             // The focused tile sits on the centre line (a small, aspect-independent bias from the row's
             // 10/18 top/bottom gutters aside); top- or bottom-anchoring would miss by well over 200px.
             Assert.True(offset < 40, $"selector for {systemId} is {offset:F0}px off centre (expected < 40)");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // Invariant guard: RevealFocusedGame also fires on overlay/selection changes and while a text overlay
+    // is open (its box holds live keyboard input). The grid reveal must never disturb that focus — it
+    // takes no focus of its own. Opening search and then changing the focused game (as filtering does)
+    // must leave focus on the search box, so the on-screen keyboard keeps typing into it.
+    [AvaloniaFact]
+    public async Task Reveal_DoesNotStealFocus_FromOpenSearchBox()
+    {
+        var system = KnownSystems.All.First(s => s.Id == "playstation2");
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+
+        var games = Enumerable.Range(0, 40)
+            .Select(index => new GameViewModel(
+                new Game
+                {
+                    Id = index + 1,
+                    SystemId = system.Id,
+                    Path = $"/Games/{system.Id}/Game {index + 1}.bin",
+                    Title = $"Game {index + 1}",
+                    IsAvailable = true,
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                system.Name,
+                system.ShortName,
+                system.AccentColor,
+                coverAspectRatio: system.CoverAspectRatio))
+            .ToArray();
+        viewModel.Games.ReplaceAll(games);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.FocusedGame = games[0];
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await Pump();
+
+            // Open the gamepad search overlay and put focus on its text box, as the window does.
+            viewModel.GamepadOverlay = GamepadOverlayKind.Search;
+            await Pump();
+            var searchBox = window.GetVisualDescendants().OfType<TextBox>()
+                .First(box => box.Name == "GamepadSearchBox");
+            searchBox.Focus();
+            await Pump();
+            Assert.True(searchBox.IsFocused, "precondition: the search box should hold focus");
+
+            // Filtering while typing changes the focused game, which fires RevealFocusedGame synchronously.
+            viewModel.FocusedGame = games[5];
+            await Pump();
+
+            Assert.True(searchBox.IsFocused,
+                "reveal stole focus from the open search box — the d-pad would swallow typing");
         }
         finally
         {
