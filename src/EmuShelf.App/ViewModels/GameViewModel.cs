@@ -233,10 +233,14 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasRating => RatingText is not null;
 
+    private string? _spotlightInfoLine;
+
     /// <summary>The spotlight hero's info line: scraped genre · year · players · developer · publisher
-    /// with the filename appended, or just the filename before the details resolve / when unscraped.</summary>
-    [ObservableProperty]
-    public partial string SpotlightSubtitle { get; set; } = string.Empty;
+    /// with the filename appended, or just the filename before the details resolve / when unscraped.
+    /// Computed so it tracks the filename (which changes with the selected disc).</summary>
+    public string SpotlightSubtitle => string.IsNullOrEmpty(_spotlightInfoLine)
+        ? GamepadSubtitle
+        : $"{_spotlightInfoLine}  ·  {GamepadSubtitle}";
 
     private string? _canonicalSpotlightTitle;
 
@@ -410,8 +414,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         ListCoverHeight = ListCoverFrameHeight;
         ListCoverWidth = Math.Round(ListCoverFrameHeight * coverAspectRatio);
         FormatLabel = GetFormatLabel(LaunchModel);
-        // Shows the filename until the spotlight resolves the richer scraped info line.
-        SpotlightSubtitle = GamepadSubtitle;
         DraftTitle = game.Title;
         LaunchCommand = launchCommand ?? NoGameCommand;
         SaveTitleCommand = saveTitleCommand ?? NoGameCommand;
@@ -441,6 +443,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
         OnPropertyChanged(nameof(GamepadSubtitle));
+        OnPropertyChanged(nameof(SpotlightSubtitle));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
         foreach (var option in DiscOptions)
             option.IsCurrent = option.Disc.Game.Id == selectedDisc.Game.Id;
@@ -500,9 +503,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
         HasFanart = !string.IsNullOrEmpty(fanartPath);
         WheelPath = wheelPath;
         RatingText = ratingText;
-        SpotlightSubtitle = string.IsNullOrEmpty(infoLine)
-            ? GamepadSubtitle
-            : $"{infoLine}  ·  {GamepadSubtitle}";
+        _spotlightInfoLine = infoLine;
+        OnPropertyChanged(nameof(SpotlightSubtitle));
         AreSpotlightDetailsLoaded = true;
     }
 
