@@ -4186,3 +4186,55 @@ Two supporting fixes found while debugging this:
   overlay's live text focus.
 - The reveal's ScrollViewer/viewport-not-ready retry is kept for the first frame after a mode/scope
   switch.
+
+## 2026-08-05 — Gamepad grid: re-introduce smooth scroll as a position-relative ease, and warm covers ahead of it (revises the "drop the eased scroll" entry above)
+
+The single-jump reveal above was reliable but still read as janky: a held d-pad auto-repeats ~one row
+every 110ms (`GamepadNavigationController`), and each repeat teleported the grid a whole row, so a hold
+produced a staccato staircase rather than a glide. The couch-UI expectation is a continuous scroll under
+a stationary centred selector. The previous eased design was reverted because it wrote
+`ScrollViewer.Offset` **absolutely** (`rowIndex * rowHeight`), which desynced the `VirtualizingStackPanel`'s
+*estimated* extent on the real compositor. This entry brings the ease back in the form that entry
+explicitly sanctioned — **position-relative** — plus the cover work that stops the ease from flashing.
+
+Three coupled changes (`MainWindow.axaml.cs`, `MainViewModel.cs`):
+
+- **Position-relative ease toward a FIXED target (`StartOrRetargetGamepadScroll` + `StepGamepadScroll`).**
+  A d-pad move (`RevealFocusedGame(animate: true)`) measures the target row's centre offset **once**, in
+  the same safe (input/loaded) context the snap uses (`TryMeasureCentreDelta`), and computes an absolute
+  target `currentOffset + delta` — position-relative (never `rowIndex*rowHeight`), so it cannot desync the
+  panel's estimated extent (the failure that forced the revert). A self-reposting `Render`-priority loop
+  then eases the offset a fraction (`GamepadScrollSmoothing = 0.28`) of the remaining distance to that
+  fixed number. **The loop does pure offset arithmetic — it never reads the visual tree.** An earlier
+  attempt re-measured the row (`TranslatePoint`/`Bounds`) every frame; that read forces a re-entrant layout
+  that **stack-overflows the `VirtualizingStackPanel` on short-cover rows** (reproduced deterministically
+  by the `snes` case of `SelectorIsCentered…`, which crashed the test host; the tall-cover `psp`/`ps2`
+  cases survived, so it shipped-looking-green in the earlier eased design too). Measuring once and lerping
+  a stored number is exactly the structure of the pre-revert ease, which was headless-safe. A held d-pad
+  retargets the one running loop (no stacked snaps); it settles within a few frames of release and stops
+  reposting, so an idle grid burns no CPU. Termination is covered on both ends: within
+  `GamepadScrollSettleThreshold` (0.5px) it lands exactly and stops, and if a step produces no offset
+  movement it is clamped at a list end (first/last rows can't be centred) and stops.
+- **Snap is kept for everything that is not a one-row step.** `RevealFocusedGame` eases only when the row
+  moved ≤ `GamepadMaxEaseRowStep` (2) from the last revealed row; a scope restore of a deep row, a pointer
+  tap on a distant tile, or the first reveal in a scope snaps via the old measured nudge / `ScrollIntoView`.
+  Easing across many screens is exactly what realizes and flashes a cover on every intermediate row, which
+  is why far moves must not ease. `_lastRevealedRowIndex` is reset on a scope/platform switch so the
+  post-switch landing is treated as fresh (snap), and the non-animate reveals (resize, GridCoverWidth)
+  stay snaps.
+- **Cover prefetch (`PrefetchCoversAroundFocus`).** Cover loads were gated on tile realization
+  (`OnGameCoverAttached`), one row too late for a smooth scroll — the row arrived blank and the art popped
+  in a beat behind. On every focus change the view model now also warms the covers `GamepadCoverPrefetchRows`
+  (3) either side of the focused row, decoupling the load from realization so the glide passes over
+  already-painted tiles. Re-warming an already-loaded/loading cover is a synchronous no-op and covers
+  persist on the view model, so re-running the window each step is cheap.
+
+Also, an unrelated-but-adjacent perf win in the shared cover path: `LoadGameCoverAsync` now decodes each
+thumbnail to the tile's displayed pixel width (`Bitmap.DecodeToWidth`, `MaxCoverWidth × CoverRenderScale`,
+capped at the source's `CoverThumbnailNativeWidth` so it is never upscaled) instead of the full 300×400.
+The grid never renders a cover wider than `MaxCoverWidth`, so this is visually identical while cutting the
+GPU upload and per-cover memory — most valuable when a run of covers lands together during a fast scroll.
+`CoverRenderScale` is pushed in from the view (`ApplyCellWidth`) so the decode stays crisp on HiDPI.
+
+`SelectorIsCentered_DeepInList_RegardlessOfAspectRatio` still asserts the settled centre (its `SettleScroll`
+helper pumps the ease to rest); the smoothing/snap constants and the ease loop's generation token are back.
