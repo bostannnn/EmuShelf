@@ -4270,3 +4270,32 @@ Design choices:
 Deferred (tracked in `docs/couch-artwork-theming-and-spotlight.md`): sampling the ambient palette from
 the fan art instead of the cover; the list's favourites hearts/filter; the screenshots' left-edge
 button-hint column and floating icon toolbar; the couch-side ambient toggle. Desktop is untouched.
+
+## 2026-08-05 — ScreenScraper `UnsupportedFormat` falls back to title search, not a dead end
+
+Formats with no whole-file hash rule (arcade sets, 3DS, disc-id systems like Dreamcast/PS3, or a
+stray container under an otherwise hashable system) return `ScreenScraperPreviewStatus.UnsupportedFormat`
+from the preview. The single-game scraper (`GameScraperViewModel.MapFailureState`) used to route that
+to the read-only `Unsupported` message — a dead end — even though the fingerprint-profile comments
+already promised these systems "fall back to title search." It now routes `UnsupportedFormat` to
+`NoMatch`, which auto-searches by cleaned title so the user can pick a match; `UnsupportedSystem`
+(platform not mapped to ScreenScraper at all, so nothing to search within) stays the dead-end message.
+The batch scraper keeps treating both as `Unsupported`: it can't interactively confirm a title-search
+guess, and auto-applying one risks mismatching rom hacks to their originals.
+
+## 2026-08-05 — Arcade matches ScreenScraper by ROM file name (`romnom`)
+
+Arcade sets have no whole-file hash (a repacked FBNeo/MAME archive isn't byte-stable), so they used
+to reach only the title-search fallback. But the set's file name (e.g. `tmnt.zip`) *is* the identity
+ScreenScraper indexes for arcade — the same role a disc serial plays for PlayStation. So arcade now
+takes a dedicated file-name route in `ScreenScraperPreviewService` (`FileNameMatchSystems`): a single
+`romnom`-only lookup, no file read and no fingerprint-consent gate, recorded as
+`GameProviderMatchMethod.FileName`. An unknown or renamed set returns `NotFound`, which still falls
+through to the title search.
+
+File-name-only matching is opt-in per request (`ScreenScraperGameRequest.AllowFileNameMatch`) and
+enabled only for arcade. Console systems are deliberately excluded: there the file name is an
+arbitrary, hack-prone label, and the client already rejects a provider result that matched by name
+only when a hash was queried (`ReturnedRomMatchesRequestedHash`). The batch scraper gets arcade
+matching for free — `romnom` is a single deterministic request, not the multi-request title search it
+still refuses to run.

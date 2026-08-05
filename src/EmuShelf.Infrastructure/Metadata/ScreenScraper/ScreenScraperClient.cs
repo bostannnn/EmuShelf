@@ -614,9 +614,12 @@ public sealed class ScreenScraperClient : IScreenScraperClient
             (!string.IsNullOrWhiteSpace(request.Crc32) ||
              !string.IsNullOrWhiteSpace(request.Md5) ||
              !string.IsNullOrWhiteSpace(request.Sha1));
-        // ScreenScraper matches by a hash+size, a disc serial, or a confirmed game id. Serial is the
-        // route for compressed disc containers (CHD/CSO/…) whose container bytes are not the ROM.
-        if (!hasForcedGameId && !hasSerial && !hasHashAndSize)
+        // ScreenScraper matches by a hash+size, a disc serial, a confirmed game id, or — only when the
+        // caller opts in — the ROM file name (arcade romsets, whose file name is the set identity).
+        // Serial is the route for compressed disc containers (CHD/CSO/…) whose container bytes are not
+        // the ROM. A file-name-only lookup stays opt-in so an under-specified request for a hashable
+        // system, where a name-only match could silently return a rom hack, is still rejected.
+        if (!hasForcedGameId && !hasSerial && !hasHashAndSize && !request.AllowFileNameMatch)
         {
             throw new ArgumentException(
                 "Automatic ScreenScraper lookup requires a ROM hash and byte size, a serial, or a game id.",

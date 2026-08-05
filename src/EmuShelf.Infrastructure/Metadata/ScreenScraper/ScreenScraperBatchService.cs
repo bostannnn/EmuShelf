@@ -6,10 +6,11 @@ using EmuShelf.Core.Settings;
 namespace EmuShelf.Infrastructure.Metadata.ScreenScraper;
 
 /// <summary>
-/// Runs a hash/serial-only batch scrape. Games are processed one at a time; the shared request
-/// coordinator already paces API calls to the account's concurrency and quota, so a sequential loop
-/// cannot overshoot. The batch never title-searches (that stays a manual, single-game action) and
-/// halts as soon as the provider reports quota exhaustion, leaving finished work intact.
+/// Runs a hash/serial/file-name-only batch scrape (file name for arcade sets). Games are processed one
+/// at a time; the shared request coordinator already paces API calls to the account's concurrency and
+/// quota, so a sequential loop cannot overshoot. The batch never title-searches (that stays a manual,
+/// single-game action) and halts as soon as the provider reports quota exhaustion, leaving finished
+/// work intact.
 /// </summary>
 public sealed class ScreenScraperBatchService : IScreenScraperBatchService
 {

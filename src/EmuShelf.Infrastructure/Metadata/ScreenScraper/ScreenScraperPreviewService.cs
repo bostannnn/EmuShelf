@@ -53,9 +53,10 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         if (!_profiles.TryGetValue(game.SystemId, out var profile))
             return Failure(ScreenScraperPreviewStatus.UnsupportedSystem, "This platform is not mapped to ScreenScraper.");
 
-        // Disc systems are matched by the disc serial, which is read from inside the container — so a
-        // compressed image (CHD/CSO/…) that cannot be whole-file hashed still matches. Cartridge and
-        // raw-disc systems without a stored serial fall through to the hash fingerprint.
+        // Three match routes, in order: (1) disc serial, read from inside the container — so a
+        // compressed image (CHD/CSO/…) that cannot be whole-file hashed still matches; (2) arcade
+        // romsets, matched by the ROM file name that ScreenScraper indexes as the set identity;
+        // (3) everything else falls through to the whole-file hash fingerprint.
         var serial = await ResolveSerialAsync(game, cancellationToken);
 
         ScreenScraperGameRequest request;
@@ -73,6 +74,22 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
                 Language: settings.PreferredLanguage);
             matchMethod = GameProviderMatchMethod.Serial;
             evidenceValue = serial;
+            fingerprintStatus = null;
+        }
+        else if (FileNameMatchSystems.Contains(game.SystemId))
+        {
+            // No file bytes are read: the set name lives in the file name, so this needs no
+            // fingerprint consent. An unknown or renamed set returns NotFound and the caller can
+            // still fall back to title search.
+            var fileName = Path.GetFileName(game.Path);
+            request = new ScreenScraperGameRequest(
+                profile.ProviderSystemId,
+                fileName,
+                RomSize: 0,
+                Language: settings.PreferredLanguage,
+                AllowFileNameMatch: true);
+            matchMethod = GameProviderMatchMethod.FileName;
+            evidenceValue = fileName;
             fingerprintStatus = null;
         }
         else
@@ -217,6 +234,13 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
     // rom hack is never matched to the original release by a shared code.
     private static readonly IReadOnlySet<string> SerialSystems =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "playstation", "playstation2", "psp" };
+
+    // File-name matching is enabled only for arcade, where the ROM file name is the FBNeo/MAME set
+    // short id ScreenScraper indexes as the canonical game identity (there is no whole-file hash of a
+    // repacked set archive). Console systems are excluded: there the file name is an arbitrary label
+    // a rom hack can share, which is exactly what the client's name-only guard rejects.
+    private static readonly IReadOnlySet<string> FileNameMatchSystems =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "arcade" };
 
     private async Task<string?> ResolveSerialAsync(Game game, CancellationToken cancellationToken)
     {
