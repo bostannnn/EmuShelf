@@ -292,6 +292,24 @@ public sealed class TexturePackCoordinator
     {
         var overridePath = _settings.TexturePacks.GetOverride(descriptor.SystemId);
         var installation = _emulatorInstallations?.Invoke(descriptor.SystemId);
+
+        // A system can have several emulator profiles (e.g. PlayStation on DuckStation or RetroArch),
+        // but a texture pack belongs to one emulator and is not portable between them. When the user
+        // has made a different emulator active for this system, its packs would never load, so the row
+        // sits out rather than inventorying folders the active emulator ignores. (PS1 is the current
+        // case: only RetroArch's Beetle PSX HW core supports texture replacement at all, and its
+        // packs live next to the ROM in a filename-keyed format incompatible with DuckStation's
+        // serial-keyed packs — so there is no shared folder to inventory. See
+        // docs/emulator-profiles-refactor.md if a RetroArch texture provider is ever added.)
+        if (installation?.EmulatorId is { } activeEmulatorId &&
+            !string.Equals(activeEmulatorId, descriptor.EmulatorId, StringComparison.Ordinal))
+        {
+            return (
+                Unconfigured(descriptor, $"{descriptor.DisplayName} is not the active emulator for this system."),
+                null,
+                false);
+        }
+
         var provider = descriptor.CreateProvider(new TextureProviderContext(
             overridePath,
             installation?.Directory,

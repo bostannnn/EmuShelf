@@ -4499,8 +4499,9 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task<EmulatorSettingsViewModel> CreateSettingsViewModelAsync()
     {
-        var configured = await Task.Run(() =>
-            _emulatorConfigurations.GetAll(Systems.Select(system => system.Id)));
+        var systemIds = Systems.Select(system => system.Id).ToArray();
+        var (configured, profiles) = await Task.Run(() =>
+            (_emulatorConfigurations.GetAll(systemIds), _emulatorConfigurations.GetAllProfiles(systemIds)));
         return new EmulatorSettingsViewModel(
             Systems,
             _emulators,
@@ -4518,7 +4519,8 @@ public partial class MainViewModel : ViewModelBase
             CreateScreenScraperSettingsContext(),
             themeChoices: ThemeChoices,
             ambientThemeFromArtwork: AmbientThemeFromArtwork,
-            setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync);
+            setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync,
+            profiles: profiles);
     }
 
     private Task SetAmbientThemeFromArtworkAsync(bool value)

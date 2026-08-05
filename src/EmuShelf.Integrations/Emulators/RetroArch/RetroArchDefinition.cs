@@ -11,7 +11,9 @@ public static class RetroArchDefinition
     public static EmulatorDefinition Instance { get; } = new(
         "retroarch",
         "RetroArch",
-        ["megadrive", "nds", "gba", "snes", "nes", "dreamcast", "arcade", "gbc"],
+        // PlayStation is served by both DuckStation (default) and RetroArch (Beetle PSX / SwanStation /
+        // PCSX ReARMed cores); the active profile per system decides which one launches.
+        ["playstation", "megadrive", "nds", "gba", "snes", "nes", "dreamcast", "arcade", "gbc"],
         "-L \"{CorePath}\" \"{GamePath}\"",
         RequiresCorePath: true,
         SharesDefaultInstallation: true,

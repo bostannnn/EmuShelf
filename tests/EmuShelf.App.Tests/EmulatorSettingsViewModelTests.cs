@@ -45,6 +45,54 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void PlayStationRow_OffersDuckStationAndRetroArchProfiles()
+    {
+        var ps1 = CreateViewModel().Rows.Single(row => row.SystemId == "playstation");
+
+        Assert.True(ps1.HasMultipleProfiles);
+        Assert.Equal(
+            ["DuckStation", "RetroArch"],
+            ps1.AvailableProfiles.Select(profile => profile.EmulatorName));
+        // The default (first-supporting) profile is active, so single-emulator behavior is unchanged.
+        Assert.Equal("DuckStation", ps1.EmulatorName);
+        Assert.False(ps1.RequiresCorePath);
+    }
+
+    [AvaloniaFact]
+    public async Task PlayStationRow_SwitchingToRetroArchKeepsBothProfilesAndPinsTheActiveOne()
+    {
+        var viewModel = CreateViewModel();
+        var ps1 = viewModel.Rows.Single(row => row.SystemId == "playstation");
+
+        // Configure DuckStation, then switch the profile to RetroArch and configure its core.
+        ps1.ExecutablePath = "/portable/DuckStation/duckstation";
+        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "retroarch");
+
+        Assert.Equal("RetroArch", ps1.EmulatorName);
+        Assert.True(ps1.RequiresCorePath);
+        ps1.ExecutablePath = "/portable/RetroArch/retroarch";
+        ps1.CorePath = "/portable/RetroArch/cores/swanstation_libretro.dll";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        // Both profiles persist, keyed by their own emulator id, and RetroArch is the active one.
+        var playStationProfiles = _configurations.AllSaved
+            .Where(configuration => configuration.SystemId == "playstation")
+            .ToList();
+        Assert.Contains(playStationProfiles, configuration =>
+            configuration.EmulatorId == "duckstation" &&
+            configuration.ExecutablePath == "/portable/DuckStation/duckstation");
+        Assert.Contains(playStationProfiles, configuration =>
+            configuration.EmulatorId == "retroarch" &&
+            configuration.CorePath == "/portable/RetroArch/cores/swanstation_libretro.dll");
+        Assert.Equal("retroarch", _configurations.ActiveEmulators["playstation"]);
+
+        // Switching back restores the DuckStation draft rather than showing empty fields.
+        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "duckstation");
+        Assert.Equal("/portable/DuckStation/duckstation", ps1.ExecutablePath);
+    }
+
+    [AvaloniaFact]
     public void DataFolder_IsSurfacedFromMaintenance_WhenProvided()
     {
         var maintenance = new LibraryMaintenanceActions(
@@ -1276,15 +1324,25 @@ public class EmulatorSettingsViewModelTests
 
     private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore
     {
+        // Keyed by system id (active profile, last write wins) so single-profile tests read Saved[id];
+        // AllSaved keeps every persisted (system, emulator) profile and ActiveEmulators the selections.
         public Dictionary<string, EmulatorConfiguration> Saved { get; } =
             new(StringComparer.Ordinal);
+        public List<EmulatorConfiguration> AllSaved { get; } = [];
+        public Dictionary<string, string> ActiveEmulators { get; } = new(StringComparer.Ordinal);
         public int BatchSaveCalls { get; private set; }
 
         public EmulatorConfiguration? Get(string systemId) =>
             Saved.GetValueOrDefault(systemId);
 
-        public void Save(EmulatorConfiguration configuration) =>
+        public void SetActiveEmulator(string systemId, string emulatorId) =>
+            ActiveEmulators[systemId] = emulatorId;
+
+        public void Save(EmulatorConfiguration configuration)
+        {
             Saved[configuration.SystemId] = configuration;
+            AllSaved.Add(configuration);
+        }
 
         public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations)
         {

@@ -40,7 +40,8 @@ public sealed record SaveProviderContext(
     string? LaunchArguments = null,
     string? ExecutablePath = null,
     string? FlatpakApplicationId = null,
-    string? StateDirectoryOverride = null);
+    string? StateDirectoryOverride = null,
+    string? ActiveEmulatorId = null);
 
 /// <summary>A provider's resolved save directory plus optional display text and compatibility note.</summary>
 public sealed record SaveProviderDetection(
@@ -97,38 +98,20 @@ public static class SaveProviderRegistry
 
     public static IReadOnlyList<SaveProviderDescriptor> All { get; } =
     [
+        // PlayStation has two emulator profiles: DuckStation (default) and RetroArch (Beetle PSX /
+        // SwanStation / PCSX ReARMed). The active profile decides which save layout is resolved, so
+        // switching the emulator in Settings switches which saves are synced.
         new SaveProviderDescriptor(
             SystemId: "playstation",
             DisplayName: "PlayStation",
-            SaveShapeDescription: "DuckStation memory cards · shared cards contain saves from every game",
-            OverridePlaceholder: "Use configured DuckStation, or choose its user data folder",
-            CreateProvider: static context =>
-            {
-                if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
-                    string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
-                    !context.IsFlatpak)
-                {
-                    return null;
-                }
-
-                return new DuckStationSaveLocationProvider(
-                    context.EmulatorDirectory ?? context.Paths.BaseDirectory,
-                    userDirectoryOverride: context.DirectoryOverride,
-                    isFlatpak: context.IsFlatpak);
-            },
-            DetectAsync: static async (provider, cancellationToken) =>
-            {
-                var info = await ((DuckStationSaveLocationProvider)provider)
-                    .GetMemoryCardInfoAsync(cancellationToken);
-                return new SaveProviderDetection(
-                    info.Directory,
-                    info.UsesFileTitleCards
-                        ? "This machine uses filename-based cards, which are synced under their exact file names. " +
-                          "Another machine only picks one up if its DuckStation enables the same card type in the same " +
-                          "slot and the game file has the same name; otherwise that save stays in the cloud."
-                        : "Cards are synced per slot and card type. A machine whose DuckStation uses a different card " +
-                          "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
-            },
+            SaveShapeDescription: "Memory-card saves from the configured PlayStation emulator",
+            OverridePlaceholder: "Use the configured emulator, or choose its save/user data folder",
+            CreateProvider: static context => IsRetroArch(context.ActiveEmulatorId)
+                ? CreateRetroArchProvider("playstation", context)
+                : CreateDuckStationProvider(context),
+            DetectAsync: static (provider, cancellationToken) => provider is RetroArchSaveLocationProvider
+                ? DetectRetroArchAsync(provider, cancellationToken)
+                : DetectDuckStationAsync(provider, cancellationToken),
             SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
@@ -330,52 +313,91 @@ public static class SaveProviderRegistry
             DisplayName: displayName,
             SaveShapeDescription: "RetroArch battery saves · one file per game, named after the game file",
             OverridePlaceholder: "Use configured RetroArch, or choose its saves folder",
-            CreateProvider: context =>
-            {
-                // Without a core there is nothing to identify this system's saves among the other
-                // cores writing into the same folder, and RetroArch rows always configure one.
-                if (string.IsNullOrWhiteSpace(context.CorePath) &&
-                    string.IsNullOrWhiteSpace(context.DirectoryOverride))
-                {
-                    return null;
-                }
-
-                return new RetroArchSaveLocationProvider(
-                    systemId,
-                    context.CorePath,
-                    context.EmulatorDirectory ?? context.Paths.BaseDirectory,
-                    directoryOverride: context.DirectoryOverride,
-                    isFlatpak: context.IsFlatpak,
-                    gameFileNames: context.GameFileNames);
-            },
-            DetectAsync: static async (provider, cancellationToken) =>
-            {
-                var retroArch = (RetroArchSaveLocationProvider)provider;
-                var info = await retroArch.GetSaveInfoAsync(cancellationToken);
-                var core = info.Core.Name ?? info.Core.FileName;
-                var ambiguous = await retroArch.GetAmbiguousSaveNamesAsync(cancellationToken);
-                var duplicates = ambiguous.Count == 0
-                    ? string.Empty
-                    : $" {ambiguous.Count} game(s) here have more than one save file — for example " +
-                      $"\"{ambiguous[0]}\" — usually the same save under two extensions from different " +
-                      "core versions. All copies are synced, but the emulator loads only one.";
-                var perGame = info.HasUnreadPerGameOverride
-                    ? " One of RetroArch's per-game overrides sends that game's saves to another folder; " +
-                      "those saves are not synced from here."
-                    : string.Empty;
-                return new SaveProviderDetection(
-                    info.SaveDirectory,
-                    (info.SortedByCore
-                        ? $"RetroArch keeps {core}'s saves in their own folder, so everything in it is synced. " +
-                          "Saves are matched by file name, so the same game needs the same file name on both machines."
-                        : "RetroArch keeps every core's saves in this one folder, so EmuShelf syncs only the saves " +
-                          "named after games in your library for this system. To sync all of them, turn on " +
-                          "RetroArch → Settings → Saving → \"Sort Saves Into Folders By Core Name\", then move the " +
-                          "existing saves into the new per-core folder — RetroArch does not move them for you, and " +
-                          "will not find them until you do.") +
-                    perGame + duplicates);
-            },
+            CreateProvider: context => CreateRetroArchProvider(systemId, context),
+            DetectAsync: static (provider, cancellationToken) => DetectRetroArchAsync(provider, cancellationToken),
             SupportsSaveStates: true);
+    }
+
+    private static bool IsRetroArch(string? emulatorId) =>
+        string.Equals(emulatorId, "retroarch", StringComparison.Ordinal);
+
+    private static ISaveLocationProvider? CreateDuckStationProvider(SaveProviderContext context)
+    {
+        if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
+            string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
+            !context.IsFlatpak)
+        {
+            return null;
+        }
+
+        return new DuckStationSaveLocationProvider(
+            context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+            userDirectoryOverride: context.DirectoryOverride,
+            isFlatpak: context.IsFlatpak);
+    }
+
+    private static async Task<SaveProviderDetection> DetectDuckStationAsync(
+        ISaveLocationProvider provider,
+        CancellationToken cancellationToken)
+    {
+        var info = await ((DuckStationSaveLocationProvider)provider).GetMemoryCardInfoAsync(cancellationToken);
+        return new SaveProviderDetection(
+            info.Directory,
+            info.UsesFileTitleCards
+                ? "This machine uses filename-based cards, which are synced under their exact file names. " +
+                  "Another machine only picks one up if its DuckStation enables the same card type in the same " +
+                  "slot and the game file has the same name; otherwise that save stays in the cloud."
+                : "Cards are synced per slot and card type. A machine whose DuckStation uses a different card " +
+                  "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
+    }
+
+    private static ISaveLocationProvider? CreateRetroArchProvider(string systemId, SaveProviderContext context)
+    {
+        // Without a core there is nothing to identify this system's saves among the other cores
+        // writing into the same folder, and RetroArch rows always configure one.
+        if (string.IsNullOrWhiteSpace(context.CorePath) &&
+            string.IsNullOrWhiteSpace(context.DirectoryOverride))
+        {
+            return null;
+        }
+
+        return new RetroArchSaveLocationProvider(
+            systemId,
+            context.CorePath,
+            context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+            directoryOverride: context.DirectoryOverride,
+            isFlatpak: context.IsFlatpak,
+            gameFileNames: context.GameFileNames);
+    }
+
+    private static async Task<SaveProviderDetection> DetectRetroArchAsync(
+        ISaveLocationProvider provider,
+        CancellationToken cancellationToken)
+    {
+        var retroArch = (RetroArchSaveLocationProvider)provider;
+        var info = await retroArch.GetSaveInfoAsync(cancellationToken);
+        var core = info.Core.Name ?? info.Core.FileName;
+        var ambiguous = await retroArch.GetAmbiguousSaveNamesAsync(cancellationToken);
+        var duplicates = ambiguous.Count == 0
+            ? string.Empty
+            : $" {ambiguous.Count} game(s) here have more than one save file — for example " +
+              $"\"{ambiguous[0]}\" — usually the same save under two extensions from different " +
+              "core versions. All copies are synced, but the emulator loads only one.";
+        var perGame = info.HasUnreadPerGameOverride
+            ? " One of RetroArch's per-game overrides sends that game's saves to another folder; " +
+              "those saves are not synced from here."
+            : string.Empty;
+        return new SaveProviderDetection(
+            info.SaveDirectory,
+            (info.SortedByCore
+                ? $"RetroArch keeps {core}'s saves in their own folder, so everything in it is synced. " +
+                  "Saves are matched by file name, so the same game needs the same file name on both machines."
+                : "RetroArch keeps every core's saves in this one folder, so EmuShelf syncs only the saves " +
+                  "named after games in your library for this system. To sync all of them, turn on " +
+                  "RetroArch → Settings → Saving → \"Sort Saves Into Folders By Core Name\", then move the " +
+                  "existing saves into the new per-core folder — RetroArch does not move them for you, and " +
+                  "will not find them until you do.") +
+            perGame + duplicates);
     }
 
     /// <summary>The descriptor for one system id, or null when the platform is not supported.</summary>

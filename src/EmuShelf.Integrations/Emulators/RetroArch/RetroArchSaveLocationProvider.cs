@@ -40,6 +40,11 @@ public sealed record RetroArchCore(string CoreId, string FileName, string? Name)
         ["fceumm"] = "FCEUmm",
         ["nestopia"] = "Nestopia UE",
         ["quicknes"] = "QuickNES",
+        // PlayStation cores, so RetroArch save-folder-by-core resolves without the core's info file.
+        ["mednafen_psx"] = "Beetle PSX",
+        ["mednafen_psx_hw"] = "Beetle PSX HW",
+        ["swanstation"] = "SwanStation",
+        ["pcsx_rearmed"] = "PCSX-ReARMed",
     };
 
     /// <summary>Identifies the configured core, reading RetroArch's info entry when it is present.</summary>

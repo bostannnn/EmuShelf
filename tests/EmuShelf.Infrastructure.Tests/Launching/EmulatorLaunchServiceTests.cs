@@ -427,6 +427,57 @@ public class EmulatorLaunchServiceTests : IDisposable
         Assert.False(_runner.WasRun);
     }
 
+    [Fact]
+    public async Task LaunchAsync_WhenTwoEmulatorsSupportTheSystem_LaunchesTheActiveProfilesEmulator()
+    {
+        // DuckStation and RetroArch both list "test-system"; the active profile names RetroArch, so
+        // the core-and-content launcher runs even though the plain emulator is first in the list.
+        var game = CreateGameFile("Game With Spaces.cue");
+        var core = CreateGameFile("RetroArch/cores/swanstation_libretro.dll").Path;
+        var retroArch = new EmulatorDefinition(
+            "test-retroarch",
+            "Test RetroArch",
+            ["test-system"],
+            "-L \"{CorePath}\" \"{GamePath}\"",
+            RequiresCorePath: true,
+            RequiresContentFile: true);
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, CreateExecutableFile("retroarch.exe"), null)
+        {
+            EmulatorId = "test-retroarch",
+            CorePath = core,
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_emulator, retroArch],
+            _logger);
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(["-L", core, game.Path], _runner.Arguments);
+        Assert.Contains("Launching Test RetroArch for Test Game.", _logger.InformationMessages);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_StaleActiveEmulatorThatNoLongerSupportsTheSystem_FallsBackToSupporting()
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("emulator.exe");
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, executable, null)
+        {
+            // Names an emulator that is not registered / does not support this system.
+            EmulatorId = "removed-emulator",
+        };
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        Assert.Contains("Launching Test Emulator for Test Game.", _logger.InformationMessages);
+    }
+
     private EmulatorLaunchService CreateService() => new(
         _configurations,
         _runner,

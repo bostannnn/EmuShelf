@@ -318,6 +318,126 @@ public class SqliteEmulatorConfigurationStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void SaveAll_KeepsSeveralProfilesForOneSystemAndMakesTheSavedOneActive()
+    {
+        var store = CreateStore(out _);
+        var duckStation = Path.Combine(BaseDirectory, "Emulators", "DuckStation", "duckstation.exe");
+        var retroArch = Path.Combine(BaseDirectory, "Emulators", "RetroArch", "retroarch.exe");
+        var core = Path.Combine(BaseDirectory, "Emulators", "RetroArch", "cores", "swanstation_libretro.dll");
+
+        // Configure DuckStation first, then RetroArch: both profiles are kept, and RetroArch (saved
+        // last) is the active one for the system.
+        store.Save(new EmulatorConfiguration("playstation", duckStation, "-batch -- \"{GamePath}\"")
+        {
+            EmulatorId = "duckstation",
+            EmulatorInstallationId = "duckstation-playstation",
+        });
+        store.Save(new EmulatorConfiguration("playstation", retroArch, "-L \"{CorePath}\" \"{GamePath}\"")
+        {
+            EmulatorId = "retroarch",
+            EmulatorInstallationId = "retroarch",
+            CorePath = core,
+        });
+
+        Assert.Equal("retroarch", store.GetActiveEmulatorId("playstation"));
+        Assert.Equal("retroarch", store.Get("playstation")!.EmulatorId);
+        Assert.Equal(core, store.Get("playstation")!.CorePath);
+
+        var profiles = store.GetProfiles("playstation");
+        Assert.Equal(["duckstation", "retroarch"], profiles.Configurations.Select(c => c.EmulatorId).OrderBy(id => id));
+        Assert.Equal(duckStation, profiles.ForEmulator("duckstation")!.ExecutablePath);
+        Assert.Equal(retroArch, profiles.ForEmulator("retroarch")!.ExecutablePath);
+    }
+
+    [Fact]
+    public void SetActiveEmulator_SwitchesTheProfileGetReturnsWithoutLosingTheOther()
+    {
+        var store = CreateStore(out _);
+        var duckStation = Path.Combine(BaseDirectory, "Emulators", "DuckStation", "duckstation.exe");
+        var retroArch = Path.Combine(BaseDirectory, "Emulators", "RetroArch", "retroarch.exe");
+        store.SaveAll(
+        [
+            new EmulatorConfiguration("playstation", duckStation, "-batch -- \"{GamePath}\"")
+            {
+                EmulatorId = "duckstation",
+                EmulatorInstallationId = "duckstation-playstation",
+            },
+            new EmulatorConfiguration("playstation", retroArch, "-L \"{CorePath}\" \"{GamePath}\"")
+            {
+                EmulatorId = "retroarch",
+                EmulatorInstallationId = "retroarch",
+            },
+        ]);
+
+        store.SetActiveEmulator("playstation", "duckstation");
+
+        Assert.Equal("duckstation", store.Get("playstation")!.EmulatorId);
+        Assert.Equal(duckStation, store.Get("playstation")!.ExecutablePath);
+        // The RetroArch profile is still stored and reachable by name.
+        Assert.Equal(retroArch, store.GetForEmulator("playstation", "retroarch")!.ExecutablePath);
+    }
+
+    [Fact]
+    public void Initialize_FromVersion15_KeysConfigsByEmulatorAndSeedsTheActiveSelection()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        using (var connection = database.CreateConnection())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE SchemaVersion (Version INTEGER NOT NULL);
+                INSERT INTO SchemaVersion VALUES (15);
+                CREATE TABLE EmulatorConfigs (
+                    SystemId TEXT PRIMARY KEY,
+                    ExecutablePath TEXT NULL,
+                    LaunchArguments TEXT NULL,
+                    EmulatorId TEXT NULL,
+                    EmulatorInstallationId TEXT NULL,
+                    CorePath TEXT NULL
+                );
+                CREATE TABLE EmulatorInstallations (
+                    InstallationId TEXT PRIMARY KEY,
+                    EmulatorId TEXT NOT NULL,
+                    ExecutablePath TEXT NULL,
+                    TargetKind TEXT NULL,
+                    TargetValue TEXT NULL
+                );
+                INSERT INTO EmulatorConfigs
+                    (SystemId, ExecutablePath, LaunchArguments, EmulatorId, EmulatorInstallationId)
+                VALUES
+                    ('playstation', 'Emulators/DuckStation/duckstation.exe', '-batch -- "{GamePath}"',
+                     'duckstation', 'duckstation-playstation');
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        // The migrated row keeps DuckStation active and the composite key now admits a second profile.
+        Assert.Equal("duckstation", store.GetActiveEmulatorId("playstation"));
+        store.Save(new EmulatorConfiguration("playstation", "Emulators/RetroArch/retroarch.exe",
+            "-L \"{CorePath}\" \"{GamePath}\"")
+        {
+            EmulatorId = "retroarch",
+            EmulatorInstallationId = "retroarch",
+        });
+        Assert.Equal(2, store.GetProfiles("playstation").Configurations.Count);
+        Assert.Equal("retroarch", store.GetActiveEmulatorId("playstation"));
+    }
+
+    private SqliteEmulatorConfigurationStore CreateStore(out LibraryDatabase database)
+    {
+        AppPaths.EnsureDirectoriesExist();
+        database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+        return new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(AppPaths));
+    }
+
+    [Fact]
     public void SharedRetroArchInstallation_RelocatesWithItsSystemCores()
     {
         var originalBase = Path.Combine(BaseDirectory, "Portable");

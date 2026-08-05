@@ -202,6 +202,7 @@ public sealed class AppBootstrapper
             configuration.CorePath,
             configuration.LaunchArguments,
             executablePath,
-            (configuration.LaunchTarget as FlatpakApplicationTarget)?.AppId);
+            (configuration.LaunchTarget as FlatpakApplicationTarget)?.AppId,
+            configuration.EmulatorId);
     }
 }

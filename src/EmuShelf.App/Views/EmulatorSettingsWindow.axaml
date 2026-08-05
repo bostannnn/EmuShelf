@@ -248,6 +248,24 @@
                                                 Margin="16,0,16,16" Spacing="9">
                                         <Border Height="1" Background="{DynamicResource EmuBorderBrush}"
                                                 Margin="0,0,0,5" />
+                                        <StackPanel Spacing="5" IsVisible="{Binding HasMultipleProfiles}">
+                                            <TextBlock Text="EMULATOR" FontSize="10" FontWeight="SemiBold"
+                                                       LetterSpacing="0.7"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <ComboBox ItemsSource="{Binding AvailableProfiles}"
+                                                      SelectedItem="{Binding SelectedProfile, Mode=TwoWay}"
+                                                      HorizontalAlignment="Stretch"
+                                                      Background="{DynamicResource EmuInputBrush}"
+                                                      BorderBrush="{DynamicResource EmuBorderBrush}">
+                                                <ComboBox.ItemTemplate>
+                                                    <!-- Reflection binding (no x:DataType), matching the cores list template below;
+                                                         the item is an EmulatorSettingsRowViewModel.EmulatorProfileOption. -->
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding EmulatorName}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </StackPanel>
                                         <TextBlock Text="LAUNCH TARGET" FontSize="10" FontWeight="SemiBold"
                                                    IsVisible="{Binding IsLaunchTargetPickerVisible}"
                                                    LetterSpacing="0.7"

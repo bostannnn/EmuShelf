@@ -290,8 +290,9 @@ public sealed class DialogService : IDialogService
         if (owner is null)
             return;
 
-        var configured = await Task.Run(() =>
-            configurations.GetAll(systems.Select(system => system.Id)));
+        var systemIds = systems.Select(system => system.Id).ToArray();
+        var (configured, profiles) = await Task.Run(() =>
+            (configurations.GetAll(systemIds), configurations.GetAllProfiles(systemIds)));
         var viewModel = new EmulatorSettingsViewModel(
             systems,
             emulators,
@@ -307,7 +308,8 @@ public sealed class DialogService : IDialogService
             screenScraper,
             themeChoices,
             ambientThemeFromArtwork,
-            setAmbientThemeFromArtwork);
+            setAmbientThemeFromArtwork,
+            profiles);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 

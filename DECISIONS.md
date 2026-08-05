@@ -4386,6 +4386,62 @@ Two couch-mode refinements from testing:
   shell (Exo 2) and size/weight/foreground are forwarded. The hero title stack was switched to stretch
   so the marquee gets the full hero width to measure overflow against. `IsOverflowing` is exposed for a
   headless test of the fits-vs-scrolls decision.
+## 2026-08-05 — Multiple emulators per console via per-system "profiles" (PS1 gets RetroArch)
+
+EmuShelf assumed one emulator per system everywhere: launch picked
+`emulators.FirstOrDefault(e => e.Supports(systemId))`, `EmulatorConfigs` was keyed by `SystemId`
+alone, and the save/texture registries hard-wired one emulator per system. To let a console offer
+alternatives (the first being PlayStation on RetroArch alongside DuckStation), a per-system **active
+emulator profile** was introduced.
+
+- **Data model.** A "profile" is a `(SystemId, EmulatorId)` pairing that owns its own launch
+  arguments, installation, and core. Schema **v16** repoints the `EmulatorConfigs` primary key from
+  `SystemId` to `(SystemId, EmulatorId)` and adds `SystemEmulatorSelection(SystemId PK, EmulatorId)`
+  for the active pointer. The migration keeps every existing single-row config and points the
+  selection at its current emulator, so DuckStation/PCSX2/Dolphin/RetroArch setups are untouched and
+  PS1 stays on DuckStation until the user changes it. v16 is self-healing (`CREATE TABLE IF NOT
+  EXISTS EmulatorConfigs`) so a DB synthesised at v9+ (where v8 is skipped) still migrates.
+
+- **Resolution seam.** `IEmulatorConfigurationStore.Get(systemId)` now returns the *active* profile's
+  config (it carries `EmulatorId`). `EmulatorLaunchService` derives the emulator from
+  `config.EmulatorId`, falling back to the first supporting emulator when there is no usable
+  selection — so a system that was never given an explicit profile (and every launch-service test)
+  behaves exactly as before. Save-sync and texture resolution already flowed through `Get`, so they
+  automatically pick up the active installation/core; they additionally key on `EmulatorId`.
+
+- **RetroArch on PS1.** `"playstation"` was added to `RetroArchDefinition.SupportedSystemIds`. It
+  reuses the shared RetroArch installation (`SharesDefaultInstallation`) and the existing
+  `-L {CorePath} {GamePath}` template; only the core (Beetle PSX / SwanStation / PCSX ReARMed) is
+  PS1-specific. Those core ids were added to `RetroArchCore.KnownCoreNames` so save-folder-by-core
+  resolves without the info file. RetroAchievements needs no change — identification is per-system
+  and emulator-agnostic, so a PS1 disc hashes identically under either emulator.
+
+- **Saves follow the active profile.** The single PlayStation save descriptor now branches on
+  `SaveProviderContext.ActiveEmulatorId`: DuckStation memory cards by default, the generic
+  `RetroArchSaveLocationProvider` (battery saves + guarded states) when RetroArch is active. The
+  registry stays one-descriptor-per-system, so the Saves section keeps one row per console.
+
+- **UI.** Each Settings → Emulators row gains an emulator picker, shown only when a system has more
+  than one supported emulator (`HasMultipleProfiles`). The row caches one editable draft per emulator
+  so switching the picker never loses the other profile's edits, and Save persists every configured
+  profile plus `SetActiveEmulator`. The **Emulators section stays Desktop-only** — the Gamepad
+  settings projection already excludes it — so profile *selection* is Desktop-only for now, while the
+  Gamepad Saves/Texture sections inherit active-profile behaviour through the shared model with no
+  change. Surfacing the picker in Gamepad mode is deferred.
+
+- **Scope.** This is the incremental "profile model + resolution seam" pass with DuckStation +
+  RetroArch(PS1) as the reference conversion; the other emulators keep their existing registration.
+  The follow-up full-unification path (one cohesive per-emulator profile owning launch/saves/states/
+  textures/config, replacing the scattered registries) is written up in
+  `docs/emulator-profiles-refactor.md`. Textures for PS1 stay DuckStation-only: when RetroArch is the
+  active PS1 profile, `TexturePackCoordinator` sits the texture row out. This was verified against the
+  libretro/DuckStation docs (Aug 2026): among RetroArch PS1 cores only Beetle PSX HW (Vulkan) supports
+  texture replacement (SwanStation and PCSX ReARMed do not), it stores packs next to the ROM
+  (`<game_filename>-texture-replacements/`) rather than in an emulator-owned folder, and its
+  filename-keyed format is not interchangeable with DuckStation's serial-keyed packs — so a Beetle
+  provider would be a separate per-game sibling-folder inventory, not a reuse of the DuckStation
+  adapter. Deferred, not blocked; see the refactor doc.
+
 ## 2026-08-05 — App version comes from the git tag at build time; Settings → About shows version + commit
 
 The displayed version was stuck at the hardcoded `<Version>0.1.0</Version>` in

@@ -84,13 +84,34 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         }
     }
 
+    // Prefers the emulator named by the active profile; only that emulator must still support the
+    // system, otherwise a stale selection is ignored. With no usable selection the first supporting
+    // emulator wins, preserving the original single-emulator-per-system behavior.
+    private EmulatorDefinition? ResolveEmulator(string systemId, EmulatorConfiguration? configuration)
+    {
+        if (!string.IsNullOrWhiteSpace(configuration?.EmulatorId))
+        {
+            var selected = _emulators.FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, configuration.EmulatorId, StringComparison.Ordinal) &&
+                candidate.Supports(systemId));
+            if (selected is not null)
+                return selected;
+        }
+
+        return _emulators.FirstOrDefault(candidate => candidate.Supports(systemId));
+    }
+
     private LaunchPreparation PrepareLaunch(Game game)
     {
         if (!File.Exists(game.Path) && !Directory.Exists(game.Path))
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: the game path is unavailable.");
 
-        var emulator = _emulators.FirstOrDefault(candidate => candidate.Supports(game.SystemId));
+        // Several emulators can serve one system, so the active profile's own emulator id decides
+        // which one launches. Falling back to the first supporting emulator keeps a system that was
+        // never given an explicit profile (and the launch-service tests) behaving exactly as before.
+        var configuration = _configurations.Get(game.SystemId);
+        var emulator = ResolveEmulator(game.SystemId, configuration);
         if (emulator is null)
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: no emulator supports this system.");
@@ -100,8 +121,6 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return LaunchPreparation.Failed(
                 $"Cannot launch {game.Title}: {emulator.Name} requires a game content file, not a folder.");
         }
-
-        var configuration = _configurations.Get(game.SystemId);
         var target = configuration?.LaunchTarget ??
             (string.IsNullOrWhiteSpace(configuration?.ExecutablePath)
                 ? null
