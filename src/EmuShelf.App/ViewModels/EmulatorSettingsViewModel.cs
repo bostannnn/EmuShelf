@@ -180,6 +180,17 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool ShowEmptyPlatforms { get; set; }
 
+    /// <summary>EmuShelf's data folder (database, covers, settings, saves), shown in General so the
+    /// user can open it. Empty when the host did not supply it (design-time and tests).</summary>
+    public string DataDirectory => _maintenance?.DataDirectory ?? string.Empty;
+    public bool HasDataDirectory => !string.IsNullOrWhiteSpace(_maintenance?.DataDirectory);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDataFolderStatus))]
+    public partial string DataFolderStatusText { get; set; } = string.Empty;
+
+    public bool HasDataFolderStatus => !string.IsNullOrWhiteSpace(DataFolderStatusText);
+
     [ObservableProperty]
     public partial string CloudRemoteName { get; set; } = "emushelf-gdrive";
 
@@ -456,6 +467,29 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _maintenance?.RescanAll,
         "Rescanning remembered folders…",
         message => MaintenanceStatusText = message);
+
+    /// <summary>Reveals EmuShelf's data folder in the desktop file manager. Nothing there is modified.</summary>
+    [RelayCommand]
+    private void OpenDataFolder()
+    {
+        var path = _maintenance?.DataDirectory;
+        if (string.IsNullOrWhiteSpace(path))
+            return;
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not open the data folder '{path}': {ex.Message}");
+            DataFolderStatusText = "Couldn't open the data folder.";
+        }
+    }
 
     [RelayCommand]
     private async Task FetchAllMetadataAsync()

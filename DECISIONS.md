@@ -4410,3 +4410,31 @@ the repo disagreed and `--version` only printed `EmuShelf`.
   otherwise always present (it needs no host context) and sits at the permanent tail of the list.
 - **Caveat:** incremental local builds may show a stale commit if the assembly-info generation is
   skipped as up-to-date; clean/Release/CI builds (which the shipped binaries use) always re-stamp.
+
+## 2026-08-05 — Spotlight crash: no cross-fade over disposed fan-art bitmaps
+
+Selecting the couch spotlight crashed the macOS build (SIGABRT in SkiaSharp on the render thread).
+Cause: the spotlight backdrop was switched to a `TransitioningContentControl` with a `CrossFade`
+(motion-polish pass) whose `Content` binds to `FocusedGame.FanartImage` — a `Bitmap`. But the
+spotlight deliberately **disposes** the focused game's fan-art bitmap as focus moves (`OnFocusedGame
+Changed` → `oldValue.FanartImage = null` → `Dispose`) so a long list never accumulates ~1080p images.
+The cross-fade keeps the *outgoing* bitmap rendered for its 280 ms fade, so it draws a disposed
+`Bitmap` and the render thread aborts.
+
+Reverted the backdrop to a plain `Image` (instant swap, as before). The cross-fade and the eager
+per-focus disposal are fundamentally at odds; bringing the cross-fade back needs deferred disposal
+(release the outgoing bitmap only after the transition completes, or retain the last N), not a bind to
+the disposable bitmap. The rest of the motion-polish pass (grid dissolve, overlay fade, focused-tile
+lift, search expand, accelerating repeat) is unaffected and kept.
+## 2026-08-05 — macOS data lives in Application Support, not beside the executable
+
+On macOS the app runs from a `.app` bundle whose executable sits at `Contents/MacOS/`, so the
+Windows/Linux "portable, beside the executable" rule would bury `Data/Covers/Cache/Logs/Settings/Saves`
+*inside* the bundle. That is hidden from Finder, wiped whenever the user drags a new build over the old
+one, and unwritable once Gatekeeper translocates a quarantined bundle to a read-only mount.
+`AppPaths.ResolveBaseDirectory()` (renamed from `ResolvePortableBaseDirectory`) therefore returns
+`~/Library/Application Support/EmuShelf` on macOS, keeping AppImage and Windows/Linux portable behavior
+unchanged. The home directory is used directly because `SpecialFolder.ApplicationData` maps to `~/.config`
+on .NET for macOS, not the Cocoa location. This is the "non-portable data location" the 2026-07-12 macOS
+entry deferred. A "Open data folder" button in Settings → General reveals this root in the file manager
+(threaded via `LibraryMaintenanceActions.DataDirectory`), so the location is discoverable on every OS.

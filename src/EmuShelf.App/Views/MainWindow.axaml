@@ -2023,24 +2023,15 @@
                     </Border.OpacityMask>
                 </Border>
             </Panel>
-            <!-- Fan art, edge to edge over the gradient. Cross-fades whenever the focused game (or its
-                 late-decoded bitmap) changes, so scrolling the spotlight list dissolves between backdrops
-                 instead of hard-cutting. UniformToFill overflows by design; ClipToBounds keeps it inside
-                 the content area (never over the platform rail or window edges). -->
-            <TransitioningContentControl Content="{Binding FocusedGame.FanartImage}"
-                                         HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-                                         HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                         ClipToBounds="True">
-                <TransitioningContentControl.PageTransition>
-                    <CrossFade Duration="0:0:0.28" />
-                </TransitioningContentControl.PageTransition>
-                <TransitioningContentControl.ContentTemplate>
-                    <DataTemplate>
-                        <Image Source="{Binding}" Stretch="UniformToFill"
-                               HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </DataTemplate>
-                </TransitioningContentControl.ContentTemplate>
-            </TransitioningContentControl>
+            <!-- Fan art, edge to edge over the gradient. A plain Image, NOT a cross-fading
+                 TransitioningContentControl: the focused game's fan-art bitmap is disposed as focus
+                 moves (to keep spotlight memory bounded), and a CrossFade keeps the *outgoing* bitmap
+                 rendered during the fade — so it renders a disposed Bitmap and the render thread aborts
+                 (SIGABRT in SkiaSharp). Restoring a cross-fade needs deferred disposal. See DECISIONS.
+                 UniformToFill overflows by design; the backdrop Panel's ClipToBounds keeps it inside. -->
+            <Image Source="{Binding FocusedGame.FanartImage}" Stretch="UniformToFill"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   IsVisible="{Binding FocusedGame.HasFanartImage}" />
             <!-- Legibility scrims: darken the bottom (title/actions) and the left (list). -->
             <Border IsHitTestVisible="False">
                 <Border.Background>

@@ -14,7 +14,10 @@ public sealed record LibraryMaintenanceActions(
     Func<Task<string>>? SyncRpcs3Library = null,
     Func<bool>? GetShowEmptyPlatforms = null,
     Func<bool, Task>? SetShowEmptyPlatforms = null,
-    LibraryFolderManagementActions? Folders = null);
+    LibraryFolderManagementActions? Folders = null,
+    // EmuShelf's data root (database, covers, settings, saves), so Settings can reveal it in the
+    // desktop file manager. Where this lives is platform-specific; see IAppPaths.
+    string? DataDirectory = null);
 
 /// <summary>Immediate database-only management of remembered recursive scan roots.</summary>
 public sealed record LibraryFolderManagementActions(
