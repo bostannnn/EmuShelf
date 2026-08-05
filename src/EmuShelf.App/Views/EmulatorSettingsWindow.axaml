@@ -488,6 +488,7 @@
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Disconnect" VerticalAlignment="Center"
+                                            AutomationProperties.AutomationId="scraper.disconnect"
                                             Command="{Binding DisconnectScreenScraperCommand}"
                                             IsEnabled="{Binding !IsScreenScraperBusy}" />
                                 </Grid>
@@ -497,6 +498,7 @@
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding ScreenScraperUsername, Mode=TwoWay}"
+                                             AutomationProperties.AutomationId="scraper.username"
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="Your screenscraper.fr username" />
@@ -505,6 +507,7 @@
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding ScreenScraperPassword, Mode=TwoWay}"
                                              PasswordChar="●"
+                                             AutomationProperties.AutomationId="scraper.password"
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="Your screenscraper.fr password" />
@@ -513,6 +516,7 @@
                                                      VerticalAlignment="Center"
                                                      IsVisible="{Binding IsScreenScraperBusy}" />
                                         <Button Grid.Column="1" Content="Connect" Classes="accent"
+                                                AutomationProperties.AutomationId="scraper.connect"
                                                 Command="{Binding ConnectScreenScraperCommand}"
                                                 IsEnabled="{Binding !IsScreenScraperBusy}" />
                                     </Grid>

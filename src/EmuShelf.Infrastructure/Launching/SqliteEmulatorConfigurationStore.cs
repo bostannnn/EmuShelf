@@ -18,58 +18,89 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
         _pathResolver = pathResolver;
     }
 
+    // Shared projection for both Get and GetAll. SystemId is column 0 so the same reader layout
+    // materializes a single row or the whole table.
+    private const string SelectColumns =
+        """
+        SELECT configurations.SystemId,
+               CASE
+                   WHEN configurations.EmulatorInstallationId IS NULL OR
+                        trim(configurations.EmulatorInstallationId) = ''
+                       THEN 'direct'
+                   WHEN installations.TargetKind IS NULL OR trim(installations.TargetKind) = ''
+                       THEN 'direct'
+                   ELSE installations.TargetKind
+               END,
+               CASE
+                   WHEN configurations.EmulatorInstallationId IS NULL OR
+                        trim(configurations.EmulatorInstallationId) = ''
+                       THEN configurations.ExecutablePath
+                   WHEN installations.TargetValue IS NULL OR trim(installations.TargetValue) = ''
+                       THEN installations.ExecutablePath
+                   ELSE installations.TargetValue
+               END,
+               configurations.LaunchArguments,
+               configurations.EmulatorId,
+               configurations.EmulatorInstallationId,
+               configurations.CorePath
+        FROM EmulatorConfigs AS configurations
+        LEFT JOIN EmulatorInstallations AS installations
+            ON installations.InstallationId = configurations.EmulatorInstallationId
+        """;
+
     public EmulatorConfiguration? Get(string systemId)
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
-        command.CommandText =
-            """
-            SELECT CASE
-                       WHEN configurations.EmulatorInstallationId IS NULL OR
-                            trim(configurations.EmulatorInstallationId) = ''
-                           THEN 'direct'
-                       WHEN installations.TargetKind IS NULL OR trim(installations.TargetKind) = ''
-                           THEN 'direct'
-                       ELSE installations.TargetKind
-                   END,
-                   CASE
-                       WHEN configurations.EmulatorInstallationId IS NULL OR
-                            trim(configurations.EmulatorInstallationId) = ''
-                           THEN configurations.ExecutablePath
-                       WHEN installations.TargetValue IS NULL OR trim(installations.TargetValue) = ''
-                           THEN installations.ExecutablePath
-                       ELSE installations.TargetValue
-                   END,
-                   configurations.LaunchArguments,
-                   configurations.EmulatorId,
-                   configurations.EmulatorInstallationId,
-                   configurations.CorePath
-            FROM EmulatorConfigs AS configurations
-            LEFT JOIN EmulatorInstallations AS installations
-                ON installations.InstallationId = configurations.EmulatorInstallationId
-            WHERE configurations.SystemId = $systemId;
-            """;
+        command.CommandText = SelectColumns + "\nWHERE configurations.SystemId = $systemId;";
         command.Parameters.AddWithValue("$systemId", systemId);
 
         using var reader = command.ExecuteReader();
-        if (!reader.Read())
-            return null;
+        return reader.Read() ? Materialize(reader) : null;
+    }
 
-        var targetKind = reader.IsDBNull(0) ? null : reader.GetString(0);
-        var targetValue = reader.IsDBNull(1) ? null : reader.GetString(1);
+    public IReadOnlyDictionary<string, EmulatorConfiguration?> GetAll(IEnumerable<string> systemIds)
+    {
+        // Every requested id gets an entry (null until a row fills it in), preserving the shape the
+        // old per-system Get loop produced while touching the database exactly once.
+        var result = new Dictionary<string, EmulatorConfiguration?>(StringComparer.Ordinal);
+        foreach (var systemId in systemIds)
+            result[systemId] = null;
+
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = SelectColumns + ";";
+
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var configuration = Materialize(reader);
+            // Ignore stray rows for systems the caller didn't ask about.
+            if (result.ContainsKey(configuration.SystemId))
+                result[configuration.SystemId] = configuration;
+        }
+
+        return result;
+    }
+
+    private EmulatorConfiguration Materialize(SqliteDataReader reader)
+    {
+        var systemId = reader.GetString(0);
+        var targetKind = reader.IsDBNull(1) ? null : reader.GetString(1);
+        var targetValue = reader.IsDBNull(2) ? null : reader.GetString(2);
         var target = CreateTarget(targetKind, targetValue);
         var executablePath = target is DirectExecutableTarget direct ? direct.Path : null;
         return new EmulatorConfiguration(
             systemId,
             executablePath,
-            reader.IsDBNull(2) ? null : reader.GetString(2))
+            reader.IsDBNull(3) ? null : reader.GetString(3))
         {
             LaunchTarget = target,
-            EmulatorId = reader.IsDBNull(3) ? null : reader.GetString(3),
-            EmulatorInstallationId = reader.IsDBNull(4) ? null : reader.GetString(4),
-            CorePath = reader.IsDBNull(5)
+            EmulatorId = reader.IsDBNull(4) ? null : reader.GetString(4),
+            EmulatorInstallationId = reader.IsDBNull(5) ? null : reader.GetString(5),
+            CorePath = reader.IsDBNull(6)
                 ? null
-                : _pathResolver.ToAbsolutePath(reader.GetString(5)),
+                : _pathResolver.ToAbsolutePath(reader.GetString(6)),
         };
     }
 

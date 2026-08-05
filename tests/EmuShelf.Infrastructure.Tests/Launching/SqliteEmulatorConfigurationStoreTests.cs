@@ -229,6 +229,51 @@ public class SqliteEmulatorConfigurationStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void GetAll_ReturnsAnEntryPerRequestedSystemAndMatchesGet()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+        var executable = Path.Combine(paths.BaseDirectory, "Emulators", "Dolphin", "Dolphin.exe");
+
+        store.Save(new EmulatorConfiguration("gamecube", executable, "-b -e \"{GamePath}\"")
+        {
+            EmulatorId = "dolphin",
+            EmulatorInstallationId = "dolphin-gamecube",
+        });
+
+        var all = store.GetAll(["gamecube", "playstation2"]);
+
+        // Every requested id is present; unconfigured systems map to null, configured ones match Get.
+        Assert.Equal(["gamecube", "playstation2"], all.Keys.OrderBy(key => key));
+        Assert.Null(all["playstation2"]);
+        Assert.Equal(store.Get("gamecube"), all["gamecube"]);
+    }
+
+    [Fact]
+    public void GetAll_IgnoresConfiguredSystemsTheCallerDidNotRequest()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        store.Save(new EmulatorConfiguration("wii", "/Dolphin.exe", "wii args")
+        {
+            EmulatorId = "dolphin",
+            EmulatorInstallationId = "dolphin-wii",
+        });
+
+        var all = store.GetAll(["gamecube"]);
+
+        Assert.Equal(["gamecube"], all.Keys);
+        Assert.Null(all["gamecube"]);
+    }
+
+    [Fact]
     public void Initialize_FromVersion7_MigratesExistingPerSystemPathsWithoutMergingThem()
     {
         var paths = AppPaths;

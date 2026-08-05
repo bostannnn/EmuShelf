@@ -267,6 +267,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GamepadOverlayKind GamepadOverlay { get; set; }
 
+    // Guards RequestSettingsFromGamepadAsync against a re-entrant open while its database read awaits.
+    private bool _openingGamepadSettings;
+
     [ObservableProperty]
     public partial GamepadSettingsViewModel? GamepadSettings { get; set; }
 
@@ -1171,9 +1174,12 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task RequestSettingsFromGamepadAsync()
     {
-        if (!IsGamepadMode || IsBusy)
+        // Building the projection awaits a database read, so a second press before it completes would
+        // otherwise start an overlapping open and race on GamepadSettings. One in-flight open at a time.
+        if (!IsGamepadMode || IsBusy || _openingGamepadSettings)
             return;
 
+        _openingGamepadSettings = true;
         try
         {
             CloseGamepadSettingsProjection();
@@ -1186,6 +1192,10 @@ public partial class MainViewModel : ViewModelBase
         {
             _logger.Error("Could not open Gamepad settings.", ex);
             SetStatus($"Could not open Settings: {ex.Message}", StatusSeverity.Error);
+        }
+        finally
+        {
+            _openingGamepadSettings = false;
         }
     }
 
@@ -4130,10 +4140,8 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task<EmulatorSettingsViewModel> CreateSettingsViewModelAsync()
     {
-        var configured = await Task.Run(() => Systems.ToDictionary(
-            system => system.Id,
-            system => _emulatorConfigurations.Get(system.Id),
-            StringComparer.Ordinal));
+        var configured = await Task.Run(() =>
+            _emulatorConfigurations.GetAll(Systems.Select(system => system.Id)));
         return new EmulatorSettingsViewModel(
             Systems,
             _emulators,
@@ -4146,9 +4154,9 @@ public partial class MainViewModel : ViewModelBase
             CreateRetroAchievementsSettingsContext(),
             _cloudSaveSync?.CreateSettingsContext(),
             CreateTexturePackSettingsContext(),
-            // ScreenScraper connect is reached from the controller-native scraper overlay, so the
-            // Gamepad settings projection omits its text-entry-heavy section for now.
-            screenScraper: null,
+            // Mirrors Desktop: the account can be managed from Settings, not only the per-game scraper
+            // overlay. The controller text-entry flow handles the username/password rows.
+            CreateScreenScraperSettingsContext(),
             themeChoices: ThemeChoices,
             ambientThemeFromArtwork: AmbientThemeFromArtwork,
             setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync);

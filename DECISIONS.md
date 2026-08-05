@@ -4099,3 +4099,34 @@ by `GamepadCoverHeightFor_UsesTheTrueHeightForOnePlatform_AndAUniformHeightForAM
 `GamepadCoverHeight_DefaultsToTheTrueFrame_ButHonorsAnExplicitUniformHeight`. Trade-off accepted:
 in a mixed All Games view the wide/square minority is cropped rather than shown whole — the couch grid
 stays even and bar-free, which the crop preserves and letterboxing did not.
+
+## 2026-08-05 — Settings opens without a per-system database walk; ScreenScraper reaches Gamepad settings
+
+Opening Settings (both Desktop and Gamepad) rebuilt its per-system emulator-configuration map by
+calling `IEmulatorConfigurationStore.Get` once per system, and `SqliteEmulatorConfigurationStore.Get`
+opens a fresh SQLite connection and runs a JOIN each call. Five systems meant five connection opens
+plus five queries on the path between the button press and the panel appearing — the visible "slight
+delay," worst on the first open when the thread pool is cold. Replaced with `GetAll(systemIds)`, which
+reads every requested system in one connection/query and returns an entry per id (null when
+unconfigured), preserving the old dictionary shape. The interface ships a default that falls back to
+per-system `Get` so minimal stores and test doubles need no change; the SQLite store overrides it. The
+map is still re-read on each open (not cached) so edits made in the Emulators section stay authoritative
+— the cost is now one query, not five connections.
+
+Two smaller fixes on the same path: `RequestSettingsFromGamepadAsync` now guards against re-entry with
+`_openingGamepadSettings` (it awaits a database read, so a double-press could otherwise start two
+overlapping opens and race on `GamepadSettings`); and `GamepadSettingsViewModel` no longer rebuilds its
+row list twice per synchronous edit. A toggle/choice/text edit writes to the settings model, which
+echoes `PropertyChanged` back into `OnSettingsPropertyChanged` — the caller already runs one explicit
+`RebuildRows`, so the echoed rebuild is suppressed via `_applyingLocalEdit` (set only around the
+synchronous write). Async action rows (connect, sync, disconnect) stay unguarded so their live status
+keeps refreshing during the operation.
+
+ScreenScraper account management was Desktop-only: the Gamepad projection was constructed with
+`screenScraper: null` on the theory that the per-game scraper overlay covers login. That buried account
+setup behind first selecting a game, unlike RetroAchievements which has its own Gamepad section. The
+Gamepad settings model now receives the real `CreateScreenScraperSettingsContext()`, and
+`GamepadSettingsViewModel` projects the section (username / masked password / connect when
+disconnected; account summary + destructive disconnect when connected), mirroring RetroAchievements.
+The section rail gained a ScreenScraper button, shown only when an account context exists
+(`Settings.HasScreenScraper`), so builds without ScreenScraper credentials are unchanged.
