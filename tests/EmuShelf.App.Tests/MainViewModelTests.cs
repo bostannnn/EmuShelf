@@ -1604,6 +1604,61 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.BuildLibraryViewState().GamepadSpotlightView);
     }
 
+    [AvaloniaFact]
+    public void GamepadSpotlight_LeftRightArmTheHeroActions_ResettingToPlay()
+    {
+        GameViewModel Make(long id, bool hasAchievements)
+        {
+            var vm = new GameViewModel(
+                new Game
+                {
+                    Id = id,
+                    SystemId = Ps1.Id,
+                    Path = $"/Games/Game {id}.cue",
+                    Title = $"Game {id}",
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                Ps1.Name, Ps1.ShortName, Ps1.AccentColor, coverAspectRatio: Ps1.CoverAspectRatio);
+            if (hasAchievements)
+                vm.ApplyAchievementsDisplay(new RetroAchievementsDisplay(true, "3/30", "3 of 30 unlocked."));
+            return vm;
+        }
+
+        var withAchievements = Make(1, hasAchievements: true);
+        var withoutAchievements = Make(2, hasAchievements: false);
+
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll([withAchievements, withoutAchievements]);
+        vm.HasGames = true;
+        vm.GamepadViewportWidth = 1000;
+        vm.ToggleGamepadViewCommand.Execute(null); // into spotlight
+
+        // Play is armed by default.
+        vm.FocusedGame = withAchievements;
+        Assert.True(vm.IsSpotlightPlayFocused);
+        Assert.False(vm.IsSpotlightAchievementsFocused);
+
+        // Left arms Achievements (the game has a set); Right re-arms Play.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.True(vm.IsSpotlightAchievementsFocused);
+        Assert.False(vm.IsSpotlightPlayFocused);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.False(vm.IsSpotlightAchievementsFocused);
+        Assert.True(vm.IsSpotlightPlayFocused);
+
+        // Changing the focused game re-arms Play.
+        vm.DispatchGamepadAction(GamepadAction.NavigateLeft);
+        Assert.True(vm.IsSpotlightAchievementsFocused);
+        vm.FocusedGame = withoutAchievements;
+        Assert.True(vm.IsSpotlightPlayFocused);
+
+        // A game with no set never arms Achievements.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.False(vm.IsSpotlightAchievementsFocused);
+        Assert.True(vm.IsSpotlightPlayFocused);
+    }
+
     /// <summary>
     /// Regression: Right/Left/Down step by GamepadColumnCount. The count is derived arithmetically
     /// from the gamepad viewport (matching UniformGridLayout), and navigation must honor it — Right
