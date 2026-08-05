@@ -26,6 +26,7 @@ public sealed class GamepadNavigationController
     private readonly long _initialRepeatDelayMs;
     private readonly long _repeatStartIntervalMs;
     private readonly long _minRepeatIntervalMs;
+    private readonly long _verticalMinRepeatIntervalMs;
     private readonly int _rampRepeats;
     private readonly Dictionary<GamepadAction, long> _directionNextRepeat = new();
     private readonly Dictionary<GamepadAction, int> _directionRepeatCount = new();
@@ -35,17 +36,24 @@ public sealed class GamepadNavigationController
 
     /// <param name="initialRepeatDelayMs">Delay before the first auto-repeat once a direction is held.</param>
     /// <param name="repeatIntervalMs">Interval before the first repeat; a held direction accelerates from here.</param>
-    /// <param name="minRepeatIntervalMs">Fastest interval the acceleration ramp reaches on a long hold.</param>
-    /// <param name="rampRepeats">Repeats taken to ramp from <paramref name="repeatIntervalMs"/> down to <paramref name="minRepeatIntervalMs"/>.</param>
+    /// <param name="minRepeatIntervalMs">Fastest interval the acceleration ramp reaches on a long hold,
+    /// for the horizontal (Left/Right) directions, which move within a row and need no scroll.</param>
+    /// <param name="rampRepeats">Repeats taken to ramp from <paramref name="repeatIntervalMs"/> down to the floor.</param>
+    /// <param name="verticalMinRepeatIntervalMs">Fastest interval for the vertical (Up/Down) directions.
+    /// Deliberately gentler than the horizontal floor: each vertical step scrolls a whole row, and a very
+    /// fast vertical hold outruns the grid's row virtualization/centre-reveal, which then reads as rows
+    /// blinking and jumping. Horizontal stays snappy.</param>
     public GamepadNavigationController(
         long initialRepeatDelayMs = 320,
         long repeatIntervalMs = 90,
         long minRepeatIntervalMs = 38,
-        int rampRepeats = 8)
+        int rampRepeats = 8,
+        long verticalMinRepeatIntervalMs = 72)
     {
         _initialRepeatDelayMs = initialRepeatDelayMs;
         _repeatStartIntervalMs = repeatIntervalMs;
         _minRepeatIntervalMs = minRepeatIntervalMs;
+        _verticalMinRepeatIntervalMs = verticalMinRepeatIntervalMs;
         _rampRepeats = Math.Max(1, rampRepeats);
     }
 
@@ -113,8 +121,12 @@ public sealed class GamepadNavigationController
             // crawling at one fixed cadence.
             var count = _directionRepeatCount[action] = _directionRepeatCount.GetValueOrDefault(action) + 1;
             var progress = Math.Min(1.0, count / (double)_rampRepeats);
+            // Vertical steps scroll a whole row, so they ramp to a gentler floor than horizontal.
+            var floor = action is GamepadAction.NavigateUp or GamepadAction.NavigateDown
+                ? _verticalMinRepeatIntervalMs
+                : _minRepeatIntervalMs;
             var interval = (long)Math.Round(
-                _repeatStartIntervalMs + (_minRepeatIntervalMs - _repeatStartIntervalMs) * progress);
+                _repeatStartIntervalMs + (floor - _repeatStartIntervalMs) * progress);
             _directionNextRepeat[action] = timestampMs + interval;
         }
     }
