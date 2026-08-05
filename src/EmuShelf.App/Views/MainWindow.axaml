@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:EmuShelf.App.ViewModels"
+        xmlns:controls="using:EmuShelf.App.Controls"
         xmlns:sys="using:EmuShelf.Core.Systems"
         xmlns:settings="using:EmuShelf.Core.Settings"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -1937,27 +1938,28 @@
             </Border>
 
             <!-- Foreground: floating list + hero content, inset from the screen edges. -->
-            <Grid ColumnDefinitions="452,*" ColumnSpacing="36" Margin="52,24,52,32">
-                <!-- Left: the game list, a translucent panel so the backdrop shows through. -->
+            <Grid ColumnDefinitions="452,*" ColumnSpacing="36" Margin="52,24,52,22">
+                <!-- Left: the game list. A themed surface (so it follows the palette/ambient colour)
+                     rather than a fixed dark wash. -->
                 <Border Grid.Column="0" CornerRadius="20" ClipToBounds="True"
-                        Background="#BF15171E"
+                        Background="{DynamicResource EmuPopoverBrush}"
                         BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
                     <Grid RowDefinitions="Auto,*">
                         <!-- Platform identity header for the focused game's system. -->
                         <Border Grid.Row="0" Padding="26,22,26,16"
-                                BorderBrush="#33FFFFFF" BorderThickness="0,0,0,1">
+                                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
                             <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
                                 <Image Width="34" Height="34" Source="{Binding FocusedGame.PlatformArtwork}"
                                        RenderOptions.BitmapInterpolationMode="None" />
                                 <TextBlock Text="{Binding FocusedGame.SystemName}" VerticalAlignment="Center"
                                            FontSize="{DynamicResource EmuGpHeadingSize}" FontWeight="Bold" LetterSpacing="0.6"
-                                           Foreground="White" TextTrimming="CharacterEllipsis" />
+                                           Foreground="{DynamicResource EmuTextPrimaryBrush}" TextTrimming="CharacterEllipsis" />
                             </StackPanel>
                         </Border>
                         <ListBox Grid.Row="1" x:Name="GamepadSpotlightList"
                                  ItemsSource="{Binding Games}"
                                  SelectedItem="{Binding FocusedGame, Mode=TwoWay}"
-                                 Background="Transparent" BorderThickness="0" Padding="8,12,8,28"
+                                 Background="Transparent" BorderThickness="0" Padding="8,12,8,12"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                  ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.Styles>
@@ -1966,11 +1968,11 @@
                                     <Setter Property="Margin" Value="8,3" />
                                     <Setter Property="CornerRadius" Value="12" />
                                     <Setter Property="Background" Value="Transparent" />
-                                    <Setter Property="Foreground" Value="#F2FFFFFF" />
+                                    <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
                                     <Setter Property="FocusAdorner" Value="{x:Null}" />
                                 </Style>
                                 <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                                    <Setter Property="Background" Value="#1FFFFFFF" />
+                                    <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
                                 </Style>
                                 <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
                                                  ListBoxItem:selected:pointerover /template/ ContentPresenter">
@@ -1994,7 +1996,7 @@
                 <!-- Right: the hero — logo, title, rating, achievements, Play — over the backdrop. -->
                 <Grid Grid.Column="1" VerticalAlignment="Bottom" Margin="6,0,6,10"
                       RowDefinitions="Auto,Auto" RowSpacing="22">
-                    <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Left">
+                    <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Stretch">
                         <!-- Game logo (ScreenScraper wheel); nothing shows when there is none. Capped
                              so a wide/tall logo stays contained, and given a soft drop shadow so the
                              transparent art lifts off the busy fan-art backdrop instead of blending in. -->
@@ -2006,10 +2008,10 @@
                                                   Opacity="0.7" />
                             </Image.Effect>
                         </Image>
-                        <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
-                                   FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
-                                   Foreground="White" MaxLines="2" TextWrapping="Wrap"
-                                   TextTrimming="CharacterEllipsis" />
+                        <!-- One line; scrolls itself only when the title is too long to fit. -->
+                        <controls:MarqueeTextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
+                                                   FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
+                                                   Foreground="White" HorizontalAlignment="Stretch" />
                         <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="{DynamicResource EmuGpLabelSize}"
                                    Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
