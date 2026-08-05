@@ -132,6 +132,35 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
             pair => (IReadOnlyList<GameIdentifier>)pair.Value);
     }
 
+    public IReadOnlyDictionary<long, string> GetProviderTitles()
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        // First row per game wins; the empty (region-neutral) locale is preferred by the ORDER BY.
+        command.CommandText =
+            """
+            SELECT GameId, Value
+            FROM GameMetadataValues
+            WHERE Field = $field
+            ORDER BY GameId, (Locale = '') DESC, Locale;
+            """;
+        command.Parameters.AddWithValue("$field", (int)GameMetadataField.Title);
+
+        var titles = new Dictionary<long, string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var gameId = reader.GetInt64(0);
+            if (titles.ContainsKey(gameId))
+                continue;
+            var value = reader.GetString(1);
+            if (!string.IsNullOrWhiteSpace(value))
+                titles[gameId] = value;
+        }
+
+        return titles;
+    }
+
     public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers)
     {
         using var connection = _database.CreateConnection();

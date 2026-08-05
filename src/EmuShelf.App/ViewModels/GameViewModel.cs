@@ -216,6 +216,16 @@ public partial class GameViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool HasFanart { get; set; }
 
+    /// <summary>The game's logo (ScreenScraper "wheel") shown large in the spotlight hero above the
+    /// title. Only the focused game keeps a decoded bitmap; released as focus moves.</summary>
+    [ObservableProperty]
+    public partial Bitmap? WheelImage { get; set; }
+
+    public bool HasWheelImage => WheelImage is not null;
+
+    /// <summary>Absolute path to the selected logo asset, or null when the game has none.</summary>
+    public string? WheelPath { get; private set; }
+
     /// <summary>Star score (0–10) shown in the spotlight hero, already formatted, or null when the
     /// game is unrated. Derived from the scraped provider rating in the library view model.</summary>
     [ObservableProperty]
@@ -223,8 +233,19 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasRating => RatingText is not null;
 
-    /// <summary>Guards the one-time-per-game details resolve (fan-art path + rating) the spotlight
-    /// hero needs, so scrolling the list re-loads a game's details at most once.</summary>
+    /// <summary>The title shown in the spotlight list and hero — the canonical ScreenScraper name
+    /// when one was scraped, otherwise the game's own title. Spotlight-only, so the grid, desktop,
+    /// and the underlying record keep <see cref="Title"/> untouched.</summary>
+    [ObservableProperty]
+    public partial string SpotlightDisplayTitle { get; set; } = string.Empty;
+
+    /// <summary>Applies the canonical provider title for spotlight display; a null/blank value keeps
+    /// the game's own title.</summary>
+    public void ApplySpotlightTitle(string? canonicalTitle) =>
+        SpotlightDisplayTitle = string.IsNullOrWhiteSpace(canonicalTitle) ? Title : canonicalTitle;
+
+    /// <summary>Guards the one-time-per-game details resolve (fan-art/logo paths + rating) the
+    /// spotlight hero needs, so scrolling the list re-loads a game's details at most once.</summary>
     public bool AreSpotlightDetailsLoaded { get; set; }
 
     /// <summary>Sort key for the Achievements column: -1 when the game has no set, 0 when a set
@@ -360,6 +381,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         SystemId = game.SystemId;
         Path = game.Path;
         Title = displayTitle ?? game.Title;
+        SpotlightDisplayTitle = Title;
         IsAvailable = LaunchModel.IsAvailable;
         CoverPath = game.CoverPath;
         SystemName = systemName;
@@ -444,14 +466,23 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     partial void OnFanartImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasFanartImage));
 
+    partial void OnWheelImageChanging(Bitmap? value)
+    {
+        if (!ReferenceEquals(WheelImage, value))
+            WheelImage?.Dispose();
+    }
+
+    partial void OnWheelImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasWheelImage));
+
     partial void OnRatingTextChanged(string? value) => OnPropertyChanged(nameof(HasRating));
 
-    /// <summary>Records the fan-art path and formatted rating resolved from this game's scraped
-    /// details. The bitmap itself is loaded separately, only while the game is the spotlight hero.</summary>
-    public void ApplySpotlightDetails(string? fanartPath, string? ratingText)
+    /// <summary>Records the fan-art path, logo path, and formatted rating resolved from this game's
+    /// scraped details. The bitmaps are loaded separately, only while the game is the spotlight hero.</summary>
+    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText)
     {
         FanartPath = fanartPath;
         HasFanart = !string.IsNullOrEmpty(fanartPath);
+        WheelPath = wheelPath;
         RatingText = ratingText;
         AreSpotlightDetailsLoaded = true;
     }
@@ -495,6 +526,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     {
         CoverImage = null;
         FanartImage = null;
+        WheelImage = null;
     }
 
     /// <summary>Up-to-two-letter monogram for the placeholder cover.</summary>

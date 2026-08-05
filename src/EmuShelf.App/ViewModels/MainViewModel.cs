@@ -2093,6 +2093,8 @@ public partial class MainViewModel : ViewModelBase
     // time, so this is a safe upper bound on the spotlight's image memory.
     private const int SpotlightFanartMaxWidth = 1920;
     private const int SpotlightFanartMaxHeight = 1080;
+    private const int SpotlightWheelMaxWidth = 900;
+    private const int SpotlightWheelMaxHeight = 400;
 
     /// <summary>Resolves the focused game's fan art + rating for the spotlight hero. Its scraped
     /// details are read once per game (off the UI thread) and cached on the view model, then the
@@ -2120,23 +2122,22 @@ public partial class MainViewModel : ViewModelBase
                 var resolved = await Task.Run(() => ResolveSpotlightDetails(game.Id));
                 if (generation != _spotlightHeroGeneration)
                     return; // focus moved on while the details were being read
-                game.ApplySpotlightDetails(resolved.FanartPath, resolved.RatingText);
+                game.ApplySpotlightDetails(resolved.FanartPath, resolved.WheelPath, resolved.RatingText);
             }
 
-            if (!game.HasFanart || game.FanartImage is not null ||
-                game.FanartPath is not { Length: > 0 } path)
-                return;
+            await LoadSpotlightBitmapAsync(
+                game, generation,
+                () => game.FanartPath,
+                () => game.FanartImage is not null,
+                image => game.FanartImage = image,
+                SpotlightFanartMaxWidth, SpotlightFanartMaxHeight);
 
-            var image = await Task.Run(() =>
-                SafeImageDecoder.DecodeToFit(path, SpotlightFanartMaxWidth, SpotlightFanartMaxHeight));
-
-            if (generation != _spotlightHeroGeneration || !ReferenceEquals(FocusedGame, game))
-            {
-                image.Dispose();
-                return;
-            }
-
-            game.FanartImage = image;
+            await LoadSpotlightBitmapAsync(
+                game, generation,
+                () => game.WheelPath,
+                () => game.WheelImage is not null,
+                image => game.WheelImage = image,
+                SpotlightWheelMaxWidth, SpotlightWheelMaxHeight);
         }
         catch (Exception ex)
         {
@@ -2144,19 +2145,48 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private (string? FanartPath, string? RatingText) ResolveSpotlightDetails(long gameId)
+    // Decodes one hero asset (fan art or logo) off the UI thread and assigns it only if this game is
+    // still the focused hero for this generation, so a fast scroll never leaks a bitmap onto a stale VM.
+    private async Task LoadSpotlightBitmapAsync(
+        GameViewModel game,
+        int generation,
+        Func<string?> path,
+        Func<bool> alreadyLoaded,
+        Action<Bitmap> assign,
+        int maxWidth,
+        int maxHeight)
+    {
+        if (alreadyLoaded() || path() is not { Length: > 0 } source || !File.Exists(source))
+            return;
+
+        var image = await Task.Run(() => SafeImageDecoder.DecodeToFit(source, maxWidth, maxHeight));
+        if (generation != _spotlightHeroGeneration || !ReferenceEquals(FocusedGame, game))
+        {
+            image.Dispose();
+            return;
+        }
+
+        assign(image);
+    }
+
+    private (string? FanartPath, string? WheelPath, string? RatingText) ResolveSpotlightDetails(long gameId)
     {
         if (_gameDetails is null)
-            return (null, null);
+            return (null, null, null);
 
         var details = _gameDetails.GetDetails(gameId);
-        var fanart = details.Media
-            .Where(media => media.Kind == GameMediaKind.Fanart)
-            .OrderByDescending(media => media.IsSelected)
-            .Select(media => media.LocalPath)
-            .FirstOrDefault(path => !string.IsNullOrEmpty(path) && File.Exists(path));
-        return (fanart, FormatSpotlightRating(details.Metadata));
+        return (
+            SelectSpotlightMedia(details.Media, GameMediaKind.Fanart),
+            SelectSpotlightMedia(details.Media, GameMediaKind.Wheel),
+            FormatSpotlightRating(details.Metadata));
     }
+
+    private static string? SelectSpotlightMedia(IReadOnlyList<GameMediaAsset> media, GameMediaKind kind) =>
+        media
+            .Where(asset => asset.Kind == kind)
+            .OrderByDescending(asset => asset.IsSelected)
+            .Select(asset => asset.LocalPath)
+            .FirstOrDefault(path => !string.IsNullOrEmpty(path) && File.Exists(path));
 
     private static string? FormatSpotlightRating(IReadOnlyList<GameMetadataValue> metadata)
     {
@@ -2177,7 +2207,10 @@ public partial class MainViewModel : ViewModelBase
     {
         _spotlightHeroGeneration++;
         if (FocusedGame is { } game)
+        {
             game.FanartImage = null;
+            game.WheelImage = null;
+        }
     }
 
     partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
@@ -2614,6 +2647,7 @@ public partial class MainViewModel : ViewModelBase
 
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
+                ApplySpotlightTitles(viewModels);
                 return viewModels;
             });
 
@@ -2827,6 +2861,29 @@ public partial class MainViewModel : ViewModelBase
     // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
     // the achievement pass this is local-only and runs on the load worker: the map was already
     // built in one background pass, so a row never reads a directory or the database itself.
+    // Overlays the scraped canonical title onto each game for spotlight display, in one bulk read.
+    // Runs on the build worker before the view models are bound, so no cross-thread notify occurs.
+    private void ApplySpotlightTitles(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_metadataStore is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var titles = _metadataStore.GetProviderTitles();
+            if (titles.Count == 0)
+                return;
+
+            foreach (var viewModel in viewModels)
+                if (titles.TryGetValue(viewModel.Id, out var canonical))
+                    viewModel.ApplySpotlightTitle(canonical);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load canonical titles for the spotlight list: {ex.Message}");
+        }
+    }
+
     private void ApplyTexturePackDisplays(IReadOnlyList<GameViewModel> viewModels)
     {
         if (_texturePacks is null || viewModels.Count == 0)

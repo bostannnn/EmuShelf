@@ -1869,101 +1869,123 @@
             </Grid>
         </Border>
         <!-- ===================== Spotlight (couch) layout =====================
-             A scrolling game list beside a large fan-art hero, shown in place of the cover grid and
-             the focused-game dock when the couch view is toggled to spotlight. It reuses the same
+             A large fan-art backdrop that fills the whole content area, with a floating game list on
+             the left and the hero's title/logo/actions on the right. Shown in place of the cover grid
+             and the focused-game dock when the couch view is toggled to spotlight. It reuses the same
              FocusedGame model, so LB/RB, A/Y and every overlay behave exactly as over the grid. The
              window's tunnel key handler consumes the d-pad before the list can double-handle it, so
              the list is a passive selection surface (SelectedItem tracks FocusedGame, auto-scrolling
              it into view). -->
-        <Grid Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding ShowGamepadSpotlight}"
-              ColumnDefinitions="452,*" ColumnSpacing="30" Margin="52,24,52,32"
-              IsHitTestVisible="{Binding !HasGamepadOverlay}">
-            <!-- Left: the game list. -->
-            <Border Grid.Column="0" CornerRadius="20" ClipToBounds="True"
-                    Background="{DynamicResource EmuToolbarBrush}"
-                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
-                <Grid RowDefinitions="Auto,*">
-                    <!-- Platform identity header for the focused game's system. -->
-                    <Border Grid.Row="0" Padding="26,22,26,16"
-                            BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
-                        <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-                            <Image Width="34" Height="34" Source="{Binding FocusedGame.PlatformArtwork}"
-                                   RenderOptions.BitmapInterpolationMode="None" />
-                            <TextBlock Text="{Binding FocusedGame.SystemName}" VerticalAlignment="Center"
-                                       FontSize="17" FontWeight="Bold" LetterSpacing="0.6"
-                                       TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Border>
-                    <ListBox Grid.Row="1" x:Name="GamepadSpotlightList"
-                             ItemsSource="{Binding Games}"
-                             SelectedItem="{Binding FocusedGame, Mode=TwoWay}"
-                             Background="Transparent" BorderThickness="0" Padding="8,10"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto">
-                        <ListBox.Styles>
-                            <Style Selector="ListBoxItem">
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="Margin" Value="8,3" />
-                                <Setter Property="CornerRadius" Value="12" />
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="FocusAdorner" Value="{x:Null}" />
-                            </Style>
-                            <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                                <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
-                            </Style>
-                            <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
-                                             ListBoxItem:selected:pointerover /template/ ContentPresenter">
-                                <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
-                            </Style>
-                            <Style Selector="ListBoxItem:selected TextBlock">
-                                <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
-                            </Style>
-                        </ListBox.Styles>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:GameViewModel">
-                                <TextBlock Text="{Binding Title}" Margin="18,14" FontSize="19"
-                                           FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Grid>
+        <Panel Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding ShowGamepadSpotlight}"
+               IsHitTestVisible="{Binding !HasGamepadOverlay}">
+            <!-- Backdrop: the focused game's fan art, edge to edge behind everything. -->
+            <Image Source="{Binding FocusedGame.FanartImage}" Stretch="UniformToFill"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   IsVisible="{Binding FocusedGame.HasFanartImage}" />
+            <!-- No-fanart fallback: a themed gradient (dark base + an accent glow that fades),
+                 so the backdrop still recolours with the ambient palette. -->
+            <Panel IsVisible="{Binding !FocusedGame.HasFanartImage}">
+                <Border Background="{DynamicResource EmuLibraryBrush}" />
+                <Border Background="{DynamicResource EmuAccentBrush}" Opacity="0.30">
+                    <Border.OpacityMask>
+                        <LinearGradientBrush StartPoint="15%,0%" EndPoint="85%,100%">
+                            <GradientStop Offset="0" Color="#FFFFFFFF" />
+                            <GradientStop Offset="1" Color="#00FFFFFF" />
+                        </LinearGradientBrush>
+                    </Border.OpacityMask>
+                </Border>
+            </Panel>
+            <!-- Legibility scrims: darken the bottom (title/actions) and the left (list). -->
+            <Border IsHitTestVisible="False">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Offset="0.35" Color="#00000000" />
+                        <GradientStop Offset="0.80" Color="#8C000000" />
+                        <GradientStop Offset="1" Color="#E6000000" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <Border IsHitTestVisible="False">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                        <GradientStop Offset="0" Color="#8C000000" />
+                        <GradientStop Offset="0.44" Color="#00000000" />
+                    </LinearGradientBrush>
+                </Border.Background>
             </Border>
 
-            <!-- Right: the fan-art hero. -->
-            <Border Grid.Column="1" CornerRadius="20" ClipToBounds="True"
-                    Background="{DynamicResource EmuLibraryBrush}"
-                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
-                <Panel>
-                    <!-- Fan art fills the hero. -->
-                    <Image Source="{Binding FocusedGame.FanartImage}" Stretch="UniformToFill"
-                           IsVisible="{Binding FocusedGame.HasFanartImage}" />
-                    <!-- No-fanart fallback: the cover on the themed surface. -->
-                    <Image Source="{Binding FocusedGame.CoverImage}" Stretch="Uniform" Margin="64,54"
-                           IsVisible="{Binding !FocusedGame.HasFanartImage}" />
-                    <!-- Scrim so the title/actions stay legible over any art. -->
-                    <Border IsHitTestVisible="False">
-                        <Border.Background>
-                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                                <GradientStop Offset="0.40" Color="#00000000" />
-                                <GradientStop Offset="0.82" Color="#B3000000" />
-                                <GradientStop Offset="1" Color="#F0000000" />
-                            </LinearGradientBrush>
-                        </Border.Background>
-                    </Border>
-                    <!-- Title, rating, achievements, Play. -->
-                    <Grid VerticalAlignment="Bottom" Margin="44,0,44,40"
-                          RowDefinitions="Auto,Auto" RowSpacing="22">
-                        <StackPanel Grid.Row="0" Spacing="6">
-                            <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="13" FontWeight="Bold"
-                                       LetterSpacing="1.4" Foreground="{DynamicResource EmuAccentBrush}" />
-                            <TextBlock Text="{Binding FocusedGame.Title}" FontSize="42" FontWeight="Bold"
-                                       Foreground="White" MaxLines="2" TextWrapping="Wrap"
-                                       TextTrimming="CharacterEllipsis" />
-                            <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="15"
-                                       Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
+            <!-- Foreground: floating list + hero content, inset from the screen edges. -->
+            <Grid ColumnDefinitions="452,*" ColumnSpacing="36" Margin="52,24,52,32">
+                <!-- Left: the game list, a translucent panel so the backdrop shows through. -->
+                <Border Grid.Column="0" CornerRadius="20" ClipToBounds="True"
+                        Background="#BF15171E"
+                        BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
+                    <Grid RowDefinitions="Auto,*">
+                        <!-- Platform identity header for the focused game's system. -->
+                        <Border Grid.Row="0" Padding="26,22,26,16"
+                                BorderBrush="#33FFFFFF" BorderThickness="0,0,0,1">
+                            <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                                <Image Width="34" Height="34" Source="{Binding FocusedGame.PlatformArtwork}"
+                                       RenderOptions.BitmapInterpolationMode="None" />
+                                <TextBlock Text="{Binding FocusedGame.SystemName}" VerticalAlignment="Center"
+                                           FontSize="17" FontWeight="Bold" LetterSpacing="0.6"
+                                           Foreground="White" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                        <ListBox Grid.Row="1" x:Name="GamepadSpotlightList"
+                                 ItemsSource="{Binding Games}"
+                                 SelectedItem="{Binding FocusedGame, Mode=TwoWay}"
+                                 Background="Transparent" BorderThickness="0" Padding="8,10"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.Styles>
+                                <Style Selector="ListBoxItem">
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="Margin" Value="8,3" />
+                                    <Setter Property="CornerRadius" Value="12" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="Foreground" Value="#F2FFFFFF" />
+                                    <Setter Property="FocusAdorner" Value="{x:Null}" />
+                                </Style>
+                                <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="#1FFFFFFF" />
+                                </Style>
+                                <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
+                                                 ListBoxItem:selected:pointerover /template/ ContentPresenter">
+                                    <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+                                </Style>
+                                <Style Selector="ListBoxItem:selected TextBlock">
+                                    <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
+                                </Style>
+                            </ListBox.Styles>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:GameViewModel">
+                                    <TextBlock Text="{Binding SpotlightDisplayTitle}" Margin="18,14" FontSize="19"
+                                               FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+                </Border>
 
-                        <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
+                <!-- Right: the hero — logo, title, rating, achievements, Play — over the backdrop. -->
+                <Grid Grid.Column="1" VerticalAlignment="Bottom" Margin="6,0,6,10"
+                      RowDefinitions="Auto,Auto" RowSpacing="22">
+                    <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Left">
+                        <!-- Game logo (ScreenScraper wheel); nothing shows when there is none. -->
+                        <Image Source="{Binding FocusedGame.WheelImage}" Stretch="Uniform"
+                               MaxHeight="150" HorizontalAlignment="Left"
+                               IsVisible="{Binding FocusedGame.HasWheelImage}" />
+                        <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="13" FontWeight="Bold"
+                                   LetterSpacing="1.4" Foreground="{DynamicResource EmuAccentBrush}" />
+                        <TextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}" FontSize="42" FontWeight="Bold"
+                                   Foreground="White" MaxLines="2" TextWrapping="Wrap"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" FontSize="15"
+                                   Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="16">
                             <!-- Star rating. -->
                             <Border Classes="gamepad-dock-pill" VerticalAlignment="Center"
                                     IsVisible="{Binding FocusedGame.HasRating}">
@@ -2020,9 +2042,8 @@
                             </Button>
                         </Grid>
                     </Grid>
-                </Panel>
-            </Border>
-        </Grid>
+                </Grid>
+        </Panel>
 
         <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window. -->
         <Grid Grid.RowSpan="3" IsVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
