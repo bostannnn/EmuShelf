@@ -1061,6 +1061,59 @@
                             </StackPanel>
                         </Border>
                     </StackPanel>
+
+                    <StackPanel IsVisible="{Binding IsAboutSection}" Spacing="4">
+                        <Border Background="{DynamicResource EmuCardBrush}"
+                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                BorderThickness="1" CornerRadius="9"
+                                Padding="16" Margin="0,0,0,12">
+                            <StackPanel Spacing="14">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="ABOUT" FontSize="10"
+                                               FontWeight="Bold" LetterSpacing="1"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <TextBlock Text="EmuShelf" FontSize="20" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                </StackPanel>
+
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto"
+                                      ColumnSpacing="20" RowSpacing="10">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Version"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <SelectableTextBlock Grid.Row="0" Grid.Column="1"
+                                               AutomationProperties.AutomationId="about.version"
+                                               Text="{Binding AppVersionDisplay}"
+                                               FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Last commit"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <SelectableTextBlock Grid.Row="1" Grid.Column="1"
+                                               AutomationProperties.AutomationId="about.commit"
+                                               Text="{Binding AppCommitDisplay}"
+                                               FontFamily="Monospace" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Committed"
+                                               IsVisible="{Binding HasCommitDate}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <SelectableTextBlock Grid.Row="2" Grid.Column="1"
+                                               IsVisible="{Binding HasCommitDate}"
+                                               AutomationProperties.AutomationId="about.commit-date"
+                                               Text="{Binding AppCommitDateDisplay}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                </Grid>
+
+                                <TextBlock Text="The version follows the newest release tag on GitHub; the commit is the exact source this build was compiled from."
+                                           TextWrapping="Wrap" FontSize="12"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </Panel>
             </ScrollViewer>
         </Grid>

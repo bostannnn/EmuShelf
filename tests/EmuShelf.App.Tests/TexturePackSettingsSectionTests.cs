@@ -32,7 +32,9 @@ public sealed class TexturePackSettingsSectionTests
         var viewModel = CreateViewModel(Context());
 
         Assert.True(viewModel.HasTexturePacks);
-        Assert.Equal(SettingsSection.TexturePacks, viewModel.Sections[^1]);
+        // About is the permanent tail of the list, so Texture Packs sits just before it.
+        Assert.Equal(SettingsSection.About, viewModel.Sections[^1]);
+        Assert.Equal(SettingsSection.TexturePacks, viewModel.Sections[^2]);
     }
 
     [Fact]

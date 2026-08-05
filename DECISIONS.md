@@ -4386,6 +4386,30 @@ Two couch-mode refinements from testing:
   shell (Exo 2) and size/weight/foreground are forwarded. The hero title stack was switched to stretch
   so the marquee gets the full hero width to measure overflow against. `IsOverflowing` is exposed for a
   headless test of the fits-vs-scrolls decision.
+## 2026-08-05 — App version comes from the git tag at build time; Settings → About shows version + commit
+
+The displayed version was stuck at the hardcoded `<Version>0.1.0</Version>` in
+`src/EmuShelf.App/EmuShelf.App.csproj` while GitHub releases had moved to `v1.0.8`, so the app and
+the repo disagreed and `--version` only printed `EmuShelf`.
+
+- **`git describe` (nearest `vX.Y.Z` tag) is the single source of truth for the version.** A
+  `StampGitVersion` MSBuild target (runs `BeforeTargets="GetAssemblyVersion"`) reads the newest tag
+  and sets `Version` from it, so tagging a release on GitHub is the only place the number lives — no
+  separate csproj bump. The csproj `<Version>` is now only a fallback for tag-less/git-less builds
+  (source tarballs). The target is best-effort: missing git, tags, or `.git` never fails the build.
+- **The exact commit is pinned into the assembly**, not just the version: the short hash is appended
+  to `AssemblyInformationalVersion` (`1.0.8+3f2383650`) and both the hash and the ISO commit date go
+  in as `AssemblyMetadata`. `AppBuildInfo` reads these back by reflection at runtime (no process/file
+  access), feeding Settings → About and `--version`.
+- **CI checkout switched to `fetch-depth: 0`** in `.github/workflows/build.yml` (all four build/
+  package jobs). The default shallow clone fetches no tags, so `git describe` would otherwise find
+  nothing and every release binary would fall back to the csproj version.
+- **About is a Desktop-only settings section.** It renders a read-only info card, but the Gamepad
+  settings shell only projects interactive *row* sections, so About is filtered out of the derived
+  gamepad list alongside the existing Desktop-only `Emulators` and gallery-page `Themes`. About is
+  otherwise always present (it needs no host context) and sits at the permanent tail of the list.
+- **Caveat:** incremental local builds may show a stale commit if the assembly-info generation is
+  skipped as up-to-date; clean/Release/CI builds (which the shipped binaries use) always re-stamp.
 
 ## 2026-08-05 — Spotlight crash: no cross-fade over disposed fan-art bitmaps
 
