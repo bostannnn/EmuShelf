@@ -176,14 +176,9 @@ public partial class MainWindow : Window
         // NOT given keyboard focus — gamepad input is routed by the window-level tunnel handler (which
         // runs before any focused control) and the selection ring is IsFocused-driven, so focusing the
         // tile would only let Avalonia's focus bring-into-view scroll it to an edge and fight the centring.
+        // No focus needs clearing on return from a text overlay either: those hide via IsVisible, so
+        // Avalonia drops focus off their TextBox to null on close, and the tunnel then handles the d-pad.
         CentreRealizedRow(scroller, rowContainer);
-
-        // A text overlay (search/rename) hides on close, which normally drops focus off its TextBox; if a
-        // stale one lingers it would swallow the d-pad, because the key tunnel yields to TextBoxes so
-        // typing works. Move focus off it onto the row list (which never scrolls on focus and routes
-        // through the tunnel like the rest of the grid).
-        if (FocusManager?.GetFocusedElement() is TextBox)
-            GamepadRowList.Focus();
     }
 
     // Scroll so the realized row's centre lands on the viewport's centre line, as a SINGLE relative nudge

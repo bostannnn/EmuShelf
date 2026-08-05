@@ -4131,9 +4131,12 @@ Two supporting fixes found while debugging this:
   focused control) and the ring is `IsFocused`-driven, so the focus was unnecessary — and
   `FocusManager.Focus(tile, Directional)` raises a bring-into-view that scrolled the freshly focused tile
   to an edge (measured: centred at offset 8543, focus shoved it to 8868), fighting the centring. Removing
-  it is what makes the centre stick. Its one useful side effect — clearing a stale search/rename
-  `TextBox` focus on return to the grid, so the d-pad isn't swallowed by the tunnel's TextBox yield — is
-  preserved explicitly: the reveal moves focus onto the (non-scrolling) row list if a `TextBox` still
-  holds it.
+  it is what makes the centre stick. Taking no focus is also safe on return from a text overlay: those
+  hide via `IsVisible`, so Avalonia drops focus off their `TextBox` to null on close (verified — the
+  focused element becomes null), and the window tunnel then handles the d-pad. (An interim guard that
+  re-focused the row list on a lingering `TextBox` was dropped: it was a no-op — `ListBox.Focus()` returns
+  false here — for a case that never arises.) Guarded by
+  `Reveal_DoesNotStealFocus_FromOpenSearchBox`, which also pins that the reveal never disturbs an open
+  overlay's live text focus.
 - The reveal's ScrollViewer/viewport-not-ready retry is kept for the first frame after a mode/scope
   switch.
