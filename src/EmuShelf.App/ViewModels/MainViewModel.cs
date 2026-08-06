@@ -102,6 +102,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly List<GameViewModel> _systemGames = [];
     private readonly HashSet<long> _deferredCoverLoads = [];
     private GameViewModel? _selectionAnchor;
+    private HashSet<GameViewModel>? _marqueeBaseSelection;
     private bool _isFrontendSuspended;
     private DateTimeOffset _gamepadInputGuardUntil;
     private string _appliedSearchText = string.Empty;
@@ -2501,6 +2502,59 @@ public partial class MainViewModel : ViewModelBase
         // Shift without an existing anchor behaves like an ordinary click and establishes one.
         if (_selectionAnchor is null || !Games.Contains(_selectionAnchor))
             _selectionAnchor = game;
+        NotifySelectionChanged();
+    }
+
+    // Rubber-band (marquee) selection. The view drives the geometry — it hit-tests realized tiles
+    // against the drawn box and reports which games are inside — while this owns the selection state
+    // so grid and list share one model with click/Shift/Ctrl selection. A non-additive drag replaces
+    // the selection; Ctrl/Cmd keeps the pre-drag selection as an immutable base and adds to it.
+    public void BeginMarqueeSelection(bool additive)
+    {
+        if (IsBusy)
+            return;
+
+        if (additive)
+        {
+            _marqueeBaseSelection = Games.Where(game => game.IsSelected).ToHashSet();
+        }
+        else
+        {
+            _marqueeBaseSelection = [];
+            DeselectAllGames();
+            NotifySelectionChanged();
+        }
+    }
+
+    // Only realized (on-screen) tiles are reported; off-screen games are left untouched, so a game
+    // the box already claimed keeps its selection when it scrolls out of view.
+    public void UpdateMarqueeSelection(
+        IReadOnlyCollection<GameViewModel> realizedGames,
+        IReadOnlyCollection<GameViewModel> gamesInBox)
+    {
+        if (_marqueeBaseSelection is null)
+            return;
+
+        var inBox = gamesInBox as ISet<GameViewModel> ?? gamesInBox.ToHashSet();
+        foreach (var game in realizedGames)
+        {
+            var shouldSelect = _marqueeBaseSelection.Contains(game) || inBox.Contains(game);
+            if (game.IsSelected != shouldSelect)
+                game.IsSelected = shouldSelect;
+        }
+
+        SelectedGame = Games.FirstOrDefault(game => game.IsSelected);
+        NotifySelectionChanged();
+    }
+
+    public void EndMarqueeSelection()
+    {
+        if (_marqueeBaseSelection is null)
+            return;
+
+        _marqueeBaseSelection = null;
+        _selectionAnchor = Games.FirstOrDefault(game => game.IsSelected);
+        SelectedGame = _selectionAnchor;
         NotifySelectionChanged();
     }
 

@@ -1209,7 +1209,7 @@
         </Border>
 
         <!-- Cover-first library content. -->
-        <Panel Grid.Row="2" Grid.Column="1"
+        <Panel x:Name="LibraryContentPanel" Grid.Row="2" Grid.Column="1"
                Background="{DynamicResource EmuLibraryBrush}">
             <ScrollViewer x:Name="LibraryGridScroller" IsVisible="{Binding IsGridView}"
                           Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
@@ -1707,6 +1707,15 @@
                     </Button>
                 </Grid>
             </Border>
+
+            <!-- Rubber-band selection overlay. A left-drag from the library's empty canvas paints
+                 this box (in viewport space) and selects every cover it touches; the code-behind
+                 hit-tests realized tiles against it. Hit-test transparent so it never eats input. -->
+            <Canvas x:Name="MarqueeLayer" IsHitTestVisible="False" ClipToBounds="True">
+                <Border x:Name="MarqueeBox" IsVisible="False" CornerRadius="2"
+                        Background="{DynamicResource EmuAccentMutedBrush}"
+                        BorderBrush="{DynamicResource EmuAccentBrush}" BorderThickness="1" />
+            </Canvas>
         </Panel>
     </Grid>
 

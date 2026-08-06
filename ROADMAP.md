@@ -684,6 +684,12 @@ Remove works one game at a time, so clearing or pruning a library is tedious.
       Grid/List switching, right-click targeting, Escape/empty-canvas clearing, search clearing, the
       contextual bar/menu copy, and bulk remove of a mixed available/missing selection. Keep
       `dotnet build`/`dotnet test` green on macOS and Windows.
+- [x] Add a mouse-only **rubber-band (marquee) selection** for both layouts: a left-drag from the
+      empty canvas paints a box that selects every cover it touches, dragging to the top/bottom edge
+      auto-scrolls to extend the selection, Ctrl/Cmd makes it additive to the pre-drag selection, and
+      a plain click still clears. Geometry/auto-scroll live in code-behind; the selection state stays
+      in the view model (`Begin/Update/EndMarqueeSelection`). Covered by view-model, velocity-math,
+      and headless drag + auto-scroll tests. See DECISIONS 2026-08-06.
 
 ## M26 — Super Nintendo library (planned)
 

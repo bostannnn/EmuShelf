@@ -289,6 +289,279 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task DesktopGridMarquee_DragSelectsCoversItTouchesAndPaintsTheBox()
+    {
+        var viewModel = new MainViewModel();
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll(Enumerable.Range(1, 3).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/games/Game {index}.rvz",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1000,
+            Height = 720,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var tiles = window.GetVisualDescendants()
+                .OfType<StackPanel>()
+                .Where(control => control.Classes.Contains("game-tile"))
+                .ToArray();
+            Assert.Equal(3, tiles.Length);
+            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            Assert.NotNull(marqueeBox);
+            Assert.False(marqueeBox.IsVisible);
+
+            // The tiles share a row; start from the empty gutter left of the first cover and drag a
+            // box that covers the first two but stops short of the third.
+            var firstBounds = TileBounds(window, tiles[0]);
+            var secondBounds = TileBounds(window, tiles[1]);
+            var thirdBounds = TileBounds(window, tiles[2]);
+            var origin = new Point(firstBounds.X - 12, firstBounds.Y + 6);
+            var release = new Point(
+                (secondBounds.Right + thirdBounds.X) / 2,
+                secondBounds.Bottom - 6);
+
+            window.MouseDown(origin, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(new Point(origin.X + 2, origin.Y + 2), RawInputModifiers.None);
+            window.MouseMove(release, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.True(marqueeBox.IsVisible);
+            Assert.Equal(["Game 1", "Game 2"], SelectedTitles(viewModel));
+
+            window.MouseUp(release, MouseButton.Left, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.False(marqueeBox.IsVisible);
+            Assert.Equal(["Game 1", "Game 2"], SelectedTitles(viewModel));
+
+            // A modifier-free drag starting on empty canvas replaces the selection rather than adding.
+            // Re-read bounds: the now-visible selection bar shifted the library content down.
+            var secondBoundsNow = TileBounds(window, tiles[1]);
+            var thirdBoundsNow = TileBounds(window, tiles[2]);
+            var secondOrigin = new Point(secondBoundsNow.X - 6, secondBoundsNow.Y + 6);
+            var secondRelease = new Point(thirdBoundsNow.Right - 6, thirdBoundsNow.Bottom - 6);
+            window.MouseDown(secondOrigin, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(secondRelease, RawInputModifiers.None);
+            window.MouseUp(secondRelease, MouseButton.Left, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.Equal(["Game 2", "Game 3"], SelectedTitles(viewModel));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string[] SelectedTitles(MainViewModel viewModel) => viewModel.Games
+            .Where(game => game.IsSelected)
+            .Select(game => game.Title)
+            .ToArray();
+
+        static Rect TileBounds(MainWindow window, Control tile)
+        {
+            var topLeft = tile.TranslatePoint(default, window);
+            Assert.NotNull(topLeft);
+            return new Rect(topLeft.Value, tile.Bounds.Size);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task DesktopListMarquee_DragSelectsRowsItTouches()
+    {
+        var viewModel = new MainViewModel { IsGridView = false };
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll(Enumerable.Range(1, 3).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/games/Game {index}.rvz",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1000,
+            Height = 720,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var rows = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Where(control => control.Classes.Contains("game-row"))
+                .ToArray();
+            Assert.Equal(3, rows.Length);
+            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            Assert.NotNull(marqueeBox);
+
+            // Start in the empty space below the last row and drag up into the first row so the box
+            // sweeps every row (starting below the bottom row inevitably includes it).
+            var firstBounds = RowBounds(window, rows[0]);
+            var lastBounds = RowBounds(window, rows[2]);
+            var origin = new Point(firstBounds.X + 12, lastBounds.Bottom + 16);
+            var release = new Point(firstBounds.Right - 12, firstBounds.Y + firstBounds.Height / 2);
+
+            window.MouseDown(origin, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(release, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.True(marqueeBox.IsVisible);
+            Assert.Equal(["Game 1", "Game 2", "Game 3"], viewModel.Games
+                .Where(game => game.IsSelected).Select(game => game.Title));
+
+            window.MouseUp(release, MouseButton.Left, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.False(marqueeBox.IsVisible);
+            Assert.Equal(["Game 1", "Game 2", "Game 3"], viewModel.Games
+                .Where(game => game.IsSelected).Select(game => game.Title));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static Rect RowBounds(MainWindow window, Control row)
+        {
+            var topLeft = row.TranslatePoint(default, window);
+            Assert.NotNull(topLeft);
+            return new Rect(topLeft.Value, row.Bounds.Size);
+        }
+    }
+
+    [Theory]
+    // Pointer resting in the body scrolls nothing; the top/bottom margins steer up/down at a speed
+    // that ramps with depth and clamps at the zone edge (and beyond it, when dragged past the window).
+    [InlineData(200, 0)]
+    [InlineData(0, -26)]
+    [InlineData(14, -13)]
+    [InlineData(-100, -26)]
+    [InlineData(400, 26)]
+    [InlineData(386, 13)]
+    [InlineData(500, 26)]
+    public void MarqueeAutoScrollVelocity_RampsAndClampsWithinEdgeZones(double pointerY, double expected)
+    {
+        var velocity = MainWindow.ComputeAutoScrollVelocity(
+            pointerY, viewportTop: 0, viewportBottom: 400, edgeZone: 28, maxSpeed: 26);
+        Assert.Equal(expected, velocity, precision: 6);
+    }
+
+    [Fact]
+    public void MarqueeAutoScrollVelocity_IsZeroWhenViewportTooShortForTwoZones()
+    {
+        Assert.Equal(0, MainWindow.ComputeAutoScrollVelocity(
+            5, viewportTop: 0, viewportBottom: 40, edgeZone: 28, maxSpeed: 26));
+    }
+
+    [AvaloniaFact]
+    public async Task DesktopGridMarquee_AutoScrollAnchorExtendsSelectionAndKeepsScrolledOffClaims()
+    {
+        var viewModel = new MainViewModel();
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll(Enumerable.Range(1, 48).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/games/Game {index:D2}.rvz",
+                Title = $"Game {index:D2}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 900,
+            Height = 540,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var scroller = window.FindControl<ScrollViewer>("LibraryGridScroller");
+            Assert.NotNull(scroller);
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height, "Library must overflow to scroll.");
+
+            var firstTile = window.GetVisualDescendants()
+                .OfType<StackPanel>()
+                .First(control => control.Classes.Contains("game-tile") &&
+                    ReferenceEquals(control.DataContext, viewModel.Games[0]));
+            var firstTopLeft = firstTile.TranslatePoint(default, window);
+            Assert.NotNull(firstTopLeft);
+
+            // Sweep a full-width band from the top gutter down to the bottom edge of the viewport.
+            var origin = new Point(firstTopLeft.Value.X - 12, firstTopLeft.Value.Y - 8);
+            var scrollerBottom = scroller.TranslatePoint(default, window)!.Value.Y + scroller.Bounds.Height;
+            var release = new Point(window.Width - 40, scrollerBottom - 6);
+
+            window.MouseDown(origin, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(release, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.True(viewModel.Games[0].IsSelected);
+            var beforeScroll = viewModel.SelectedGameCount;
+            Assert.True(beforeScroll > 0 && beforeScroll < viewModel.Games.Count, "Only the on-screen band should be selected yet.");
+
+            // Emulate the auto-scroll pump: advance the offset, then a stationary move re-hit-tests.
+            var maxOffset = scroller.Extent.Height - scroller.Viewport.Height;
+            scroller.Offset = scroller.Offset.WithY(Math.Min(maxOffset, scroller.Offset.Y + scroller.Viewport.Height));
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            window.MouseMove(release, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            window.MouseUp(release, MouseButton.Left, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            // The content-anchored box grew over the revealed rows (more selected) while the row that
+            // scrolled off the top kept its claim.
+            Assert.True(viewModel.Games[0].IsSelected);
+            Assert.True(viewModel.SelectedGameCount > beforeScroll,
+                $"Auto-scroll should extend the selection: was {beforeScroll}, now {viewModel.SelectedGameCount}.");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task DesktopList_WideCoverDoesNotOverlapTitle()
     {
         var viewModel = new MainViewModel { IsGridView = false };
