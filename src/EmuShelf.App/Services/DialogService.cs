@@ -108,6 +108,22 @@ public sealed class DialogService : IDialogService
         if (owner is null)
             return null;
 
+        // Avalonia's macOS open panel navigates into `.app` bundles instead of selecting them, so an
+        // emulator shipped as a bundle (which is every macOS emulator) can't be chosen with the
+        // cross-platform picker. Use a native NSOpenPanel that keeps bundles selectable; fall back to
+        // the Avalonia picker only if the native panel is genuinely unavailable.
+        if (OperatingSystem.IsMacOS())
+        {
+            try
+            {
+                return MacOpenPanel.ChooseEmulator();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Native macOS open panel failed; using the standard picker. {ex.Message}");
+            }
+        }
+
         var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             Title = $"Select {emulatorName} executable",

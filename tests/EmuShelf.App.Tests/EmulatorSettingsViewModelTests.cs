@@ -233,11 +233,12 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void RetroArchCores_AreDiscoveredFromTheUserRetroArchConfigDirectoryOffWindows()
+    public void RetroArchCores_AreDiscoveredFromTheXdgConfigDirectoryOnLinux()
     {
-        // A Linux/SteamOS RetroArch (native or AppImage) keeps cores under the user's config
+        // A Linux/SteamOS RetroArch (native or AppImage) keeps cores under the user's XDG config
         // directory, not beside the executable, so the adjacent-only scan would leave the picker
-        // empty. Windows keeps only the adjacent scan.
+        // empty. Windows keeps only the adjacent scan; macOS uses Application Support (covered below),
+        // so the XDG path is Linux-only.
         var root = Path.Combine(Path.GetTempPath(), "EmuShelfCoreDiscovery", Guid.NewGuid().ToString("N"));
         var emulatorDirectory = Path.Combine(root, "emulator");
         var configHome = Path.Combine(root, "config");
@@ -250,16 +251,49 @@ public class EmulatorSettingsViewModelTests
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", configHome);
         try
         {
-            var viewModel = CreateViewModel();
-            var megaDrive = viewModel.Rows.Single(row => row.SystemId == "megadrive");
+            var emulator = KnownEmulators.All.Single(candidate => candidate.Id == "retroarch");
+            var system = KnownSystems.All.Single(candidate => candidate.Id == "megadrive");
+            var megaDrive = new EmulatorSettingsRowViewModel(
+                system, emulator, null, _dialogs, homeDirectory: Path.Combine(root, "home"));
             megaDrive.ExecutablePath = Path.Combine(emulatorDirectory, "retroarch");
 
             var discovered = megaDrive.AvailableCores.Any(core => core.Name == "genesis_plus_gx_libretro.so");
-            Assert.Equal(!OperatingSystem.IsWindows(), discovered);
+            Assert.Equal(!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS(), discovered);
         }
         finally
         {
             Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", previousConfigHome);
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public void RetroArchCores_AreDiscoveredFromApplicationSupportOnMacOS()
+    {
+        // macOS RetroArch keeps downloaded cores under ~/Library/Application Support/RetroArch/cores,
+        // not beside the `.app` and not under XDG — so a bundle executable path still populates the
+        // core picker. (Regression guard: this directory was previously ignored on macOS.)
+        var root = Path.Combine(Path.GetTempPath(), "EmuShelfMacCoreDiscovery", Guid.NewGuid().ToString("N"));
+        var home = Path.Combine(root, "home");
+        var coresDirectory = Path.Combine(home, "Library", "Application Support", "RetroArch", "cores");
+        Directory.CreateDirectory(coresDirectory);
+        File.WriteAllText(Path.Combine(coresDirectory, "mgba_libretro.dylib"), "core");
+
+        try
+        {
+            var emulator = KnownEmulators.All.Single(candidate => candidate.Id == "retroarch");
+            var system = KnownSystems.All.Single(candidate => candidate.Id == "gba");
+            var row = new EmulatorSettingsRowViewModel(
+                system, emulator, null, _dialogs, homeDirectory: home)
+            {
+                ExecutablePath = "/Applications/RetroArch.app",
+            };
+
+            var discovered = row.AvailableCores.Any(core => core.Name == "mgba_libretro.dylib");
+            Assert.Equal(OperatingSystem.IsMacOS(), discovered);
+        }
+        finally
+        {
             try { Directory.Delete(root, true); } catch (IOException) { }
         }
     }

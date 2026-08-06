@@ -19,6 +19,9 @@ public partial class MainWindow : Window
     private Point? _lastGamepadPointerPosition;
     private int _requestedSettingsTextEntryRevision = -1;
 
+    // The window state to return to when leaving a keyboard-toggled Desktop fullscreen.
+    private WindowState _preFullScreenState = WindowState.Maximized;
+
     // Cached ScrollViewer of the gamepad grid, used to centre the focused row on one fixed viewport line.
     private ScrollViewer? _gamepadScroller;
 
@@ -641,6 +644,21 @@ public partial class MainWindow : Window
             ? WindowState.Normal
             : WindowState.Maximized;
 
+    // Toggle Desktop fullscreen, remembering the pre-fullscreen state so exiting returns to it rather
+    // than always dropping to a fixed state. Minimized is never a sensible thing to restore into, so a
+    // toggle from a minimized window comes back maximized.
+    private void ToggleFullScreen()
+    {
+        if (WindowState == WindowState.FullScreen)
+        {
+            WindowState = _preFullScreenState;
+            return;
+        }
+
+        _preFullScreenState = WindowState == WindowState.Minimized ? WindowState.Maximized : WindowState;
+        WindowState = WindowState.FullScreen;
+    }
+
     private void OnCloseWindowClick(object? sender, RoutedEventArgs e) => Close();
 
     private void OnSearchKeyDown(object? sender, KeyEventArgs e)
@@ -690,6 +708,21 @@ public partial class MainWindow : Window
                 Key.Down => GamepadAction.NavigateDown,
                 _ => null,
             };
+        }
+
+        // Fullscreen toggle for Desktop mode. The window has no title bar, so there is no green
+        // fullscreen button or menu item (macOS) and no maximize control beyond the custom caption
+        // buttons — leaving the user with no way to fill the screen. F11 is the cross-platform
+        // convention; Cmd+Ctrl+F is the macOS system-standard "Enter Full Screen" shortcut, reached
+        // for here precisely because the native control is hidden. Gamepad mode is already full screen
+        // and returns above, so this only applies to Desktop.
+        if (e.Key == Key.F11 ||
+            (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Meta) &&
+             e.KeyModifiers.HasFlag(KeyModifiers.Control)))
+        {
+            ToggleFullScreen();
+            e.Handled = true;
+            return;
         }
 
         var isSelectionModifier = e.KeyModifiers.HasFlag(KeyModifiers.Control) ||

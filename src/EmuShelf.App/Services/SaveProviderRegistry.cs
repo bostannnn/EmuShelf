@@ -94,7 +94,7 @@ public static class SaveProviderRegistry
     private static readonly ConcurrentDictionary<string, Lazy<string?>> FlatpakArchitectures =
         new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, Lazy<string?>> ExecutableVersions =
-        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        new(FilePathComparison.Comparer);
 
     public static IReadOnlyList<SaveProviderDescriptor> All { get; } =
     [

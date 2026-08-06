@@ -62,6 +62,11 @@ public partial class App : Application
                 Bootstrapper.Settings,
                 mainWindow,
                 AppLaunchOptions.InterfaceModeOverride);
+            // macOS: turn the (native-no-op) FullScreen state into a real screen-filling window.
+            // Subscribed after the interface-mode service has set the launch state so it fills on open.
+            // Inert on Windows/Linux, where native FullScreen works. Held by the window's event
+            // subscription for the app's lifetime.
+            _ = new MacFullScreenController(mainWindow);
             var launchService = new EmulatorLaunchService(
                 Bootstrapper.EmulatorConfigurations,
                 Bootstrapper.ProcessRunner,

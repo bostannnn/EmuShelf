@@ -404,6 +404,20 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         if (OperatingSystem.IsWindows())
             yield break;
 
+        if (OperatingSystem.IsMacOS())
+        {
+            // macOS RetroArch keeps downloaded cores under Application Support — the same user root its
+            // config and saves use — not beside the `.app` and not under XDG. Without this the core
+            // dropdown was always empty on macOS even after cores were installed.
+            if (!string.IsNullOrWhiteSpace(_homeDirectory))
+            {
+                yield return Path.Combine(
+                    _homeDirectory, "Library", "Application Support", "RetroArch", "cores");
+            }
+
+            yield break;
+        }
+
         var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
         if (string.IsNullOrWhiteSpace(configHome))
         {

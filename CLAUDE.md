@@ -20,7 +20,7 @@ If `dotnet` is not on PATH, use `$HOME/.dotnet/dotnet` (user-local SDK install).
 ## Rules
 
 - MVVM with CommunityToolkit.Mvvm (`[ObservableProperty]`, `[RelayCommand]`). No logic in code-behind beyond view wiring.
-- Must build and run on macOS at all times, even though v1 ships Windows-only. Platform-specific behavior goes behind interfaces in Core.
+- Windows, macOS (arm64), and Linux/AppImage are all shipped release targets (see DECISIONS 2026-08-06); the app must build, run, and pass tests on macOS at all times. Platform-specific behavior goes behind interfaces in Core. The macOS `.app` is currently unsigned/un-notarized — don't assume a code-signing/notarization step exists.
 - Never modify or delete the user's game files. Removing a game touches only EmuShelf's own database.
 - All user data lives beside the executable (portable): `Data/`, `Covers/`, `Cache/`, `Logs/`, `Settings/`. Support relative paths so the app, emulators, and games can move together on one drive.
 - Performance: virtualize grid/list views, load covers asynchronously off the UI thread, cache scaled thumbnails, debounce search, no full library rescan at startup.

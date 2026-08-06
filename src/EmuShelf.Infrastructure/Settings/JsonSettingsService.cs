@@ -12,7 +12,7 @@ namespace EmuShelf.Infrastructure.Settings;
 public sealed class JsonSettingsService : ISettingsService
 {
     private static readonly ConcurrentDictionary<string, object> ProcessLocks =
-        new(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        new(FilePathComparison.Comparer);
     private static readonly TimeSpan FileLockTimeout = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan FileLockRetryDelay = TimeSpan.FromMilliseconds(15);
     private static readonly JsonSerializerOptions SerializerOptions = new()

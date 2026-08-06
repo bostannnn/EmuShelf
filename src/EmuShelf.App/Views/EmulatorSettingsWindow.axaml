@@ -353,7 +353,7 @@
                                                     </ListBox.ItemTemplate>
                                                 </ListBox>
                                             </Border>
-                                            <TextBlock Text="Lists installed cores beside the configured RetroArch executable. EmuShelf never downloads or changes RetroArch cores or settings."
+                                            <TextBlock Text="Lists cores already installed in RetroArch (download cores in RetroArch first). EmuShelf never downloads or changes RetroArch cores or settings."
                                                        FontSize="11" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         </StackPanel>

@@ -4602,3 +4602,105 @@ profiles. The grouped result seeds each row (an empty seed for a system with no 
 so a zero-folder system never reopens the database either). A null map — a caller that supplies only
 the per-system `Get`, i.e. tests — preserves the old per-row read. Later refreshes after a folder
 edit still read the current rows directly.
+
+## 2026-08-06 — macOS is a shipped target, not just a dev platform (supersedes 2026-07-12 Windows-only)
+
+The 2026-07-12 decision framed macOS as a first-class *dev* platform with a Windows-only v1 release
+and a "deferred" macOS package. That deferral is now retired: macOS is a supported, released target
+alongside Windows and the Linux/AppImage build. Most of this was already true in the code and CI and
+had simply outrun the decision log — this entry makes the policy match reality and removes the
+"Windows-only ship" framing that later work (`.app` packaging, the Application Support data root, the
+macOS in-app updater) had already contradicted.
+
+What backs the promotion, all pre-existing:
+
+- **CI builds and tests on macOS every run** (the `build` matrix includes `macos-latest`), and the
+  dedicated `package-macos` job publishes `osx-arm64`, bundles rclone, assembles `EmuShelf.app`
+  (`packaging/macos/build-macos-app.sh` + `Info.plist`), verifies the payload, and uploads a
+  checksummed zip. The `release` job attaches that artifact to the GitHub Release on a version tag.
+- **Launching** resolves a selected `.app` bundle to its inner Mach-O binary via `Info.plist`'s
+  `CFBundleExecutable` (`EmulatorLaunchService.ResolveExecutablePath`), so DuckStation/PCSX2/RPCS3/
+  Dolphin/PPSSPP/RetroArch/Azahar `.app`s launch with the same per-emulator argument templates.
+- **Data + saves + updates** are macOS-aware: app data lives under `~/Library/Application Support/
+  EmuShelf` (2026-08-05), every save-location/texture resolver has a verified `~/Library/Application
+  Support/<Emulator>` branch, and `MacUpdateApplier` swaps the whole bundle and clears
+  `com.apple.quarantine` on relaunch.
+
+Known, accepted caveats (documented, not blockers):
+
+- **Unsigned / un-notarized, arm64 only.** The bundle carries only the .NET apphost's ad-hoc
+  signature. Gatekeeper therefore needs the quarantine flag cleared on a fresh download
+  (`xattr -dr com.apple.quarantine EmuShelf.app`, or right-click → Open). A Developer ID signature +
+  notarization and an Intel/universal slice remain future work, not release gates.
+- **On-screen keyboard** falls back to the hardware keyboard on macOS (Windows-only TabTip/osk today).
+
+Also fixed here: **fullscreen was broken on macOS** for EmuShelf's borderless window
+(`WindowDecorations="None"` + extended client area). Avalonia's native `WindowState.FullScreen` is a
+no-op for such a window on macOS — verified by running the app and probing the live NSWindow: the
+managed state reads `FullScreen` while the window stays at its floating 1240×800 size, so a Gamepad
+launch (and any fullscreen request) opened as a small window. Driving AppKit's `toggleFullScreen:`
+directly left the content unresized inside a fullscreen shell, and `Maximized` mispositioned the
+window (the known ExtendClientArea offset, AvaloniaUI/Avalonia#15956); only sizing the window
+ourselves produced a clean fill.
+
+New `MacFullScreenController` (App layer, macOS-gated, inert elsewhere) observes `WindowState` and
+mirrors any `FullScreen` onto a manual borderless fill of the window's display, restoring the floating
+size on exit. One observer covers every fullscreen path because they all set `WindowState.FullScreen`:
+launching into Gamepad, mode switches, returning from a game, and the new desktop keyboard toggle. The
+window fills everything below the menu bar (macOS keeps a normal-level window out from under it; true
+menu-bar-hiding fullscreen needs a native fullscreen space, which AppKit will not grant a borderless
+window — an accepted cosmetic limitation). Windows/Linux are untouched, where native `FullScreen`
+works. Verified live on macOS: the Gamepad window now measures 1470×923 filling the display.
+
+Separately, because the borderless window has no title bar (no green fullscreen button or menu item),
+Desktop mode had no way to fill the screen at all — a keyboard toggle now covers it: **F11**
+(cross-platform) and **Cmd+Ctrl+F** (the macOS system standard), routed through the same
+`WindowState.FullScreen` the controller acts on.
+
+## 2026-08-06 — One path-identity comparer: macOS is case-insensitive like Windows
+
+Path identity was compared inconsistently. The `Games.Path` database index is `COLLATE NOCASE`
+(2026-07-12: NTFS and macOS APFS/HFS+ are case-insensitive, so `game.cue` and `GAME.CUE` are one
+file), but ten in-memory comparers across App/Infrastructure/Integrations each special-cased *only*
+Windows — `OperatingSystem.IsWindows() ? OrdinalIgnoreCase : Ordinal` — which quietly treated macOS
+as case-sensitive. On the default case-insensitive Mac volume that disagreed with the database:
+differently-cased references to one on-disk file were deduped as one row by SQLite but kept apart by
+the library, save-sync path matching, the ScreenScraper fingerprint cache, and Dolphin's save
+enumeration.
+
+Introduced `EmuShelf.Core.Storage.FilePathComparison` (`IsCaseInsensitive`/`Comparison`/`Comparer`),
+case-insensitive on Windows **or** macOS and ordinal on Linux, and routed all ten sites through it so
+the rule can't drift per call site again. Non-path dictionaries keep their own comparer (Flatpak app
+ids stay `Ordinal` — reverse-DNS, case-sensitive). Windows and Linux behavior is unchanged; only
+macOS flips, to agree with both its filesystem and the database. The database collation is
+case-insensitive on Linux too (a pre-existing, lower-stakes mismatch, since Linux filesystems are
+case-sensitive); reconciling that would require a platform-dependent schema collation and is left out
+of scope. Behavioral guard in `FilePathComparisonTests`; full suite green on macOS.
+
+## 2026-08-06 — macOS: native open panel to pick a `.app`, and correct core discovery
+
+Surfaced by driving the real app on macOS: the whole "add a RetroArch emulator and launch a game"
+flow was broken, in two independent places.
+
+**Selecting an emulator.** Every macOS emulator ships as a `.app` bundle, and Avalonia's
+cross-platform `StorageProvider` cannot select one — its open panel treats the bundle as a package to
+navigate into, so a file picker returns nothing and a folder picker cannot select it either (both
+confirmed by logging the picker result: `count=0` / `<null>`). No `FilePickerFileType` /
+`AppleUniformTypeIdentifiers` combination fixed it. `PickEmulatorExecutableAsync` now calls a native
+`NSOpenPanel` on macOS (`MacOpenPanel`, libobjc message-send) configured with
+`treatsFilePackagesAsDirectories = NO` + `canChooseFiles = YES`, which makes a `.app` selectable as a
+single item; it falls back to the Avalonia picker if the native call is unavailable. Windows/Linux are
+untouched. Verified live: `/Applications/RetroArch.app` selected, stored as a portable relative path,
+resolved to `Contents/MacOS/RetroArch`, and a GBA game launched through RetroArch (exit 0) with the
+minimize/restore lifecycle intact.
+
+**Finding cores.** `EmulatorSettingsRowViewModel.CoreSearchDirectories` scanned only *beside the
+executable* and the Linux XDG path `~/.config/retroarch/cores` — never the macOS location. macOS
+RetroArch keeps downloaded cores under `~/Library/Application Support/RetroArch/cores` (the same root
+its config/saves use), so the core picker was always empty on macOS even after cores were installed
+— the same class of bug the 2026-07 review fixed for PPSSPP's Memory Stick. Added the Application
+Support branch (macOS returns it and stops, mirroring the Windows/Linux structure). The settings hint
+that claimed cores live "beside the configured RetroArch executable" was corrected to be
+location-neutral. EmuShelf still never downloads or edits cores — it only lists what RetroArch has
+installed. Tests: the XDG discovery test is now Linux-only (`&& !IsMacOS`), plus a new
+Application-Support discovery test.

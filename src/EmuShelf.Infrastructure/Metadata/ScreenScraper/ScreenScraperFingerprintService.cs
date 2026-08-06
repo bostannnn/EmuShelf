@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata.ScreenScraper;
+using EmuShelf.Core.Storage;
 
 namespace EmuShelf.Infrastructure.Metadata.ScreenScraper;
 
@@ -152,7 +153,7 @@ public sealed class ScreenScraperFingerprintService : IScreenScraperFingerprintS
         string.Equals(
             Path.GetFullPath(cached.SourcePath),
             Path.GetFullPath(source.FullName),
-            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal) &&
+            FilePathComparison.Comparison) &&
         cached.FileSize == source.Length &&
         cached.LastWriteAt.ToUnixTimeMilliseconds() ==
             new DateTimeOffset(source.LastWriteTimeUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();

@@ -1,4 +1,5 @@
 using EmuShelf.Core.SaveSync;
+using EmuShelf.Core.Storage;
 
 namespace EmuShelf.App.Services;
 
@@ -422,7 +423,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 
     private static bool IsUnder(string path, string root)
     {
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var comparison = FilePathComparison.Comparison;
         return path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison);
     }
 

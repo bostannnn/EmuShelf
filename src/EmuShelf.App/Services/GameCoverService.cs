@@ -161,9 +161,7 @@ public sealed class GameCoverService : IGameCoverService
     private bool TryGetOwnedCoverPath(long gameId, string coverPath, out string ownedCoverPath)
     {
         ownedCoverPath = Path.GetFullPath(coverPath);
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FilePathComparison.Comparison;
         if (!string.Equals(
                 Path.GetDirectoryName(ownedCoverPath),
                 _coversDirectory,
