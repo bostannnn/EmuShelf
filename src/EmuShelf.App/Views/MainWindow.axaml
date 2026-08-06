@@ -2355,9 +2355,14 @@
                              lights up when the controller ring is on the row. -->
                         <StackPanel Grid.Row="0" IsVisible="{Binding IsGamepadSystemMenuOpen}"
                                     Spacing="12" Margin="0,0,0,4">
-                            <TextBlock Text="View mode" FontSize="13" FontWeight="SemiBold"
-                                       LetterSpacing="0.6"
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="View mode" FontSize="13" FontWeight="SemiBold"
+                                           LetterSpacing="0.6"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding LibraryCountText}"
+                                           FontSize="13" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </Grid>
                             <Border Classes="gamepad-viewmode-row"
                                     Classes.focused="{Binding IsGamepadViewModeRowFocused}">
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
@@ -3002,29 +3007,6 @@
                             </Grid>
                         </Grid>
 
-                        <Grid x:Name="GamepadSystemMenuShortcuts"
-                              IsVisible="{Binding IsGamepadSystemMenuOpen}"
-                              ColumnDefinitions="*,Auto" ColumnSpacing="14">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <StackPanel Classes="gamepad-hint" Orientation="Horizontal">
-                                    <Border Classes="gamepad-key"><TextBlock Text="LB/RB" /></Border>
-                                    <TextBlock Text="Platforms" />
-                                </StackPanel>
-                                <StackPanel Classes="gamepad-hint" Orientation="Horizontal">
-                                    <Border Classes="gamepad-key action-x"><TextBlock Text="X" /></Border>
-                                    <TextBlock Text="Search" />
-                                </StackPanel>
-                                <StackPanel x:Name="GamepadSystemMenuActionsShortcut"
-                                            Classes="gamepad-hint" Orientation="Horizontal"
-                                            IsVisible="{Binding HasGames}">
-                                    <Border Classes="gamepad-key action-y"><TextBlock Text="Y" /></Border>
-                                    <TextBlock Text="Actions" />
-                                </StackPanel>
-                            </StackPanel>
-                            <TextBlock Grid.Column="1" Text="{Binding LibraryCountText}"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                        </Grid>
                         <StackPanel IsVisible="{Binding IsGamepadSearchOpen}" Spacing="14">
                             <TextBlock Text="Search your library" FontSize="17" />
                             <TextBox x:Name="GamepadSearchBox" Text="{Binding SearchText, Mode=TwoWay}" FontSize="24"

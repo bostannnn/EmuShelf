@@ -633,9 +633,11 @@ public class MainWindowVisualSnapshotTests
             await PumpAsync();
 
             Assert.Equal(GamepadOverlayKind.SystemMenu, viewModel.GamepadOverlay);
-            var actionsShortcut = window.FindControl<StackPanel>("GamepadSystemMenuActionsShortcut");
-            Assert.NotNull(actionsShortcut);
-            Assert.False(actionsShortcut.IsVisible);
+            // An empty library still opens the menu, and it offers only library-level entries — no
+            // game-specific actions.
+            Assert.Equal(
+                ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+                viewModel.GamepadOverlayOptions.Select(option => option.Label));
         }
         finally
         {
@@ -928,13 +930,11 @@ public class MainWindowVisualSnapshotTests
             // viewport. The picker adds a row, so the ceiling is a touch higher than before (observed
             // ~544 macOS / 551 Linux / 557 Windows — font metrics vary), still far under the viewport.
             AssertGamepadOverlayHeightBelow(window, 580);
-            var systemMenuShortcuts = window.FindControl<Grid>("GamepadSystemMenuShortcuts");
-            Assert.NotNull(systemMenuShortcuts);
-            Assert.True(systemMenuShortcuts.IsVisible);
-            Assert.Contains(systemMenuShortcuts.GetVisualDescendants().OfType<Border>(),
-                control => control.IsVisible && control.Classes.Contains("action-x"));
-            Assert.Contains(systemMenuShortcuts.GetVisualDescendants().OfType<Border>(),
-                control => control.IsVisible && control.Classes.Contains("action-y"));
+            // The redundant shortcut bar is gone; the menu leads with the Grid/List view-mode picker.
+            var viewModeCards = window.GetVisualDescendants().OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-viewmode-card"))
+                .ToList();
+            Assert.Equal(2, viewModeCards.Count);
             Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Quit EmuShelf").IsDestructive);
             viewModel.RequestDesktopModeFromGamepadCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-desktop-confirmation-1280x800.png");
