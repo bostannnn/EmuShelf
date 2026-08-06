@@ -1205,14 +1205,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 false,
                 value => _settings.CloudFolder = value);
             yield return ActionRow(
-                "saves.oauth-json",
-                "Import Google OAuth client JSON",
-                "Optional. A personal client avoids shared-client rate limits. Its secret passes directly to rclone and is never retained by EmuShelf.",
-                string.IsNullOrWhiteSpace(_settings.CloudClientId) ? "A CHOOSE FILE" : "CLIENT LOADED",
-                _settings.ImportGoogleClientCommand,
-                !_settings.IsCloudBusy,
-                GamepadSettingsRowKind.File);
-            yield return ActionRow(
                 "saves.connect",
                 "Connect Google Drive",
                 "Open Google's sign-in through rclone and enable the configured save platforms.",

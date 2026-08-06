@@ -46,12 +46,6 @@ public interface IDialogService
         return path is null ? null : new PickedGameCover(path);
     }
 
-    /// <summary>
-    /// Absolute path of the OAuth client JSON downloaded from the Google Cloud console, or null if
-    /// cancelled.
-    /// </summary>
-    Task<string?> PickGoogleClientJsonAsync();
-
     /// <summary>Confirms removing a game from the library without touching its files.</summary>
     Task<bool> ConfirmRemoveGameAsync(string gameTitle);
 

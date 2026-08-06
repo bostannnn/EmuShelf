@@ -15,15 +15,15 @@ namespace EmuShelf.App.Tests;
 public class GamepadScraperOverlayTests
 {
     [Fact]
-    public async Task Opens_StraightToReady_WithFirstFieldFocused()
+    public async Task Opens_StraightToReady_WithApplyFocused()
     {
         var vm = Wrap(new StubScreenScraperPreviewService(ScraperFixtures.ReadyPreview()));
 
         await vm.LoadAsync();
 
         Assert.Equal(GameScraperState.Ready, vm.Scraper.State);
-        Assert.Equal(GamepadScraperTargetKind.Field, vm.FocusedKind);
-        Assert.True(vm.Scraper.Fields[0].IsFocused);
+        Assert.Equal(GamepadScraperTargetKind.Apply, vm.FocusedKind);
+        Assert.True(vm.IsApplyFocused);
     }
 
     [Fact]
@@ -32,7 +32,13 @@ public class GamepadScraperOverlayTests
         var vm = Wrap(new StubScreenScraperPreviewService(ScraperFixtures.ReadyPreview()));
         await vm.LoadAsync();
 
-        // Field is focused and selected by default; A clears it.
+        // Ready opens on Apply; D-pad Up walks back up to the first field.
+        Assert.Equal(GamepadScraperTargetKind.Apply, vm.FocusedKind);
+        while (vm.FocusedKind != GamepadScraperTargetKind.Field)
+            vm.MoveFocus(-1);
+        Assert.Equal(0, vm.FocusIndex);
+
+        // Field is selected by default; A clears it.
         Assert.True(vm.Scraper.Fields[0].IsSelected);
         vm.Activate();
         Assert.False(vm.Scraper.Fields[0].IsSelected);
@@ -70,6 +76,9 @@ public class GamepadScraperOverlayTests
             ScraperFixtures.SuccessPreview(existing, [ScraperFixtures.TitleValue("Canonical")], ScraperFixtures.NoMedia())));
         await vm.LoadAsync();
 
+        // Ready opens on Apply; walk up to the locked title row before pressing A on it.
+        while (vm.FocusedKind != GamepadScraperTargetKind.Field)
+            vm.MoveFocus(-1);
         Assert.False(vm.Scraper.Fields[0].CanApply);
         Assert.False(vm.Scraper.Fields[0].IsSelected);
         vm.Activate();
@@ -87,9 +96,7 @@ public class GamepadScraperOverlayTests
         var vm = Wrap(new StubScreenScraperPreviewService(ScraperFixtures.ReadyPreview()), apply);
         await vm.LoadAsync();
 
-        // Field, BoxArt, Media, Refresh, then Apply.
-        for (var i = 0; i < 4; i++)
-            vm.MoveFocus(1);
+        // Ready opens with the ring already on Apply, so accept-all is a single A press.
         Assert.Equal(GamepadScraperTargetKind.Apply, vm.FocusedKind);
 
         vm.Activate();
@@ -106,8 +113,8 @@ public class GamepadScraperOverlayTests
         var vm = Wrap(new StubScreenScraperPreviewService(ScraperFixtures.ReadyPreview()), apply);
         await vm.LoadAsync();
 
-        for (var i = 0; i < 3; i++)
-            vm.MoveFocus(1);
+        // Apply is focused on open; the refresh toggle sits one step up from it.
+        vm.MoveFocus(-1);
         Assert.Equal(GamepadScraperTargetKind.RefreshToggle, vm.FocusedKind);
         Assert.False(vm.Scraper.RefreshOwnedValues);
         vm.Activate();
@@ -142,7 +149,7 @@ public class GamepadScraperOverlayTests
 
         Assert.Equal(1, account.ConnectCalls);
         Assert.Equal(GameScraperState.Ready, vm.Scraper.State);
-        Assert.Equal(GamepadScraperTargetKind.Field, vm.FocusedKind);
+        Assert.Equal(GamepadScraperTargetKind.Apply, vm.FocusedKind);
     }
 
     [Fact]

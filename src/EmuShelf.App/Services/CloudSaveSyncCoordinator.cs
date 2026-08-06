@@ -201,17 +201,11 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// Save-location overrides by system id. Keyed rather than positional so adding a platform
     /// cannot silently shift one emulator's path onto another.
     /// </param>
-    /// <param name="clientId">An optional Google OAuth client id; null uses rclone's shared client.</param>
-    /// <param name="clientSecret">
-    /// The matching secret. It is passed to rclone and never stored by EmuShelf.
-    /// </param>
     public async Task<CloudSaveSyncConnectResult> ConnectGoogleDriveAsync(
         string remoteName,
         string cloudFolder,
         IReadOnlyDictionary<string, string?> overrides,
-        CancellationToken cancellationToken = default,
-        string? clientId = null,
-        string? clientSecret = null)
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(overrides);
         if (string.IsNullOrWhiteSpace(remoteName) || string.IsNullOrWhiteSpace(cloudFolder))
@@ -234,11 +228,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
             var trimmedRemote = remoteName.Trim();
             var trimmedFolder = cloudFolder.Trim();
-            await configurator.CreateGoogleDriveRemoteAsync(
-                trimmedRemote,
-                cancellationToken,
-                clientId,
-                clientSecret);
+            await configurator.CreateGoogleDriveRemoteAsync(trimmedRemote, cancellationToken);
             await configurator.EnsureFolderAsync(trimmedRemote, trimmedFolder, cancellationToken);
 
             Persist(candidate with
@@ -246,9 +236,6 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 Enabled = true,
                 RemoteName = trimmedRemote,
                 CloudFolder = trimmedFolder,
-                // The id is recorded so Settings can show which client the remote uses and prefill
-                // it next time; the secret is not, and only rclone's config holds it.
-                GoogleClientId = string.IsNullOrWhiteSpace(clientId) ? null : clientId.Trim(),
                 // A different folder has a different id; carrying the old one over would address
                 // the previous connection's folder.
                 CloudFolderId = null,
@@ -1037,7 +1024,7 @@ public sealed record CloudSaveSyncSettingsContext(
     string SyncLogPath,
     Func<IReadOnlyList<CloudSaveSyncPlatformContext>> GetPlatforms,
     Func<string, CancellationToken, Task<string?>> GetDetectedPathAsync,
-    Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, string?, string?, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
+    Func<string, string, IReadOnlyDictionary<string, string?>, CancellationToken, Task<CloudSaveSyncConnectResult>> ConnectGoogleDriveAsync,
     Func<CancellationToken, Task> DisconnectAsync,
     Func<IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> SyncNowAsync,
     Func<string, SaveSyncDirection, IProgress<SaveSyncProgress>?, CancellationToken, Task<CloudSaveSyncOutcome>> ForceAsync,

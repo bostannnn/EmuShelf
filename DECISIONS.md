@@ -4767,3 +4767,55 @@ hit-test transparent in the gaps between covers, so a press there falls through 
 `LibraryContentPanel`'s brush. The surface test now accepts the panel *itself* (but not its
 descendants, which would swallow toast/banner clicks), which both starts the rubber-band from grid
 gaps and fixes empty-gap clicks never clearing the grid selection.
+## 2026-08-06 — Google Drive uses the embedded OAuth client only; the "import client JSON" flow is removed
+
+The 2026-08-04 decision let a user import their own Google OAuth client JSON, which took precedence over
+the client embedded in the build. That import path had a latent trap: the client **id** was persisted to
+settings and reloaded on the next launch, but the **secret** was intentionally never persisted (it lives
+only in rclone's config). After any restart, Connect therefore sent the prefilled id with a null secret,
+which `RcloneConfigurator` rejected (`A Google client id also needs its client secret`) before rclone ever
+ran — surfaced to the user as the misleading "The Google sign-in may have been declined." A connected user
+could not reconnect without re-importing the JSON every session, with nothing in the UI saying so.
+
+Resolution: **EmuShelf ships one application-identity Google OAuth client baked into the build, exactly like
+its ScreenScraper devid, and there is no in-app way to supply a different one.** This is how a normal app
+ships OAuth access. Removed: the "Import client JSON…" button (Desktop and Gamepad), `CloudClientId` /
+`CloudClientStatusText` / the in-memory secret and `ImportGoogleClientCommand` on the settings view model,
+`IDialogService.PickGoogleClientJsonAsync`, `GoogleOAuthClientFile`, and the `GoogleClientId` settings field.
+`ConnectGoogleDriveAsync` / `CreateGoogleDriveRemoteAsync` no longer take a client id/secret;
+`ResolveGoogleClient` now returns the embedded client, or null so rclone falls back to its shared client on
+an unconfigured local build. Dropping `GoogleClientId` from `CloudSaveSyncSettings` is forward-safe — an old
+settings.json with the field simply deserializes it away.
+
+Operational consequence: because the client is baked at **build time** from the `EMUSHELF_GOOGLE_OAUTH_CLIENT_ID`
+/ `EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET` repository secrets, rotating the Google client (deleting it and
+creating a new one in the Google Cloud console) requires updating those two secrets and producing a new
+release build; the running app has no runtime credential input. A rotated client also invalidates the token
+stored in an existing rclone remote, so users reconnect (Disconnect → Connect) once against the new build to
+re-run OAuth.
+## 2026-08-06 — Gamepad scraper: Apply-first focus and a scroll-fade cue
+
+Two couch-UX fixes for the controller-native ScreenScraper overlay (`GamepadScraperViewModel`
++ the `IsGamepadScraperOpen` body in `MainWindow.axaml`), from live use on a pad.
+
+**Apply is the default focus in the Ready review.** The D-pad ring used to open on the first
+metadata field, so reaching the (already pinned, always-visible) Apply button meant pressing Down
+through every field and media row. Since the scraper pre-selects sensible fields, the common path is
+accept-all — so `GamepadScraperViewModel.DefaultFocusIndex()` now lands the ring on the Apply target
+whenever the state is `Ready`/`Applying`; D-pad Up walks back into the fields to deselect. Every other
+state keeps its first target (connect username, search query, first candidate). The apply command
+itself is unchanged. Overlay tests that encoded "first field focused" were updated to the new default.
+
+**A scroll fade tells you the field list continues.** The field list is a `gamepad-scroll`
+`ScrollViewer` whose thin Fluent scrollbar is an overlay that only shows on pointer hover — invisible
+on a pad — so the page read as "everything, then it suddenly jumps." Two view-only changes (in
+`MainWindow.axaml.cs`): (1) an alpha-only `OpacityMask`
+gradient fades whichever edge still has off-screen content (top/bottom/both/none), recomputed on the
+scroller's `ScrollChanged` and again whenever focus is revealed (the ring opens on Apply, off the
+list, so no scroll fires on open — without the reveal-time recompute the cue would miss the first
+frame). Alpha-only keeps it
+palette-agnostic — `EmuPopoverBrush` behind the list varies per theme and has no matching `Color`
+resource, so a coloured gradient stop would need 28 palette edits. (2) `RevealScraperRowWithLookahead`
+keeps ~40px of the neighbouring row peeking past the focused one, so the list is visibly mid-scroll
+rather than static-then-jump; it falls back to `BringIntoView` for controls outside a gamepad scroll
+region (the pinned Apply/Refresh block, connect form, terminal messages).

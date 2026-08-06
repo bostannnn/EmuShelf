@@ -247,7 +247,23 @@ public sealed partial class GamepadScraperViewModel : ObservableObject, IDisposa
             Activate = canApply ? toggle : null,
         };
 
-    private int DefaultFocusIndex() => _targets.Count == 0 ? -1 : 0;
+    private int DefaultFocusIndex()
+    {
+        if (_targets.Count == 0)
+            return -1;
+
+        // In the Ready/Applying review most players just accept the pre-selected fields, so land the
+        // ring straight on Apply — one A press away — with D-pad Up walking back into the field rows
+        // to deselect. Every other state keeps its first target (query field, connect username, …).
+        if (Scraper.State is GameScraperState.Ready or GameScraperState.Applying)
+        {
+            var applyIndex = _targets.FindIndex(target => target.Kind == GamepadScraperTargetKind.Apply);
+            if (applyIndex >= 0)
+                return applyIndex;
+        }
+
+        return 0;
+    }
 
     private int FirstTargetIndex(GamepadScraperTargetKind kind)
     {

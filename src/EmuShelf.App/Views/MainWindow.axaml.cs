@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.ComponentModel;
@@ -564,9 +565,90 @@ public partial class MainWindow : Window
         if (focused is null)
             return;
 
-        focused.BringIntoView();
+        RevealScraperRowWithLookahead(focused);
         if (focused is Button && viewModel.IsGamepadControllerInputActive)
             FocusManager?.Focus(focused, NavigationMethod.Directional);
+
+        // On open the ring defaults to Apply (outside the list), so the field scroller's offset never
+        // moves and no ScrollChanged fires — recompute the edge fade here so the "more below" cue is
+        // present from the first frame, not only after the first scroll.
+        if (GamepadScraperFieldsScroller is { IsEffectivelyVisible: true } fieldScroller)
+            UpdateScraperScrollFade(fieldScroller);
+    }
+
+    // Scroll the focused row into view but keep a sliver of the neighbouring row peeking past it,
+    // so a gamepad player sees the list is mid-scroll instead of a static page that only jumps at
+    // the very edge. Falls back to a plain BringIntoView for controls outside a gamepad scroll
+    // region (the pinned Apply/Refresh block, the connect form, terminal messages).
+    private static void RevealScraperRowWithLookahead(Control focused)
+    {
+        var scroller = focused.FindAncestorOfType<ScrollViewer>();
+        if (scroller is null || !scroller.Classes.Contains("gamepad-scroll") ||
+            focused.TranslatePoint(new Point(0, 0), scroller) is not { } top)
+        {
+            focused.BringIntoView();
+            return;
+        }
+
+        const double peek = 40; // roughly half a compact scraper row
+        var viewport = scroller.Viewport.Height;
+        var rowTop = top.Y;
+        var rowBottom = top.Y + focused.Bounds.Height;
+
+        double delta;
+        if (rowTop - peek < 0)
+            delta = rowTop - peek;
+        else if (rowBottom + peek > viewport)
+            delta = rowBottom + peek - viewport;
+        else
+            return;
+
+        var max = Math.Max(0, scroller.Extent.Height - viewport);
+        scroller.Offset = scroller.Offset.WithY(Math.Clamp(scroller.Offset.Y + delta, 0, max));
+    }
+
+    // Alpha-only gradients that fade the scraper field list toward whichever edge still has content
+    // off-screen, so the "more below" cue is unmistakable on a controller. Alpha-only keeps them
+    // theme-agnostic — the popover colour behind the list varies per palette.
+    private static readonly IBrush ScraperFadeTop = BuildScraperFadeMask(fadeTop: true, fadeBottom: false);
+    private static readonly IBrush ScraperFadeBottom = BuildScraperFadeMask(fadeTop: false, fadeBottom: true);
+    private static readonly IBrush ScraperFadeBoth = BuildScraperFadeMask(fadeTop: true, fadeBottom: true);
+
+    private static LinearGradientBrush BuildScraperFadeMask(bool fadeTop, bool fadeBottom)
+    {
+        const double edge = 0.06; // fraction of the viewport that fades on each active edge
+        var opaque = Color.FromArgb(255, 0, 0, 0);
+        var clear = Color.FromArgb(0, 0, 0, 0);
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0, 1, RelativeUnit.Relative),
+        };
+        brush.GradientStops.Add(new GradientStop(fadeTop ? clear : opaque, 0));
+        brush.GradientStops.Add(new GradientStop(opaque, edge));
+        brush.GradientStops.Add(new GradientStop(opaque, 1 - edge));
+        brush.GradientStops.Add(new GradientStop(fadeBottom ? clear : opaque, 1));
+        return brush;
+    }
+
+    private void OnGamepadScraperScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (sender is ScrollViewer scroller)
+            UpdateScraperScrollFade(scroller);
+    }
+
+    private static void UpdateScraperScrollFade(ScrollViewer scroller)
+    {
+        const double slack = 1.0;
+        var canUp = scroller.Offset.Y > slack;
+        var canDown = scroller.Offset.Y < scroller.Extent.Height - scroller.Viewport.Height - slack;
+        scroller.OpacityMask = (canUp, canDown) switch
+        {
+            (true, true) => ScraperFadeBoth,
+            (true, false) => ScraperFadeTop,
+            (false, true) => ScraperFadeBottom,
+            _ => null,
+        };
     }
 
     private Control? FindFocusedScraperControl() =>

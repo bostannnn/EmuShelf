@@ -1105,9 +1105,11 @@ public class MainViewModelTests : IDisposable
         vm.OpenFocusedGameActionsCommand.Execute(null);
         await vm.ScrapeFocusedGameCommand.ExecuteAsync(null);
         var details = vm.GamepadScraperDetails!;
-        Assert.Equal(GamepadScraperTargetKind.Field, details.FocusedKind);
+        Assert.Equal(GamepadScraperTargetKind.Apply, details.FocusedKind);
 
-        // A toggles the focused field through the shared gamepad dispatcher.
+        // Ready opens on Apply; Up walks Apply → Refresh → Media → BoxArt → Field, and A toggles it.
+        while (details.FocusedKind != GamepadScraperTargetKind.Field)
+            Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
         Assert.True(details.Scraper.Fields[0].IsSelected);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
         Assert.False(details.Scraper.Fields[0].IsSelected);
