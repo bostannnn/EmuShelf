@@ -2840,6 +2840,75 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task MarqueeSelection_ReplacesByDefaultAndUnionsWithModifier()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Gamma.cue", Title = "Gamma" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Delta.cue", Title = "Delta" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+
+        var alpha = vm.Games.Single(game => game.Title == "Alpha");
+        var beta = vm.Games.Single(game => game.Title == "Beta");
+        var gamma = vm.Games.Single(game => game.Title == "Gamma");
+        var delta = vm.Games.Single(game => game.Title == "Delta");
+
+        // A prior selection is dropped the moment a non-additive rubber-band begins.
+        vm.SelectGame(gamma);
+        vm.BeginMarqueeSelection(additive: false);
+        Assert.False(vm.HasSelectedGames);
+
+        vm.UpdateMarqueeSelection(vm.Games, [alpha, beta]);
+        vm.EndMarqueeSelection();
+        Assert.Equal(["Alpha", "Beta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        // Ctrl/Cmd keeps the pre-drag selection as a base and unions the new box into it.
+        vm.BeginMarqueeSelection(additive: true);
+        vm.UpdateMarqueeSelection(vm.Games, [delta]);
+        vm.EndMarqueeSelection();
+        Assert.Equal(["Alpha", "Beta", "Delta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        // The rubber-band leaves an anchor, so a following Shift-click extends from it.
+        vm.SelectGame(gamma, selectRange: true);
+        Assert.Equal(4, vm.SelectedGameCount);
+    }
+
+    [AvaloniaFact]
+    public async Task MarqueeSelection_ShrinksAmongRealizedTilesButKeepsOffscreenClaims()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Gamma.cue", Title = "Gamma" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Delta.cue", Title = "Delta" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+
+        var alpha = vm.Games.Single(game => game.Title == "Alpha");
+        var beta = vm.Games.Single(game => game.Title == "Beta");
+        var delta = vm.Games.Single(game => game.Title == "Delta");
+
+        vm.BeginMarqueeSelection(additive: false);
+
+        // The box grows over three tiles while all three are on screen.
+        vm.UpdateMarqueeSelection([alpha, beta, delta], [alpha, beta, delta]);
+        Assert.Equal(3, vm.SelectedGameCount);
+
+        // It then shrinks off Beta. Delta has scrolled out of view (no longer realized/enumerated),
+        // so its claim survives; only the still-realized Beta is dropped.
+        vm.UpdateMarqueeSelection([alpha, beta], [alpha]);
+        Assert.Equal(["Alpha", "Delta"], vm.Games.Where(game => game.IsSelected).Select(game => game.Title));
+
+        vm.EndMarqueeSelection();
+    }
+
+    [AvaloniaFact]
     public async Task RemoveOneSelectedGame_UsesTheNamedSingleGameConfirmation()
     {
         _library.AddGames(

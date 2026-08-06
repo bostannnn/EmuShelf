@@ -20,6 +20,25 @@ public partial class MainWindow : Window
     private Point? _lastGamepadPointerPosition;
     private int _requestedSettingsTextEntryRevision = -1;
 
+    // Rubber-band (marquee) selection for the desktop library. A left-press on the empty canvas arms
+    // it; the first drag past this threshold begins it. Origin/current are in LibraryContentPanel
+    // (viewport) space, the same space the box is drawn and realized tiles are translated into. The
+    // origin is additionally anchored to scroll-content space via _marqueeOriginScrollOffset, so an
+    // edge auto-scroll grows the box over revealed rows instead of shedding scrolled-past ones.
+    private const double MarqueeDragThreshold = 4;
+    private const double MarqueeAutoScrollZone = 28;
+    private const double MarqueeAutoScrollMaxSpeed = 26;
+    private bool _marqueeArmed;
+    private bool _marqueeActive;
+    private bool _marqueeAdditive;
+    private Point _marqueeOrigin;
+    private Point _marqueeCurrent;
+    private double _marqueeOriginScrollOffset;
+    private double _marqueeAutoScrollVelocity;
+    private IPointer? _marqueePointer;
+    private ScrollViewer? _libraryListScroller;
+    private DispatcherTimer? _marqueeAutoScrollTimer;
+
     // The window state to return to when leaving a keyboard-toggled Desktop fullscreen.
     private WindowState _preFullScreenState = WindowState.Maximized;
 
@@ -48,6 +67,19 @@ public partial class MainWindow : Window
         // ListBox handles pointer input internally. Observe it first so Grid and List always feed
         // the same view-model-owned desktop selection state, including right-click selection.
         AddHandler(PointerPressedEvent, OnWindowPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        // Drive the rubber-band from the window so the drag is tracked over the ListBox and tiles
+        // alike; both handlers cheaply no-op unless a marquee is armed or active.
+        AddHandler(PointerMovedEvent, OnWindowPointerMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
+        AddHandler(PointerReleasedEvent, OnWindowPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
+        // If something steals the drag mid-flight, drop the rubber-band so its box can't get stuck.
+        AddHandler(PointerCaptureLostEvent, OnWindowPointerCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // Closing during a drag would otherwise leave the auto-scroll timer running and rooting us.
+        ResetMarquee();
+        base.OnClosed(e);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -920,13 +952,232 @@ public partial class MainWindow : Window
         if (source is ScrollBar || source.GetVisualAncestors().Any(ancestor => ancestor is ScrollBar))
             return;
 
-        viewModel.ClearSelectionCommand.Execute(null);
+        // Arm a rubber-band. Selection is deferred: a press that never drags past the threshold
+        // falls back to the historical empty-canvas behavior (clear) when released. Mouse only — a
+        // touch or pen drag on the canvas must stay a pan/scroll, not paint a box.
+        if (viewModel.IsBusy || viewModel.Games.Count == 0 || e.Pointer.Type != PointerType.Mouse)
+            return;
+
+        _marqueeArmed = true;
+        _marqueeActive = false;
+        _marqueeAdditive = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
+        _marqueePointer = e.Pointer;
+        _marqueeOrigin = e.GetPosition(LibraryContentPanel);
+        _marqueeCurrent = _marqueeOrigin;
+    }
+
+    private void OnWindowPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if ((!_marqueeArmed && !_marqueeActive) || DataContext is not MainViewModel viewModel)
+            return;
+
+        _marqueeCurrent = e.GetPosition(LibraryContentPanel);
+
+        if (!_marqueeActive)
+        {
+            // Require a deliberate drag before committing so a plain click still clears the canvas.
+            var delta = _marqueeCurrent - _marqueeOrigin;
+            if (Math.Abs(delta.X) < MarqueeDragThreshold && Math.Abs(delta.Y) < MarqueeDragThreshold)
+                return;
+
+            _marqueeActive = true;
+            _marqueePointer?.Capture(LibraryContentPanel);
+            _marqueeOriginScrollOffset = GetActiveScroller(viewModel)?.Offset.Y ?? 0;
+            viewModel.BeginMarqueeSelection(_marqueeAdditive);
+            MarqueeBox.IsVisible = true;
+        }
+
+        UpdateMarquee(viewModel);
+        UpdateMarqueeAutoScroll(viewModel);
+        e.Handled = true;
+    }
+
+    private void OnWindowPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_marqueeArmed && !_marqueeActive)
+            return;
+
+        var wasActive = _marqueeActive;
+        var wasAdditive = _marqueeAdditive;
+        ResetMarquee();
+
+        if (DataContext is not MainViewModel viewModel)
+            return;
+
+        if (wasActive)
+        {
+            viewModel.EndMarqueeSelection();
+            e.Handled = true;
+        }
+        else if (!wasAdditive)
+        {
+            // Click on the empty canvas with no drag: clear, as the library always has.
+            viewModel.ClearSelectionCommand.Execute(null);
+        }
+    }
+
+    // Paint the box and report which realized tiles it touches. The top edge is anchored to the
+    // content (shifted by how far the view has scrolled since the drag began) so revealing rows by
+    // auto-scroll extends the box over them; the bottom edge tracks the pointer. Off-screen tiles are
+    // not enumerated, so the view model leaves their (already-claimed) state alone.
+    private void UpdateMarquee(MainViewModel viewModel)
+    {
+        var scrollShift = (GetActiveScroller(viewModel)?.Offset.Y ?? _marqueeOriginScrollOffset)
+            - _marqueeOriginScrollOffset;
+        var originY = _marqueeOrigin.Y - scrollShift;
+
+        var x = Math.Min(_marqueeOrigin.X, _marqueeCurrent.X);
+        var y = Math.Min(originY, _marqueeCurrent.Y);
+        var box = new Rect(x, y,
+            Math.Abs(_marqueeCurrent.X - _marqueeOrigin.X),
+            Math.Abs(_marqueeCurrent.Y - originY));
+
+        Canvas.SetLeft(MarqueeBox, box.X);
+        Canvas.SetTop(MarqueeBox, box.Y);
+        MarqueeBox.Width = box.Width;
+        MarqueeBox.Height = box.Height;
+
+        var realized = new List<GameViewModel>();
+        var inBox = new List<GameViewModel>();
+        for (var index = 0; index < viewModel.Games.Count; index++)
+        {
+            var container = viewModel.IsGridView
+                ? LibraryRepeater.TryGetElement(index)
+                : LibraryList.ContainerFromIndex(index);
+            if (container is null ||
+                container.TranslatePoint(default, LibraryContentPanel) is not { } topLeft)
+                continue;
+
+            var game = viewModel.Games[index];
+            realized.Add(game);
+            if (box.Intersects(new Rect(topLeft, container.Bounds.Size)))
+                inBox.Add(game);
+        }
+
+        viewModel.UpdateMarqueeSelection(realized, inBox);
+    }
+
+    // The visible scroller for the current layout: the grid's own ScrollViewer, or the one the
+    // ListBox templates in. The list one is cached — it appears once the template is applied.
+    private ScrollViewer? GetActiveScroller(MainViewModel viewModel)
+    {
+        if (viewModel.IsGridView)
+            return LibraryGridScroller;
+
+        return _libraryListScroller ??= LibraryList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+    }
+
+    // Steer an edge auto-scroll from the pointer's depth into the top/bottom margin of the viewport,
+    // then run (or stop) the timer that applies it. Kept as a pure computation for unit testing.
+    private void UpdateMarqueeAutoScroll(MainViewModel viewModel)
+    {
+        var scroller = GetActiveScroller(viewModel);
+        _marqueeAutoScrollVelocity = scroller is not null &&
+            scroller.TranslatePoint(default, LibraryContentPanel) is { } origin
+                ? ComputeAutoScrollVelocity(
+                    _marqueeCurrent.Y, origin.Y, origin.Y + scroller.Bounds.Height,
+                    MarqueeAutoScrollZone, MarqueeAutoScrollMaxSpeed)
+                : 0;
+
+        if (_marqueeAutoScrollVelocity != 0)
+            StartMarqueeAutoScroll();
+        else
+            StopMarqueeAutoScroll();
+    }
+
+    internal static double ComputeAutoScrollVelocity(
+        double pointerY, double viewportTop, double viewportBottom, double edgeZone, double maxSpeed)
+    {
+        // Too short to carve two non-overlapping zones — don't guess a direction.
+        if (viewportBottom - viewportTop <= edgeZone * 2)
+            return 0;
+
+        if (pointerY < viewportTop + edgeZone)
+            return -maxSpeed * Math.Min(edgeZone, viewportTop + edgeZone - pointerY) / edgeZone;
+
+        if (pointerY > viewportBottom - edgeZone)
+            return maxSpeed * Math.Min(edgeZone, pointerY - (viewportBottom - edgeZone)) / edgeZone;
+
+        return 0;
+    }
+
+    private void StartMarqueeAutoScroll()
+    {
+        if (_marqueeAutoScrollTimer is not null)
+            return;
+
+        _marqueeAutoScrollTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(16),
+        };
+        _marqueeAutoScrollTimer.Tick += OnMarqueeAutoScrollTick;
+        _marqueeAutoScrollTimer.Start();
+    }
+
+    private void StopMarqueeAutoScroll()
+    {
+        if (_marqueeAutoScrollTimer is null)
+            return;
+
+        _marqueeAutoScrollTimer.Stop();
+        _marqueeAutoScrollTimer.Tick -= OnMarqueeAutoScrollTick;
+        _marqueeAutoScrollTimer = null;
+        _marqueeAutoScrollVelocity = 0;
+    }
+
+    private void OnMarqueeAutoScrollTick(object? sender, EventArgs e)
+    {
+        if (!_marqueeActive || DataContext is not MainViewModel viewModel ||
+            GetActiveScroller(viewModel) is not { } scroller || _marqueeAutoScrollVelocity == 0)
+        {
+            StopMarqueeAutoScroll();
+            return;
+        }
+
+        var maxOffset = Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height);
+        var newY = Math.Clamp(scroller.Offset.Y + _marqueeAutoScrollVelocity, 0, maxOffset);
+        if (newY == scroller.Offset.Y)
+            return;
+
+        scroller.Offset = scroller.Offset.WithY(newY);
+        // Rows revealed by this scroll realize on the next layout pass; the following tick hit-tests
+        // them, and claimed rows that scrolled off keep their state, so the selection converges.
+        UpdateMarquee(viewModel);
+    }
+
+    private void OnWindowPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        // Ignore the hand-off we trigger ourselves: starting the drag takes capture from whatever the
+        // press landed on, which raises this on that element. Reset only on a genuine loss of ours.
+        if ((_marqueeArmed || _marqueeActive) && !ReferenceEquals(e.Pointer.Captured, LibraryContentPanel))
+            ResetMarquee();
+    }
+
+    private void ResetMarquee()
+    {
+        // Clear state before releasing capture: the release re-enters this via PointerCaptureLost,
+        // which then early-returns instead of recursing.
+        var pointer = _marqueePointer;
+        _marqueePointer = null;
+        _marqueeArmed = false;
+        _marqueeActive = false;
+        _marqueeAdditive = false;
+        MarqueeBox.IsVisible = false;
+        MarqueeBox.Width = 0;
+        MarqueeBox.Height = 0;
+        StopMarqueeAutoScroll();
+        pointer?.Capture(null);
     }
 
     private static bool IsNestedButton(Control source) =>
         source is Button || source.GetVisualAncestors().Any(ancestor => ancestor is Button);
 
+    // The grid scroller and repeater are hit-test transparent in their gaps, so a press between
+    // covers falls through to the content panel's brush. Treating the panel itself as a surface (but
+    // not its descendants, which would swallow toast/banner clicks) makes those gaps clear the
+    // selection and, now, start a rubber-band.
     private bool IsLibrarySurface(Control source) =>
+        ReferenceEquals(source, LibraryContentPanel) ||
         ReferenceEquals(source, LibraryGridScroller) || ReferenceEquals(source, LibraryList) ||
         source.GetVisualAncestors().Any(ancestor =>
             ReferenceEquals(ancestor, LibraryGridScroller) || ReferenceEquals(ancestor, LibraryList));

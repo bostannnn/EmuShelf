@@ -4730,6 +4730,43 @@ Left/Right pick Grid/List and apply live, A is inert there (the choice is alread
 drops back into the options. Pointer users click either tile. `IsGamepadViewModeRowFocused` drives the
 row ring and suppresses the option ring while it's active.
 
+## 2026-08-06 — Desktop rubber-band (marquee) multi-select
+
+M25 gave the desktop library a full keyboard-driven multi-select (Ctrl/Cmd-click, Shift-range,
+Ctrl/Cmd+A). It had no mouse-only way to grab a group, so a left-drag from the library's empty
+canvas now paints a selection box that claims every cover it touches — the classic file-manager
+gesture — in both the grid and list layouts.
+
+**Where the logic lives.** Geometry is inherently view work, so the box, the drag threshold, and the
+tile hit-testing sit in `MainWindow.axaml.cs` (window-level tunnel pointer handlers, matching the
+existing pointer-tunnel selection). The *selection state* stays in the view model behind three
+methods — `BeginMarqueeSelection(additive)`, `UpdateMarqueeSelection(realized, inBox)`,
+`EndMarqueeSelection()` — so grid and list keep sharing one `IsSelected`/`SelectedGame` model and the
+behavior is unit-testable without a window.
+
+**Realized-tiles-only, content-anchored top, drag-edge auto-scroll.** The box is drawn and hit-tested
+in `LibraryContentPanel` (viewport) coordinates, and only *realized* (on-screen) tiles are enumerated
+each move — the view model therefore never touches off-screen games, so a game the box already claimed
+keeps its selection when it scrolls out. When the pointer enters the top/bottom margin of the viewport
+a `DispatcherTimer` scrolls the active `ScrollViewer` (the grid's own, or the one the ListBox
+templates in) at a depth-ramped speed and re-hit-tests each tick. For that to *extend* the selection
+rather than shed scrolled-past claims, the box's **top edge is anchored in content space**: it is
+offset by how far the view has scrolled since the drag began (`_marqueeOriginScrollOffset`), while the
+bottom edge tracks the pointer — so revealed rows fall inside the growing box and off-screen rows keep
+their state. Only the vertical axis is adjusted (these layouts never scroll horizontally). The
+velocity ramp is a pure static method (`ComputeAutoScrollVelocity`) so the edge-zone math is unit
+tested without a window. Ctrl/Cmd+drag still extends additively and Ctrl/Cmd+A still grabs everything.
+
+**Deferred clear + threshold, mouse only.** A press on the empty canvas only *arms* the marquee; it
+begins on the first drag past a 4px threshold (Ctrl/Cmd makes it additive to the pre-drag selection).
+A press that never drags falls back to the historical empty-canvas behavior — clear the selection on
+release. Arming is gated to `PointerType.Mouse` so a touch/pen drag on the canvas stays a pan/scroll.
+
+**`IsLibrarySurface` now counts the content panel.** The grid `ScrollViewer`/`ItemsRepeater` are
+hit-test transparent in the gaps between covers, so a press there falls through to
+`LibraryContentPanel`'s brush. The surface test now accepts the panel *itself* (but not its
+descendants, which would swallow toast/banner clicks), which both starts the rubber-band from grid
+gaps and fixes empty-gap clicks never clearing the grid selection.
 ## 2026-08-06 — Google Drive uses the embedded OAuth client only; the "import client JSON" flow is removed
 
 The 2026-08-04 decision let a user import their own Google OAuth client JSON, which took precedence over
