@@ -339,6 +339,8 @@
             <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+            <!-- Lift the hero chips off the busy fan-art backdrop so they read as physical pills. -->
+            <Setter Property="BoxShadow" Value="0 6 16 0 #4A000000" />
         </Style>
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
@@ -638,6 +640,39 @@
         <Style Selector="Button.gamepad-theme-card.focused, Button.gamepad-theme-card:focus">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderThickness" Value="3" />
+        </Style>
+        <!-- Start-menu view-mode selector: two Grid/List tiles styled like the theme cards. The active
+             mode is filled with the accent wash; an accent glow wraps the pair while the controller ring
+             is on the row (Left/Right switch and apply live). -->
+        <Style Selector="Button.gamepad-viewmode-card">
+            <Setter Property="Height" Value="56" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.gamepad-viewmode-card.selected">
+            <Setter Property="Background" Value="{DynamicResource EmuAccentMutedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Border.gamepad-viewmode-row">
+            <Setter Property="CornerRadius" Value="18" />
+            <!-- A transparent 2px outline + padding reserves the space so focusing the row never shifts
+                 the tiles; only the brush changes on focus. -->
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="Padding" Value="4" />
+        </Style>
+        <Style Selector="Border.gamepad-viewmode-row.focused">
+            <!-- The accent outline is the guaranteed focus cue — it renders where a shadow on a
+                 background-less border would not; the glow is an enhancement layered on top. -->
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="BoxShadow" Value="{DynamicResource EmuFocusGlow}" />
         </Style>
         <Style Selector="Border.gamepad-settings-switch">
             <Setter Property="Width" Value="140" />
@@ -2095,11 +2130,16 @@
 
             <!-- Foreground: floating list + hero content, inset from the screen edges. -->
             <Grid ColumnDefinitions="452,*" ColumnSpacing="36" Margin="52,24,52,22">
-                <!-- Left: the game list. A themed surface (so it follows the palette/ambient colour)
-                     rather than a fixed dark wash. -->
-                <Border Grid.Column="0" CornerRadius="20" ClipToBounds="True"
-                        Background="{DynamicResource EmuPopoverBrush}"
-                        BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
+                <!-- Left: the game list. A translucent, floating card so the fan art reads through it
+                     (the backdrop's left scrim keeps the titles legible). The palette surface sits on its
+                     own layer at partial alpha — Opacity never touches the list content, so the titles
+                     stay fully opaque — and that same filled layer casts the drop shadow and draws the
+                     hairline stroke, lifting the card off the backdrop. -->
+                <Border Grid.Column="0">
+                    <Panel>
+                        <Border CornerRadius="20" Background="{DynamicResource EmuPopoverBrush}" Opacity="0.72"
+                                BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
+                                BoxShadow="0 16 36 0 #85000000" />
                     <!-- The focused game's platform already shows in the top rail, so the list needs no
                          header of its own. -->
                     <ListBox x:Name="GamepadSpotlightList"
@@ -2136,6 +2176,7 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                    </Panel>
                 </Border>
 
                 <!-- Right: the hero — logo, title, rating, achievements, Play — over the backdrop. -->
@@ -2308,6 +2349,56 @@
                     </Grid>
 
                     <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="18">
+                        <!-- Couch layout picker at the top of the start menu. Only the system menu uses
+                             this Auto row (Achievements/Settings own it when they are the open overlay), so
+                             it is gated on IsGamepadSystemMenuOpen. The active mode is filled; the pair
+                             lights up when the controller ring is on the row. -->
+                        <StackPanel Grid.Row="0" IsVisible="{Binding IsGamepadSystemMenuOpen}"
+                                    Spacing="12" Margin="0,0,0,4">
+                            <TextBlock Text="View mode" FontSize="13" FontWeight="SemiBold"
+                                       LetterSpacing="0.6"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            <Border Classes="gamepad-viewmode-row"
+                                    Classes.focused="{Binding IsGamepadViewModeRowFocused}">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                    <Button Grid.Column="0" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsGridViewModeSelected}"
+                                            Command="{Binding SelectGridViewModeCommand}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                            <PathIcon Grid.Column="0" Width="18" Height="18"
+                                                      Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" />
+                                            <TextBlock Grid.Column="1" Text="Grid" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" />
+                                            <Border Grid.Column="2" IsVisible="{Binding IsGridViewModeSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="1" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsListViewModeSelected}"
+                                            Command="{Binding SelectListViewModeCommand}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                            <PathIcon Grid.Column="0" Width="18" Height="18"
+                                                      Data="M2,3 H18 V6 H2 Z M2,8.5 H18 V11.5 H2 Z M2,14 H18 V17 H2 Z" />
+                                            <TextBlock Grid.Column="1" Text="List" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" />
+                                            <Border Grid.Column="2" IsVisible="{Binding IsListViewModeSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                            <Border Height="1" Background="{DynamicResource EmuBorderBrush}" />
+                        </StackPanel>
                         <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadAchievementsOpen}"
                               RowDefinitions="Auto,*" RowSpacing="16">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">

@@ -221,6 +221,8 @@ public partial class MainViewModel : ViewModelBase
         ScheduleLibraryViewStateSave();
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(IsGridViewModeSelected));
+        OnPropertyChanged(nameof(IsListViewModeSelected));
         IsSpotlightAchievementsFocused = false; // the hero always opens on Play
         OnPropertyChanged(nameof(IsSpotlightPlayFocused));
         if (value)
@@ -237,13 +239,32 @@ public partial class MainViewModel : ViewModelBase
             IsGamepadSpotlightView = !IsGamepadSpotlightView;
     }
 
-    /// <summary>The system-menu entry point: switch the couch layout, then close the menu so the
-    /// change is immediately visible.</summary>
+    /// <summary>The couch layout picker shown at the top of the system menu. Grid is the active tile
+    /// when the spotlight is off, List when it is on; both re-raise when the layout flips.</summary>
+    public bool IsGridViewModeSelected => !IsGamepadSpotlightView;
+    public bool IsListViewModeSelected => IsGamepadSpotlightView;
+
+    /// <summary>True while the controller focus ring is on the system menu's view-mode row (above the
+    /// option list). Left/Right pick Grid/List, Down drops into the options, and A is inert there.</summary>
+    [ObservableProperty]
+    public partial bool IsGamepadViewModeRowFocused { get; set; }
+
+    partial void OnIsGamepadViewModeRowFocusedChanged(bool value) => UpdateGamepadOverlayOptionFocus();
+
+    /// <summary>Selects the cover-grid couch layout. Bound to the Grid tile and D-pad Left on the row.</summary>
     [RelayCommand]
-    private void ToggleGamepadViewFromMenu()
+    private void SelectGridViewMode()
     {
-        ToggleGamepadView();
-        CloseGamepadOverlay();
+        if (IsGamepadMode)
+            IsGamepadSpotlightView = false;
+    }
+
+    /// <summary>Selects the spotlight list couch layout. Bound to the List tile and D-pad Right on the row.</summary>
+    [RelayCommand]
+    private void SelectListViewMode()
+    {
+        if (IsGamepadMode)
+            IsGamepadSpotlightView = true;
     }
 
     private void NotifySortGlyphs()
@@ -1309,6 +1330,19 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        // The system menu's view-mode row sits above the option list: Up from the top option lands the
+        // ring on it, and Up while already on it stays put.
+        if (IsGamepadSystemMenuOpen)
+        {
+            if (IsGamepadViewModeRowFocused)
+                return;
+            if (GamepadOverlaySelectionIndex == 0)
+            {
+                IsGamepadViewModeRowFocused = true;
+                return;
+            }
+        }
+
         MoveGamepadOverlaySelection(-1);
     }
 
@@ -1318,6 +1352,14 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadAchievementsOpen)
         {
             MoveFocusedAchievementVertical(1);
+            return;
+        }
+
+        // Down from the view-mode row drops back into the option list at the top entry.
+        if (IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused)
+        {
+            GamepadOverlaySelectionIndex = 0;
+            IsGamepadViewModeRowFocused = false; // refreshes the option ring onto the top entry
             return;
         }
 
@@ -1358,6 +1400,10 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ActivateGamepadOverlay()
     {
+        // On the view-mode row, Left/Right already applied the choice live, so A is inert rather than
+        // firing whichever option index sits selected underneath.
+        if (IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused)
+            return;
         if (GamepadOverlayOptions.Count == 0)
             return;
         GamepadOverlayOptions[GamepadOverlaySelectionIndex].Command.Execute(null);
@@ -1564,6 +1610,12 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NavigateRight when IsGamepadAchievementsOpen:
                 MoveFocusedAchievementHorizontal(1);
                 return true;
+            case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
+                SelectGridViewModeCommand.Execute(null);
+                return true;
+            case GamepadAction.NavigateRight when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
+                SelectListViewModeCommand.Execute(null);
+                return true;
             case GamepadAction.NavigateUp:
                 MoveGamepadOverlayUpCommand.Execute(null);
                 return true;
@@ -1653,6 +1705,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadScraperDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
+        IsGamepadViewModeRowFocused = false; // every open lands on the option list, not the view-mode row
         GamepadOverlay = overlay;
         IsGameActionsOpen = overlay == GamepadOverlayKind.Actions; // compatibility for existing bindings/tests
 
@@ -1685,11 +1738,9 @@ public partial class MainViewModel : ViewModelBase
                 // The scraper overlay renders its own body and owns its D-pad focus; no option list.
                 break;
             case GamepadOverlayKind.SystemMenu:
+                // The couch layout picker is the view-mode row at the top of the menu, not an option here.
                 AddOption("Search", OpenGamepadSearchCommand);
                 AddOption("Collections", OpenGamepadCollectionsCommand);
-                AddOption(
-                    IsGamepadSpotlightView ? "Cover grid view" : "Spotlight view",
-                    ToggleGamepadViewFromMenuCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
@@ -1753,8 +1804,10 @@ public partial class MainViewModel : ViewModelBase
 
     private void UpdateGamepadOverlayOptionFocus()
     {
+        // No option carries the ring while the system menu's view-mode row owns focus.
+        var rowFocused = IsGamepadViewModeRowFocused;
         for (var index = 0; index < GamepadOverlayOptions.Count; index++)
-            GamepadOverlayOptions[index].IsFocused = index == GamepadOverlaySelectionIndex;
+            GamepadOverlayOptions[index].IsFocused = !rowFocused && index == GamepadOverlaySelectionIndex;
     }
 
     private void FocusFirstAchievement()
