@@ -4704,3 +4704,28 @@ that claimed cores live "beside the configured RetroArch executable" was correct
 location-neutral. EmuShelf still never downloads or edits cores — it only lists what RetroArch has
 installed. Tests: the XDG discovery test is now Linux-only (`&& !IsMacOS`), plus a new
 Application-Support discovery test.
+
+## 2026-08-06 — Spotlight polish: translucent list, floating depth, and a view-mode picker
+
+Three couch-UI refinements toward the OpenEmu-style reference, driven by the design comparison.
+
+**Translucent game list.** The spotlight list was a fully opaque `EmuPopoverBrush` fill, so the
+fan-art backdrop never showed through. Opacity can't go on the list container (it would fade the game
+titles too), so the fill now lives on its own background layer (`Opacity=0.72`) behind a transparent
+`ListBox`; the titles stay fully opaque and the backdrop's existing left scrim keeps them legible. It
+is palette-agnostic — no per-theme brush edits.
+
+**Floating depth.** The list and the hero pills sat flat on the busy backdrop. The list is now a
+floating card: the translucent fill layer itself carries the hairline stroke and the drop shadow
+(`0 16 36`), so the shadow is cast by a filled element (it renders regardless of the container having a
+background, unlike a shadow on a transparent wrapper) and nothing needs a clip — the list items are
+inset well inside the rounded corners. The `spotlight-pill` style gains a `0 6 16` shadow so the
+rating/achievements/Play chips lift off the art.
+
+**View-mode picker relocated.** The grid↔spotlight toggle was a single self-relabelling entry buried in
+the system-menu option list. It is now a two-tile "View mode" selector (Grid / List) at the top of the
+menu, styled like the theme picker (active tile filled with the accent wash). Controller model: the
+tiles are a focus row above the option list — D-pad Up from the top option lands the ring on the row,
+Left/Right pick Grid/List and apply live, A is inert there (the choice is already applied), and Down
+drops back into the options. Pointer users click either tile. `IsGamepadViewModeRowFocused` drives the
+row ring and suppresses the option ring while it's active.

@@ -1462,7 +1462,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Collections", "Spotlight view", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
@@ -1602,6 +1602,46 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.ShowGamepadGrid);
         Assert.False(vm.ShowGamepadSpotlight);
         Assert.False(vm.BuildLibraryViewState().GamepadSpotlightView);
+    }
+
+    [AvaloniaFact]
+    public void GamepadSystemMenu_ViewModeRow_SwitchesLayoutWithLeftRight_AndDropsIntoOptions()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.HasGames = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+
+        // The menu opens on the option list, not the view-mode row; Grid is the active tile by default.
+        Assert.False(vm.IsGamepadViewModeRowFocused);
+        Assert.True(vm.IsGridViewModeSelected);
+        Assert.False(vm.IsListViewModeSelected);
+        Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
+
+        // Up from the top option lands the ring on the view-mode row (no option keeps the ring there).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadViewModeRowFocused);
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.IsFocused);
+
+        // Right selects the spotlight list and applies it live; A on the row is inert (stays in the menu).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.True(vm.IsGamepadSpotlightView);
+        Assert.True(vm.IsListViewModeSelected);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+
+        // Left selects the cover grid again.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.False(vm.IsGamepadSpotlightView);
+        Assert.True(vm.IsGridViewModeSelected);
+
+        // Down drops back into the option list at the top entry.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.False(vm.IsGamepadViewModeRowFocused);
+        Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
+        Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
     }
 
     [AvaloniaFact]
