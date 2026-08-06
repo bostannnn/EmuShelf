@@ -32,9 +32,18 @@ public sealed class RcloneConfigurator
     /// rate-limited — the cause of multi-second waits before a launch — and which Google is retiring
     /// during 2026.
     /// </summary>
-    public Task CreateGoogleDriveRemoteAsync(string remoteName, CancellationToken cancellationToken = default)
+    /// <exception cref="RcloneSignInServerBusyException">
+    /// A previous, abandoned sign-in is still holding rclone's loopback OAuth port.
+    /// </exception>
+    public async Task CreateGoogleDriveRemoteAsync(string remoteName, CancellationToken cancellationToken = default)
     {
         ValidateRemoteName(remoteName);
+
+        // A sign-in that was never completed (the app closed while the browser was open) leaves an
+        // rclone holding the loopback OAuth port, which makes every later attempt fail to bind it.
+        // Clear our own leftovers first, off the calling thread. Connect and sync are serialized by
+        // the coordinator's gate, so any of our rclone alive here is an orphan, never a live transfer.
+        await Task.Run(KillStaleOAuthProcesses, cancellationToken).ConfigureAwait(false);
 
         var arguments = new List<string> { "config", "create", remoteName, "drive" };
         var client = ResolveGoogleClient(
@@ -48,7 +57,7 @@ public sealed class RcloneConfigurator
             arguments.Add(ValidateConfigValue(resolved.ClientSecret, "client_secret"));
         }
 
-        return RunAsync(arguments, cancellationToken);
+        await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -96,11 +105,98 @@ public sealed class RcloneConfigurator
 
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("The operating system did not start rclone.");
-        var drainOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var readError = process.StandardError.ReadToEndAsync(cancellationToken);
-        await Task.WhenAll(drainOutput, readError, process.WaitForExitAsync(cancellationToken));
-        if (process.ExitCode != 0)
-            throw new IOException($"rclone exited with code {process.ExitCode}: {(await readError).Trim()}");
+        try
+        {
+            var drainOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var readError = process.StandardError.ReadToEndAsync(cancellationToken);
+            await Task.WhenAll(drainOutput, readError, process.WaitForExitAsync(cancellationToken));
+            if (DescribeFailure(process.ExitCode, await readError) is { } failure)
+                throw failure;
+        }
+        finally
+        {
+            // The OAuth `config create` blocks on the browser sign-in and binds the loopback port
+            // while it waits; a cancelled or abandoned run must not leave it running and holding that
+            // port. A run that exited on its own (the common case) is already gone, so this is a no-op.
+            TryKill(process);
+        }
+    }
+
+    /// <summary>
+    /// Maps an rclone exit into the exception to surface, or <see langword="null"/> on success. The
+    /// port-in-use case gets its own type so the UI can explain it instead of showing rclone's usage
+    /// dump. Kept static and pure so the classification is unit-testable without spawning rclone.
+    /// </summary>
+    internal static Exception? DescribeFailure(int exitCode, string standardError)
+    {
+        if (exitCode == 0)
+            return null;
+
+        var error = (standardError ?? string.Empty).Trim();
+        if (error.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+            return new RcloneSignInServerBusyException();
+
+        return new IOException($"rclone exited with code {exitCode}: {error}");
+    }
+
+    /// <summary>
+    /// Kills any leftover instance of our bundled rclone. Matched by executable path so an unrelated
+    /// rclone the user runs for their own purposes is never touched; best-effort throughout, because a
+    /// process we cannot inspect or signal must not fail the sign-in.
+    /// </summary>
+    private void KillStaleOAuthProcesses()
+    {
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(_rclonePath));
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var process in processes)
+        {
+            try
+            {
+                if (PathsEqual(process.MainModule?.FileName, _rclonePath))
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2000);
+                }
+            }
+            catch
+            {
+                // Access denied, already exited, or path unreadable — leave it alone.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // Already gone, or we lack permission — nothing more to do.
+        }
+    }
+
+    private static bool PathsEqual(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
+            return false;
+
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), comparison);
     }
 
     // Passed as its own argv entry, so quoting is not a concern; control characters are, because a
@@ -120,5 +216,19 @@ public sealed class RcloneConfigurator
         {
             throw new ArgumentException("The rclone remote name contains unsupported characters.", nameof(remoteName));
         }
+    }
+}
+
+/// <summary>
+/// rclone could not bind its loopback OAuth callback port (127.0.0.1:53682) because a previous
+/// sign-in is still holding it. Distinct from a generic failure so the connect flow can tell the user
+/// how to clear it rather than reporting a declined sign-in.
+/// </summary>
+public sealed class RcloneSignInServerBusyException : IOException
+{
+    public RcloneSignInServerBusyException()
+        : base("A previous Google sign-in is still open and holding the sign-in port (127.0.0.1:53682). " +
+               "Close that browser window or restart EmuShelf, then try connecting again.")
+    {
     }
 }
