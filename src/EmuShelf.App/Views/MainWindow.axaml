@@ -3180,7 +3180,9 @@
                                     <Grid IsVisible="{Binding Scraper.ShowData}" ColumnDefinitions="*,Auto"
                                           RowDefinitions="*,Auto" ColumnSpacing="20">
                                         <ScrollViewer Grid.Row="0" Grid.Column="0" Classes="gamepad-scroll"
-                                                      VerticalScrollBarVisibility="Auto">
+                                                      x:Name="GamepadScraperFieldsScroller"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      ScrollChanged="OnGamepadScraperScrollChanged">
                                             <StackPanel Spacing="2">
                                                 <ItemsControl ItemsSource="{Binding Scraper.Fields}">
                                                     <ItemsControl.ItemTemplate>
