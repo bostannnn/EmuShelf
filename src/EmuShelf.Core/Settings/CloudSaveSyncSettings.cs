@@ -58,14 +58,6 @@ public sealed record CloudSaveSyncSettings
     public string? CloudFolder { get; init; }
 
     /// <summary>
-    /// The Google OAuth client id used for this remote, or null to use rclone's shared client. Not
-    /// a secret — it is public by design and identifies the application, not the user. The matching
-    /// client secret is deliberately absent: it goes straight to rclone and lives only in rclone's
-    /// own config, beside the OAuth token EmuShelf never sees.
-    /// </summary>
-    public string? GoogleClientId { get; init; }
-
-    /// <summary>
     /// The provider's own id for <see cref="CloudFolder"/>, cached after the first lookup. Google
     /// Drive has no real paths: reaching <c>EmuShelf/Saves/index.json</c> from the account root
     /// costs one listing request per folder segment, every call, and those requests are what a

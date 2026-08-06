@@ -393,7 +393,7 @@ public sealed class GamepadSettingsViewModelTests
             "/portable/Logs/save-sync.log",
             () => [platform],
             (_, _) => Task.FromResult<string?>("/detected/pcsx2"),
-            (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),

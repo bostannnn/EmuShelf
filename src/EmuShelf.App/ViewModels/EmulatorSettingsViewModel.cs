@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
-using EmuShelf.Infrastructure.SaveSync;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
@@ -274,28 +273,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string CloudFolder { get; set; } = "EmuShelf/Saves";
 
-    /// <summary>
-    /// The user's own Google OAuth client id, or empty to use rclone's shared client. Its own
-    /// client avoids the shared one's rate limiting — the multi-second wait before a launch — and
-    /// the shared client's retirement during 2026.
-    /// </summary>
-    [ObservableProperty]
-    public partial string CloudClientId { get; set; } = string.Empty;
-
-    /// <summary>
-    /// The matching client secret, read from the imported JSON. Held only long enough to hand to
-    /// rclone, which stores it in its own config next to the OAuth token; it is never written to
-    /// EmuShelf's settings, never shown, and dropped as soon as the connection is made.
-    /// </summary>
-    private string? _cloudClientSecret;
-
-    /// <summary>What was imported, for the row under the button. Never the secret itself.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasCloudClientStatus))]
-    public partial string CloudClientStatusText { get; set; } = string.Empty;
-
-    public bool HasCloudClientStatus => !string.IsNullOrWhiteSpace(CloudClientStatusText);
-
     /// <summary>One row per registered save platform, rendered by a single view template.</summary>
     public ObservableCollection<CloudSavePlatformRowViewModel> CloudPlatforms { get; } = new();
     public ObservableCollection<TexturePackRowViewModel> TexturePlatforms { get; } = new();
@@ -436,7 +413,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             var saves = cloudSaves.Current;
             CloudRemoteName = string.IsNullOrWhiteSpace(saves.RemoteName) ? "emushelf-gdrive" : saves.RemoteName!;
             CloudFolder = string.IsNullOrWhiteSpace(saves.CloudFolder) ? "EmuShelf/Saves" : saves.CloudFolder!;
-            CloudClientId = saves.GoogleClientId ?? string.Empty;
             // One row per registered platform. The row owns its own override, detected path, and
             // per-platform actions, so this view model never names an emulator.
             foreach (var platform in cloudSaves.GetPlatforms())
@@ -1172,36 +1148,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             _ = platform.RefreshDetectedDirectoryAsync();
     }
 
-    /// <summary>
-    /// Imports the OAuth client JSON downloaded from the Google Cloud console. Using a personal
-    /// client instead of rclone's shared one is what removes the rate limiting that shows up as a
-    /// slow sync before a launch — and the shared client stops working during 2026.
-    /// </summary>
-    [RelayCommand]
-    private async Task ImportGoogleClientAsync()
-    {
-        try
-        {
-            var path = await _dialogs.PickGoogleClientJsonAsync();
-            if (path is null)
-                return;
-
-            var client = await GoogleOAuthClientFile.ReadAsync(path);
-            CloudClientId = client.ClientId;
-            _cloudClientSecret = client.ClientSecret;
-            CloudClientStatusText = client.ProjectId is null
-                ? "Google client loaded. Press Connect Google Drive to sign in."
-                : $"Google client loaded from project {client.ProjectId}. Press Connect Google Drive to sign in.";
-        }
-        catch (InvalidDataException ex)
-        {
-            // The message names what to download and from where; it never contains file contents.
-            CloudClientId = string.Empty;
-            _cloudClientSecret = null;
-            CloudClientStatusText = ex.Message;
-        }
-    }
-
     [RelayCommand]
     private async Task ConnectCloudAsync()
     {
@@ -1216,12 +1162,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 CloudRemoteName.Trim(),
                 CloudFolder.Trim(),
                 CollectOverrides(),
-                CancellationToken.None,
-                string.IsNullOrWhiteSpace(CloudClientId) ? null : CloudClientId.Trim(),
-                _cloudClientSecret);
-            // Whatever the outcome, the secret has been handed to rclone and has no further use
-            // here; holding it any longer only widens where it can be read from.
-            _cloudClientSecret = null;
+                CancellationToken.None);
             CloudStatusText = result switch
             {
                 CloudSaveSyncConnectResult.Connected => "Connected. Use Sync now to reconcile enabled saves.",
