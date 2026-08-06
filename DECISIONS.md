@@ -4729,3 +4729,30 @@ tiles are a focus row above the option list — D-pad Up from the top option lan
 Left/Right pick Grid/List and apply live, A is inert there (the choice is already applied), and Down
 drops back into the options. Pointer users click either tile. `IsGamepadViewModeRowFocused` drives the
 row ring and suppresses the option ring while it's active.
+
+## 2026-08-06 — Gamepad scraper: Apply-first focus and a scroll-fade cue
+
+Two couch-UX fixes for the controller-native ScreenScraper overlay (`GamepadScraperViewModel`
++ the `IsGamepadScraperOpen` body in `MainWindow.axaml`), from live use on a pad.
+
+**Apply is the default focus in the Ready review.** The D-pad ring used to open on the first
+metadata field, so reaching the (already pinned, always-visible) Apply button meant pressing Down
+through every field and media row. Since the scraper pre-selects sensible fields, the common path is
+accept-all — so `GamepadScraperViewModel.DefaultFocusIndex()` now lands the ring on the Apply target
+whenever the state is `Ready`/`Applying`; D-pad Up walks back into the fields to deselect. Every other
+state keeps its first target (connect username, search query, first candidate). The apply command
+itself is unchanged. Overlay tests that encoded "first field focused" were updated to the new default.
+
+**A scroll fade tells you the field list continues.** The field list is a `gamepad-scroll`
+`ScrollViewer` whose thin Fluent scrollbar is an overlay that only shows on pointer hover — invisible
+on a pad — so the page read as "everything, then it suddenly jumps." Two view-only changes (in
+`MainWindow.axaml.cs`): (1) an alpha-only `OpacityMask`
+gradient fades whichever edge still has off-screen content (top/bottom/both/none), recomputed on the
+scroller's `ScrollChanged` and again whenever focus is revealed (the ring opens on Apply, off the
+list, so no scroll fires on open — without the reveal-time recompute the cue would miss the first
+frame). Alpha-only keeps it
+palette-agnostic — `EmuPopoverBrush` behind the list varies per theme and has no matching `Color`
+resource, so a coloured gradient stop would need 28 palette edits. (2) `RevealScraperRowWithLookahead`
+keeps ~40px of the neighbouring row peeking past the focused one, so the list is visibly mid-scroll
+rather than static-then-jump; it falls back to `BringIntoView` for controls outside a gamepad scroll
+region (the pinned Apply/Refresh block, connect form, terminal messages).
