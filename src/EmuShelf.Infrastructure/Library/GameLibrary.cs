@@ -768,8 +768,7 @@ public sealed class GameLibrary : IGameLibrary
             !relativePath.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal);
     }
 
-    private static StringComparer PathComparer =>
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    private static StringComparer PathComparer => FilePathComparison.Comparer;
 
     private Game ReadGame(SqliteDataReader reader) => new()
     {

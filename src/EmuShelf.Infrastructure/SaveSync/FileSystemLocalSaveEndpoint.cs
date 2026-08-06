@@ -373,18 +373,14 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
 
     private static bool IsUnderRoot(string path, string root)
     {
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FilePathComparison.Comparison;
         var trimmedRoot = Path.TrimEndingDirectorySeparator(root);
         return path.StartsWith(trimmedRoot + Path.DirectorySeparatorChar, comparison);
     }
 
     private static void EnsureNoLinkedPathBelowRoot(string path, string root)
     {
-        var comparison = OperatingSystem.IsWindows()
-            ? StringComparison.OrdinalIgnoreCase
-            : StringComparison.Ordinal;
+        var comparison = FilePathComparison.Comparison;
         for (var current = path;
              !string.Equals(Path.TrimEndingDirectorySeparator(current), Path.TrimEndingDirectorySeparator(root), comparison);
              current = Path.GetDirectoryName(current) ?? root)

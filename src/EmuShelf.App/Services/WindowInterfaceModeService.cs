@@ -34,7 +34,9 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
         if (Current == InterfaceMode.Gamepad)
         {
             // Go full screen without recording the startup window as a desktop session — there is
-            // none yet, so a later switch to Desktop maximizes instead of restoring it.
+            // none yet, so a later switch to Desktop maximizes instead of restoring it. On macOS this
+            // FullScreen state is turned into a real screen-filling window by MacFullScreenController,
+            // where Avalonia's native fullscreen is a no-op for our borderless window.
             _window.WindowState = WindowState.FullScreen;
         }
         else

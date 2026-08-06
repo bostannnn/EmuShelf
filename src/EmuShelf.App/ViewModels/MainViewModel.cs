@@ -40,9 +40,7 @@ public partial class MainViewModel : ViewModelBase
     // Coalesce a burst into one reload of the platform the user settles on.
     private const int PlatformReloadDebounceMs = 180;
     private static readonly TimeSpan GamepadReturnInputGuard = TimeSpan.FromMilliseconds(500);
-    private static readonly StringComparer PathComparer = OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
+    private static readonly StringComparer PathComparer = FilePathComparison.Comparer;
 
     /// <summary>How long a completed action's result stays on screen before dismissing itself.</summary>
     private static readonly TimeSpan InfoStatusLifetime = TimeSpan.FromSeconds(5);

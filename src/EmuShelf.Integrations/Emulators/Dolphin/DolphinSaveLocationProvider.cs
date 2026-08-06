@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.SaveSync;
+using EmuShelf.Core.Storage;
 
 namespace EmuShelf.Integrations.Emulators.Dolphin;
 
@@ -928,9 +929,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         $"{GciUnitId(slot, gameId)}/{identity}";
     private static string WiiUnitId(string titleId) => $"dolphin/wii/title/00010000/{titleId}";
 
-    private static StringComparer PathComparer => OperatingSystem.IsWindows()
-        ? StringComparer.OrdinalIgnoreCase
-        : StringComparer.Ordinal;
+    private static StringComparer PathComparer => FilePathComparison.Comparer;
 
     private sealed record DolphinState(
         string UserDirectory,
