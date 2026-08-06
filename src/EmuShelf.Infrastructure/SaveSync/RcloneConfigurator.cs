@@ -26,62 +26,40 @@ public sealed class RcloneConfigurator
     public bool IsRcloneAvailable => File.Exists(_rclonePath);
 
     /// <summary>
-    /// Runs rclone's Google Drive OAuth and stores the resulting remote in the portable config.
+    /// Runs rclone's Google Drive OAuth and stores the resulting remote in the portable config,
+    /// authenticating with the Google OAuth client baked into the build. Without an embedded client
+    /// (an unconfigured local build) rclone falls back to its own shared client, which is heavily
+    /// rate-limited — the cause of multi-second waits before a launch — and which Google is retiring
+    /// during 2026.
     /// </summary>
-    /// <param name="clientId">
-    /// An optional Google OAuth client id. Without one EmuShelf falls back to the client baked into
-    /// the build; without that (an unconfigured build) rclone uses its own shared client, which is
-    /// heavily rate-limited — the cause of multi-second waits before a launch — and which Google is
-    /// retiring during 2026.
-    /// </param>
-    /// <param name="clientSecret">
-    /// The matching client secret. It is handed to rclone and stored only in rclone's own config
-    /// beside the OAuth token; EmuShelf never persists it in its settings.
-    /// </param>
-    public Task CreateGoogleDriveRemoteAsync(
-        string remoteName,
-        CancellationToken cancellationToken = default,
-        string? clientId = null,
-        string? clientSecret = null)
+    public Task CreateGoogleDriveRemoteAsync(string remoteName, CancellationToken cancellationToken = default)
     {
         ValidateRemoteName(remoteName);
 
-        // Both halves or neither for a user-supplied client: a client id without its secret
-        // authenticates as nothing and would fail the OAuth flow with a message that does not explain why.
-        if (!string.IsNullOrWhiteSpace(clientId) && string.IsNullOrWhiteSpace(clientSecret))
-            throw new ArgumentException("A Google client id also needs its client secret.", nameof(clientSecret));
-
         var arguments = new List<string> { "config", "create", remoteName, "drive" };
         var client = ResolveGoogleClient(
-            clientId,
-            clientSecret,
             EmbeddedSecrets.GoogleOAuthClientId,
             EmbeddedSecrets.GoogleOAuthClientSecret);
         if (client is { } resolved)
         {
             arguments.Add("client_id");
-            arguments.Add(ValidateConfigValue(resolved.ClientId, nameof(clientId)));
+            arguments.Add(ValidateConfigValue(resolved.ClientId, "client_id"));
             arguments.Add("client_secret");
-            arguments.Add(ValidateConfigValue(resolved.ClientSecret, nameof(clientSecret)));
+            arguments.Add(ValidateConfigValue(resolved.ClientSecret, "client_secret"));
         }
 
         return RunAsync(arguments, cancellationToken);
     }
 
     /// <summary>
-    /// Chooses which OAuth client the remote should use: a user-supplied client wins so a personal,
-    /// higher-quota client always takes precedence; otherwise the client embedded in the build; and
-    /// if neither is present, <see langword="null"/> so rclone falls back to its shared client.
+    /// The OAuth client the remote should use: the client embedded in the build, or
+    /// <see langword="null"/> when the build has none, so rclone falls back to its shared client.
+    /// Both halves must be present — an id without its secret authenticates as nothing.
     /// </summary>
     internal static (string ClientId, string ClientSecret)? ResolveGoogleClient(
-        string? userClientId,
-        string? userClientSecret,
         string? embeddedClientId,
         string? embeddedClientSecret)
     {
-        if (!string.IsNullOrWhiteSpace(userClientId) && !string.IsNullOrWhiteSpace(userClientSecret))
-            return (userClientId.Trim(), userClientSecret.Trim());
-
         if (!string.IsNullOrWhiteSpace(embeddedClientId) && !string.IsNullOrWhiteSpace(embeddedClientSecret))
             return (embeddedClientId.Trim(), embeddedClientSecret.Trim());
 

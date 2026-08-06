@@ -4729,3 +4729,30 @@ tiles are a focus row above the option list — D-pad Up from the top option lan
 Left/Right pick Grid/List and apply live, A is inert there (the choice is already applied), and Down
 drops back into the options. Pointer users click either tile. `IsGamepadViewModeRowFocused` drives the
 row ring and suppresses the option ring while it's active.
+
+## 2026-08-06 — Google Drive uses the embedded OAuth client only; the "import client JSON" flow is removed
+
+The 2026-08-04 decision let a user import their own Google OAuth client JSON, which took precedence over
+the client embedded in the build. That import path had a latent trap: the client **id** was persisted to
+settings and reloaded on the next launch, but the **secret** was intentionally never persisted (it lives
+only in rclone's config). After any restart, Connect therefore sent the prefilled id with a null secret,
+which `RcloneConfigurator` rejected (`A Google client id also needs its client secret`) before rclone ever
+ran — surfaced to the user as the misleading "The Google sign-in may have been declined." A connected user
+could not reconnect without re-importing the JSON every session, with nothing in the UI saying so.
+
+Resolution: **EmuShelf ships one application-identity Google OAuth client baked into the build, exactly like
+its ScreenScraper devid, and there is no in-app way to supply a different one.** This is how a normal app
+ships OAuth access. Removed: the "Import client JSON…" button (Desktop and Gamepad), `CloudClientId` /
+`CloudClientStatusText` / the in-memory secret and `ImportGoogleClientCommand` on the settings view model,
+`IDialogService.PickGoogleClientJsonAsync`, `GoogleOAuthClientFile`, and the `GoogleClientId` settings field.
+`ConnectGoogleDriveAsync` / `CreateGoogleDriveRemoteAsync` no longer take a client id/secret;
+`ResolveGoogleClient` now returns the embedded client, or null so rclone falls back to its shared client on
+an unconfigured local build. Dropping `GoogleClientId` from `CloudSaveSyncSettings` is forward-safe — an old
+settings.json with the field simply deserializes it away.
+
+Operational consequence: because the client is baked at **build time** from the `EMUSHELF_GOOGLE_OAUTH_CLIENT_ID`
+/ `EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET` repository secrets, rotating the Google client (deleting it and
+creating a new one in the Google Cloud console) requires updating those two secrets and producing a new
+release build; the running app has no runtime credential input. A rotated client also invalidates the token
+stored in an existing rclone remote, so users reconnect (Disconnect → Connect) once against the new build to
+re-run OAuth.

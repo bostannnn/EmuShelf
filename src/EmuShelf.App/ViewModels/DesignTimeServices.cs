@@ -128,7 +128,6 @@ internal sealed class NullDialogService : IDialogService
     public Task<string?> PickRpcs3ConfigurationDirectoryAsync() => Task.FromResult<string?>(null);
     public Task<string?> PickCoverImageAsync(string gameTitle) =>
         Task.FromResult<string?>(null);
-    public Task<string?> PickGoogleClientJsonAsync() => Task.FromResult<string?>(null);
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle) =>
         Task.FromResult(false);
     public Task<bool> ConfirmRemoveGamesAsync(int gameCount) =>

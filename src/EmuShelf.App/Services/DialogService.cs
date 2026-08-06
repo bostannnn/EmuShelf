@@ -163,30 +163,6 @@ public sealed class DialogService : IDialogService
         return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
-    public async Task<string?> PickGoogleClientJsonAsync()
-    {
-        var owner = Owner;
-        if (owner is null)
-            return null;
-
-        var files = await owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Choose the OAuth client JSON downloaded from Google",
-            AllowMultiple = false,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("Google OAuth client")
-                {
-                    Patterns = ["client_secret*.json", "*.json"],
-                    AppleUniformTypeIdentifiers = ["public.json"],
-                    MimeTypes = ["application/json"],
-                },
-            ],
-        });
-
-        return files.Count > 0 ? files[0].TryGetLocalPath() : null;
-    }
-
     public async Task<string?> PickCoverImageAsync(string gameTitle)
     {
         var owner = PickerOwner;

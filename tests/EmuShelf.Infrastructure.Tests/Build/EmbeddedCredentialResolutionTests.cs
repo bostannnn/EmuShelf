@@ -53,37 +53,33 @@ public class EmbeddedCredentialResolutionTests
     }
 
     [Fact]
-    public void GoogleClient_PrefersTheUserSuppliedClient()
+    public void GoogleClient_UsesTheEmbeddedClientAndTrims()
     {
         var resolved = RcloneConfigurator.ResolveGoogleClient(
-            userClientId: " user-id ",
-            userClientSecret: " user-secret ",
-            embeddedClientId: "embedded-id",
-            embeddedClientSecret: "embedded-secret");
-
-        Assert.Equal(("user-id", "user-secret"), resolved);
-    }
-
-    [Fact]
-    public void GoogleClient_FallsBackToTheEmbeddedClientWhenTheUserSuppliedNone()
-    {
-        var resolved = RcloneConfigurator.ResolveGoogleClient(
-            userClientId: null,
-            userClientSecret: null,
-            embeddedClientId: "embedded-id",
-            embeddedClientSecret: "embedded-secret");
+            embeddedClientId: " embedded-id ",
+            embeddedClientSecret: " embedded-secret ");
 
         Assert.Equal(("embedded-id", "embedded-secret"), resolved);
     }
 
     [Fact]
-    public void GoogleClient_ReturnsNullWhenNeitherSourceHasBothHalves()
+    public void GoogleClient_ReturnsNullWhenTheBuildEmbedsNoClient()
     {
-        // A half-configured build (id but no secret) must not be used; rclone's shared client is the
-        // only safe fallback, signalled by null.
+        // An unconfigured local build embeds nothing; rclone's shared client is the only fallback,
+        // signalled by null.
         var resolved = RcloneConfigurator.ResolveGoogleClient(
-            userClientId: null,
-            userClientSecret: null,
+            embeddedClientId: null,
+            embeddedClientSecret: null);
+
+        Assert.Null(resolved);
+    }
+
+    [Fact]
+    public void GoogleClient_ReturnsNullWhenOnlyOneHalfIsEmbedded()
+    {
+        // A half-configured build (id but no secret) must not be used; an id without its secret
+        // authenticates as nothing.
+        var resolved = RcloneConfigurator.ResolveGoogleClient(
             embeddedClientId: "embedded-id",
             embeddedClientSecret: null);
 

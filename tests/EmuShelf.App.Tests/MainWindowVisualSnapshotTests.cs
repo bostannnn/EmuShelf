@@ -1780,7 +1780,7 @@ public class MainWindowVisualSnapshotTests
                 // exposes the `saves.{id}.states-folder` field to the parity comparison below.
                 SyncSaveStates: descriptor.SystemId is "playstation2" or "psp")).ToArray(),
             (systemId, _) => Task.FromResult<string?>(@"D:\Saves\" + systemId),
-            (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
@@ -2221,7 +2221,7 @@ public class MainWindowVisualSnapshotTests
             (systemId, _) => Task.FromResult<string?>(systemId == "psp"
                 ? @"D:\Emulators\PPSSPP\memstick\PSP\SAVEDATA"
                 : @"D:\Emulators\PCSX2\memcards"),
-            (_, _, _, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
+            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
