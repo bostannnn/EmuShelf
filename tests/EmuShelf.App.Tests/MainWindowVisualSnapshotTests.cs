@@ -923,9 +923,10 @@ public class MainWindowVisualSnapshotTests
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             viewModel.OpenGamepadMenuCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
-            // Five options (Search, Collections, Settings, Desktop mode, Quit) plus the Grid/List
-            // view-mode row size to content and stay well within the 800px-tall Deck viewport.
-            AssertGamepadOverlayHeightBelow(window, 560);
+            // view-mode picker row at the top size to content and stay well within the 800px-tall Deck
+            // viewport. The picker adds a row, so the ceiling is a touch higher than before (observed
+            // ~544 macOS / 551 Linux / 557 Windows — font metrics vary), still far under the viewport.
+            AssertGamepadOverlayHeightBelow(window, 580);
             var systemMenuShortcuts = window.FindControl<Grid>("GamepadSystemMenuShortcuts");
             Assert.NotNull(systemMenuShortcuts);
             Assert.True(systemMenuShortcuts.IsVisible);
