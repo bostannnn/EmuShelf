@@ -52,7 +52,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public string? DiscSelectionKey { get; }
     public string DiscCountText => $"{DiscCount} discs";
     public string SelectedDiscText => $"Disc {SelectedDiscNumber} selected";
-    public bool ShowsSelectedDisc => IsMultiDisc && SelectedDiscNumber != 1;
     public string DiscBadgeText => $"Disc {SelectedDiscNumber} of {DiscCount}";
     public long Id { get; }
     public string SystemId { get; }
@@ -116,7 +115,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> LaunchCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SaveTitleCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SetCoverCommand { get; }
-    public IAsyncRelayCommand<GameViewModel?> RemoveCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> ScrapeCommand { get; }
@@ -211,10 +209,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Absolute path to the selected fan-art asset, or null when the game has none. Set the
     /// first time the spotlight view resolves this game's scraped details.</summary>
     public string? FanartPath { get; private set; }
-
-    /// <summary>Whether a fan-art asset exists to load (drives the spotlight hero fallback).</summary>
-    [ObservableProperty]
-    public partial bool HasFanart { get; set; }
 
     /// <summary>The game's logo (ScreenScraper "wheel") shown large in the spotlight hero above the
     /// title. Only the focused game keeps a decoded bitmap; released as focus moves.</summary>
@@ -365,7 +359,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         IAsyncRelayCommand<GameViewModel?>? launchCommand = null,
         IAsyncRelayCommand<GameViewModel?>? saveTitleCommand = null,
         IAsyncRelayCommand<GameViewModel?>? setCoverCommand = null,
-        IAsyncRelayCommand<GameViewModel?>? removeCommand = null,
         IAsyncRelayCommand<GameViewModel?>? loadCoverCommand = null,
         IImage? platformArtwork = null,
         double coverAspectRatio = DefaultCoverAspectRatio,
@@ -418,7 +411,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         LaunchCommand = launchCommand ?? NoGameCommand;
         SaveTitleCommand = saveTitleCommand ?? NoGameCommand;
         SetCoverCommand = setCoverCommand ?? NoGameCommand;
-        RemoveCommand = removeCommand ?? NoGameCommand;
         LoadCoverCommand = loadCoverCommand ?? NoGameCommand;
         OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
         ScrapeCommand = scrapeCommand ?? NoGameCommand;
@@ -439,7 +431,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(LaunchModel));
         OnPropertyChanged(nameof(SelectedDiscNumber));
         OnPropertyChanged(nameof(SelectedDiscText));
-        OnPropertyChanged(nameof(ShowsSelectedDisc));
         OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
         OnPropertyChanged(nameof(GamepadSubtitle));
@@ -500,7 +491,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText, string? infoLine)
     {
         FanartPath = fanartPath;
-        HasFanart = !string.IsNullOrEmpty(fanartPath);
         WheelPath = wheelPath;
         RatingText = ratingText;
         _spotlightInfoLine = infoLine;
