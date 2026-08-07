@@ -2800,14 +2800,27 @@
                                                               ColumnDefinitions="Auto,*" ColumnSpacing="16"
                                                               Margin="18,16,0,8">
                                                             <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                                                    IsVisible="{Binding HasPlatformIcon}"
                                                                     Background="{DynamicResource EmuPlaceholderMedallionBrush}">
                                                                 <Image Width="30" Height="30"
                                                                        Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
                                                                        RenderOptions.BitmapInterpolationMode="None" />
                                                             </Border>
+                                                            <!-- Generic group (sign-in / advanced): an accent bar stands in for the
+                                                                 missing artwork so the header reads as a clear group divider, and the
+                                                                 label is accent-coloured to separate it from ordinary rows. -->
+                                                            <Border Grid.Column="0" Width="5" Height="26" CornerRadius="3"
+                                                                    IsVisible="{Binding !HasPlatformIcon}"
+                                                                    VerticalAlignment="Center"
+                                                                    Background="{DynamicResource EmuAccentBrush}" />
                                                             <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="15"
                                                                        FontWeight="Bold" LetterSpacing="0.4" VerticalAlignment="Center"
+                                                                       IsVisible="{Binding HasPlatformIcon}"
                                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="15"
+                                                                       FontWeight="Bold" LetterSpacing="0.6" VerticalAlignment="Center"
+                                                                       IsVisible="{Binding !HasPlatformIcon}"
+                                                                       Foreground="{DynamicResource EmuAccentBrush}" />
                                                         </Grid>
 
                                                         <Button Classes="gamepad-settings-row"
@@ -2940,11 +2953,54 @@
                                         </ItemsRepeater>
                                     </ScrollViewer>
 
-                                    <ScrollViewer x:Name="GamepadThemeScroller"
-                                                  IsVisible="{Binding GamepadSettings.IsThemesVisible}"
-                                                  Classes="gamepad-scroll"
-                                                  VerticalScrollBarVisibility="Auto"
-                                                  HorizontalScrollBarVisibility="Disabled">
+                                    <Grid IsVisible="{Binding GamepadSettings.IsThemesVisible}"
+                                          RowDefinitions="Auto,*" RowSpacing="16">
+                                        <!-- Ambient (cover-art recolour) toggle: a focus target above the
+                                             theme grid so the setting is reachable on a controller. Up from
+                                             the top grid row lands here; A toggles it. -->
+                                        <Button Grid.Row="0" Classes="gamepad-settings-row"
+                                                Classes.focused="{Binding GamepadSettings.IsAmbientToggleFocused}"
+                                                IsVisible="{Binding GamepadSettings.IsThemesVisible}"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding GamepadSettings.ToggleAmbientCommand}">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                                                    <TextBlock Text="Match colours to game artwork" FontSize="17"
+                                                               FontWeight="SemiBold" />
+                                                    <TextBlock Text="Recolour the interface from the highlighted game; the theme below is the fallback."
+                                                               FontSize="14" TextWrapping="Wrap" MaxLines="2"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                </StackPanel>
+                                                <Border Grid.Column="1" Classes="gamepad-settings-switch"
+                                                        Classes.on="{Binding GamepadSettings.AmbientThemeFromArtwork}"
+                                                        VerticalAlignment="Center">
+                                                    <Grid>
+                                                        <TextBlock Text="OFF" IsVisible="{Binding !GamepadSettings.AmbientThemeFromArtwork}"
+                                                                   Margin="0,0,14,0" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
+                                                        <TextBlock Text="ON" IsVisible="{Binding GamepadSettings.AmbientThemeFromArtwork}"
+                                                                   Margin="14,0,0,0" HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
+                                                        <Border Width="40" Height="40" Margin="4"
+                                                                IsVisible="{Binding !GamepadSettings.AmbientThemeFromArtwork}"
+                                                                HorizontalAlignment="Left" CornerRadius="20"
+                                                                Background="{DynamicResource EmuTextTertiaryBrush}" />
+                                                        <Border Width="40" Height="40" Margin="4"
+                                                                IsVisible="{Binding GamepadSettings.AmbientThemeFromArtwork}"
+                                                                HorizontalAlignment="Right" CornerRadius="20"
+                                                                Background="{DynamicResource EmuAccentBrush}">
+                                                            <TextBlock Text="✓" FontSize="18" HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </Grid>
+                                        </Button>
+                                        <ScrollViewer Grid.Row="1" x:Name="GamepadThemeScroller"
+                                                      Classes="gamepad-scroll"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
                                         <ItemsControl x:Name="GamepadThemeGallery"
                                                       ItemsSource="{Binding GamepadSettings.ThemeChoices}">
                                             <ItemsControl.ItemsPanel>
@@ -3005,6 +3061,7 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                     </ScrollViewer>
+                                    </Grid>
 
                                     <Border IsVisible="{Binding GamepadSettings.IsTextEntryOpen}"
                                             HorizontalAlignment="Stretch" VerticalAlignment="Center"

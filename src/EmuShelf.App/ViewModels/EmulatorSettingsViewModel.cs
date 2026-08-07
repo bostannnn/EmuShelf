@@ -608,6 +608,28 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Opens the portable save-sync activity log in the OS default viewer. Read-only.</summary>
+    [RelayCommand]
+    private void OpenSyncLog()
+    {
+        if (!HasSyncLog)
+            return;
+
+        try
+        {
+            using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = SyncLogPath,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not open the sync log '{SyncLogPath}': {ex.Message}");
+            CloudStatusText = "Couldn't open the sync log.";
+        }
+    }
+
     [RelayCommand]
     private async Task FetchAllMetadataAsync()
     {
