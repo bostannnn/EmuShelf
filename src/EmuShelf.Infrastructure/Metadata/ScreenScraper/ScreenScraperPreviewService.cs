@@ -53,10 +53,11 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         if (!_profiles.TryGetValue(game.SystemId, out var profile))
             return Failure(ScreenScraperPreviewStatus.UnsupportedSystem, "This platform is not mapped to ScreenScraper.");
 
-        // Three match routes, in order: (1) disc serial, read from inside the container — so a
-        // compressed image (CHD/CSO/…) that cannot be whole-file hashed still matches; (2) arcade
-        // romsets, matched by the ROM file name that ScreenScraper indexes as the set identity;
-        // (3) everything else falls through to the whole-file hash fingerprint.
+        // Three match routes, in order: (1) disc product code (a disc serial, or the GameCube/Wii
+        // disc game code), read from inside the container — so a compressed image (CHD/CSO/RVZ/WBFS/…)
+        // that cannot be whole-file hashed still matches; (2) arcade romsets, matched by the ROM file
+        // name that ScreenScraper indexes as the set identity; (3) everything else falls through to the
+        // whole-file hash fingerprint.
         var serial = await ResolveSerialAsync(game, cancellationToken);
 
         ScreenScraperGameRequest request;
@@ -229,11 +230,15 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
             null);
     }
 
-    // Serial-based matching is enabled only for disc systems whose extracted serial is the disc
-    // product code ScreenScraper indexes; cartridge header codes are deliberately excluded so a
-    // rom hack is never matched to the original release by a shared code.
+    // Serial-based matching is enabled only for disc systems whose extracted code is the disc product
+    // code ScreenScraper indexes as serialnum: the PlayStation/PS2/PS3/PSP disc serial, the Dreamcast
+    // IP.BIN product number, and the GameCube/Wii disc game code. Cartridge header codes are
+    // deliberately excluded so a rom hack is never matched to the original release by a shared code.
     private static readonly IReadOnlySet<string> SerialSystems =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "playstation", "playstation2", "psp" };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "playstation", "playstation2", "playstation3", "psp", "gamecube", "wii", "dreamcast",
+        };
 
     // File-name matching is enabled only for arcade, where the ROM file name is the FBNeo/MAME set
     // short id ScreenScraper indexes as the canonical game identity (there is no whole-file hash of a
@@ -264,12 +269,24 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         return FindSerial(extracted);
     }
 
-    private static string? FindSerial(IReadOnlyList<GameIdentifier> identifiers) =>
-        identifiers
-            .FirstOrDefault(identifier =>
-                identifier.Kind == GameIdentifierKind.Serial &&
-                !string.IsNullOrWhiteSpace(identifier.Value))
-            ?.Value;
+    // A disc product code is persisted as either a Serial (PlayStation/Dreamcast disc serials) or a
+    // DiscId (the GameCube/Wii disc game code); both are the value ScreenScraper indexes as serialnum.
+    // A Serial wins when a system happens to offer both, so the more specific disc serial is preferred.
+    private static string? FindSerial(IReadOnlyList<GameIdentifier> identifiers)
+    {
+        string? discId = null;
+        foreach (var identifier in identifiers)
+        {
+            if (string.IsNullOrWhiteSpace(identifier.Value))
+                continue;
+            if (identifier.Kind == GameIdentifierKind.Serial)
+                return identifier.Value;
+            if (identifier.Kind == GameIdentifierKind.DiscId)
+                discId ??= identifier.Value;
+        }
+
+        return discId;
+    }
 
     private static ScreenScraperPreviewResult FromFingerprintFailure(
         ScreenScraperFingerprintResult fingerprint) =>

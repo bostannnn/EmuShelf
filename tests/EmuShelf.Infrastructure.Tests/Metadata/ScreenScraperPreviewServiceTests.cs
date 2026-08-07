@@ -117,6 +117,117 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Preview_UsesDiscId_ForGameCube_ExtractingOnDemand_WithoutHashing()
+    {
+        // A .rvz container is never whole-file hashable, yet the GameCube disc game code read from
+        // inside it is the serialnum ScreenScraper indexes, so the serial route still matches.
+        var game = AddGame("Melee.rvz", "compressed-container"u8.ToArray(), "gamecube");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        _client.Result = SuccessfulGameResult();
+        var resolver = new RelativePathResolver(AppPaths);
+        var preview = new ScreenScraperPreviewService(
+            _games,
+            _details,
+            _credentials,
+            new ScreenScraperFingerprintService(new SqliteGameFileFingerprintStore(_database, resolver)),
+            _client,
+            KnownScreenScraperProfiles.All,
+            new Dictionary<string, IGameIdentifierExtractor>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["gamecube"] = new StubExtractor([
+                    new GameIdentifier(GameIdentifierKind.DiscId, "GALE01", "DiscHeader", IsPrimary: true),
+                ]),
+            });
+
+        var result = await preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("GALE01", _client.LastRequest!.Serial);
+        Assert.Equal(0, _client.LastRequest.RomSize);
+        Assert.Equal(GameProviderMatchMethod.Serial, result.Preview!.Match.MatchMethod);
+        Assert.Null(result.Preview.FingerprintStatus);
+        Assert.Contains(
+            _games.GetIdentifiers(game.Id),
+            identifier => identifier.Kind == GameIdentifierKind.DiscId && identifier.Value == "GALE01");
+    }
+
+    [Fact]
+    public async Task Preview_UsesSerial_ForPlayStation3_WhichHasNoWholeFileHashRoute()
+    {
+        // PlayStation 3 has no whole-file hash policy at all, so before the serial route covered it
+        // every automatic lookup failed as UnsupportedFormat. The title-id serial now matches instead.
+        var game = AddGame("Demons Souls.iso", "ps3-content"u8.ToArray(), "playstation3");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        _client.Result = SuccessfulGameResult();
+        var resolver = new RelativePathResolver(AppPaths);
+        var preview = new ScreenScraperPreviewService(
+            _games,
+            _details,
+            _credentials,
+            new ScreenScraperFingerprintService(new SqliteGameFileFingerprintStore(_database, resolver)),
+            _client,
+            KnownScreenScraperProfiles.All,
+            new Dictionary<string, IGameIdentifierExtractor>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["playstation3"] = new StubExtractor([
+                    new GameIdentifier(GameIdentifierKind.Serial, "BLES00932", "PARAM.SFO"),
+                ]),
+            });
+
+        var result = await preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: false);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("BLES00932", _client.LastRequest!.Serial);
+        Assert.Equal(GameProviderMatchMethod.Serial, result.Preview!.Match.MatchMethod);
+        Assert.Null(result.Preview.FingerprintStatus);
+    }
+
+    [Fact]
+    public async Task Preview_HashesCleanCartridgeDump_ForNintendo3ds()
+    {
+        // A clean NCSD cartridge dump is the file No-Intro/ScreenScraper index by whole-file hash,
+        // so 3DS now takes the hash route instead of dead-ending on UnsupportedFormat.
+        var game = AddGame("Game.3ds", "3ds-cartridge-content"u8.ToArray(), "3ds");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        _client.Result = SuccessfulGameResult();
+
+        var result = await _preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: true);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(ScreenScraperFingerprintStatus.Computed, result.Preview!.FingerprintStatus);
+        Assert.False(string.IsNullOrEmpty(_client.LastRequest!.Sha1));
+        Assert.True(_client.LastRequest.RomSize > 0);
+        Assert.Equal(17, _client.LastRequest.SystemId);
+        Assert.Equal(GameProviderMatchMethod.Sha1, result.Preview.Match.MatchMethod);
+    }
+
+    [Fact]
+    public async Task Preview_RejectsInstallable3dsContainer_WithoutCallingProvider()
+    {
+        // A .cia is an installable package, not the cartridge dump, so its whole-file hash is never in
+        // the catalogue. It is rejected before any request, leaving the caller to title-search.
+        var game = AddGame("Game.cia", "installable-package"u8.ToArray(), "3ds");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+
+        var result = await _preview.PreviewAsync(
+            game.Id,
+            new ScreenScraperSettings { Enabled = true },
+            allowFingerprinting: true);
+
+        Assert.Equal(ScreenScraperPreviewStatus.UnsupportedFormat, result.Status);
+        Assert.Equal(0, _client.GameRequestCount);
+    }
+
+    [Fact]
     public async Task Preview_MatchesArcadeBySetFileName_WithoutHashingOrConsent()
     {
         var game = AddGame("tmnt.zip", "arcade-set-archive"u8.ToArray(), "arcade");

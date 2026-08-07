@@ -31,8 +31,10 @@ public enum Nintendo3dsFormat
 /// containers are recognized and launchable but supply no identity here (the library falls back to
 /// the filename for their cover match until a dedicated reader lands).
 ///
-/// 3DS ROMs are multi-gigabyte, so nothing here hashes the whole file: identity comes only from
-/// targeted reads of the NCSD/NCCH header, which stays plaintext even on encrypted dumps.
+/// 3DS ROMs are multi-gigabyte, so this reader never hashes the whole file: import-time identity
+/// comes only from targeted reads of the NCSD/NCCH header, which stays plaintext even on encrypted
+/// dumps. Whole-file hashing of a clean .3ds/.cci dump is a separate concern, done on demand and
+/// with consent by the ScreenScraper fingerprint path, not here.
 /// </summary>
 public static class Nintendo3dsRomReader
 {

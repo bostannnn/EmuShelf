@@ -23,10 +23,13 @@ public static class KnownScreenScraperFingerprintProfiles
             Profile("arcade"),
             Profile("gbc", ".gb", ".gbc"),
             Profile("nes", ".nes"),
-            // 3DS images (.3ds/.cci/.cia) are not canonically whole-file hashable, so — like the
-            // disc-id/title-id systems above — it has no hash route and falls back to title search
-            // until a validated 3DS fingerprint rule lands.
-            Profile("3ds"),
+            // A clean NCSD cartridge dump (.3ds/.cci — the same CTR card image, only the extension
+            // differs) is the exact file No-Intro catalogues and ScreenScraper indexes by whole-file
+            // hash, so it matches like the other No-Intro cartridge sets above. The installable,
+            // single-title, homebrew, and compressed 3DS formats (.cia/.cxi/.app/.3dsx/.z*) are not
+            // that dump — their whole-file hash is never in the catalogue — so they are deliberately
+            // excluded and fall back to filename/title search instead.
+            Profile("3ds", ".3ds", ".cci"),
         }.ToDictionary(profile => profile.SystemId, StringComparer.OrdinalIgnoreCase);
 
     public static bool TryGet(
