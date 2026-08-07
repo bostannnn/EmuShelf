@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.Core.TexturePacks;
 
@@ -69,14 +70,40 @@ public sealed class TexturePackEntryViewModel
 /// </summary>
 public partial class TexturePackRowViewModel : ObservableObject
 {
-    public TexturePackRowViewModel(TexturePackPlatformState state, string overridePlaceholder)
+    private readonly Func<TexturePackRowViewModel, Task> _browseOverride;
+    private readonly Func<TexturePackRowViewModel, Task> _useDetected;
+    private readonly Action<string?> _openFolder;
+
+    public TexturePackRowViewModel(
+        TexturePackPlatformState state,
+        string overridePlaceholder,
+        Func<TexturePackRowViewModel, Task> browseOverride,
+        Func<TexturePackRowViewModel, Task> useDetected,
+        Action<string?> openFolder)
     {
         ArgumentNullException.ThrowIfNull(state);
+        _browseOverride = browseOverride;
+        _useDetected = useDetected;
+        _openFolder = openFolder;
         SystemId = state.SystemId;
         DisplayName = state.DisplayName;
         OverridePlaceholder = overridePlaceholder;
         Apply(state);
     }
+
+    /// <summary>Point this platform at an explicit texture folder. The work lives on the parent
+    /// (it owns the picker and the rescan); the row just exposes it so the view needs no ancestor
+    /// lookup.</summary>
+    [RelayCommand]
+    private Task BrowseOverride() => _browseOverride(this);
+
+    /// <summary>Clear the override so the detected folder is used again.</summary>
+    [RelayCommand]
+    private Task UseDetected() => _useDetected(this);
+
+    /// <summary>Reveal the detected texture folder in the file manager (never modified).</summary>
+    [RelayCommand]
+    private void OpenFolder() => _openFolder(DetectedRoot);
 
     public string SystemId { get; }
 

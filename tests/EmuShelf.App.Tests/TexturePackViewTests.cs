@@ -32,7 +32,10 @@ public class TexturePackViewTests
             Dispatcher.UIThread.RunJobs();
 
             // The per-pack list is collapsed by default to keep large libraries readable; expand it.
-            var expander = window.GetVisualDescendants().OfType<Expander>().Single();
+            // It's the Expander whose header is the "Installed pack details (N)" TextBlock — the
+            // section's explanatory "About matching" disclosure uses a plain string header.
+            var expander = window.GetVisualDescendants().OfType<Expander>()
+                .Single(candidate => candidate.Header is TextBlock);
             expander.IsExpanded = true;
             Dispatcher.UIThread.RunJobs();
 
@@ -47,7 +50,7 @@ public class TexturePackViewTests
             // The per-platform buttons use $parent[Window] bindings to reach the view model's
             // commands. A broken path leaves Command null, which compiles but does nothing.
             var buttons = window.GetVisualDescendants().OfType<Button>().ToArray();
-            foreach (var content in new[] { "Rescan", "Browse...", "Use detected", "Open folder" })
+            foreach (var content in new[] { "Rescan", "Browse…", "Use detected", "Open folder" })
             {
                 var button = buttons.FirstOrDefault(candidate => Equals(candidate.Content, content));
                 Assert.NotNull(button);
