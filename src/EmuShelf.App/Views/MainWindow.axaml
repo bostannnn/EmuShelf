@@ -360,14 +360,28 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
+        <!-- The selection background is drawn by the sliding GamepadRailIndicator pill (positioned in
+             code-behind), so the highlight glides left/right between tabs rather than popping in place.
+             The tab itself only brightens its icon/label so the active platform reads immediately. -->
         <Style Selector="Button.gamepad-platform.selected">
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
-            <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
         </Style>
-        <Style Selector="Button.gamepad-platform.selected.controller-input:pointerover">
+        <!-- The rail pill that slides between tabs. Code-behind sizes it to the active tab and drives a
+             translate transform to overlay it. ONLY the translate eases (it is GPU-composited, so the
+             glide stays smooth even while the library relayouts on a platform switch); Width is set
+             instantly, because animating it is a per-frame layout pass on the UI thread that stutters. -->
+        <Style Selector="Border.gamepad-platform-indicator">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
-            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform"
+                                                   Duration="0:0:0.22" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
         </Style>
         <Style Selector="Button.gamepad-platform.focused">
             <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
@@ -1758,15 +1772,28 @@
                     <TextBlock Text="LB" />
                 </Border>
                 <ScrollViewer x:Name="GamepadRailScroller" Grid.Column="1" HorizontalScrollBarVisibility="Hidden"
-                              VerticalScrollBarVisibility="Disabled">
-                    <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                              VerticalScrollBarVisibility="Disabled" SizeChanged="OnGamepadRailSizeChanged">
+                    <Panel>
+                        <!-- Behind the tabs, snapped over the active one by UpdateRailIndicator. -->
+                        <Border x:Name="GamepadRailIndicator" Classes="gamepad-platform-indicator"
+                                Width="0" Height="54" IsVisible="False" />
+                        <StackPanel x:Name="GamepadRailTabs" Orientation="Horizontal" Spacing="10"
+                                    HorizontalAlignment="Center">
                         <Button x:Name="GamepadAllGamesTab" Classes="gamepad-platform"
                                 Classes.controller-input="{Binding IsGamepadControllerInputActive}"
                                 Command="{Binding ShowAllGamesCommand}"
                                 Classes.selected="{Binding IsAllGamesSelected}"
-                                MinHeight="54" Padding="22,10">
-                            <TextBlock Text="All Games" VerticalAlignment="Center"
-                                       FontSize="{DynamicResource EmuGpLabelSize}" />
+                                ToolTip.Tip="All Games" AutomationProperties.Name="All Games"
+                                MinHeight="54" Padding="14,10">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <!-- No bitmap exists for "everything", so a 2x2 grid glyph stands in for
+                                     the console badges the other tabs carry. -->
+                                <PathIcon Width="30" Height="30"
+                                          Data="M3,3 H10 V10 H3 Z M14,3 H21 V10 H14 Z M3,14 H10 V21 H3 Z M14,14 H21 V21 H14 Z" />
+                                <TextBlock Text="All Games" VerticalAlignment="Center" Margin="10,0,2,0"
+                                           IsVisible="{Binding IsAllGamesSelected}"
+                                           FontSize="{DynamicResource EmuGpLabelSize}" />
+                            </StackPanel>
                         </Button>
                         <ItemsControl ItemsSource="{Binding GamepadPlatforms}">
                             <ItemsControl.ItemsPanel>
@@ -1774,22 +1801,28 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:GamepadPlatformTabViewModel">
+                                    <!-- Icon-only rail: the name is dropped to declutter and only
+                                         reappears on the active tab so "you are here" stays legible.
+                                         Tooltip/automation keep the name for pointer and screen readers. -->
                                     <Button Classes="gamepad-platform"
                                             Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                            Classes.selected="{Binding IsActive}" MinHeight="54" Padding="18,10"
+                                            Classes.selected="{Binding IsActive}" MinHeight="54" Padding="14,10"
+                                            ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}"
                                             Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).SelectPlatformCommand}"
                                             CommandParameter="{Binding System}">
-                                        <Grid ColumnDefinitions="26,*" ColumnSpacing="9">
-                                            <Image Grid.Column="0" Width="26" Height="26" Source="{Binding Artwork}"
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <Image Width="30" Height="30" Source="{Binding Artwork}"
                                                    RenderOptions.BitmapInterpolationMode="None" />
-                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Margin="10,0,2,0"
+                                                       IsVisible="{Binding IsActive}"
                                                        FontSize="{DynamicResource EmuGpLabelSize}" />
-                                        </Grid>
+                                        </StackPanel>
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                    </StackPanel>
+                        </StackPanel>
+                    </Panel>
                 </ScrollViewer>
                 <Border Grid.Column="2" Classes="gamepad-key" VerticalAlignment="Center">
                     <TextBlock Text="RB" />

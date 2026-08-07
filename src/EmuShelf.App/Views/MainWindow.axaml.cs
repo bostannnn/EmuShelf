@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.ComponentModel;
@@ -19,6 +20,9 @@ public partial class MainWindow : Window
     private GamepadScraperViewModel? _gamepadScraper;
     private Point? _lastGamepadPointerPosition;
     private int _requestedSettingsTextEntryRevision = -1;
+    // False until the sliding rail pill has been snapped onto the active tab once; the first placement
+    // must not animate in from the left edge.
+    private bool _railIndicatorReady;
 
     // Rubber-band (marquee) selection for the desktop library. A left-press on the empty canvas arms
     // it; the first drag past this threshold begins it. Origin/current are in LibraryContentPanel
@@ -723,12 +727,78 @@ public partial class MainWindow : Window
         if (_gamepadViewModel is null || !_gamepadViewModel.IsGamepadMode)
             return;
 
-        Control? tab = _gamepadViewModel.IsAllGamesSelected
+        ActiveGamepadRailTab()?.BringIntoView();
+        UpdateRailIndicator(animate: true);
+    }
+
+    private Control? ActiveGamepadRailTab()
+    {
+        if (_gamepadViewModel is null)
+            return null;
+
+        return _gamepadViewModel.IsAllGamesSelected
             ? GamepadAllGamesTab
             : GamepadRailScroller.GetVisualDescendants()
                 .OfType<Button>()
                 .FirstOrDefault(button => button.DataContext is GamepadPlatformTabViewModel { IsActive: true });
-        tab?.BringIntoView();
+    }
+
+    // A resize — including the first paint when gamepad mode becomes visible — relays out the tabs, so
+    // re-place the pill onto the active tab without a glide: there is no user move to animate.
+    private void OnGamepadRailSizeChanged(object? sender, SizeChangedEventArgs e) =>
+        UpdateRailIndicator(animate: false);
+
+    // One selection pill sits behind the tabs and is moved to overlay the active tab, so a platform
+    // switch reads as the highlight travelling left/right rather than popping in place per tab. The
+    // active tab grows to show its name, so force layout before measuring, then size the pill to the
+    // tab and drive a translate transform to it. Only the translate eases (the composited transition on
+    // Border.gamepad-platform-indicator); Width/Height are applied instantly, because animating a layout
+    // property is a per-frame UI-thread layout pass that stutters under the platform-switch relayout.
+    private void UpdateRailIndicator(bool animate)
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true })
+            return;
+
+        var indicator = GamepadRailIndicator;
+        if (indicator?.Parent is not Visual reference)
+            return;
+
+        var active = ActiveGamepadRailTab();
+        if (active is null)
+            return;
+
+        GamepadRailTabs.UpdateLayout();
+        if (active.Bounds.Width <= 0)
+            return;
+
+        var origin = active.TranslatePoint(new Point(0, 0), reference);
+        if (origin is null)
+            return;
+
+        var builder = new TransformOperations.Builder(1);
+        builder.AppendTranslate(origin.Value.X, origin.Value.Y);
+        var target = builder.Build();
+
+        // The first placement (and every resize) must appear already on the active tab, not glide in
+        // from the left edge, so suspend the transitions for that one snap and restore them afterwards.
+        if (!animate || !_railIndicatorReady)
+        {
+            var transitions = indicator.Transitions;
+            indicator.Transitions = null;
+            indicator.Width = active.Bounds.Width;
+            indicator.Height = active.Bounds.Height;
+            indicator.RenderTransform = target;
+            indicator.IsVisible = true;
+            indicator.UpdateLayout();
+            indicator.Transitions = transitions;
+            _railIndicatorReady = true;
+            return;
+        }
+
+        indicator.Width = active.Bounds.Width;
+        indicator.Height = active.Bounds.Height;
+        indicator.RenderTransform = target;
+        indicator.IsVisible = true;
     }
 
     private void OnOpenSearchClick(object? sender, RoutedEventArgs e)
