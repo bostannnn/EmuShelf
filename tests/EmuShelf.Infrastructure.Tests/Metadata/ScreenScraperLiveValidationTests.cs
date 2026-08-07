@@ -16,6 +16,9 @@ public class ScreenScraperLiveValidationTests(ITestOutputHelper output)
     public const string OptInVariable = "EMUSHELF_TEST_SCREENSCRAPER";
     public const string AccountUsernameVariable = "SCREENSCRAPER_SSID";
     public const string AccountPasswordVariable = "SCREENSCRAPER_SSPASSWORD";
+    // Points at a clean No-Intro .3ds/.cci dump so the 3DS whole-file hash route can be validated
+    // without a fabricated hash. Absent = that one check is a silent no-op.
+    public const string Rom3dsVariable = "SCREENSCRAPER_TEST_3DS_ROM";
 
     [Fact]
     public async Task Account_Connects_AndSystemMapMatchesLiveCatalogue()
@@ -89,6 +92,107 @@ public class ScreenScraperLiveValidationTests(ITestOutputHelper output)
         }
 
         Assert.True(matched > 0, "No serial lookup matched a game; serial-based matching may need a different format.");
+    }
+
+    [Fact]
+    public async Task Serial_Lookup_MatchesNewlyRoutedDiscSystems()
+    {
+        if (!TryGetLiveContext(out var developer, out var account))
+            return;
+
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        var client = new ScreenScraperClient(httpClient, developer!);
+
+        // Systems wired to the serial route after the disc-serial fix. Serials are in the exact shape
+        // EmuShelf extracts (GameCube/Wii: the 6-char disc game code; PS3: the hyphenated title id;
+        // Dreamcast: the IP.BIN product number, whose Redump spelling varies on the MK- prefix, so
+        // both forms are tried). Several games per system so one stale code can't fail a whole system.
+        (int System, string Serial, string Hint)[] cases =
+        [
+            (13, "GALE01", "Super Smash Bros. Melee (GameCube)"),
+            (13, "GZLE01", "Zelda: The Wind Waker (GameCube)"),
+            (16, "RMCE01", "Mario Kart Wii (Wii)"),
+            (16, "RSBE01", "Super Smash Bros. Brawl (Wii)"),
+            (59, "BLUS-30443", "Demon's Souls (PS3, US)"),
+            (59, "BLES-00932", "Demon's Souls (PS3, EU)"),
+            (23, "MK-51000", "Sonic Adventure (Dreamcast, MK- prefix)"),
+            (23, "51000", "Sonic Adventure (Dreamcast, no prefix)"),
+        ];
+
+        var matchedSystems = new HashSet<int>();
+        foreach (var (system, serial, hint) in cases)
+        {
+            var result = await client.GetGameInfoAsync(
+                account!,
+                new ScreenScraperGameRequest(system, $"{serial}.rvz", 0, Serial: serial));
+            var name = result.Data?.Names.FirstOrDefault()?.Value;
+            output.WriteLine($"  [{system,3}] {serial,-12} [{hint}] -> {result.Status} {name}");
+            if (result.IsSuccess && !string.IsNullOrWhiteSpace(name))
+                matchedSystems.Add(system);
+        }
+
+        var unmatched = cases.Select(entry => entry.System).Distinct()
+            .Where(system => !matchedSystems.Contains(system))
+            .ToArray();
+        Assert.True(
+            unmatched.Length == 0,
+            "ScreenScraper returned no serial match for system id(s): " +
+            $"{string.Join(", ", unmatched)}. That route may need a different serial format — see the " +
+            "logged results above for what each candidate returned.");
+    }
+
+    [Fact]
+    public async Task Hash_Lookup_MatchesNintendo3dsCartridgeDump()
+    {
+        if (!TryGetLiveContext(out var developer, out var account))
+            return;
+
+        var romPath = Environment.GetEnvironmentVariable(Rom3dsVariable);
+        if (string.IsNullOrWhiteSpace(romPath) || !File.Exists(romPath))
+        {
+            output.WriteLine(
+                $"skipped: set {Rom3dsVariable} to a clean No-Intro .3ds/.cci dump to validate 3DS hashing.");
+            return;
+        }
+
+        // Compute the same whole-file MD5/SHA-1 + size the fingerprint service would, streaming so a
+        // multi-gigabyte dump is never held in memory. If clean-dump hashing is the right route, the
+        // No-Intro-aligned hash resolves the game.
+        using var md5 = System.Security.Cryptography.IncrementalHash.CreateHash(
+            System.Security.Cryptography.HashAlgorithmName.MD5);
+        using var sha1 = System.Security.Cryptography.IncrementalHash.CreateHash(
+            System.Security.Cryptography.HashAlgorithmName.SHA1);
+        long size = 0;
+        var buffer = new byte[1024 * 1024];
+        await using (var stream = File.OpenRead(romPath))
+        {
+            int read;
+            while ((read = await stream.ReadAsync(buffer)) > 0)
+            {
+                md5.AppendData(buffer, 0, read);
+                sha1.AppendData(buffer, 0, read);
+                size += read;
+            }
+        }
+
+        using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(45) };
+        var client = new ScreenScraperClient(httpClient, developer!);
+        var result = await client.GetGameInfoAsync(
+            account!,
+            new ScreenScraperGameRequest(
+                17,
+                Path.GetFileName(romPath),
+                size,
+                Md5: Convert.ToHexString(md5.GetHashAndReset()),
+                Sha1: Convert.ToHexString(sha1.GetHashAndReset())));
+
+        var name = result.Data?.Names.FirstOrDefault()?.Value;
+        output.WriteLine($"  3DS {Path.GetFileName(romPath)} ({size} bytes) -> {result.Status} {name}");
+        Assert.True(
+            result.IsSuccess && !string.IsNullOrWhiteSpace(name),
+            "ScreenScraper returned no whole-file hash match for the supplied 3DS dump. If it is a " +
+            "clean No-Intro .3ds/.cci, the 3DS hash route may need a different rule; a trimmed or " +
+            "decrypted dump legitimately misses and falls back to title search.");
     }
 
     private bool TryGetLiveContext(

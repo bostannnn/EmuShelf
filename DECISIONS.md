@@ -4918,3 +4918,51 @@ Polishing pass over the Desktop Settings window (`EmulatorSettingsWindow`). Thre
   Giving the Browse button a distinct id would break parity unless mirrored on the Gamepad surface, so it
   was left as-is. The Emulators section (not in the parity set) gained Desktop-only
   `emulators.{systemId}.*` ids for scripting/accessibility.
+
+## 2026-08-07 — ScreenScraper matches GameCube/Wii/PS3/Dreamcast by disc product code, not whole-file hash
+
+GameCube (and Wii) could not be auto-scraped: they were not in the preview service's serial-route
+set, so they fell through to the whole-file hash route, which rejects every compressed/container
+format (`.rvz`/`.wbfs`/`.ciso`) as `UnsupportedFormat` and, for a bare `.iso`, sends a full-image
+hash ScreenScraper does not index for these systems. PS3 and Dreamcast were worse — their
+fingerprint policy has no whole-file extensions at all, so every automatic lookup failed.
+
+- **Route these four disc systems through `serialnum`.** `SerialSystems` now includes `gamecube`,
+  `wii`, `playstation3`, and `dreamcast`. The disc product code is read from inside the container
+  (the small header only), so a compressed image that cannot be whole-file hashed still matches —
+  the same story CHD/CSO already had for PlayStation.
+- **`FindSerial` accepts `DiscId` as well as `Serial`.** GameCube/Wii emit the 6-char disc game code
+  as `GameIdentifierKind.DiscId`; PlayStation/Dreamcast emit `Serial`. Both are what ScreenScraper
+  indexes as `serialnum`. A `Serial` is preferred when a system offers both, so the more specific
+  disc serial wins. The match is still recorded as `GameProviderMatchMethod.Serial` (no new enum
+  ordinal / DB migration).
+- **Whole-file hash extension lists were deliberately NOT widened.** A `.rvz`/`.wbfs`/`.ciso` is a
+  container whose bytes are not the raw disc image, so its whole-file hash would never match the
+  catalogue; the serial route is the correct path for them. `ScreenScraperFingerprintProfileTests`
+  still asserts these formats are never whole-file hashed.
+- Cartridge header codes remain excluded from serial matching, so a rom hack is never matched to the
+  original release by a shared code.
+
+## 2026-08-07 — ScreenScraper matches Nintendo 3DS by whole-file hash, not serial
+
+Follow-up to the disc-serial fix. 3DS previously had no ScreenScraper match route at all (empty
+fingerprint policy, not serial-routed), so every automatic lookup returned `UnsupportedFormat` and
+only the manual title search could reach it. Checked how ScreenScraper actually indexes 3DS: like
+other ROM systems it matches by whole-file hash (CRC/MD5/SHA1) + size, aligned to No-Intro — the
+NCCH product code is *not* the reliable key, and 3DS is cartridge-based so its header code is shared
+by rom hacks (the reason cartridge systems are excluded from the serial route).
+
+- **`.3ds`/`.cci` are now whole-file hashed.** They are the same CTR card image (only the extension
+  differs) and are exactly the file No-Intro/ScreenScraper index, so a clean dump gets an exact hash
+  match like NES/SNES/GBA/NDS. A miss (trimmed/decrypted dump) returns NotFound and the single-game
+  scraper falls back to title search, as before.
+- **Serial route deliberately NOT used for 3DS.** The NCCH product code is a cartridge header code a
+  rom hack keeps, and hash matching already distinguishes hacks; whether ScreenScraper even indexes
+  3DS by serialnum is unverified. So 3DS stays out of `SerialSystems`.
+- **`.cia`/`.cxi`/`.app`/homebrew/compressed stay excluded** from whole-file hashing — they are not
+  the catalogued cartridge dump, so their whole-file hash would never match; they fall back to
+  filename/title search. Locked by `ScreenScraperFingerprintProfileTests`.
+- The multi-gigabyte-dump cost concern that originally gated this is handled the same way as every
+  other hashable system: a one-time read gated behind fingerprint consent, cached by path+size+mtime.
+- Batch scraping now covers clean 3DS dumps too (it passes fingerprint consent); before, 3DS was
+  always Unsupported in batch.

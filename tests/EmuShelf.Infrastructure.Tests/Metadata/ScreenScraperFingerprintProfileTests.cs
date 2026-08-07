@@ -25,6 +25,10 @@ public class ScreenScraperFingerprintProfileTests
     [InlineData("wii", ".wbfs")]
     [InlineData("arcade", ".zip")]
     [InlineData("dreamcast", ".gdi")]
+    // 3DS whole-file hashing covers only the No-Intro NCSD cartridge dump; the installable and
+    // single-title packagings are a different file whose hash is not in the catalogue.
+    [InlineData("3ds", ".cia")]
+    [InlineData("3ds", ".cxi")]
     public void ContainerAndDescriptorFormats_AreNeverWholeFileHashed(string systemId, string extension)
     {
         Assert.True(KnownScreenScraperFingerprintProfiles.TryGet(systemId, out var profile));
