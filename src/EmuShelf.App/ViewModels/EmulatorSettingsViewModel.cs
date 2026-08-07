@@ -1168,6 +1168,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 CloudSaveSyncConnectResult.Connected => "Connected. Use Sync now to reconcile enabled saves.",
                 CloudSaveSyncConnectResult.InvalidInput => "Enter a remote name and cloud folder, then configure at least one save platform.",
                 CloudSaveSyncConnectResult.RcloneMissing => "rclone isn't installed — put rclone.exe beside EmuShelf (use “Get rclone” above), then reconnect.",
+                CloudSaveSyncConnectResult.SignInServerBusy => "A previous Google sign-in is still open. Close that browser window (or restart EmuShelf), then try again.",
                 _ => "Couldn't connect. The Google sign-in may have been declined.",
             };
             if (result == CloudSaveSyncConnectResult.Connected)

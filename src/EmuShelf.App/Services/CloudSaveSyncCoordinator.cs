@@ -246,6 +246,13 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         {
             throw;
         }
+        catch (RcloneSignInServerBusyException ex)
+        {
+            // A leftover sign-in is holding rclone's loopback port. Surface it distinctly so the user
+            // is told to close it or restart, not that they declined the sign-in.
+            _logger.Error("Cloud save connect failed: the sign-in port is still in use.", ex);
+            return CloudSaveSyncConnectResult.SignInServerBusy;
+        }
         catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
         {
             _logger.Error("Cloud save connect failed.", ex);
@@ -996,6 +1003,12 @@ public enum CloudSaveSyncConnectResult
 
     /// <summary>rclone reported a failure (e.g. the OAuth flow was declined or the remote is unreachable).</summary>
     Failed,
+
+    /// <summary>
+    /// rclone could not bind its loopback OAuth port because a previous, unfinished sign-in is still
+    /// holding it. Distinct from <see cref="Failed"/> so the user is told to close it or restart.
+    /// </summary>
+    SignInServerBusy,
 }
 
 /// <summary>One supported save platform as Settings needs to present it.</summary>
