@@ -11,8 +11,6 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 {
     private readonly Dictionary<string, StoredUnit> _units = new(StringComparer.Ordinal);
 
-    public bool Connected { get; set; } = true;
-
     public bool ThrowOnAccess { get; set; }
 
     public int Uploads { get; private set; }
@@ -46,9 +44,6 @@ internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
     public byte[] Content(string unitId) => _units[unitId].Content;
 
     public string? Compatibility(string unitId) => _units[unitId].Compatibility;
-
-    public Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(Connected);
 
     public Task<IReadOnlyList<SaveUnitSnapshot>> ListAsync(CancellationToken cancellationToken = default)
     {

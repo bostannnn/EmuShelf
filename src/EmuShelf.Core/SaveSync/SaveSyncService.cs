@@ -28,6 +28,18 @@ public sealed class SaveSyncService
         "This machine could not read the local save — it may be open in an emulator, a symlinked " +
         "folder, or otherwise unreadable — so it was skipped this pass.";
 
+    // One platform whose emulator configuration cannot be read must not fault every other platform's
+    // sync in the same pass, so the platform sits out and is reported rather than throwing.
+    private const string UnreadableConfigurationReason =
+        "This machine could not read this platform's emulator configuration, so the platform was " +
+        "skipped this pass.";
+
+    // A remote unit id that resolves outside its declared root — a corrupt or crafted cloud index
+    // entry — is rejected by the endpoint's boundary check. Skipping the one unit keeps a single bad
+    // entry from faulting the whole pass.
+    private const string UnsafeLocationReason =
+        "This save's location could not be safely resolved on this machine, so it was skipped this pass.";
+
     /// <summary>
     /// Automatically reconciles every unit that exists locally or remotely for the provider's
     /// system, using the last-synced baseline to choose a safe direction for each.
@@ -55,11 +67,32 @@ public sealed class SaveSyncService
             .ToDictionary(snapshot => snapshot.UnitId, StringComparer.Ordinal);
         var work = new List<SyncWorkItem>();
         var claimedUnitIds = new HashSet<string>(StringComparer.Ordinal);
+        var results = new List<SaveUnitSyncResult>();
         foreach (var target in targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var provider = target.Provider;
-            var localUnits = await provider.GetSaveUnitsAsync(cancellationToken);
+            IReadOnlyList<SaveUnit> localUnits;
+            try
+            {
+                localUnits = await provider.GetSaveUnitsAsync(cancellationToken);
+            }
+            catch (SaveProviderConfigurationException ex)
+            {
+                results.Add(new SaveUnitSyncResult(
+                    ConfigurationUnitId(provider),
+                    SaveSyncAction.Skipped,
+                    string.IsNullOrWhiteSpace(ex.Message) ? UnreadableConfigurationReason : ex.Message));
+                continue;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                results.Add(new SaveUnitSyncResult(
+                    ConfigurationUnitId(provider),
+                    SaveSyncAction.Skipped,
+                    UnreadableConfigurationReason));
+                continue;
+            }
             var displayNames = localUnits.ToDictionary(unit => unit.UnitId, unit => unit.DisplayName, StringComparer.Ordinal);
             var unitIds = new SortedSet<string>(
                 localUnits.Select(unit => unit.UnitId),
@@ -86,7 +119,6 @@ public sealed class SaveSyncService
         // whole remote. Decisions depend only on each unit's own local/remote/baseline state, so
         // taking them all up front is equivalent to interleaving them.
         var planned = new List<PlannedUnit>(work.Count);
-        var results = new List<SaveUnitSyncResult>();
         foreach (var item in work)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -112,6 +144,14 @@ public sealed class SaveSyncService
                     item.UnitId,
                     SaveSyncAction.Skipped,
                     UnreadableLocalReason));
+                continue;
+            }
+            catch (ArgumentException)
+            {
+                results.Add(new SaveUnitSyncResult(
+                    item.UnitId,
+                    SaveSyncAction.Skipped,
+                    UnsafeLocationReason));
                 continue;
             }
 
@@ -205,6 +245,17 @@ public sealed class SaveSyncService
                     unit.Item.UnitId,
                     SaveSyncAction.Skipped,
                     DescribeUnresolvable(ex)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The save became unreadable/unwritable during apply — typically the emulator
+                // relaunched and locked the file mid-pass. Skip this one unit (its baseline is not
+                // advanced, so the next pass retries) rather than faulting every other unit's sync.
+                // InvalidDataException is deliberately not caught here: a corrupt download stays fatal.
+                results.Add(new SaveUnitSyncResult(
+                    unit.Item.UnitId,
+                    SaveSyncAction.Skipped,
+                    UnreadableLocalReason));
             }
 
             completed++;
@@ -371,6 +422,11 @@ public sealed class SaveSyncService
         await _manifests.SaveAsync(manifest, cancellationToken);
         return new SaveSyncReport(results);
     }
+
+    // A synthetic unit id under the provider's own namespace so a whole-platform skip is attributed
+    // to the right platform's row by the coordinator, exactly as a per-unit skip would be.
+    private static string ConfigurationUnitId(ISaveLocationProvider provider) =>
+        provider.UnitIdPrefix + "(configuration)";
 
     private static string DescribeUnresolvable(SaveUnitNotResolvableException exception) =>
         string.IsNullOrWhiteSpace(exception.UserReason)

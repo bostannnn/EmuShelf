@@ -4209,6 +4209,10 @@ public partial class MainViewModel : ViewModelBase
             parts.Add(DescribeConflicts(report.Conflicts, context: null));
         if (report.Unchanged > 0)
             parts.Add($"{report.Unchanged} already in sync");
+        // Without this, a pass whose units all skipped leaves parts empty and prints a dangling
+        // "save sync after exit: " with nothing after the colon.
+        if (report.Skipped.Count > 0)
+            parts.Add($"{report.Skipped.Count} skipped");
         return "save sync after exit: " + string.Join(", ", parts);
     }
 

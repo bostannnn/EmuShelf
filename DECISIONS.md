@@ -4966,3 +4966,38 @@ by rom hacks (the reason cartridge systems are excluded from the serial route).
   other hashable system: a one-time read gated behind fingerprint consent, cached by path+size+mtime.
 - Batch scraping now covers clean 3DS dumps too (it passes fingerprint consent); before, 3DS was
   always Unsupported in batch.
+
+## 2026-08-07 — Save-sync review fixes: per-platform isolation, Dolphin JP paths, crash recovery
+
+From a three-agent review of everything touching save sync. Changes and the non-obvious calls:
+
+- **A locked file or unreadable emulator config now costs one platform, not the whole "Sync all".**
+  The apply loop (`SaveSyncService`) previously caught only `CloudPayloadMissingException` /
+  `SaveUnitNotResolvableException`, and provider enumeration ran outside any try, so one
+  `IOException`/`UnauthorizedAccessException` mid-apply, one out-of-root `ArgumentException`, or one
+  `SaveProviderConfigurationException` propagated out of `SyncAllAsync` — dropping the manifest flush
+  and every other platform's sync (the coordinator batches all systems into one call). The apply loop
+  now also skips `IOException`/`UnauthorizedAccessException`; the snapshot loop also skips
+  `ArgumentException`; per-target enumeration skips `SaveProviderConfigurationException`. A
+  whole-platform skip is recorded under a synthetic `<prefix>(configuration)` unit id so the row still
+  surfaces it. **`InvalidDataException` is deliberately still fatal** — a corrupt download must not be
+  silently skipped (guarded by `CorruptDownload_DoesNotReplaceLocalOrAdvanceItsBaseline`).
+- **PCSX2 unit-id name guard now rejects `.`/`..`.** `Path.GetFileName("..") == ".."`, so the
+  round-trip check alone admitted the parent-dir name and let a crafted cloud id resolve outside the
+  memcards root. This was the only provider missing that guard; the others anchor the name shape.
+- **Dolphin: unit ids keep the logical region token "JPN"; physical paths map to Dolphin's on-disk
+  "JAP".** Dolphin names Japanese saves `MemoryCard*.JAP.raw` and `GC/JAP/Card *`. Resolving a fresh
+  download to a `JPN` path wrote where Dolphin never reads. The unit id keeps `JPN` so it stays stable
+  across machines; only the resolved path is mapped via `OnDiskRegion`. (Was previously a
+  read-only-if-JAP-exists fallback, which fixed reads but not new writes.)
+- **Interrupted folder writes self-heal.** `FileSystemLocalSaveEndpoint` folder installs use two
+  renames (live → `_emushelf-previous-*`, then incoming → live); a crash between them left the save
+  only under the staging sibling. Staging dirs are now deterministic (`_emushelf-previous-<leaf>` /
+  `_emushelf-incoming-<leaf>`) so a lazy sweep on the next snapshot/write restores the displaced
+  folder when the live path is missing, drops it when newer content is already installed, and clears
+  unverified incoming scratch. Deterministic names (not guids) are safe because sync is single-flight.
+- Removed confirmed-dead code: `CloudSaveSyncCoordinator.VerifyCloudDataAsync`,
+  `ICloudSyncTransport.IsConnectedAsync` + its rclone `lsjson` impl, RetroArch `_corePath` and
+  `RetroArchCore.CoreId`. Off-thread provider construction (`Task.Run`) in the sync/force pipelines to
+  match detection; memoized Dolphin GCI folder reads + single-enumeration; lazy RetroArch per-game
+  override probe (detection-only); skipped counts now surfaced in the sync status lines.

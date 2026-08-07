@@ -158,7 +158,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         foreach (var folder in folders)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            foreach (var group in GetGciFiles(folder, cancellationToken).GroupBy(file => file.GameId))
+            foreach (var group in GetGciFiles(state, folder, cancellationToken).GroupBy(file => file.GameId))
             {
                 if (saves.TryGetValue(group.Key, out var other) && !PathComparer.Equals(other.Folder, folder))
                 {
@@ -229,7 +229,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             var folder = ResolveGciFolderForGame(state, gciSlot, gameId);
             if (folder is null)
                 return null;
-            var files = GetGciFiles(folder, CancellationToken.None)
+            var files = GetGciFiles(state, folder, CancellationToken.None)
                 .Where(file => file.GameId == gameId)
                 .OrderBy(file => file.Identity, StringComparer.Ordinal)
                 .ToList();
@@ -473,18 +473,12 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         var suffix = char.ToUpperInvariant(slot);
         var configured = state.Configuration.Get("Core", $"Memcard{suffix}Path");
         return string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(state.UserDirectory, "GC", $"MemoryCard{suffix}.{region}.raw")
+            ? Path.Combine(state.UserDirectory, "GC", $"MemoryCard{suffix}.{OnDiskRegion(region)}.raw")
             : SubstituteRawRegion(ResolveConfiguredPath(configured, state.UserDirectory), region);
     }
 
-    private IReadOnlyList<RawCard> GetExistingRawCards(DolphinState state, char slot, string region)
-    {
-        var expected = GetExpectedRawCardPath(state, slot, region);
-        var candidates = ExistingRawCards(expected).ToList();
-        if (region == "JPN" && candidates.Count == 0)
-            candidates.AddRange(ExistingRawCards(ReplaceTerminalRegion(expected, "JPN", "JAP")));
-        return candidates;
-    }
+    private IReadOnlyList<RawCard> GetExistingRawCards(DolphinState state, char slot, string region) =>
+        ExistingRawCards(GetExpectedRawCardPath(state, slot, region)).ToList();
 
     private static IEnumerable<RawCard> ExistingRawCards(string expected)
     {
@@ -551,7 +545,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             return overridden;
 
         var containing = Regions.Select(region => ResolveGciFolder(state, slot, region))
-            .Where(folder => GetGciFiles(folder, CancellationToken.None).Any(file => file.GameId == gameId))
+            .Where(folder => GetGciFiles(state, folder, CancellationToken.None).Any(file => file.GameId == gameId))
             .Distinct(PathComparer)
             .ToList();
         if (containing.Count > 1)
@@ -572,37 +566,37 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         var configured = state.Configuration.Get("Core", $"GCIFolder{suffix}Path");
         if (string.IsNullOrWhiteSpace(configured))
         {
-            var modern = Path.Combine(state.UserDirectory, "GC", region, $"Card {suffix}");
-            if (region == "JPN" && !Directory.Exists(modern))
-            {
-                var legacy = Path.Combine(state.UserDirectory, "GC", "JAP", $"Card {suffix}");
-                if (Directory.Exists(legacy))
-                    return legacy;
-            }
-            return modern;
+            return Path.Combine(state.UserDirectory, "GC", OnDiskRegion(region), $"Card {suffix}");
         }
 
         var path = ResolveConfiguredPath(configured, state.UserDirectory);
         var trimmed = Path.TrimEndingDirectorySeparator(path);
         var finalSegment = Path.GetFileName(trimmed);
-        if (finalSegment is "USA" or "JPN" or "EUR" or "DEV")
+        if (finalSegment is "USA" or "JPN" or "JAP" or "EUR" or "DEV")
         {
             trimmed = Path.GetDirectoryName(trimmed)!;
         }
-        var resolved = Path.Combine(trimmed, region);
-        if (region == "JPN" && !Directory.Exists(resolved))
-        {
-            var legacy = Path.Combine(trimmed, "JAP");
-            if (Directory.Exists(legacy))
-                return legacy;
-        }
-        return resolved;
+        return Path.Combine(trimmed, OnDiskRegion(region));
     }
 
-    private static IReadOnlyList<GciFile> GetGciFiles(string folder, CancellationToken cancellationToken)
+    private static IReadOnlyList<GciFile> GetGciFiles(DolphinState state, string folder, CancellationToken cancellationToken)
+    {
+        var key = Path.GetFullPath(folder);
+        if (state.GciFolderCache.TryGetValue(key, out var cached))
+            return cached;
+        var files = ReadGciFiles(folder, cancellationToken);
+        state.GciFolderCache[key] = files;
+        return files;
+    }
+
+    private static IReadOnlyList<GciFile> ReadGciFiles(string folder, CancellationToken cancellationToken)
     {
         if (!Directory.Exists(folder))
             return [];
+
+        // One enumeration, not two: the reparse/nested-directory guard has to stat every entry, so
+        // collect the .gci paths in the same pass rather than scanning the folder a second time.
+        var gciPaths = new List<string>();
         foreach (var entry in Directory.EnumerateFileSystemEntries(folder))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -617,11 +611,12 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
                 throw new DolphinConfigurationFormatException(
                     "A Dolphin GCI folder contains a nested directory and cannot be mapped to individual save files safely.");
             }
+            if (Path.GetExtension(entry).Equals(".gci", StringComparison.OrdinalIgnoreCase))
+                gciPaths.Add(entry);
         }
+
         var result = new List<GciFile>();
-        foreach (var path in Directory.EnumerateFiles(folder, "*", SearchOption.TopDirectoryOnly)
-                     .Where(path => Path.GetExtension(path).Equals(".gci", StringComparison.OrdinalIgnoreCase))
-                     .OrderBy(path => path, StringComparer.Ordinal))
+        foreach (var path in gciPaths.OrderBy(path => path, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (TryReadGci(path, out var gameId, out var identity))
@@ -813,7 +808,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         var directory = Path.GetDirectoryName(path)!;
         var extension = Path.GetExtension(path);
         var name = Path.GetFileNameWithoutExtension(path);
-        foreach (var marker in new[] { "USA", "JAP", "EUR", "DEV" })
+        foreach (var marker in new[] { "USA", "JAP", "JPN", "EUR", "DEV" })
         {
             if (name.EndsWith("." + marker, StringComparison.Ordinal))
             {
@@ -821,18 +816,14 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
                 break;
             }
         }
-        return Path.Combine(directory, $"{name}.{region}{extension}");
+        return Path.Combine(directory, $"{name}.{OnDiskRegion(region)}{extension}");
     }
 
-    private static string ReplaceTerminalRegion(string path, string from, string to)
-    {
-        var directory = Path.GetDirectoryName(path)!;
-        var extension = Path.GetExtension(path);
-        var name = Path.GetFileNameWithoutExtension(path);
-        return name.EndsWith("." + from, StringComparison.Ordinal)
-            ? Path.Combine(directory, $"{name[..^from.Length]}{to}{extension}")
-            : path;
-    }
+    // Dolphin's on-disk name for the Japanese region is "JAP" — both MemoryCard*.JAP.raw and
+    // GC/JAP/Card * — while EmuShelf's logical region token (and its unit ids) use "JPN". Map to the
+    // physical name wherever a real path is built; a download written to "JPN" lands where Dolphin
+    // never reads it. Unit ids keep "JPN" so they stay stable across machines.
+    private static string OnDiskRegion(string region) => region == "JPN" ? "JAP" : region;
 
     private static string AddRawCardVariant(string path, string? variant)
     {
@@ -934,7 +925,14 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
     private sealed record DolphinState(
         string UserDirectory,
         IniDocument Configuration,
-        IReadOnlyDictionary<(char Slot, string GameId), string> PerGameGciOverrides);
+        IReadOnlyDictionary<(char Slot, string GameId), string> PerGameGciOverrides)
+    {
+        // Memoizes each GCI folder's parsed contents for the lifetime of one resolution. Detection
+        // resolves every unit, and resolving one GCI unit probes up to four region folders, so
+        // without this the same folder's headers are re-opened and re-hashed O(units × regions) times.
+        public Dictionary<string, IReadOnlyList<GciFile>> GciFolderCache { get; } =
+            new(FilePathComparison.Comparer);
+    }
 
     private sealed record GciFile(string Path, string GameId, string Identity);
 

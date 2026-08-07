@@ -1,5 +1,6 @@
 using System.Text;
 using EmuShelf.Core.SaveSync;
+using EmuShelf.Integrations.Emulators.Dolphin;
 
 namespace EmuShelf.Infrastructure.Tests.SaveSync;
 
@@ -124,6 +125,73 @@ public sealed class SaveSyncServiceTests
         var skipped = Assert.Single(report.Skipped);
         Assert.Contains("could not read the local save", skipped.Reason, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(0, _remote.Uploads);
+    }
+
+    [Fact]
+    public async Task LocalSaveLockedDuringApply_SkipsOnlyThatUnit_AndStillFlushesAndSyncsTheRest()
+    {
+        // The emulator relaunches and locks one card's file after planning but before the transfer.
+        // That IOException in the apply loop must cost only its own unit, not fault the whole pass
+        // (which would drop the manifest flush and every other platform's sync too).
+        var locked = new SaveUnit("pcsx2/Mcd001.ps2", "locked card", SaveUnitKind.File);
+        var healthy = new SaveUnit("pcsx2/Mcd002.ps2", "healthy card", SaveUnitKind.File);
+        _local.Seed(locked.UnitId, Bytes("locked"), T0);
+        _local.Seed(healthy.UnitId, Bytes("healthy"), T0);
+        _local.ReadHook = unitId =>
+        {
+            if (unitId == locked.UnitId)
+                throw new IOException("the save file is in use by the emulator");
+        };
+
+        var report = await CreateService().SyncAsync(Provider(locked, healthy));
+
+        Assert.Contains(
+            report.Results,
+            result => result.UnitId == locked.UnitId && result.Action == SaveSyncAction.Skipped);
+        Assert.Equal(1, report.Uploaded);
+        Assert.True(_remote.Has(healthy.UnitId));
+        Assert.Equal(1, _remote.FlushCalls);
+        Assert.NotNull(_manifests.Current.Get(healthy.UnitId));
+        Assert.Null(_manifests.Current.Get(locked.UnitId));
+    }
+
+    [Fact]
+    public async Task ProviderWhoseConfigurationCannotBeRead_SkipsOnlyItsPlatform_NotTheWholePass()
+    {
+        // One platform's unreadable emulator config must not fault every other platform's sync in the
+        // same multi-provider pass. The broken platform sits out and is reported under its own id.
+        var ppsspp = new SaveUnit("ppsspp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
+        var pspLocal = new InMemoryLocalSaveEndpoint();
+        pspLocal.Seed(ppsspp.UnitId, Bytes("psp-save"), T0);
+
+        var report = await CreateService().SyncAllAsync(
+            [
+                new SaveSyncTarget(new UnreadableConfigProvider("gamecube", "dolphin/gc/"), _local),
+                new SaveSyncTarget(new FakeSaveLocationProvider("psp", ppsspp), pspLocal),
+            ]);
+
+        Assert.Contains(
+            report.Skipped,
+            result => result.UnitId.StartsWith("dolphin/gc/", StringComparison.Ordinal));
+        Assert.Equal(1, report.Uploaded);
+        Assert.True(_remote.Has(ppsspp.UnitId));
+    }
+
+    [Fact]
+    public async Task RemoteUnitResolvingOutsideItsRoot_IsSkipped_NotFatal()
+    {
+        // The endpoint rejects an out-of-root resolution (a corrupt/crafted cloud id) with an
+        // ArgumentException. That must skip the one unit, not propagate out of the pass.
+        _remote.Seed(FileCard.UnitId, Bytes("save"), T0);
+        _local.SnapshotHook = _ =>
+            throw new ArgumentException("The provider resolved the save unit outside its approved root.");
+
+        var report = await CreateService().SyncAsync(Provider(FileCard));
+
+        var skipped = Assert.Single(report.Skipped);
+        Assert.Equal(FileCard.UnitId, skipped.UnitId);
+        Assert.Contains("safely resolved", skipped.Reason, StringComparison.OrdinalIgnoreCase);
+        Assert.False(_local.Has(FileCard.UnitId));
     }
 
     [Fact]
@@ -423,6 +491,17 @@ public sealed class SaveSyncServiceTests
         public List<SaveSyncProgress> Reports { get; } = [];
 
         public void Report(SaveSyncProgress value) => Reports.Add(value);
+    }
+
+    // A provider whose emulator configuration cannot be read: enumeration fails closed with a
+    // SaveProviderConfigurationException, the exact shape the service must isolate per platform.
+    private sealed class UnreadableConfigProvider(string systemId, string unitIdPrefix) : ISaveLocationProvider
+    {
+        public string SystemId => systemId;
+        public string UnitIdPrefix => unitIdPrefix;
+        public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
+            throw new DolphinConfigurationFormatException("Dolphin.ini could not be read.");
+        public SaveUnitLocation? ResolveUnit(string unitId) => null;
     }
 
     private sealed class CompatibilityProvider(

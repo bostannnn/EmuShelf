@@ -7,14 +7,13 @@ namespace EmuShelf.Integrations.Emulators.RetroArch;
 /// The configured libretro core, identified by its file name and by the short core name RetroArch
 /// uses as the folder name when "sort saves into folders by core name" is on.
 /// </summary>
-/// <param name="CoreId">The core file name without its <c>_libretro</c> suffix and extension.</param>
 /// <param name="FileName">The core file name as configured, for messages.</param>
 /// <param name="Name">
 /// The core's short name — libretro's <c>corename</c>, e.g. <c>melonDS DS</c> — or null when it is
 /// not known. This is the folder name RetroArch sorts into, and it is deliberately not the info
 /// file's <c>display_name</c> ("Nintendo - DS (melonDS DS)"), which names the system, not the folder.
 /// </param>
-public sealed record RetroArchCore(string CoreId, string FileName, string? Name)
+public sealed record RetroArchCore(string FileName, string? Name)
 {
     /// <summary>
     /// Core names for the cores EmuShelf ships knowledge of. This is only a fallback: the
@@ -60,7 +59,6 @@ public sealed record RetroArchCore(string CoreId, string FileName, string? Name)
             coreId = coreId[..^suffix.Length];
 
         return new RetroArchCore(
-            coreId,
             fileName,
             ReadCoreName(coreId, retroArchDirectory) ?? KnownCoreNames.GetValueOrDefault(coreId));
     }
@@ -144,7 +142,6 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
 
     private readonly string _systemId;
     private readonly RetroArchCore? _core;
-    private readonly string? _corePath;
     private readonly Func<IReadOnlyCollection<string>>? _gameFileNames;
     private readonly string _installationDirectory;
     private readonly string? _directoryOverride;
@@ -171,7 +168,6 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         ArgumentException.ThrowIfNullOrWhiteSpace(installationDirectory);
         _systemId = systemId;
         _gameFileNames = gameFileNames;
-        _corePath = string.IsNullOrWhiteSpace(corePath) ? null : corePath.Trim();
         _installationDirectory = Path.GetFullPath(installationDirectory);
         _core = RetroArchCore.ForCorePath(corePath, _installationDirectory);
         _directoryOverride = string.IsNullOrWhiteSpace(directoryOverride)
@@ -199,7 +195,7 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
 
     /// <summary>Returns the effective save directory and the core it was resolved for.</summary>
     public Task<RetroArchSaveInfo> GetSaveInfoAsync(CancellationToken cancellationToken = default) =>
-        Task.Run(() => Resolve(cancellationToken), cancellationToken);
+        Task.Run(() => Resolve(cancellationToken, probePerGameOverride: true), cancellationToken);
 
     /// <summary>Returns the effective save directory.</summary>
     public async Task<string> GetSaveDirectoryAsync(CancellationToken cancellationToken = default) =>
@@ -282,7 +278,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         return _knownGameFileNames.Contains(Path.GetFileNameWithoutExtension(fileName));
     }
 
-    private RetroArchSaveInfo Resolve(CancellationToken cancellationToken)
+    // probePerGameOverride is only meaningful to detection, which surfaces HasUnreadPerGameOverride to
+    // the user. The sync path (ResolveUnit/GetSaveUnits) never reads that field, so it skips the scan
+    // that parses every per-game override cfg — work that would otherwise repeat on every unit.
+    private RetroArchSaveInfo Resolve(CancellationToken cancellationToken, bool probePerGameOverride = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var core = _core ?? throw new RetroArchConfigurationFormatException(
@@ -354,7 +353,8 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             core,
             sortedByCore,
             IsExclusive: sortedByCore,
-            HasUnreadPerGameOverride: HasPerGameSaveOverride(overrideRoot, core, cancellationToken));
+            HasUnreadPerGameOverride: probePerGameOverride &&
+                HasPerGameSaveOverride(overrideRoot, core, cancellationToken));
     }
 
     private RetroArchContentDirectories ResolveContentDirectories(CancellationToken cancellationToken)

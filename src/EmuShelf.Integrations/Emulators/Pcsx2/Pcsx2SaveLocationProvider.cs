@@ -266,8 +266,12 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
         return Path.Combine(home!, ".var", "app", "net.pcsx2.PCSX2", "config", "PCSX2", "memcards");
     }
 
+    // Path.GetFileName(".") == "." and Path.GetFileName("..") == "..", so the GetFileName round-trip
+    // alone would admit the current/parent-directory names and let a crafted unit id resolve outside
+    // the memory-cards root. Reject them explicitly, matching every other provider's name guard.
     private static bool IsSafeCardName(string value) =>
         !string.IsNullOrWhiteSpace(value) &&
+        value is not ("." or "..") &&
         string.Equals(Path.GetFileName(value), value, StringComparison.Ordinal) &&
         !value.Contains('/') &&
         !value.Contains('\\');

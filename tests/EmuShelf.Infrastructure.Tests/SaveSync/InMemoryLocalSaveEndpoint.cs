@@ -16,6 +16,10 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
     // (a reparse point/symlink or a file locked by a running emulator).
     public Action<string>? SnapshotHook { get; set; }
 
+    // When set, runs before an apply-phase read so a test can simulate a save the emulator locked
+    // after planning but before the transfer (the file is readable at snapshot, locked at apply).
+    public Action<string>? ReadHook { get; set; }
+
     public void Seed(string unitId, byte[] content, DateTimeOffset modifiedUtc) =>
         _units[unitId] = new LiveUnit(content, modifiedUtc);
 
@@ -38,6 +42,7 @@ internal sealed class InMemoryLocalSaveEndpoint : ILocalSaveEndpoint
 
     public Task<Stream> ReadAsync(string unitId, CancellationToken cancellationToken = default)
     {
+        ReadHook?.Invoke(unitId);
         Stream stream = new MemoryStream(_units[unitId].Content, writable: false);
         return Task.FromResult(stream);
     }

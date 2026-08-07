@@ -1495,6 +1495,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             parts.Add($"{report.Conflicts} conflict{(report.Conflicts == 1 ? "" : "s")} resolved (older copy backed up)");
         if (report.Unchanged > 0)
             parts.Add($"{report.Unchanged} already in sync");
+        // Saves that were deliberately left behind (card-type or state-version mismatch, etc.) are a
+        // real outcome, not "nothing found" — say so, or an all-skipped pass reads as a clean success
+        // while the per-platform rows say the opposite.
+        if (report.Skipped.Count > 0)
+            parts.Add($"{report.Skipped.Count} skipped");
         return parts.Count == 0
             ? "No enabled saves were found to sync."
             : "Sync complete: " + string.Join(", ", parts) + ".";
