@@ -275,6 +275,25 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     public bool ShowThemes => _themeChoices.Count > 0;
 
+    /// <summary>The shared "match colours to game artwork" setting, surfaced in the gamepad Themes
+    /// view so it is reachable on a controller (Desktop keeps it in its Themes section). It applies
+    /// live through the underlying settings model.</summary>
+    public bool AmbientThemeFromArtwork
+    {
+        get => _settings.AmbientThemeFromArtwork;
+        set
+        {
+            if (_settings.AmbientThemeFromArtwork == value)
+                return;
+            _settings.AmbientThemeFromArtwork = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>True when the ambient toggle — a focus target above the theme grid — owns focus,
+    /// marked by the -1 sentinel of <see cref="FocusedThemeIndex"/>.</summary>
+    public bool IsAmbientToggleFocused => IsThemesSection && FocusedThemeIndex < 0;
+
     /// <summary>The row list is shown for the four model sections; the gallery replaces it on Themes.</summary>
     public bool IsRowsVisible => IsNormal && !IsThemesSection;
 
@@ -463,23 +482,35 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     MoveSection(1);
                     return true;
                 case GamepadAction.NavigateLeft:
-                    // Left from the first column steps out to the section rail.
-                    if (FocusedThemeIndex % ThemeColumns == 0)
+                    // The ambient toggle (-1) and the first grid column step out to the section rail.
+                    if (FocusedThemeIndex < 0 || FocusedThemeIndex % ThemeColumns == 0)
                         EnterRail();
                     else
                         MoveThemeFocus(-1, 0);
                     return true;
                 case GamepadAction.NavigateRight:
-                    MoveThemeFocus(1, 0);
+                    if (FocusedThemeIndex >= 0)
+                        MoveThemeFocus(1, 0);
                     return true;
                 case GamepadAction.NavigateUp:
-                    MoveThemeFocus(0, -1);
+                    // Up from the top grid row (or the toggle) rests on the ambient toggle above it.
+                    if (FocusedThemeIndex < ThemeColumns)
+                        FocusedThemeIndex = -1;
+                    else
+                        MoveThemeFocus(0, -1);
                     return true;
                 case GamepadAction.NavigateDown:
-                    MoveThemeFocus(0, 1);
+                    // Down from the toggle drops into the grid at the selected theme.
+                    if (FocusedThemeIndex < 0)
+                        FocusedThemeIndex = Math.Max(0, IndexOfSelectedTheme());
+                    else
+                        MoveThemeFocus(0, 1);
                     return true;
                 case GamepadAction.Confirm:
-                    _ = ApplyFocusedThemeAsync();
+                    if (FocusedThemeIndex < 0)
+                        ToggleAmbient();
+                    else
+                        _ = ApplyFocusedThemeAsync();
                     return true;
                 case GamepadAction.Cancel:
                     CloseRequested?.Invoke(false);
@@ -854,14 +885,27 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsTexturePacksSection));
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
+        OnPropertyChanged(nameof(IsAmbientToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
     }
 
     partial void OnFocusedThemeIndexChanged(int value)
     {
+        OnPropertyChanged(nameof(IsAmbientToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
+    }
+
+    /// <summary>Toggles the ambient (cover-art recolour) setting from the Themes view; also lands
+    /// focus on the toggle so a pointer click and a controller press read the same.</summary>
+    [RelayCommand]
+    private void ToggleAmbient()
+    {
+        if (!IsThemesSection)
+            return;
+        FocusedThemeIndex = -1;
+        AmbientThemeFromArtwork = !AmbientThemeFromArtwork;
     }
 
     partial void OnSelectedSectionChanged(SettingsSection value)
@@ -1036,11 +1080,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         if (_settings.IsRetroAchievementsConnected)
         {
+            yield return HeaderRow("retro.account-header", "RetroAchievements account");
             yield return InformationRow(
                 "retro.account",
                 "Connected account",
                 "Achievement data is display-only in EmuShelf.",
-                _settings.ConnectedAccountName ?? string.Empty);
+                _settings.ConnectedAccountName ?? string.Empty,
+                isGrouped: true);
             if (_settings.HasRetroAchievementsMatchRefresh)
             {
                 yield return ActionRow(
@@ -1049,7 +1095,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     "Refresh catalogues and retry known games without rehashing unchanged ROMs.",
                     _settings.IsRetroAchievementsBusy ? "WORKING" : "A REFRESH",
                     _settings.RefreshRetroAchievementsMatchesCommand,
-                    _settings.CanRefreshRetroAchievementsMatches);
+                    _settings.CanRefreshRetroAchievementsMatches,
+                    isGrouped: true);
             }
             yield return ActionRow(
                 "retro.disconnect",
@@ -1060,42 +1107,51 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 !_settings.IsRetroAchievementsBusy,
                 isDestructive: true,
                 confirmationTitle: "Disconnect RetroAchievements?",
-                confirmationText: "EmuShelf will remove its saved account connection. Your RetroAchievements account and earned progress stay untouched.");
+                confirmationText: "EmuShelf will remove its saved account connection. Your RetroAchievements account and earned progress stay untouched.",
+                isGrouped: true);
             yield break;
         }
 
+        // Group the credentials under a sign-in header so username / key / Connect read as one unit
+        // instead of three rows identical to every other setting.
+        yield return HeaderRow("retro.signin-header", "Sign in to RetroAchievements");
         yield return TextRow(
             "retro.username",
             "Username",
             "Your RetroAchievements account name.",
             _settings.RetroAchievementsUsername,
             false,
-            value => _settings.RetroAchievementsUsername = value);
+            value => _settings.RetroAchievementsUsername = value,
+            isGrouped: true);
         yield return TextRow(
             "retro.api-key",
             "Web API key",
             "From RetroAchievements Control Panel → Keys. It is masked, never logged, and never written to settings.json.",
             _settings.RetroAchievementsApiKey,
             true,
-            value => _settings.RetroAchievementsApiKey = value);
+            value => _settings.RetroAchievementsApiKey = value,
+            isGrouped: true);
         yield return ActionRow(
             "retro.connect",
             "Connect",
             "Validate the account, match your library, and fetch progress.",
             _settings.IsRetroAchievementsBusy ? "CONNECTING…" : "A CONNECT",
             _settings.ConnectRetroAchievementsCommand,
-            !_settings.IsRetroAchievementsBusy);
+            !_settings.IsRetroAchievementsBusy,
+            isGrouped: true);
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildScreenScraperRows()
     {
         if (_settings.IsScreenScraperConnected)
         {
+            yield return HeaderRow("scraper.account-header", "ScreenScraper account");
             yield return InformationRow(
                 "scraper.account",
                 "Connected account",
                 "Titles and artwork are fetched on demand from the per-game scraper.",
-                _settings.ScreenScraperConnectedName ?? string.Empty);
+                _settings.ScreenScraperConnectedName ?? string.Empty,
+                isGrouped: true);
             yield return ActionRow(
                 "scraper.disconnect",
                 "Disconnect ScreenScraper",
@@ -1105,31 +1161,36 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 !_settings.IsScreenScraperBusy,
                 isDestructive: true,
                 confirmationTitle: "Disconnect ScreenScraper?",
-                confirmationText: "EmuShelf will remove its saved login. Your ScreenScraper account stays untouched.");
+                confirmationText: "EmuShelf will remove its saved login. Your ScreenScraper account stays untouched.",
+                isGrouped: true);
             yield break;
         }
 
+        yield return HeaderRow("scraper.signin-header", "Sign in to ScreenScraper");
         yield return TextRow(
             "scraper.username",
             "Username",
             "Your ScreenScraper account name.",
             _settings.ScreenScraperUsername,
             false,
-            value => _settings.ScreenScraperUsername = value);
+            value => _settings.ScreenScraperUsername = value,
+            isGrouped: true);
         yield return TextRow(
             "scraper.password",
             "Password",
             "Passed directly to ScreenScraper to sign in. It is masked, never logged, and never written to settings.json.",
             _settings.ScreenScraperPassword,
             true,
-            value => _settings.ScreenScraperPassword = value);
+            value => _settings.ScreenScraperPassword = value,
+            isGrouped: true);
         yield return ActionRow(
             "scraper.connect",
             "Connect",
             "Validate the account so per-game scraping can fetch titles and artwork.",
             _settings.IsScreenScraperBusy ? "CONNECTING…" : "A CONNECT",
             _settings.ConnectScreenScraperCommand,
-            !_settings.IsScreenScraperBusy);
+            !_settings.IsScreenScraperBusy,
+            isGrouped: true);
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildSaveRows()
@@ -1150,20 +1211,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         // primary action must not sit below every platform row.
         if (_settings.IsCloudDisconnected)
         {
-            yield return TextRow(
-                "saves.remote",
-                "rclone remote name",
-                "The local rclone remote that owns your Google Drive connection.",
-                _settings.CloudRemoteName,
-                false,
-                value => _settings.CloudRemoteName = value);
-            yield return TextRow(
-                "saves.cloud-folder",
-                "Cloud folder",
-                "The folder inside the remote that stores EmuShelf save manifests and copies.",
-                _settings.CloudFolder,
-                false,
-                value => _settings.CloudFolder = value);
+            // Connect is the primary action and the defaults just work, so it leads; the rclone
+            // remote name and cloud folder are demoted into an indented "Advanced" group.
             yield return ActionRow(
                 "saves.connect",
                 "Connect Google Drive",
@@ -1171,6 +1220,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 _settings.IsCloudBusy ? "CONNECTING…" : "A CONNECT",
                 _settings.ConnectCloudCommand,
                 !_settings.IsCloudBusy && !_settings.IsRcloneMissing);
+            yield return HeaderRow("saves.advanced-header", "Advanced");
+            yield return TextRow(
+                "saves.remote",
+                "rclone remote name",
+                "The local rclone remote that owns your Google Drive connection.",
+                _settings.CloudRemoteName,
+                false,
+                value => _settings.CloudRemoteName = value,
+                isGrouped: true);
+            yield return TextRow(
+                "saves.cloud-folder",
+                "Cloud folder",
+                "The folder inside the remote that stores EmuShelf save manifests and copies.",
+                _settings.CloudFolder,
+                false,
+                value => _settings.CloudFolder = value,
+                isGrouped: true);
         }
         else
         {
@@ -1290,11 +1356,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
         if (_settings.HasSyncLog)
         {
-            yield return InformationRow(
+            // Actionable (opens the log in the OS viewer) rather than a dead read-only row where A
+            // did nothing. Desktop exposes this as a hyperlink, so it is excluded from field parity.
+            yield return ActionRow(
                 "saves.log",
-                "Sync activity log",
+                "Open sync activity log",
                 "Portable, read-only record of previous save-sync actions.",
-                _settings.SyncLogPath);
+                "A OPEN",
+                _settings.OpenSyncLogCommand,
+                enabled: true,
+                excludeFromParity: true);
         }
     }
 
@@ -1408,7 +1479,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         string description,
         string value,
         bool isSecret,
-        Action<string> commit) => new(
+        Action<string> commit,
+        bool isGrouped = false) => new(
             key,
             label,
             description,
@@ -1418,9 +1490,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             {
                 BeginTextEntry(label, description, value, isSecret, commit);
                 return Task.CompletedTask;
-            });
+            },
+            IsGrouped: isGrouped);
 
-    private static GamepadSettingsRowSpec HeaderRow(string key, string label, string systemId) =>
+    // A group header. Platform groups pass a systemId for artwork; generic groups (sign-in,
+    // advanced) pass none and render as a plain subheading over their indented members.
+    private static GamepadSettingsRowSpec HeaderRow(string key, string label, string? systemId = null) =>
         new(
             key,
             label,
@@ -1528,13 +1603,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         string key,
         string label,
         string description,
-        string value) => new(
+        string value,
+        bool isGrouped = false) => new(
             key,
             label,
             description,
             value,
             GamepadSettingsRowKind.Information,
-            IsEnabled: true);
+            IsEnabled: true,
+            IsGrouped: isGrouped);
 
     private static Task ExecuteAsync(ICommand command, object? parameter = null)
     {
