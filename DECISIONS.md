@@ -5001,3 +5001,19 @@ From a three-agent review of everything touching save sync. Changes and the non-
   `RetroArchCore.CoreId`. Off-thread provider construction (`Task.Run`) in the sync/force pipelines to
   match detection; memoized Dolphin GCI folder reads + single-enumeration; lazy RetroArch per-game
   override probe (detection-only); skipped counts now surfaced in the sync status lines.
+
+## 2026-08-08 — Spotlight hero: logo over title, metadata as centered chips
+
+Simplified the spotlight (couch) hero's right column. The big game title was dropped: the logo
+carries the identity, and the name still shows in the left list. The former single `·`-joined info
+line (genre · year · players · developer · publisher · filename) is now a centered `WrapPanel` of
+per-fact chips, with the launch source (file/disc) as a dim caption below. Non-obvious calls:
+
+- **Title fallback is gated on resolved details, not on logo-bitmap presence.** Showing the title
+  when `!HasWheelImage` would flash it in the gap before a logo bitmap decodes (details resolve, then
+  fan art, then the wheel). `ShowSpotlightTitleFallback` is `AreSpotlightDetailsLoaded && WheelPath is
+  null`, so the title only stands in once we've confirmed the game has no logo art. Locked by
+  `ShowSpotlightTitleFallback_OnlyWhenResolvedDetailsConfirmNoLogoArt`.
+- **Publisher chip collapses into the developer when identical** (common for first-party titles), and
+  players read in words ("1 player" / "2 players") instead of "2P". `ComposeSpotlightInfo` now returns
+  the chip list (`IReadOnlyList<string>`) rather than a joined string.

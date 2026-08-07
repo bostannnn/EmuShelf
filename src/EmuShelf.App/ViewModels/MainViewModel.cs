@@ -2232,12 +2232,22 @@ public partial class MainViewModel : ViewModelBase
     {
         try
         {
-            if (!game.AreSpotlightDetailsLoaded && _gameDetails is not null)
+            if (!game.AreSpotlightDetailsLoaded)
             {
-                var resolved = await Task.Run(() => ResolveSpotlightDetails(game.Id));
-                if (generation != _spotlightHeroGeneration)
-                    return; // focus moved on while the details were being read
-                game.ApplySpotlightDetails(resolved.FanartPath, resolved.WheelPath, resolved.RatingText, resolved.InfoLine);
+                if (_gameDetails is not null)
+                {
+                    var resolved = await Task.Run(() => ResolveSpotlightDetails(game.Id));
+                    if (generation != _spotlightHeroGeneration)
+                        return; // focus moved on while the details were being read
+                    game.ApplySpotlightDetails(resolved.FanartPath, resolved.WheelPath, resolved.RatingText, resolved.Facts);
+                }
+                else
+                {
+                    // No details store (a degraded/headless config): there is no art to resolve, so
+                    // mark the hero resolved with none. That engages the title fallback rather than
+                    // leaving the hero with neither a logo nor a name.
+                    game.ApplySpotlightDetails(null, null, null, []);
+                }
             }
 
             await LoadSpotlightBitmapAsync(
@@ -2289,10 +2299,10 @@ public partial class MainViewModel : ViewModelBase
         assign(image);
     }
 
-    private (string? FanartPath, string? WheelPath, string? RatingText, string? InfoLine) ResolveSpotlightDetails(long gameId)
+    private (string? FanartPath, string? WheelPath, string? RatingText, IReadOnlyList<string> Facts) ResolveSpotlightDetails(long gameId)
     {
         if (_gameDetails is null)
-            return (null, null, null, null);
+            return (null, null, null, []);
 
         var details = _gameDetails.GetDetails(gameId);
         return (
@@ -2302,27 +2312,28 @@ public partial class MainViewModel : ViewModelBase
             ComposeSpotlightInfo(details.Metadata));
     }
 
-    // The spotlight hero's info line: genre · year · players · developer · publisher, from the scraped
-    // metadata, joined with the parts that are present. The filename is appended by the view model.
-    internal static string? ComposeSpotlightInfo(IReadOnlyList<GameMetadataValue> metadata)
+    // The spotlight hero's metadata chips: genre, year, players, developer, publisher, from the scraped
+    // metadata — one entry per field that is present. Publisher is dropped when it merely repeats the
+    // developer (common for first-party titles). The launch filename is shown separately as a caption.
+    internal static IReadOnlyList<string> ComposeSpotlightInfo(IReadOnlyList<GameMetadataValue> metadata)
     {
         string? Field(GameMetadataField field) =>
             metadata.FirstOrDefault(value => value.Field == field)?.Value is { Length: > 0 } v ? v : null;
 
         var year = Field(GameMetadataField.ReleaseDate) is { } date && date.Length >= 4 ? date[..4] : null;
-        var players = Field(GameMetadataField.Players) is { } count ? $"{count}P" : null;
+        var players = Field(GameMetadataField.Players) is { } count
+            ? (count == "1" ? "1 player" : $"{count} players")
+            : null;
 
-        var parts = new[]
-        {
-            Field(GameMetadataField.Genre),
-            year,
-            players,
-            Field(GameMetadataField.Developer),
-            Field(GameMetadataField.Publisher),
-        }.Where(part => !string.IsNullOrWhiteSpace(part));
+        var developer = Field(GameMetadataField.Developer);
+        var publisher = Field(GameMetadataField.Publisher);
+        if (publisher is not null && string.Equals(publisher, developer, StringComparison.OrdinalIgnoreCase))
+            publisher = null;
 
-        var line = string.Join("  ·  ", parts);
-        return line.Length == 0 ? null : line;
+        return new[] { Field(GameMetadataField.Genre), year, players, developer, publisher }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!)
+            .ToArray();
     }
 
     private static string? SelectSpotlightMedia(IReadOnlyList<GameMediaAsset> media, GameMediaKind kind) =>

@@ -227,14 +227,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasRating => RatingText is not null;
 
-    private string? _spotlightInfoLine;
+    private IReadOnlyList<string> _spotlightFacts = [];
 
-    /// <summary>The spotlight hero's info line: scraped genre · year · players · developer · publisher
-    /// with the filename appended, or just the filename before the details resolve / when unscraped.
-    /// Computed so it tracks the filename (which changes with the selected disc).</summary>
-    public string SpotlightSubtitle => string.IsNullOrEmpty(_spotlightInfoLine)
-        ? GamepadSubtitle
-        : $"{_spotlightInfoLine}  ·  {GamepadSubtitle}";
+    /// <summary>The spotlight hero's metadata chips: scraped genre, year, players, developer, and
+    /// publisher — only the fields that were present, one entry per chip. Empty until the details
+    /// resolve / when the game is unscraped. The launch source is shown separately as a caption (see
+    /// <see cref="GamepadSubtitle"/>).</summary>
+    public IReadOnlyList<string> SpotlightFacts => _spotlightFacts;
 
     private string? _canonicalSpotlightTitle;
 
@@ -243,6 +242,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// Spotlight-only, so the grid, desktop, and the underlying record keep <see cref="Title"/>
     /// untouched.</summary>
     public string SpotlightDisplayTitle => _canonicalSpotlightTitle ?? Title;
+
+    /// <summary>Whether the spotlight hero shows the title in the logo's place. True only once the
+    /// details have resolved and confirmed the game has no logo art, so a game that does have one
+    /// never flashes its title in the gap before the logo bitmap decodes.</summary>
+    public bool ShowSpotlightTitleFallback => AreSpotlightDetailsLoaded && WheelPath is null;
 
     /// <summary>Applies the canonical provider title for spotlight display; a null/blank value keeps
     /// the game's own title.</summary>
@@ -434,7 +438,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(DiscBadgeText));
         OnPropertyChanged(nameof(FormatLabel));
         OnPropertyChanged(nameof(GamepadSubtitle));
-        OnPropertyChanged(nameof(SpotlightSubtitle));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
         foreach (var option in DiscOptions)
             option.IsCurrent = option.Disc.Game.Id == selectedDisc.Game.Id;
@@ -485,17 +488,18 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     partial void OnRatingTextChanged(string? value) => OnPropertyChanged(nameof(HasRating));
 
-    /// <summary>Records the fan-art path, logo path, formatted rating, and scraped info line resolved
-    /// from this game's details. The bitmaps are loaded separately, only while it is the spotlight hero.
-    /// The info line (genre/year/players/developer/publisher) gets the filename appended as a tail.</summary>
-    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText, string? infoLine)
+    /// <summary>Records the fan-art path, logo path, formatted rating, and scraped metadata facts
+    /// resolved from this game's details. The bitmaps are loaded separately, only while it is the
+    /// spotlight hero. The facts (genre/year/players/developer/publisher) each render as a chip.</summary>
+    public void ApplySpotlightDetails(string? fanartPath, string? wheelPath, string? ratingText, IReadOnlyList<string> facts)
     {
         FanartPath = fanartPath;
         WheelPath = wheelPath;
         RatingText = ratingText;
-        _spotlightInfoLine = infoLine;
-        OnPropertyChanged(nameof(SpotlightSubtitle));
+        _spotlightFacts = facts;
+        OnPropertyChanged(nameof(SpotlightFacts));
         AreSpotlightDetailsLoaded = true;
+        OnPropertyChanged(nameof(ShowSpotlightTitleFallback));
     }
 
     [RelayCommand]
