@@ -4833,9 +4833,13 @@ spawned more contenders for the port. Observed in the field on a Steam Deck.
 Three changes in `RcloneConfigurator`:
 
 - **Clear our own leftovers before a sign-in.** `CreateGoogleDriveRemoteAsync` first kills any running
-  instance of the *bundled* rclone (matched by executable path, so an unrelated rclone the user runs is
-  never touched), on a thread-pool thread. Connect and sync are serialized by the coordinator's gate, so
-  any of our rclone alive at connect time is an orphan, never a live transfer — making this safe.
+  instance of the *bundled* rclone, on a thread-pool thread. "Ours" is matched by executable path on
+  Windows/macOS; on Linux the AppImage mounts at a fresh `$APPDIR` each launch, so a cross-session
+  orphan's binary path no longer matches — there we also match on the `--config` argument (its
+  `rclone.conf` lives in the portable data dir and is stable across launches), so a Steam Deck orphan is
+  still reaped after a force-quit. An unrelated rclone the user runs, pointed at a different config, is
+  never touched. Connect and sync are serialized by the coordinator's gate, so any of our rclone alive at
+  connect time is an orphan, never a live transfer — making this safe.
 - **Never orphan the process we spawn.** `RunAsync` kills the process (whole tree) in a `finally`, so a
   cancelled or abandoned OAuth run can't walk away still holding the port. A run that exited on its own is
   already gone, so this is a no-op for the normal path and for the short-lived `mkdir`/transport-adjacent

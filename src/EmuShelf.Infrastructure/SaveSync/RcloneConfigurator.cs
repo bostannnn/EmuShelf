@@ -133,6 +133,10 @@ public sealed class RcloneConfigurator
             return null;
 
         var error = (standardError ?? string.Empty).Trim();
+        // "address already in use" is Go's own EADDRINUSE text — it comes from the runtime's fixed
+        // English errno table, not the OS locale's strerror, so it is stable across languages and is a
+        // safer key than rclone's surrounding prose. Kept narrow deliberately: a different bind error
+        // (e.g. permission denied) is a genuinely different problem and must not claim a sign-in is open.
         if (error.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
             return new RcloneSignInServerBusyException();
 
@@ -140,9 +144,9 @@ public sealed class RcloneConfigurator
     }
 
     /// <summary>
-    /// Kills any leftover instance of our bundled rclone. Matched by executable path so an unrelated
-    /// rclone the user runs for their own purposes is never touched; best-effort throughout, because a
-    /// process we cannot inspect or signal must not fail the sign-in.
+    /// Kills any leftover instance of our bundled rclone (see <see cref="IsStaleBundledRclone"/> for
+    /// how "ours" is decided). Best-effort throughout, because a process we cannot inspect or signal
+    /// must not fail the sign-in.
     /// </summary>
     private void KillStaleOAuthProcesses()
     {
@@ -160,7 +164,7 @@ public sealed class RcloneConfigurator
         {
             try
             {
-                if (PathsEqual(process.MainModule?.FileName, _rclonePath))
+                if (IsStaleBundledRclone(process))
                 {
                     process.Kill(entireProcessTree: true);
                     process.WaitForExit(2000);
@@ -168,13 +172,71 @@ public sealed class RcloneConfigurator
             }
             catch
             {
-                // Access denied, already exited, or path unreadable — leave it alone.
+                // Access denied, already exited, or unreadable — leave it alone.
             }
             finally
             {
                 process.Dispose();
             }
         }
+    }
+
+    /// <summary>
+    /// Whether a running rclone is one of ours to reap. On Windows/macOS the bundled binary sits at a
+    /// stable path, so matching it is precise and cannot touch an unrelated rclone the user runs. On
+    /// Linux an AppImage mounts at a fresh <c>$APPDIR</c> every launch, so a cross-session orphan's
+    /// binary path no longer matches ours — there we also identify our rclone by the <c>--config</c>
+    /// argument, whose <c>rclone.conf</c> lives in the portable data directory and is stable across
+    /// launches, so a Steam Deck orphan is still recognised after a force-quit.
+    /// </summary>
+    private bool IsStaleBundledRclone(Process process)
+    {
+        if (PathsEqual(TryGetExecutablePath(process), _rclonePath))
+            return true;
+
+        return OperatingSystem.IsLinux() && CommandLineReferencesOurConfig(process.Id);
+    }
+
+    private static string? TryGetExecutablePath(Process process)
+    {
+        try
+        {
+            return process.MainModule?.FileName;
+        }
+        catch
+        {
+            // A process we do not own, or whose module list we cannot read, is not one we can match
+            // by path — the config-argument check is the fallback for our own AppImage orphans.
+            return null;
+        }
+    }
+
+    private bool CommandLineReferencesOurConfig(int processId)
+    {
+        try
+        {
+            return CommandLineReferencesConfig(
+                File.ReadAllText($"/proc/{processId}/cmdline"), _configurationPath);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether a Linux <c>/proc/&lt;pid&gt;/cmdline</c> (NUL-separated argv) is an rclone invoked with
+    /// our <c>--config</c> path. Pure and static so the identity rule can be unit-tested without a live
+    /// process — an unrelated rclone pointed at a different config is deliberately not matched.
+    /// </summary>
+    internal static bool CommandLineReferencesConfig(string commandLine, string configurationPath)
+    {
+        if (string.IsNullOrEmpty(commandLine))
+            return false;
+
+        return commandLine
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Any(argument => PathsEqual(argument, configurationPath));
     }
 
     private static void TryKill(Process process)
@@ -190,13 +252,22 @@ public sealed class RcloneConfigurator
         }
     }
 
-    private static bool PathsEqual(string? a, string? b)
+    internal static bool PathsEqual(string? a, string? b)
     {
         if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
             return false;
 
+        // Linux file systems are case-sensitive; Windows and macOS default to case-insensitive.
         var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
-        return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), comparison);
+        try
+        {
+            return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), comparison);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // A malformed argument from another process's command line is simply not a path we match.
+            return false;
+        }
     }
 
     // Passed as its own argv entry, so quoting is not a concern; control characters are, because a
