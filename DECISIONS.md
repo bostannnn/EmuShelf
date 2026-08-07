@@ -4819,3 +4819,29 @@ resource, so a coloured gradient stop would need 28 palette edits. (2) `RevealSc
 keeps ~40px of the neighbouring row peeking past the focused one, so the list is visibly mid-scroll
 rather than static-then-jump; it falls back to `BringIntoView` for controls outside a gamepad scroll
 region (the pinned Apply/Refresh block, connect form, terminal messages).
+
+## 2026-08-07 — Gamepad platform rail is icon-only, active tab expands to its name
+
+The controller-mode top rail (`MainWindow.axaml`) used to show `icon + name` for every
+console tab, plus a text-only "All Games" pill. To declutter the couch view, every console tab is
+now icon-only; the name reappears only on the **active** tab (bound to `IsActive` /
+`IsAllGamesSelected`), so "you are here" stays legible without a wall of text. "All Games" — which has
+no console badge — gets a 2×2 grid `PathIcon` glyph so the rail reads as one uniform row, and it too
+expands to its label while selected. The dropped names are preserved for pointers and screen readers
+via `ToolTip.Tip` + `AutomationProperties.Name`. Icon bumped 26→30px; vertical padding unchanged so
+the tab stays 54px tall, inside the `MainWindowVisualSnapshotTests` 53–55px height guard. Console
+identity also remains visible in the spotlight bar at the bottom, which names the focused game's system.
+
+## 2026-08-07 — Gamepad rail selection is one sliding pill, translate-animated only
+
+The controller rail's selection was reworked from a per-tab background (which read as the highlight
+popping in place, and clipped when a `scale()` pop was tried) to a single `Border`
+(`gamepad-platform-indicator`) that sits behind the tabs and is moved to overlay the active one, so a
+platform switch reads as the highlight travelling left/right. The pill and the tabs share one `Panel`,
+so it stays aligned regardless of how the centred ScrollViewer positions the row; `UpdateRailIndicator`
+(code-behind, hooked to the existing rail-reveal + a `SizeChanged` snap) measures the active tab and
+drives the pill's size and a translate transform. Only the **translate** eases — it is GPU-composited,
+so the glide stays smooth even while the library relayouts on switch. **Width/Height are set instantly**
+on purpose: animating a layout property runs a per-frame measure/arrange on the UI thread and stuttered.
+The rail stays centred per user preference; the residual cost is that changing the selected tab's name
+width shifts the row slightly on each switch (a stable alternative would reserve the name's width).
