@@ -59,7 +59,23 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
     [NotifyPropertyChangedFor(nameof(IsThemesSection))]
     [NotifyPropertyChangedFor(nameof(IsAboutSection))]
+    [NotifyPropertyChangedFor(nameof(SectionSubtitle))]
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
+
+    /// <summary>Header subtitle that follows the selected section, instead of one static line that
+    /// only described a couple of sections.</summary>
+    public string SectionSubtitle => SelectedSection switch
+    {
+        SettingsSection.General => "Library upkeep, metadata, and where EmuShelf keeps its data.",
+        SettingsSection.Emulators => "Point each system at its emulator and set how it launches.",
+        SettingsSection.RetroAchievements => "Connect your RetroAchievements account to track progress.",
+        SettingsSection.ScreenScraper => "Connect ScreenScraper to fetch game metadata and artwork.",
+        SettingsSection.Saves => "Sync in-game saves between machines through your own Google Drive.",
+        SettingsSection.TexturePacks => "See the replacement-texture packs your emulators already have.",
+        SettingsSection.Themes => "Choose how EmuShelf looks.",
+        SettingsSection.About => "Version, updates, and build details.",
+        _ => string.Empty,
+    };
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
@@ -191,6 +207,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRetroAchievementsProgress))]
     [NotifyPropertyChangedFor(nameof(CanRefreshRetroAchievementsMatches))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     [NotifyCanExecuteChangedFor(nameof(RefreshRetroAchievementsMatchesCommand))]
     public partial bool IsRetroAchievementsBusy { get; set; }
 
@@ -246,6 +263,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool CanFetchAllMetadata =>
         !IsWorking && _maintenance?.FetchAllMetadata is not null;
     public bool IsWorking => IsSaving || IsMaintainingLibrary;
+
+    /// <summary>True while ANY async settings operation is running — save, library maintenance,
+    /// cloud sync/connect, account connects, texture rescan, or the rclone download. The global
+    /// Save/Cancel buttons gate on this so the window can't be committed or torn down mid-operation
+    /// (which would race concurrent writes and orphan the in-flight task's progress callbacks).</summary>
+    public bool IsBusy => IsWorking || IsCloudBusy || IsRetroAchievementsBusy
+        || IsScreenScraperBusy || IsTexturePackBusy || IsDownloadingRclone;
+
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
     public bool HasMetadataStatus => !string.IsNullOrWhiteSpace(MetadataStatusText);
     public bool HasMetadataProgress => IsMaintainingLibrary && MetadataProgressTotal > 0;
@@ -290,6 +315,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     public partial bool IsCloudBusy { get; set; }
 
     [ObservableProperty]
@@ -326,6 +352,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         string.IsNullOrWhiteSpace(SyncLogPath) ? null : new Uri(SyncLogPath);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     public partial bool IsDownloadingRclone { get; set; }
 
     public bool IsCloudDisconnected => !IsCloudConnected;
@@ -348,6 +375,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial string ScreenScraperStatusText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     public partial bool IsScreenScraperBusy { get; set; }
 
     public bool IsScreenScraperConnected => !string.IsNullOrEmpty(ScreenScraperConnectedName);
@@ -536,6 +564,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     partial void OnIsSavingChanged(bool value)
     {
         OnPropertyChanged(nameof(IsWorking));
+        OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanRescanAll));
         OnPropertyChanged(nameof(CanFetchAllMetadata));
         UpdateRowMaintenanceState();
@@ -546,6 +575,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(CanRescanAll));
         OnPropertyChanged(nameof(CanFetchAllMetadata));
         OnPropertyChanged(nameof(IsWorking));
+        OnPropertyChanged(nameof(IsBusy));
         UpdateRowMaintenanceState();
     }
 
@@ -720,7 +750,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [RelayCommand]
     private async Task SaveAsync()
     {
-        if (IsWorking)
+        if (IsBusy)
             return;
 
         IsSaving = true;
@@ -970,6 +1000,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial string TexturePackLastScanText { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
     public partial bool IsTexturePackBusy { get; set; }
 
     [ObservableProperty]
@@ -1071,7 +1102,12 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         foreach (var platform in inventory.Platforms)
         {
             _texturePacks.OverridePlaceholders.TryGetValue(platform.SystemId, out var placeholder);
-            TexturePlatforms.Add(new TexturePackRowViewModel(platform, placeholder ?? string.Empty));
+            TexturePlatforms.Add(new TexturePackRowViewModel(
+                platform,
+                placeholder ?? string.Empty,
+                row => BrowseTextureOverrideAsync(row),
+                row => ClearTextureOverrideAsync(row),
+                OpenTextureFolder));
         }
 
         var emulators = inventory.Map.Classifications
@@ -1167,7 +1203,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             {
                 CloudSaveSyncConnectResult.Connected => "Connected. Use Sync now to reconcile enabled saves.",
                 CloudSaveSyncConnectResult.InvalidInput => "Enter a remote name and cloud folder, then configure at least one save platform.",
-                CloudSaveSyncConnectResult.RcloneMissing => "rclone isn't installed — put rclone.exe beside EmuShelf (use “Get rclone” above), then reconnect.",
+                CloudSaveSyncConnectResult.RcloneMissing => "rclone isn't installed — use “Download rclone” above (or place it at the expected path shown there), then reconnect.",
                 CloudSaveSyncConnectResult.SignInServerBusy => "A previous Google sign-in is still open. Close that browser window (or restart EmuShelf), then try again.",
                 _ => "Couldn't connect. The Google sign-in may have been declined.",
             };

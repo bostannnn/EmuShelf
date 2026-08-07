@@ -4874,3 +4874,47 @@ Three changes in `RcloneConfigurator`:
   `CloudSaveSyncConnectResult.SignInServerBusy`, which Settings renders as "A previous Google sign-in is
   still open. Close that browser window (or restart EmuShelf), then try again," instead of the misleading
   declined-sign-in text.
+
+## 2026-08-07 — Desktop Settings polish: busy-gated commit, no launch-target auto-reset, connect-first Saves
+
+Polishing pass over the Desktop Settings window (`EmulatorSettingsWindow`). Three non-obvious choices:
+
+- **Save/Cancel gate on an aggregate `IsBusy`, not just `IsWorking`.** `IsWorking` only covered save +
+  library maintenance, so the global footer buttons stayed live during cloud sync, account connects,
+  texture rescans, and the rclone download. Committing or closing mid-operation raced the in-flight
+  task's own writes (e.g. `PersistCloudSaveLocations` running twice) and left it posting progress to a
+  torn-down VM. `IsBusy = IsWorking || IsCloudBusy || IsRetroAchievementsBusy || IsScreenScraperBusy ||
+  IsTexturePackBusy || IsDownloadingRclone` now gates both buttons and `SaveAsync`. The per-operation
+  buttons were already correctly gated on their own busy flags; only the footer was not.
+- **The launch-target combo no longer carries `SelectedIndex="0"`.** It also had a TwoWay
+  `SelectedItem="{Binding TargetKind}"`; the literal index could win during initialization (the row is
+  realized even while hidden on non-Linux), force "Direct", and — because the binding is TwoWay — write
+  that back over a persisted "Flatpak" target, then cascade it onto shared installs. `TargetKind` always
+  holds a valid value, so the index added only risk. Removed it; the binding is authoritative.
+- **Saves leads with Connect.** The connect / connected-summary block moved above the per-platform folder
+  list (the per-platform Replace actions are hidden until connected, so showing them first was inert
+  detail before the one action that turns the feature on). Alongside: the window grew to 880×700
+  (min 760×540) and the cramped four-button Saves/Textures rows now wrap their secondary actions onto a
+  second line so the path field never collapses; the placeholder legend moved out of the always-on
+  header to sit inline under the Emulators launch-arguments field, and the header subtitle now follows
+  the selected section.
+
+## 2026-08-07 — Desktop Settings Tier 2: card token, accent rule, and the deliberately-shared field id
+
+- **One `Border.settings-card` token** (EmuCardBrush / EmuBorderBrush / 1px / CornerRadius 10 / Padding 18)
+  replaces the per-card inline styling across every section, so padding (was 16 vs 18) and radius (was 9
+  vs 10) can't drift. The Emulators accordion card opts out with `Padding="0"` because its row manages its
+  own insets. `section-eyebrow` / `field-label` styles similarly tokenize the two label tiers.
+- **Accent = primary call-to-action only.** Connect / Download / Update / Sync stay accent; maintenance
+  "Rescan" is default everywhere — the Texture Packs "Rescan" was demoted to match General and Emulators.
+- **Texture rows own their commands.** `TexturePackRowViewModel` now exposes Browse/UseDetected/OpenFolder
+  `[RelayCommand]`s that delegate to parent-provided funcs, so the view binds row commands instead of
+  `$parent[Window].((EmulatorSettingsViewModel)DataContext)…`. The parent's `BrowseTextureOverride` /
+  `ClearTextureOverride` / `OpenTextureFolder` commands are kept — `GamepadSettingsViewModel` and the
+  parity tests still consume them.
+- **The shared folder/Browse AutomationId is intentional, not a bug.** The Desktop↔Gamepad parity test in
+  `MainWindowVisualSnapshotTests` asserts the *set* of `saves.*` / `textures.*` ids on Desktop equals the
+  Gamepad `ParityId` set, so a field's TextBox and its Browse button deliberately share one field key.
+  Giving the Browse button a distinct id would break parity unless mirrored on the Gamepad surface, so it
+  was left as-is. The Emulators section (not in the parity set) gained Desktop-only
+  `emulators.{systemId}.*` ids for scripting/accessibility.

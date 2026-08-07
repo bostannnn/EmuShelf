@@ -36,6 +36,18 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public bool RequiresCorePath { get; private set; }
     public bool IsExecutableShared { get; private set; }
 
+    // Stable AutomationIds so the Emulators section is scriptable/accessible like the others.
+    // Keyed by system id, e.g. "emulators.playstation.executable". (Emulators isn't part of the
+    // Desktop/Gamepad parity set, so these are Desktop-only.)
+    public string ExecutableFieldId => $"emulators.{SystemId}.executable";
+    public string BrowseFieldId => $"emulators.{SystemId}.browse";
+    public string LaunchArgumentsFieldId => $"emulators.{SystemId}.launch-args";
+    public string ResetArgumentsFieldId => $"emulators.{SystemId}.reset-args";
+    public string CoreFilterFieldId => $"emulators.{SystemId}.core-filter";
+    public string AddFolderFieldId => $"emulators.{SystemId}.add-folder";
+    public string RescanFieldId => $"emulators.{SystemId}.rescan";
+    public string SyncFieldId => $"emulators.{SystemId}.sync";
+
     /// <summary>Every emulator that can serve this system, in registration order, for the picker.</summary>
     public IReadOnlyList<EmulatorProfileOption> AvailableProfiles { get; }
 
