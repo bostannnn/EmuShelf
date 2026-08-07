@@ -1477,6 +1477,34 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadDesktopModeConfirm_BacksOutToTheOverlayThatOpenedIt()
+    {
+        var path = Path.Combine(_baseDirectory, "DesktopConfirm.cue");
+        File.WriteAllText(path, "FILE \"DesktopConfirm.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Desktop confirm", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        // Reached through the "Set cover" hand-off, B must return to that hand-off — not the System
+        // Menu — because the confirmation is shared between the two entry points.
+        vm.OpenFocusedGameActionsCommand.Execute(null);
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+
+        vm.RequestDesktopModeFromGamepadCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.DesktopModeConfirmation, vm.GamepadOverlay);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+
+        // And the hand-off's own back still steps up to the game's Actions menu.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.Actions, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadMenu_SettingsStaysInWindowAndQuitRequiresConfirmation()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
@@ -1993,6 +2021,33 @@ public class MainViewModelTests : IDisposable
         Assert.Equal("Alpha", launcher.Game?.Title);
         Assert.Equal("Alpha finished", vm.StatusText);
         Assert.False(vm.IsBusy);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_UnavailableSingleDisc_ReportsContextAwareStatusNotDiscWording()
+    {
+        var folder = MakeRomsFolder();
+        var gamePath = Path.Combine(folder, "Alpha.cue");
+        _dialogs.FilesToReturn = [gamePath];
+        _dialogs.SystemToReturn = Ps1;
+        var launcher = new RecordingLaunchService(new GameLaunchResult(true, "Alpha finished"));
+        var vm = CreateViewModel(launchService: launcher);
+        await vm.AddGamesCommand.ExecuteAsync(null);
+
+        File.Delete(gamePath);
+        await vm.RefreshAvailabilityAsync();
+        var game = vm.Games.Single();
+        Assert.False(game.IsAvailable);
+
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        // The old always-false ternary showed the multi-disc "Disc N of …" wording for every
+        // unavailable launch. A single-disc game must instead get its own context-aware status, and
+        // the launcher must never be invoked for an unavailable game.
+        Assert.Equal(game.UnavailableLaunchStatus, vm.StatusText);
+        Assert.DoesNotContain("Disc", vm.StatusText);
+        Assert.Equal(StatusSeverity.Error, vm.StatusSeverity);
+        Assert.Null(launcher.Game);
     }
 
     [AvaloniaFact]
@@ -2789,6 +2844,39 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task SelectDisc_WhenPersistenceFails_ReportsErrorInsteadOfClaimingSuccess()
+    {
+        var disc1 = Path.Combine(_baseDirectory, "Persist Set (Disc 1).cue");
+        var disc2 = Path.Combine(_baseDirectory, "Persist Set (Disc 2).cue");
+        File.WriteAllText(disc1, "x");
+        File.WriteAllText(disc2, "x");
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = disc1, Title = "Persist Set (Disc 1)" },
+            new Game { SystemId = Ps1.Id, Path = disc2, Title = "Persist Set (Disc 2)" },
+        ]);
+        var vm = CreateViewModel();
+        await vm.ReloadGamesAsync();
+        var titleSet = Assert.Single(vm.Games);
+        Assert.True(titleSet.IsMultiDisc);
+        var otherDisc = titleSet.DiscOptions.Single(option => !option.IsCurrent);
+
+        // Force the persistence write to throw so the command can only report failure. The old code
+        // ignored the return value and always announced success.
+        using (var connection = _database.CreateConnection())
+        using (var drop = connection.CreateCommand())
+        {
+            drop.CommandText = "DROP TABLE GameDiscSelections;";
+            drop.ExecuteNonQuery();
+        }
+
+        await otherDisc.SelectDiscCommand.ExecuteAsync(null);
+
+        Assert.Equal($"Could not select Disc {otherDisc.Disc.Number} for {titleSet.Title}.", vm.StatusText);
+        Assert.Equal(StatusSeverity.Error, vm.StatusSeverity);
+    }
+
+    [AvaloniaFact]
     public async Task LibrarySelection_UsesOneAnchorAcrossLayoutsAndClearsWhenSearchChanges()
     {
         _library.AddGames(
@@ -2837,6 +2925,38 @@ public class MainViewModelTests : IDisposable
         await vm.ReloadGamesAsync();
         Assert.Equal(0, vm.SelectedGameCount);
         Assert.False(vm.HasSelectedGames);
+    }
+
+    [AvaloniaFact]
+    public async Task LibrarySelection_DoesNotSurviveARoundTripThroughACachedScope()
+    {
+        _library.AddGames(
+        [
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Alpha.cue", Title = "Alpha" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Beta.cue", Title = "Beta" },
+            new Game { SystemId = Ps1.Id, Path = "C:\\Games\\Gamma.cue", Title = "Gamma" },
+        ]);
+        var vm = CreateViewModel();
+
+        // Visit both collection scopes so each is built and cached. Navigation never clears the cache,
+        // so returning to either takes the synchronous fast path that the fix guards.
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        await vm.ShowRecentlyAddedCommand.ExecuteAsync(null);
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+        Assert.True(vm.IsAllGamesSelected);
+
+        vm.SelectGame(vm.Games[0]);
+        vm.SelectGame(vm.Games[1], toggle: true);
+        Assert.Equal(2, vm.SelectedGameCount);
+
+        // Leave to the cached scope and come back. The cache hit reuses the very same view models, so
+        // without the fix their IsSelected flags would ride back in and the count would jump to 2.
+        await vm.ShowRecentlyAddedCommand.ExecuteAsync(null);
+        await vm.ShowAllGamesCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, vm.SelectedGameCount);
+        Assert.False(vm.HasSelectedGames);
+        Assert.DoesNotContain(vm.Games, game => game.IsSelected);
     }
 
     [AvaloniaFact]

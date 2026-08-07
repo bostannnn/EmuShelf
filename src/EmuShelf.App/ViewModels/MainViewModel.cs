@@ -103,6 +103,9 @@ public partial class MainViewModel : ViewModelBase
     private readonly HashSet<long> _deferredCoverLoads = [];
     private GameViewModel? _selectionAnchor;
     private HashSet<GameViewModel>? _marqueeBaseSelection;
+    // The selected count last broadcast to the per-game context-menu strings. Those strings depend
+    // only on the count, so the O(N) broadcast is skipped while a rubber-band drag leaves it unchanged.
+    private int _broadcastSelectionCount = -1;
     private bool _isFrontendSuspended;
     private DateTimeOffset _gamepadInputGuardUntil;
     private string _appliedSearchText = string.Empty;
@@ -338,9 +341,6 @@ public partial class MainViewModel : ViewModelBase
     public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices { get; }
 
     [ObservableProperty]
-    public partial GameViewModel? SelectedGame { get; set; }
-
-    [ObservableProperty]
     public partial bool IsNavigationCollapsed { get; set; }
 
     [ObservableProperty]
@@ -360,6 +360,10 @@ public partial class MainViewModel : ViewModelBase
 
     // Guards RequestSettingsFromGamepadAsync against a re-entrant open while its database read awaits.
     private bool _openingGamepadSettings;
+
+    // The desktop-mode confirmation is reachable from two places — the System Menu and the "Set cover"
+    // handoff overlay — so B has to return to whichever one opened it rather than always the menu.
+    private GamepadOverlayKind _desktopModeConfirmationParent = GamepadOverlayKind.SystemMenu;
 
     [ObservableProperty]
     public partial GamepadSettingsViewModel? GamepadSettings { get; set; }
@@ -381,9 +385,7 @@ public partial class MainViewModel : ViewModelBase
         IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadAchievementsOpen => GamepadOverlay == GamepadOverlayKind.Achievements;
     public bool IsGamepadSearchOpen => GamepadOverlay == GamepadOverlayKind.Search;
-    public bool IsGamepadCollectionsOpen => GamepadOverlay == GamepadOverlayKind.Collections;
     public bool IsGamepadRenameOpen => GamepadOverlay == GamepadOverlayKind.Rename;
-    public bool IsGamepadDiscSelectionOpen => GamepadOverlay == GamepadOverlayKind.DiscSelection;
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
     public bool IsGamepadScraperOpen => GamepadOverlay == GamepadOverlayKind.Scraper;
@@ -427,16 +429,6 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
     };
-    public string GamepadOverlayHelpText => GamepadOverlay switch
-    {
-        GamepadOverlayKind.Achievements => "D-pad Browse   X Refresh   B Back",
-        GamepadOverlayKind.Settings => "LB/RB Sections   D-pad Rows   A Select   B Cancel",
-        GamepadOverlayKind.Search => "Steam + X Keyboard   B Back",
-        GamepadOverlayKind.Rename => "A Save   B Back",
-        GamepadOverlayKind.Scraper => "D-pad Move   A Select   B Back",
-        _ => "D-pad Choose   A Select   B Back",
-    };
-
     [ObservableProperty]
     public partial double GamepadViewportWidth { get; set; }
 
@@ -545,10 +537,6 @@ public partial class MainViewModel : ViewModelBase
 
     public int GamepadAchievementLayoutRevision { get; private set; }
     public bool HasFocusedGamepadAchievement => FocusedGamepadAchievement is not null;
-
-    // The view reports a gamepad-grid fault here (e.g. a focused row's container did not realize after
-    // several attempts) so a Deck run leaves a warning in Logs/EmuShelf-*.log without per-move noise.
-    internal void LogGamepadGridFault(string detail) => _logger.Warning($"Gamepad grid: {detail}");
 
     /// <summary>Width of the console/collections rail: a full label column when expanded, a
     /// narrow icon rail when collapsed so the library grid reclaims the freed horizontal space.</summary>
@@ -663,14 +651,6 @@ public partial class MainViewModel : ViewModelBase
         LibraryScope.RecentlyPlayed => "Recently Played",
         _ => SelectedSystem?.Name ?? "Library",
     };
-    public string LibraryShortName => CurrentLibraryScope switch
-    {
-        LibraryScope.AllGames => "ALL",
-        LibraryScope.RecentlyAdded => "NEW",
-        LibraryScope.RecentlyPlayed => "PLAYED",
-        _ => SelectedSystem?.ShortName ?? "LIB",
-    };
-    public string LibraryAccentColor => SelectedSystem?.AccentColor ?? "#E04B52";
     public string EmptyLibraryTitle => CurrentLibraryScope switch
     {
         LibraryScope.AllGames => "Your game library is empty",
@@ -1273,9 +1253,6 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void CloseFocusedGameActions() => CloseGamepadOverlay();
-
-    [RelayCommand]
     private void OpenGamepadSearch() => OpenGamepadOverlay(GamepadOverlayKind.Search);
 
     [RelayCommand]
@@ -1291,8 +1268,14 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void RequestDesktopModeFromGamepad() =>
+    private void RequestDesktopModeFromGamepad()
+    {
+        // Remember the overlay we came from (System Menu or the Set-cover handoff) so B backs out to it.
+        _desktopModeConfirmationParent = GamepadOverlay is GamepadOverlayKind.CoverDesktopHandoff
+            ? GamepadOverlayKind.CoverDesktopHandoff
+            : GamepadOverlayKind.SystemMenu;
         OpenGamepadOverlay(GamepadOverlayKind.DesktopModeConfirmation);
+    }
 
     [RelayCommand]
     private async Task RequestSettingsFromGamepadAsync()
@@ -1465,7 +1448,8 @@ public partial class MainViewModel : ViewModelBase
             GamepadOverlayKind.DiscSelection or
             GamepadOverlayKind.RemoveConfirmation or
             GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
-            GamepadOverlayKind.DesktopModeConfirmation or
+            // Desktop-mode confirm returns to whichever overlay opened it, not always the System Menu.
+            GamepadOverlayKind.DesktopModeConfirmation => _desktopModeConfirmationParent,
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
             _ => GamepadOverlayKind.None,
         };
@@ -1493,14 +1477,6 @@ public partial class MainViewModel : ViewModelBase
 
         await RemoveGameCoreAsync(game);
         CloseGamepadOverlay();
-    }
-
-    [RelayCommand]
-    private async Task SwitchToDesktopForCoverAsync()
-    {
-        CloseGamepadOverlay();
-        await SetInterfaceModeAsync(InterfaceMode.Desktop);
-        SetStatus("Cover selection is available in Desktop mode.");
     }
 
     [RelayCommand]
@@ -1902,9 +1878,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
         OnPropertyChanged(nameof(IsGamepadAchievementsOpen));
         OnPropertyChanged(nameof(IsGamepadSearchOpen));
-        OnPropertyChanged(nameof(IsGamepadCollectionsOpen));
         OnPropertyChanged(nameof(IsGamepadRenameOpen));
-        OnPropertyChanged(nameof(IsGamepadDiscSelectionOpen));
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadScraperOpen));
@@ -1921,7 +1895,6 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
         OnPropertyChanged(nameof(ShowsGamepadOverlayChromeTitle));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
-        OnPropertyChanged(nameof(GamepadOverlayHelpText));
     }
 
     [RelayCommand]
@@ -1986,8 +1959,6 @@ public partial class MainViewModel : ViewModelBase
     private void NotifyLibraryPresentationChanged()
     {
         OnPropertyChanged(nameof(LibraryTitle));
-        OnPropertyChanged(nameof(LibraryShortName));
-        OnPropertyChanged(nameof(LibraryAccentColor));
         OnPropertyChanged(nameof(EmptyLibraryTitle));
         OnPropertyChanged(nameof(EmptyLibraryDescription));
     }
@@ -2090,10 +2061,6 @@ public partial class MainViewModel : ViewModelBase
     {
         foreach (var choice in ThemeChoices)
             choice.IsSelected = choice.Id == value;
-    }
-
-    partial void OnSelectedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
-    {
     }
 
     partial void OnFocusedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
@@ -2488,20 +2455,17 @@ public partial class MainViewModel : ViewModelBase
                 DeselectAllGames();
             for (var index = Math.Min(start, end); index <= Math.Max(start, end); index++)
                 Games[index].IsSelected = true;
-            SelectedGame = game;
         }
         else if (toggle)
         {
             game.IsSelected = !game.IsSelected;
             _selectionAnchor = game;
-            SelectedGame = game.IsSelected ? game : Games.FirstOrDefault(candidate => candidate.IsSelected);
         }
         else
         {
             DeselectAllGames();
             game.IsSelected = true;
             _selectionAnchor = game;
-            SelectedGame = game;
         }
 
         // Shift without an existing anchor behaves like an ordinary click and establishes one.
@@ -2548,7 +2512,6 @@ public partial class MainViewModel : ViewModelBase
                 game.IsSelected = shouldSelect;
         }
 
-        SelectedGame = Games.FirstOrDefault(game => game.IsSelected);
         NotifySelectionChanged();
     }
 
@@ -2559,7 +2522,6 @@ public partial class MainViewModel : ViewModelBase
 
         _marqueeBaseSelection = null;
         _selectionAnchor = Games.FirstOrDefault(game => game.IsSelected);
-        SelectedGame = _selectionAnchor;
         NotifySelectionChanged();
     }
 
@@ -2573,7 +2535,6 @@ public partial class MainViewModel : ViewModelBase
             game.IsSelected = true;
 
         _selectionAnchor = Games.FirstOrDefault();
-        SelectedGame = _selectionAnchor;
         NotifySelectionChanged();
     }
 
@@ -2583,7 +2544,6 @@ public partial class MainViewModel : ViewModelBase
         DeselectAllGames();
 
         _selectionAnchor = null;
-        SelectedGame = null;
         NotifySelectionChanged();
     }
 
@@ -2599,15 +2559,27 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasSelectedGames));
         OnPropertyChanged(nameof(SelectionSummaryText));
         OnPropertyChanged(nameof(SelectionRemovalText));
-        var removalText = SelectionRemovalText;
-        var canScrapeSelection = SelectedGameCount > 1;
-        var scrapeText = $"Scrape {SelectedGameCount} selected with ScreenScraper…";
-        foreach (var game in _systemGames.Concat(Games).Distinct())
+
+        // This runs on every pointer-move and auto-scroll tick during a rubber-band drag, but the
+        // per-game strings below are a pure function of the selected count, so re-broadcasting them
+        // to every tile when the count has not moved is wasted work. Skip it unless the count changed.
+        // New tiles only enter the library while the selection is cleared (a scope load resets it
+        // first), and their defaults already match the count≤1 wording, so none miss an update.
+        var count = SelectedGameCount;
+        if (count != _broadcastSelectionCount)
         {
-            game.SelectionRemovalText = removalText;
-            game.SelectionScrapeText = scrapeText;
-            game.CanScrapeSelection = canScrapeSelection;
+            _broadcastSelectionCount = count;
+            var removalText = SelectionRemovalText;
+            var canScrapeSelection = count > 1;
+            var scrapeText = $"Scrape {count} selected with ScreenScraper…";
+            foreach (var game in _systemGames.Concat(Games).Distinct())
+            {
+                game.SelectionRemovalText = removalText;
+                game.SelectionScrapeText = scrapeText;
+                game.CanScrapeSelection = canScrapeSelection;
+            }
         }
+
         RemoveSelectedGamesCommand.NotifyCanExecuteChanged();
         ScrapeSelectedGamesCommand.NotifyCanExecuteChanged();
     }
@@ -2767,6 +2739,17 @@ public partial class MainViewModel : ViewModelBase
         // it cannot be pre-empted by a competing reload.
         if (useCache && _scopeCache.TryGetValue(scopeKey, out var cachedGames))
         {
+            // A cache hit reuses the very same GameViewModel instances, so any leftover IsSelected
+            // flags (and the anchor/focus that point at them) would ride back in when the user
+            // returns to a scope. The slow path resets this via BeginScopeChange; mirror it here so
+            // switching to a cached scope clears the selection exactly like switching to an unbuilt
+            // one. Only reset on an actual scope change so re-reading the on-screen scope is a no-op.
+            if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
+            {
+                ClearSelection();
+                FocusedGame = null;
+            }
+
             // Cancel any slow reload still in flight so it cannot land after us and overwrite the
             // scope we just switched to.
             ++_loadGeneration;
@@ -2859,7 +2842,6 @@ public partial class MainViewModel : ViewModelBase
                         LaunchGameCommand,
                         SaveGameTitleCommand,
                         SetGameCoverCommand,
-                        RemoveGameCommand,
                         LoadGameCoverCommand,
                         artwork,
                         gameSystem.CoverAspectRatio,
@@ -3947,8 +3929,15 @@ public partial class MainViewModel : ViewModelBase
         if (!game.Discs.Any(candidate => candidate.Game.Id == disc.Game.Id))
             return;
 
-        await RememberSelectedDiscAsync(game, disc);
-        SetStatus($"Disc {disc.Number} selected for {game.Title}");
+        // Only report success once the selection is actually persisted and applied in memory; on a
+        // write failure RememberSelectedDiscAsync leaves the previous disc active, so claiming success
+        // would tell the user a switch happened that did not.
+        if (await RememberSelectedDiscAsync(game, disc))
+            SetStatus($"Disc {disc.Number} selected for {game.Title}");
+        else
+            SetStatus(
+                $"Could not select Disc {disc.Number} for {game.Title}.",
+                StatusSeverity.Error);
     }
 
     private async Task LaunchGameCoreAsync(GameViewModel? game)
@@ -3963,9 +3952,13 @@ public partial class MainViewModel : ViewModelBase
         var launchGame = launchDisc.Game;
         if (!launchGame.IsAvailable)
         {
+            // Single-disc titles get the context-aware status (it distinguishes an external library
+            // that no longer lists the game from a plain missing file); multi-disc titles name the
+            // specific disc that could not be found.
             SetStatus(
-                launchGame.IsAvailable ? game.UnavailableLaunchStatus :
-                    $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found.",
+                game.IsMultiDisc
+                    ? $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found."
+                    : game.UnavailableLaunchStatus,
                 StatusSeverity.Error);
             return;
         }

@@ -829,7 +829,6 @@ public class MainWindowVisualSnapshotTests
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
         viewModel.LibraryCountText = "8 games";
-        viewModel.SelectedGame = viewModel.Games[0];
 
         try
         {
