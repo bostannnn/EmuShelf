@@ -32,9 +32,18 @@ public sealed class RcloneConfigurator
     /// rate-limited — the cause of multi-second waits before a launch — and which Google is retiring
     /// during 2026.
     /// </summary>
-    public Task CreateGoogleDriveRemoteAsync(string remoteName, CancellationToken cancellationToken = default)
+    /// <exception cref="RcloneSignInServerBusyException">
+    /// A previous, abandoned sign-in is still holding rclone's loopback OAuth port.
+    /// </exception>
+    public async Task CreateGoogleDriveRemoteAsync(string remoteName, CancellationToken cancellationToken = default)
     {
         ValidateRemoteName(remoteName);
+
+        // A sign-in that was never completed (the app closed while the browser was open) leaves an
+        // rclone holding the loopback OAuth port, which makes every later attempt fail to bind it.
+        // Clear our own leftovers first, off the calling thread. Connect and sync are serialized by
+        // the coordinator's gate, so any of our rclone alive here is an orphan, never a live transfer.
+        await Task.Run(KillStaleOAuthProcesses, cancellationToken).ConfigureAwait(false);
 
         var arguments = new List<string> { "config", "create", remoteName, "drive" };
         var client = ResolveGoogleClient(
@@ -48,7 +57,7 @@ public sealed class RcloneConfigurator
             arguments.Add(ValidateConfigValue(resolved.ClientSecret, "client_secret"));
         }
 
-        return RunAsync(arguments, cancellationToken);
+        await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -96,11 +105,169 @@ public sealed class RcloneConfigurator
 
         using var process = Process.Start(startInfo) ??
             throw new InvalidOperationException("The operating system did not start rclone.");
-        var drainOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var readError = process.StandardError.ReadToEndAsync(cancellationToken);
-        await Task.WhenAll(drainOutput, readError, process.WaitForExitAsync(cancellationToken));
-        if (process.ExitCode != 0)
-            throw new IOException($"rclone exited with code {process.ExitCode}: {(await readError).Trim()}");
+        try
+        {
+            var drainOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
+            var readError = process.StandardError.ReadToEndAsync(cancellationToken);
+            await Task.WhenAll(drainOutput, readError, process.WaitForExitAsync(cancellationToken));
+            if (DescribeFailure(process.ExitCode, await readError) is { } failure)
+                throw failure;
+        }
+        finally
+        {
+            // The OAuth `config create` blocks on the browser sign-in and binds the loopback port
+            // while it waits; a cancelled or abandoned run must not leave it running and holding that
+            // port. A run that exited on its own (the common case) is already gone, so this is a no-op.
+            TryKill(process);
+        }
+    }
+
+    /// <summary>
+    /// Maps an rclone exit into the exception to surface, or <see langword="null"/> on success. The
+    /// port-in-use case gets its own type so the UI can explain it instead of showing rclone's usage
+    /// dump. Kept static and pure so the classification is unit-testable without spawning rclone.
+    /// </summary>
+    internal static Exception? DescribeFailure(int exitCode, string standardError)
+    {
+        if (exitCode == 0)
+            return null;
+
+        var error = (standardError ?? string.Empty).Trim();
+        // "address already in use" is Go's own EADDRINUSE text — it comes from the runtime's fixed
+        // English errno table, not the OS locale's strerror, so it is stable across languages and is a
+        // safer key than rclone's surrounding prose. Kept narrow deliberately: a different bind error
+        // (e.g. permission denied) is a genuinely different problem and must not claim a sign-in is open.
+        if (error.Contains("address already in use", StringComparison.OrdinalIgnoreCase))
+            return new RcloneSignInServerBusyException();
+
+        return new IOException($"rclone exited with code {exitCode}: {error}");
+    }
+
+    /// <summary>
+    /// Kills any leftover instance of our bundled rclone (see <see cref="IsStaleBundledRclone"/> for
+    /// how "ours" is decided). Best-effort throughout, because a process we cannot inspect or signal
+    /// must not fail the sign-in.
+    /// </summary>
+    private void KillStaleOAuthProcesses()
+    {
+        Process[] processes;
+        try
+        {
+            processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(_rclonePath));
+        }
+        catch
+        {
+            return;
+        }
+
+        foreach (var process in processes)
+        {
+            try
+            {
+                if (IsStaleBundledRclone(process))
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(2000);
+                }
+            }
+            catch
+            {
+                // Access denied, already exited, or unreadable — leave it alone.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether a running rclone is one of ours to reap. On Windows/macOS the bundled binary sits at a
+    /// stable path, so matching it is precise and cannot touch an unrelated rclone the user runs. On
+    /// Linux an AppImage mounts at a fresh <c>$APPDIR</c> every launch, so a cross-session orphan's
+    /// binary path no longer matches ours — there we also identify our rclone by the <c>--config</c>
+    /// argument, whose <c>rclone.conf</c> lives in the portable data directory and is stable across
+    /// launches, so a Steam Deck orphan is still recognised after a force-quit.
+    /// </summary>
+    private bool IsStaleBundledRclone(Process process)
+    {
+        if (PathsEqual(TryGetExecutablePath(process), _rclonePath))
+            return true;
+
+        return OperatingSystem.IsLinux() && CommandLineReferencesOurConfig(process.Id);
+    }
+
+    private static string? TryGetExecutablePath(Process process)
+    {
+        try
+        {
+            return process.MainModule?.FileName;
+        }
+        catch
+        {
+            // A process we do not own, or whose module list we cannot read, is not one we can match
+            // by path — the config-argument check is the fallback for our own AppImage orphans.
+            return null;
+        }
+    }
+
+    private bool CommandLineReferencesOurConfig(int processId)
+    {
+        try
+        {
+            return CommandLineReferencesConfig(
+                File.ReadAllText($"/proc/{processId}/cmdline"), _configurationPath);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether a Linux <c>/proc/&lt;pid&gt;/cmdline</c> (NUL-separated argv) is an rclone invoked with
+    /// our <c>--config</c> path. Pure and static so the identity rule can be unit-tested without a live
+    /// process — an unrelated rclone pointed at a different config is deliberately not matched.
+    /// </summary>
+    internal static bool CommandLineReferencesConfig(string commandLine, string configurationPath)
+    {
+        if (string.IsNullOrEmpty(commandLine))
+            return false;
+
+        return commandLine
+            .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+            .Any(argument => PathsEqual(argument, configurationPath));
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // Already gone, or we lack permission — nothing more to do.
+        }
+    }
+
+    internal static bool PathsEqual(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b))
+            return false;
+
+        // Linux file systems are case-sensitive; Windows and macOS default to case-insensitive.
+        var comparison = OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+        try
+        {
+            return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), comparison);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // A malformed argument from another process's command line is simply not a path we match.
+            return false;
+        }
     }
 
     // Passed as its own argv entry, so quoting is not a concern; control characters are, because a
@@ -120,5 +287,19 @@ public sealed class RcloneConfigurator
         {
             throw new ArgumentException("The rclone remote name contains unsupported characters.", nameof(remoteName));
         }
+    }
+}
+
+/// <summary>
+/// rclone could not bind its loopback OAuth callback port (127.0.0.1:53682) because a previous
+/// sign-in is still holding it. Distinct from a generic failure so the connect flow can tell the user
+/// how to clear it rather than reporting a declined sign-in.
+/// </summary>
+public sealed class RcloneSignInServerBusyException : IOException
+{
+    public RcloneSignInServerBusyException()
+        : base("A previous Google sign-in is still open and holding the sign-in port (127.0.0.1:53682). " +
+               "Close that browser window or restart EmuShelf, then try connecting again.")
+    {
     }
 }

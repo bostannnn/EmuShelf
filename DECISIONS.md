@@ -4819,3 +4819,33 @@ resource, so a coloured gradient stop would need 28 palette edits. (2) `RevealSc
 keeps ~40px of the neighbouring row peeking past the focused one, so the list is visibly mid-scroll
 rather than static-then-jump; it falls back to `BringIntoView` for controls outside a gamepad scroll
 region (the pinned Apply/Refresh block, connect form, terminal messages).
+
+## 2026-08-06 — Google Drive connect clears leftover rclone and names the port-busy failure
+
+rclone's `config create … drive` runs the OAuth flow by binding a loopback web server on
+`127.0.0.1:53682`, opening the browser, and blocking until the user finishes signing in. If that is
+abandoned — the app is closed (a Steam Deck force-quit) while the browser is open, or the browser
+never appears (Gaming Mode/gamescope has no default browser) — the rclone process is orphaned and keeps
+holding the port. Every later Connect then dies instantly with `bind: address already in use`, which the
+UI reported as the generic "the sign-in may have been declined," and repeatedly clicking Connect only
+spawned more contenders for the port. Observed in the field on a Steam Deck.
+
+Three changes in `RcloneConfigurator`:
+
+- **Clear our own leftovers before a sign-in.** `CreateGoogleDriveRemoteAsync` first kills any running
+  instance of the *bundled* rclone, on a thread-pool thread. "Ours" is matched by executable path on
+  Windows/macOS; on Linux the AppImage mounts at a fresh `$APPDIR` each launch, so a cross-session
+  orphan's binary path no longer matches — there we also match on the `--config` argument (its
+  `rclone.conf` lives in the portable data dir and is stable across launches), so a Steam Deck orphan is
+  still reaped after a force-quit. An unrelated rclone the user runs, pointed at a different config, is
+  never touched. Connect and sync are serialized by the coordinator's gate, so any of our rclone alive at
+  connect time is an orphan, never a live transfer — making this safe.
+- **Never orphan the process we spawn.** `RunAsync` kills the process (whole tree) in a `finally`, so a
+  cancelled or abandoned OAuth run can't walk away still holding the port. A run that exited on its own is
+  already gone, so this is a no-op for the normal path and for the short-lived `mkdir`/transport-adjacent
+  calls.
+- **Name the failure.** `DescribeFailure` (static/pure, unit-tested) maps `address already in use` to a
+  dedicated `RcloneSignInServerBusyException`; the coordinator catches it and returns a new
+  `CloudSaveSyncConnectResult.SignInServerBusy`, which Settings renders as "A previous Google sign-in is
+  still open. Close that browser window (or restart EmuShelf), then try again," instead of the misleading
+  declined-sign-in text.
