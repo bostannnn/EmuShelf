@@ -2075,7 +2075,10 @@ public class MainWindowVisualSnapshotTests
             _ => Task.FromResult(string.Empty),
             () => Task.FromResult(string.Empty),
             () => true,
-            _ => Task.CompletedTask);
+            _ => Task.CompletedTask,
+            // A data directory so both surfaces expose general.open-data-folder and the general.*
+            // parity actually covers it (Desktop shows it under HasDataDirectory; gamepad mirrors it).
+            DataDirectory: "/tmp/emushelf-parity-data");
         var retroAchievements = new RetroAchievementsSettingsContext(
             null,
             false,

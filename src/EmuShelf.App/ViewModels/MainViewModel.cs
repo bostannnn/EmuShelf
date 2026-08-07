@@ -391,6 +391,10 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
     public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
+    /// <summary>Settings overlay open in its normal (non-modal) state, so the footer shows the
+    /// navigation hints; the text-entry and confirmation modals swap in their own legends.</summary>
+    public bool IsGamepadSettingsNormal =>
+        IsGamepadSettingsOpen && !IsGamepadSettingsTextEntryOpen && !IsGamepadSettingsConfirmationOpen;
     public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
@@ -1908,6 +1912,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSettingsOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsNormal));
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
@@ -4726,6 +4731,7 @@ public partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
             OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
             OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+            OnPropertyChanged(nameof(IsGamepadSettingsNormal));
             OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
         }
     }

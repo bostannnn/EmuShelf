@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Windows.Input;
+using Avalonia.Data.Converters;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
@@ -80,6 +81,11 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public bool ShowsActionButton => Kind is GamepadSettingsRowKind.Action or
         GamepadSettingsRowKind.Text or GamepadSettingsRowKind.Secret or
         GamepadSettingsRowKind.Folder or GamepadSettingsRowKind.File;
+    /// <summary>True only while an action is actually running: its Value is a status word ("WORKING",
+    /// "CONNECTING…") rather than an "A …" prompt. Lets the row show that label in place of the idle
+    /// affordance without also labelling merely-disabled rows.</summary>
+    public bool ShowsWorkingLabel =>
+        IsAction && !Value.StartsWith("A ", StringComparison.OrdinalIgnoreCase);
     public string ActionButtonText => Kind switch
     {
         GamepadSettingsRowKind.Text or GamepadSettingsRowKind.Secret => "EDIT",
@@ -148,6 +154,7 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsEditableValue));
         OnPropertyChanged(nameof(IsInformation));
         OnPropertyChanged(nameof(ShowsActionButton));
+        OnPropertyChanged(nameof(ShowsWorkingLabel));
         OnPropertyChanged(nameof(ActionButtonText));
         OnPropertyChanged(nameof(ActionGlyph));
     }
@@ -178,6 +185,11 @@ internal sealed record GamepadSettingsRowSpec(
 public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 {
     private const int ThemeColumns = 3;
+
+    /// <summary>Maps <see cref="RevealSecret"/> to a TextBox PasswordChar: '\0' shows the text
+    /// (revealed), '●' masks it. Lets one field toggle its mask without moving controller focus.</summary>
+    public static FuncValueConverter<bool, char> SecretMaskChar { get; } =
+        new(revealed => revealed ? '\0' : '●');
 
     private readonly EmulatorSettingsViewModel _settings;
     private readonly IOnScreenKeyboardService _onScreenKeyboard;
@@ -235,6 +247,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial bool IsSecretEntry { get; set; }
+
+    /// <summary>Whether a masked secret is temporarily shown as plain text (toggled with Y) so a long
+    /// API key or password can be checked before saving. Reset every time the entry opens. The view
+    /// keeps one TextBox and just drops its mask, so controller focus never moves off the field.</summary>
+    [ObservableProperty]
+    public partial bool RevealSecret { get; set; }
 
     [ObservableProperty]
     public partial int TextEntryRevision { get; set; }
@@ -364,6 +382,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     return true;
                 case GamepadAction.Cancel:
                     CancelTextEntry();
+                    return true;
+                case GamepadAction.Actions when IsSecretEntry:
+                    // Y reveals/hides a masked secret so a long key can be checked before saving.
+                    RevealSecret = !RevealSecret;
                     return true;
                 default:
                     return false;
@@ -744,6 +766,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         TextEntryDescription = description;
         DraftText = value;
         IsSecretEntry = isSecret;
+        RevealSecret = false;
         _commitText = commit;
         IsTextEntryOpen = true;
         TextEntryRevision++;
@@ -779,6 +802,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         DraftText = string.Empty;
         _commitText = null;
         IsSecretEntry = false;
+        RevealSecret = false;
         IsTextEntryOpen = false;
         OnModalStateChanged();
         FocusRevision++;
@@ -967,8 +991,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
             _settings.FetchAllMetadataCommand,
             _settings.CanFetchAllMetadata);
+        // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
+        // folder too, and so the two surfaces' general.* field sets stay in parity.
+        if (_settings.HasDataDirectory)
+        {
+            yield return ActionRow(
+                "general.open-data-folder",
+                "Open data folder",
+                "Your library database, covers, settings, and saves live here. EmuShelf never touches your game files.",
+                "A OPEN",
+                _settings.OpenDataFolderCommand,
+                enabled: true);
+        }
         // The update actions live here rather than an About page so a controller can reach them: an
         // AppImage update re-execs in place, so installing from gaming mode never drops to the desktop.
+        // Desktop exposes these as about.*, so they are excluded from the Desktop/Gamepad field parity.
         if (_settings.HasUpdateChecker)
         {
             yield return ActionRow(
@@ -979,7 +1016,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     : "Look on GitHub for a newer EmuShelf.",
                 _settings.IsUpdateBusy ? "WORKING" : "A CHECK",
                 _settings.CheckForUpdatesCommand,
-                !_settings.IsUpdateBusy);
+                !_settings.IsUpdateBusy,
+                excludeFromParity: true);
             if (_settings.IsUpdateAvailable)
             {
                 yield return ActionRow(
@@ -988,7 +1026,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     "Download the new version and restart. On the Steam Deck this stays in gaming mode.",
                     _settings.IsUpdateBusy ? "WORKING" : "A UPDATE",
                     _settings.InstallUpdateCommand,
-                    !_settings.IsUpdateBusy);
+                    !_settings.IsUpdateBusy,
+                    excludeFromParity: true);
             }
         }
     }
@@ -1106,6 +1145,67 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 !_settings.IsDownloadingRclone);
         }
 
+        // Connection first: Connect (when disconnected) or the connected summary + Sync all now sits
+        // above the per-platform folder rows, matching the Desktop layout — on a controller the
+        // primary action must not sit below every platform row.
+        if (_settings.IsCloudDisconnected)
+        {
+            yield return TextRow(
+                "saves.remote",
+                "rclone remote name",
+                "The local rclone remote that owns your Google Drive connection.",
+                _settings.CloudRemoteName,
+                false,
+                value => _settings.CloudRemoteName = value);
+            yield return TextRow(
+                "saves.cloud-folder",
+                "Cloud folder",
+                "The folder inside the remote that stores EmuShelf save manifests and copies.",
+                _settings.CloudFolder,
+                false,
+                value => _settings.CloudFolder = value);
+            yield return ActionRow(
+                "saves.connect",
+                "Connect Google Drive",
+                "Open Google's sign-in through rclone and enable the configured save platforms.",
+                _settings.IsCloudBusy ? "CONNECTING…" : "A CONNECT",
+                _settings.ConnectCloudCommand,
+                !_settings.IsCloudBusy && !_settings.IsRcloneMissing);
+        }
+        else
+        {
+            if (_settings.IsCloudBusy)
+            {
+                yield return ActionRow(
+                    "saves.stop",
+                    "Stop sync",
+                    "Already transferred batches remain safe; the next sync continues from them.",
+                    "A STOP",
+                    _settings.CancelCloudSyncCommand,
+                    _settings.CancelCloudSyncCommand.CanExecute(null));
+            }
+            else
+            {
+                yield return ActionRow(
+                    "saves.sync",
+                    "Sync all now",
+                    "Reconcile every configured platform with the cloud.",
+                    "A SYNC",
+                    _settings.SyncCloudNowCommand,
+                    true);
+            }
+            yield return ActionRow(
+                "saves.disconnect",
+                "Disconnect Google Drive",
+                "Disable EmuShelf cloud sync. Local and cloud saves remain untouched.",
+                "A DISCONNECT",
+                _settings.DisconnectCloudCommand,
+                !_settings.IsCloudBusy,
+                isDestructive: true,
+                confirmationTitle: "Disconnect Google Drive?",
+                confirmationText: "EmuShelf will disable cloud sync. It will not delete local saves or anything already stored in Google Drive.");
+        }
+
         foreach (var platform in _settings.CloudPlatforms)
         {
             // A per-platform header groups this platform's folder, states, and replace rows so the
@@ -1186,64 +1286,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     isGrouped: true,
                     systemId: platform.SystemId);
             }
-        }
-
-        if (_settings.IsCloudDisconnected)
-        {
-            yield return TextRow(
-                "saves.remote",
-                "rclone remote name",
-                "The local rclone remote that owns your Google Drive connection.",
-                _settings.CloudRemoteName,
-                false,
-                value => _settings.CloudRemoteName = value);
-            yield return TextRow(
-                "saves.cloud-folder",
-                "Cloud folder",
-                "The folder inside the remote that stores EmuShelf save manifests and copies.",
-                _settings.CloudFolder,
-                false,
-                value => _settings.CloudFolder = value);
-            yield return ActionRow(
-                "saves.connect",
-                "Connect Google Drive",
-                "Open Google's sign-in through rclone and enable the configured save platforms.",
-                _settings.IsCloudBusy ? "CONNECTING…" : "A CONNECT",
-                _settings.ConnectCloudCommand,
-                !_settings.IsCloudBusy && !_settings.IsRcloneMissing);
-        }
-        else
-        {
-            if (_settings.IsCloudBusy)
-            {
-                yield return ActionRow(
-                    "saves.stop",
-                    "Stop sync",
-                    "Already transferred batches remain safe; the next sync continues from them.",
-                    "A STOP",
-                    _settings.CancelCloudSyncCommand,
-                    _settings.CancelCloudSyncCommand.CanExecute(null));
-            }
-            else
-            {
-                yield return ActionRow(
-                    "saves.sync",
-                    "Sync all now",
-                    "Reconcile every configured platform with the cloud.",
-                    "A SYNC",
-                    _settings.SyncCloudNowCommand,
-                    true);
-            }
-            yield return ActionRow(
-                "saves.disconnect",
-                "Disconnect Google Drive",
-                "Disable EmuShelf cloud sync. Local and cloud saves remain untouched.",
-                "A DISCONNECT",
-                _settings.DisconnectCloudCommand,
-                !_settings.IsCloudBusy,
-                isDestructive: true,
-                confirmationTitle: "Disconnect Google Drive?",
-                confirmationText: "EmuShelf will disable cloud sync. It will not delete local saves or anything already stored in Google Drive.");
         }
 
         if (_settings.HasSyncLog)
@@ -1434,7 +1476,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             var index = choices.ToList().IndexOf(value);
             if (index < 0)
                 index = 0;
-            RunLocalEdit(() => set(choices[Math.Clamp(index + Math.Sign(delta), 0, choices.Count - 1)]));
+            // Wrap rather than clamp: the row only advances (A/Right), so without wrapping the last
+            // option would be a dead-end with no controller input able to reach earlier values again.
+            var next = ((index + Math.Sign(delta)) % choices.Count + choices.Count) % choices.Count;
+            RunLocalEdit(() => set(choices[next]));
         }
 
         return new GamepadSettingsRowSpec(
@@ -1463,7 +1508,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         string? confirmationTitle = null,
         string? confirmationText = null,
         bool isGrouped = false,
-        string? systemId = null) => new(
+        string? systemId = null,
+        bool excludeFromParity = false) => new(
             key,
             label,
             description,
@@ -1475,7 +1521,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             ConfirmationTitle: confirmationTitle,
             ConfirmationText: confirmationText,
             SystemId: systemId,
-            IsGrouped: isGrouped);
+            IsGrouped: isGrouped,
+            ExcludeFromParity: excludeFromParity);
 
     private static GamepadSettingsRowSpec InformationRow(
         string key,
