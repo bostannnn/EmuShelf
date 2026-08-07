@@ -73,19 +73,6 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         _transferTimeout = operationTimeout ?? TimeSpan.FromMinutes(30);
     }
 
-    public async Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await RunAsync(["lsjson", _remoteName + ":"], Stream.Null, cancellationToken);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException)
-        {
-            return false;
-        }
-    }
-
     public async Task<IReadOnlyList<SaveUnitSnapshot>> ListAsync(CancellationToken cancellationToken = default)
     {
         // Read the single index file (one request) rather than a metadata file per save.

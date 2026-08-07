@@ -7,9 +7,6 @@ namespace EmuShelf.Core.SaveSync;
 /// </summary>
 public interface ICloudSyncTransport
 {
-    /// <summary>Whether a cloud remote is currently configured and reachable.</summary>
-    Task<bool> IsConnectedAsync(CancellationToken cancellationToken = default);
-
     /// <summary>A snapshot of every unit currently stored on the remote.</summary>
     Task<IReadOnlyList<SaveUnitSnapshot>> ListAsync(CancellationToken cancellationToken = default);
 

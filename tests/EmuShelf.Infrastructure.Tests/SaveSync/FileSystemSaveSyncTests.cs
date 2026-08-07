@@ -108,6 +108,50 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         Assert.Null(provider.ResolveUnit("pcsx2/Mcd001.ps2/SLUS-20552"));
     }
 
+    [Theory]
+    [InlineData("pcsx2/..")]
+    [InlineData("pcsx2/.")]
+    [InlineData("pcsx2/../SLUS-20552")]
+    [InlineData("pcsx2/./Mcd001.ps2")]
+    [InlineData("pcsx2/Mcd001/..")]
+    public void Provider_RejectsDotAndDotDotSegments_SoAUnitIdCannotEscapeItsRoot(string unitId)
+    {
+        // Path.GetFileName("..") == ".." (and "." == "."), so the round-trip name check alone would
+        // have admitted the parent/current-directory names and resolved a save outside the memcards
+        // root. A crafted or corrupt cloud unit id must never resolve there.
+        Directory.CreateDirectory(_memoryCardsDirectory);
+        File.WriteAllText(Path.Combine(_memoryCardsDirectory, "Mcd001.ps2"), "file-card");
+        WriteIni(autoManageFolderCards: false);
+
+        var provider = new Pcsx2SaveLocationProvider(_configurationDirectory);
+
+        Assert.Null(provider.ResolveUnit(unitId));
+        // Control: a legitimate card id under the same root still resolves.
+        Assert.NotNull(provider.ResolveUnit("pcsx2/Mcd001.ps2"));
+    }
+
+    [Fact]
+    public async Task FolderSnapshot_RecoversASaveLeftUnderStagingByAnInterruptedWrite()
+    {
+        // Reproduce a crash between the two renames that install a folder save: the live folder was
+        // moved to its "_emushelf-previous-*" sibling and the real path is gone. The next snapshot
+        // must heal it — the displaced copy is the user's only copy — rather than reading "no save".
+        var cardRoot = Path.Combine(_memoryCardsDirectory, "Mcd001");
+        var live = Path.Combine(cardRoot, "SLUS-20552");
+        var displaced = Path.Combine(cardRoot, "_emushelf-previous-SLUS-20552");
+        Directory.CreateDirectory(displaced);
+        await File.WriteAllTextAsync(Path.Combine(displaced, "save.dat"), "the only copy");
+        await File.WriteAllTextAsync(Path.Combine(cardRoot, "_pcsx2_index"), "index");
+        WriteIni(autoManageFolderCards: false);
+
+        var snapshot = await _endpoint.SnapshotAsync("pcsx2/Mcd001/SLUS-20552");
+
+        Assert.NotNull(snapshot);
+        Assert.True(Directory.Exists(live));
+        Assert.False(Directory.Exists(displaced));
+        Assert.Equal("the only copy", await File.ReadAllTextAsync(Path.Combine(live, "save.dat")));
+    }
+
     [Fact]
     public void DefaultLocations_UseDocumentedWindowsAndFlatpakPaths()
     {

@@ -15,6 +15,8 @@ namespace EmuShelf.Infrastructure.SaveSync;
 public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
 {
     private static readonly DateTimeOffset ZipTimestamp = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
+    private const string IncomingPrefix = "_emushelf-incoming-";
+    private const string PreviousPrefix = "_emushelf-previous-";
     private readonly ISaveLocationProvider _provider;
     private readonly string _conflictsDirectory;
     private readonly string _transfersDirectory;
@@ -59,6 +61,7 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
         var location = Resolve(unitId);
         if (location.Kind == SaveUnitKind.Folder)
         {
+            RecoverInterruptedFolderWrite(location.Path);
             if (!Directory.Exists(location.Path))
                 return null;
 
@@ -157,9 +160,10 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             return;
         }
 
-        var parentDirectory = Path.GetDirectoryName(location.Path)!;
-        var temporaryDirectory = Path.Combine(parentDirectory, "_emushelf-incoming-" + Guid.NewGuid().ToString("N"));
-        var displacedDirectory = Path.Combine(parentDirectory, "_emushelf-previous-" + Guid.NewGuid().ToString("N"));
+        // Heal a folder write that a crash interrupted mid-move before staging a new one, so the
+        // deterministic staging names below are free and the user's save is back at its real path.
+        RecoverInterruptedFolderWrite(location.Path);
+        var (temporaryDirectory, displacedDirectory) = FolderStagingPaths(location.Path);
         var displaced = false;
         var installed = false;
         try
@@ -225,6 +229,46 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
             FileAccess.Write,
             FileShare.None);
         Copy(content, target, cancellationToken);
+    }
+
+    // Deterministic sibling names (not random guids) so a crash that leaves them behind can be found
+    // and healed on the next read/write of the same unit. They keep the "_emushelf-" prefix every
+    // provider already ignores when enumerating a save folder.
+    private static (string Incoming, string Previous) FolderStagingPaths(string locationPath)
+    {
+        var trimmed = Path.TrimEndingDirectorySeparator(locationPath);
+        var parent = Path.GetDirectoryName(trimmed)!;
+        var leaf = Path.GetFileName(trimmed);
+        return (
+            Path.Combine(parent, IncomingPrefix + leaf),
+            Path.Combine(parent, PreviousPrefix + leaf));
+    }
+
+    // A folder save is installed by two renames: live → "_emushelf-previous-*", then incoming → live.
+    // A crash between them leaves the live folder only under its "_emushelf-previous-*" sibling with
+    // the real path gone, and no finally runs across a process death. Heal it before the unit is next
+    // read or written: restore the displaced folder when the live path is missing, drop it when newer
+    // content is already installed, and clear any "_emushelf-incoming-*" scratch (always unverified,
+    // never the user's only copy).
+    private static void RecoverInterruptedFolderWrite(string locationPath)
+    {
+        var (incoming, previous) = FolderStagingPaths(locationPath);
+        try
+        {
+            if (Directory.Exists(previous))
+            {
+                if (Directory.Exists(locationPath))
+                    Directory.Delete(previous, recursive: true);
+                else
+                    Directory.Move(previous, locationPath);
+            }
+            if (Directory.Exists(incoming))
+                Directory.Delete(incoming, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Recovery is best-effort; a path genuinely in use is retried on the next pass.
+        }
     }
 
     private ResolvedUnit Resolve(string unitId)

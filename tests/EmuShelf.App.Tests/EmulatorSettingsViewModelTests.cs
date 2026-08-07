@@ -921,6 +921,25 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CloudSaves_SyncNow_WhenEverySaveIsSkipped_SaysSoInsteadOfReportingNothingFound()
+    {
+        // A pass where saves existed but were all deliberately left behind (card-type/version
+        // mismatch) must not read as an empty "nothing to sync" success — the rows say otherwise.
+        var report = new SaveSyncReport(
+        [
+            new SaveUnitSyncResult("pcsx2/Mcd001.ps2", SaveSyncAction.Skipped, "written by a different build"),
+            new SaveUnitSyncResult("pcsx2/Mcd002.ps2", SaveSyncAction.Skipped, "written by a different build"),
+        ]);
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            syncNow: (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(report))));
+
+        await viewModel.SyncCloudNowCommand.ExecuteAsync(null);
+
+        Assert.Contains("2 skipped", viewModel.CloudStatusText);
+        Assert.DoesNotContain("No enabled saves were found to sync", viewModel.CloudStatusText);
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_SyncNow_RefreshesTheActivityLogLink()
     {
         var logPath = Path.Combine(Path.GetTempPath(), $"emushelf-save-sync-{Guid.NewGuid():N}.log");

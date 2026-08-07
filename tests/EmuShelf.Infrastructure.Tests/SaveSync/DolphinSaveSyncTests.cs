@@ -399,6 +399,54 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void RemoteOnlyJapaneseRawCard_ResolvesToDolphinsJapOnDiskName()
+    {
+        // Dolphin's on-disk name for the Japanese region is "JAP", not "JPN". A download resolved to
+        // "MemoryCardA.JPN.raw" would land where Dolphin never reads it, so a fresh JP raw card must
+        // resolve to the JAP file even though its unit id keeps the logical "JPN" token.
+        var user = Path.Combine(BaseDirectory, "user");
+        WriteDolphinIni(user, "[Core]\nSlotA = 1\nSlotB = 255\n");
+
+        var location = CreateOverriddenProvider("gamecube", user).ResolveUnit("dolphin/gc/raw/a/JPN");
+
+        Assert.NotNull(location);
+        Assert.Equal(Path.Combine(user, "GC", "MemoryCardA.JAP.raw"), location.Path);
+    }
+
+    [Fact]
+    public void RemoteOnlyJapaneseGciSave_ResolvesIntoDolphinsJapFolder()
+    {
+        // Same for GCI: a Japanese game id (4th char 'J') with no existing local folder must resolve
+        // into "GC/JAP/Card A", not "GC/JPN/Card A".
+        var user = Path.Combine(BaseDirectory, "user");
+        WriteDolphinIni(user, "[Core]\nSlotA = 8\nSlotB = 255\n");
+
+        var location = CreateOverriddenProvider("gamecube", user).ResolveUnit("dolphin/gc/gci/a/GALJ01");
+
+        Assert.NotNull(location);
+        Assert.Equal(Path.Combine(user, "GC", "JAP", "Card A"), location.RootPath);
+        Assert.Equal(Path.Combine(user, "GC", "JAP", "Card A", "GALJ01.gci"), location.Path);
+    }
+
+    [Fact]
+    public async Task ExistingJapaneseRawCard_IsStillDiscoveredUnderItsJapName()
+    {
+        // A real Dolphin JP card on disk is named ".JAP.raw"; enumeration must still find it and
+        // expose it under the logical "JPN" unit id.
+        var user = Path.Combine(BaseDirectory, "user");
+        var card = Path.Combine(user, "GC", "MemoryCardA.JAP.raw");
+        Directory.CreateDirectory(Path.GetDirectoryName(card)!);
+        await File.WriteAllTextAsync(card, "jp card");
+        WriteDolphinIni(user, "[Core]\nSlotA = 1\nSlotB = 255\n");
+
+        var provider = CreateOverriddenProvider("gamecube", user);
+        var unit = Assert.Single(await provider.GetSaveUnitsAsync());
+
+        Assert.Equal("dolphin/gc/raw/a/JPN", unit.UnitId);
+        Assert.Equal(card, provider.ResolveUnit(unit.UnitId)!.Path);
+    }
+
+    [Fact]
     public async Task RealDolphinInstallation_ResolvesConfiguredUserAndSaveLocations()
     {
         // Opt-in: set EMUSHELF_TEST_DOLPHIN_DIR to verify a real installation and its read-only

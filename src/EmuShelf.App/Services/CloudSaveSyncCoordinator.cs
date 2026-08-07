@@ -482,32 +482,6 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             $"{report.Unchanged} already in sync, {skipped.Count} skipped.{skippedDetail}");
     }
 
-    /// <summary>
-    /// Checks every indexed save against what the remote actually stores, drops the entries whose
-    /// payload is missing, and reports them. The saves themselves are re-uploaded by whichever
-    /// machine still has them on its next sync.
-    /// </summary>
-    public async Task<IReadOnlyList<string>> VerifyCloudDataAsync(CancellationToken cancellationToken = default)
-    {
-        if (!IsConfigured)
-            return [];
-
-        await _gate.WaitAsync(cancellationToken);
-        try
-        {
-            var transport = await CreateTransportAsync(cancellationToken);
-            await transport.ListAsync(cancellationToken);
-            var missing = await transport.FindMissingPayloadsAsync(cancellationToken);
-            if (missing.Count > 0)
-                await transport.FlushAsync(cancellationToken: cancellationToken);
-            return missing;
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
     /// <summary>Forces one platform's present units in one direction, still backing up the loser.</summary>
     public Task<CloudSaveSyncOutcome> ForceAsync(
         string systemId,
@@ -540,8 +514,14 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IProgress<SaveSyncProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var target = CreateTarget(systemId, SyncContentScope.All);
-        if (!IsConfigured || target is null)
+        if (!IsConfigured)
+            return CloudSaveSyncOutcome.NotConfigured();
+
+        // Provider construction reads the emulator's config, version resources and binary
+        // architecture — and on a cold cache can shell out to `flatpak info` with a multi-second
+        // wait. Keep it off the caller's (UI) thread, exactly as GetDetectionAsync does.
+        var target = await Task.Run(() => CreateTarget(systemId, SyncContentScope.All), cancellationToken);
+        if (target is null)
             return CloudSaveSyncOutcome.NotConfigured();
 
         await _gate.WaitAsync(cancellationToken);
@@ -614,16 +594,22 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         string? constructingSystemId = null;
         try
         {
-            foreach (var systemId in requestedSystemIds)
+            // Building every system's provider inline on an uncontended gate runs on the caller's
+            // (UI) thread and froze the window; offload it as detection does. constructingSystemId is
+            // a captured local, so it still names the provider being built if construction throws.
+            await Task.Run(() =>
             {
-                constructingSystemId = systemId;
-                if (CreateTarget(systemId, contentScope, stateGameKeys) is { } target)
+                foreach (var systemId in requestedSystemIds)
                 {
-                    targets.Add(target);
-                    synced.Add(systemId);
+                    constructingSystemId = systemId;
+                    if (CreateTarget(systemId, contentScope, stateGameKeys) is { } target)
+                    {
+                        targets.Add(target);
+                        synced.Add(systemId);
+                    }
+                    constructingSystemId = null;
                 }
-                constructingSystemId = null;
-            }
+            }, cancellationToken);
 
             if (targets.Count == 0)
                 return CloudSaveSyncOutcome.NotConfigured();
@@ -895,12 +881,14 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     // platform whose row will show it.
     private string? DescribeSkipped(string systemId, SaveSyncReport? report)
     {
-        var prefix = SaveProviderRegistry.Find(systemId) is null ? null : systemId;
-        if (prefix is null || report is null)
+        // Unit ids are namespaced by provider, not by system id, so ask the registry's own provider
+        // for the prefix that belongs to this platform. Build the provider once for the whole report
+        // rather than once per skipped unit.
+        if (report is null || CreateBaseProvider(systemId) is not { } provider)
             return null;
 
         var skipped = report.Skipped
-            .Where(result => BelongsToSystem(result.UnitId, systemId))
+            .Where(result => result.UnitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal))
             .ToList();
         if (skipped.Count == 0)
             return null;
@@ -910,12 +898,6 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             ? $"1 save was not synced. {reason}"
             : $"{skipped.Count} saves were not synced. {reason}";
     }
-
-    // Unit ids are namespaced by provider, not by system id, so ask the registry's own provider
-    // which prefix belongs to this platform rather than pattern-matching the id here.
-    private bool BelongsToSystem(string unitId, string systemId) =>
-        CreateBaseProvider(systemId) is { } provider &&
-        unitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal);
 
     private void Persist(CloudSaveSyncSettings configuration)
     {
