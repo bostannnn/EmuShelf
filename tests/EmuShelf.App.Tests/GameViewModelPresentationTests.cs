@@ -59,20 +59,38 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
-    public void SpotlightSubtitle_IsTheFilename_UntilScrapedInfoIsAppended()
+    public void SpotlightFacts_AreEmpty_UntilScrapedDetailsResolve()
     {
         var viewModel = CreateGame();
 
-        // Before details resolve it's just the filename.
-        Assert.Equal("sample.chd", viewModel.SpotlightSubtitle);
+        // Before details resolve there are no chips (the filename shows on its own as the caption).
+        Assert.Empty(viewModel.SpotlightFacts);
 
-        // A scraped info line is shown with the filename appended as a tail.
-        viewModel.ApplySpotlightDetails(null, null, null, "Beat 'em up  ·  1994  ·  2P");
-        Assert.Equal("Beat 'em up  ·  1994  ·  2P  ·  sample.chd", viewModel.SpotlightSubtitle);
+        // Scraped facts become chips, one per entry.
+        viewModel.ApplySpotlightDetails(null, null, null, ["Beat 'em up", "1994", "2 players"]);
+        Assert.Equal(["Beat 'em up", "1994", "2 players"], viewModel.SpotlightFacts);
 
-        // No scraped info → back to just the filename.
-        viewModel.ApplySpotlightDetails(null, null, null, null);
-        Assert.Equal("sample.chd", viewModel.SpotlightSubtitle);
+        // No scraped facts → back to no chips.
+        viewModel.ApplySpotlightDetails(null, null, null, []);
+        Assert.Empty(viewModel.SpotlightFacts);
+    }
+
+    [Fact]
+    public void ShowSpotlightTitleFallback_OnlyWhenResolvedDetailsConfirmNoLogoArt()
+    {
+        var viewModel = CreateGame();
+
+        // Before details resolve we don't yet know whether a logo exists, so the title stays hidden
+        // (rather than flashing in the gap before a logo bitmap could decode).
+        Assert.False(viewModel.ShowSpotlightTitleFallback);
+
+        // Details resolved with a logo path → the logo carries the identity, no fallback title.
+        viewModel.ApplySpotlightDetails(null, "/covers/logo.png", null, []);
+        Assert.False(viewModel.ShowSpotlightTitleFallback);
+
+        // Details resolved with no logo art → the title stands in for the missing logo.
+        viewModel.ApplySpotlightDetails(null, null, null, []);
+        Assert.True(viewModel.ShowSpotlightTitleFallback);
     }
 
     [Fact]

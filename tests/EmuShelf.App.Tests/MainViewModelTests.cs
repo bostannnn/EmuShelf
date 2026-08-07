@@ -1730,12 +1730,13 @@ public class MainViewModelTests : IDisposable
     }
 
     [Fact]
-    public void ComposeSpotlightInfo_JoinsPresentFields_WithYearAndPlayers()
+    public void ComposeSpotlightInfo_ProjectsPresentFieldsToChips_WithYearAndPlayers()
     {
         static GameMetadataValue Value(GameMetadataField field, string value) =>
             new(1, field, value, null, GameMetadataValueOrigin.Provider, "ss", null, null, DateTimeOffset.UtcNow);
 
-        var line = MainViewModel.ComposeSpotlightInfo(
+        // The developer and publisher match, so the publisher chip collapses into the developer's.
+        var facts = MainViewModel.ComposeSpotlightInfo(
         [
             Value(GameMetadataField.Genre, "Beat 'em up"),
             Value(GameMetadataField.ReleaseDate, "1994-03-01"),
@@ -1743,11 +1744,50 @@ public class MainViewModelTests : IDisposable
             Value(GameMetadataField.Developer, "Konami"),
             Value(GameMetadataField.Publisher, "Konami"),
         ]);
-        Assert.Equal("Beat 'em up  ·  1994  ·  1-2P  ·  Konami  ·  Konami", line);
+        Assert.Equal(["Beat 'em up", "1994", "1-2 players", "Konami"], facts);
 
-        // Missing fields are skipped; empty metadata yields null (so the filename shows on its own).
-        Assert.Equal("Sports", MainViewModel.ComposeSpotlightInfo([Value(GameMetadataField.Genre, "Sports")]));
-        Assert.Null(MainViewModel.ComposeSpotlightInfo([]));
+        // A single player reads in the singular, and a distinct publisher keeps its own chip.
+        Assert.Equal(
+            ["1 player", "Capcom", "Sony"],
+            MainViewModel.ComposeSpotlightInfo(
+            [
+                Value(GameMetadataField.Players, "1"),
+                Value(GameMetadataField.Developer, "Capcom"),
+                Value(GameMetadataField.Publisher, "Sony"),
+            ]));
+
+        // Missing fields are skipped; empty metadata yields no chips (only the filename caption shows).
+        Assert.Equal(["Sports"], MainViewModel.ComposeSpotlightInfo([Value(GameMetadataField.Genre, "Sports")]));
+        Assert.Empty(MainViewModel.ComposeSpotlightInfo([]));
+    }
+
+    [AvaloniaFact]
+    public void SpotlightHero_WithoutADetailsStore_StillResolvesToTheTitleFallback()
+    {
+        var game = new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = Ps1.Id,
+                Path = "/Games/Game 1.cue",
+                Title = "Game 1",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name, Ps1.ShortName, Ps1.AccentColor, coverAspectRatio: Ps1.CoverAspectRatio);
+
+        // CreateViewModel wires no IGameDetailsStore, mirroring a degraded/headless config.
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll([game]);
+        vm.HasGames = true;
+        vm.GamepadViewportWidth = 1000;
+        vm.ToggleGamepadViewCommand.Execute(null); // into spotlight
+        vm.FocusedGame = game;
+
+        // With no store there is no art to resolve, so the hero resolves to "no logo" and shows the
+        // title in the logo's place rather than leaving an empty slot with no name.
+        Assert.True(game.AreSpotlightDetailsLoaded);
+        Assert.True(game.ShowSpotlightTitleFallback);
     }
 
     /// <summary>

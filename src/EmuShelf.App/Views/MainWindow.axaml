@@ -342,6 +342,17 @@
             <!-- Lift the hero chips off the busy fan-art backdrop so they read as physical pills. -->
             <Setter Property="BoxShadow" Value="0 6 16 0 #4A000000" />
         </Style>
+        <!-- Spotlight hero metadata chip: one scraped fact (genre / year / players / developer /
+             publisher) as a translucent pill that reads over the fan art from the couch. -->
+        <Style Selector="Border.spotlight-chip">
+            <Setter Property="Background" Value="#26FFFFFF" />
+            <Setter Property="BorderBrush" Value="#3DFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="Margin" Value="4" />
+            <Setter Property="BoxShadow" Value="0 4 12 0 #40000000" />
+        </Style>
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
@@ -2228,13 +2239,15 @@
                     </Panel>
                 </Border>
 
-                <!-- Right: the hero — logo, title, rating, achievements, Play — over the backdrop. -->
+                <!-- Right: the hero — logo, metadata chips, rating, achievements, Play — over the
+                     backdrop. The title itself is dropped: the logo carries the identity, and the
+                     game name still shows in the left list. -->
                 <Grid Grid.Column="1" VerticalAlignment="Bottom" Margin="6,0,6,10"
                       RowDefinitions="Auto,Auto" RowSpacing="22">
-                    <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Stretch">
-                        <!-- Game logo (ScreenScraper wheel); nothing shows when there is none. Capped
-                             so a wide/tall logo stays contained, and given a soft drop shadow so the
-                             transparent art lifts off the busy fan-art backdrop instead of blending in. -->
+                    <StackPanel Grid.Row="0" Spacing="12" HorizontalAlignment="Stretch">
+                        <!-- Game logo (ScreenScraper wheel), centred. Capped so a wide/tall logo stays
+                             contained, and given a soft drop shadow so the transparent art lifts off the
+                             busy fan-art backdrop instead of blending in. -->
                         <Image Source="{Binding FocusedGame.WheelImage}" Stretch="Uniform"
                                MaxHeight="118" MaxWidth="440" HorizontalAlignment="Center"
                                Margin="0,0,0,4" IsVisible="{Binding FocusedGame.HasWheelImage}">
@@ -2243,12 +2256,34 @@
                                                   Opacity="0.7" />
                             </Image.Effect>
                         </Image>
-                        <!-- One line; scrolls itself only when the title is too long to fit. -->
+                        <!-- Fallback identity: games with no logo art would otherwise show only chips,
+                             so the title stands in for the logo. Scrolls itself when it is too long. -->
                         <controls:MarqueeTextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
                                                    FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
-                                                   Foreground="White" HorizontalAlignment="Stretch" />
-                        <TextBlock Text="{Binding FocusedGame.SpotlightSubtitle}" FontSize="{DynamicResource EmuGpLabelSize}"
-                                   Foreground="#D0FFFFFF" MaxLines="1" TextTrimming="CharacterEllipsis" />
+                                                   Foreground="White" HorizontalAlignment="Stretch"
+                                                   IsVisible="{Binding FocusedGame.ShowSpotlightTitleFallback}" />
+                        <!-- Scraped metadata, one chip per fact, centred and wrapping to as many rows
+                             as it needs. Empty (nothing shows) until the details resolve. -->
+                        <ItemsControl ItemsSource="{Binding FocusedGame.SpotlightFacts}"
+                                      HorizontalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel HorizontalAlignment="Center" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Border Classes="spotlight-chip">
+                                        <TextBlock Text="{Binding}" FontSize="{DynamicResource EmuGpLabelSize}"
+                                                   FontWeight="SemiBold" Foreground="#F0FFFFFF" />
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <!-- The launch source (file/disc that A will run), a dim caption under the chips. -->
+                        <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" HorizontalAlignment="Center"
+                                   FontSize="{DynamicResource EmuGpCaptionSize}" Foreground="#99FFFFFF"
+                                   MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
                     <!-- The action row spans the hero: rating (left) and Play (right) share a fixed width
