@@ -50,7 +50,10 @@ public sealed class RcloneConfiguratorTests
     [Fact]
     public void PathsEqual_NormalizesTraversalBeforeComparing()
     {
-        Assert.True(RcloneConfigurator.PathsEqual(Absolute("EmuShelf", "sub", "..", "rclone"), Absolute("EmuShelf", "rclone")));
+        // Pass the traversal form straight in (not through Absolute, which pre-normalizes it) so this
+        // actually exercises PathsEqual's own GetFullPath normalization.
+        var withTraversal = OperatingSystem.IsWindows() ? @"C:\EmuShelf\sub\..\rclone" : "/EmuShelf/sub/../rclone";
+        Assert.True(RcloneConfigurator.PathsEqual(withTraversal, Absolute("EmuShelf", "rclone")));
     }
 
     [Fact]
