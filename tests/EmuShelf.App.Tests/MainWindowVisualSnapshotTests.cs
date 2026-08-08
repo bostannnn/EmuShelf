@@ -253,7 +253,10 @@ public class MainWindowVisualSnapshotTests
             rows[0].ContextMenu?.Close();
 
             var list = rows[0].GetVisualAncestors().OfType<ListBox>().Single();
-            var emptyPoint = list.TranslatePoint(new Point(100, list.Bounds.Height - 8), window);
+            // Click empty canvas below the rows but clear of the bottom horizontal scrollbar (which
+            // appears once optional columns overflow the width) so this exercises canvas-clear, not
+            // a scrollbar interaction.
+            var emptyPoint = list.TranslatePoint(new Point(100, list.Bounds.Height - 40), window);
             Assert.NotNull(emptyPoint);
             window.MouseDown(emptyPoint.Value, MouseButton.Left, RawInputModifiers.None);
             window.MouseUp(emptyPoint.Value, MouseButton.Left, RawInputModifiers.None);
@@ -587,8 +590,12 @@ public class MainWindowVisualSnapshotTests
 
         var window = new MainWindow
         {
+            // Wide enough that the default columns fit without horizontal scroll, so the row's natural
+            // width stays within the list — the assertion below then meaningfully checks that the wide
+            // cover doesn't overlap the title. (Rows may exceed the list width and scroll when many
+            // optional columns are enabled; that's covered by the horizontal-scroll behavior, not here.)
             DataContext = viewModel,
-            Width = 900,
+            Width = 1400,
             Height = 620,
         };
         window.Show();
@@ -618,6 +625,55 @@ public class MainWindowVisualSnapshotTests
             Assert.True(
                 coverOrigin.Value.X + cover.Bounds.Width < titleOrigin.Value.X,
                 $"Cover ended at {coverOrigin.Value.X + cover.Bounds.Width}, title began at {titleOrigin.Value.X}.");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task DesktopList_ManyColumnsOverflowHorizontallyRatherThanClipping()
+    {
+        var viewModel = new MainViewModel { IsGridView = false };
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll([
+            new GameViewModel(
+                new Game
+                {
+                    Id = 1,
+                    SystemId = system.Id,
+                    Path = "/games/Some Game (USA).rvz",
+                    Title = "Some Game (USA)",
+                    IsAvailable = true,
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                system.Name, system.ShortName, system.AccentColor)
+        ]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        // Turn every optional column on so the columns exceed a normal window width.
+        foreach (var column in viewModel.Columns)
+            if (column.CanHide)
+                column.IsVisible = true;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 900, Height = 620 };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var list = window.FindControl<ListBox>("LibraryList");
+            var row = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Single(control => control.Classes.Contains("game-row"));
+
+            Assert.NotNull(list);
+            // The row keeps its natural (sum-of-columns) width and exceeds the list viewport, so the
+            // ListBox's horizontal scrollbar can reach the off-screen columns instead of clipping them.
+            Assert.True(
+                row.Bounds.Width > list!.Bounds.Width,
+                $"Row width {row.Bounds.Width} should exceed the list width {list.Bounds.Width} so it scrolls.");
         }
         finally
         {

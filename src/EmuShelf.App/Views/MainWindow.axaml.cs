@@ -76,6 +76,20 @@ public partial class MainWindow : Window
         AddHandler(PointerReleasedEvent, OnWindowPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
         // If something steals the drag mid-flight, drop the rubber-band so its box can't get stuck.
         AddHandler(PointerCaptureLostEvent, OnWindowPointerCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
+        // The list header sits outside the scrolling row area, so translate it to match the rows'
+        // horizontal offset when the table scrolls sideways (many columns exceed the viewport).
+        LibraryList.AddHandler(ScrollViewer.ScrollChangedEvent, OnLibraryScrollChanged);
+    }
+
+    private void OnLibraryScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (LibraryHeader.RenderTransform is not TranslateTransform headerTransform)
+            return;
+
+        var scroller = e.Source as ScrollViewer
+            ?? (_libraryListScroller ??= LibraryList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault());
+        if (scroller is not null)
+            headerTransform.X = -scroller.Offset.X;
     }
 
     protected override void OnClosed(EventArgs e)

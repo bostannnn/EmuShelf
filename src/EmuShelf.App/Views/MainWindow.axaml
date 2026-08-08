@@ -1463,8 +1463,14 @@
                      hide/reorder/resize is a data change and the two can never disagree (M40). -->
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
-                    <ItemsControl Classes="list-header" ItemsSource="{Binding VisibleColumns}"
+                    <ItemsControl x:Name="LibraryHeader" Classes="list-header"
+                                  ItemsSource="{Binding VisibleColumns}"
                                   VerticalAlignment="Stretch" ClipToBounds="True">
+                        <!-- Kept horizontally in sync with the rows' scroll offset in code-behind so the
+                             header tracks the columns when the table scrolls sideways (M40). -->
+                        <ItemsControl.RenderTransform>
+                            <TranslateTransform />
+                        </ItemsControl.RenderTransform>
                         <!-- Right-click the header for the iTunes-style column picker: a checklist of
                              every column (Title stays disabled so the table always keeps it). -->
                         <ItemsControl.ContextMenu>
@@ -1511,7 +1517,8 @@
                     </ItemsControl>
                 </Border>
                 <ListBox x:Name="LibraryList" Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
-                         Background="Transparent" BorderThickness="0">
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
                             <Grid Classes="game-row"
@@ -1559,8 +1566,10 @@
                                                   Command="{Binding RemoveSelectedCommand}" />
                                     </ContextMenu>
                                 </Grid.ContextMenu>
+                                <!-- Natural (sum-of-cells) width, so when columns exceed the viewport
+                                     the ListBox scrolls horizontally instead of clipping them (M40). -->
                                 <ItemsControl ItemsSource="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).VisibleColumns}"
-                                              HorizontalAlignment="Stretch" ClipToBounds="True">
+                                              HorizontalAlignment="Left">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
                                             <StackPanel Orientation="Horizontal" />
