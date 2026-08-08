@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.TexturePacks;
 
 namespace EmuShelf.App.ViewModels;
@@ -76,6 +77,103 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public string DateAddedText => Model.DateAdded.LocalDateTime.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
 
     public DateTimeOffset DateAddedSortKey => Model.DateAdded;
+
+    // ---- M40 Phase 4: scraped-metadata columns, fed by the bulk GameDetailsProjection ------------
+
+    private GameDetailsProjection? _detailsProjection;
+
+    /// <summary>Applies this game's bulk metadata projection (or null when it has no stored details),
+    /// refreshing every scraped-column cell. Called once per scope build on the load worker, never a
+    /// per-row read on the UI thread. See DECISIONS 2026-08-08.</summary>
+    public void ApplyDetailsProjection(GameDetailsProjection? projection)
+    {
+        _detailsProjection = projection;
+        OnPropertyChanged(nameof(MetadataCompletenessText));
+        OnPropertyChanged(nameof(MetadataCompletenessTooltip));
+        OnPropertyChanged(nameof(HasScrapedCover));
+        OnPropertyChanged(nameof(HasScrapedScreenshot));
+        OnPropertyChanged(nameof(HasScrapedFanart));
+        OnPropertyChanged(nameof(HasScrapedLogo));
+        OnPropertyChanged(nameof(HasScrapedDescription));
+        OnPropertyChanged(nameof(RatingColumnText));
+        OnPropertyChanged(nameof(GenreColumnText));
+        OnPropertyChanged(nameof(YearColumnText));
+        OnPropertyChanged(nameof(PlayersColumnText));
+        OnPropertyChanged(nameof(DeveloperColumnText));
+        OnPropertyChanged(nameof(PublisherColumnText));
+    }
+
+    /// <summary>"Has a cover" means the game shows one at all (a manual cover counts), not only a
+    /// scraped box front — it is the most intuitive reading of the column and of completeness.</summary>
+    public bool HasScrapedCover => CoverPath is not null;
+    public bool HasScrapedScreenshot => _detailsProjection?.HasScreenshot ?? false;
+    public bool HasScrapedFanart => _detailsProjection?.HasFanart ?? false;
+    public bool HasScrapedLogo => _detailsProjection?.HasWheel ?? false;
+    public bool HasScrapedDescription => _detailsProjection?.HasDescription ?? false;
+
+    private int CompletenessCount =>
+        (HasScrapedCover ? 1 : 0) + (HasScrapedScreenshot ? 1 : 0) + (HasScrapedFanart ? 1 : 0) +
+        (HasScrapedLogo ? 1 : 0) + (HasScrapedDescription ? 1 : 0);
+
+    /// <summary>A game with no stored details and no cover reads as never-scraped, distinct from a
+    /// scraped-but-partial game that has some assets.</summary>
+    private bool IsUnscraped => _detailsProjection is null && CoverPath is null;
+
+    /// <summary>Metadata completeness column: <c>n/5</c> (cover, screenshot, fan art, logo,
+    /// description) or an em dash when the game has never been scraped.</summary>
+    public string MetadataCompletenessText =>
+        IsUnscraped ? RetroAchievementsDisplay.Dash : $"{CompletenessCount}/5";
+
+    /// <summary>Sort key for completeness: -1 never scraped, otherwise the present-asset count, so a
+    /// least-complete-first sort surfaces the games that still need work.</summary>
+    public int MetadataCompletenessSortKey => IsUnscraped ? -1 : CompletenessCount;
+
+    public string MetadataCompletenessTooltip => IsUnscraped
+        ? "Not scraped yet."
+        : $"Cover: {YesNo(HasScrapedCover)}\nScreenshot: {YesNo(HasScrapedScreenshot)}\n" +
+          $"Fan art: {YesNo(HasScrapedFanart)}\nLogo: {YesNo(HasScrapedLogo)}\n" +
+          $"Description: {YesNo(HasScrapedDescription)}";
+
+    public string RatingColumnText => FormatRating(_detailsProjection?.Rating);
+
+    /// <summary>Numeric rating (0–10) for sorting; -1 when unrated so unrated games sort last ascending.</summary>
+    public double RatingSortKey =>
+        double.TryParse(FormatRating(_detailsProjection?.Rating), NumberStyles.Number,
+            CultureInfo.InvariantCulture, out var score)
+            ? score
+            : -1;
+
+    public string GenreColumnText => Dash(_detailsProjection?.Genre);
+    public string YearColumnText => Dash(ExtractYear(_detailsProjection?.ReleaseDate));
+    public int YearSortKey =>
+        int.TryParse(ExtractYear(_detailsProjection?.ReleaseDate), out var year) ? year : 0;
+    public string PlayersColumnText => Dash(_detailsProjection?.Players);
+    public string DeveloperColumnText => Dash(_detailsProjection?.Developer);
+    public string PublisherColumnText => Dash(_detailsProjection?.Publisher);
+
+    private static string YesNo(bool value) => value ? "yes" : "no";
+
+    private static string Dash(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? RetroAchievementsDisplay.Dash : value.Trim();
+
+    // ScreenScraper stores a 0–20 rating; present it as the 0–10 score the spotlight also shows.
+    private static string FormatRating(string? raw)
+    {
+        if (raw is null ||
+            !double.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var provider))
+            return RetroAchievementsDisplay.Dash;
+        return Math.Clamp(provider / 2.0, 0, 10).ToString("0.0", CultureInfo.InvariantCulture);
+    }
+
+    private static string? ExtractYear(string? releaseDate)
+    {
+        if (string.IsNullOrWhiteSpace(releaseDate))
+            return null;
+        foreach (var token in releaseDate.Split('-', '/', '.', ' '))
+            if (token.Length == 4 && int.TryParse(token, out _))
+                return token;
+        return null;
+    }
 
     public IImage? PlatformArtwork { get; }
     private double _coverWidth;

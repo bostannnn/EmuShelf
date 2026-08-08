@@ -3021,6 +3021,7 @@ public partial class MainViewModel : ViewModelBase
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
                 ApplySpotlightTitles(viewModels);
+                ApplyDetailsProjections(viewModels);
                 return viewModels;
             });
 
@@ -3254,6 +3255,27 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // Fills the scraped-metadata list columns (completeness, artwork/description presence, rating,
+    // genre/year/players/dev/pub) from one bulk read on the load worker, so a column never triggers a
+    // per-row GetDetails on the UI thread (the N+1 the M11 work removed). See DECISIONS 2026-08-08.
+    private void ApplyDetailsProjections(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_gameDetails is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var projections = _gameDetails.GetAllDetailsProjections();
+            foreach (var viewModel in viewModels)
+                viewModel.ApplyDetailsProjection(
+                    projections.TryGetValue(viewModel.Id, out var projection) ? projection : null);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load metadata projections for the list columns: {ex.Message}");
+        }
+    }
+
     // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
     // the achievement pass this is local-only and runs on the load worker: the map was already
     // built in one background pass, so a row never reads a directory or the database itself.
@@ -3411,6 +3433,18 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
             LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),
             LibrarySortColumn.DateAdded => By(g => g.DateAddedSortKey),
+            LibrarySortColumn.MetadataCompleteness => By(g => g.MetadataCompletenessSortKey),
+            LibrarySortColumn.ArtworkCover => By(g => g.HasScrapedCover),
+            LibrarySortColumn.Screenshot => By(g => g.HasScrapedScreenshot),
+            LibrarySortColumn.Fanart => By(g => g.HasScrapedFanart),
+            LibrarySortColumn.Logo => By(g => g.HasScrapedLogo),
+            LibrarySortColumn.Description => By(g => g.HasScrapedDescription),
+            LibrarySortColumn.Rating => By(g => g.RatingSortKey),
+            LibrarySortColumn.Genre => By(g => g.GenreColumnText, text),
+            LibrarySortColumn.Year => By(g => g.YearSortKey),
+            LibrarySortColumn.Players => By(g => g.PlayersColumnText, text),
+            LibrarySortColumn.Developer => By(g => g.DeveloperColumnText, text),
+            LibrarySortColumn.Publisher => By(g => g.PublisherColumnText, text),
             _ => By(g => g.Title, text),
         };
         // Title is the stable secondary key so equal rows keep a deterministic order.

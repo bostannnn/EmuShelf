@@ -53,5 +53,56 @@ internal static class LibraryColumnCatalog
         new LibraryColumn(LibraryColumnKey.DateAdded, "Date Added", header: "DATE ADDED",
             sortColumn: LibrarySortColumn.DateAdded, defaultWidth: 130, minWidth: 100,
             isFlex: false, canHide: true, visibleByDefault: false),
+
+        // Scraped-metadata columns (M40 Phase 4), fed by the bulk GameDetailsProjection. Completeness
+        // is on by default as the single at-a-glance signal; the per-asset breakdown and scalar facts
+        // are opt-in from the picker so the default view stays lean.
+        new LibraryColumn(LibraryColumnKey.Completeness, "Metadata", header: "METADATA",
+            sortColumn: LibrarySortColumn.MetadataCompleteness, defaultWidth: 92, minWidth: 74,
+            isFlex: false, canHide: true, visibleByDefault: true),
+
+        new LibraryColumn(LibraryColumnKey.ArtworkCover, "Has Cover", header: "COVER",
+            sortColumn: LibrarySortColumn.ArtworkCover, defaultWidth: 74, minWidth: 60,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Screenshot, "Screenshot", header: "SCREENSHOT",
+            sortColumn: LibrarySortColumn.Screenshot, defaultWidth: 104, minWidth: 80,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Fanart, "Fan Art", header: "FAN ART",
+            sortColumn: LibrarySortColumn.Fanart, defaultWidth: 84, minWidth: 64,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Logo, "Logo", header: "LOGO",
+            sortColumn: LibrarySortColumn.Logo, defaultWidth: 72, minWidth: 60,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Description, "Description", header: "DESCRIPTION",
+            sortColumn: LibrarySortColumn.Description, defaultWidth: 108, minWidth: 84,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Rating, "Rating", header: "RATING",
+            sortColumn: LibrarySortColumn.Rating, defaultWidth: 80, minWidth: 60,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Genre, "Genre", header: "GENRE",
+            sortColumn: LibrarySortColumn.Genre, defaultWidth: 140, minWidth: 90,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Year, "Year", header: "YEAR",
+            sortColumn: LibrarySortColumn.Year, defaultWidth: 72, minWidth: 56,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Players, "Players", header: "PLAYERS",
+            sortColumn: LibrarySortColumn.Players, defaultWidth: 84, minWidth: 64,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Developer, "Developer", header: "DEVELOPER",
+            sortColumn: LibrarySortColumn.Developer, defaultWidth: 160, minWidth: 100,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Publisher, "Publisher", header: "PUBLISHER",
+            sortColumn: LibrarySortColumn.Publisher, defaultWidth: 160, minWidth: 100,
+            isFlex: false, canHide: true, visibleByDefault: false),
     ];
 }

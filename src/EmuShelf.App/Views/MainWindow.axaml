@@ -1694,6 +1694,139 @@
                                                     </Border>
                                                 </DataTemplate>
                                             </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Completeness">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding MetadataCompletenessText}"
+                                                                   ToolTip.Tip="{Binding MetadataCompletenessTooltip}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="ArtworkCover">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedCover, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Screenshot">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedScreenshot, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Fanart">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedFanart, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Logo">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedLogo, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Description">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedDescription, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Rating">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding RatingColumnText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Genre">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding GenreColumnText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Year">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding YearColumnText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Players">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding PlayersColumnText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Developer">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding DeveloperColumnText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Publisher">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding PublisherColumnText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
                                         </vm:LibraryColumnCellSelector>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>

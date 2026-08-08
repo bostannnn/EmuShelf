@@ -2,6 +2,7 @@ using Avalonia.Media;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 
 namespace EmuShelf.App.Tests;
 
@@ -196,6 +197,73 @@ public sealed class GameViewModelPresentationTests
         Assert.Equal(
             Math.Round(width / GameViewModel.GamepadMixedCoverAspectRatio),
             MainViewModel.GamepadCoverHeightFor(new[] { squareA, portrait }, width));
+    }
+
+    [Fact]
+    public void MetadataCompleteness_IsEmDashWhenNeverScraped()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyDetailsProjection(null);
+
+        Assert.Equal("—", viewModel.MetadataCompletenessText);
+        Assert.Equal(-1, viewModel.MetadataCompletenessSortKey);
+    }
+
+    [Fact]
+    public void MetadataCompleteness_CountsThePresentAssets()
+    {
+        var viewModel = CreateGame(); // no manual cover, so "Has Cover" stays false
+
+        viewModel.ApplyDetailsProjection(new GameDetailsProjection(
+            HasBoxFront: true, HasScreenshot: true, HasWheel: false, HasFanart: true,
+            HasDescription: true, HasProviderMatch: true,
+            Rating: "14", Genre: "RPG", ReleaseDate: "1999-09-09", Players: "1-2",
+            Developer: "Dev", Publisher: "Pub"));
+
+        // Completeness counts the shown cover (absent here) + screenshot + fanart + logo + description.
+        Assert.Equal("3/5", viewModel.MetadataCompletenessText);
+        Assert.Equal(3, viewModel.MetadataCompletenessSortKey);
+        Assert.False(viewModel.HasScrapedCover);
+        Assert.True(viewModel.HasScrapedScreenshot);
+        Assert.True(viewModel.HasScrapedFanart);
+        Assert.False(viewModel.HasScrapedLogo);
+        Assert.True(viewModel.HasScrapedDescription);
+    }
+
+    [Fact]
+    public void ScrapedScalars_FormatRatingAndYearAndFallBackToDash()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyDetailsProjection(new GameDetailsProjection(
+            HasBoxFront: false, HasScreenshot: false, HasWheel: false, HasFanart: false,
+            HasDescription: false, HasProviderMatch: true,
+            Rating: "14", Genre: "Racing", ReleaseDate: "2001-06-15", Players: "1-4",
+            Developer: "Sega", Publisher: null));
+
+        Assert.Equal("7.0", viewModel.RatingColumnText); // 14 on a 0–20 scale → 7.0
+        Assert.Equal(7.0, viewModel.RatingSortKey, 3);
+        Assert.Equal("2001", viewModel.YearColumnText);
+        Assert.Equal(2001, viewModel.YearSortKey);
+        Assert.Equal("Racing", viewModel.GenreColumnText);
+        Assert.Equal("1-4", viewModel.PlayersColumnText);
+        Assert.Equal("Sega", viewModel.DeveloperColumnText);
+        Assert.Equal("—", viewModel.PublisherColumnText); // null → dash
+    }
+
+    [Fact]
+    public void ScrapedScalars_AreEmDashWhenUnscraped()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyDetailsProjection(null);
+
+        Assert.Equal("—", viewModel.RatingColumnText);
+        Assert.Equal("—", viewModel.GenreColumnText);
+        Assert.Equal("—", viewModel.YearColumnText);
+        Assert.Equal(-1, viewModel.RatingSortKey);
+        Assert.Equal(0, viewModel.YearSortKey);
     }
 
     private static GameViewModel CreateGame() => new(
