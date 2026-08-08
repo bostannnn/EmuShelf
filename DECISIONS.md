@@ -5364,3 +5364,49 @@ per-emulator token verification had been done against Windows configs on `G:` on
   Input)" card in the Hotkeys settings section lists Select+face-button → key/action and the Steam Deck
   steps, so the guidance no longer lives only in a repo markdown file a Deck user never sees.
 
+## 2026-08-08 — M41 in-app emulator install & update manager
+
+A new Settings section that installs/updates the supported emulators into a portable managed
+`Emulators/<id>/` folder, reusing the M39 self-updater's download→verify pattern and the
+`RcloneInstaller` "drop an official binary into the portable folder" pattern.
+
+- **The manifest is the version authority.** Because EmuShelf is the installer, "installed version" is
+  read from a portable `Settings/emulator-installs.json` record EmuShelf writes, not probed out of an
+  arbitrary binary — so the fragile per-emulator version probe is avoided for managed installs. EmuShelf
+  only ever overwrites/updates a manifest-tracked install; if the managed folder holds files EmuShelf did
+  not record, the install is **refused** rather than clobbering them, and a user-provided executable
+  (configured outside the managed folder) is read-only to the manager (reported "using your own install").
+
+- **Release tags are treated as opaque strings, not semver.** DuckStation ships a rolling `latest` and
+  RPCS3 uses commit-hash tags, so the app updater's `SemanticVersion` gate (`GitHubReleaseParser`) is *not*
+  reused; a separate `GitHubEmulatorReleaseParser` returns the tag + assets, and "update available" is tag
+  inequality. RPCS3's three per-OS `rpcs3-binaries-*` repositories are handled with a per-asset repository
+  override on `EmulatorReleaseAsset`.
+
+- **New dependency: SharpCompress (MIT)** for `.7z` (PCSX2/RPCS3 Windows) and `.tar.xz` (PCSX2 macOS)
+  extraction; `.zip`/`.AppImage` need nothing new, and macOS `.dmg` uses `hdiutil`. Chosen 1.0.0 (0.39.0
+  carried advisory GHSA-6c8g-7p36-r338). The macOS quarantine xattr is stripped after extract, mirroring
+  the M39 macOS applier. Recorded in `THIRD-PARTY-NOTICES.md`.
+
+- **Phase 3 (Dolphin, RetroArch) deferred — build servers unreachable.** `dolphin-emu.org` and
+  `buildbot.libretro.com` are blocked by the dev-sandbox egress policy, so their listing formats could not
+  be spiked/verified. Rather than ship an unverifiable fetcher, both are `CustomServer` placeholders whose
+  UI offers an **Open download page** button instead of Install. The `EmulatorReleaseSource` model already
+  carries a `CustomServer` kind, so completing them later is a resolver + data, with no UI change.
+
+- **GitHub asset-name/executable patterns still need real-hardware verification.** The GitHub Releases API
+  (unauthenticated) and the vendor build servers are policy-blocked in the sandbox, so the per-OS/arch
+  patterns for the five GitHub emulators are written from documented naming conventions and kept lenient
+  (case-insensitive substrings anchored on OS/arch/extension). They are centralized in
+  `EmulatorReleaseSources` with "verify" notes. A pattern miss degrades to "open the download page", never
+  a wrong/partial install, so the failure mode is safe. The install *mechanism* is fully unit-tested via a
+  fake release client and committed `.7z`/`.tar.xz` fixtures.
+
+- **Config auto-wire on install.** After a managed install, the managed executable is assigned to every
+  system the emulator supports that has no executable configured yet, via the same
+  `IEmulatorConfigurationStore.SaveAll` the Browse/Save flow uses (which also activates each saved system).
+  Already-configured systems are excluded from the batch (never overriding a user's active choice), the
+  installation id is set explicitly (`GetDefaultInstallationId`) so shared vs per-system installs stay
+  correct, and core-based emulators (RetroArch) are skipped because an executable alone would not make
+  them launchable.
+

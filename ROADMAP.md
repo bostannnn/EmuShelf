@@ -1618,7 +1618,7 @@ decision recorded in `DECISIONS.md`.
       resolution that does not stat files on the UI thread. The save-state variant is M33 territory
       and stays out until that lands. Deferred behind M29; tracked here so the column set is planned.
 
-## M41 — In-app emulator install & update manager (planned)
+## M41 — In-app emulator install & update manager (Phases 1–2, 4–5 implemented 2026-08-08; Phase 3 + real-hardware asset verification pending)
 
 One place — a new Settings section — that lists every emulator EmuShelf supports, shows the installed
 version against the latest upstream release, and installs or updates it with one action. It serves both
@@ -1649,42 +1649,61 @@ xattr is stripped after extract (same as the M39 macOS applier).
 
 ### Phase 1 — Core contracts and the install manifest
 
-- [ ] Core: an `EmulatorReleaseSource` describing where an emulator's builds come from (GitHub repo or
+- [x] Core: an `EmulatorReleaseSource` describing where an emulator's builds come from (GitHub repo or
       custom URL, per-OS/arch asset pattern, archive kind, optional checksum), hung off each
       `EmulatorDefinition` in Integrations. An `IEmulatorInstallService`
       (`GetStatusAsync`/`InstallAsync`/`UpdateAsync`) with a status model (NotInstalled / Managed(version)
-      / UserProvided(path) / UpdateAvailable(current, latest) / CheckFailed(reason)) mirroring `Updates/`.
-- [ ] Install manifest: a portable `Settings/` JSON recording per managed install
+      / UserProvided(path) / UpdateAvailable(current, latest) / Unsupported(reason) / CheckFailed(reason))
+      mirroring `Updates/`.
+- [x] Install manifest: a portable `Settings/` JSON recording per managed install
       `{emulatorId, installedVersion, installedAt, executableRelativePath, sourceTag}`, with a store
-      interface + implementation. `IAppPaths.EmulatorsDirectory` added for the managed root.
+      interface + implementation (`JsonEmulatorInstallManifestStore`). `IAppPaths.EmulatorsDirectory`
+      added for the managed root.
 
 ### Phase 2 — Infrastructure: the five GitHub-Releases emulators
 
-- [ ] `GitHubEmulatorInstaller` reusing `GitHubReleaseParser` and the M39 download/verify code, plus a
-      portable-drop/chmod/quarantine-strip step modeled on `RcloneInstaller`. Extractors for
-      `.zip` (built-in), `.AppImage` (chmod), and `.7z`/`.tar.xz` (SharpCompress). Writes the manifest
-      and returns the resolved executable path so the caller can wire the config.
-- [ ] Per-emulator sources: DuckStation (stenzek/duckstation), PCSX2 (PCSX2/pcsx2), RPCS3
-      (rpcs3/rpcs3-binaries-{win,linux,mac}), PPSSPP (hrydgard/ppsspp), Azahar (azahar-emu/azahar) —
-      each with verified per-OS/arch asset patterns. Managed-only overwrite guard enforced here.
+- [x] `EmulatorInstallService` + `GitHubEmulatorReleaseClient` reusing the M39 GitHub-Releases
+      download/verify pattern (the release tag is treated as opaque, since emulator tags are often not
+      semver, so `GitHubReleaseParser`'s semver gate is not reused), plus a portable-drop/chmod/
+      quarantine-strip step modeled on `RcloneInstaller`. `EmulatorArchiveExtractor` for `.zip` (built-in),
+      `.AppImage` (chmod), `.7z`/`.tar.xz` (SharpCompress), and macOS `.dmg` (hdiutil, code-only until a mac
+      run). Writes the manifest and returns the resolved executable path so the caller can wire the config.
+- [x] Per-emulator sources: DuckStation (stenzek/duckstation), PCSX2 (PCSX2/pcsx2), RPCS3
+      (rpcs3/rpcs3-binaries-{win,linux,mac}, via per-asset repo overrides), PPSSPP (hrydgard/ppsspp),
+      Azahar (azahar-emu/azahar). Managed-only overwrite guard enforced here. **Asset-name/executable
+      patterns are lenient and still need real-hardware/network verification** (the GitHub Releases API and
+      the vendor build servers are policy-blocked in the dev sandbox, so live asset names could not be
+      confirmed there); a miss degrades to "open the download page", never a wrong/partial install.
 
 ### Phase 3 — Custom fetchers (the highest-risk items; spike each first)
 
+Deferred (2026-08-08): both build servers — `dolphin-emu.org` and `buildbot.libretro.com` — are blocked by
+the dev-sandbox egress policy, so their listing formats could not be spiked or verified. Rather than ship
+an unverifiable fetcher, both ship as `CustomServer` placeholders: the Install Emulators UI shows their
+status and an **Open download page** button instead of an Install button. The `EmulatorReleaseSource` model
+already carries a `CustomServer` kind for exactly this, so lighting them up later is data + a resolver, no
+UI change. Spike each on a network with those hosts reachable before implementing.
+
 - [ ] Dolphin: resolve latest build + per-platform asset from dolphin-emu.org, mount/copy the macOS
-      `.dmg` via `hdiutil`. Spike the listing format before committing the parser.
+      `.dmg` via `hdiutil` (the extractor's `.dmg` path already exists). Spike the listing format first.
 - [ ] RetroArch: resolve latest stable + asset from buildbot.libretro.com's directory layout; prefer
       Flatpak on Linux. Spike the stable-version discovery before committing.
 
 ### Phase 4 — App UI
 
-- [ ] A new Settings section (sibling to Emulators) with one row per emulator: **Not installed / vX
-      installed / vY available**, an Install/Update button, and download progress + busy state modeled
-      on the rclone-download and self-update flows. Doubles as the empty-library onboarding step.
-- [ ] On successful install, auto-select the managed install for every system the emulator supports
-      that has no executable configured yet; never override an existing user choice.
+- [x] A new "Install Emulators" Settings section (sibling to Emulators) with one row per emulator:
+      **Not installed / vX installed / vY available / using your own install / open download page**, an
+      Install/Update button, and a download progress bar + busy state modeled on the rclone-download and
+      self-update flows. Doubles as the empty-library onboarding step.
+- [x] On successful install, auto-select the managed install for every system the emulator supports
+      that has no executable configured yet; never override an existing user choice (core-based RetroArch
+      is skipped, since an executable alone would not make it launchable).
 
 ### Phase 5 — Tests
 
-- [ ] Release parsing + asset selection per source and per OS/arch, manifest round-trip,
-      managed-vs-user-install overwrite guard, extractor unit tests (zip/7z/tar.xz), and headless
-      view-model tests for the status/progress states. Full `dotnet build`/`dotnet test` green on macOS.
+- [x] Release parsing + asset selection per source and per OS/arch, manifest round-trip,
+      managed-vs-user-install overwrite guard, extractor unit tests (zip/AppImage/7z/tar.xz against
+      committed fixtures), and headless view-model tests for the status/progress states (row status
+      mapping, install success/refused/failed, update, open-download-page, coordinator). `dotnet build`/
+      `dotnet test` green (Infra +26, App +13); the suite is platform-agnostic, and the on-macOS run is
+      folded into the real-hardware verification above.
