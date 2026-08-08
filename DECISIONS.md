@@ -5364,3 +5364,26 @@ per-emulator token verification had been done against Windows configs on `G:` on
   Input)" card in the Hotkeys settings section lists Select+face-button → key/action and the Steam Deck
   steps, so the guidance no longer lives only in a repo markdown file a Deck user never sees.
 
+## 2026-08-09 — Flatpak targets can pin a branch; install check lists branches instead of `flatpak info`
+
+A Deck user installed the PCSX2 **nightly** (the `beta` branch on `flathub-beta`) and every PS2 launch
+then failed with "Flatpak application 'net.pcsx2.PCSX2' is not installed." Root cause: stable and
+beta/nightly builds share one application id and differ only by *branch*, and the preflight check ran
+`flatpak info <appId>`, which errors with "Multiple branches available…" (non-zero exit) when both
+branches are installed — so an app that launches fine looked uninstalled.
+
+- **`FlatpakApplicationTarget` gains an optional `Branch`** and a `Ref` (`appId` or `appId//branch`).
+  `Ref` is what goes to `flatpak run`/`flatpak info`; pinning the branch makes those commands
+  unambiguous. `AppId` stays the clean id because every branch shares one per-app data dir
+  (`.var/app/<appId>`) for saves/config, so save-location and RetroArch core paths must not include the
+  branch. The ref (with branch) is what round-trips through the store's `TargetValue` column — no schema
+  change.
+- **The install check now lists installed branches** (`flatpak list --app --columns=application,branch`)
+  and tests membership rather than calling `flatpak info <appId>`. An unpinned target passes if *any*
+  branch is present; a branch-pinned target passes only when *that* branch is present. This kills the
+  multiple-branch false negative and precisely validates a pinned nightly.
+- **Settings surfaces one dropdown entry per installed branch.** `FlatpakApplicationDiscovery` returns
+  the bare app id when a single branch is installed (unchanged behaviour) and branch-qualified refs
+  (e.g. `net.pcsx2.PCSX2//stable`, `net.pcsx2.PCSX2//beta`) when several are, so the user explicitly
+  picks stable vs nightly. The editable ComboBox is unchanged — the ref strings flow through as items.
+

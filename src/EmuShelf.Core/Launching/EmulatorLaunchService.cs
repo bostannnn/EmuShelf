@@ -209,7 +209,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                     Path.GetDirectoryName(direct.Path) ?? Environment.CurrentDirectory),
                 FlatpakApplicationTarget flatpak => new ProcessStartSpec(
                     "flatpak",
-                    ["run", .. BuildReadOnlyFilesystemGrants(dependencies.Paths, configuration.CorePath), flatpak.AppId, .. arguments],
+                    ["run", .. BuildReadOnlyFilesystemGrants(dependencies.Paths, configuration.CorePath), flatpak.Ref, .. arguments],
                     Path.GetDirectoryName(game.Path) ?? Environment.CurrentDirectory),
                 _ => throw new InvalidOperationException("Unsupported launch target."),
             };
