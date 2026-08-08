@@ -5075,3 +5075,27 @@ Consequences: the mouse-driven Gamepad code paths were removed — the pointer-m
 Gamepad session (kept as the `.controller-input` visual toggle rather than rewiring every binding).
 The keyboard/Steam-Input path (B/Esc, Start/`F10`, confirmation to exit) is untouched, so a controller
 still drives everything and the app can always be left.
+
+## 2026-08-08 — "Show in folder" reveals a game's file in the OS file manager
+
+The desktop grid/list context menu gained an entry that opens the game's containing folder with
+the ROM preselected. Because "reveal a file, selected in its folder" has no cross-platform API,
+this lives behind a Core interface (`IFileRevealService`) with one Infrastructure implementation
+(`FileRevealService`), per the platform-behind-interfaces rule.
+
+- **Per platform.** Windows `explorer /select,<path>`; macOS `open -R <path>`; Linux the
+  freedesktop `org.freedesktop.FileManager1.ShowItems` D-Bus method (the one call most Linux file
+  managers honour for selecting an item). Linux has no universal "select" otherwise.
+- **Windows needs a raw argument.** `explorer.exe` uses a non-standard command line: the whole
+  `/select,"<path>"` must arrive as one raw, quoted token, so that one invocation sets
+  `ProcessStartInfo.Arguments` directly instead of using `ArgumentList` (whose argv-style escaping
+  makes explorer ignore the path and open Documents). Every other invocation uses `ArgumentList`.
+- **Reveal is fire-and-forget.** The file manager window outlives us, so we only confirm the OS
+  started the process (explorer's own exit code is unreliable). The one exception is the Linux
+  D-Bus reveal, whose exit code we await so a missing/unanswered `FileManager1` provider can fall
+  back to `xdg-open` on the containing folder.
+- **Target + fallback.** It reveals `LaunchModel.Path` — the concrete source that would launch (the
+  selected disc of a multi-disc set), so the highlighted file is the right one. When that file is
+  gone but its folder still exists (an unavailable game), the folder is opened instead; when neither
+  exists, the command reports a friendly status rather than throwing. The menu label is
+  platform-native ("Show in File Explorer" / "Reveal in Finder" / "Show in file manager").
