@@ -1617,3 +1617,74 @@ decision recorded in `DECISIONS.md`.
       Cloud newer / Conflict / Not synced / Not set up), off by default. This needs a game→save-unit
       resolution that does not stat files on the UI thread. The save-state variant is M33 territory
       and stays out until that lands. Deferred behind M29; tracked here so the column set is planned.
+
+## M41 — In-app emulator install & update manager (planned)
+
+One place — a new Settings section — that lists every emulator EmuShelf supports, shows the installed
+version against the latest upstream release, and installs or updates it with one action. It serves both
+an established setup (update DuckStation to today's build) and a brand-new one (an empty library
+downloads its emulators here instead of hunting the web). Reuses the M39 self-updater's
+download→verify→stage pattern (`GitHubUpdateService`) and the `RcloneInstaller` "drop an official
+third-party binary into the portable folder" pattern; the launcher is untouched because a managed
+install just auto-populates `EmulatorConfiguration.ExecutablePath`. Scope: all seven emulators —
+DuckStation, PCSX2, RPCS3, PPSSPP, Azahar (GitHub Releases), plus Dolphin and RetroArch (their own
+build servers). Install target: a **managed portable `Emulators/<id>/` folder** beside the executable.
+Design decisions land in `DECISIONS.md` as they're implemented (not pre-committed — the Dolphin/
+RetroArch source formats and macOS `.dmg` handling need spikes that may revise them).
+
+Key simplification the managed model buys us: because EmuShelf is the installer, "installed version"
+is read from an **install manifest we write**, not probed out of an arbitrary binary — so the fragile
+per-emulator version-probe is avoided for managed installs (it stays an optional nicety for detecting a
+user's own install). Guardrails: EmuShelf only ever overwrites/updates a manifest-tracked managed
+install; a user-provided path is read-only to us (version check + "open download page" only). Portable
+rules from CLAUDE.md hold — everything lives beside the executable and moves with the drive. Downloads
+are HTTPS-from-official-source, SHA-256-verified when the release publishes a checksum (reusing the
+M39 verify path). On Linux, prefer Flatpak where the emulator ships one, matching the existing
+`EmulatorUserDirectories` Flatpak handling, over dropping raw binaries.
+
+New third-party dependency (own `DECISIONS.md` entry per the CLAUDE.md rule when it lands): **SharpCompress**
+for `.7z`/`.tar.xz` extraction (RPCS3, PCSX2); `.zip`/`.AppImage` need nothing new; macOS `.dmg` mounts
+via `hdiutil`. Downloaded emulators are unsigned and EmuShelf is unsigned, so the `com.apple.quarantine`
+xattr is stripped after extract (same as the M39 macOS applier).
+
+### Phase 1 — Core contracts and the install manifest
+
+- [ ] Core: an `EmulatorReleaseSource` describing where an emulator's builds come from (GitHub repo or
+      custom URL, per-OS/arch asset pattern, archive kind, optional checksum), hung off each
+      `EmulatorDefinition` in Integrations. An `IEmulatorInstallService`
+      (`GetStatusAsync`/`InstallAsync`/`UpdateAsync`) with a status model (NotInstalled / Managed(version)
+      / UserProvided(path) / UpdateAvailable(current, latest) / CheckFailed(reason)) mirroring `Updates/`.
+- [ ] Install manifest: a portable `Settings/` JSON recording per managed install
+      `{emulatorId, installedVersion, installedAt, executableRelativePath, sourceTag}`, with a store
+      interface + implementation. `IAppPaths.EmulatorsDirectory` added for the managed root.
+
+### Phase 2 — Infrastructure: the five GitHub-Releases emulators
+
+- [ ] `GitHubEmulatorInstaller` reusing `GitHubReleaseParser` and the M39 download/verify code, plus a
+      portable-drop/chmod/quarantine-strip step modeled on `RcloneInstaller`. Extractors for
+      `.zip` (built-in), `.AppImage` (chmod), and `.7z`/`.tar.xz` (SharpCompress). Writes the manifest
+      and returns the resolved executable path so the caller can wire the config.
+- [ ] Per-emulator sources: DuckStation (stenzek/duckstation), PCSX2 (PCSX2/pcsx2), RPCS3
+      (rpcs3/rpcs3-binaries-{win,linux,mac}), PPSSPP (hrydgard/ppsspp), Azahar (azahar-emu/azahar) —
+      each with verified per-OS/arch asset patterns. Managed-only overwrite guard enforced here.
+
+### Phase 3 — Custom fetchers (the highest-risk items; spike each first)
+
+- [ ] Dolphin: resolve latest build + per-platform asset from dolphin-emu.org, mount/copy the macOS
+      `.dmg` via `hdiutil`. Spike the listing format before committing the parser.
+- [ ] RetroArch: resolve latest stable + asset from buildbot.libretro.com's directory layout; prefer
+      Flatpak on Linux. Spike the stable-version discovery before committing.
+
+### Phase 4 — App UI
+
+- [ ] A new Settings section (sibling to Emulators) with one row per emulator: **Not installed / vX
+      installed / vY available**, an Install/Update button, and download progress + busy state modeled
+      on the rclone-download and self-update flows. Doubles as the empty-library onboarding step.
+- [ ] On successful install, auto-select the managed install for every system the emulator supports
+      that has no executable configured yet; never override an existing user choice.
+
+### Phase 5 — Tests
+
+- [ ] Release parsing + asset selection per source and per OS/arch, manifest round-trip,
+      managed-vs-user-install overwrite guard, extractor unit tests (zip/7z/tar.xz), and headless
+      view-model tests for the status/progress states. Full `dotnet build`/`dotnet test` green on macOS.
