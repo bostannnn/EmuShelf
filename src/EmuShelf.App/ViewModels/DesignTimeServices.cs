@@ -150,7 +150,8 @@ internal sealed class NullDialogService : IDialogService
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
-        AppUpdateCoordinator? updates = null) => Task.CompletedTask;
+        AppUpdateCoordinator? updates = null,
+        Func<HotkeySettingsContext?>? createHotkeyContext = null) => Task.CompletedTask;
     public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
         Task.CompletedTask;
 }
