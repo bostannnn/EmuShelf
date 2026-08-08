@@ -4193,6 +4193,10 @@ public partial class MainViewModel : ViewModelBase
             syncParts.Add(DescribeCompletedSyncAfterExit(afterSync.Report!));
         else if (afterSync?.Status == CloudSaveSyncStatus.Failed)
             syncParts.Add($"save sync after exit failed: {afterSync.Message ?? "unknown error"}");
+        // Say why a save state the player just made was not synced, rather than leaving a bare
+        // "no saves were found" that hides the off toggle.
+        if (afterSync?.SaveStatesSkipped == true)
+            syncParts.Add("save-state sync is off for this platform (enable it in Settings to include save states)");
         if (syncParts.Count == 0)
             return launch.StatusText;
 

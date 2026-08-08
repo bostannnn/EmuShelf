@@ -111,6 +111,40 @@ public sealed class SaveSyncPlannerTests
         Assert.Equal(SaveSyncAction.ConflictLocalWins, decision.Action);
     }
 
+    // SHA-256 of no bytes — an empty folder or a 0-byte file carries this hash.
+    private const string EmptyHash = "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855";
+
+    [Fact]
+    public void BothSidesEmpty_IsNone_NotAnEndlessReDownload()
+    {
+        // Once a stray empty folder has propagated, both sides carry the empty hash. This must be a
+        // no-op, not a perpetual "restore the (empty) remote" on every sync.
+        var decision = SaveSyncPlanner.Decide(
+            Snapshot(EmptyHash, Later), Snapshot(EmptyHash, Earlier), Baseline(EmptyHash));
+
+        Assert.Equal(SaveSyncAction.None, decision.Action);
+    }
+
+    [Fact]
+    public void EmptyLocalAgainstRealRemote_RestoresByDownloading_NeverUploadsEmpty()
+    {
+        // An emptied local folder must never overwrite a real cloud save; it restores it instead.
+        var decision = SaveSyncPlanner.Decide(
+            Snapshot(EmptyHash, Later), Snapshot("real", Earlier), Baseline("real"));
+
+        Assert.Equal(SaveSyncAction.Download, decision.Action);
+    }
+
+    [Fact]
+    public void RealLocalAgainstEmptyRemote_UploadsAndHealsTheStrayEmptyEntry()
+    {
+        // A machine that has the real save uploads it over a stray empty cloud entry, healing it.
+        var decision = SaveSyncPlanner.Decide(
+            Snapshot("real", Later), Snapshot(EmptyHash, Earlier), Baseline(EmptyHash));
+
+        Assert.Equal(SaveSyncAction.Upload, decision.Action);
+    }
+
     private static SaveUnitSnapshot Snapshot(string hash, DateTimeOffset modified) =>
         new(UnitId, hash, modified);
 
