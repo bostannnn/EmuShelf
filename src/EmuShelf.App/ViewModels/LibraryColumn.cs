@@ -53,6 +53,11 @@ public partial class LibraryColumn : ObservableObject
     /// column when the viewport is narrow.</summary>
     public double MinWidth { get; }
 
+    /// <summary>Upper bound applied to a resize drag or a restored width, so a huge drag or a corrupt
+    /// persisted value can't grow a fixed column until the flex Title column is squeezed off-screen.
+    /// The flex column ignores it (its width is always computed from the viewport).</summary>
+    public double MaxWidth { get; } = 640;
+
     public double DefaultWidth { get; }
 
     /// <summary>The single column (Title) that absorbs the remaining row width; its

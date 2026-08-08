@@ -323,7 +323,7 @@ public class LibraryViewStateTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void TeleratesUnknownAndMissingColumnsInThePersistedLayout()
+    public void ToleratesUnknownAndMissingColumnsInThePersistedLayout()
     {
         var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
         {
@@ -395,6 +395,21 @@ public class LibraryViewStateTests : IDisposable
             console.Width,
             viewModel.BuildLibraryViewState().ListColumns
                 .Single(setting => setting.Key == nameof(LibraryColumnKey.Console)).Width);
+    }
+
+    [AvaloniaFact]
+    public void RestoringAnOverlyWideColumnClampsToTheMaximum()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ListColumns =
+            [
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Console), IsVisible = true, Width = 100_000 },
+            ],
+        }));
+
+        var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
+        Assert.Equal(console.MaxWidth, console.Width); // a corrupt/huge width can't push Title off-screen
     }
 
     public void Dispose()

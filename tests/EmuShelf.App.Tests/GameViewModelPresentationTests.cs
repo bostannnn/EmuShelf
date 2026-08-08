@@ -253,6 +253,21 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
+    public void Rating_OfZero_IsTreatedAsUnratedNotAGenuineZero()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyDetailsProjection(new GameDetailsProjection(
+            HasBoxFront: false, HasScreenshot: false, HasWheel: false, HasFanart: false,
+            HasDescription: false, HasProviderMatch: true,
+            Rating: "0", Genre: null, ReleaseDate: null, Players: null,
+            Developer: null, Publisher: null));
+
+        Assert.Equal("—", viewModel.RatingColumnText);
+        Assert.Equal(-1, viewModel.RatingSortKey);
+    }
+
+    [Fact]
     public void ScrapedScalars_AreEmDashWhenUnscraped()
     {
         var viewModel = CreateGame();

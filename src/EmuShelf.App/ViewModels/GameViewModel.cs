@@ -115,8 +115,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
         (HasScrapedCover ? 1 : 0) + (HasScrapedScreenshot ? 1 : 0) + (HasScrapedFanart ? 1 : 0) +
         (HasScrapedLogo ? 1 : 0) + (HasScrapedDescription ? 1 : 0);
 
-    /// <summary>A game with no stored details and no cover reads as never-scraped, distinct from a
-    /// scraped-but-partial game that has some assets.</summary>
+    /// <summary>A game reads as never-scraped only when it has no stored details at all — the
+    /// projection is null, i.e. it is absent from the media, metadata, and provider-match tables —
+    /// and has no cover. A game that matched a provider but returned nothing still has a (mostly
+    /// empty) projection, so it correctly shows <c>0/5</c> ("scraped but empty") rather than the
+    /// never-scraped dash; this is why the projection carries <c>HasProviderMatch</c>.</summary>
     private bool IsUnscraped => _detailsProjection is null && CoverPath is null;
 
     /// <summary>Metadata completeness column: <c>n/5</c> (cover, screenshot, fan art, logo,
@@ -136,7 +139,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public string RatingColumnText => FormatRating(_detailsProjection?.Rating);
 
-    /// <summary>Numeric rating (0–10) for sorting; -1 when unrated so unrated games sort last ascending.</summary>
+    /// <summary>Numeric rating (0–10) for sorting; -1 when unrated, so unrated games group with the
+    /// other unscored rows — first on an ascending sort, last on descending — matching how the
+    /// completeness column treats never-scraped games.</summary>
     public double RatingSortKey =>
         double.TryParse(FormatRating(_detailsProjection?.Rating), NumberStyles.Number,
             CultureInfo.InvariantCulture, out var score)
@@ -156,11 +161,14 @@ public partial class GameViewModel : ObservableObject, IDisposable
     private static string Dash(string? value) =>
         string.IsNullOrWhiteSpace(value) ? RetroAchievementsDisplay.Dash : value.Trim();
 
-    // ScreenScraper stores a 0–20 rating; present it as the 0–10 score the spotlight also shows.
+    // ScreenScraper stores a 0–20 rating; present it as the 0–10 score the spotlight also shows. A
+    // missing field or a stored 0 means unrated (ScreenScraper writes 0 for "no rating"), shown as a
+    // dash so it is not mistaken for a genuine zero score.
     private static string FormatRating(string? raw)
     {
         if (raw is null ||
-            !double.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var provider))
+            !double.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var provider) ||
+            provider <= 0)
             return RetroAchievementsDisplay.Dash;
         return Math.Clamp(provider / 2.0, 0, 10).ToString("0.0", CultureInfo.InvariantCulture);
     }

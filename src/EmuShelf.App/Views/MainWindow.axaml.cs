@@ -1289,7 +1289,7 @@ public partial class MainWindow : Window
             return;
 
         var delta = e.GetPosition(this).X - _resizeStartX;
-        column.Width = Math.Max(column.MinWidth, _resizeStartWidth + delta);
+        column.Width = Math.Clamp(_resizeStartWidth + delta, column.MinWidth, column.MaxWidth);
         e.Handled = true;
     }
 

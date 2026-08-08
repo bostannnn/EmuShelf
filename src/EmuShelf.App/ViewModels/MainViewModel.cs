@@ -357,12 +357,26 @@ public partial class MainViewModel : ViewModelBase
         ScheduleLibraryViewStateSave();
     }
 
+    // Reconciles VisibleColumns in place with minimal Insert/RemoveAt/Move rather than Clear+Add, so
+    // toggling or reordering one column only touches that column's cell in every realized row — the
+    // others (and their already-decoded covers) survive instead of being torn down and reloaded.
     private void RebuildVisibleColumns()
     {
-        var visible = Columns.Where(column => column.IsVisible).ToList();
-        VisibleColumns.Clear();
-        foreach (var column in visible)
-            VisibleColumns.Add(column);
+        var target = Columns.Where(column => column.IsVisible).ToList();
+
+        for (var index = VisibleColumns.Count - 1; index >= 0; index--)
+            if (!target.Contains(VisibleColumns[index]))
+                VisibleColumns.RemoveAt(index);
+
+        for (var index = 0; index < target.Count; index++)
+        {
+            var column = target[index];
+            var current = VisibleColumns.IndexOf(column);
+            if (current < 0)
+                VisibleColumns.Insert(index, column);
+            else if (current != index)
+                VisibleColumns.Move(current, index);
+        }
     }
 
     /// <summary>Recomputes the flex (Title) column's pixel width so the visible columns fill the row
@@ -414,7 +428,7 @@ public partial class MainViewModel : ViewModelBase
             if (column.CanHide)
                 column.IsVisible = setting.IsVisible;
             if (!column.IsFlex && setting.Width > 0)
-                column.Width = Math.Max(column.MinWidth, setting.Width);
+                column.Width = Math.Clamp(setting.Width, column.MinWidth, column.MaxWidth);
             ordered.Add(column);
         }
 
