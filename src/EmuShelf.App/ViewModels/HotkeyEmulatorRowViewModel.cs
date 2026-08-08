@@ -1,6 +1,8 @@
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
+using EmuShelf.Core.Hotkeys;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -28,7 +30,22 @@ public partial class HotkeyEmulatorRowViewModel : ObservableObject
     public string DisplayName { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Rewind))]
+    [NotifyPropertyChangedFor(nameof(FastForward))]
+    [NotifyPropertyChangedFor(nameof(SaveState))]
+    [NotifyPropertyChangedFor(nameof(LoadState))]
+    [NotifyPropertyChangedFor(nameof(CloseGame))]
     public partial IReadOnlyList<HotkeyActionLine> Actions { get; set; } = [];
+
+    /// <summary>Per-action cells for the settings matrix; every action is always present in a snapshot.</summary>
+    public HotkeyActionLine? Rewind => Cell(HotkeyAction.Rewind);
+    public HotkeyActionLine? FastForward => Cell(HotkeyAction.FastForward);
+    public HotkeyActionLine? SaveState => Cell(HotkeyAction.SaveState);
+    public HotkeyActionLine? LoadState => Cell(HotkeyAction.LoadState);
+    public HotkeyActionLine? CloseGame => Cell(HotkeyAction.CloseGame);
+
+    private HotkeyActionLine? Cell(HotkeyAction action) =>
+        Actions.FirstOrDefault(line => line.Action == action);
 
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;

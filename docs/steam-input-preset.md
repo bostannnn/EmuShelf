@@ -21,13 +21,21 @@ map the face buttons and Start to the scheme's keys:
 (Square / Circle / Triangle / Cross are the PlayStation labels; on an Xbox pad they are X / B / Y / A by
 position.)
 
-## Why a guide, not an auto-installed file
+## Install the bundled template
 
-Steam Input configurations are applied **per app** and are normally shared through the Steam Workshop,
-not dropped in as files — there is no clean, supported way for a third-party app to install one for you.
-So EmuShelf ships this guide rather than a config binary. On a Steam Deck this is the natural path; on
-the desktop the emulator must be **launched under Steam** (add it as a non-Steam game) for Steam Input
-to apply.
+EmuShelf bundles a verified controller layout — **"EmuShelf — Hotkeys for emulators"** — and
+**Settings → Hotkeys → Install Steam Input template** copies it into Steam's
+`controller_base/templates/` folder. After that, open the emulator's controller settings in Steam,
+choose **Browse Configs → Templates**, and pick **EmuShelf**.
+
+Caveats:
+- The bundled layout targets a **DualSense (PS5)** controller; other controller types would need their
+  own variant. It implements the table above.
+- Steam exposes no clean API to *activate* a config for an app, so this installs a selectable
+  **template**, not a per-game binding — you still pick it once per emulator.
+- On the desktop the emulator must be **launched under Steam** (add it as a non-Steam game) for Steam
+  Input to apply; on a Steam Deck this is automatic.
+- If Steam doesn't list the template, the same layout is on the Steam Workshop — search "EmuShelf".
 
 ## Setup (desktop)
 
