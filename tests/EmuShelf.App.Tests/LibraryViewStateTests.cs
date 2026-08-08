@@ -3,6 +3,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
@@ -40,7 +41,8 @@ public class LibraryViewStateTests : IDisposable
 
     private MainViewModel CreateViewModel(
         ILibraryViewStateService? viewState = null,
-        IInterfaceModeService? interfaceMode = null)
+        IInterfaceModeService? interfaceMode = null,
+        IGameDetailsStore? gameDetails = null)
     {
         IGameImportRules rules = new FileImportRules();
         return new MainViewModel(
@@ -51,7 +53,26 @@ public class LibraryViewStateTests : IDisposable
             _dialogs,
             KnownSystems.All,
             interfaceModeService: interfaceMode,
-            libraryViewState: viewState);
+            libraryViewState: viewState,
+            gameDetails: gameDetails);
+    }
+
+    // Counts the bulk projection reads so a test can prove grid/gamepad views skip it (M40 item 2).
+    private sealed class CountingDetailsStore : IGameDetailsStore
+    {
+        public int Calls { get; private set; }
+
+        public IReadOnlyDictionary<long, GameDetailsProjection> GetAllDetailsProjections()
+        {
+            Calls++;
+            return new Dictionary<long, GameDetailsProjection>();
+        }
+
+        public GameDetails GetDetails(long gameId) => new(gameId, [], [], []);
+        public bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode) => false;
+        public GameMediaAsset SaveMedia(GameMediaAsset media) => media;
+        public bool SelectMedia(long gameId, GameMediaKind kind, long mediaId) => false;
+        public void UpsertProviderMatch(GameProviderMatch match) { }
     }
 
     private sealed class StubInterfaceMode : IInterfaceModeService
@@ -295,6 +316,150 @@ public class LibraryViewStateTests : IDisposable
         await service.SaveAsync(new LibraryViewSettings { IsGridView = false });
 
         Assert.Equal(ThemePreference.Dark, settingsService.Load().Theme);
+    }
+
+    [AvaloniaFact]
+    public void RestoresThePersistedColumnLayout()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ListColumns =
+            [
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Status), IsVisible = true, Width = 130 },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Title), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Cover), IsVisible = false },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Console), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Format), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Achievements), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Textures), IsVisible = true },
+            ],
+        }));
+
+        var status = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Status);
+        Assert.Equal(0, viewModel.Columns.IndexOf(status)); // saved first, so reordered to the front
+        Assert.Equal(130, status.Width);
+        Assert.Equal(LibraryColumnKey.Status, viewModel.VisibleColumns[0].Key);
+        Assert.False(viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Cover).IsVisible);
+        Assert.DoesNotContain(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Cover);
+    }
+
+    [AvaloniaFact]
+    public void ToleratesUnknownAndMissingColumnsInThePersistedLayout()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ListColumns =
+            [
+                new LibraryColumnSetting { Key = "AColumnThatNoLongerExists", IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Console), IsVisible = false },
+            ],
+        }));
+
+        // Unknown key dropped; the console setting applied; every unlisted column keeps its default.
+        Assert.DoesNotContain(viewModel.Columns, column => column.DisplayName == "AColumnThatNoLongerExists");
+        Assert.False(viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console).IsVisible);
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Title);
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Cover);
+    }
+
+    [AvaloniaFact]
+    public void TheSavedSnapshotIncludesTheColumnLayout()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Textures).IsVisible = false;
+
+        var state = viewModel.BuildLibraryViewState();
+
+        Assert.Equal(viewModel.Columns.Count, state.ListColumns.Count);
+        Assert.Equal(nameof(LibraryColumnKey.Cover), state.ListColumns[0].Key);
+        Assert.False(state.ListColumns.Single(column => column.Key == nameof(LibraryColumnKey.Textures)).IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void TheTitleColumnCannotBeHidden()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        var title = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Title);
+
+        title.IsVisible = false;
+
+        Assert.True(title.IsVisible);
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Title);
+    }
+
+    [AvaloniaFact]
+    public void HidingAColumnRemovesItFromTheVisibleSet()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
+
+        console.IsVisible = false;
+        Assert.DoesNotContain(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Console);
+
+        console.IsVisible = true;
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Console);
+    }
+
+    [AvaloniaFact]
+    public void ResizingAFixedColumnAdjustsTheFlexColumnAndPersists()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        viewModel.ListViewportWidth = 1000; // enough room that the flex column is above its minimum
+        var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
+        var title = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Title);
+        var flexBefore = title.Width;
+
+        console.Width += 100;
+
+        Assert.True(title.Width < flexBefore, "the flex column should shrink to absorb the wider column");
+        Assert.Equal(
+            console.Width,
+            viewModel.BuildLibraryViewState().ListColumns
+                .Single(setting => setting.Key == nameof(LibraryColumnKey.Console)).Width);
+    }
+
+    [AvaloniaFact]
+    public void RestoringAnOverlyWideColumnClampsToTheMaximum()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ListColumns =
+            [
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Console), IsVisible = true, Width = 100_000 },
+            ],
+        }));
+
+        var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
+        Assert.Equal(console.MaxWidth, console.Width); // a corrupt/huge width can't push Title off-screen
+    }
+
+    [AvaloniaFact]
+    public async Task ProjectionReadIsSkippedInGridViewButRunsForTheListView()
+    {
+        _library.AddGames([
+            new Game
+            {
+                SystemId = GameCube.Id,
+                Path = Path.Combine(_baseDirectory, "g.iso"),
+                Title = "G",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+
+        var gridCounter = new CountingDetailsStore();
+        var grid = CreateViewModel(
+            new StubViewState(new LibraryViewSettings { IsGridView = true, Scope = nameof(LibraryScope.AllGames) }),
+            gameDetails: gridCounter);
+        await grid.ReloadGamesAsync();
+        Assert.Equal(0, gridCounter.Calls); // grid view never reads the scraped-metadata projection
+
+        var listCounter = new CountingDetailsStore();
+        var list = CreateViewModel(
+            new StubViewState(new LibraryViewSettings { IsGridView = false, Scope = nameof(LibraryScope.AllGames) }),
+            gameDetails: listCounter);
+        await list.ReloadGamesAsync();
+        Assert.True(listCounter.Calls >= 1, "the list view should load the projection at least once");
     }
 
     public void Dispose()

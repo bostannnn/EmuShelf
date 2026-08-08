@@ -5103,6 +5103,43 @@ Fix, mirroring how core *version* is already resolved for state-compatibility ke
 Core-name resolution therefore moved to the end of the constructor (it now depends on the platform and
 Flatpak flags). This fixes save states *and* the sibling base-save case, which previously failed closed
 for the same unresolved-name reason when files sorted by core.
+
+## 2026-08-08 — Save-sync robustness pass: empty folders, PS2 system data, shared cores, one pass per launch
+
+A two-agent review of real Steam Deck sync logs surfaced four issues; all four fixed together.
+
+1. **An empty save folder must never overwrite a good cloud copy.** `FileSystemLocalSaveEndpoint.Snapshot`
+   returned a *non-null* snapshot for a folder that exists but holds no files — hash-of-nothing plus an
+   epoch (1970) mtime. With a baseline present, the planner then chose **Upload**, and the Upload leg
+   (unlike a conflict) takes no backup, so an emptied folder destroyed the cloud copy and propagated
+   emptiness to other machines. This was the only permanent-data-loss path found. Fix, two parts:
+   `Snapshot` returns `null` for a contentless folder, and `SaveSyncPlanner` treats an empty-content
+   snapshot (empty folder or 0-byte file) as absent on *both* sides. So an emptied local restores the
+   cloud copy (never overwrites it), two empty sides are a no-op (a stray empty entry already in the cloud
+   is not re-downloaded on every sync), and a machine holding the real save uploads over an empty cloud
+   entry to heal it — all consistent with "sync never deletes". The planner's two-sided normalization is
+   essential: without it, `Snapshot` returning `null` would make every already-propagated empty cloud entry
+   re-download forever. (The field manifest's empty-hash/1970 Dolphin Wii NAND entries were this.)
+
+2. **PS2 memory-card system directories are not saves.** `BADATA-SYSTEM` (and the `B?DATA-SYSTEM`
+   region variants + `BWNETCNF`) are the PS2 BIOS browser's own data; the BIOS rewrites them on nearly
+   every boot, so they re-uploaded every session (a field card reached revision 15). Excluded from
+   `Pcsx2SaveLocationProvider.IsSaveDirectory` like PCSX2's own `_`-prefixed housekeeping.
+
+3. **A core shared by two systems no longer double-tracks its folder.** When "sort saves by core" is on,
+   a per-core folder was treated as *exclusive* (claim every file). That is correct for one-core-one-system
+   but wrong when one core serves several systems (mGBA for both GBA and GBC): both rows resolved to the
+   same `saves/mGBA` (and `states/mGBA`) folder and each claimed — and uploaded — every file, so every
+   Game-Boy-family save/state synced twice. The coordinator now detects a core configured for more than
+   one system and passes `CoreSharedAcrossSystems`; a shared provider claims only its own library's saves
+   (`IsExclusive` off) and states (`StateBelongsToThisSystem`). Single-system per-core folders are
+   unchanged (still claim the whole folder, so a save for an un-imported game still syncs).
+
+4. **One combined pass per launch instead of two.** `SyncSystemAsync` ran a saves pass then a separate
+   save-states pass, each with its own cloud index read + commit and manifest load/save. It now runs a
+   single `SyncContentScope.All` pass (base saves plus states when the toggle is on), halving the cloud
+   round-trips for a state-enabled platform. The pre-pass state diagnostic and the "states toggle off"
+   flag are preserved, and one combined result line is logged in place of the two.
 ## 2026-08-08 — "Show in folder" reveals a game's file in the OS file manager
 
 The desktop grid/list context menu gained an entry that opens the game's containing folder with
@@ -5231,3 +5268,54 @@ Input's emulated keystrokes reach RetroArch (it filters injected input — testa
 RetroArch's existing keyboard defaults). The infrastructure from the controller implementation (surgical
 INI editor, backup/revert, coordinator, Settings UI, registry) is reused unchanged; only the
 configurators and the profile model are rewritten.
+
+## 2026-08-08 — Desktop list view keeps its ListBox and gains a VM-driven, persisted column model (M40)
+
+The Desktop list view was a `ListBox` whose column layout was hard-coded twice — the header Grid and
+the row `DataTemplate` both carried the same literal `ColumnDefinitions="84,*,150,90,96,92,100"` — so
+adding columns meant editing two places in lockstep, and there was no show/hide, reorder, or resize.
+M40 wants an iTunes-style table (user-chosen visible columns, drag reorder/resize, sort by any
+column, persisted).
+
+`Avalonia.Controls.DataGrid` was evaluated first, because it offers show/hide, drag-reorder,
+drag-resize, and per-column sort natively. A Phase-0 spike (package added, view wired up) rejected
+it: DataGrid would **regress shipped M25 interactions** and force fighting the control's internals.
+
+- **Marquee auto-scroll (M25) breaks.** The rubber-band drag reads `ScrollViewer.Offset/Extent/
+  Viewport` off the list to auto-scroll and to anchor the box to content while scrolling
+  (`MainWindow.axaml.cs` `GetActiveScroller`/`UpdateMarquee`/`OnMarqueeAutoScrollTick`). DataGrid
+  manages its own scrolling and does not expose that `ScrollViewer`, so auto-scroll-to-extend would
+  degrade.
+- **Selection visuals fight the control.** Selection is view-model-owned (`GameViewModel.IsSelected`,
+  shared with the grid, driven by window-level tunnel pointer handlers and by marquee/select-all),
+  not by a control's `SelectedItems`. DataGrid insists on drawing its own row-selection highlight,
+  which desyncs from our model (marquee/select-all select many rows the control doesn't know about)
+  and can only be suppressed by overriding theme-internal part/resource names.
+- Per-row **context menu** and **VM-driven custom sort** (Achievements/Textures sort by `*SortKey`,
+  not displayed text) would also need re-engineering onto DataGrid's model.
+
+DataGrid's only advantage over the alternative is that reorder/resize are *native* rather than
+hand-rolled — an internal detail invisible to the user. It is not worth regressing shipped features
+for, so:
+
+**Chosen: keep the `ListBox`, drive its columns from a view-model column model.** The row stays a
+`ListBox` item, so marquee, multi-select, the per-row context menu, inline title edit, custom sort,
+and the async cover-load hooks are all **untouched and un-regressed**. A view-model
+`ObservableCollection` of column descriptors (key, header, visible, resolved pixel width, sort
+mapping, order) drives both the header and each row: cells stay statically defined but bind their
+`Grid.Column` to the column's ordered position and their `Grid` column widths to the model, so
+reorder is a data move, resize updates a width, and hide collapses a position — all via bindings, no
+control internals. One flex column (Title) absorbs remaining viewport width (already reported to the
+view model by `OnLibrarySizeChanged`). Reorder and resize *gestures* are self-contained header
+pointer handling in code-behind (view wiring only).
+
+Column configuration (visibility, order, width, active sort) is **owned by the view model and
+persisted to portable `Settings/`**, so it survives restart and moves with the portable install.
+Persistence tolerates unknown/removed column ids, and Title is a minimum always-on column so the
+table can never be emptied.
+
+New scraped columns read a **bulk metadata projection** (`IGameDetailsStore.GetAllDetailsProjections`)
+built once per scope build on the load worker, never a per-row `GetDetails` on the UI thread — the
+details store is per-game today, and a naive column binding would reintroduce the exact N+1 the M11
+performance work removed. The cloud-save-status column is deferred behind M29 (battery/memory-card
+sync) and the save-state variant behind M33.

@@ -1514,3 +1514,82 @@ per-emulator tokens are in `DECISIONS.md` (2026-08-08) and `docs/hotkey-keyboard
 - A configurable key set (something other than the F-key defaults), and reusing the same writer for
   memory-card/save-path settings and an EmuShelf-owned emulator user directory, are follow-ups the
   model is built to accommodate.
+
+## M40 — Configurable Desktop list-view columns (in progress)
+
+The Desktop list view is a fixed seven-column layout (cover, title/path, console, format,
+achievements, textures, status) whose column set is hard-coded twice — once in the header Grid and
+once in the row `DataTemplate` — so it cannot show the scraped/metadata state a user actually wants
+to scan a large library by. This milestone rebuilds it as an **iTunes-style configurable table**:
+the user picks which columns show, reorders and resizes them, and sorts by any of them, with the
+choice persisted in portable `Settings/`. New columns surface the metadata EmuShelf already stores
+(scraped completeness, artwork/description presence, rating, genre/year/players) plus the cheap
+record fields (Last Played, Date Added). Gamepad mode is untouched — this is Desktop-list only.
+
+Guardrails: virtualization, async off-thread cover loading, and the "no bulk work on the UI thread"
+rule from CLAUDE.md must survive; the new scraped columns must not reintroduce an N+1 read across the
+visible library. A Phase-0 spike rejected `Avalonia.Controls.DataGrid` (it regresses M25 marquee
+auto-scroll and fights VM-owned selection/sort) in favour of keeping the `ListBox` and driving its
+columns from the view model — same iTunes UX, no regression to shipped interactions. Architecture
+decision recorded in `DECISIONS.md`.
+
+### Phase 0 — View-model column model on the existing ListBox (the risk gate) ✅ (2026-08-08)
+
+- [x] Keep the Desktop list as a `ListBox` so marquee/auto-scroll (M25), multi-select, per-row
+      context menu, inline title edit, custom VM sort, and the async cover-load hooks
+      (`OnGameCoverAttached` / `DataContextChanged`) stay untouched and un-regressed.
+- [x] Introduce a view-model column model: `LibraryColumn` descriptors (key, header, `IsVisible`,
+      `Width`, `LibrarySortColumn` mapping) in `Columns`/`VisibleColumns`, built from
+      `LibraryColumnCatalog`. One flex column (Title) absorbs remaining width from a new
+      `ListViewportWidth` (the grid scroller that feeds `LibraryViewportWidth` is collapsed in list mode).
+- [x] Drive header + each row from `VisibleColumns` via `ItemsControl`s and a
+      `LibraryColumnCellSelector` (a keyed `IDataTemplate`), so hide/reorder/resize are data changes.
+      The row's cell panel is stretch+clipped so it can never overflow the list. Header keeps the
+      `sort-header` buttons + glyphs.
+- [x] Verified build + existing list-view visual snapshots render at parity (default 7-column set
+      unchanged); no baseline regen needed. `dotnet build`/`dotnet test` green (525 App tests).
+
+### Phase 1 — The iTunes column chrome ✅ (2026-08-08; drag-reorder deferred)
+
+- [x] Right-click the header for a column checklist that shows/hides columns (Title disabled so the
+      table always keeps it). Drag-resize via a right-edge grip on each fixed header cell that sets
+      the column width and lets the flex column absorb it (code-behind view wiring).
+- [ ] **Drag-reorder deferred.** The data layer + persistence already carry column order
+      (`Columns.Move`, restored order); only the drag-vs-sort-click gesture is unbuilt, because it
+      needs interactive verification the headless harness can't give.
+- [x] Persist per-column visibility, order, and width (plus the existing sort column/direction) to
+      portable `Settings/` via `LibraryViewSettings.ListColumns`, restored at startup and resilient
+      to an unknown/removed column id. Title is a minimum always-on column.
+- [x] Tests: settings round-trip, unknown/missing-key tolerance, Title-cannot-hide, hide→visible
+      set, resize→flex+persist.
+
+### Phase 2 — Cheap record-field columns ✅ (2026-08-08)
+
+- [x] Add **Last Played** (`Game.LastPlayedAt`, from M38, "Never" when unplayed) and **Date Added**
+      (`Game.DateAdded`) columns — off by default, sortable, no new data plumbing.
+
+### Phase 3 — Bulk metadata projection (data plumbing; parallelizable) ✅ (2026-08-08)
+
+- [x] Added `IGameDetailsStore.GetAllDetailsProjections()` → per-game `GameDetailsProjection`
+      (media-kind presence + description, rating, genre/year/players/dev/pub) in three grouped
+      queries, never a per-game loop. Infrastructure parity test vs N× `GetDetails`. (Built in
+      parallel by a subagent; 899 Infra tests green.)
+
+### Phase 4 — Scraped-metadata columns ✅ (2026-08-08)
+
+- [x] **Metadata completeness** column, on by default: `n/5` (cover, screenshot, fanart, logo,
+      description), tooltip lists present/missing, sorts incomplete-first, `—` when never scraped
+      (distinct from a partial `n/5`).
+- [x] Per-asset presence columns (Has Cover / Screenshot / Fan Art / Logo / Description as ✓/—),
+      Rating (0–10), and Genre/Year/Players/Developer/Publisher — all off by default, each sortable.
+      Fed by the Phase 3 projection read once per scope build on the load worker; no per-row reads.
+- [x] Headless view-model tests for completeness counting (unscraped vs partial), rating/year
+      formatting, and dash fallbacks.
+
+### Phase 5 — Cloud save status column (depends on M29)
+
+- [ ] After M29 (battery/memory-card cloud sync) is far enough along, add a **Cloud save** column
+      that reads the sync manifest/local state and shows a per-game status (Synced / Local newer /
+      Cloud newer / Conflict / Not synced / Not set up), off by default. This needs a game→save-unit
+      resolution that does not stat files on the UI thread. The save-state variant is M33 territory
+      and stays out until that lands. Deferred behind M29; tracked here so the column set is planned.

@@ -190,6 +190,23 @@ public sealed record GameDetails(
     IReadOnlyList<GameMediaAsset> Media,
     IReadOnlyList<GameProviderMatch> ProviderMatches);
 
+/// <summary>Lightweight per-game scraped-metadata signals for the list view's columns, read in
+/// bulk so a column never triggers a per-row <see cref="IGameDetailsStore.GetDetails"/>. Absent
+/// from the map = the game has no stored details at all.</summary>
+public sealed record GameDetailsProjection(
+    bool HasBoxFront,
+    bool HasScreenshot,
+    bool HasWheel,
+    bool HasFanart,
+    bool HasDescription,
+    bool HasProviderMatch,
+    string? Rating,
+    string? Genre,
+    string? ReleaseDate,
+    string? Players,
+    string? Developer,
+    string? Publisher);
+
 /// <summary>
 /// A provider media candidate to download and import for a game. Provider-neutral so the apply
 /// service does not depend on any one provider's response type.
