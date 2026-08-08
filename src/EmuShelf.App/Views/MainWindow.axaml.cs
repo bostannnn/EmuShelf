@@ -76,6 +76,28 @@ public partial class MainWindow : Window
         AddHandler(PointerReleasedEvent, OnWindowPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
         // If something steals the drag mid-flight, drop the rubber-band so its box can't get stuck.
         AddHandler(PointerCaptureLostEvent, OnWindowPointerCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
+        // The list header sits outside the scrolling row area, so translate it to match the rows'
+        // horizontal offset when the table scrolls sideways (many columns exceed the viewport).
+        LibraryList.AddHandler(ScrollViewer.ScrollChangedEvent, OnLibraryScrollChanged);
+    }
+
+    private void OnLibraryScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        var rows = e.Source as ScrollViewer
+            ?? (_libraryListScroller ??= LibraryList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault());
+        if (rows is null)
+            return;
+
+        // Keep the frozen header aligned with the rows' horizontal scroll offset.
+        if (LibraryHeaderScroller.Offset.X != rows.Offset.X)
+            LibraryHeaderScroller.Offset = LibraryHeaderScroller.Offset.WithX(rows.Offset.X);
+
+        // The row scroller's viewport is the exact usable width (it already excludes the vertical
+        // scrollbar, and is full-width under macOS overlay scrollbars), so the flex column fills the
+        // row precisely with no permanent right gap. ScrollChanged also fires when the viewport
+        // changes (e.g. the vertical scrollbar appears), so this stays current.
+        if (DataContext is MainViewModel viewModel && rows.Viewport.Width > 0)
+            viewModel.ListViewportWidth = Math.Max(0, rows.Viewport.Width - 24);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -1254,6 +1276,56 @@ public partial class MainWindow : Window
 
         viewModel.LibraryViewportWidth = e.NewSize.Width;
         ApplyCellWidth(viewModel);
+    }
+
+    // The desktop grid reports its width through OnLibrarySizeChanged, but that scroller is collapsed
+    // in list mode; the list view reports its own width here so the flex (Title) column can fill the
+    // row. View wiring only — the view model owns the column-width arithmetic (M40).
+    private void OnListViewportSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        // Fallback estimate for the first layout, before the row scroller reports its exact viewport:
+        // the container width minus the item padding (24) and an approximate vertical scrollbar (16).
+        // OnLibraryScrollChanged then supplies the precise value.
+        if (DataContext is MainViewModel viewModel)
+            viewModel.ListViewportWidth = Math.Max(0, e.NewSize.Width - 24 - 16);
+    }
+
+    // Column resize (M40): dragging a header cell's right-edge grip sets that fixed column's width;
+    // the view model absorbs the change into the flex column and persists it. View wiring only.
+    private LibraryColumn? _resizingColumn;
+    private double _resizeStartX;
+    private double _resizeStartWidth;
+
+    private void OnColumnResizePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: LibraryColumn column })
+            return;
+
+        _resizingColumn = column;
+        _resizeStartX = e.GetPosition(this).X;
+        _resizeStartWidth = column.Width;
+        e.Pointer.Capture((Control)sender);
+        e.Handled = true;
+    }
+
+    private void OnColumnResizeMoved(object? sender, PointerEventArgs e)
+    {
+        if (_resizingColumn is not { } column || !ReferenceEquals(e.Pointer.Captured, sender))
+            return;
+
+        var delta = e.GetPosition(this).X - _resizeStartX;
+        column.Width = Math.Clamp(_resizeStartWidth + delta, column.MinWidth, column.MaxWidth);
+        e.Handled = true;
+    }
+
+    private void OnColumnResizeReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_resizingColumn is null)
+            return;
+
+        _resizingColumn = null;
+        e.Pointer.Capture(null);
+        e.Handled = true;
     }
 
     private void OnGamepadLibrarySizeChanged(object? sender, SizeChangedEventArgs e)

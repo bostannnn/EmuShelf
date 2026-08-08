@@ -5190,3 +5190,54 @@ folder EmuShelf creates is the one a later scan will match. Opening the folder r
 service "Show in folder" introduced — `IFileRevealService.OpenDirectoryAsync` (added alongside
 `RevealAsync`) — so there is one place that talks to each platform's file manager, and the coordinator
 keeps no UI or write policy (the create-and-open lives in `MainViewModel.OpenTextureFolderAsync`).
+
+## 2026-08-08 — Desktop list view keeps its ListBox and gains a VM-driven, persisted column model (M40)
+
+The Desktop list view was a `ListBox` whose column layout was hard-coded twice — the header Grid and
+the row `DataTemplate` both carried the same literal `ColumnDefinitions="84,*,150,90,96,92,100"` — so
+adding columns meant editing two places in lockstep, and there was no show/hide, reorder, or resize.
+M40 wants an iTunes-style table (user-chosen visible columns, drag reorder/resize, sort by any
+column, persisted).
+
+`Avalonia.Controls.DataGrid` was evaluated first, because it offers show/hide, drag-reorder,
+drag-resize, and per-column sort natively. A Phase-0 spike (package added, view wired up) rejected
+it: DataGrid would **regress shipped M25 interactions** and force fighting the control's internals.
+
+- **Marquee auto-scroll (M25) breaks.** The rubber-band drag reads `ScrollViewer.Offset/Extent/
+  Viewport` off the list to auto-scroll and to anchor the box to content while scrolling
+  (`MainWindow.axaml.cs` `GetActiveScroller`/`UpdateMarquee`/`OnMarqueeAutoScrollTick`). DataGrid
+  manages its own scrolling and does not expose that `ScrollViewer`, so auto-scroll-to-extend would
+  degrade.
+- **Selection visuals fight the control.** Selection is view-model-owned (`GameViewModel.IsSelected`,
+  shared with the grid, driven by window-level tunnel pointer handlers and by marquee/select-all),
+  not by a control's `SelectedItems`. DataGrid insists on drawing its own row-selection highlight,
+  which desyncs from our model (marquee/select-all select many rows the control doesn't know about)
+  and can only be suppressed by overriding theme-internal part/resource names.
+- Per-row **context menu** and **VM-driven custom sort** (Achievements/Textures sort by `*SortKey`,
+  not displayed text) would also need re-engineering onto DataGrid's model.
+
+DataGrid's only advantage over the alternative is that reorder/resize are *native* rather than
+hand-rolled — an internal detail invisible to the user. It is not worth regressing shipped features
+for, so:
+
+**Chosen: keep the `ListBox`, drive its columns from a view-model column model.** The row stays a
+`ListBox` item, so marquee, multi-select, the per-row context menu, inline title edit, custom sort,
+and the async cover-load hooks are all **untouched and un-regressed**. A view-model
+`ObservableCollection` of column descriptors (key, header, visible, resolved pixel width, sort
+mapping, order) drives both the header and each row: cells stay statically defined but bind their
+`Grid.Column` to the column's ordered position and their `Grid` column widths to the model, so
+reorder is a data move, resize updates a width, and hide collapses a position — all via bindings, no
+control internals. One flex column (Title) absorbs remaining viewport width (already reported to the
+view model by `OnLibrarySizeChanged`). Reorder and resize *gestures* are self-contained header
+pointer handling in code-behind (view wiring only).
+
+Column configuration (visibility, order, width, active sort) is **owned by the view model and
+persisted to portable `Settings/`**, so it survives restart and moves with the portable install.
+Persistence tolerates unknown/removed column ids, and Title is a minimum always-on column so the
+table can never be emptied.
+
+New scraped columns read a **bulk metadata projection** (`IGameDetailsStore.GetAllDetailsProjections`)
+built once per scope build on the load worker, never a per-row `GetDetails` on the UI thread — the
+details store is per-game today, and a naive column binding would reintroduce the exact N+1 the M11
+performance work removed. The cloud-save-status column is deferred behind M29 (battery/memory-card
+sync) and the save-state variant behind M33.

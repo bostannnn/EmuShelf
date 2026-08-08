@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -135,6 +136,12 @@ public partial class MainViewModel : ViewModelBase
     // the DB. Covers stay warm across switches because the same view models are reused.
     private readonly Dictionary<string, List<GameViewModel>> _scopeCache = new(StringComparer.Ordinal);
 
+    // Scope keys whose displayed view models have had their scraped-metadata projection loaded. The
+    // bulk read only runs for the Desktop list view (M40 item 2), so grid/gamepad scopes skip it and
+    // load lazily if the user later switches to the list. Cache reuse keeps the same VM instances, so
+    // a scope already in this set still has its projections.
+    private readonly HashSet<string> _scopesWithProjections = new(StringComparer.Ordinal);
+
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
@@ -220,7 +227,14 @@ public partial class MainViewModel : ViewModelBase
         ScheduleLibraryViewStateSave();
     }
 
-    partial void OnIsGridViewChanged(bool value) => ScheduleLibraryViewStateSave();
+    partial void OnIsGridViewChanged(bool value)
+    {
+        ScheduleLibraryViewStateSave();
+        // Switching to the list view: load the scraped-metadata projection if this scope skipped it
+        // while the grid was showing (M40 item 2).
+        if (!value)
+            EnsureDetailsProjectionsLoaded();
+    }
 
     partial void OnIsGamepadSpotlightViewChanged(bool value)
     {
@@ -281,6 +295,170 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(AchievementsSortGlyph));
         OnPropertyChanged(nameof(TexturesSortGlyph));
         OnPropertyChanged(nameof(StatusSortGlyph));
+        UpdateColumnSortGlyphs();
+    }
+
+    // ---- M40: configurable Desktop list-view columns ------------------------------------------
+
+    // The ListBox item padding (12 each side); the row-scroller viewport already excludes the
+    // vertical scrollbar, so this is the only chrome the fallback estimate has to guess.
+    private const double ListRowPadding = 12 + 12;
+
+    private bool _columnsInitialized;
+
+    /// <summary>Width actually available for a row's cells — the ListBox's content-viewport width
+    /// (which already excludes the vertical scrollbar, and is 0-width on macOS overlay scrollbars)
+    /// minus the item padding, reported by the view. Drives the flex (Title) column so it fills the
+    /// row exactly with no permanent right gap. The grid scroller that feeds
+    /// <see cref="LibraryViewportWidth"/> is collapsed in list mode, hence a separate value.</summary>
+    [ObservableProperty]
+    public partial double ListViewportWidth { get; set; }
+
+    partial void OnListViewportWidthChanged(double value) => RecomputeColumnWidths();
+
+    /// <summary>Every list-view column in display order — the source for the column picker and for
+    /// persistence. See DECISIONS 2026-08-08.</summary>
+    public ObservableCollection<LibraryColumn> Columns { get; } = [];
+
+    /// <summary>The visible columns in order, bound by the list header and every row so hiding,
+    /// reordering, or resizing a column is a data change rather than a control-internal one.</summary>
+    public ObservableCollection<LibraryColumn> VisibleColumns { get; } = [];
+
+    private void InitializeColumns()
+    {
+        if (_columnsInitialized)
+            return;
+
+        foreach (var column in LibraryColumnCatalog.CreateDefault())
+        {
+            column.PropertyChanged += OnLibraryColumnPropertyChanged;
+            Columns.Add(column);
+        }
+
+        _columnsInitialized = true;
+        RebuildVisibleColumns();
+        RecomputeColumnWidths();
+        UpdateColumnSortGlyphs();
+    }
+
+    private void OnLibraryColumnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Resizing a fixed column shrinks/grows the flex column so the row still fills exactly; the
+        // flex column's own width is the computed result, so ignore it to avoid recomputing forever.
+        if (e.PropertyName == nameof(LibraryColumn.Width))
+        {
+            if (sender is LibraryColumn { IsFlex: false })
+            {
+                RecomputeColumnWidths();
+                ScheduleLibraryViewStateSave();
+            }
+            return;
+        }
+
+        if (e.PropertyName != nameof(LibraryColumn.IsVisible))
+            return;
+
+        // A hidden Title would leave the table with no identifying column; the picker disables that
+        // toggle, but guard here too so a bad persisted state can never blank the view.
+        if (sender is LibraryColumn { IsFlex: true, IsVisible: false } flex)
+        {
+            flex.IsVisible = true;
+            return;
+        }
+
+        RebuildVisibleColumns();
+        RecomputeColumnWidths();
+        ScheduleLibraryViewStateSave();
+    }
+
+    // Reconciles VisibleColumns in place with minimal Insert/RemoveAt/Move rather than Clear+Add, so
+    // toggling or reordering one column only touches that column's cell in every realized row — the
+    // others (and their already-decoded covers) survive instead of being torn down and reloaded.
+    private void RebuildVisibleColumns()
+    {
+        var target = Columns.Where(column => column.IsVisible).ToList();
+
+        for (var index = VisibleColumns.Count - 1; index >= 0; index--)
+            if (!target.Contains(VisibleColumns[index]))
+                VisibleColumns.RemoveAt(index);
+
+        for (var index = 0; index < target.Count; index++)
+        {
+            var column = target[index];
+            var current = VisibleColumns.IndexOf(column);
+            if (current < 0)
+                VisibleColumns.Insert(index, column);
+            else if (current != index)
+                VisibleColumns.Move(current, index);
+        }
+    }
+
+    /// <summary>Recomputes the flex (Title) column's pixel width so the visible columns fill the row
+    /// exactly. Fixed columns keep their own (optionally resized) width; only the flex column moves.</summary>
+    private void RecomputeColumnWidths()
+    {
+        if (Columns.FirstOrDefault(column => column.IsFlex) is not { } flex)
+            return;
+
+        var others = Columns
+            .Where(column => column.IsVisible && !column.IsFlex)
+            .Sum(column => column.Width);
+        flex.Width = Math.Max(flex.MinWidth, ListViewportWidth - others);
+    }
+
+    private void UpdateColumnSortGlyphs()
+    {
+        if (!_columnsInitialized)
+            return;
+
+        foreach (var column in Columns)
+        {
+            column.SortGlyph = column.SortColumn == SortColumn
+                ? (SortDescending ? "▼" : "▲")
+                : string.Empty;
+        }
+    }
+
+    /// <summary>Applies a persisted column layout over the default set: reorders to the saved order,
+    /// restores visibility and fixed-column widths, and tolerates unknown keys (dropped) and new
+    /// columns (appended in catalog order). Called during view-state restore, so saves are suppressed.</summary>
+    private void ApplyPersistedColumns(IReadOnlyList<LibraryColumnSetting> persisted)
+    {
+        if (persisted.Count == 0)
+            return;
+
+        var byKey = Columns.ToDictionary(column => column.Key);
+        var ordered = new List<LibraryColumn>(Columns.Count);
+        foreach (var setting in persisted)
+        {
+            if (!Enum.TryParse<LibraryColumnKey>(setting.Key, out var key) ||
+                !byKey.TryGetValue(key, out var column) ||
+                ordered.Contains(column))
+            {
+                continue;
+            }
+
+            if (column.CanHide)
+                column.IsVisible = setting.IsVisible;
+            if (!column.IsFlex && setting.Width > 0)
+                column.Width = Math.Clamp(setting.Width, column.MinWidth, column.MaxWidth);
+            ordered.Add(column);
+        }
+
+        // Columns added since the layout was saved keep their catalog position at the end.
+        foreach (var column in Columns)
+            if (!ordered.Contains(column))
+                ordered.Add(column);
+
+        for (var target = 0; target < ordered.Count; target++)
+        {
+            var current = Columns.IndexOf(ordered[target]);
+            if (current != target)
+                Columns.Move(current, target);
+        }
+
+        RebuildVisibleColumns();
+        RecomputeColumnWidths();
     }
 
     [ObservableProperty]
@@ -867,6 +1045,7 @@ public partial class MainViewModel : ViewModelBase
             _ = _libraryViewState.SaveAsync(BuildLibraryViewState());
         };
 
+        InitializeColumns();
         RestoreLibraryViewState();
     }
 
@@ -889,6 +1068,7 @@ public partial class MainViewModel : ViewModelBase
                 : LibrarySortColumn.Title;
             SortDescending = state.SortDescending;
             IsNavigationCollapsed = state.IsNavigationCollapsed;
+            ApplyPersistedColumns(state.ListColumns);
 
             var scope = Enum.TryParse<LibraryScope>(state.Scope, out var parsed)
                 ? parsed
@@ -931,6 +1111,15 @@ public partial class MainViewModel : ViewModelBase
         ShowEmptyPlatforms = ShowEmptyPlatforms,
         Scope = CurrentLibraryScope.ToString(),
         SelectedSystemId = SelectedSystem?.Id,
+        ListColumns = Columns
+            .Select(column => new LibraryColumnSetting
+            {
+                Key = column.Key.ToString(),
+                IsVisible = column.IsVisible,
+                // The flex column's width is always recomputed from the viewport, so persist 0.
+                Width = column.IsFlex ? 0 : column.Width,
+            })
+            .ToList(),
     };
 
     private void ScheduleLibraryViewStateSave()
@@ -2442,6 +2631,9 @@ public partial class MainViewModel : ViewModelBase
             _ambientThemeDebounce?.Stop();
             if (AmbientThemeFromArtwork)
                 _themeService.ClearArtworkPalette();
+            // Back on the desktop: if we land in the list view, make sure its scraped columns have
+            // their projection (gamepad builds skip the read).
+            EnsureDetailsProjectionsLoaded();
         }
     }
 
@@ -2767,10 +2959,18 @@ public partial class MainViewModel : ViewModelBase
             ApplyFilter();
             _displayedScopeKey = scopeKey;
             IsLibraryLoading = false;
+            // Cached view models keep any projection they were built with; load it now only if this
+            // scope has never had one and the list view is showing.
+            EnsureDetailsProjectionsLoaded();
             return;
         }
 
         var generation = ++_loadGeneration;
+
+        // The scraped-metadata columns only show in the Desktop list view, so build their projection
+        // during the load only when that view is active; grid/gamepad scopes skip the read and load
+        // lazily if the user later switches to the list (M40 item 2). Captured on the UI thread here.
+        var listActive = !IsGridView && !IsGamepadMode;
 
         // The rail, the title and the count all move to the new platform the instant the selection
         // changes, but the games behind them only arrive two awaits later. Drop the outgoing
@@ -2871,6 +3071,8 @@ public partial class MainViewModel : ViewModelBase
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
                 ApplySpotlightTitles(viewModels);
+                if (listActive)
+                    ApplyDetailsProjections(viewModels);
                 return viewModels;
             });
 
@@ -2903,6 +3105,13 @@ public partial class MainViewModel : ViewModelBase
             ApplyFilter();
             _displayedScopeKey = scopeKey;
             IsLibraryLoading = false;
+            // These are freshly built view models: they carry a projection only if it was applied in
+            // the worker above (list view active). Track that so a later switch to the list can tell
+            // whether it still needs to load one.
+            if (listActive)
+                _scopesWithProjections.Add(scopeKey);
+            else
+                _scopesWithProjections.Remove(scopeKey);
         }
         catch (Exception ex)
         {
@@ -3104,6 +3313,73 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // Fills the scraped-metadata list columns (completeness, artwork/description presence, rating,
+    // genre/year/players/dev/pub) from one bulk read on the load worker, so a column never triggers a
+    // per-row GetDetails on the UI thread (the N+1 the M11 work removed). See DECISIONS 2026-08-08.
+    private void ApplyDetailsProjections(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_gameDetails is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var projections = _gameDetails.GetAllDetailsProjections();
+            foreach (var viewModel in viewModels)
+                viewModel.ApplyDetailsProjection(
+                    projections.TryGetValue(viewModel.Id, out var projection) ? projection : null);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load metadata projections for the list columns: {ex.Message}");
+        }
+    }
+
+    /// <summary>Loads the scraped-metadata projection for the current scope on demand — used when the
+    /// user switches to the Desktop list view (or returns to it) for a scope that skipped the read in
+    /// grid/gamepad mode. No-ops when the list isn't showing or the scope already has its projection.
+    /// Runs the read on a worker and applies on the UI thread, guarded against a scope change.</summary>
+    private void EnsureDetailsProjectionsLoaded()
+    {
+        if (_gameDetails is null || IsGamepadMode || IsGridView)
+            return;
+        if (_displayedScopeKey is not { } scopeKey || _scopesWithProjections.Contains(scopeKey))
+            return;
+
+        var games = _systemGames.ToArray();
+        if (games.Length == 0)
+        {
+            _scopesWithProjections.Add(scopeKey);
+            return;
+        }
+
+        var generation = _loadGeneration;
+        _ = Task.Run(() =>
+        {
+            IReadOnlyDictionary<long, GameDetailsProjection> projections;
+            try
+            {
+                projections = _gameDetails.GetAllDetailsProjections();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Could not load metadata projections for the list columns: {ex.Message}");
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                // A scope switch (or reload) since we started owns its own projection load; don't
+                // stamp stale data onto whatever is now on screen.
+                if (generation != _loadGeneration)
+                    return;
+                foreach (var game in games)
+                    game.ApplyDetailsProjection(
+                        projections.TryGetValue(game.Id, out var projection) ? projection : null);
+                _scopesWithProjections.Add(scopeKey);
+            });
+        });
+    }
+
     // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
     // the achievement pass this is local-only and runs on the load worker: the map was already
     // built in one background pass, so a row never reads a directory or the database itself.
@@ -3259,6 +3535,20 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Achievements => By(g => g.AchievementSortKey),
             LibrarySortColumn.Textures => By(g => g.TextureSortKey),
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
+            LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),
+            LibrarySortColumn.DateAdded => By(g => g.DateAddedSortKey),
+            LibrarySortColumn.MetadataCompleteness => By(g => g.MetadataCompletenessSortKey),
+            LibrarySortColumn.ArtworkCover => By(g => g.HasScrapedCover),
+            LibrarySortColumn.Screenshot => By(g => g.HasScrapedScreenshot),
+            LibrarySortColumn.Fanart => By(g => g.HasScrapedFanart),
+            LibrarySortColumn.Logo => By(g => g.HasScrapedLogo),
+            LibrarySortColumn.Description => By(g => g.HasScrapedDescription),
+            LibrarySortColumn.Rating => By(g => g.RatingSortKey),
+            LibrarySortColumn.Genre => By(g => g.GenreColumnText, text),
+            LibrarySortColumn.Year => By(g => g.YearSortKey),
+            LibrarySortColumn.Players => By(g => g.PlayersColumnText, text),
+            LibrarySortColumn.Developer => By(g => g.DeveloperColumnText, text),
+            LibrarySortColumn.Publisher => By(g => g.PublisherColumnText, text),
             _ => By(g => g.Title, text),
         };
         // Title is the stable secondary key so equal rows keep a deterministic order.

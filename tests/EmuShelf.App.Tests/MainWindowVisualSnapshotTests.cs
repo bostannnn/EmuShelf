@@ -253,7 +253,10 @@ public class MainWindowVisualSnapshotTests
             rows[0].ContextMenu?.Close();
 
             var list = rows[0].GetVisualAncestors().OfType<ListBox>().Single();
-            var emptyPoint = list.TranslatePoint(new Point(100, list.Bounds.Height - 8), window);
+            // Click empty canvas below the rows but clear of the bottom horizontal scrollbar (which
+            // appears once optional columns overflow the width) so this exercises canvas-clear, not
+            // a scrollbar interaction.
+            var emptyPoint = list.TranslatePoint(new Point(100, list.Bounds.Height - 40), window);
             Assert.NotNull(emptyPoint);
             window.MouseDown(emptyPoint.Value, MouseButton.Left, RawInputModifiers.None);
             window.MouseUp(emptyPoint.Value, MouseButton.Left, RawInputModifiers.None);
@@ -381,6 +384,75 @@ public class MainWindowVisualSnapshotTests
             var topLeft = tile.TranslatePoint(default, window);
             Assert.NotNull(topLeft);
             return new Rect(topLeft.Value, tile.Bounds.Size);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task DesktopListMarquee_SelectsRowsWhileHorizontallyScrolled()
+    {
+        var viewModel = new MainViewModel { IsGridView = false };
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll(Enumerable.Range(1, 3).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/games/Game {index}.rvz",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        // Enough optional columns to force horizontal scrolling in a normal window.
+        foreach (var column in viewModel.Columns)
+            if (column.CanHide)
+                column.IsVisible = true;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1000, Height = 720 };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var list = window.FindControl<ListBox>("LibraryList");
+            Assert.NotNull(list);
+            var scroller = list!.GetVisualDescendants().OfType<ScrollViewer>().First();
+            scroller.Offset = new Vector(400, scroller.Offset.Y); // scroll the columns sideways
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var rows = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Where(control => control.Classes.Contains("game-row"))
+                .ToArray();
+            Assert.Equal(3, rows.Length);
+            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            Assert.NotNull(marqueeBox);
+
+            // Drag within the visible viewport (rows are shifted left off-screen by the scroll), from
+            // empty canvas below the rows up through them. Selection must still work while scrolled.
+            var listTopLeft = list.TranslatePoint(default, window)!.Value;
+            var firstTop = rows[0].TranslatePoint(default, window)!.Value.Y;
+            var lastBottom = rows[2].TranslatePoint(default, window)!.Value.Y + rows[2].Bounds.Height;
+            var origin = new Point(listTopLeft.X + 60, lastBottom + 16);
+            var release = new Point(listTopLeft.X + 120, firstTop + 8);
+
+            window.MouseDown(origin, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(release, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.True(marqueeBox!.IsVisible);
+            Assert.Equal(["Game 1", "Game 2", "Game 3"], viewModel.Games
+                .Where(game => game.IsSelected).Select(game => game.Title));
+
+            window.MouseUp(release, MouseButton.Left, RawInputModifiers.None);
+        }
+        finally
+        {
+            window.Close();
         }
     }
 
@@ -587,8 +659,12 @@ public class MainWindowVisualSnapshotTests
 
         var window = new MainWindow
         {
+            // Wide enough that the default columns fit without horizontal scroll, so the row's natural
+            // width stays within the list — the assertion below then meaningfully checks that the wide
+            // cover doesn't overlap the title. (Rows may exceed the list width and scroll when many
+            // optional columns are enabled; that's covered by the horizontal-scroll behavior, not here.)
             DataContext = viewModel,
-            Width = 900,
+            Width = 1400,
             Height = 620,
         };
         window.Show();
@@ -599,9 +675,12 @@ public class MainWindowVisualSnapshotTests
             var row = window.GetVisualDescendants()
                 .OfType<Grid>()
                 .Single(control => control.Classes.Contains("game-row"));
+            // The cover cell's inner Border holds the artwork Panel; other game-context descendants
+            // (e.g. the cell ItemsControl's own template border) are excluded by requiring that child.
             var cover = row.GetVisualDescendants()
                 .OfType<Border>()
-                .Single(control => ReferenceEquals(control.DataContext, viewModel.Games[0]));
+                .Single(control => ReferenceEquals(control.DataContext, viewModel.Games[0])
+                    && control.Child is Panel);
             var title = row.GetVisualDescendants()
                 .OfType<TextBlock>()
                 .Single(control => control.Text == viewModel.Games[0].Title);
@@ -615,6 +694,55 @@ public class MainWindowVisualSnapshotTests
             Assert.True(
                 coverOrigin.Value.X + cover.Bounds.Width < titleOrigin.Value.X,
                 $"Cover ended at {coverOrigin.Value.X + cover.Bounds.Width}, title began at {titleOrigin.Value.X}.");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task DesktopList_ManyColumnsOverflowHorizontallyRatherThanClipping()
+    {
+        var viewModel = new MainViewModel { IsGridView = false };
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll([
+            new GameViewModel(
+                new Game
+                {
+                    Id = 1,
+                    SystemId = system.Id,
+                    Path = "/games/Some Game (USA).rvz",
+                    Title = "Some Game (USA)",
+                    IsAvailable = true,
+                    DateAdded = DateTimeOffset.UtcNow,
+                },
+                system.Name, system.ShortName, system.AccentColor)
+        ]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        // Turn every optional column on so the columns exceed a normal window width.
+        foreach (var column in viewModel.Columns)
+            if (column.CanHide)
+                column.IsVisible = true;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 900, Height = 620 };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var list = window.FindControl<ListBox>("LibraryList");
+            var row = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Single(control => control.Classes.Contains("game-row"));
+
+            Assert.NotNull(list);
+            // The row keeps its natural (sum-of-columns) width and exceeds the list viewport, so the
+            // ListBox's horizontal scrollbar can reach the off-screen columns instead of clipping them.
+            Assert.True(
+                row.Bounds.Width > list!.Bounds.Width,
+                $"Row width {row.Bounds.Width} should exceed the list width {list.Bounds.Width} so it scrolls.");
         }
         finally
         {

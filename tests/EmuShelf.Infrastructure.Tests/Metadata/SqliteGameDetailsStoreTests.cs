@@ -241,6 +241,115 @@ public class SqliteGameDetailsStoreTests : TempAppDirectoryTestBase
         Assert.Equal(0L, (long)command.ExecuteScalar()!);
     }
 
+    [Fact]
+    public void GetAllDetailsProjections_MatchesPerGameGetDetails_AndOmitsGamesWithNoDetails()
+    {
+        // Rich game: every scalar field (one with two locales), all four media kinds, a provider match.
+        var rich = AddGame("Rich.iso");
+        ApplyProviderField(rich.Id, GameMetadataField.Description, "A long description");
+        ApplyProviderField(rich.Id, GameMetadataField.Rating, "14");
+        ApplyProviderField(rich.Id, GameMetadataField.Genre, "Action", "en");
+        ApplyProviderField(rich.Id, GameMetadataField.Genre, "Aktion", "de");
+        ApplyProviderField(rich.Id, GameMetadataField.ReleaseDate, "2001-11-15");
+        ApplyProviderField(rich.Id, GameMetadataField.Players, "2");
+        ApplyProviderField(rich.Id, GameMetadataField.Developer, "Studio");
+        ApplyProviderField(rich.Id, GameMetadataField.Publisher, "Publisher");
+        SaveMediaKind(rich.Id, GameMediaKind.BoxFront, "box.png");
+        SaveMediaKind(rich.Id, GameMediaKind.Screenshot, "shot.png");
+        SaveMediaKind(rich.Id, GameMediaKind.Wheel, "wheel.png");
+        SaveMediaKind(rich.Id, GameMediaKind.Fanart, "fanart.png");
+        AddProviderMatch(rich.Id);
+
+        // Partial game: a couple of scalars, one media kind, no provider match.
+        var partial = AddGame("Partial.iso");
+        ApplyProviderField(partial.Id, GameMetadataField.Genre, "Puzzle");
+        ApplyProviderField(partial.Id, GameMetadataField.ReleaseDate, "1998");
+        SaveMediaKind(partial.Id, GameMediaKind.Screenshot, "shot.png");
+
+        // Provider-match-only game: nothing else stored.
+        var matchOnly = AddGame("MatchOnly.iso");
+        AddProviderMatch(matchOnly.Id);
+
+        // Bare game: added to the library but has no stored details at all.
+        var bare = AddGame("Bare.iso");
+
+        var projections = _details.GetAllDetailsProjections();
+
+        foreach (var id in new[] { rich.Id, partial.Id, matchOnly.Id })
+        {
+            Assert.True(projections.ContainsKey(id));
+            Assert.Equal(ExpectedFromDetails(_details.GetDetails(id)), projections[id]);
+        }
+
+        Assert.False(projections.ContainsKey(bare.Id));
+        Assert.Equal(3, projections.Count);
+    }
+
+    [Fact]
+    public void GetAllDetailsProjections_OnAnEmptyStore_ReturnsAnEmptyMap()
+    {
+        Assert.Empty(_details.GetAllDetailsProjections());
+    }
+
+    private static GameDetailsProjection ExpectedFromDetails(GameDetails details)
+    {
+        bool HasMedia(GameMediaKind kind) => details.Media.Any(asset => asset.Kind == kind);
+        string? First(GameMetadataField field) =>
+            details.Metadata.FirstOrDefault(value => value.Field == field)?.Value;
+
+        return new GameDetailsProjection(
+            HasMedia(GameMediaKind.BoxFront),
+            HasMedia(GameMediaKind.Screenshot),
+            HasMedia(GameMediaKind.Wheel),
+            HasMedia(GameMediaKind.Fanart),
+            details.Metadata.Any(value => value.Field == GameMetadataField.Description),
+            details.ProviderMatches.Count > 0,
+            First(GameMetadataField.Rating),
+            First(GameMetadataField.Genre),
+            First(GameMetadataField.ReleaseDate),
+            First(GameMetadataField.Players),
+            First(GameMetadataField.Developer),
+            First(GameMetadataField.Publisher));
+    }
+
+    private void ApplyProviderField(long gameId, GameMetadataField field, string value, string locale = "en") =>
+        Assert.True(_details.TryApplyMetadata(
+            new GameMetadataValue(
+                gameId,
+                field,
+                value,
+                locale,
+                GameMetadataValueOrigin.Provider,
+                "screenscraper",
+                "provider-game-id",
+                "https://example.test/game",
+                DateTimeOffset.UtcNow),
+            GameMetadataApplyMode.FillMissing));
+
+    private void SaveMediaKind(long gameId, GameMediaKind kind, string fileName) =>
+        _details.SaveMedia(
+            ProviderMedia(
+                gameId,
+                Path.Combine(AppPaths.DataDirectory, "Media", gameId.ToString(), fileName),
+                isSelected: false) with
+            {
+                Kind = kind,
+            });
+
+    private void AddProviderMatch(long gameId) =>
+        _details.UpsertProviderMatch(new GameProviderMatch(
+            gameId,
+            "screenscraper",
+            "58",
+            1,
+            "100",
+            "200",
+            GameProviderMatchMethod.Sha1,
+            "ABC123",
+            GameMetadataStatus.Matched,
+            DateTimeOffset.UtcNow,
+            null));
+
     private Game AddGame(string filename)
     {
         var path = Path.Combine(BaseDirectory, "Games", filename);

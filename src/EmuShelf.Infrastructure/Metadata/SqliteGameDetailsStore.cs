@@ -26,6 +26,101 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
             ReadProviderMatches(connection, gameId));
     }
 
+    public IReadOnlyDictionary<long, GameDetailsProjection> GetAllDetailsProjections()
+    {
+        using var connection = _database.CreateConnection();
+        var accumulators = new Dictionary<long, ProjectionAccumulator>();
+
+        ProjectionAccumulator For(long gameId)
+        {
+            if (!accumulators.TryGetValue(gameId, out var accumulator))
+            {
+                accumulator = new ProjectionAccumulator();
+                accumulators[gameId] = accumulator;
+            }
+
+            return accumulator;
+        }
+
+        // Media presence: a game has a kind if any asset row of that kind exists for it.
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT GameId, Kind FROM GameMediaAssets;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var accumulator = For(reader.GetInt64(0));
+                switch ((GameMediaKind)reader.GetInt32(1))
+                {
+                    case GameMediaKind.BoxFront:
+                        accumulator.HasBoxFront = true;
+                        break;
+                    case GameMediaKind.Screenshot:
+                        accumulator.HasScreenshot = true;
+                        break;
+                    case GameMediaKind.Wheel:
+                        accumulator.HasWheel = true;
+                        break;
+                    case GameMediaKind.Fanart:
+                        accumulator.HasFanart = true;
+                        break;
+                }
+            }
+        }
+
+        // Scalar metadata: the first value per field per game, using the same deterministic order as
+        // GetDetails (Field, Locale) so a column shows what GetDetails' FirstOrDefault would pick.
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                SELECT GameId, Field, Value
+                FROM GameMetadataValues
+                ORDER BY GameId, Field, Locale;
+                """;
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                var accumulator = For(reader.GetInt64(0));
+                var value = reader.GetString(2);
+                switch ((GameMetadataField)reader.GetInt32(1))
+                {
+                    case GameMetadataField.Description:
+                        accumulator.HasDescription = true;
+                        break;
+                    case GameMetadataField.Rating:
+                        accumulator.Rating ??= value;
+                        break;
+                    case GameMetadataField.Genre:
+                        accumulator.Genre ??= value;
+                        break;
+                    case GameMetadataField.ReleaseDate:
+                        accumulator.ReleaseDate ??= value;
+                        break;
+                    case GameMetadataField.Players:
+                        accumulator.Players ??= value;
+                        break;
+                    case GameMetadataField.Developer:
+                        accumulator.Developer ??= value;
+                        break;
+                    case GameMetadataField.Publisher:
+                        accumulator.Publisher ??= value;
+                        break;
+                }
+            }
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT DISTINCT GameId FROM GameProviderMatches;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+                For(reader.GetInt64(0)).HasProviderMatch = true;
+        }
+
+        return accumulators.ToDictionary(pair => pair.Key, pair => pair.Value.ToProjection());
+    }
+
     public bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode)
     {
         ValidateMetadata(value, mode);
@@ -511,4 +606,35 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
 
     private static int? ReadNullableInt(SqliteDataReader reader, int ordinal) =>
         reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
+
+    /// <summary>Mutable per-game bucket that the three grouped projection queries fill in place.</summary>
+    private sealed class ProjectionAccumulator
+    {
+        public bool HasBoxFront;
+        public bool HasScreenshot;
+        public bool HasWheel;
+        public bool HasFanart;
+        public bool HasDescription;
+        public bool HasProviderMatch;
+        public string? Rating;
+        public string? Genre;
+        public string? ReleaseDate;
+        public string? Players;
+        public string? Developer;
+        public string? Publisher;
+
+        public GameDetailsProjection ToProjection() => new(
+            HasBoxFront,
+            HasScreenshot,
+            HasWheel,
+            HasFanart,
+            HasDescription,
+            HasProviderMatch,
+            Rating,
+            Genre,
+            ReleaseDate,
+            Players,
+            Developer,
+            Publisher);
+    }
 }
