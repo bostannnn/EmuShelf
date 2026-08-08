@@ -6,6 +6,7 @@ using EmuShelf.Core.Importing;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Shell;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.ViewModels;
@@ -168,4 +169,10 @@ internal sealed class NullEmulatorLaunchService : IEmulatorLaunchService
         Func<CancellationToken, Task>? beforeStart = null,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new GameLaunchResult(false, "Emulator launching is unavailable."));
+}
+
+internal sealed class NullFileRevealService : IFileRevealService
+{
+    public Task RevealAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

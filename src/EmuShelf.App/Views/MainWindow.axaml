@@ -1289,6 +1289,9 @@
                                                   IsVisible="{Binding CanOpenAchievementDetails}"
                                                   Command="{Binding OpenAchievementsCommand}"
                                                   CommandParameter="{Binding}" />
+                                        <MenuItem Header="{x:Static vm:GameViewModel.ShowInFolderLabel}"
+                                                  Command="{Binding ShowInFolderCommand}"
+                                                  CommandParameter="{Binding}" />
                                         <Separator />
                                         <MenuItem Header="Edit title…"
                                                   Command="{Binding BeginEditTitleCommand}" />
@@ -1529,6 +1532,9 @@
                                         <MenuItem Header="Achievements…"
                                                   IsVisible="{Binding CanOpenAchievementDetails}"
                                                   Command="{Binding OpenAchievementsCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="{x:Static vm:GameViewModel.ShowInFolderLabel}"
+                                                  Command="{Binding ShowInFolderCommand}"
                                                   CommandParameter="{Binding}" />
                                         <Separator />
                                         <MenuItem Header="Edit title…"

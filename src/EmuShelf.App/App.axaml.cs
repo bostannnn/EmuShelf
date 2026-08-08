@@ -12,6 +12,7 @@ using EmuShelf.Infrastructure.Achievements;
 using EmuShelf.Infrastructure.Input;
 using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Metadata.ScreenScraper;
+using EmuShelf.Infrastructure.Shell;
 using EmuShelf.Infrastructure.Updates;
 
 namespace EmuShelf.App;
@@ -245,7 +246,8 @@ public partial class App : Application
                 onScreenKeyboard: new PlatformOnScreenKeyboardService(),
                 gameDetails: Bootstrapper.GameDetailsStore,
                 appPaths: Bootstrapper.Paths,
-                updates: updateCoordinator);
+                updates: updateCoordinator,
+                fileReveal: new FileRevealService());
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
