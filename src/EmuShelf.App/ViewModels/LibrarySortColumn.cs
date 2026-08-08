@@ -9,4 +9,6 @@ public enum LibrarySortColumn
     Achievements,
     Textures,
     Status,
+    LastPlayed,
+    DateAdded,
 }

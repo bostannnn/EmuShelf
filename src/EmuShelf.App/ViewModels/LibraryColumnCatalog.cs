@@ -43,5 +43,15 @@ internal static class LibraryColumnCatalog
         new LibraryColumn(LibraryColumnKey.Status, "Status", header: "STATUS",
             sortColumn: LibrarySortColumn.Status, defaultWidth: 100, minWidth: 80,
             isFlex: false, canHide: true, visibleByDefault: true),
+
+        // Off by default — opt-in from the column picker. Sourced straight from the Game record
+        // (M38 LastPlayedAt, DateAdded), so no metadata read is needed.
+        new LibraryColumn(LibraryColumnKey.LastPlayed, "Last Played", header: "LAST PLAYED",
+            sortColumn: LibrarySortColumn.LastPlayed, defaultWidth: 130, minWidth: 100,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.DateAdded, "Date Added", header: "DATE ADDED",
+            sortColumn: LibrarySortColumn.DateAdded, defaultWidth: 130, minWidth: 100,
+            isFlex: false, canHide: true, visibleByDefault: false),
     ];
 }

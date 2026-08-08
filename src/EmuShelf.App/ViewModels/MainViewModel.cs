@@ -3409,6 +3409,8 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Achievements => By(g => g.AchievementSortKey),
             LibrarySortColumn.Textures => By(g => g.TextureSortKey),
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
+            LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),
+            LibrarySortColumn.DateAdded => By(g => g.DateAddedSortKey),
             _ => By(g => g.Title, text),
         };
         // Title is the stable secondary key so equal rows keep a deterministic order.

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -60,6 +61,22 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public string SystemShortName { get; }
     public string AccentColor { get; }
     public string FormatLabel { get; private set; }
+
+    /// <summary>List-view "Last Played" column: a short local date, or "Never" if the game has not
+    /// been launched. Sorted by <see cref="LastPlayedSortKey"/>. From <see cref="Game.LastPlayedAt"/>
+    /// (M38).</summary>
+    public string LastPlayedText => Model.LastPlayedAt is { } played
+        ? played.LocalDateTime.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
+        : "Never";
+
+    /// <summary>Sort key for Last Played; a never-played game sorts oldest.</summary>
+    public DateTimeOffset LastPlayedSortKey => Model.LastPlayedAt ?? DateTimeOffset.MinValue;
+
+    /// <summary>List-view "Date Added" column: a short local date. From <see cref="Game.DateAdded"/>.</summary>
+    public string DateAddedText => Model.DateAdded.LocalDateTime.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
+
+    public DateTimeOffset DateAddedSortKey => Model.DateAdded;
+
     public IImage? PlatformArtwork { get; }
     private double _coverWidth;
     private double _coverHeight;

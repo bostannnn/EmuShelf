@@ -1672,6 +1672,28 @@
                                                     </Border>
                                                 </DataTemplate>
                                             </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="LastPlayed">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding LastPlayedText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="DateAdded">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding DateAddedText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
                                         </vm:LibraryColumnCellSelector>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
