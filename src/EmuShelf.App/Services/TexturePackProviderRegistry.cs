@@ -39,6 +39,8 @@ public sealed record TexturePackProvider(
 /// <param name="EmulatorId">The emulator that owns these packs.</param>
 /// <param name="DisplayName">The emulator name shown in Settings and tooltips.</param>
 /// <param name="OverridePlaceholder">Placeholder text for the override path box.</param>
+/// <param name="FolderKind">How this emulator names a game's texture folder, so EmuShelf can build
+/// the id folder to open (the inverse of how the scanner reads it back).</param>
 /// <param name="CreateProvider">
 /// Builds the adapters, or returns null when this machine has nothing to inventory for the
 /// platform. This is the single source of truth for participation.
@@ -48,6 +50,7 @@ public sealed record TextureProviderDescriptor(
     string EmulatorId,
     string DisplayName,
     string OverridePlaceholder,
+    TexturePackFolderKind FolderKind,
     Func<TextureProviderContext, TexturePackProvider?> CreateProvider);
 
 /// <summary>The supported texture-pack platforms, in the order Settings presents them.</summary>
@@ -60,6 +63,7 @@ public static class TexturePackProviderRegistry
             EmulatorId: DuckStationDefinition.Instance.Id,
             DisplayName: "DuckStation",
             OverridePlaceholder: "Use DuckStation's configured Textures folder, or choose one",
+            FolderKind: TexturePackFolderKind.Serial,
             CreateProvider: static context =>
             {
                 var userDirectory = EmulatorUserDirectories.FindDuckStation(
@@ -88,6 +92,7 @@ public static class TexturePackProviderRegistry
             EmulatorId: Pcsx2Definition.Instance.Id,
             DisplayName: "PCSX2",
             OverridePlaceholder: "Use PCSX2's configured Textures folder, or choose one",
+            FolderKind: TexturePackFolderKind.Serial,
             CreateProvider: static context =>
             {
                 var userDirectory = EmulatorUserDirectories.FindPcsx2(
@@ -116,6 +121,7 @@ public static class TexturePackProviderRegistry
             EmulatorId: DolphinDefinition.Instance.Id,
             DisplayName: "Dolphin",
             OverridePlaceholder: "Use Dolphin's User/Load/Textures folder, or choose one",
+            FolderKind: TexturePackFolderKind.DolphinDiscId,
             CreateProvider: CreateDolphin),
 
         new TextureProviderDescriptor(
@@ -123,6 +129,7 @@ public static class TexturePackProviderRegistry
             EmulatorId: DolphinDefinition.Instance.Id,
             DisplayName: "Dolphin",
             OverridePlaceholder: "Use Dolphin's User/Load/Textures folder, or choose one",
+            FolderKind: TexturePackFolderKind.DolphinDiscId,
             CreateProvider: CreateDolphin),
 
         new TextureProviderDescriptor(
@@ -130,6 +137,7 @@ public static class TexturePackProviderRegistry
             EmulatorId: PpssppDefinition.Instance.Id,
             DisplayName: "PPSSPP",
             OverridePlaceholder: "Use PPSSPP's Memory Stick PSP/TEXTURES folder, or choose one",
+            FolderKind: TexturePackFolderKind.PspGameId,
             CreateProvider: static context =>
             {
                 // PPSSPP reuses the Memory Stick adapter the save sync already proved out, so it can
@@ -164,6 +172,7 @@ public static class TexturePackProviderRegistry
             EmulatorId: AzaharDefinition.Instance.Id,
             DisplayName: "Azahar",
             OverridePlaceholder: "Use Azahar's load/textures folder, or choose one",
+            FolderKind: TexturePackFolderKind.Nintendo3dsTitleId,
             CreateProvider: static context =>
             {
                 var userDirectory = EmulatorUserDirectories.FindAzahar(

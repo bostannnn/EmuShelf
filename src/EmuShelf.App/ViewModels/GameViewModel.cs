@@ -118,8 +118,22 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> ScrapeCommand { get; }
+    public IAsyncRelayCommand<GameViewModel?> ShowInFolderCommand { get; }
+    public IAsyncRelayCommand<GameViewModel?> OpenTextureFolderCommand { get; }
+
+    /// <summary>Platform-native label for the "reveal this game's file in the OS file manager"
+    /// context-menu action, so it reads correctly on each desktop.</summary>
+    public static string ShowInFolderLabel { get; } =
+        OperatingSystem.IsMacOS() ? "Reveal in Finder"
+        : OperatingSystem.IsWindows() ? "Show in File Explorer"
+        : "Show in file manager";
     public IAsyncRelayCommand RemoveSelectedCommand { get; }
     public IAsyncRelayCommand ScrapeSelectedCommand { get; }
+
+    /// <summary>Whether the "Open texture folder" context action applies — true only for the
+    /// systems whose emulator supports replacement-texture packs. The library sets it from
+    /// <c>TexturePackProviderRegistry</c> so the view model never names an emulator.</summary>
+    public bool CanOpenTextureFolder { get; }
     public string? CoverPath { get; private set; }
     public int? RetroAchievementsGameId { get; private set; }
     public bool IsCoverLoading { get; set; }
@@ -393,7 +407,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
         string? displayTitle = null,
         string? discSelectionKey = null,
         Func<GameViewModel, GameDisc, Task>? launchDiscAction = null,
-        IAsyncRelayCommand<GameViewModel?>? scrapeCommand = null)
+        IAsyncRelayCommand<GameViewModel?>? scrapeCommand = null,
+        IAsyncRelayCommand<GameViewModel?>? showInFolderCommand = null,
+        IAsyncRelayCommand<GameViewModel?>? openTextureFolderCommand = null,
+        bool canOpenTextureFolder = false)
     {
         Model = game;
         _discs = discs ?? [new GameDisc(1, game)];
@@ -437,6 +454,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
         LoadCoverCommand = loadCoverCommand ?? NoGameCommand;
         OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
         ScrapeCommand = scrapeCommand ?? NoGameCommand;
+        ShowInFolderCommand = showInFolderCommand ?? NoGameCommand;
+        OpenTextureFolderCommand = openTextureFolderCommand ?? NoGameCommand;
+        CanOpenTextureFolder = canOpenTextureFolder;
         RemoveSelectedCommand = removeSelectedCommand ?? NoCommand;
         ScrapeSelectedCommand = scrapeSelectedCommand ?? NoCommand;
     }

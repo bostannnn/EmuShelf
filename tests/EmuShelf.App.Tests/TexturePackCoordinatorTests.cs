@@ -165,16 +165,153 @@ public sealed class TexturePackCoordinatorTests : IDisposable
         Assert.Equal(0, metadata.PerGameReads);
     }
 
+    [Fact]
+    public async Task ResolveTextureFolder_ForConfiguredRootWithStoredSerial_ReturnsRootPlusSerialWithoutCreatingIt()
+    {
+        var textures = Path.Combine(_root, "textures");
+        Directory.CreateDirectory(textures);
+        var coordinator = Create(
+            new MemoryStore(),
+            new TexturePackSettings().WithOverride("playstation", textures),
+            new StubMetadataStore(new Dictionary<long, IReadOnlyList<GameIdentifier>>
+            {
+                [7] = [new GameIdentifier(GameIdentifierKind.Serial, "SLUS-00594", "test", IsPrimary: true)],
+            }));
+        var game = new Game { Id = 7, SystemId = "playstation", Path = "x.cue", Title = "Metal Gear Solid" };
+
+        var resolution = await coordinator.ResolveTextureFolderAsync(game, TestContext.Current.CancellationToken);
+
+        Assert.True(resolution.IsResolved);
+        Assert.Equal("SLUS-00594", resolution.FolderId);
+        Assert.Equal(Path.Combine(textures, "SLUS-00594"), resolution.FullPath);
+        // Resolving only computes the path — creating it is the caller's job.
+        Assert.False(Directory.Exists(resolution.FullPath!));
+    }
+
+    [Fact]
+    public async Task ResolveTextureFolder_ForPsp_StripsSerialSeparators()
+    {
+        var textures = Path.Combine(_root, "psp-textures");
+        Directory.CreateDirectory(textures);
+        var coordinator = Create(
+            new MemoryStore(),
+            new TexturePackSettings().WithOverride("psp", textures),
+            new StubMetadataStore(new Dictionary<long, IReadOnlyList<GameIdentifier>>
+            {
+                [3] = [new GameIdentifier(GameIdentifierKind.Serial, "ULES-00841", "test")],
+            }));
+        var game = new Game { Id = 3, SystemId = "psp", Path = "x.iso", Title = "God of War" };
+
+        var resolution = await coordinator.ResolveTextureFolderAsync(game, TestContext.Current.CancellationToken);
+
+        Assert.True(resolution.IsResolved);
+        Assert.Equal("ULES00841", resolution.FolderId);
+    }
+
+    [Fact]
+    public async Task ResolveTextureFolder_ForUnsupportedSystem_ReturnsADiagnosticNotAPath()
+    {
+        var coordinator = Create(new MemoryStore());
+        var game = new Game { Id = 1, SystemId = "playstation3", Path = "x", Title = "Demon's Souls" };
+
+        var resolution = await coordinator.ResolveTextureFolderAsync(game, TestContext.Current.CancellationToken);
+
+        Assert.False(resolution.IsResolved);
+        Assert.Null(resolution.FullPath);
+        Assert.False(string.IsNullOrWhiteSpace(resolution.Diagnostic));
+    }
+
+    [Fact]
+    public async Task ResolveTextureFolder_WhenNoIdentifierStored_ExtractsLocallyAndPersistsIt()
+    {
+        var textures = Path.Combine(_root, "extract-textures");
+        Directory.CreateDirectory(textures);
+        var store = new StubMetadataStore(new Dictionary<long, IReadOnlyList<GameIdentifier>>());
+        var extractor = new StubExtractor([new GameIdentifier(GameIdentifierKind.Serial, "SCUS-97328", "disc")]);
+        var coordinator = Create(
+            new MemoryStore(),
+            new TexturePackSettings().WithOverride("playstation", textures),
+            store,
+            profiles: [new MetadataSystemProfile(
+                "playstation",
+                GameIdentifierKind.Serial,
+                new Uri("https://example.test/dat"),
+                extractor,
+                [])]);
+        var game = new Game { Id = 5, SystemId = "playstation", Path = "x.cue", Title = "Jak and Daxter" };
+
+        var resolution = await coordinator.ResolveTextureFolderAsync(game, TestContext.Current.CancellationToken);
+
+        Assert.Equal("SCUS-97328", resolution.FolderId);
+        Assert.Equal(1, store.Replacements);
+        Assert.Equal("SCUS-97328", Assert.Single(store.GetIdentifiers(5)).Value);
+    }
+
+    [Fact]
+    public async Task ResolveTextureFolder_DoesNotClobberExistingIdentifiersOfOtherKinds()
+    {
+        // The game carries a Sha1 (used elsewhere, e.g. achievement matching) but no serial. Because
+        // ReplaceIdentifiers replaces the whole set, resolving must NOT extract-and-persist here, or
+        // the Sha1 would be deleted. It reports a diagnostic and leaves the stored identifiers intact.
+        var textures = Path.Combine(_root, "keep-textures");
+        Directory.CreateDirectory(textures);
+        var store = new StubMetadataStore(new Dictionary<long, IReadOnlyList<GameIdentifier>>
+        {
+            [4] = [new GameIdentifier(GameIdentifierKind.Sha1, "ABC123", "hash")],
+        });
+        var extractor = new StubExtractor([new GameIdentifier(GameIdentifierKind.Serial, "SLUS-99999", "disc")]);
+        var coordinator = Create(
+            new MemoryStore(),
+            new TexturePackSettings().WithOverride("playstation", textures),
+            store,
+            profiles: [new MetadataSystemProfile(
+                "playstation",
+                GameIdentifierKind.Serial,
+                new Uri("https://example.test/dat"),
+                extractor,
+                [])]);
+        var game = new Game { Id = 4, SystemId = "playstation", Path = "x.cue", Title = "Partly identified" };
+
+        var resolution = await coordinator.ResolveTextureFolderAsync(game, TestContext.Current.CancellationToken);
+
+        Assert.False(resolution.IsResolved);
+        Assert.Equal(0, store.Replacements);
+        Assert.Equal(GameIdentifierKind.Sha1, Assert.Single(store.GetIdentifiers(4)).Kind);
+    }
+
+    [Fact]
+    public async Task ResolveTextureFolder_WhenNoIdentifierAndNoExtractor_ReturnsADiagnostic()
+    {
+        var textures = Path.Combine(_root, "noid-textures");
+        Directory.CreateDirectory(textures);
+        var coordinator = Create(
+            new MemoryStore(),
+            new TexturePackSettings().WithOverride("playstation", textures));
+        var game = new Game { Id = 9, SystemId = "playstation", Path = "x.cue", Title = "Unknown" };
+
+        var resolution = await coordinator.ResolveTextureFolderAsync(game, TestContext.Current.CancellationToken);
+
+        Assert.False(resolution.IsResolved);
+        Assert.False(string.IsNullOrWhiteSpace(resolution.Diagnostic));
+    }
+
+    private sealed class StubExtractor(IReadOnlyList<GameIdentifier> result) : IGameIdentifierExtractor
+    {
+        public IReadOnlyList<GameIdentifier> Extract(Game game) => result;
+    }
+
     private static TexturePackCoordinator Create(
         ITexturePackInventoryStore store,
         TexturePackSettings? settings = null,
-        IGameMetadataStore? metadata = null) =>
+        IGameMetadataStore? metadata = null,
+        IReadOnlyList<MetadataSystemProfile>? profiles = null) =>
         new(
             new FakePaths(),
             metadata ?? new StubMetadataStore(new Dictionary<long, IReadOnlyList<GameIdentifier>>()),
             new AppSettings { TexturePacks = settings ?? new TexturePackSettings() },
             NullAppLogger.Instance,
-            store);
+            store,
+            metadataProfiles: profiles);
 
     private sealed class MemoryStore : ITexturePackInventoryStore
     {
@@ -199,22 +336,27 @@ public sealed class TexturePackCoordinatorTests : IDisposable
         }
     }
 
-    private sealed class StubMetadataStore(IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> identifiers)
-        : IGameMetadataStore
+    private sealed class StubMetadataStore : IGameMetadataStore
     {
+        private readonly Dictionary<long, IReadOnlyList<GameIdentifier>> _identifiers;
+
+        public StubMetadataStore(IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> identifiers) =>
+            _identifiers = new Dictionary<long, IReadOnlyList<GameIdentifier>>(identifiers);
+
         public int BulkReads { get; private set; }
         public int PerGameReads { get; private set; }
+        public int Replacements { get; private set; }
 
         public IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers()
         {
             BulkReads++;
-            return identifiers;
+            return _identifiers;
         }
 
         public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId)
         {
             PerGameReads++;
-            return identifiers.GetValueOrDefault(gameId, []);
+            return _identifiers.GetValueOrDefault(gameId, []);
         }
 
         public Game? GetGame(long gameId) => null;
@@ -223,6 +365,8 @@ public sealed class TexturePackCoordinatorTests : IDisposable
 
         public void ReplaceIdentifiers(long gameId, IReadOnlyList<GameIdentifier> identifiers)
         {
+            Replacements++;
+            _identifiers[gameId] = identifiers;
         }
 
         public bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle) => false;

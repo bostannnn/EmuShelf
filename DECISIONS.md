@@ -5103,3 +5103,53 @@ Fix, mirroring how core *version* is already resolved for state-compatibility ke
 Core-name resolution therefore moved to the end of the constructor (it now depends on the platform and
 Flatpak flags). This fixes save states *and* the sibling base-save case, which previously failed closed
 for the same unresolved-name reason when files sorted by core.
+## 2026-08-08 — "Show in folder" reveals a game's file in the OS file manager
+
+The desktop grid/list context menu gained an entry that opens the game's containing folder with
+the ROM preselected. Because "reveal a file, selected in its folder" has no cross-platform API,
+this lives behind a Core interface (`IFileRevealService`) with one Infrastructure implementation
+(`FileRevealService`), per the platform-behind-interfaces rule.
+
+- **Per platform.** Windows `explorer /select,<path>`; macOS `open -R <path>`; Linux the
+  freedesktop `org.freedesktop.FileManager1.ShowItems` D-Bus method (the one call most Linux file
+  managers honour for selecting an item). Linux has no universal "select" otherwise.
+- **Windows needs a raw argument.** `explorer.exe` uses a non-standard command line: the whole
+  `/select,"<path>"` must arrive as one raw, quoted token, so that one invocation sets
+  `ProcessStartInfo.Arguments` directly instead of using `ArgumentList` (whose argv-style escaping
+  makes explorer ignore the path and open Documents). Every other invocation uses `ArgumentList`.
+- **Reveal is fire-and-forget.** The file manager window outlives us, so we only confirm the OS
+  started the process (explorer's own exit code is unreliable). The one exception is the Linux
+  D-Bus reveal, whose exit code we await so a missing/unanswered `FileManager1` provider can fall
+  back to `xdg-open` on the containing folder.
+- **Target + fallback.** It reveals `LaunchModel.Path` — the concrete source that would launch (the
+  selected disc of a multi-disc set), so the highlighted file is the right one. When that file is
+  gone but its folder still exists (an unavailable game), the folder is opened instead; when neither
+  exists, the command reports a friendly status rather than throwing. The menu label is
+  platform-native ("Show in File Explorer" / "Reveal in Finder" / "Show in file manager").
+
+## 2026-08-08 — "Open texture folder" is the texture subsystem's one allowed write
+
+The game context menu gained **Open texture folder** (desktop grid and list), which opens the folder
+an emulator loads a game's replacement textures from and, when it doesn't exist, **creates it with the
+correct id** so a downloaded pack can be dropped straight in. It appears only for the six
+texture-capable systems (`TexturePackProviderRegistry.Find(SystemId) is not null`).
+
+This is a deliberate, bounded departure from the subsystem's read-only stance (see the
+`TexturePackSettingsContext` note: "no install, repair, move, rename, or delete … EmuShelf never
+performs one"). Creating the id folder is the **only** write the texture subsystem makes, and it is
+tightly scoped:
+
+- It creates an **empty** directory inside the emulator's own textures root, on explicit user action.
+- It never touches a game file and never modifies, moves, renames, or deletes an existing pack.
+
+The path is resolved by `TexturePackCoordinator.ResolveTextureFolderAsync`, which reuses the same
+provider/root resolution the scan uses (honouring the override and Flatpak, and sitting out when a
+different emulator is active for the system). The folder **id** comes from the game's stored
+identifiers via the pure `TexturePackFolderNaming.Build` (the inverse of `TexturePackMatcher`: serial
+for PS1/PS2, hyphen-less game-id for PSP, disc id for GameCube/Wii, title id for 3DS); when none are
+stored it extracts them locally (no network) exactly as the rescan backfill does and persists them
+**only when the game has no identifiers yet**, so an existing Sha1/Crc32 set is never clobbered and the
+folder EmuShelf creates is the one a later scan will match. Opening the folder reuses the same shell
+service "Show in folder" introduced — `IFileRevealService.OpenDirectoryAsync` (added alongside
+`RevealAsync`) — so there is one place that talks to each platform's file manager, and the coordinator
+keeps no UI or write policy (the create-and-open lives in `MainViewModel.OpenTextureFolderAsync`).
