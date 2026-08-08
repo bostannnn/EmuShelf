@@ -235,6 +235,25 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <see cref="GamepadSubtitle"/>).</summary>
     public IReadOnlyList<string> SpotlightFacts => _spotlightFacts;
 
+    /// <summary>The first row of hero chips: genre, year, players. Kept on their own line so the
+    /// identity facts stay together, and each row centres independently (a single WrapPanel would
+    /// left-pack the wrapped remainder off-centre).</summary>
+    public IReadOnlyList<string> SpotlightFactsPrimary =>
+        _spotlightFacts.Count > SpotlightPrimaryFactCount
+            ? _spotlightFacts.Take(SpotlightPrimaryFactCount).ToArray()
+            : _spotlightFacts;
+
+    /// <summary>The second row of hero chips: developer, publisher — everything past the first three.
+    /// Empty (and hidden) when there is nothing to spill onto a second line.</summary>
+    public IReadOnlyList<string> SpotlightFactsSecondary =>
+        _spotlightFacts.Count > SpotlightPrimaryFactCount
+            ? _spotlightFacts.Skip(SpotlightPrimaryFactCount).ToArray()
+            : [];
+
+    public bool HasSpotlightSecondaryFacts => _spotlightFacts.Count > SpotlightPrimaryFactCount;
+
+    private const int SpotlightPrimaryFactCount = 3;
+
     private string? _canonicalSpotlightTitle;
 
     /// <summary>The title shown in the spotlight list and hero — the canonical ScreenScraper name
@@ -498,6 +517,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
         RatingText = ratingText;
         _spotlightFacts = facts;
         OnPropertyChanged(nameof(SpotlightFacts));
+        OnPropertyChanged(nameof(SpotlightFactsPrimary));
+        OnPropertyChanged(nameof(SpotlightFactsSecondary));
+        OnPropertyChanged(nameof(HasSpotlightSecondaryFacts));
         AreSpotlightDetailsLoaded = true;
         OnPropertyChanged(nameof(ShowSpotlightTitleFallback));
     }

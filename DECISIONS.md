@@ -5017,3 +5017,31 @@ per-fact chips, with the launch source (file/disc) as a dim caption below. Non-o
 - **Publisher chip collapses into the developer when identical** (common for first-party titles), and
   players read in words ("1 player" / "2 players") instead of "2P". `ComposeSpotlightInfo` now returns
   the chip list (`IReadOnlyList<string>`) rather than a joined string.
+
+## 2026-08-08 — Spotlight hero: UI polish pass
+
+A follow-up cleanup on the spotlight hero and list. Non-obvious calls:
+
+- **Metadata chips split into two fixed rows (genre/year/players, then developer/publisher), not one
+  `WrapPanel`.** A `WrapPanel` left-packs its wrapped remainder, so a partial second line hugged the
+  left instead of centring under the first. Each row is now its own centred `ItemsControl` fed by
+  `SpotlightFactsPrimary` (first 3) / `SpotlightFactsSecondary` (rest); the second row hides when empty.
+- **Action row is a centred, content-sized cluster (rating · achievements · Play), not an edge-to-edge
+  `Auto,*,Auto` span.** The span left the achievements pill stretched with left-packed content and dead
+  space, and — worse — as the flex column it *clipped its own count/bar* on narrow windows. The cluster
+  matches the centred logo/chips above and keeps every action intact.
+- **The cluster is wrapped in a `Viewbox` (`Stretch=Uniform`, `StretchDirection=DownOnly`,
+  `ClipToBounds=False`).** Because the cluster is content-sized it can outgrow the hero column on a
+  narrow (windowed, down to the app's 900px min) couch and clip the primary Play button. DownOnly leaves
+  it at natural size at real couch resolutions (Deck/TV, ≥1280) and only shrinks it to fit when squeezed.
+  `ClipToBounds=False` lets the focused action's ring (`-5` margin) and glow (12px blur) spill past the
+  Viewbox instead of being clipped, so no compensating inset is needed and the pills' bottom edge stays
+  flush with the list card (whose bottom margin just matches the hero's own 10px inset).
+- **Hero pills now use the list card's layered translucency, not an opaque fill.** `Border.spotlight-pill`
+  became a transparent content layer over a new `Border.spotlight-pill-fill` (EmuPopoverBrush at the same
+  0.72 alpha as the card), so the pills read as the same glass instead of flat opaque slabs.
+- **`MarqueeTextBlock` centres a title that fits.** The no-logo fallback title was left-aligned while the
+  chips/subtitle centred. `MarqueeTextBlock` now forwards a `TextAlignment` property (default the
+  control-neutral Start; the hero sets Center), so the control isn't silently re-defaulted for other
+  callers. It's a no-op while overflowing (the text is arranged at exactly its own width, so the
+  there-and-back scroll still starts at the left).

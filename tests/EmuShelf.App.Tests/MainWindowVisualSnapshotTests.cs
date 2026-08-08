@@ -2627,4 +2627,195 @@ public class MainWindowVisualSnapshotTests
             Application.Current.RequestedThemeVariant = ThemeVariant.Default;
         }
     }
+
+    // Builds a couch/spotlight library focused on a game with five scraped facts (so the chips split
+    // 3 + 2), a rating, and an achievement set — matching the shape the hero renders.
+    private static async Task<MainViewModel> BuildSpotlightViewModelAsync(
+        bool hasRating = true, bool hasAchievements = true)
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+        var games = Enumerable.Range(1, 8).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/Games/playstation2/Game {index}.chd",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio)).ToArray();
+        viewModel.Games.ReplaceAll(games);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.IsGamepadSpotlightView = true;
+        viewModel.FocusedGame = games[3];
+        games[3].ApplySpotlightDetails(
+            fanartPath: null,
+            wheelPath: null,
+            ratingText: hasRating ? "8.4" : null,
+            facts: ["Role-Playing", "2008", "1 player", "Atlus", "Square Enix"]);
+        games[3].ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: hasAchievements,
+            ColumnText: hasAchievements ? "18/45" : "—/—",
+            Tooltip: string.Empty));
+        return viewModel;
+    }
+
+    // The spotlight Play button (there is a second, hidden one on the cover-grid dock; the couch
+    // cluster is the one nested in the shrink-to-fit Viewbox).
+    private static Button SpotlightPlayButton(Window window) =>
+        window.GetVisualDescendants().OfType<Button>().Single(button =>
+            button.Classes.Contains("gamepad-play-action") &&
+            button.GetVisualAncestors().OfType<Viewbox>().Any());
+
+    private static double BottomEdge(Control control, Visual relativeTo) =>
+        control.TranslatePoint(new Point(0, control.Bounds.Height), relativeTo)!.Value.Y;
+
+    [AvaloniaFact]
+    public async Task GamepadSpotlight_SplitsChipsAcrossCenteredRowsAndAlignsListToActions()
+    {
+        var viewModel = await BuildSpotlightViewModelAsync();
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+
+            var focused = viewModel.FocusedGame!;
+            Assert.Equal(["Role-Playing", "2008", "1 player"], focused.SpotlightFactsPrimary);
+            Assert.Equal(["Atlus", "Square Enix"], focused.SpotlightFactsSecondary);
+
+            // All five chips render, split across exactly two rows (3 then 2) — the deterministic
+            // primary/secondary split, not one WrapPanel that would wrap 4 + 1.
+            var chips = window.GetVisualDescendants().OfType<Border>()
+                .Where(border => border.Classes.Contains("spotlight-chip"))
+                .Select(border => (border, origin: border.TranslatePoint(default, window)!.Value))
+                .ToArray();
+            Assert.Equal(5, chips.Length);
+            var chipRows = chips
+                .GroupBy(chip => Math.Round(chip.origin.Y))
+                .OrderBy(row => row.Key)
+                .ToArray();
+            Assert.Equal(2, chipRows.Length);
+            Assert.Equal(3, chipRows[0].Count());
+            Assert.Equal(2, chipRows[1].Count());
+
+            // Both chip rows are centred on the same axis (a WrapPanel left-packs its wrapped
+            // remainder, leaving the second line off-centre).
+            static double RowCentre(IEnumerable<(Border border, Point origin)> row) =>
+                (row.Min(chip => chip.origin.X) +
+                 row.Max(chip => chip.origin.X + chip.border.Bounds.Width)) / 2;
+            var primaryCentre = RowCentre(chipRows[0]);
+            var secondaryCentre = RowCentre(chipRows[1]);
+            Assert.Equal(primaryCentre, secondaryCentre, 1.0);
+
+            // The action cluster is centred on that same axis as the chips above it.
+            var play = SpotlightPlayButton(window);
+            var cluster = play.GetVisualAncestors().OfType<StackPanel>()
+                .First(panel => panel.Orientation == Orientation.Horizontal);
+            var clusterCentre = cluster
+                .TranslatePoint(new Point(cluster.Bounds.Width / 2, 0), window)!.Value.X;
+            Assert.Equal(primaryCentre, clusterCentre, 2.0);
+
+            // The list card's lower edge lines up with the action pills (Play), not hanging below them.
+            var list = window.FindControl<ListBox>("GamepadSpotlightList");
+            Assert.NotNull(list);
+            var card = list!.GetVisualAncestors().OfType<Border>().First();
+            Assert.Equal(BottomEdge(card, window), BottomEdge(play, window), 1.5);
+
+            // The achievement count renders inside the pill (the old fill-the-middle column clipped it).
+            var countText = window.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Text == "18/45" &&
+                                text.GetVisualAncestors().OfType<Viewbox>().Any());
+            Assert.True(countText.IsVisible);
+            Assert.True(countText.Bounds.Width > 0);
+        }
+        finally
+        {
+            window.Close();
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    public async Task GamepadSpotlight_ActionClusterStaysCenteredWhenPillsHidden(
+        bool hasRating, bool hasAchievements)
+    {
+        var viewModel = await BuildSpotlightViewModelAsync(hasRating, hasAchievements);
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+
+            // A collapsed rating/achievement pill must leave no phantom Spacing gap: the cluster stays
+            // centred on the same axis as the (always-present) chips whichever pills are shown. Measure
+            // the chips' bounding-box centre (chip widths vary, so a midpoint of chip centres skews).
+            var chips = window.GetVisualDescendants().OfType<Border>()
+                .Where(border => border.Classes.Contains("spotlight-chip"))
+                .Select(border => (left: border.TranslatePoint(default, window)!.Value.X,
+                                   width: border.Bounds.Width))
+                .ToArray();
+            Assert.NotEmpty(chips);
+            var chipsCentre = (chips.Min(chip => chip.left) + chips.Max(chip => chip.left + chip.width)) / 2;
+
+            var play = SpotlightPlayButton(window);
+            var cluster = play.GetVisualAncestors().OfType<StackPanel>()
+                .First(panel => panel.Orientation == Orientation.Horizontal);
+            var clusterCentre = cluster
+                .TranslatePoint(new Point(cluster.Bounds.Width / 2, 0), window)!.Value.X;
+            Assert.Equal(chipsCentre, clusterCentre, 2.0);
+        }
+        finally
+        {
+            window.Close();
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSpotlight_NarrowCouchWindowKeepsPlayAndAchievementCountVisible()
+    {
+        var viewModel = await BuildSpotlightViewModelAsync();
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        // Below the cluster's natural width the DownOnly Viewbox shrinks it to fit; the primary Play
+        // action must stay fully on screen (the old fixed-width span clipped it) and the achievement
+        // count must stay rendered.
+        var window = new MainWindow { DataContext = viewModel, Width = 1000, Height = 800 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+
+            var play = SpotlightPlayButton(window);
+            var left = play.TranslatePoint(default, window)!.Value.X;
+            var right = play.TranslatePoint(new Point(play.Bounds.Width, 0), window)!.Value.X;
+            Assert.True(left >= 0, $"Play button clipped on the left at x={left:0.0}.");
+            Assert.True(right <= window.Width, $"Play button clipped on the right at x={right:0.0}.");
+
+            var countText = window.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => text.Text == "18/45" &&
+                                text.GetVisualAncestors().OfType<Viewbox>().Any());
+            Assert.True(countText.IsVisible);
+            Assert.True(countText.Bounds.Width > 0);
+        }
+        finally
+        {
+            window.Close();
+            Application.Current!.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
 }

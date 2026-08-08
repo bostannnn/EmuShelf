@@ -39,6 +39,9 @@ public sealed class MarqueeTextBlock : Decorator
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         TextBlock.ForegroundProperty.AddOwner<MarqueeTextBlock>();
 
+    public static readonly StyledProperty<TextAlignment> TextAlignmentProperty =
+        TextBlock.TextAlignmentProperty.AddOwner<MarqueeTextBlock>();
+
     private readonly TextBlock _text;
     private readonly TranslateTransform _transform = new();
     private DispatcherTimer? _timer;
@@ -94,6 +97,16 @@ public sealed class MarqueeTextBlock : Decorator
         set => SetValue(ForegroundProperty, value);
     }
 
+    /// <summary>How a title that fits its slot is aligned. Defaults to the control-neutral Start
+    /// (left); the spotlight hero sets Center so a short title lines up with the centred logo/chips.
+    /// While the text overflows it is arranged at exactly its own width, so alignment is a no-op and
+    /// the there-and-back scroll still starts from the left edge.</summary>
+    public TextAlignment TextAlignment
+    {
+        get => GetValue(TextAlignmentProperty);
+        set => SetValue(TextAlignmentProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -105,6 +118,8 @@ public sealed class MarqueeTextBlock : Decorator
             _text.FontWeight = FontWeight;
         else if (change.Property == ForegroundProperty)
             _text.Foreground = Foreground;
+        else if (change.Property == TextAlignmentProperty)
+            _text.TextAlignment = TextAlignment;
     }
 
     protected override Size MeasureOverride(Size availableSize)
