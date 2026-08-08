@@ -2862,7 +2862,9 @@ public partial class MainViewModel : ViewModelBase
                         titleSet.SelectionKey,
                         LaunchSelectedDiscFromLibraryAsync,
                         ScrapeGameCommand,
-                        ShowGameInFolderCommand);
+                        ShowGameInFolderCommand,
+                        OpenTextureFolderCommand,
+                        TexturePackProviderRegistry.Find(game.SystemId) is not null);
                     viewModels.Add(viewModel);
                 }
 
@@ -4372,6 +4374,48 @@ public partial class MainViewModel : ViewModelBase
         var applied = await _dialogs.ShowScraperAsync(game.Id, game.Title);
         if (applied)
             await ReloadGamesAsync();
+    }
+
+    /// <summary>
+    /// Reveals the folder the game's emulator loads replacement textures from, creating it (with the
+    /// correct id) when it doesn't exist yet so the user can drop a downloaded pack straight in. The
+    /// coordinator resolves root + id; this command performs the one create-and-open and reports the
+    /// outcome. The created folder is empty and lives in the emulator's own textures directory — no
+    /// game file is touched and no existing pack is altered.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenTextureFolderAsync(GameViewModel? game)
+    {
+        if (game is null)
+            return;
+        if (_texturePacks is null)
+        {
+            SetStatus("Texture packs are unavailable right now.", StatusSeverity.Error);
+            return;
+        }
+
+        try
+        {
+            var resolution = await _texturePacks.ResolveTextureFolderAsync(game.LaunchModel);
+            if (!resolution.IsResolved || resolution.FullPath is null)
+            {
+                SetStatus(
+                    resolution.Diagnostic ?? $"Could not open the texture folder for {game.Title}.",
+                    StatusSeverity.Error);
+                return;
+            }
+
+            var existed = System.IO.Directory.Exists(resolution.FullPath);
+            System.IO.Directory.CreateDirectory(resolution.FullPath);
+            await _fileReveal.OpenDirectoryAsync(resolution.FullPath);
+            SetStatus(existed
+                ? $"Opened texture folder {resolution.FolderId} for {game.Title}"
+                : $"Created and opened texture folder {resolution.FolderId} for {game.Title}");
+        }
+        catch (Exception ex)
+        {
+            SetStatus($"Could not open the texture folder for {game.Title}: {ex.Message}", StatusSeverity.Error);
+        }
     }
 
     [RelayCommand]

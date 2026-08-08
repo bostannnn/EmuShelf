@@ -5099,3 +5099,30 @@ this lives behind a Core interface (`IFileRevealService`) with one Infrastructur
   gone but its folder still exists (an unavailable game), the folder is opened instead; when neither
   exists, the command reports a friendly status rather than throwing. The menu label is
   platform-native ("Show in File Explorer" / "Reveal in Finder" / "Show in file manager").
+
+## 2026-08-08 — "Open texture folder" is the texture subsystem's one allowed write
+
+The game context menu gained **Open texture folder** (desktop grid and list), which opens the folder
+an emulator loads a game's replacement textures from and, when it doesn't exist, **creates it with the
+correct id** so a downloaded pack can be dropped straight in. It appears only for the six
+texture-capable systems (`TexturePackProviderRegistry.Find(SystemId) is not null`).
+
+This is a deliberate, bounded departure from the subsystem's read-only stance (see the
+`TexturePackSettingsContext` note: "no install, repair, move, rename, or delete … EmuShelf never
+performs one"). Creating the id folder is the **only** write the texture subsystem makes, and it is
+tightly scoped:
+
+- It creates an **empty** directory inside the emulator's own textures root, on explicit user action.
+- It never touches a game file and never modifies, moves, renames, or deletes an existing pack.
+
+The path is resolved by `TexturePackCoordinator.ResolveTextureFolderAsync`, which reuses the same
+provider/root resolution the scan uses (honouring the override and Flatpak, and sitting out when a
+different emulator is active for the system). The folder **id** comes from the game's stored
+identifiers via the pure `TexturePackFolderNaming.Build` (the inverse of `TexturePackMatcher`: serial
+for PS1/PS2, hyphen-less game-id for PSP, disc id for GameCube/Wii, title id for 3DS); when none are
+stored it extracts them locally (no network) exactly as the rescan backfill does and persists them
+**only when the game has no identifiers yet**, so an existing Sha1/Crc32 set is never clobbered and the
+folder EmuShelf creates is the one a later scan will match. Opening the folder reuses the same shell
+service "Show in folder" introduced — `IFileRevealService.OpenDirectoryAsync` (added alongside
+`RevealAsync`) — so there is one place that talks to each platform's file manager, and the coordinator
+keeps no UI or write policy (the create-and-open lives in `MainViewModel.OpenTextureFolderAsync`).

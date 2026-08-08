@@ -175,4 +175,7 @@ internal sealed class NullFileRevealService : IFileRevealService
 {
     public Task RevealAsync(string path, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
+
+    public Task OpenDirectoryAsync(string path, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

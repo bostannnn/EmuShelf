@@ -50,6 +50,21 @@ public sealed class FileRevealService : IFileRevealService
         Start(BuildOpenFolderStartInfo(folder));
     }
 
+    public Task OpenDirectoryAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("A folder path is required to open it.", nameof(path));
+
+        var fullPath = Path.GetFullPath(path);
+        if (!Directory.Exists(fullPath))
+            throw new DirectoryNotFoundException($"The folder '{fullPath}' could not be found.");
+
+        // Open the folder itself (its contents), not "select it in its parent" — the same
+        // fire-and-forget launch RevealAsync uses for its folder fallback.
+        Start(BuildOpenFolderStartInfo(fullPath));
+        return Task.CompletedTask;
+    }
+
     private async Task SelectInContainerAsync(string fullPath, CancellationToken cancellationToken)
     {
         if (OperatingSystem.IsWindows())

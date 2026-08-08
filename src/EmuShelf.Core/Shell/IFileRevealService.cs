@@ -14,4 +14,11 @@ public interface IFileRevealService
     /// file manager could not be started.
     /// </summary>
     Task RevealAsync(string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Opens <paramref name="path"/> itself in the OS file manager (its contents), rather than
+    /// selecting it in its parent — the "open this folder" case. Throws when the folder does not
+    /// exist or the file manager could not be started.
+    /// </summary>
+    Task OpenDirectoryAsync(string path, CancellationToken cancellationToken = default);
 }

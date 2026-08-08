@@ -146,6 +146,53 @@ public class FileRevealServiceTests
         }
     }
 
+    [Fact]
+    public async Task OpenDirectoryAsync_RejectsAnEmptyPath()
+    {
+        var service = new FileRevealService(_ => throw new InvalidOperationException("must not start"));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.OpenDirectoryAsync("   "));
+    }
+
+    [Fact]
+    public async Task OpenDirectoryAsync_ThrowsWhenTheFolderDoesNotExist()
+    {
+        var missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nope");
+        var service = new FileRevealService(_ => throw new InvalidOperationException("must not start"));
+
+        await Assert.ThrowsAsync<DirectoryNotFoundException>(() => service.OpenDirectoryAsync(missing));
+    }
+
+    [Fact]
+    public async Task OpenDirectoryAsync_OpensTheFolderItselfNotSelectingItInItsParent()
+    {
+        var directory = NewTempDirectory();
+        try
+        {
+            ProcessStartInfo? captured = null;
+            var service = new FileRevealService(info => { captured = info; return new Process(); });
+
+            await service.OpenDirectoryAsync(directory);
+
+            Assert.NotNull(captured);
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.Equal("explorer.exe", captured!.FileName);
+                Assert.DoesNotContain("/select,", captured.Arguments); // opened, not selected
+                Assert.Contains(directory, captured.Arguments);
+            }
+            else
+            {
+                Assert.Equal(OperatingSystem.IsMacOS() ? "open" : "xdg-open", captured!.FileName);
+                Assert.Contains(directory, captured.ArgumentList);
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static string NewTempDirectory()
     {
         var directory = Path.Combine(

@@ -1303,6 +1303,10 @@
                                         <MenuItem Header="{Binding SelectionScrapeText}"
                                                   IsVisible="{Binding CanScrapeSelection}"
                                                   Command="{Binding ScrapeSelectedCommand}" />
+                                        <MenuItem Header="Open texture folder"
+                                                  IsVisible="{Binding CanOpenTextureFolder}"
+                                                  Command="{Binding OpenTextureFolderCommand}"
+                                                  CommandParameter="{Binding}" />
                                         <Separator />
                                         <MenuItem Header="{Binding SelectionRemovalText}"
                                                   Command="{Binding RemoveSelectedCommand}" />
@@ -1547,6 +1551,10 @@
                                         <MenuItem Header="{Binding SelectionScrapeText}"
                                                   IsVisible="{Binding CanScrapeSelection}"
                                                   Command="{Binding ScrapeSelectedCommand}" />
+                                        <MenuItem Header="Open texture folder"
+                                                  IsVisible="{Binding CanOpenTextureFolder}"
+                                                  Command="{Binding OpenTextureFolderCommand}"
+                                                  CommandParameter="{Binding}" />
                                         <Separator />
                                         <MenuItem Header="{Binding SelectionRemovalText}"
                                                   Command="{Binding RemoveSelectedCommand}" />
