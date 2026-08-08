@@ -8,6 +8,11 @@ namespace EmuShelf.Integrations.Emulators;
 /// section, the settings-version gate, and the action→key map (a null key means the emulator has no
 /// such feature). Everything else — reading, the version check, building the <c>Keyboard/&lt;Key&gt;</c>
 /// token, conflict clearing, and the plan — lives here.
+///
+/// The version gate refuses only a <em>different</em> explicit version (a real format change); a
+/// <em>missing</em> version is accepted as long as the version's section is present, because newer
+/// AppImage/fork builds (e.g. the Steam Deck DuckStation) omit it, the token format is stable, and the
+/// emulator rewrites the version itself — refusing those was a real-hardware failure.
 /// </summary>
 public abstract class IniKeyboardHotkeyConfigurator : HotkeyConfiguratorBase
 {
@@ -59,19 +64,34 @@ public abstract class IniKeyboardHotkeyConfigurator : HotkeyConfiguratorBase
     {
         var path = ResolveExistingPath();
         if (path is null)
-            return HotkeyPlan.NotFound($"{DisplayName}'s settings file was not found.");
+            return HotkeyPlan.NotFound($"{DisplayName}'s settings file was not found under {_configDirectory}.");
 
         var text = ReadTextOrNull(path);
         if (text is null)
-            return HotkeyPlan.NotFound($"{DisplayName}'s settings file was not found.");
+            return HotkeyPlan.NotFound($"{DisplayName}'s settings file was not found at {path}.");
 
         var document = new EmulatorConfigDocument(text);
         var version = document.GetValue(_versionSection, _versionKey);
-        if (!string.Equals(version, _supportedVersion, StringComparison.Ordinal))
+        if (version is not null && !string.Equals(version, _supportedVersion, StringComparison.Ordinal))
         {
+            // A *different* explicit version could be a real format change we don't understand, so refuse
+            // and name the file that was read.
             return HotkeyPlan.UnsupportedFormat(
-                $"{DisplayName}'s settings file is {_versionKey} '{version ?? "unknown"}', not the supported {_supportedVersion}, so EmuShelf will not edit it.");
+                $"{DisplayName}'s settings file is {_versionKey} '{version}', not the supported {_supportedVersion}, so EmuShelf will not edit it (read {path}).");
         }
+
+        if (version is null && !document.HasSection(_versionSection))
+        {
+            // No version *and* not even the section it lives in: this isn't the config we know how to edit
+            // (likely a stub the locator picked up), so don't write into it.
+            return HotkeyPlan.UnsupportedFormat(
+                $"{DisplayName}'s settings file has no [{_versionSection}] section, so EmuShelf can't confirm its format (read {path}).");
+        }
+
+        // A missing SettingsVersion (but with the expected section present) is fine: the file was found at
+        // the emulator's own config path, the Keyboard/<Key> token format is stable across versions, and
+        // the emulator rewrites the version itself on its next save. Newer AppImage/fork builds that omit
+        // it must not be refused — that was the Steam Deck "SettingsVersion unknown" failure.
 
         var (bindings, changes) = ApplyKeySection(
             document,

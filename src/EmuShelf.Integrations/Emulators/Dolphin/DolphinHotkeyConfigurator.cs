@@ -8,7 +8,11 @@ namespace EmuShelf.Integrations.Emulators.Dolphin;
 /// regardless of the section's <c>Device =</c> line (that names the controller). The keyboard device
 /// backend is platform-specific (see <see cref="KeyboardDevice"/>). Dolphin has no rewind or true
 /// fast-forward, so rewind is reported unsupported and fast-forward maps to "Disable Emulation Speed
-/// Limit" (hold-to-uncap).
+/// Limit" (hold-to-uncap). Dolphin only writes <c>Config/Hotkeys.ini</c> once a hotkey is customised in
+/// its UI, so even a long-used install may have none; rather than refuse, this creates the file with a
+/// <c>[Hotkeys]</c> section that Dolphin reads on its next launch — but only when the resolved folder is
+/// really Dolphin's user directory (it has a <c>Config/Dolphin.ini</c>). If neither file is there we
+/// resolved the wrong folder, so it reports that instead of writing a file Dolphin will never read.
 /// </summary>
 public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
 {
@@ -34,12 +38,19 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
         [HotkeyAction.LoadState] = "Load State/Load from Selected Slot",
     };
 
+    private readonly string _userDirectory;
     private readonly string _hotkeysPath;
+    private readonly string _mainConfigPath;
 
     public DolphinHotkeyConfigurator(string userDirectory, string backupRoot, Action<string, string>? writeFile = null)
         : base(DolphinDefinition.Instance.Id, "Dolphin", backupRoot, writeFile)
     {
-        _hotkeysPath = Path.Combine(Path.GetFullPath(userDirectory), "Config", "Hotkeys.ini");
+        _userDirectory = Path.GetFullPath(userDirectory);
+        var configDirectory = Path.Combine(_userDirectory, "Config");
+        _hotkeysPath = Path.Combine(configDirectory, "Hotkeys.ini");
+        // Dolphin always writes Config/Dolphin.ini on first run, so it marks a real Dolphin user
+        // directory — used to tell "customised no hotkeys yet" apart from "we resolved the wrong folder".
+        _mainConfigPath = Path.Combine(configDirectory, "Dolphin.ini");
     }
 
     public override IReadOnlyList<HotkeyActionSupport> DescribeSupport(HotkeyProfile profile) =>
@@ -55,10 +66,18 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
     private protected override HotkeyPlan BuildPlan(HotkeyProfile profile, CancellationToken cancellationToken)
     {
         var text = ReadTextOrNull(_hotkeysPath);
-        if (text is null)
-            return HotkeyPlan.NotFound("Dolphin's Hotkeys.ini was not found.");
+        if (text is null && !File.Exists(_mainConfigPath))
+        {
+            // No Hotkeys.ini *and* no Dolphin.ini in this folder: it isn't Dolphin's user directory (we
+            // resolved the wrong place), so report that instead of writing a file Dolphin will never read.
+            return HotkeyPlan.NotFound(
+                $"{_userDirectory} isn't Dolphin's user directory (no Config/Dolphin.ini there). Set the correct Dolphin folder in Settings.");
+        }
 
-        var document = new EmulatorConfigDocument(text);
+        // A missing Hotkeys.ini in a real Dolphin user dir is not an error: Dolphin writes it lazily
+        // (only once a hotkey is customised), so start from an empty document and let ApplyKeySection
+        // create the [Hotkeys] section and our bindings.
+        var document = new EmulatorConfigDocument(text ?? string.Empty);
         var fileName = Path.GetFileName(_hotkeysPath);
         var (bindings, changes) = ApplyKeySection(
             document,
