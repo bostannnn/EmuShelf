@@ -238,7 +238,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             installationId,
             configuration?.ExecutablePath ?? string.Empty,
             configuration?.LaunchTarget is FlatpakApplicationTarget ? "Flatpak" : "Direct",
-            (configuration?.LaunchTarget as FlatpakApplicationTarget)?.AppId ?? string.Empty,
+            // The ref includes any pinned branch (appId//branch) so it matches a dropdown entry.
+            (configuration?.LaunchTarget as FlatpakApplicationTarget)?.Ref ?? string.Empty,
             configuration?.LaunchArguments ?? emulator.DefaultLaunchArguments,
             configuration?.CorePath ?? string.Empty);
     }
@@ -273,8 +274,10 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         AvailableFlatpakApplicationIds.Clear();
         if (!CanSelectFlatpakTarget)
             return;
-        foreach (var appId in new FlatpakApplicationDiscovery().FindInstalledForEmulator(EmulatorId))
-            AvailableFlatpakApplicationIds.Add(appId);
+        // One entry per installed branch: a bare app id when only one branch exists, or branch-qualified
+        // refs (e.g. net.pcsx2.PCSX2//beta) when both a stable and a nightly build are installed.
+        foreach (var reference in new FlatpakApplicationDiscovery().FindInstalledForEmulator(EmulatorId))
+            AvailableFlatpakApplicationIds.Add(reference);
     }
 
     partial void OnSelectedProfileChanged(EmulatorProfileOption? value)
@@ -394,11 +397,13 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             if (string.IsNullOrWhiteSpace(_homeDirectory) || string.IsNullOrWhiteSpace(FlatpakAppId))
                 yield break;
 
+            // Every branch of an app shares one per-app data directory (.var/app/<appId>), so strip any
+            // pinned branch from the ref before building the path.
             yield return Path.Combine(
                 _homeDirectory,
                 ".var",
                 "app",
-                FlatpakAppId.Trim(),
+                FlatpakApplicationTarget.Parse(FlatpakAppId).AppId,
                 "config",
                 "retroarch",
                 "cores");
@@ -635,7 +640,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             draft.LaunchArguments)
         {
             LaunchTarget = isFlatpak
-                ? (string.IsNullOrWhiteSpace(draft.FlatpakAppId) ? null : new FlatpakApplicationTarget(draft.FlatpakAppId.Trim()))
+                ? (string.IsNullOrWhiteSpace(draft.FlatpakAppId) ? null : FlatpakApplicationTarget.Parse(draft.FlatpakAppId.Trim()))
                 : (executablePath is null ? null : new DirectExecutableTarget(executablePath)),
             EmulatorId = emulatorId,
             EmulatorInstallationId = draft.InstallationId,

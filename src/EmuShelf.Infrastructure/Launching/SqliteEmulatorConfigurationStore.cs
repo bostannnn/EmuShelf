@@ -333,11 +333,21 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             (string.IsNullOrWhiteSpace(configuration.ExecutablePath)
                 ? null
                 : new DirectExecutableTarget(configuration.ExecutablePath));
-        if (target is FlatpakApplicationTarget flatpak && !IsValidFlatpakApplicationId(flatpak.AppId))
+        if (target is FlatpakApplicationTarget flatpak)
         {
-            throw new ArgumentException(
-                "A Flatpak application id must contain at least three dot-separated identifier segments.",
-                nameof(configuration));
+            if (!IsValidFlatpakApplicationId(flatpak.AppId))
+            {
+                throw new ArgumentException(
+                    "A Flatpak application id must contain at least three dot-separated identifier segments.",
+                    nameof(configuration));
+            }
+
+            if (flatpak.Branch is not null && !IsValidFlatpakBranch(flatpak.Branch))
+            {
+                throw new ArgumentException(
+                    "A Flatpak branch may only contain letters, digits, '.', '_' or '-'.",
+                    nameof(configuration));
+            }
         }
 
         return configuration with
@@ -353,6 +363,10 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
         appId.Split('.').Length >= 3 &&
         appId.Split('.').All(segment => segment.Length > 0 &&
             segment.All(character => char.IsLetterOrDigit(character) || character is '_' or '-'));
+
+    private static bool IsValidFlatpakBranch(string branch) =>
+        branch.Length > 0 &&
+        branch.All(character => char.IsLetterOrDigit(character) || character is '.' or '_' or '-');
 
     private static EmulatorInstallation CreateInstallation(
         IGrouping<string, EmulatorConfiguration> configurations)
@@ -391,7 +405,7 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
 
         return kind?.Trim().ToLowerInvariant() switch
         {
-            "flatpak" => new FlatpakApplicationTarget(value.Trim()),
+            "flatpak" => FlatpakApplicationTarget.Parse(value.Trim()),
             _ => new DirectExecutableTarget(_pathResolver.ToAbsolutePath(value)),
         };
     }
@@ -405,7 +419,8 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
     private object ToStorableTargetValue(EmulatorLaunchTarget? target) => target switch
     {
         DirectExecutableTarget direct => _pathResolver.ToStorablePath(direct.Path),
-        FlatpakApplicationTarget flatpak => flatpak.AppId,
+        // The ref carries the pinned branch (appId//branch) when one is set, so it round-trips.
+        FlatpakApplicationTarget flatpak => flatpak.Ref,
         _ => DBNull.Value,
     };
 
@@ -424,8 +439,9 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                 (null, null) => true,
                 (DirectExecutableTarget a, DirectExecutableTarget b) =>
                     string.Equals(a.Path, b.Path, StringComparison.OrdinalIgnoreCase),
+                // A pinned branch is part of the identity: stable and beta are different installs.
                 (FlatpakApplicationTarget a, FlatpakApplicationTarget b) =>
-                    string.Equals(a.AppId, b.AppId, StringComparison.Ordinal),
+                    string.Equals(a.Ref, b.Ref, StringComparison.Ordinal),
                 _ => false,
             };
 
@@ -433,7 +449,7 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
         {
             null => 0,
             DirectExecutableTarget direct => StringComparer.OrdinalIgnoreCase.GetHashCode(direct.Path),
-            FlatpakApplicationTarget flatpak => StringComparer.Ordinal.GetHashCode(flatpak.AppId),
+            FlatpakApplicationTarget flatpak => StringComparer.Ordinal.GetHashCode(flatpak.Ref),
             _ => 0,
         };
     }
