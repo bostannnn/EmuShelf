@@ -14,6 +14,7 @@ using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Shell;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
 using EmuShelf.Infrastructure.Library;
@@ -83,7 +84,8 @@ public class MainViewModelTests : IDisposable
         IGameScrapeApplicationService? scrapeApply = null,
         IScreenScraperAccountService? screenScraperAccount = null,
         ISettingsService? settingsService = null,
-        TexturePackCoordinator? texturePacks = null)
+        TexturePackCoordinator? texturePacks = null,
+        IFileRevealService? fileReveal = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -114,7 +116,8 @@ public class MainViewModelTests : IDisposable
             screenScraperAccount: screenScraperAccount,
             screenScraperPreview: screenScraperPreview,
             scrapeApply: scrapeApply,
-            settingsService: settingsService);
+            settingsService: settingsService,
+            fileReveal: fileReveal);
     }
 
     private string MakeRomsFolder()
@@ -555,6 +558,40 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task ShowGameInFolder_RevealsTheSelectedLaunchSource()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var reveal = new FakeFileRevealService();
+        var vm = CreateViewModel(fileReveal: reveal);
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        var alpha = vm.Games.Single(g => g.Title == "Alpha");
+        await alpha.ShowInFolderCommand.ExecuteAsync(alpha);
+
+        Assert.Equal(1, reveal.RevealCount);
+        Assert.Equal(alpha.LaunchModel.Path, reveal.LastRevealedPath);
+        Assert.EndsWith("Alpha.cue", reveal.LastRevealedPath);
+    }
+
+    [AvaloniaFact]
+    public async Task ShowGameInFolder_ReportsAFriendlyStatusWhenTheRevealFails()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var reveal = new FakeFileRevealService { Failure = new DirectoryNotFoundException("gone") };
+        var vm = CreateViewModel(fileReveal: reveal);
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        var alpha = vm.Games.Single(g => g.Title == "Alpha");
+        await alpha.ShowInFolderCommand.ExecuteAsync(alpha);
+
+        Assert.Contains("Could not open the folder for Alpha", vm.StatusText);
+    }
+
+    [AvaloniaFact]
     public async Task AddGames_Files_ImportsUnderConfirmedSystem()
     {
         var folder = MakeRomsFolder();
@@ -816,7 +853,8 @@ public class MainViewModelTests : IDisposable
             _metadataStore,
             new AppSettings { TexturePacks = new TexturePackSettings().WithOverride("playstation", textures) },
             NullAppLogger.Instance);
-        var vm = CreateViewModel(metadataStore: _metadataStore, texturePacks: coordinator);
+        var reveal = new FakeFileRevealService();
+        var vm = CreateViewModel(metadataStore: _metadataStore, texturePacks: coordinator, fileReveal: reveal);
 
         await vm.ReloadGamesAsync();
         var game = Assert.Single(vm.Games);
@@ -826,7 +864,7 @@ public class MainViewModelTests : IDisposable
 
         var expected = Path.Combine(textures, "SLUS-00594");
         Assert.True(Directory.Exists(expected));
-        Assert.Equal(expected, _dialogs.LastOpenedFolder);
+        Assert.Equal(expected, reveal.LastOpenedDirectory);
     }
 
     [AvaloniaFact]

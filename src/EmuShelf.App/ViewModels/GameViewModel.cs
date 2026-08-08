@@ -118,7 +118,15 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> ScrapeCommand { get; }
+    public IAsyncRelayCommand<GameViewModel?> ShowInFolderCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenTextureFolderCommand { get; }
+
+    /// <summary>Platform-native label for the "reveal this game's file in the OS file manager"
+    /// context-menu action, so it reads correctly on each desktop.</summary>
+    public static string ShowInFolderLabel { get; } =
+        OperatingSystem.IsMacOS() ? "Reveal in Finder"
+        : OperatingSystem.IsWindows() ? "Show in File Explorer"
+        : "Show in file manager";
     public IAsyncRelayCommand RemoveSelectedCommand { get; }
     public IAsyncRelayCommand ScrapeSelectedCommand { get; }
 
@@ -400,6 +408,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         string? discSelectionKey = null,
         Func<GameViewModel, GameDisc, Task>? launchDiscAction = null,
         IAsyncRelayCommand<GameViewModel?>? scrapeCommand = null,
+        IAsyncRelayCommand<GameViewModel?>? showInFolderCommand = null,
         IAsyncRelayCommand<GameViewModel?>? openTextureFolderCommand = null,
         bool canOpenTextureFolder = false)
     {
@@ -445,6 +454,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         LoadCoverCommand = loadCoverCommand ?? NoGameCommand;
         OpenAchievementsCommand = openAchievementsCommand ?? NoGameCommand;
         ScrapeCommand = scrapeCommand ?? NoGameCommand;
+        ShowInFolderCommand = showInFolderCommand ?? NoGameCommand;
         OpenTextureFolderCommand = openTextureFolderCommand ?? NoGameCommand;
         CanOpenTextureFolder = canOpenTextureFolder;
         RemoveSelectedCommand = removeSelectedCommand ?? NoCommand;

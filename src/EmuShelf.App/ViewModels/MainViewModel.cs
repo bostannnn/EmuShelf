@@ -21,6 +21,7 @@ using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Shell;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Systems;
 using EmuShelf.Core.TexturePacks;
@@ -60,6 +61,7 @@ public partial class MainViewModel : ViewModelBase
     // EmuShelf's data root, surfaced in Settings so the user can reveal it. Null in design/tests.
     private readonly string? _dataDirectory;
     private readonly IEmulatorLaunchService _launchService;
+    private readonly IFileRevealService _fileReveal;
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IGameCoverService _covers;
@@ -723,7 +725,8 @@ public partial class MainViewModel : ViewModelBase
         IOnScreenKeyboardService? onScreenKeyboard = null,
         IGameDetailsStore? gameDetails = null,
         IAppPaths? appPaths = null,
-        AppUpdateCoordinator? updates = null)
+        AppUpdateCoordinator? updates = null,
+        IFileRevealService? fileReveal = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
         _updates = updates;
@@ -739,6 +742,7 @@ public partial class MainViewModel : ViewModelBase
         _availabilityChecker = availabilityChecker;
         _dialogs = dialogs;
         _launchService = launchService ?? new NullEmulatorLaunchService();
+        _fileReveal = fileReveal ?? new NullFileRevealService();
         _emulatorConfigurations = emulatorConfigurations ?? new NullEmulatorConfigurationStore();
         _emulators = emulators ?? KnownEmulators.All;
         _covers = covers ?? new NullGameCoverService();
@@ -2858,6 +2862,7 @@ public partial class MainViewModel : ViewModelBase
                         titleSet.SelectionKey,
                         LaunchSelectedDiscFromLibraryAsync,
                         ScrapeGameCommand,
+                        ShowGameInFolderCommand,
                         OpenTextureFolderCommand,
                         TexturePackProviderRegistry.Find(game.SystemId) is not null);
                     viewModels.Add(viewModel);
@@ -4402,7 +4407,7 @@ public partial class MainViewModel : ViewModelBase
 
             var existed = System.IO.Directory.Exists(resolution.FullPath);
             System.IO.Directory.CreateDirectory(resolution.FullPath);
-            await _dialogs.OpenFolderAsync(resolution.FullPath);
+            await _fileReveal.OpenDirectoryAsync(resolution.FullPath);
             SetStatus(existed
                 ? $"Opened texture folder {resolution.FolderId} for {game.Title}"
                 : $"Created and opened texture folder {resolution.FolderId} for {game.Title}");
@@ -4410,6 +4415,27 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             SetStatus($"Could not open the texture folder for {game.Title}: {ex.Message}", StatusSeverity.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShowGameInFolderAsync(GameViewModel? game)
+    {
+        // The path the ROM/folder is revealed at is the concrete source that would launch — the
+        // currently selected disc for a multi-disc set — so it stays correct and preselected.
+        if (game?.LaunchModel.Path is not { Length: > 0 } path)
+            return;
+
+        try
+        {
+            await _fileReveal.RevealAsync(path);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not reveal the folder for game id {game.Id}.", ex);
+            SetStatus(
+                $"Could not open the folder for {game.Title}: {ex.Message}",
+                StatusSeverity.Error);
         }
     }
 

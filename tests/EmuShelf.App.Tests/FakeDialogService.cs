@@ -45,15 +45,6 @@ internal sealed class FakeDialogService : IDialogService
 
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult(FilesToReturn);
     public Task<string?> PickFolderAsync() => Task.FromResult(FolderToReturn);
-
-    public string? LastOpenedFolder { get; private set; }
-    public int OpenFolderCalls { get; private set; }
-    public Task OpenFolderAsync(string path)
-    {
-        LastOpenedFolder = path;
-        OpenFolderCalls++;
-        return Task.CompletedTask;
-    }
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName) =>
         Task.FromResult(EmulatorExecutableToReturn);
 
