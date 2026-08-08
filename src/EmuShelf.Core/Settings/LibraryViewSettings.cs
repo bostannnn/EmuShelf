@@ -39,4 +39,23 @@ public sealed record LibraryViewSettings
     /// present, restores the first available system.
     /// </summary>
     public string? SelectedSystemId { get; init; }
+
+    /// <summary>
+    /// Desktop list-view columns in display order, each with its visibility and (for fixed columns)
+    /// its resized width. Empty (the default) keeps the built-in column order, visibility, and
+    /// widths. Keys are stored by name; an unknown or missing key is tolerated on load so columns
+    /// can be added or removed between versions without corrupting the saved layout. See M40.
+    /// </summary>
+    public IReadOnlyList<LibraryColumnSetting> ListColumns { get; init; } = [];
+}
+
+/// <summary>One persisted Desktop list-view column: its identity, whether it shows, and its width
+/// (0 for the flex column, whose width is always computed from the viewport).</summary>
+public sealed record LibraryColumnSetting
+{
+    public string Key { get; init; } = string.Empty;
+
+    public bool IsVisible { get; init; } = true;
+
+    public double Width { get; init; }
 }

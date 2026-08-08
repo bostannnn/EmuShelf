@@ -380,6 +380,48 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Applies a persisted column layout over the default set: reorders to the saved order,
+    /// restores visibility and fixed-column widths, and tolerates unknown keys (dropped) and new
+    /// columns (appended in catalog order). Called during view-state restore, so saves are suppressed.</summary>
+    private void ApplyPersistedColumns(IReadOnlyList<LibraryColumnSetting> persisted)
+    {
+        if (persisted.Count == 0)
+            return;
+
+        var byKey = Columns.ToDictionary(column => column.Key);
+        var ordered = new List<LibraryColumn>(Columns.Count);
+        foreach (var setting in persisted)
+        {
+            if (!Enum.TryParse<LibraryColumnKey>(setting.Key, out var key) ||
+                !byKey.TryGetValue(key, out var column) ||
+                ordered.Contains(column))
+            {
+                continue;
+            }
+
+            if (column.CanHide)
+                column.IsVisible = setting.IsVisible;
+            if (!column.IsFlex && setting.Width > 0)
+                column.Width = Math.Max(column.MinWidth, setting.Width);
+            ordered.Add(column);
+        }
+
+        // Columns added since the layout was saved keep their catalog position at the end.
+        foreach (var column in Columns)
+            if (!ordered.Contains(column))
+                ordered.Add(column);
+
+        for (var target = 0; target < ordered.Count; target++)
+        {
+            var current = Columns.IndexOf(ordered[target]);
+            if (current != target)
+                Columns.Move(current, target);
+        }
+
+        RebuildVisibleColumns();
+        RecomputeColumnWidths();
+    }
+
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
@@ -987,6 +1029,7 @@ public partial class MainViewModel : ViewModelBase
                 : LibrarySortColumn.Title;
             SortDescending = state.SortDescending;
             IsNavigationCollapsed = state.IsNavigationCollapsed;
+            ApplyPersistedColumns(state.ListColumns);
 
             var scope = Enum.TryParse<LibraryScope>(state.Scope, out var parsed)
                 ? parsed
@@ -1029,6 +1072,15 @@ public partial class MainViewModel : ViewModelBase
         ShowEmptyPlatforms = ShowEmptyPlatforms,
         Scope = CurrentLibraryScope.ToString(),
         SelectedSystemId = SelectedSystem?.Id,
+        ListColumns = Columns
+            .Select(column => new LibraryColumnSetting
+            {
+                Key = column.Key.ToString(),
+                IsVisible = column.IsVisible,
+                // The flex column's width is always recomputed from the viewport, so persist 0.
+                Width = column.IsFlex ? 0 : column.Width,
+            })
+            .ToList(),
     };
 
     private void ScheduleLibraryViewStateSave()

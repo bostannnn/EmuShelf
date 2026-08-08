@@ -297,6 +297,88 @@ public class LibraryViewStateTests : IDisposable
         Assert.Equal(ThemePreference.Dark, settingsService.Load().Theme);
     }
 
+    [AvaloniaFact]
+    public void RestoresThePersistedColumnLayout()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ListColumns =
+            [
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Status), IsVisible = true, Width = 130 },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Title), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Cover), IsVisible = false },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Console), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Format), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Achievements), IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Textures), IsVisible = true },
+            ],
+        }));
+
+        var status = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Status);
+        Assert.Equal(0, viewModel.Columns.IndexOf(status)); // saved first, so reordered to the front
+        Assert.Equal(130, status.Width);
+        Assert.Equal(LibraryColumnKey.Status, viewModel.VisibleColumns[0].Key);
+        Assert.False(viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Cover).IsVisible);
+        Assert.DoesNotContain(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Cover);
+    }
+
+    [AvaloniaFact]
+    public void TeleratesUnknownAndMissingColumnsInThePersistedLayout()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
+        {
+            ListColumns =
+            [
+                new LibraryColumnSetting { Key = "AColumnThatNoLongerExists", IsVisible = true },
+                new LibraryColumnSetting { Key = nameof(LibraryColumnKey.Console), IsVisible = false },
+            ],
+        }));
+
+        // Unknown key dropped; the console setting applied; every unlisted column keeps its default.
+        Assert.DoesNotContain(viewModel.Columns, column => column.DisplayName == "AColumnThatNoLongerExists");
+        Assert.False(viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console).IsVisible);
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Title);
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Cover);
+    }
+
+    [AvaloniaFact]
+    public void TheSavedSnapshotIncludesTheColumnLayout()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Textures).IsVisible = false;
+
+        var state = viewModel.BuildLibraryViewState();
+
+        Assert.Equal(viewModel.Columns.Count, state.ListColumns.Count);
+        Assert.Equal(nameof(LibraryColumnKey.Cover), state.ListColumns[0].Key);
+        Assert.False(state.ListColumns.Single(column => column.Key == nameof(LibraryColumnKey.Textures)).IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void TheTitleColumnCannotBeHidden()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        var title = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Title);
+
+        title.IsVisible = false;
+
+        Assert.True(title.IsVisible);
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Title);
+    }
+
+    [AvaloniaFact]
+    public void HidingAColumnRemovesItFromTheVisibleSet()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
+
+        console.IsVisible = false;
+        Assert.DoesNotContain(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Console);
+
+        console.IsVisible = true;
+        Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Console);
+    }
+
     public void Dispose()
     {
         if (!Directory.Exists(_baseDirectory))
