@@ -11,6 +11,7 @@ public sealed class AppPaths : IAppPaths
     public string LogsDirectory { get; }
     public string SettingsDirectory { get; }
     public string SavesDirectory { get; }
+    public string EmulatorsDirectory { get; }
     public string DatabaseFilePath { get; }
     public string SettingsFilePath { get; }
 
@@ -27,6 +28,7 @@ public sealed class AppPaths : IAppPaths
         LogsDirectory = Path.Combine(baseDirectory, "Logs");
         SettingsDirectory = Path.Combine(baseDirectory, "Settings");
         SavesDirectory = Path.Combine(baseDirectory, "Saves");
+        EmulatorsDirectory = Path.Combine(baseDirectory, "Emulators");
         DatabaseFilePath = Path.Combine(DataDirectory, "library.db");
         SettingsFilePath = Path.Combine(SettingsDirectory, "settings.json");
     }
@@ -39,6 +41,7 @@ public sealed class AppPaths : IAppPaths
         Directory.CreateDirectory(LogsDirectory);
         Directory.CreateDirectory(SettingsDirectory);
         Directory.CreateDirectory(SavesDirectory);
+        Directory.CreateDirectory(EmulatorsDirectory);
     }
 
     /// <summary>

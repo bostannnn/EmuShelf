@@ -16,9 +16,13 @@ public interface IAppPaths
     string LogsDirectory { get; }
     string SettingsDirectory { get; }
     string SavesDirectory { get; }
+
+    /// <summary>Managed root for emulators EmuShelf installs itself, one <c>Emulators/&lt;id&gt;/</c> per emulator.</summary>
+    string EmulatorsDirectory { get; }
+
     string DatabaseFilePath { get; }
     string SettingsFilePath { get; }
 
-    /// <summary>Creates Data/Covers/Cache/Logs/Settings/Saves beside the executable if they don't already exist.</summary>
+    /// <summary>Creates Data/Covers/Cache/Logs/Settings/Saves/Emulators beside the executable if they don't already exist.</summary>
     void EnsureDirectoriesExist();
 }

@@ -14,5 +14,8 @@ public static class AzaharDefinition
         "azahar",
         "Azahar",
         ["3ds"],
-        "\"{GamePath}\"");
+        "\"{GamePath}\"")
+    {
+        ReleaseSource = EmulatorReleaseSources.Azahar,
+    };
 }

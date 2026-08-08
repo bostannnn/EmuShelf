@@ -112,6 +112,7 @@ public sealed class HotkeyCoordinatorTests : IDisposable
         public string LogsDirectory => settingsDirectory;
         public string SettingsDirectory => settingsDirectory;
         public string SavesDirectory => settingsDirectory;
+        public string EmulatorsDirectory => settingsDirectory;
         public string DatabaseFilePath => Path.Combine(settingsDirectory, "library.db");
         public string SettingsFilePath => Path.Combine(settingsDirectory, "settings.json");
 

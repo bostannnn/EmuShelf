@@ -368,6 +368,7 @@ public sealed class TexturePackRegressionTests : IDisposable
         public string LogsDirectory => "/app/Logs";
         public string SettingsDirectory => "/app/Settings";
         public string SavesDirectory => "/app/Saves";
+        public string EmulatorsDirectory => "/app/Emulators";
         public string DatabaseFilePath => "/app/Data/library.db";
         public string SettingsFilePath => "/app/Settings/settings.json";
         public void EnsureDirectoriesExist() { }
