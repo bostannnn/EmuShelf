@@ -1265,6 +1265,44 @@ public partial class MainWindow : Window
             viewModel.ListViewportWidth = e.NewSize.Width;
     }
 
+    // Column resize (M40): dragging a header cell's right-edge grip sets that fixed column's width;
+    // the view model absorbs the change into the flex column and persists it. View wiring only.
+    private LibraryColumn? _resizingColumn;
+    private double _resizeStartX;
+    private double _resizeStartWidth;
+
+    private void OnColumnResizePressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Control { DataContext: LibraryColumn column })
+            return;
+
+        _resizingColumn = column;
+        _resizeStartX = e.GetPosition(this).X;
+        _resizeStartWidth = column.Width;
+        e.Pointer.Capture((Control)sender);
+        e.Handled = true;
+    }
+
+    private void OnColumnResizeMoved(object? sender, PointerEventArgs e)
+    {
+        if (_resizingColumn is not { } column || !ReferenceEquals(e.Pointer.Captured, sender))
+            return;
+
+        var delta = e.GetPosition(this).X - _resizeStartX;
+        column.Width = Math.Max(column.MinWidth, _resizeStartWidth + delta);
+        e.Handled = true;
+    }
+
+    private void OnColumnResizeReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_resizingColumn is null)
+            return;
+
+        _resizingColumn = null;
+        e.Pointer.Capture(null);
+        e.Handled = true;
+    }
+
     private void OnGamepadLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)

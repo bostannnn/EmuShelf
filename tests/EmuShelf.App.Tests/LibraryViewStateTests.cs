@@ -379,6 +379,24 @@ public class LibraryViewStateTests : IDisposable
         Assert.Contains(viewModel.VisibleColumns, column => column.Key == LibraryColumnKey.Console);
     }
 
+    [AvaloniaFact]
+    public void ResizingAFixedColumnAdjustsTheFlexColumnAndPersists()
+    {
+        var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
+        viewModel.ListViewportWidth = 1000; // enough room that the flex column is above its minimum
+        var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
+        var title = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Title);
+        var flexBefore = title.Width;
+
+        console.Width += 100;
+
+        Assert.True(title.Width < flexBefore, "the flex column should shrink to absorb the wider column");
+        Assert.Equal(
+            console.Width,
+            viewModel.BuildLibraryViewState().ListColumns
+                .Single(setting => setting.Key == nameof(LibraryColumnKey.Console)).Width);
+    }
+
     public void Dispose()
     {
         if (!Directory.Exists(_baseDirectory))

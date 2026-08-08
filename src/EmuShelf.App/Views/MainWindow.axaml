@@ -1488,15 +1488,24 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryColumn">
-                                <Button Classes="sort-header" Width="{Binding Width}"
-                                        IsHitTestVisible="{Binding IsSortable}"
-                                        Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).SortByCommand}"
-                                        CommandParameter="{Binding SortColumn}">
-                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock Text="{Binding Header}" />
-                                        <TextBlock Text="{Binding SortGlyph}" />
-                                    </StackPanel>
-                                </Button>
+                                <Grid Width="{Binding Width}" ColumnDefinitions="*,6">
+                                    <Button Grid.Column="0" Classes="sort-header"
+                                            IsHitTestVisible="{Binding IsSortable}"
+                                            Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).SortByCommand}"
+                                            CommandParameter="{Binding SortColumn}">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="{Binding Header}" />
+                                            <TextBlock Text="{Binding SortGlyph}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <!-- Drag the right edge to resize a fixed column; the flex Title
+                                         column has no grip (its width is always computed). -->
+                                    <Border Grid.Column="1" Background="Transparent"
+                                            Cursor="SizeWestEast" IsVisible="{Binding !IsFlex}"
+                                            PointerPressed="OnColumnResizePressed"
+                                            PointerMoved="OnColumnResizeMoved"
+                                            PointerReleased="OnColumnResizeReleased" />
+                                </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

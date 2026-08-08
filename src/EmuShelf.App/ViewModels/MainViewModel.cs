@@ -329,6 +329,18 @@ public partial class MainViewModel : ViewModelBase
 
     private void OnLibraryColumnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // Resizing a fixed column shrinks/grows the flex column so the row still fills exactly; the
+        // flex column's own width is the computed result, so ignore it to avoid recomputing forever.
+        if (e.PropertyName == nameof(LibraryColumn.Width))
+        {
+            if (sender is LibraryColumn { IsFlex: false })
+            {
+                RecomputeColumnWidths();
+                ScheduleLibraryViewStateSave();
+            }
+            return;
+        }
+
         if (e.PropertyName != nameof(LibraryColumn.IsVisible))
             return;
 
