@@ -83,13 +83,10 @@ public partial class MainWindow : Window
 
     private void OnLibraryScrollChanged(object? sender, ScrollChangedEventArgs e)
     {
-        if (LibraryHeader.RenderTransform is not TranslateTransform headerTransform)
-            return;
-
-        var scroller = e.Source as ScrollViewer
+        var rows = e.Source as ScrollViewer
             ?? (_libraryListScroller ??= LibraryList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault());
-        if (scroller is not null)
-            headerTransform.X = -scroller.Offset.X;
+        if (rows is not null && LibraryHeaderScroller.Offset.X != rows.Offset.X)
+            LibraryHeaderScroller.Offset = LibraryHeaderScroller.Offset.WithX(rows.Offset.X);
     }
 
     protected override void OnClosed(EventArgs e)

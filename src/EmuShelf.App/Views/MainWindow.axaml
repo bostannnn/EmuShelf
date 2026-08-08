@@ -1462,15 +1462,17 @@
                 <!-- Header and rows both bind to the same ordered VisibleColumns collection, so a
                      hide/reorder/resize is a data change and the two can never disagree (M40). -->
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
-                        BorderThickness="0,0,0,1" Padding="12,0">
+                        BorderThickness="0,0,0,1" Padding="12,0" ClipToBounds="True">
+                    <!-- The header lives in its own scrollbar-hidden ScrollViewer whose offset is kept
+                         in sync with the rows' horizontal scroll in code-behind (OnLibraryScrollChanged).
+                         Using a ScrollViewer (not a RenderTransform) keeps the clip stationary, so the
+                         header can't bleed left over the sidebar when scrolled (M40). -->
+                    <ScrollViewer x:Name="LibraryHeaderScroller"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled">
                     <ItemsControl x:Name="LibraryHeader" Classes="list-header"
                                   ItemsSource="{Binding VisibleColumns}"
-                                  VerticalAlignment="Stretch" ClipToBounds="True">
-                        <!-- Kept horizontally in sync with the rows' scroll offset in code-behind so the
-                             header tracks the columns when the table scrolls sideways (M40). -->
-                        <ItemsControl.RenderTransform>
-                            <TranslateTransform />
-                        </ItemsControl.RenderTransform>
+                                  VerticalAlignment="Stretch">
                         <!-- Right-click the header for the iTunes-style column picker: a checklist of
                              every column (Title stays disabled so the table always keeps it). -->
                         <ItemsControl.ContextMenu>
@@ -1515,6 +1517,7 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </ScrollViewer>
                 </Border>
                 <ListBox x:Name="LibraryList" Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
                          Background="Transparent" BorderThickness="0"
