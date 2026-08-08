@@ -71,6 +71,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IInterfaceModeService? _interfaceModeService;
     private readonly IApplicationLifetimeService? _applicationLifetime;
     private readonly AppUpdateCoordinator? _updates;
+    private readonly EmulatorInstallCoordinator? _emulatorInstalls;
     private readonly IOnScreenKeyboardService _onScreenKeyboard;
     private readonly IGameMetadataService _metadataService;
     private readonly IGameMetadataStore? _metadataStore;
@@ -906,7 +907,8 @@ public partial class MainViewModel : ViewModelBase
         IAppPaths? appPaths = null,
         AppUpdateCoordinator? updates = null,
         IFileRevealService? fileReveal = null,
-        HotkeyCoordinator? hotkeys = null)
+        HotkeyCoordinator? hotkeys = null,
+        EmulatorInstallCoordinator? emulatorInstalls = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
         _updates = updates;
@@ -967,6 +969,7 @@ public partial class MainViewModel : ViewModelBase
         _cloudSaveSync = cloudSaveSync;
         _texturePacks = texturePacks;
         _hotkeys = hotkeys;
+        _emulatorInstalls = emulatorInstalls;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
         // Build the theme choices before assigning CurrentTheme: the generated setter fires
@@ -4974,7 +4977,8 @@ public partial class MainViewModel : ViewModelBase
                 AmbientThemeFromArtwork,
                 SetAmbientThemeFromArtworkAsync,
                 Updates,
-                CreateHotkeySettingsContext);
+                CreateHotkeySettingsContext,
+                _emulatorInstalls?.CreateSettingsContext());
         }
         catch (Exception ex)
         {
@@ -5014,7 +5018,8 @@ public partial class MainViewModel : ViewModelBase
             setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync,
             profiles: profiles,
             updates: Updates,
-            libraryFolders: libraryFolders);
+            libraryFolders: libraryFolders,
+            emulatorManager: _emulatorInstalls?.CreateSettingsContext());
     }
 
     private Task SetAmbientThemeFromArtworkAsync(bool value)

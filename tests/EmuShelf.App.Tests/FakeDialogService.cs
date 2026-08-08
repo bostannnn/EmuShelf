@@ -102,7 +102,8 @@ internal sealed class FakeDialogService : IDialogService
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         AppUpdateCoordinator? updates = null,
-        Func<HotkeySettingsContext?>? createHotkeyContext = null)
+        Func<HotkeySettingsContext?>? createHotkeyContext = null,
+        EmulatorManagerSettingsContext? emulatorManager = null)
     {
         SettingsShown++;
         TexturePacks = texturePacks;

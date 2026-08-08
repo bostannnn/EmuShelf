@@ -278,7 +278,8 @@ public sealed class DialogService : IDialogService
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         AppUpdateCoordinator? updates = null,
-        Func<HotkeySettingsContext?>? createHotkeyContext = null)
+        Func<HotkeySettingsContext?>? createHotkeyContext = null,
+        EmulatorManagerSettingsContext? emulatorManager = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -313,7 +314,8 @@ public sealed class DialogService : IDialogService
             setAmbientThemeFromArtwork,
             profiles,
             updates,
-            libraryFolders);
+            libraryFolders,
+            emulatorManager);
         var dialog = new EmulatorSettingsWindow { DataContext = viewModel };
         viewModel.CloseRequested += saved => dialog.Close(saved);
 

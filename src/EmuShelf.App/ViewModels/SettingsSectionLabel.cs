@@ -11,6 +11,7 @@ public static class SettingsSectionLabel
     public static FuncValueConverter<SettingsSection, string> Converter { get; } = new(section => section switch
     {
         SettingsSection.TexturePacks => "Texture Packs",
+        SettingsSection.EmulatorManager => "Install Emulators",
         _ => section.ToString(),
     });
 }

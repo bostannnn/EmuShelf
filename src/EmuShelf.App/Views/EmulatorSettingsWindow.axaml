@@ -215,6 +215,53 @@
                 </Border>
                     </StackPanel>
 
+                    <StackPanel IsVisible="{Binding IsEmulatorManagerSection}" Spacing="12">
+                        <Border Classes="settings-card">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="INSTALL EMULATORS" Classes="section-eyebrow" />
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                           Text="Download the emulators EmuShelf launches, or update ones it installed. Installs go into a portable Emulators folder beside EmuShelf and are wired up automatically for systems you haven't configured. Emulators you set up yourself are left untouched." />
+                            </StackPanel>
+                        </Border>
+                        <ItemsControl ItemsSource="{Binding EmulatorInstallRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:EmulatorInstallRowViewModel">
+                                    <Border Classes="settings-card" Margin="0,0,0,10">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                            <StackPanel Grid.Column="0" Spacing="6" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding EmulatorName}"
+                                                           FontWeight="SemiBold" FontSize="14"
+                                                           Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                                                <TextBlock Text="{Binding StatusText}"
+                                                           TextWrapping="Wrap" FontSize="12"
+                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                <ProgressBar IsVisible="{Binding IsBusy}"
+                                                             IsIndeterminate="{Binding IsProgressIndeterminate}"
+                                                             Minimum="0" Maximum="100"
+                                                             Value="{Binding DownloadPercent}" Height="6" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                        Spacing="8" VerticalAlignment="Center">
+                                                <Button Content="Open download page"
+                                                        IsVisible="{Binding HasDownloadPage}"
+                                                        Command="{Binding OpenDownloadPageCommand}" />
+                                                <Button Content="Update" Classes="accent"
+                                                        IsVisible="{Binding CanUpdate}"
+                                                        IsEnabled="{Binding !IsBusy}"
+                                                        Command="{Binding UpdateCommand}" />
+                                                <Button Content="Install" Classes="accent"
+                                                        IsVisible="{Binding CanInstall}"
+                                                        IsEnabled="{Binding !IsBusy}"
+                                                        Command="{Binding InstallCommand}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
                     <StackPanel IsVisible="{Binding IsEmulatorsSection}">
                 <ItemsControl ItemsSource="{Binding Rows}">
                     <ItemsControl.ItemTemplate>
