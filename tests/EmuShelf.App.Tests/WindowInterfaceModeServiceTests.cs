@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Settings;
 
@@ -101,6 +102,34 @@ public class WindowInterfaceModeServiceTests
 
         await service.SetModeAsync(InterfaceMode.Desktop);
         Assert.Equal(WindowState.Normal, window.WindowState);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadModeHidesTheCursorAndDesktopRestoresIt()
+    {
+        // Gamepad is a controller/TV surface: hide the pointer so an accidental trackpad bump can't
+        // park a visible cursor over the shell. Desktop must bring the normal arrow back.
+        var settings = new MemorySettingsService
+        {
+            Current = new AppSettings { InterfaceMode = InterfaceMode.Gamepad },
+        };
+        var window = new Window();
+        var service = new WindowInterfaceModeService(
+            settings,
+            settings.Current,
+            window,
+            interfaceModeOverride: null);
+
+        var hidden = window.Cursor;
+        Assert.NotNull(hidden);
+        Assert.NotSame(Cursor.Default, hidden);
+
+        await service.SetModeAsync(InterfaceMode.Desktop);
+        Assert.Same(Cursor.Default, window.Cursor);
+
+        // Back to Gamepad: the same shared hidden cursor is reused, not a fresh allocation per switch.
+        await service.SetModeAsync(InterfaceMode.Gamepad);
+        Assert.Same(hidden, window.Cursor);
     }
 
     private sealed class MemorySettingsService : ISettingsService

@@ -18,7 +18,6 @@ public partial class MainWindow : Window
 {
     private MainViewModel? _gamepadViewModel;
     private GamepadScraperViewModel? _gamepadScraper;
-    private Point? _lastGamepadPointerPosition;
     private int _requestedSettingsTextEntryRevision = -1;
     // False until the sliding rail pill has been snapped onto the active tab once; the first placement
     // must not animate in from the left edge.
@@ -700,20 +699,6 @@ public partial class MainWindow : Window
     private static void OnGamepadAchievementDataContextChanged(object? sender, EventArgs e) =>
         RequestGamepadAchievementBadge(sender);
 
-    private void OnGamepadAchievementPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        if (sender is not Control { DataContext: AchievementRowViewModel achievement } ||
-            DataContext is not MainViewModel viewModel ||
-            e.GetCurrentPoint(this).Properties.PointerUpdateKind != PointerUpdateKind.LeftButtonPressed)
-        {
-            return;
-        }
-
-        viewModel.NotifyGamepadPointerInput();
-        viewModel.FocusGamepadAchievementCommand.Execute(achievement);
-        e.Handled = true;
-    }
-
     private static void RequestGamepadAchievementBadge(object? sender)
     {
         if (sender is Control { DataContext: AchievementRowViewModel row } && row.Badge is null)
@@ -953,22 +938,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnGamepadPointerMoved(object? sender, PointerEventArgs e)
-    {
-        if (DataContext is not MainViewModel { IsGamepadMode: true } viewModel)
-            return;
-
-        var position = e.GetPosition(this);
-        if (_lastGamepadPointerPosition is { } previous)
-        {
-            var delta = position - previous;
-            if (delta.X * delta.X + delta.Y * delta.Y >= 16)
-                viewModel.NotifyGamepadPointerInput();
-        }
-
-        _lastGamepadPointerPosition = position;
-    }
-
     private void CloseSearch()
     {
         if (DataContext is not MainViewModel viewModel)
@@ -992,6 +961,8 @@ public partial class MainWindow : Window
 
     private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        // Gamepad mode swallows the mouse by making the whole gamepad surface non-hit-testable (see
+        // GamepadRoot in the XAML), so these desktop-only pointer handlers never see events there.
         if (DataContext is not MainViewModel { IsGamepadMode: false } viewModel ||
             e.Source is not Control source)
             return;

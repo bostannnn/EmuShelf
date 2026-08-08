@@ -1837,19 +1837,6 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void GamepadInputModalitySuppressesPointerStateUntilThePointerMovesAgain()
-    {
-        var vm = CreateViewModel();
-        vm.IsGamepadMode = true;
-
-        vm.NotifyGamepadPointerInput();
-        Assert.False(vm.IsGamepadControllerInputActive);
-
-        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
-        Assert.True(vm.IsGamepadControllerInputActive);
-    }
-
-    [AvaloniaFact]
     public async Task GamepadLaunchSession_ConsumesCancelUntilTheFrontendHasReturned()
     {
         var path = Path.Combine(_baseDirectory, "GamepadReturn.cue");
