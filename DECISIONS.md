@@ -5319,3 +5319,48 @@ built once per scope build on the load worker, never a per-row `GetDetails` on t
 details store is per-game today, and a naive column binding would reintroduce the exact N+1 the M11
 performance work removed. The cloud-save-status column is deferred behind M29 (battery/memory-card
 sync) and the save-state variant behind M33.
+
+## 2026-08-09 — M40 hotkey applier: Steam Deck fixes from real-hardware testing
+
+First real-hardware run of the M40 keyboard-hotkey applier (on a Steam Deck) surfaced four issues; the
+per-emulator token verification had been done against Windows configs on `G:` only.
+
+- **Dolphin — Hotkeys.ini absent.** Dolphin writes `Config/Hotkeys.ini` only once a hotkey is
+  customised in its UI (not merely from playing games), so even a long-used install can lack it, and the
+  configurator reported `ConfigurationNotFound`. Decision: a missing file is **not** an error — build
+  from an empty document and **create** `Config/Hotkeys.ini` with a `[Hotkeys]` section Dolphin reads on
+  next launch. `HotkeyConfiguratorBase.Apply` now ensures the target directory exists before writing.
+  **Guard against the wrong-folder case:** creating is only safe if we resolved Dolphin's *real* user
+  directory, so it creates the file only when a `Config/Dolphin.ini` is present there (Dolphin always
+  writes that on first run); if neither file exists the folder isn't Dolphin's user dir, so it reports
+  `ConfigurationNotFound` with the path rather than silently writing a file Dolphin never reads (which
+  would look "Applied" but do nothing). (Revert of a file EmuShelf created leaves it in place — there is
+  no pre-existing backup to restore; acceptable, the created file holds a valid default scheme.)
+- **RetroArch — F8 collides with screenshot, and quit needs two presses.** The M40 note claimed "F8 is
+  free of conflicts across all emulators checked"; that was **wrong for RetroArch**, whose built-in
+  screenshot key is also `f8` (so a single F8 screenshotted *and* closed), and whose `quit_press_twice`
+  defaults to `true` (so close needed two presses). A survey of all seven confirmed F8 is the least-bad
+  uniform close key and no key is both unbound everywhere *and* bindable on Dolphin across
+  Windows/Linux/macOS (Dolphin's macOS backend has no Insert/nav keys at all), so **F8 stays** and the
+  clash is cleared in-config: neutralise `input_screenshot` even when it is absent (RetroArch falls back
+  to the internal `f8` default) unless the user moved it off F8, and set `quit_press_twice=false` so a
+  single deliberate Steam Input combo quits. RetroArch is the *only* emulator needing this — PCSX2's
+  modern Qt build ships no default hotkey keys (so nothing is on F8 unless the user set it, which the
+  overwrite policy then clears), DuckStation's screenshot defaults to F10, and Dolphin's to F9 (its F8
+  load-slot bareword is already cleared). All backed up and revertible.
+- **DuckStation — `SettingsVersion 'unknown'` on the Deck (direct AppImage; upstream dropped the Linux
+  Flatpak).** The version gate refused because the `settings.ini` it read had no `[Main] SettingsVersion`.
+  The gate exists to avoid writing into an unknown format, but refusing a *missing* version is too strict:
+  the file was found at DuckStation's own config path, the `Keyboard/<Key>` token format is stable across
+  versions, and the emulator rewrites the version itself. Decision: the gate now refuses only a
+  *different* explicit version (a real format change); a *missing* one is accepted as long as the
+  version's section (`[Main]`) is present — otherwise it's treated as a stub and refused with a clear
+  message. Diagnostics also name the exact file read. This self-heals newer AppImage/fork builds without
+  the user touching anything.
+- **"Bundled Steam Input layout" was never an importable file.** The Settings summary said "Import the
+  bundled Steam Input layout", but Steam Input layouts are set up per game inside Steam and cannot be
+  dropped in as files by a third-party app (see `docs/steam-input-preset.md`). Decision: correct the
+  wording (no file to import) and **surface the controller mapping in-app** — a "Controller setup (Steam
+  Input)" card in the Hotkeys settings section lists Select+face-button → key/action and the Steam Deck
+  steps, so the guidance no longer lives only in a repo markdown file a Deck user never sees.
+

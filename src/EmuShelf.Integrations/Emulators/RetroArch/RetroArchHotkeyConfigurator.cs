@@ -11,6 +11,14 @@ namespace EmuShelf.Integrations.Emulators.RetroArch;
 /// keyboard keys are the only hotkeys. Keyboard keys are the same on every driver, so — unlike the old
 /// raw joypad button numbers — nothing needs resolving.
 /// </summary>
+/// <remarks>
+/// Two RetroArch defaults collide with a bare apply and are corrected here: its built-in screenshot key
+/// is also <c>f8</c> (the scheme's close key), so a single F8 would screenshot as well as close —
+/// <c>input_screenshot</c> is pointed at <c>nul</c> (even when absent, since RetroArch falls back to the
+/// internal <c>f8</c> default) unless the user already moved it off F8. And <c>quit_press_twice</c>
+/// defaults to <c>true</c>, so exit needs two presses; it is set to <c>false</c> so a single close
+/// (behind a deliberate Steam Input combo) quits.
+/// </remarks>
 public sealed class RetroArchHotkeyConfigurator : HotkeyConfiguratorBase
 {
     /// <summary>The <c>input_*</c> cfg key each action drives; the quoted key value comes from the profile.</summary>
@@ -66,8 +74,21 @@ public sealed class RetroArchHotkeyConfigurator : HotkeyConfiguratorBase
             bindings.Add(new HotkeyBindingResult(action, HotkeyBindingStatus.Bound, key.Label()));
         }
 
+        // RetroArch's built-in screenshot key is also f8 — the same key we use for close — so a single
+        // F8 would screenshot as well as close. It is the only stock hotkey that collides (our other
+        // keys are RetroArch's own defaults for the same actions), so clear it specifically rather than
+        // scanning every input_* key, which would risk unbinding player game-input keys. It even falls
+        // back to the internal f8 default when absent, so neutralise it unless the user moved it off F8.
+        var closeValue = $"\"{profile[HotkeyAction.CloseGame].Label().ToLowerInvariant()}\"";
+        var screenshot = document.GetValue(null, "input_screenshot");
+        if (screenshot is null || string.Equals(screenshot, closeValue, StringComparison.Ordinal))
+            SetCfg(document, fileName, "input_screenshot", "nul", changes);
+
         // Rewind must be enabled or its hotkey is inert.
         SetCfg(document, fileName, "rewind_enable", "true", changes);
+
+        // Exit defaults to needing two presses; a single deliberate close should quit.
+        SetCfg(document, fileName, "quit_press_twice", "false", changes);
 
         // Clear any controller hotkey buttons an earlier controller-scheme version wrote, so a stale
         // joypad number can't fire an action alongside the keyboard keys.

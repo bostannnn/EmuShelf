@@ -1505,6 +1505,30 @@ per-emulator tokens are in `DECISIONS.md` (2026-08-08) and `docs/hotkey-keyboard
       injected input, libretro #16438) — testable with zero code against RetroArch's existing keyboard
       defaults before relying on the preset for RetroArch.
 
+### Phase 5 — Steam Deck real-hardware fixes (2026-08-09)
+
+First Steam Deck run surfaced four issues; details in `DECISIONS.md` (2026-08-09).
+
+- [x] **Dolphin**: create `Config/Hotkeys.ini` when it is absent (Dolphin writes it lazily, so a fresh
+      install had none and apply reported not-found). `HotkeyConfiguratorBase.Apply` now creates the
+      target directory before writing a planned-but-not-yet-existing file.
+- [x] **RetroArch**: F8 (close) collided with RetroArch's default `input_screenshot` and `quit_press_twice`
+      defaulted true, so Select+Start screenshotted and needed two presses. Neutralise `input_screenshot`
+      (even when absent → internal f8 default) unless moved off F8, and set `quit_press_twice=false`. A key
+      survey confirmed F8 stays (no key is unbound everywhere *and* bindable on Dolphin/macOS); RetroArch
+      is the only emulator with an *internal* F8 screenshot default, so it's the only one needing this —
+      PCSX2 ships no default hotkey keys, DuckStation's screenshot is F10, Dolphin's is F9.
+- [x] **DuckStation**: the `SettingsVersion` gate now refuses only a *different* explicit version; a
+      *missing* one is accepted when the `[Main]` section is present (newer AppImage/fork builds omit it),
+      which fixes the Steam Deck `unknown` refusal. Diagnostics also name the exact file read.
+- [x] Correct the "Import the bundled Steam Input layout" wording (no importable file exists) and surface
+      the controller mapping + Steam Deck steps in the Hotkeys settings section, not only in a repo doc.
+- [x] Decided against an EmuShelf-generated Steam Input `.vdf`: the mechanism (drop into
+      `controller_base/templates/`) works, but the hold-modifier/action-layer config is undocumented and
+      unverifiable without Steam's own exporter. Documented the reliable path instead — build the layout
+      once, **Export Config** in Steam (Steam-generated template), and reuse it across every emulator
+      (`docs/steam-input-preset.md`).
+
 ### Deferred (recorded so it is not re-litigated)
 
 - The original controller-chord implementation was abandoned as fundamentally controller/driver-specific

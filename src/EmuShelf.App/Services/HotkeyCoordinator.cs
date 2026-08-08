@@ -94,9 +94,10 @@ public sealed class HotkeyCoordinator
     /// <summary>A human summary of the scheme, for the Settings header.</summary>
     public string SchemeSummary =>
         "EmuShelf writes a uniform keyboard scheme into each emulator's own settings: R rewinds, L " +
-        "fast-forwards, F2 saves state, F4 loads state, and F8 closes the game. Import the bundled " +
-        "Steam Input layout to drive these from a controller (hold Select and press a face button). " +
-        "Changes take effect the next time you open the emulator.";
+        "fast-forwards, F2 saves state, F4 loads state, and F8 closes the game. To drive these from a " +
+        "controller, set up a Steam Input layout once (there is no file to import — Steam Input layouts " +
+        "can't be dropped in) using the controller mapping below. Changes take effect the next time you " +
+        "open the emulator.";
 
     /// <summary>The delegate context for the Settings view model. Reads the config files, so call it off the UI thread.</summary>
     public HotkeySettingsContext CreateSettingsContext() =>

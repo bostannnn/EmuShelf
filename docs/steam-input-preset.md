@@ -43,7 +43,25 @@ to apply.
 Steam Input is already in the path for anything launched from your library, so you only need the layout.
 Add each emulator as a non-Steam game if it is not already there, then apply the layout above.
 
-## ⚠️ RetroArch — verify before relying on it
+## Build it once, reuse it on every emulator
+
+You do not have to recreate the layout per emulator. After you build it once, use Steam's own
+**Export Config** (in the layout editor): Steam saves it as a template under
+`<Steam>/controller_base/templates/` — a Steam-generated, guaranteed-valid file — and it then appears in
+the template picker for every game. For each other emulator, just pick that template instead of editing a
+layout from scratch. This is the reliable way to "share" one preset across all of them; EmuShelf does not
+ship a `.vdf` because a hand-authored Steam Input config (hold-modifier action layers emitting key
+presses) is undocumented, version-sensitive, and cannot be verified without Steam's own exporter.
+
+## RetroArch — F8 conflicts EmuShelf clears for you
+
+RetroArch's built-in **screenshot** key is also `f8` — the same key this scheme uses to close — and its
+`quit_press_twice` defaults to **true**, so a bare setup would make Select + Start take a screenshot and
+need two presses to quit. When you apply the scheme, EmuShelf fixes both in `retroarch.cfg`: it unbinds
+the screenshot key off F8 (`input_screenshot = "nul"`) and sets `quit_press_twice = "false"`, so a single
+Select + Start closes the game. Both changes are backed up and revertible.
+
+## ⚠️ RetroArch — verify injected input before relying on it
 
 RetroArch reads controllers through raw input and is known to **ignore keystrokes injected by other
 software** (libretro #16438). Steam Input's emulated keystrokes are *usually* delivered as real HID
