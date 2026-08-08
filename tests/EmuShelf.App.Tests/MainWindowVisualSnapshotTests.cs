@@ -19,6 +19,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Hotkeys;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
@@ -2605,6 +2606,95 @@ public class MainWindowVisualSnapshotTests
                 using var output = File.Create(Path.Combine(
                     outputDirectory,
                     "emushelf-m8-settings-dark.png"));
+                frame.Save(output, PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task RenderHotkeysMatrixInDarkTheme()
+    {
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+
+        static HotkeyActionLine Line(HotkeyAction action, bool available)
+        {
+            var key = action switch
+            {
+                HotkeyAction.Rewind => "R",
+                HotkeyAction.FastForward => "L",
+                HotkeyAction.SaveState => "F2",
+                HotkeyAction.LoadState => "F4",
+                _ => "F8",
+            };
+            return new HotkeyActionLine(action, action.ToString(),
+                available ? key : "Not available — this emulator has no such feature.", available);
+        }
+
+        static HotkeyEmulatorSnapshot Emu(string id, string name, string status, HotkeyRowTone tone, params HotkeyAction[] supported)
+        {
+            HotkeyAction[] all = [HotkeyAction.Rewind, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame];
+            var lines = all.Select(a => Line(a, supported.Contains(a))).ToArray();
+            return new HotkeyEmulatorSnapshot(id, name, lines, status, tone, CanOperate: true);
+        }
+
+        HotkeyAction[] every = [HotkeyAction.Rewind, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame];
+        var emulators = new[]
+        {
+            Emu("duckstation", "DuckStation", "Applied. Takes effect next time you open DuckStation.", HotkeyRowTone.Success, every),
+            Emu("pcsx2", "PCSX2", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame),
+            Emu("dolphin", "Dolphin", "Already applied.", HotkeyRowTone.Success, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame),
+            Emu("ppsspp", "PPSSPP", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, every),
+            Emu("retroarch", "RetroArch", "Applied. Takes effect next time you open RetroArch.", HotkeyRowTone.Success, every),
+            Emu("azahar", "Azahar", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame),
+            Emu("rpcs3", "RPCS3", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, HotkeyAction.CloseGame),
+        };
+
+        var hotkeys = new HotkeySettingsContext(
+            emulators,
+            (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
+            (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
+            (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
+            "EmuShelf writes a uniform keyboard scheme into each emulator: R rewinds, L fast-forwards, F2 saves, F4 loads, and F8 closes the game. Import the bundled Steam Input layout to drive these from a controller.");
+
+        var viewModel = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(system => system.Id, _ => (EmulatorConfiguration?)null, StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            hotkeys: hotkeys)
+        {
+            SelectedSection = SettingsSection.Hotkeys,
+        };
+
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new EmulatorSettingsWindow
+        {
+            DataContext = viewModel,
+            Width = 880,
+            Height = 760,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Task.Delay(50);
+            using (var warmupFrame = window.CaptureRenderedFrame())
+            {
+                Assert.NotNull(warmupFrame);
+            }
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            using var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            if (outputDirectory is not null)
+            {
+                Directory.CreateDirectory(outputDirectory);
+                using var output = File.Create(Path.Combine(outputDirectory, "emushelf-hotkeys-matrix-dark.png"));
                 frame.Save(output, PngBitmapEncoderOptions.Default);
             }
         }

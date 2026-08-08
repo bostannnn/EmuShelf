@@ -17,10 +17,11 @@ public enum HotkeyRowTone
     Error,
 }
 
-/// <summary>One action's line in an emulator's hotkey card.</summary>
-public sealed record HotkeyActionLine(string Label, string Detail, bool IsAvailable)
+/// <summary>One action's line in an emulator's hotkey card / cell in the settings matrix.</summary>
+public sealed record HotkeyActionLine(HotkeyAction Action, string Label, string Detail, bool IsAvailable)
 {
-    public string Display => $"{Label}  —  {Detail}";
+    /// <summary>Matrix-cell glyph: a check when the action is available here, an em dash when not.</summary>
+    public string Mark => IsAvailable ? "✓" : "—";
 }
 
 /// <summary>An emulator's hotkey state as Settings renders it: the per-action grid plus a status line.</summary>
@@ -204,13 +205,13 @@ public sealed class HotkeyCoordinator
 
     private HotkeyActionLine ToLine(HotkeyBindingResult binding) => binding.Status switch
     {
-        HotkeyBindingStatus.Bound => new HotkeyActionLine(ActionLabels[binding.Action], binding.Key, IsAvailable: true),
-        _ => new HotkeyActionLine(ActionLabels[binding.Action], $"Not available — {binding.Detail}", IsAvailable: false),
+        HotkeyBindingStatus.Bound => new HotkeyActionLine(binding.Action, ActionLabels[binding.Action], binding.Key, IsAvailable: true),
+        _ => new HotkeyActionLine(binding.Action, ActionLabels[binding.Action], $"Not available — {binding.Detail}", IsAvailable: false),
     };
 
     private HotkeyActionLine ToLine(HotkeyActionSupport support) => support.IsSupported
-        ? new HotkeyActionLine(ActionLabels[support.Action], _profile[support.Action].Label(), IsAvailable: true)
-        : new HotkeyActionLine(ActionLabels[support.Action], $"Not available — {support.Reason}", IsAvailable: false);
+        ? new HotkeyActionLine(support.Action, ActionLabels[support.Action], _profile[support.Action].Label(), IsAvailable: true)
+        : new HotkeyActionLine(support.Action, ActionLabels[support.Action], $"Not available — {support.Reason}", IsAvailable: false);
 
     private static (string Text, HotkeyRowTone Tone) DescribeStatus(string name, HotkeyApplyResult result, Operation operation)
     {
