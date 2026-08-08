@@ -26,6 +26,16 @@ public sealed record RetroArchCore(string FileName, string? Name)
         ["genesis_plus_gx_wide"] = "Genesis Plus GX Wide",
         ["picodrive"] = "PicoDrive",
         ["snes9x"] = "Snes9x",
+        ["snes9x2010"] = "Snes9x 2010",
+        // bsnes and its variants are popular SNES cores that were missing from this fallback table,
+        // so on installs where the info file below cannot be read (a Flatpak RetroArch, a bare core)
+        // their save-state/save folder could not be named. The info entry's corename remains
+        // authoritative and is read first; these only stand in when it is unavailable.
+        ["bsnes"] = "bsnes",
+        ["bsnes_mercury_accuracy"] = "bsnes-mercury Accuracy",
+        ["bsnes_mercury_balanced"] = "bsnes-mercury Balanced",
+        ["bsnes_mercury_performance"] = "bsnes-mercury Performance",
+        ["bsnes_hd_beta"] = "bsnes-hd beta",
         ["mgba"] = "mGBA",
         ["vbam"] = "VBA-M",
         ["melondsds"] = "melonDS DS",
@@ -47,7 +57,13 @@ public sealed record RetroArchCore(string FileName, string? Name)
     };
 
     /// <summary>Identifies the configured core, reading RetroArch's info entry when it is present.</summary>
-    public static RetroArchCore? ForCorePath(string? corePath, string? retroArchDirectory)
+    /// <param name="infoDirectories">
+    /// The <c>info</c> folders to search for the core's info entry, in precedence order. RetroArch
+    /// keeps one per install location (portable, Flatpak, Linux, macOS), so the caller supplies every
+    /// candidate rather than a single directory — a Flatpak install's entry lives nowhere near the
+    /// portable folder, and missing it leaves cores outside <see cref="KnownCoreNames"/> unnamed.
+    /// </param>
+    public static RetroArchCore? ForCorePath(string? corePath, IReadOnlyList<string> infoDirectories)
     {
         if (string.IsNullOrWhiteSpace(corePath))
             return null;
@@ -60,23 +76,33 @@ public sealed record RetroArchCore(string FileName, string? Name)
 
         return new RetroArchCore(
             fileName,
-            ReadCoreName(coreId, retroArchDirectory) ?? KnownCoreNames.GetValueOrDefault(coreId));
+            ReadCoreName(coreId, infoDirectories) ?? KnownCoreNames.GetValueOrDefault(coreId));
     }
 
     // RetroArch ships one info file per core, keyed by the same file name, whose corename is
-    // exactly the folder name it sorts saves into.
-    private static string? ReadCoreName(string coreId, string? retroArchDirectory)
+    // exactly the folder name it sorts saves into. The first candidate directory that holds the
+    // core's entry wins, so a portable info folder takes precedence over the user-profile one.
+    private static string? ReadCoreName(string coreId, IReadOnlyList<string> infoDirectories)
     {
-        if (string.IsNullOrWhiteSpace(retroArchDirectory))
-            return null;
+        foreach (var directory in infoDirectories)
+        {
+            if (string.IsNullOrWhiteSpace(directory))
+                continue;
+            if (ReadCoreNameFrom(Path.Combine(directory, coreId + "_libretro.info")) is { } name)
+                return name;
+        }
 
+        return null;
+    }
+
+    private static string? ReadCoreNameFrom(string infoPath)
+    {
         try
         {
-            var path = Path.Combine(retroArchDirectory, "info", coreId + "_libretro.info");
-            if (!File.Exists(path))
+            if (!File.Exists(infoPath))
                 return null;
 
-            foreach (var rawLine in File.ReadLines(path))
+            foreach (var rawLine in File.ReadLines(infoPath))
             {
                 var line = rawLine.Trim();
                 if (!line.StartsWith("corename", StringComparison.Ordinal))
@@ -169,7 +195,6 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         _systemId = systemId;
         _gameFileNames = gameFileNames;
         _installationDirectory = Path.GetFullPath(installationDirectory);
-        _core = RetroArchCore.ForCorePath(corePath, _installationDirectory);
         _directoryOverride = string.IsNullOrWhiteSpace(directoryOverride)
             ? null
             : Path.GetFullPath(directoryOverride);
@@ -187,6 +212,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         _isWindows = isWindows ?? OperatingSystem.IsWindows();
         _isMacOS = isMacOS ?? OperatingSystem.IsMacOS();
         _isFlatpak = isFlatpak;
+
+        // Resolved last: naming the core reads its info entry, whose folders depend on the platform
+        // and Flatpak flags set just above.
+        _core = RetroArchCore.ForCorePath(corePath, ResolveInfoDirectoryCandidates());
     }
 
     public string SystemId => _systemId;
@@ -392,6 +421,36 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             string.IsNullOrWhiteSpace(configured) || configured.Equals("default", StringComparison.OrdinalIgnoreCase)
                 ? Path.GetFullPath(fallback)
                 : ExpandPath(configured, configDirectory);
+    }
+
+    // RetroArch keeps core info files in an "info" folder beside its configuration, so this mirrors
+    // ResolveConfigPath's per-platform locations. Unlike that method it never throws for a missing
+    // home directory: naming the core is best-effort with a KnownCoreNames fallback, and must not
+    // fail construction. The portable folder comes first so a self-contained install wins.
+    private IReadOnlyList<string> ResolveInfoDirectoryCandidates()
+    {
+        var candidates = new List<string> { Path.Combine(_installationDirectory, "info") };
+        if (_isFlatpak)
+        {
+            if (!string.IsNullOrWhiteSpace(_homeDirectory))
+                candidates.Add(Path.Combine(
+                    _homeDirectory, ".var", "app", "org.libretro.RetroArch", "config", "retroarch", "info"));
+        }
+        else if (_isMacOS)
+        {
+            if (!string.IsNullOrWhiteSpace(_homeDirectory))
+                candidates.Add(Path.Combine(
+                    _homeDirectory, "Library", "Application Support", "RetroArch", "info"));
+        }
+        else if (!_isWindows)
+        {
+            if (_xdgConfigHome is not null)
+                candidates.Add(Path.Combine(_xdgConfigHome, "retroarch", "info"));
+            else if (!string.IsNullOrWhiteSpace(_homeDirectory))
+                candidates.Add(Path.Combine(_homeDirectory, ".config", "retroarch", "info"));
+        }
+
+        return candidates;
     }
 
     // RetroArch's own precedence: a configuration beside the executable is a portable install,

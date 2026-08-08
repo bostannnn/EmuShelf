@@ -281,6 +281,61 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         Assert.Contains("unknown_core_libretro.dll", exception.Message);
     }
 
+    [Fact]
+    public async Task SortedSaveStatesReadTheCoreNameFromAFlatpakInfoEntry()
+    {
+        // The Steam Deck report: a Flatpak RetroArch keeps its info files under the user profile,
+        // not beside EmuShelf's portable folder. When save states sort by core the folder is named
+        // after the core, so that info entry must be read — a core absent from the built-in fallback
+        // (Mesen-S here) otherwise loses its state folder and Settings reports it as unavailable.
+        var home = Path.Combine(BaseDirectory, "deck-home");
+        var installation = Path.Combine(BaseDirectory, "emushelf-portable-base");
+        Directory.CreateDirectory(installation);
+        var configDirectory = Path.Combine(
+            home, ".var", "app", "org.libretro.RetroArch", "config", "retroarch");
+        var states = Path.Combine(BaseDirectory, "deck-states");
+        Directory.CreateDirectory(configDirectory);
+        await File.WriteAllLinesAsync(
+            Path.Combine(configDirectory, "retroarch.cfg"),
+            [
+                $"savefile_directory = \"{Path.Combine(BaseDirectory, "deck-saves").Replace('\\', '/')}\"",
+                $"savestate_directory = \"{states.Replace('\\', '/')}\"",
+                "sort_savestates_enable = \"true\"",
+            ]);
+        var infoDirectory = Path.Combine(configDirectory, "info");
+        Directory.CreateDirectory(infoDirectory);
+        await File.WriteAllLinesAsync(
+            Path.Combine(infoDirectory, "mesen-s_libretro.info"),
+            ["display_name = \"Nintendo - SNES (Mesen-S)\"", "corename = \"Mesen-S\""]);
+
+        var provider = new RetroArchSaveLocationProvider(
+            "snes", "mesen-s_libretro.so", installation, homeDirectory: home,
+            isWindows: false, isMacOS: false, isFlatpak: true);
+
+        Assert.Equal(Path.Combine(states, "Mesen-S"), (await provider.GetContentDirectoriesAsync()).SaveStates);
+    }
+
+    [Fact]
+    public async Task BsnesSortsSavesAndSaveStatesIntoItsOwnFolderThroughTheBuiltInFallback()
+    {
+        // bsnes is a common SNES core that was missing from the fallback name table, so with no
+        // info file to read, its sorted save and save-state folders could not be named — base
+        // saves failed closed and save states came back unavailable. Both now resolve like any
+        // other core.
+        var installation = Path.Combine(BaseDirectory, "RetroArch-bsnes");
+        WriteConfig(
+            installation,
+            savefileDirectory: ":\\saves",
+            extra: ["sort_savefiles_enable = \"true\"", "sort_savestates_enable = \"true\""]);
+
+        var provider = CreateProvider("snes", "bsnes_libretro.dll", installation);
+
+        Assert.Equal(Path.Combine(installation, "saves", "bsnes"), await provider.GetSaveDirectoryAsync());
+        Assert.Equal(
+            Path.Combine(installation, "states", "bsnes"),
+            (await provider.GetContentDirectoriesAsync()).SaveStates);
+    }
+
     [Theory]
     [InlineData("cloud_sync_enable = \"true\"", "cloud sync")]
     [InlineData("savefiles_in_content_dir = \"true\"", "next to the game files")]

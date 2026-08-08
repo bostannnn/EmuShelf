@@ -5076,6 +5076,33 @@ Gamepad session (kept as the `.controller-input` visual toggle rather than rewir
 The keyboard/Steam-Input path (B/Esc, Start/`F10`, confirmation to exit) is untouched, so a controller
 still drives everything and the app can always be left.
 
+## 2026-08-08 — RetroArch core name is read from every install's info folder, not only the portable one
+
+A RetroArch save/state folder is named after the *core* whenever "sort into folders by core name" is
+on, so resolving that folder needs the core's `corename`. `RetroArchSaveLocationProvider` read it from
+one place — `<installationDirectory>/info` — plus a small hardcoded `KnownCoreNames` fallback. On a
+Steam Deck (Flatpak RetroArch) the installation directory is EmuShelf's own portable base, which has no
+`info` folder; the real info files live under `~/.var/app/org.libretro.RetroArch/config/retroarch/info`.
+So *no* core's info file was read there, and the fallback table decided everything. Genesis Plus GX was
+in the table and resolved; **bsnes was not**, so its save-state folder came back `null` and Settings
+showed "the emulator configuration does not expose a safe folder for save states." Any core outside the
+table (Mesen-S, MAME, gpSP, …) hit the same wall on Flatpak/Linux/macOS installs.
+
+Fix, mirroring how core *version* is already resolved for state-compatibility keys:
+
+- Core-name lookup now searches an ordered list of `info` directories — portable first, then the
+  platform's user-profile location (Flatpak `~/.var/app/...`, Linux `~/.config/retroarch/info` or
+  `$XDG_CONFIG_HOME`, macOS `~/Library/Application Support/RetroArch/info`) — the same per-platform
+  branching as `ResolveConfigPath`. The core's own info entry is authoritative and always wins over the
+  fallback table. This is the general fix: it names *any* installed core, not a fixed list.
+- `KnownCoreNames` gained bsnes and its variants (`bsnes`, the three `bsnes_mercury_*`, `bsnes_hd_beta`)
+  plus `snes9x2010`, as defense for the rare no-info-file case (a bare core). Because the info entry is
+  read first, a slightly-off fallback name can only ever apply when there is no info file at all — where
+  the alternative was a total miss anyway — so this is strictly safer than the previous `null`.
+
+Core-name resolution therefore moved to the end of the constructor (it now depends on the platform and
+Flatpak flags). This fixes save states *and* the sibling base-save case, which previously failed closed
+for the same unresolved-name reason when files sorted by core.
 ## 2026-08-08 — "Show in folder" reveals a game's file in the OS file manager
 
 The desktop grid/list context menu gained an entry that opens the game's containing folder with
