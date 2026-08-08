@@ -1424,3 +1424,93 @@ in `docs/auto-update.md`; the framework-vs-hand-rolled call is in `DECISIONS.md`
       coordinator throttle/skip/apply logic. `dotnet build`/`dotnet test` green on macOS (1318 tests).
 - [ ] On real Windows and a real Steam Deck (gaming mode), install an update end to end and confirm
       the relaunch keeps portable data intact (Windows) and never drops to the desktop (SteamOS).
+
+## M40 — Uniform keyboard hotkeys across emulators (implemented 2026-08-08; real-hardware check pending)
+
+One uniform **keyboard**-hotkey scheme written into each supported emulator's own config, so a key means
+the same thing everywhere: **R** = rewind, **L** = fast-forward, **F2** = save state, **F4** = load
+state, **F8** = close game (keys chosen to match RetroArch's own defaults). The controller→key step is
+done once, outside the emulators, in a **Steam Input** layout the user imports (hold Select + a face
+button), so one mapping serves every emulator. This is EmuShelf's first substantial write into emulator
+configuration — a user-approved, reversible break from the read-only stance. It authors bindings **per
+machine** and never syncs them (the machine-local counterpart to M33 Phase 4). Conflicting default
+shortcuts are overwritten (backed up, revertible). Scope: DuckStation, PCSX2, Dolphin, PPSSPP, RetroArch,
+Azahar, and RPCS3 (close-only). The pivot from the original controller-chord approach and the verified
+per-emulator tokens are in `DECISIONS.md` (2026-08-08) and `docs/hotkey-keyboard-scheme.md`.
+
+### Phase 1 — Canonical model and a reversible config writer
+
+- [x] Core: an `IEmulatorHotkeyConfigurator` seam plus a canonical model — `HotkeyAction`
+      (CloseGame, Rewind, FastForward, SaveState, LoadState), a `HotkeyKey` (R, L, F2, F4, F8), the
+      recommended default profile, a per-action result (`Bound` / `Unsupported(reason)`), and an apply
+      status (`Changed` / `Unchanged` / `EmulatorRunning` / `ConfigurationNotFound` / `UnsupportedFormat`
+      / `Failed`) so an emulator that cannot express an action reports it instead of failing the apply.
+- [x] A surgical config editor (`EmulatorConfigDocument`) in Integrations that updates/inserts only the specific lines
+      and leaves comments, ordering, unknown keys, and version/format markers byte-identical — the
+      read-only `EmulatorIniFile` is not reused for writing. Writes go through `AtomicFile`.
+- [x] Reversibility: back up each target file into portable `Settings/` before its first modification,
+      a preview-diff of exactly what would change, and a revert-to-backup action. Apply is refused
+      while the target emulator process is running and states "takes effect next launch".
+- [x] Each action's binding is the fixed keyboard token for its key — the same key on every controller,
+      so nothing is derived from the pad and there is no per-machine resolution step to get wrong.
+
+### Phase 2 — The INI-section emulators
+
+- [x] **DuckStation**: `settings.ini [Hotkeys]` `Keyboard/<Key>` for PowerOff / FastForward /
+      SaveSelectedSaveState / LoadSelectedSaveState / Rewind; also set `[Main] RewindEnable=true` when
+      binding rewind; preserve `SettingsVersion`. Load state (F4) displaces the default
+      `SelectNextSaveStateSlot`, which the conflict-clearing unbinds.
+- [x] **PCSX2**: `PCSX2.ini [Hotkeys]` `Keyboard/<Key>` for ShutdownVM / HoldTurbo / SaveStateToSlot /
+      LoadStateFromSlot; **no rewind action exists** → left unbound and reported. Load state (F4)
+      displaces `ToggleFrameLimit`; exact-value clearing leaves modifier chords like `Shift & F8`
+      untouched.
+- [x] **Dolphin**: `Hotkeys.ini` fully-qualified `` `DInput/0/Keyboard Mouse:<Key>` `` for General/Exit,
+      Save/Load to-selected-slot, and Disable-Emulation-Speed-Limit as the fast-forward analog; **no
+      rewind** → unbound + reported. The token resolves regardless of the controller `Device =` line.
+- [x] **PPSSPP**: `controls.ini [ControlMapping]` `1-<NKCODE>` (device 1 = keyboard) for Rewind /
+      Fast-forward / Save State / Load State / Exit App — single keys, so no `AllowMappingCombos` flag
+      is needed.
+
+### Phase 3 — RetroArch and the keyboard-native emulators
+
+- [x] **RetroArch**: section-less `retroarch.cfg` quoted keys — `input_rewind="r"`,
+      `input_hold_fast_forward="l"`, `input_save_state="f2"`, `input_load_state="f4"`,
+      `input_exit_emulator="f8"` (default was `escape`), plus `rewind_enable="true"`. Clear any
+      controller hotkey buttons an earlier version wrote (`*_btn` back to `nul`). No autoconfig or
+      button-number resolution — keyboard keys are the same on every driver.
+- [x] **Azahar**: `qt-config.ini [UI]` Qt shortcuts (`Shortcuts\Main%20Window\<Name>\KeySeq` + a
+      `\KeySeq\default=false` pin) for Quick Save (F2), Quick Load (F4), Stop Emulation (F8), and Toggle
+      Turbo Mode (L); **no rewind**. Action names vary by Azahar version, so each binds whichever
+      candidate name exists in the config and clears any shortcut holding the same key.
+- [x] **RPCS3**: `GuiConfigs/CurrentSettings.ini [Shortcuts]` `game_window_stop=F8` — **close-only**
+      (RPCS3 has no load-state hotkey; save is Ctrl+S / suspend-resume). Other actions reported
+      unsupported.
+
+### Phase 4 — Settings surface, Steam Input preset, and verification
+
+- [x] A `SettingsSection.Hotkeys` presenting the five canonical actions once, a per-emulator
+      status (applied / unsupported-here / needs the emulator closed), and Apply / Preview / Revert —
+      one apply-to-all plus per-emulator. Gate Apply on the emulator not running; keep all write policy
+      in the view model/services, code-behind as view wiring only.
+- [x] Deterministic tests: surgical edits preserve comments/order/unknown keys/version markers on real
+      fixture configs; each emulator's tokens and unsupported-action reporting; backup/preview/revert;
+      the refuse-while-running guard; and idempotent re-apply. `dotnet build`/`dotnet test` green on
+      macOS.
+- [x] A Steam Input preset + import guide (`docs/steam-input-preset.md`): hold Select and press
+      Square→R, Circle→L, Triangle→F2, Cross→F4, Start→F8. One layout serves every emulator (shared keys).
+- [ ] On real Windows against the live `G:\ES-DE` emulators, apply the scheme to each of the seven and
+      confirm in-emulator that each supported key works, unsupported ones are reported not bound,
+      existing user files are backed up, and revert restores them byte-for-byte.
+- [ ] **Linchpin**: confirm Steam Input's emulated keystrokes actually reach RetroArch (it filters
+      injected input, libretro #16438) — testable with zero code against RetroArch's existing keyboard
+      defaults before relying on the preset for RetroArch.
+
+### Deferred (recorded so it is not re-litigated)
+
+- The original controller-chord implementation was abandoned as fundamentally controller/driver-specific
+  and fragile (see `DECISIONS.md` 2026-08-08); the keyboard scheme + Steam Input replaced it. RPCS3 and
+  Azahar, previously out for having keyboard/menu-only hotkeys, are now in — that is exactly what a
+  keyboard scheme wants.
+- A configurable key set (something other than the F-key defaults), and reusing the same writer for
+  memory-card/save-path settings and an EmuShelf-owned emulator user directory, are follow-ups the
+  model is built to accommodate.

@@ -142,6 +142,33 @@ public static class EmulatorUserDirectories
         }
     }
 
+    /// <summary>
+    /// RetroArch's configuration directory, which holds <c>retroarch.cfg</c> and the
+    /// <c>autoconfig/</c> joypad profiles: portable beside the executable, then the platform default,
+    /// then the documented Flatpak location. Prefers a directory that actually contains
+    /// <c>retroarch.cfg</c> so a fresh install's empty binary folder doesn't outrank a configured one.
+    /// </summary>
+    public static string? FindRetroArch(string? installationDirectory, bool isFlatpak)
+    {
+        return First(Candidates());
+
+        IEnumerable<string?> Candidates()
+        {
+            if (isFlatpak)
+            {
+                yield return Flatpak("org.libretro.RetroArch", "config", "retroarch");
+                yield break;
+            }
+
+            if (HasAny(installationDirectory, "retroarch.cfg"))
+                yield return installationDirectory;
+
+            yield return Home(".config", "retroarch");
+            yield return Home("Library", "Application Support", "RetroArch");
+            yield return installationDirectory;
+        }
+    }
+
     private static string? First(IEnumerable<string?> candidates) =>
         candidates.Select(ExistingDirectory).FirstOrDefault(path => path is not null);
 

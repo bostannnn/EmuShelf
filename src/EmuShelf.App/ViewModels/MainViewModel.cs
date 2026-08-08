@@ -675,6 +675,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
     private readonly TexturePackCoordinator? _texturePacks;
+    private readonly HotkeyCoordinator? _hotkeys;
 
     public MainViewModel()
         : this(
@@ -726,7 +727,8 @@ public partial class MainViewModel : ViewModelBase
         IGameDetailsStore? gameDetails = null,
         IAppPaths? appPaths = null,
         AppUpdateCoordinator? updates = null,
-        IFileRevealService? fileReveal = null)
+        IFileRevealService? fileReveal = null,
+        HotkeyCoordinator? hotkeys = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
         _updates = updates;
@@ -786,6 +788,7 @@ public partial class MainViewModel : ViewModelBase
         _retroBadges = retroBadges;
         _cloudSaveSync = cloudSaveSync;
         _texturePacks = texturePacks;
+        _hotkeys = hotkeys;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
         // Build the theme choices before assigning CurrentTheme: the generated setter fires
@@ -4676,7 +4679,8 @@ public partial class MainViewModel : ViewModelBase
                 ThemeChoices,
                 AmbientThemeFromArtwork,
                 SetAmbientThemeFromArtworkAsync,
-                Updates);
+                Updates,
+                CreateHotkeySettingsContext);
         }
         catch (Exception ex)
         {
@@ -4690,10 +4694,11 @@ public partial class MainViewModel : ViewModelBase
         var systemIds = Systems.Select(system => system.Id).ToArray();
         // Read every database source the panel needs — configs, profiles, and all remembered folders —
         // in one worker pass so building the rows never reopens a connection per system on the UI thread.
-        var (configured, profiles, libraryFolders) = await Task.Run(() =>
+        var (configured, profiles, libraryFolders, hotkeyContext) = await Task.Run(() =>
             (_emulatorConfigurations.GetAll(systemIds),
              _emulatorConfigurations.GetAllProfiles(systemIds),
-             EmulatorSettingsViewModel.GroupLibraryFolders(GetAllLibraryFoldersForSettings())));
+             EmulatorSettingsViewModel.GroupLibraryFolders(GetAllLibraryFoldersForSettings()),
+             CreateHotkeySettingsContext()));
         return new EmulatorSettingsViewModel(
             Systems,
             _emulators,
@@ -4709,6 +4714,7 @@ public partial class MainViewModel : ViewModelBase
             // Mirrors Desktop: the account can be managed from Settings, not only the per-game scraper
             // overlay. The controller text-entry flow handles the username/password rows.
             CreateScreenScraperSettingsContext(),
+            hotkeys: hotkeyContext,
             themeChoices: ThemeChoices,
             ambientThemeFromArtwork: AmbientThemeFromArtwork,
             setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync,
@@ -4749,6 +4755,10 @@ public partial class MainViewModel : ViewModelBase
                 ConnectRetroAchievementsAsync,
                 DisconnectRetroAchievementsAsync,
                 RefreshRetroAchievementsMatchesAsync);
+
+    // Reads each configured emulator's hotkey config to build the section state; the caller runs it
+    // on a worker so opening Settings never does file IO on the UI thread.
+    private HotkeySettingsContext? CreateHotkeySettingsContext() => _hotkeys?.CreateSettingsContext();
 
     private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
         // Titles come from the whole library, not the visible collection: a Dolphin pack must

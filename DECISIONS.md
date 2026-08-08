@@ -5153,3 +5153,81 @@ folder EmuShelf creates is the one a later scan will match. Opening the folder r
 service "Show in folder" introduced — `IFileRevealService.OpenDirectoryAsync` (added alongside
 `RevealAsync`) — so there is one place that talks to each platform's file manager, and the coordinator
 keeps no UI or write policy (the create-and-open lives in `MainViewModel.OpenTextureFolderAsync`).
+
+## 2026-08-08 — EmuShelf may write emulator hotkey config, as a reversible, machine-local layer
+
+The library has been strictly read-only toward emulator configuration everywhere but one place — the
+texture-folder create ("Open texture folder" is the texture subsystem's one allowed write). A new
+**M40** deliberately widens that: EmuShelf will write a small, uniform controller-hotkey scheme into
+each supported emulator's own settings, so one combo means the same thing everywhere (Start+Select =
+close game, Select+Square = rewind, Select+Circle = fast-forward, Select+Triangle = save state,
+Select+Cross = load state). This is a user-approved break from the read-only stance, not an accident,
+and it is bounded the way the texture write is: explicit user action, never a game file, and — because
+this write is larger and can disturb existing bindings — fully reversible.
+
+Three findings from grounding the design in the user's real configs (`G:\ES-DE\Emulators`) set the
+scope:
+
+- **It is not uniform across all seven emulators.** DuckStation, PCSX2, Dolphin, and PPSSPP express
+  two-button controller chords directly in their config (`&` for the shared DuckStation/PCSX2 engine,
+  `&`/`@()` for Dolphin, `:` for PPSSPP once `AllowMappingCombos` is on). RetroArch can too, through
+  its enable-hotkey modifier, but stores raw driver-specific button *numbers* that differ for the same
+  pad across the xinput/sdl2/hid drivers, so its bindings must be resolved at write time against the
+  pad RetroArch actually matched — never a hardcoded table. **RPCS3 and Azahar cannot bind these
+  actions to a controller at all** (keyboard/menu-only shortcuts), so they are out of M40; reaching
+  them would need EmuShelf to detect the chord itself and inject a keystroke while the game runs, which
+  contradicts the in-game input-suspend decision and is deferred.
+- **Rewind barely exists.** Only DuckStation, RetroArch, and PPSSPP have a rewind feature; PCSX2,
+  Dolphin, RPCS3, and Azahar have none. Where an emulator has no rewind, Select+Square is left unbound
+  and reported as unsupported rather than repurposed, so the same combo never silently does something
+  different on a different system. Where rewind exists it is off by default and costs memory, so
+  applying the rewind chord also flips the feature's enable flag (`RewindEnable`, rewind) — a bound key
+  to a disabled feature is a dead key.
+- **Every emulator rewrites its config on exit.** An edit made while the emulator is running is
+  clobbered on its next clean shutdown, so M40 writes only while the target emulator is not running
+  (EmuShelf already tracks the process) and states that a change takes effect next launch.
+
+Safety model: back up each file into portable `Settings/` before its first modification; edit
+surgically — update/insert only the specific lines, preserving comments, ordering, unknown keys, and
+the `SettingsVersion`/format markers verbatim — rather than parse-and-regenerate, since the existing
+`EmulatorIniFile` is read-only and lossy on purpose and a new writer is required; write through
+`AtomicFile`; offer a preview diff before applying and a one-click revert to the backup. Tokens are
+derived from the emulator's own existing pad binding where possible (its `[Pad1]`/`[ControlMapping]`
+already maps the physical button to that emulator's vocabulary), so EmuShelf reuses the user's real
+controller and device index instead of guessing `A/B/X/Y` vs `FaceWest` vs `Button W` vs `20-99`.
+
+This is deliberately a **machine-local** layer, which is why it does not conflict with M33 Phase 4's
+"controller profiles and input remaps are usually wrong to *sync*": device names and indices differ
+per machine, so EmuShelf authors the scheme on each machine rather than copying one machine's bindings
+to another. The canonical action set and the surgical writer are built to extend to the user's stated
+next steps — correct memory-card/save settings, and eventually an EmuShelf-owned emulator user
+directory — without a second mechanism.
+
+## 2026-08-08 — M40 pivots from controller chords to a uniform keyboard scheme + Steam Input
+
+Real-hardware testing of the controller-chord implementation (above) showed that writing *controller*
+hotkeys into each emulator is fundamentally controller-specific and fragile: RetroArch stores raw,
+driver-specific joypad button numbers (the standard table was wrong for the user's XInput wrapper, so
+nothing fired); Dolphin binds by device name; PPSSPP two-button combos are "not planned" upstream;
+only DuckStation/PCSX2 (SDL position tokens) survive a controller swap. Injecting keystrokes from
+EmuShelf instead is blocked — RetroArch ignores injected keys (raw input, libretro #16438), and
+reliable injection needs a non-portable kernel virtual-HID driver.
+
+**Decision: write a uniform _keyboard_ hotkey scheme instead** (rewind=R, fast-forward=L, save=F2,
+load=F4, close=F8), because a keyboard key is identical on every controller. The controller→keyboard
+translation is done once, outside the emulators, in a **Steam Input** layout (a bundled preset the
+user imports); one combo→key mapping serves every emulator since they all read the same keys. Keys
+were chosen to match RetroArch's own defaults so it needs almost no change. Conflicting default
+keyboard shortcuts are **overwritten** (backed up, revertible). Scope: DuckStation, PCSX2, Dolphin,
+PPSSPP, RetroArch write all applicable actions; Azahar writes save/load/close/fast-forward; RPCS3 is
+**close-only** (it has no load-state hotkey — its save states are suspend/resume, not
+quicksave/quickload). Full implementation spec, verified per-emulator tokens, and reuse-vs-replace
+code map are in `docs/hotkey-keyboard-scheme.md`. Implementation resolved both open items: RPCS3's
+shortcuts serialize under `[Shortcuts]` with the key `game_window_stop` (from RPCS3's
+`shortcut_settings`), and Azahar's action names vary by version ("Quick Save" vs. "Save to Oldest Slot",
+"Toggle Turbo Mode" vs. "Toggle Per-Application Speed"), so its configurator binds whichever candidate
+name the machine's config actually has. One thing still needs a real-hardware check: whether Steam
+Input's emulated keystrokes reach RetroArch (it filters injected input — testable with zero code against
+RetroArch's existing keyboard defaults). The infrastructure from the controller implementation (surgical
+INI editor, backup/revert, coordinator, Settings UI, registry) is reused unchanged; only the
+configurators and the profile model are rewritten.

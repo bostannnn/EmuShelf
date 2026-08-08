@@ -237,6 +237,7 @@ public partial class App : Application
                 Bootstrapper.CloudSaveSync,
                 applicationLifetime: new ApplicationLifetimeService(desktop),
                 texturePacks: Bootstrapper.TexturePacks,
+                hotkeys: Bootstrapper.Hotkeys,
                 libraryViewState: libraryViewState,
                 screenScraperAccount: screenScraperAccount,
                 screenScraperPreview: Bootstrapper.ScreenScraperPreview,

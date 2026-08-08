@@ -101,7 +101,8 @@ internal sealed class FakeDialogService : IDialogService
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
-        AppUpdateCoordinator? updates = null)
+        AppUpdateCoordinator? updates = null,
+        Func<HotkeySettingsContext?>? createHotkeyContext = null)
     {
         SettingsShown++;
         TexturePacks = texturePacks;

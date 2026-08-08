@@ -69,6 +69,7 @@ public sealed class AppBootstrapper
     public IGameLaunchDependencyResolver GameLaunchDependencies { get; }
     public CloudSaveSyncCoordinator CloudSaveSync { get; }
     public TexturePackCoordinator TexturePacks { get; }
+    public HotkeyCoordinator Hotkeys { get; }
 
     public AppBootstrapper()
     {
@@ -175,6 +176,13 @@ public sealed class AppBootstrapper
             settingsService: SettingsService,
             gamesForSystem: systemId => Library.GetGames(systemId),
             metadataProfiles: MetadataProfiles);
+        Hotkeys = new HotkeyCoordinator(
+            Paths,
+            Systems,
+            Logger,
+            resolveInstallation: ResolveConfiguredEmulator,
+            // Durable, AV-tolerant writes; the coordinator only edits config while the emulator is closed.
+            writeFile: AtomicFile.WriteAllText);
         Logger.Information("EmuShelf startup services initialized.");
     }
 
