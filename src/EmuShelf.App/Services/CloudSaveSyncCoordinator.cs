@@ -377,15 +377,21 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             if (saves.Status != CloudSaveSyncStatus.Completed ||
                 !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
             {
-                if (saves.Status == CloudSaveSyncStatus.Completed &&
-                    !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates)
+                var statesToggledOff = saves.Status == CloudSaveSyncStatus.Completed &&
+                    !_settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates;
+                if (statesToggledOff)
                 {
                     _logger.Information(
                         $"Save-state sync skipped for '{systemId}': the platform's " +
                         "'Automatically sync save states' toggle is off on this machine.");
                 }
                 RecordAutomaticOutcome(systemId, saves);
-                return saves;
+                // Tell the launch/exit summary the states were skipped, but only where the platform
+                // actually offers save-state sync — otherwise there is no toggle for the user to turn
+                // on and the hint would be noise.
+                return statesToggledOff && SaveProviderRegistry.Find(systemId)?.SupportsSaveStates == true
+                    ? saves with { SaveStatesSkipped = true }
+                    : saves;
             }
 
             await LogStatePhaseDiagnosticsAsync(systemId, launchStateKeys);
@@ -434,26 +440,67 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             // to restore. A different key here is the direct signature of the cross-machine mismatch
             // that leaves states uploaded-but-not-restored.
             var compatibilityKey = auxiliary?.StateCompatibilityKey ?? "(none)";
+            // localStatesMatched is scoped to the launched game; the folder figures below are the
+            // whole folder, unscoped. Reporting the resolved folder and its actual manual-state count
+            // is what lets a zero match be read correctly — an empty or missing folder is a different
+            // problem from a folder full of states whose names did not match the launched game.
             var localCount = provider is null ? 0 : (await provider.GetSaveUnitsAsync()).Count;
+            IReadOnlyList<AuxiliaryContentLocation> locations =
+                auxiliary is null ? [] : await auxiliary.GetContentLocationsAsync();
+            var folder = locations
+                .Select(location => location.Directory)
+                .FirstOrDefault(directory => !string.IsNullOrWhiteSpace(directory));
+            var folderStates = locations.Sum(location => location.EligibleFileCount);
+            var folderWarning = locations
+                .Select(location => location.Warning)
+                .FirstOrDefault(warning => !string.IsNullOrWhiteSpace(warning));
+
             _logger.Information(
                 $"Save-state sync for '{systemId}': keys=[{keyText}]; " +
                 $"compatibilityDetected={compatible?.ToString() ?? "n/a"}; compatibilityKey={compatibilityKey}; " +
+                $"stateFolder={folder ?? "(unresolved)"}; folderStates={folderStates}; " +
                 $"localStatesMatched={localCount}. " +
-                (compatible == false
-                    ? "compatibilityDetected=false means the emulator/core version or CPU architecture " +
-                      "could not be read, so states are neither uploaded nor restored — check the emulator " +
-                      "and core are configured. "
-                    : string.Empty) +
-                (localCount == 0 && compatible != false
-                    ? "localStatesMatched=0 while the folder has states means the launched game's name/serial " +
-                      "did not match the state file names (or the state folder is wrong). "
-                    : string.Empty));
+                StatePhaseHint(compatible, localCount, folder, folderStates, folderWarning));
         }
         catch (Exception ex) when (
             ex is IOException or InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
         {
             _logger.Information($"Save-state sync diagnostics for '{systemId}' were unavailable: {ex.Message}");
         }
+    }
+
+    // The plain-language reason a state phase found nothing to do, drawn from what was actually
+    // observed — the resolved folder and its real manual-state count — rather than assumed. Returns
+    // an empty string when there is nothing noteworthy to explain (states were matched normally).
+    internal static string StatePhaseHint(
+        bool? compatible,
+        int localStatesMatched,
+        string? folder,
+        int folderStates,
+        string? folderWarning)
+    {
+        if (compatible == false)
+        {
+            return "compatibilityDetected=false means the emulator/core version or CPU architecture " +
+                "could not be read, so states are neither uploaded nor restored — check the emulator " +
+                "and core are configured.";
+        }
+        if (localStatesMatched > 0)
+            return string.Empty;
+        if (string.IsNullOrWhiteSpace(folder))
+        {
+            return "The state folder could not be resolved" +
+                (string.IsNullOrWhiteSpace(folderWarning) ? "." : $": {folderWarning}");
+        }
+        if (folderStates == 0)
+        {
+            return $"The state folder ('{folder}') holds no manual save states yet" +
+                (string.IsNullOrWhiteSpace(folderWarning) ? string.Empty : $" ({folderWarning})") +
+                " — nothing was created for this game, or only auto-save states (which are not synced) exist.";
+        }
+
+        return $"The state folder ('{folder}') holds {folderStates} manual save state(s), but none matched the " +
+            "launched game's name or serial — check the state file names against the game, or the resolved folder.";
     }
 
     private void LogStatePhaseResult(string systemId, CloudSaveSyncOutcome outcome)
@@ -940,6 +987,14 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 /// <param name="Message">A user-facing failure message when the attempt failed; otherwise null.</param>
 public sealed record CloudSaveSyncOutcome(CloudSaveSyncStatus Status, SaveSyncReport? Report, string? Message)
 {
+    /// <summary>
+    /// The save pass completed but the save-state pass was skipped because the platform's
+    /// "Automatically sync save states" toggle is off (and the platform actually supports states).
+    /// Surfaced so a launch/exit summary can say so, instead of a bare "nothing to sync" that hides
+    /// why a save state the player just made did not sync.
+    /// </summary>
+    public bool SaveStatesSkipped { get; init; }
+
     public static CloudSaveSyncOutcome NotConfigured() => new(CloudSaveSyncStatus.NotConfigured, null, null);
 
     public static CloudSaveSyncOutcome Completed(SaveSyncReport report) => new(CloudSaveSyncStatus.Completed, report, null);
