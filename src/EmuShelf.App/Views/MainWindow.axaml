@@ -330,16 +330,24 @@
                          Button.spotlight-action-button:pressed /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
         </Style>
-        <!-- Spotlight hero pill (rating / achievements). Like the dock pill but width is set by the
-             action row (rating fixed to the Play width, achievements stretched to fill the middle). -->
+        <!-- Spotlight hero pill CONTENT layer (rating / achievements): transparent, so the translucent
+             fill behind it (Border.spotlight-pill-fill) lets the fan art read through while the content
+             stays fully opaque — the same layered trick the floating list card uses, so every hero
+             surface reads as the same glass instead of a flat opaque slab. Content-sized by the cluster. -->
         <Style Selector="Border.spotlight-pill">
             <Setter Property="Height" Value="60" />
             <Setter Property="Padding" Value="18,10" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <!-- The translucent fill/stroke/shadow layer behind a hero pill. Matches the list card's
+             surface (EmuPopoverBrush at the same alpha) so the pills and the card feel like one panel. -->
+        <Style Selector="Border.spotlight-pill-fill">
+            <Setter Property="Opacity" Value="0.72" />
             <Setter Property="CornerRadius" Value="12" />
             <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <!-- Lift the hero chips off the busy fan-art backdrop so they read as physical pills. -->
+            <!-- Lift the pill off the busy fan-art backdrop so it reads as a physical surface. -->
             <Setter Property="BoxShadow" Value="0 6 16 0 #4A000000" />
         </Style>
         <!-- Spotlight hero metadata chip: one scraped fact (genre / year / players / developer /
@@ -2198,7 +2206,9 @@
                      own layer at partial alpha — Opacity never touches the list content, so the titles
                      stay fully opaque — and that same filled layer casts the drop shadow and draws the
                      hairline stroke, lifting the card off the backdrop. -->
-                <Border Grid.Column="0">
+                <!-- Bottom margin matches the hero column's 10px inset, so the list card's lower edge
+                     lines up with the action cluster's pills. -->
+                <Border Grid.Column="0" Margin="0,0,0,10">
                     <Panel>
                         <Border CornerRadius="20" Background="{DynamicResource EmuPopoverBrush}" Opacity="0.72"
                                 BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
@@ -2208,7 +2218,7 @@
                     <ListBox x:Name="GamepadSpotlightList"
                              ItemsSource="{Binding Games}"
                              SelectedItem="{Binding FocusedGame, Mode=TwoWay}"
-                             Background="Transparent" BorderThickness="0" Padding="8,16,8,12"
+                             Background="Transparent" BorderThickness="0" Padding="8,22"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.Styles>
@@ -2264,42 +2274,77 @@
                         <controls:MarqueeTextBlock Text="{Binding FocusedGame.SpotlightDisplayTitle}"
                                                    FontSize="{DynamicResource EmuGpDisplaySize}" FontWeight="Bold"
                                                    Foreground="White" HorizontalAlignment="Stretch"
+                                                   TextAlignment="Center"
                                                    IsVisible="{Binding FocusedGame.ShowSpotlightTitleFallback}" />
-                        <!-- Scraped metadata, one chip per fact, centred and wrapping to as many rows
-                             as it needs. Empty (nothing shows) until the details resolve. -->
-                        <ItemsControl ItemsSource="{Binding FocusedGame.SpotlightFacts}"
-                                      HorizontalAlignment="Center">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <WrapPanel HorizontalAlignment="Center" />
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <Border Classes="spotlight-chip">
-                                        <TextBlock Text="{Binding}" FontSize="{DynamicResource EmuGpLabelSize}"
-                                                   FontWeight="SemiBold" Foreground="#F0FFFFFF" />
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- Scraped metadata as chips, split across two independently-centred rows:
+                             genre / year / players on top, developer / publisher below. Two rows (not
+                             one WrapPanel) because a WrapPanel left-packs its wrapped remainder, which
+                             leaves a partial second line hugging the left instead of centred. The
+                             second row hides itself when there is nothing to spill onto it. -->
+                        <StackPanel Spacing="0" HorizontalAlignment="Center">
+                            <ItemsControl ItemsSource="{Binding FocusedGame.SpotlightFactsPrimary}"
+                                          HorizontalAlignment="Center">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel HorizontalAlignment="Center" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Classes="spotlight-chip">
+                                            <TextBlock Text="{Binding}" FontSize="{DynamicResource EmuGpLabelSize}"
+                                                       FontWeight="SemiBold" Foreground="#F0FFFFFF" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl ItemsSource="{Binding FocusedGame.SpotlightFactsSecondary}"
+                                          HorizontalAlignment="Center"
+                                          IsVisible="{Binding FocusedGame.HasSpotlightSecondaryFacts}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel HorizontalAlignment="Center" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <Border Classes="spotlight-chip">
+                                            <TextBlock Text="{Binding}" FontSize="{DynamicResource EmuGpLabelSize}"
+                                                       FontWeight="SemiBold" Foreground="#F0FFFFFF" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                         <!-- The launch source (file/disc that A will run), a dim caption under the chips. -->
                         <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" HorizontalAlignment="Center"
                                    FontSize="{DynamicResource EmuGpCaptionSize}" Foreground="#99FFFFFF"
                                    MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
-                    <!-- The action row spans the hero: rating (left) and Play (right) share a fixed width
-                         with centred content, and Achievements stretches to fill the space between them,
-                         so nothing floats with dead space. D-pad Left/Right moves the accent focus ring
-                         between Achievements and Play (A fires the armed one; Play is the default), and
-                         Achievements is also clickable. -->
-                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                        <!-- Star rating + an optional "texture pack installed" indicator. When no pack
-                             is installed the indicator collapses and the rating keeps its place. -->
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                            <Border Classes="spotlight-pill" Width="176" VerticalAlignment="Center"
-                                    IsVisible="{Binding FocusedGame.HasRating}">
+                    <!-- The action cluster sits centred under the hero (matching the centred logo and
+                         chips) instead of spanning edge to edge. Rating, Achievements and Play are each
+                         sized to their own content and share the list card's translucent pill surface, so
+                         the row reads as one balanced group with no dead space; a collapsed
+                         rating/texture/achievement pill takes no room, so it stays centred. D-pad
+                         Left/Right moves the accent focus ring between Achievements and Play (A fires the
+                         armed one; Play is the default); Achievements is also clickable.
+                         Because the cluster is content-sized it could outgrow a narrow (windowed) hero
+                         column and clip Play, so it lives in a Viewbox: DownOnly keeps it at natural size
+                         at real couch resolutions (Deck/TV, >=1280) and only shrinks it to fit when the
+                         window is squeezed. ClipToBounds=False lets the focused action's ring (-5 margin)
+                         and glow (12px blur) spill past the Viewbox instead of being clipped, so no inset
+                         is needed and the pills' bottom edge stays flush with the list card. -->
+                    <Viewbox Grid.Row="1" Stretch="Uniform" StretchDirection="DownOnly"
+                             HorizontalAlignment="Center" ClipToBounds="False">
+                    <StackPanel Orientation="Horizontal" Spacing="16"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- Star rating. Content-sized, but held to a minimum so it stays legible and
+                             keeps the cluster balanced next to the Play button. -->
+                        <Panel MinWidth="118" VerticalAlignment="Center"
+                               IsVisible="{Binding FocusedGame.HasRating}">
+                            <Border Classes="spotlight-pill-fill" />
+                            <Border Classes="spotlight-pill">
                                 <StackPanel Orientation="Horizontal" Spacing="10"
                                             HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <PathIcon Width="22" Height="22"
@@ -2309,59 +2354,68 @@
                                                FontWeight="Bold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Border>
-                            <Border Classes="spotlight-pill" Width="64" VerticalAlignment="Center"
-                                    IsVisible="{Binding FocusedGame.ShowTextureMark}"
-                                    ToolTip.Tip="Texture pack installed">
+                        </Panel>
+
+                        <!-- Optional "texture pack installed" indicator; collapses when no pack is installed. -->
+                        <Panel Width="64" VerticalAlignment="Center"
+                               IsVisible="{Binding FocusedGame.ShowTextureMark}"
+                               ToolTip.Tip="Texture pack installed">
+                            <Border Classes="spotlight-pill-fill" />
+                            <Border Classes="spotlight-pill">
                                 <PathIcon Width="26" Height="26"
                                           Data="{StaticResource TexturePackLayersGeometry}"
                                           Foreground="{DynamicResource EmuTextSecondaryBrush}"
                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
-                        </StackPanel>
+                        </Panel>
 
-                        <!-- Achievements — armed with Left, opens on A or a click; fills the middle. -->
-                        <Panel Grid.Column="1" Classes="spotlight-action"
+                        <!-- Achievements — armed with Left, opens on A or a click. Content-sized with its
+                             trophy, count and progress bar centred, so it never stretches into dead space
+                             or clips its own count/bar the way the old fill-the-middle column did. -->
+                        <Panel Classes="spotlight-action"
                                Classes.focused="{Binding IsSpotlightAchievementsFocused}"
-                               VerticalAlignment="Center" HorizontalAlignment="Stretch"
+                               VerticalAlignment="Center"
                                IsVisible="{Binding FocusedGame.ShowAchievementMark}">
                             <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
                                     Margin="-5" CornerRadius="17"
                                     Background="{DynamicResource EmuAccentBrush}"
                                     BoxShadow="{DynamicResource EmuFocusGlow}" />
                             <Button Classes="spotlight-action-button"
-                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
                                     Command="{Binding OpenFocusedAchievementsCommand}"
                                     ToolTip.Tip="{Binding FocusedGame.AchievementsTooltip}">
-                                <Border Classes="spotlight-pill" HorizontalAlignment="Stretch">
-                                    <Grid ColumnDefinitions="30,*" ColumnSpacing="12">
-                                        <Border Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center"
-                                                Background="{DynamicResource EmuFormatPillBrush}">
-                                            <PathIcon Width="17" Height="17"
-                                                      Data="{StaticResource AchievementTrophyGeometry}"
-                                                      Foreground="{DynamicResource EmuAchievementBrush}" />
-                                        </Border>
-                                        <Grid Grid.Column="1" RowDefinitions="Auto,4" RowSpacing="5"
-                                              VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
-                                                       FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="Bold" />
-                                            <Border Grid.Row="1" Height="4" CornerRadius="2"
-                                                    HorizontalAlignment="Stretch" ClipToBounds="True"
+                                <Panel>
+                                    <Border Classes="spotlight-pill-fill" />
+                                    <Border Classes="spotlight-pill">
+                                        <StackPanel Orientation="Horizontal" Spacing="12"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Border Width="30" Height="30" CornerRadius="15" VerticalAlignment="Center"
                                                     Background="{DynamicResource EmuFormatPillBrush}">
-                                                <Border Background="{DynamicResource EmuAchievementBrush}"
-                                                        RenderTransformOrigin="0%,50%">
-                                                    <Border.RenderTransform>
-                                                        <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
-                                                    </Border.RenderTransform>
-                                                </Border>
+                                                <PathIcon Width="17" Height="17"
+                                                          Data="{StaticResource AchievementTrophyGeometry}"
+                                                          Foreground="{DynamicResource EmuAchievementBrush}" />
                                             </Border>
-                                        </Grid>
-                                    </Grid>
-                                </Border>
+                                            <StackPanel VerticalAlignment="Center" Spacing="5">
+                                                <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
+                                                           FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" />
+                                                <Border Width="132" Height="4" CornerRadius="2" ClipToBounds="True"
+                                                        Background="{DynamicResource EmuFormatPillBrush}">
+                                                    <Border Background="{DynamicResource EmuAchievementBrush}"
+                                                            RenderTransformOrigin="0%,50%">
+                                                        <Border.RenderTransform>
+                                                            <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
+                                                        </Border.RenderTransform>
+                                                    </Border>
+                                                </Border>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Panel>
                             </Button>
                         </Panel>
 
-                        <!-- Play — the default action; same width as the rating pill. -->
-                        <Panel Grid.Column="2" Classes="spotlight-action"
+                        <!-- Play — the default action. -->
+                        <Panel Classes="spotlight-action"
                                Classes.focused="{Binding IsSpotlightPlayFocused}"
                                VerticalAlignment="Center">
                             <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
@@ -2380,7 +2434,8 @@
                                 </StackPanel>
                             </Button>
                         </Panel>
-                    </Grid>
+                    </StackPanel>
+                    </Viewbox>
                     </Grid>
                 </Grid>
         </Panel>

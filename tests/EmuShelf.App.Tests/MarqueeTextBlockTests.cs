@@ -28,6 +28,20 @@ public sealed class MarqueeTextBlockTests
     }
 
     [AvaloniaFact]
+    public void TextAlignment_DefaultsToStart_AndForwardsToInnerText()
+    {
+        var marquee = new MarqueeTextBlock { Text = "Okami" };
+        var inner = Assert.IsType<TextBlock>(marquee.Child);
+
+        // Control-neutral default (left/start), so reuse outside the hero is not surprised.
+        Assert.Equal(TextAlignment.Start, marquee.TextAlignment);
+
+        // The spotlight hero sets Center; it forwards to the inner text so a fitting title centres.
+        marquee.TextAlignment = TextAlignment.Center;
+        Assert.Equal(TextAlignment.Center, inner.TextAlignment);
+    }
+
+    [AvaloniaFact]
     public async Task Scrolling_AnAttachedOverflowingTitle_DoesNotThrow()
     {
         // A long title in a shown window is attached, visible and overflowing, so it starts its

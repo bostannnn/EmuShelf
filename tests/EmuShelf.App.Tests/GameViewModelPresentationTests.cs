@@ -76,6 +76,31 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
+    public void SpotlightFacts_SplitFirstThreeOntoTheirOwnRow()
+    {
+        var viewModel = CreateGame();
+
+        // Full set: genre/year/players stay on the primary row, developer/publisher spill to the second.
+        viewModel.ApplySpotlightDetails(null, null, null,
+            ["Role-Playing", "2008", "1 player", "Atlus", "Square Enix"]);
+        Assert.Equal(["Role-Playing", "2008", "1 player"], viewModel.SpotlightFactsPrimary);
+        Assert.Equal(["Atlus", "Square Enix"], viewModel.SpotlightFactsSecondary);
+        Assert.True(viewModel.HasSpotlightSecondaryFacts);
+
+        // Three or fewer facts: everything stays on the primary row, no second row.
+        viewModel.ApplySpotlightDetails(null, null, null, ["Sports", "1996"]);
+        Assert.Equal(["Sports", "1996"], viewModel.SpotlightFactsPrimary);
+        Assert.Empty(viewModel.SpotlightFactsSecondary);
+        Assert.False(viewModel.HasSpotlightSecondaryFacts);
+
+        // None: both rows empty.
+        viewModel.ApplySpotlightDetails(null, null, null, []);
+        Assert.Empty(viewModel.SpotlightFactsPrimary);
+        Assert.Empty(viewModel.SpotlightFactsSecondary);
+        Assert.False(viewModel.HasSpotlightSecondaryFacts);
+    }
+
+    [Fact]
     public void ShowSpotlightTitleFallback_OnlyWhenResolvedDetailsConfirmNoLogoArt()
     {
         var viewModel = CreateGame();
