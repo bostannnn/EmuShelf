@@ -38,6 +38,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly TexturePackSettingsContext? _texturePacks;
     private readonly HotkeySettingsContext? _hotkeys;
+    private readonly SteamInputTemplateInstaller _steamTemplateInstaller;
     private readonly AppUpdateCoordinator? _updates;
     private readonly IAppLogger _logger;
     // Held only for the duration of one cloud operation so the Stop button can reach it.
@@ -351,6 +352,25 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
     }
 
+    /// <summary>The last Steam-template install result message; empty until the button is used.</summary>
+    [ObservableProperty]
+    public partial string SteamTemplateStatus { get; set; } = string.Empty;
+
+    /// <summary>Installs the bundled Steam Input layout into Steam's templates folder.</summary>
+    [RelayCommand]
+    private void InstallSteamTemplate()
+    {
+        var result = _steamTemplateInstaller.Install();
+        SteamTemplateStatus = result.Status switch
+        {
+            SteamTemplateInstallStatus.Installed =>
+                "Installed. In Steam, open the emulator's controller settings and pick the \"EmuShelf\" template.",
+            SteamTemplateInstallStatus.SteamNotFound =>
+                "Couldn't find Steam. Launch Steam once, then try again.",
+            _ => result.Detail ?? "The template couldn't be installed.",
+        };
+    }
+
     /// <summary>The packs matching the current emulator and status filters.</summary>
     public ObservableCollection<TexturePackEntryViewModel> TexturePackEntries { get; } = new();
 
@@ -450,7 +470,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null,
         AppUpdateCoordinator? updates = null,
-        IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null)
+        IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null,
+        SteamInputTemplateInstaller? steamTemplateInstaller = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -461,6 +482,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
         _hotkeys = hotkeys;
+        _steamTemplateInstaller = steamTemplateInstaller ?? new SteamInputTemplateInstaller();
         HotkeySchemeSummary = hotkeys?.SchemeSummary ?? string.Empty;
         _updates = updates;
         IsUpdateAvailable = updates?.HasAvailableUpdate ?? false;
