@@ -842,6 +842,65 @@
                         </Border>
                     </StackPanel>
 
+                    <StackPanel IsVisible="{Binding IsHotkeysSection}" Spacing="12">
+                        <Border Classes="settings-card" Margin="0,0,0,12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="KEYBOARD HOTKEYS" FontSize="10" FontWeight="Bold"
+                                           LetterSpacing="1"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                <TextBlock Text="{Binding HotkeySchemeSummary}" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                           Text="EmuShelf backs up each file before changing it. Close an emulator before applying — changes take effect the next time you open it." />
+                                <Button Content="Apply to all emulators"
+                                        AutomationProperties.AutomationId="hotkeys.apply-all"
+                                        Command="{Binding ApplyAllHotkeysCommand}"
+                                        IsEnabled="{Binding !IsHotkeyBusy}"
+                                        HorizontalAlignment="Left" Margin="0,4,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding HotkeyEmulators}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="settings-card" Margin="0,0,0,12">
+                                        <StackPanel Spacing="8">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0" Text="{Binding DisplayName}"
+                                                           FontWeight="SemiBold" FontSize="14"
+                                                           VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                                    <Button Content="Preview"
+                                                            Command="{Binding PreviewCommand}"
+                                                            IsEnabled="{Binding CanRun}" />
+                                                    <Button Content="Apply"
+                                                            Command="{Binding ApplyCommand}"
+                                                            IsEnabled="{Binding CanRun}" />
+                                                    <Button Content="Revert"
+                                                            Command="{Binding RevertCommand}"
+                                                            IsEnabled="{Binding CanRun}" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <ItemsControl ItemsSource="{Binding Actions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Display}" FontSize="12"
+                                                                   TextWrapping="Wrap" Margin="0,1"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
                     <StackPanel IsVisible="{Binding IsTexturePacksSection}" Spacing="12">
                         <Border Classes="settings-card">
                             <StackPanel Spacing="14">

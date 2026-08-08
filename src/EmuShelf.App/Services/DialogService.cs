@@ -277,7 +277,8 @@ public sealed class DialogService : IDialogService
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
-        AppUpdateCoordinator? updates = null)
+        AppUpdateCoordinator? updates = null,
+        Func<HotkeySettingsContext?>? createHotkeyContext = null)
     {
         var owner = Owner;
         if (owner is null)
@@ -288,10 +289,11 @@ public sealed class DialogService : IDialogService
         // One worker pass for every database read the panel needs: active configs, all profiles, and
         // every system's remembered folders. Building the rows on the UI thread afterwards no longer
         // opens a connection per system — the cold-open "slight delay" on the settings button.
-        var (configured, profiles, libraryFolders) = await Task.Run(() =>
+        var (configured, profiles, libraryFolders, hotkeys) = await Task.Run(() =>
             (configurations.GetAll(systemIds),
              configurations.GetAllProfiles(systemIds),
-             EmulatorSettingsViewModel.GroupLibraryFolders(folderReader?.Invoke())));
+             EmulatorSettingsViewModel.GroupLibraryFolders(folderReader?.Invoke()),
+             createHotkeyContext?.Invoke()));
         var viewModel = new EmulatorSettingsViewModel(
             systems,
             emulators,
@@ -305,6 +307,7 @@ public sealed class DialogService : IDialogService
             cloudSaves,
             texturePacks,
             screenScraper,
+            hotkeys,
             themeChoices,
             ambientThemeFromArtwork,
             setAmbientThemeFromArtwork,

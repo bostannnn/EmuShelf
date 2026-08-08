@@ -16,6 +16,7 @@ public enum SettingsSection
 {
     General,
     Emulators,
+    Hotkeys,
     RetroAchievements,
     ScreenScraper,
     Saves,
@@ -36,6 +37,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly ScreenScraperSettingsContext? _screenScraper;
     private readonly CloudSaveSyncSettingsContext? _cloudSaves;
     private readonly TexturePackSettingsContext? _texturePacks;
+    private readonly HotkeySettingsContext? _hotkeys;
     private readonly AppUpdateCoordinator? _updates;
     private readonly IAppLogger _logger;
     // Held only for the duration of one cloud operation so the Stop button can reach it.
@@ -48,11 +50,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool HasScreenScraper => _screenScraper is not null;
     public bool HasCloudSaves => _cloudSaves is not null;
     public bool HasTexturePacks => _texturePacks is not null;
+    public bool HasHotkeys => _hotkeys is { Emulators.Count: > 0 };
     public event Action<bool>? CloseRequested;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGeneralSection))]
     [NotifyPropertyChangedFor(nameof(IsEmulatorsSection))]
+    [NotifyPropertyChangedFor(nameof(IsHotkeysSection))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
     [NotifyPropertyChangedFor(nameof(IsScreenScraperSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
@@ -68,6 +72,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     {
         SettingsSection.General => "Library upkeep, metadata, and where EmuShelf keeps its data.",
         SettingsSection.Emulators => "Point each system at its emulator and set how it launches.",
+        SettingsSection.Hotkeys => "Write one keyboard-hotkey scheme into each emulator's own settings.",
         SettingsSection.RetroAchievements => "Connect your RetroAchievements account to track progress.",
         SettingsSection.ScreenScraper => "Connect ScreenScraper to fetch game metadata and artwork.",
         SettingsSection.Saves => "Sync in-game saves between machines through your own Google Drive.",
@@ -79,6 +84,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
+    public bool IsHotkeysSection => SelectedSection == SettingsSection.Hotkeys;
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
     public bool IsScreenScraperSection => SelectedSection == SettingsSection.ScreenScraper;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
@@ -302,6 +308,35 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public ObservableCollection<CloudSavePlatformRowViewModel> CloudPlatforms { get; } = new();
     public ObservableCollection<TexturePackRowViewModel> TexturePlatforms { get; } = new();
 
+    /// <summary>One row per emulator EmuShelf can write the keyboard-hotkey scheme for.</summary>
+    public ObservableCollection<HotkeyEmulatorRowViewModel> HotkeyEmulators { get; } = new();
+
+    /// <summary>A human summary of the hotkey scheme, shown at the top of the Hotkeys section.</summary>
+    public string HotkeySchemeSummary { get; private set; } = string.Empty;
+
+    /// <summary>True while an apply-to-all pass runs, so its button can show it is working.</summary>
+    [ObservableProperty]
+    public partial bool IsHotkeyBusy { get; set; }
+
+    /// <summary>Applies the recommended scheme to every configured emulator in turn.</summary>
+    [RelayCommand]
+    private async Task ApplyAllHotkeys()
+    {
+        if (_hotkeys is null || IsHotkeyBusy)
+            return;
+
+        IsHotkeyBusy = true;
+        try
+        {
+            foreach (var row in HotkeyEmulators)
+                await row.RunAsync(_hotkeys.ApplyAsync);
+        }
+        finally
+        {
+            IsHotkeyBusy = false;
+        }
+    }
+
     /// <summary>The packs matching the current emulator and status filters.</summary>
     public ObservableCollection<TexturePackEntryViewModel> TexturePackEntries { get; } = new();
 
@@ -395,6 +430,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
+        HotkeySettingsContext? hotkeys = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
@@ -410,6 +446,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _screenScraper = screenScraper;
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;
+        _hotkeys = hotkeys;
+        HotkeySchemeSummary = hotkeys?.SchemeSummary ?? string.Empty;
         _updates = updates;
         IsUpdateAvailable = updates?.HasAvailableUpdate ?? false;
         _logger = logger ?? NullAppLogger.Instance;
@@ -421,6 +459,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _suppressAmbientCallback = false;
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
+        if (hotkeys is { Emulators.Count: > 0 })
+            sections.Add(SettingsSection.Hotkeys);
         if (retroAchievements is not null)
             sections.Add(SettingsSection.RetroAchievements);
         if (screenScraper is not null)
@@ -434,6 +474,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         // About is always present — it just reads build metadata and needs no host context.
         sections.Add(SettingsSection.About);
         Sections = sections;
+        if (hotkeys is not null)
+        {
+            foreach (var snapshot in hotkeys.Emulators)
+                HotkeyEmulators.Add(new HotkeyEmulatorRowViewModel(snapshot, hotkeys));
+        }
         if (texturePacks is not null)
             ApplyTexturePackInventory();
         if (cloudSaves is not null)
