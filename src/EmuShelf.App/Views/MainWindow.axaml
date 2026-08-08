@@ -1496,8 +1496,10 @@
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:LibraryColumn">
-                                <Grid Width="{Binding Width}" ColumnDefinitions="*,6">
-                                    <Button Grid.Column="0" Classes="sort-header"
+                                <!-- The resize grip overlays the cell's right edge rather than reserving
+                                     a column, so the header label uses the column's full width (M40). -->
+                                <Panel Width="{Binding Width}">
+                                    <Button Classes="sort-header"
                                             IsHitTestVisible="{Binding IsSortable}"
                                             Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).SortByCommand}"
                                             CommandParameter="{Binding SortColumn}">
@@ -1508,12 +1510,12 @@
                                     </Button>
                                     <!-- Drag the right edge to resize a fixed column; the flex Title
                                          column has no grip (its width is always computed). -->
-                                    <Border Grid.Column="1" Background="Transparent"
+                                    <Border HorizontalAlignment="Right" Width="6" Background="Transparent"
                                             Cursor="SizeWestEast" IsVisible="{Binding !IsFlex}"
                                             PointerPressed="OnColumnResizePressed"
                                             PointerMoved="OnColumnResizeMoved"
                                             PointerReleased="OnColumnResizeReleased" />
-                                </Grid>
+                                </Panel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>

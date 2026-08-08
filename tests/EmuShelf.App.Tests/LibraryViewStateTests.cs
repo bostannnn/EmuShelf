@@ -3,6 +3,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Library;
+using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
@@ -40,7 +41,8 @@ public class LibraryViewStateTests : IDisposable
 
     private MainViewModel CreateViewModel(
         ILibraryViewStateService? viewState = null,
-        IInterfaceModeService? interfaceMode = null)
+        IInterfaceModeService? interfaceMode = null,
+        IGameDetailsStore? gameDetails = null)
     {
         IGameImportRules rules = new FileImportRules();
         return new MainViewModel(
@@ -51,7 +53,26 @@ public class LibraryViewStateTests : IDisposable
             _dialogs,
             KnownSystems.All,
             interfaceModeService: interfaceMode,
-            libraryViewState: viewState);
+            libraryViewState: viewState,
+            gameDetails: gameDetails);
+    }
+
+    // Counts the bulk projection reads so a test can prove grid/gamepad views skip it (M40 item 2).
+    private sealed class CountingDetailsStore : IGameDetailsStore
+    {
+        public int Calls { get; private set; }
+
+        public IReadOnlyDictionary<long, GameDetailsProjection> GetAllDetailsProjections()
+        {
+            Calls++;
+            return new Dictionary<long, GameDetailsProjection>();
+        }
+
+        public GameDetails GetDetails(long gameId) => new(gameId, [], [], []);
+        public bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode) => false;
+        public GameMediaAsset SaveMedia(GameMediaAsset media) => media;
+        public bool SelectMedia(long gameId, GameMediaKind kind, long mediaId) => false;
+        public void UpsertProviderMatch(GameProviderMatch match) { }
     }
 
     private sealed class StubInterfaceMode : IInterfaceModeService
@@ -410,6 +431,35 @@ public class LibraryViewStateTests : IDisposable
 
         var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
         Assert.Equal(console.MaxWidth, console.Width); // a corrupt/huge width can't push Title off-screen
+    }
+
+    [AvaloniaFact]
+    public async Task ProjectionReadIsSkippedInGridViewButRunsForTheListView()
+    {
+        _library.AddGames([
+            new Game
+            {
+                SystemId = GameCube.Id,
+                Path = Path.Combine(_baseDirectory, "g.iso"),
+                Title = "G",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+
+        var gridCounter = new CountingDetailsStore();
+        var grid = CreateViewModel(
+            new StubViewState(new LibraryViewSettings { IsGridView = true, Scope = nameof(LibraryScope.AllGames) }),
+            gameDetails: gridCounter);
+        await grid.ReloadGamesAsync();
+        Assert.Equal(0, gridCounter.Calls); // grid view never reads the scraped-metadata projection
+
+        var listCounter = new CountingDetailsStore();
+        var list = CreateViewModel(
+            new StubViewState(new LibraryViewSettings { IsGridView = false, Scope = nameof(LibraryScope.AllGames) }),
+            gameDetails: listCounter);
+        await list.ReloadGamesAsync();
+        Assert.True(listCounter.Calls >= 1, "the list view should load the projection at least once");
     }
 
     public void Dispose()

@@ -388,6 +388,75 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task DesktopListMarquee_SelectsRowsWhileHorizontallyScrolled()
+    {
+        var viewModel = new MainViewModel { IsGridView = false };
+        await viewModel.ReloadGamesAsync();
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gamecube");
+        viewModel.Games.ReplaceAll(Enumerable.Range(1, 3).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/games/Game {index}.rvz",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor)));
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        // Enough optional columns to force horizontal scrolling in a normal window.
+        foreach (var column in viewModel.Columns)
+            if (column.CanHide)
+                column.IsVisible = true;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1000, Height = 720 };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var list = window.FindControl<ListBox>("LibraryList");
+            Assert.NotNull(list);
+            var scroller = list!.GetVisualDescendants().OfType<ScrollViewer>().First();
+            scroller.Offset = new Vector(400, scroller.Offset.Y); // scroll the columns sideways
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var rows = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Where(control => control.Classes.Contains("game-row"))
+                .ToArray();
+            Assert.Equal(3, rows.Length);
+            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            Assert.NotNull(marqueeBox);
+
+            // Drag within the visible viewport (rows are shifted left off-screen by the scroll), from
+            // empty canvas below the rows up through them. Selection must still work while scrolled.
+            var listTopLeft = list.TranslatePoint(default, window)!.Value;
+            var firstTop = rows[0].TranslatePoint(default, window)!.Value.Y;
+            var lastBottom = rows[2].TranslatePoint(default, window)!.Value.Y + rows[2].Bounds.Height;
+            var origin = new Point(listTopLeft.X + 60, lastBottom + 16);
+            var release = new Point(listTopLeft.X + 120, firstTop + 8);
+
+            window.MouseDown(origin, MouseButton.Left, RawInputModifiers.None);
+            window.MouseMove(release, RawInputModifiers.None);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.True(marqueeBox!.IsVisible);
+            Assert.Equal(["Game 1", "Game 2", "Game 3"], viewModel.Games
+                .Where(game => game.IsSelected).Select(game => game.Title));
+
+            window.MouseUp(release, MouseButton.Left, RawInputModifiers.None);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task DesktopListMarquee_DragSelectsRowsItTouches()
     {
         var viewModel = new MainViewModel { IsGridView = false };

@@ -85,8 +85,19 @@ public partial class MainWindow : Window
     {
         var rows = e.Source as ScrollViewer
             ?? (_libraryListScroller ??= LibraryList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault());
-        if (rows is not null && LibraryHeaderScroller.Offset.X != rows.Offset.X)
+        if (rows is null)
+            return;
+
+        // Keep the frozen header aligned with the rows' horizontal scroll offset.
+        if (LibraryHeaderScroller.Offset.X != rows.Offset.X)
             LibraryHeaderScroller.Offset = LibraryHeaderScroller.Offset.WithX(rows.Offset.X);
+
+        // The row scroller's viewport is the exact usable width (it already excludes the vertical
+        // scrollbar, and is full-width under macOS overlay scrollbars), so the flex column fills the
+        // row precisely with no permanent right gap. ScrollChanged also fires when the viewport
+        // changes (e.g. the vertical scrollbar appears), so this stays current.
+        if (DataContext is MainViewModel viewModel && rows.Viewport.Width > 0)
+            viewModel.ListViewportWidth = Math.Max(0, rows.Viewport.Width - 24);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -1272,8 +1283,11 @@ public partial class MainWindow : Window
     // row. View wiring only — the view model owns the column-width arithmetic (M40).
     private void OnListViewportSizeChanged(object? sender, SizeChangedEventArgs e)
     {
+        // Fallback estimate for the first layout, before the row scroller reports its exact viewport:
+        // the container width minus the item padding (24) and an approximate vertical scrollbar (16).
+        // OnLibraryScrollChanged then supplies the precise value.
         if (DataContext is MainViewModel viewModel)
-            viewModel.ListViewportWidth = e.NewSize.Width;
+            viewModel.ListViewportWidth = Math.Max(0, e.NewSize.Width - 24 - 16);
     }
 
     // Column resize (M40): dragging a header cell's right-edge grip sets that fixed column's width;

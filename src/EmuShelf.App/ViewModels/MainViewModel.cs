@@ -136,6 +136,12 @@ public partial class MainViewModel : ViewModelBase
     // the DB. Covers stay warm across switches because the same view models are reused.
     private readonly Dictionary<string, List<GameViewModel>> _scopeCache = new(StringComparer.Ordinal);
 
+    // Scope keys whose displayed view models have had their scraped-metadata projection loaded. The
+    // bulk read only runs for the Desktop list view (M40 item 2), so grid/gamepad scopes skip it and
+    // load lazily if the user later switches to the list. Cache reuse keeps the same VM instances, so
+    // a scope already in this set still has its projections.
+    private readonly HashSet<string> _scopesWithProjections = new(StringComparer.Ordinal);
+
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
@@ -221,7 +227,14 @@ public partial class MainViewModel : ViewModelBase
         ScheduleLibraryViewStateSave();
     }
 
-    partial void OnIsGridViewChanged(bool value) => ScheduleLibraryViewStateSave();
+    partial void OnIsGridViewChanged(bool value)
+    {
+        ScheduleLibraryViewStateSave();
+        // Switching to the list view: load the scraped-metadata projection if this scope skipped it
+        // while the grid was showing (M40 item 2).
+        if (!value)
+            EnsureDetailsProjectionsLoaded();
+    }
 
     partial void OnIsGamepadSpotlightViewChanged(bool value)
     {
@@ -287,16 +300,17 @@ public partial class MainViewModel : ViewModelBase
 
     // ---- M40: configurable Desktop list-view columns ------------------------------------------
 
-    // Chrome subtracted from the list view's own width (reported by the list container, which already
-    // excludes the outer margin) to get the width the row's cells fill: the ListBox item padding
-    // (12 each side) plus room for the vertical scrollbar. The flex (Title) column absorbs the rest;
-    // the row's cell panel is stretch+clipped so a few px of estimate error can never overflow.
-    private const double ListColumnChromeWidth = 12 + 12 + 16;
+    // The ListBox item padding (12 each side); the row-scroller viewport already excludes the
+    // vertical scrollbar, so this is the only chrome the fallback estimate has to guess.
+    private const double ListRowPadding = 12 + 12;
 
     private bool _columnsInitialized;
 
-    /// <summary>Width of the desktop list view, reported by the list container (the grid scroller that
-    /// feeds <see cref="LibraryViewportWidth"/> is collapsed in list mode). Drives the flex column.</summary>
+    /// <summary>Width actually available for a row's cells — the ListBox's content-viewport width
+    /// (which already excludes the vertical scrollbar, and is 0-width on macOS overlay scrollbars)
+    /// minus the item padding, reported by the view. Drives the flex (Title) column so it fills the
+    /// row exactly with no permanent right gap. The grid scroller that feeds
+    /// <see cref="LibraryViewportWidth"/> is collapsed in list mode, hence a separate value.</summary>
     [ObservableProperty]
     public partial double ListViewportWidth { get; set; }
 
@@ -389,8 +403,7 @@ public partial class MainViewModel : ViewModelBase
         var others = Columns
             .Where(column => column.IsVisible && !column.IsFlex)
             .Sum(column => column.Width);
-        var available = ListViewportWidth - ListColumnChromeWidth - others;
-        flex.Width = Math.Max(flex.MinWidth, available);
+        flex.Width = Math.Max(flex.MinWidth, ListViewportWidth - others);
     }
 
     private void UpdateColumnSortGlyphs()
@@ -2618,6 +2631,9 @@ public partial class MainViewModel : ViewModelBase
             _ambientThemeDebounce?.Stop();
             if (AmbientThemeFromArtwork)
                 _themeService.ClearArtworkPalette();
+            // Back on the desktop: if we land in the list view, make sure its scraped columns have
+            // their projection (gamepad builds skip the read).
+            EnsureDetailsProjectionsLoaded();
         }
     }
 
@@ -2943,10 +2959,18 @@ public partial class MainViewModel : ViewModelBase
             ApplyFilter();
             _displayedScopeKey = scopeKey;
             IsLibraryLoading = false;
+            // Cached view models keep any projection they were built with; load it now only if this
+            // scope has never had one and the list view is showing.
+            EnsureDetailsProjectionsLoaded();
             return;
         }
 
         var generation = ++_loadGeneration;
+
+        // The scraped-metadata columns only show in the Desktop list view, so build their projection
+        // during the load only when that view is active; grid/gamepad scopes skip the read and load
+        // lazily if the user later switches to the list (M40 item 2). Captured on the UI thread here.
+        var listActive = !IsGridView && !IsGamepadMode;
 
         // The rail, the title and the count all move to the new platform the instant the selection
         // changes, but the games behind them only arrive two awaits later. Drop the outgoing
@@ -3047,7 +3071,8 @@ public partial class MainViewModel : ViewModelBase
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
                 ApplySpotlightTitles(viewModels);
-                ApplyDetailsProjections(viewModels);
+                if (listActive)
+                    ApplyDetailsProjections(viewModels);
                 return viewModels;
             });
 
@@ -3080,6 +3105,13 @@ public partial class MainViewModel : ViewModelBase
             ApplyFilter();
             _displayedScopeKey = scopeKey;
             IsLibraryLoading = false;
+            // These are freshly built view models: they carry a projection only if it was applied in
+            // the worker above (list view active). Track that so a later switch to the list can tell
+            // whether it still needs to load one.
+            if (listActive)
+                _scopesWithProjections.Add(scopeKey);
+            else
+                _scopesWithProjections.Remove(scopeKey);
         }
         catch (Exception ex)
         {
@@ -3300,6 +3332,52 @@ public partial class MainViewModel : ViewModelBase
         {
             _logger.Warning($"Could not load metadata projections for the list columns: {ex.Message}");
         }
+    }
+
+    /// <summary>Loads the scraped-metadata projection for the current scope on demand — used when the
+    /// user switches to the Desktop list view (or returns to it) for a scope that skipped the read in
+    /// grid/gamepad mode. No-ops when the list isn't showing or the scope already has its projection.
+    /// Runs the read on a worker and applies on the UI thread, guarded against a scope change.</summary>
+    private void EnsureDetailsProjectionsLoaded()
+    {
+        if (_gameDetails is null || IsGamepadMode || IsGridView)
+            return;
+        if (_displayedScopeKey is not { } scopeKey || _scopesWithProjections.Contains(scopeKey))
+            return;
+
+        var games = _systemGames.ToArray();
+        if (games.Length == 0)
+        {
+            _scopesWithProjections.Add(scopeKey);
+            return;
+        }
+
+        var generation = _loadGeneration;
+        _ = Task.Run(() =>
+        {
+            IReadOnlyDictionary<long, GameDetailsProjection> projections;
+            try
+            {
+                projections = _gameDetails.GetAllDetailsProjections();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Could not load metadata projections for the list columns: {ex.Message}");
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                // A scope switch (or reload) since we started owns its own projection load; don't
+                // stamp stale data onto whatever is now on screen.
+                if (generation != _loadGeneration)
+                    return;
+                foreach (var game in games)
+                    game.ApplyDetailsProjection(
+                        projections.TryGetValue(game.Id, out var projection) ? projection : null);
+                _scopesWithProjections.Add(scopeKey);
+            });
+        });
     }
 
     // Resolves each game's texture-pack presentation from the last completed inventory pass. Like
