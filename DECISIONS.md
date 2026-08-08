@@ -5112,9 +5112,14 @@ A two-agent review of real Steam Deck sync logs surfaced four issues; all four f
    returned a *non-null* snapshot for a folder that exists but holds no files — hash-of-nothing plus an
    epoch (1970) mtime. With a baseline present, the planner then chose **Upload**, and the Upload leg
    (unlike a conflict) takes no backup, so an emptied folder destroyed the cloud copy and propagated
-   emptiness to other machines. This was the only permanent-data-loss path found. Fix: `Snapshot` returns
-   `null` for a contentless folder, so the planner restores the cloud copy instead — consistent with the
-   "sync never deletes" rule. (The field manifest's empty-hash/1970 Dolphin Wii NAND entries were this.)
+   emptiness to other machines. This was the only permanent-data-loss path found. Fix, two parts:
+   `Snapshot` returns `null` for a contentless folder, and `SaveSyncPlanner` treats an empty-content
+   snapshot (empty folder or 0-byte file) as absent on *both* sides. So an emptied local restores the
+   cloud copy (never overwrites it), two empty sides are a no-op (a stray empty entry already in the cloud
+   is not re-downloaded on every sync), and a machine holding the real save uploads over an empty cloud
+   entry to heal it — all consistent with "sync never deletes". The planner's two-sided normalization is
+   essential: without it, `Snapshot` returning `null` would make every already-propagated empty cloud entry
+   re-download forever. (The field manifest's empty-hash/1970 Dolphin Wii NAND entries were this.)
 
 2. **PS2 memory-card system directories are not saves.** `BADATA-SYSTEM` (and the `B?DATA-SYSTEM`
    region variants + `BWNETCNF`) are the PS2 BIOS browser's own data; the BIOS rewrites them on nearly

@@ -14,6 +14,16 @@ public static class SaveSyncPlanner
         SaveUnitSnapshot? remote,
         SaveUnitBaseline? baseline)
     {
+        // An empty-content snapshot — an empty folder (the hash of no bytes) or a 0-byte file — is
+        // treated as "no save" on either side. This keeps an empty copy from ever uploading over or
+        // downloading from a real one (which would lose data, or endlessly re-download a stray empty
+        // entry), while two empty sides are simply nothing to do. A machine that later holds the real
+        // save uploads it over an empty cloud entry, healing it.
+        if (IsEmptyContent(local))
+            local = null;
+        if (IsEmptyContent(remote))
+            remote = null;
+
         if (local is null && remote is null)
             return new SaveSyncDecision(SaveSyncAction.None, "Nothing to sync on either side.");
 
@@ -72,4 +82,12 @@ public static class SaveSyncPlanner
 
     private static bool ContentEquals(string first, string second) =>
         string.Equals(first, second, StringComparison.Ordinal);
+
+    // SHA-256 of no bytes: an empty folder hashes to this, as does a 0-byte file.
+    private const string EmptyContentHash =
+        "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855";
+
+    private static bool IsEmptyContent(SaveUnitSnapshot? snapshot) =>
+        snapshot is not null &&
+        string.Equals(snapshot.ContentHash, EmptyContentHash, StringComparison.OrdinalIgnoreCase);
 }
