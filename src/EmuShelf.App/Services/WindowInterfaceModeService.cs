@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App.Services;
@@ -6,6 +7,11 @@ namespace EmuShelf.App.Services;
 /// <summary>Persists the requested layout and owns its window-level fullscreen state.</summary>
 public sealed class WindowInterfaceModeService : IInterfaceModeService
 {
+    // Gamepad mode is a controller/TV surface with no pointer, so it hides the cursor outright. A
+    // single shared instance is reused across every mode switch; the value is compared by reference
+    // in tests, so it must stay the same object.
+    private static readonly Cursor HiddenCursor = new(StandardCursorType.None);
+
     private readonly ISettingsService _settingsService;
     private AppSettings _settings;
     private readonly Window _window;
@@ -45,12 +51,15 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
             // a later trip through Gamepad restores it exactly (maximized stays maximized).
             _desktopWindowState = _window.WindowState;
         }
+
+        ApplyCursor();
     }
 
     public async Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default)
     {
         Current = mode;
         ApplyWindowState();
+        ApplyCursor();
         ModeChanged?.Invoke(this, mode);
         if (IsCommandLineOverride)
             return;
@@ -83,4 +92,10 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
         if (_window.WindowState == WindowState.FullScreen)
             _window.WindowState = _desktopWindowState ?? WindowState.Maximized;
     }
+
+    // Hide the pointer in Gamepad mode so an accidental mouse or trackpad bump can't park a visible
+    // cursor over the controller UI; Desktop restores the normal arrow. Mouse *input* is separately
+    // disabled by making the gamepad surface non-hit-testable (see GamepadRoot in MainWindow.axaml).
+    private void ApplyCursor() =>
+        _window.Cursor = Current == InterfaceMode.Gamepad ? HiddenCursor : Cursor.Default;
 }

@@ -5017,3 +5017,34 @@ per-fact chips, with the launch source (file/disc) as a dim caption below. Non-o
 - **Publisher chip collapses into the developer when identical** (common for first-party titles), and
   players read in words ("1 player" / "2 players") instead of "2P". `ComposeSpotlightInfo` now returns
   the chip list (`IReadOnlyList<string>`) rather than a joined string.
+
+## 2026-08-08 — Gamepad mode disables the mouse entirely
+
+The 2026-07-25 M31 decision kept "mixed input" in Gamepad mode: the shell suppressed stale
+pointer-hover treatment while a controller was active but deliberately *did not* disable the mouse.
+In practice that made an accidental trackpad or mouse bump (common on handhelds and couch/TV setups,
+and under Steam) drop the controller-focus visuals and park a visible cursor over the shell. Gamepad
+mode is a controller/TV surface, so it now disables the mouse outright — matching console and
+Big-Picture expectations.
+
+Two independent layers, both always on in Gamepad mode:
+
+- **Cursor hidden (`WindowInterfaceModeService`).** Entering Gamepad sets `Window.Cursor` to a shared
+  `StandardCursorType.None` instance; Desktop restores `Cursor.Default`. This lives beside the existing
+  window-level fullscreen handling and rides the same mode transitions.
+- **Surface non-hit-testable (`IsHitTestVisible="False"` on `GamepadRoot`).** The whole gamepad UI —
+  rail, grid, spotlight, and every overlay — is a single container shown only in Gamepad mode (desktop
+  content is `IsVisible=false` beside it). Marking that container non-hit-testable makes the mouse
+  unable to hover, select, drag, or scroll *anything*. An earlier attempt swallowed `PointerPressed`/
+  `Released`/`WheelChanged` at the window tunnel, but that could not stop hover: Avalonia sets the
+  `:pointerover` pseudo-class during hit-testing regardless of routed-event `Handled`, so elements
+  still lit up under the (invisible) pointer. Disabling hit-testing is the one lever that covers hover
+  too. Controller/keyboard input is unaffected — it drives focus through the view model, not
+  hit-testing.
+
+Consequences: the mouse-driven Gamepad code paths were removed — the pointer-move modality flip
+(`NotifyGamepadPointerInput`), the click-to-focus-achievement handler, and the now-orphaned
+`FocusGamepadAchievement` command. `IsGamepadControllerInputActive` is therefore always true during a
+Gamepad session (kept as the `.controller-input` visual toggle rather than rewiring every binding).
+The keyboard/Steam-Input path (B/Esc, Start/`F10`, confirmation to exit) is untouched, so a controller
+still drives everything and the app can always be left.
