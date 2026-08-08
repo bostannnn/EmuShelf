@@ -87,6 +87,17 @@ public sealed class DialogService : IDialogService
             .ToList();
     }
 
+    public async Task OpenFolderAsync(string path)
+    {
+        var owner = PickerOwner;
+        if (owner is null || string.IsNullOrWhiteSpace(path))
+            return;
+
+        // ILauncher picks the platform file manager (Explorer, Finder, xdg-open) so no OS branching
+        // lives here.
+        await owner.Launcher.LaunchDirectoryInfoAsync(new System.IO.DirectoryInfo(path));
+    }
+
     public async Task<string?> PickFolderAsync()
     {
         var owner = Owner;

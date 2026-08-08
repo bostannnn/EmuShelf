@@ -26,6 +26,12 @@ public interface IDialogService
     /// <summary>Absolute path of the picked folder, or null if cancelled.</summary>
     Task<string?> PickFolderAsync();
 
+    /// <summary>
+    /// Reveals a folder in the OS file manager (Explorer/Finder/file browser). Implementations
+    /// without a window do nothing.
+    /// </summary>
+    Task OpenFolderAsync(string path) => Task.CompletedTask;
+
     /// <summary>Absolute path of a manually selected emulator executable, or null if cancelled.</summary>
     Task<string?> PickEmulatorExecutableAsync(string emulatorName);
     Task<string?> PickLibretroCoreAsync(string systemName);

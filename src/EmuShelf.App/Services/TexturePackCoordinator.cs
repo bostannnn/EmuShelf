@@ -37,6 +37,20 @@ public sealed record TexturePackInventoryResult(
 }
 
 /// <summary>
+/// Where one game's replacement-texture pack belongs — the resolved texture root plus the
+/// emulator-specific id folder — or a human diagnostic when no folder could be resolved. The path
+/// is only computed; nothing is created here.
+/// </summary>
+public sealed record TextureFolderResolution(
+    string? FullPath,
+    string? FolderId,
+    string? RootDirectory,
+    string? Diagnostic)
+{
+    public bool IsResolved => FullPath is not null;
+}
+
+/// <summary>
 /// The texture-pack operations the Settings view model drives, wrapped as delegates so the view
 /// model stays testable with a fake context. Note what is absent: there is no install, repair,
 /// move, rename, or delete operation, because EmuShelf never performs one.
@@ -164,6 +178,127 @@ public sealed class TexturePackCoordinator
     /// <summary>Rescans every configured installation. Cancellable and off the UI thread.</summary>
     public Task<TexturePackInventoryResult> RefreshAsync(CancellationToken cancellationToken = default) =>
         RunAsync(refresh: true, cancellationToken);
+
+    /// <summary>
+    /// Resolves the folder an emulator would load this game's replacement textures from — the same
+    /// texture root the scan uses plus the emulator-specific id folder — without creating anything.
+    /// The id comes from the game's stored identifiers, falling back to a local, network-free
+    /// extraction (the same one the rescan backfill performs) when none are stored yet. Returns a
+    /// diagnostic instead of a path when the system is unsupported, its emulator is not the active
+    /// one, the root cannot be found, or no id can be determined. Read-only: it opens directories and
+    /// configuration, and may persist a freshly extracted identifier, but never creates the folder —
+    /// that stays with the caller so this type keeps no UI or write policy.
+    /// </summary>
+    public async Task<TextureFolderResolution> ResolveTextureFolderAsync(
+        Game game,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(game);
+
+        var descriptor = TexturePackProviderRegistry.Find(game.SystemId);
+        if (descriptor is null)
+            return new TextureFolderResolution(null, null, null, "Texture packs aren't supported for this system.");
+
+        var overridePath = _settings.TexturePacks.GetOverride(descriptor.SystemId);
+        var installation = _emulatorInstallations?.Invoke(descriptor.SystemId);
+
+        // A texture pack belongs to one emulator and is not portable between them, so if the user has
+        // made a different emulator active for this system its folder would never be read. Mirror the
+        // scan and sit out rather than open a folder the active emulator ignores.
+        if (installation?.EmulatorId is { } activeEmulatorId &&
+            !string.Equals(activeEmulatorId, descriptor.EmulatorId, StringComparison.Ordinal))
+        {
+            return new TextureFolderResolution(
+                null, null, null,
+                $"{descriptor.DisplayName} is not the active emulator for this system.");
+        }
+
+        var provider = descriptor.CreateProvider(new TextureProviderContext(
+            overridePath,
+            installation?.Directory,
+            installation?.IsFlatpak == true,
+            _paths));
+        if (provider is null)
+        {
+            return new TextureFolderResolution(
+                null, null, null,
+                $"{descriptor.DisplayName} isn't configured for this system.");
+        }
+
+        TexturePackRootResolution resolution;
+        try
+        {
+            resolution = await provider.RootResolver.ResolveAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new TextureFolderResolution(null, null, null, ex.Message);
+        }
+
+        if (!resolution.IsResolved || resolution.RootDirectory is null)
+        {
+            return new TextureFolderResolution(
+                null, null, null,
+                resolution.Diagnostic ?? $"Could not find {descriptor.DisplayName}'s textures folder.");
+        }
+
+        var folderId = await Task.Run(
+            () => ResolveFolderId(descriptor, game, cancellationToken),
+            cancellationToken);
+        if (folderId is null)
+        {
+            return new TextureFolderResolution(
+                null, null, resolution.RootDirectory,
+                $"Could not determine the texture folder id for {game.Title} — EmuShelf found no serial or id for it.");
+        }
+
+        return new TextureFolderResolution(
+            Path.Combine(resolution.RootDirectory, folderId),
+            folderId,
+            resolution.RootDirectory,
+            null);
+    }
+
+    private string? ResolveFolderId(
+        TextureProviderDescriptor descriptor,
+        Game game,
+        CancellationToken cancellationToken)
+    {
+        var stored = _metadataStore.GetIdentifiers(game.Id);
+        var folderId = TexturePackFolderNaming.Build(descriptor.FolderKind, stored);
+        if (folderId is not null)
+            return folderId;
+
+        // Only extract when nothing is stored yet. ReplaceIdentifiers replaces the game's whole set,
+        // so re-extracting for a game that already has identifiers of other kinds (a Sha1 used for
+        // achievement matching, say) would delete them. Mirror the rescan backfill, which likewise
+        // skips any game that already carries identifiers, and leave a partly-identified game as is.
+        if (stored.Count > 0 || !_identifierExtractors.TryGetValue(descriptor.SystemId, out var extractor))
+            return null;
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var extracted = extractor.Extract(game);
+            if (extracted.Count == 0)
+                return null;
+            _metadataStore.ReplaceIdentifiers(game.Id, extracted);
+            return TexturePackFolderNaming.Build(descriptor.FolderKind, extracted);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger?.Warning($"Could not read a texture-folder id from '{game.Path}': {ex.Message}");
+            return null;
+        }
+    }
 
     private async Task<TexturePackInventoryResult> RunAsync(bool refresh, CancellationToken cancellationToken)
     {

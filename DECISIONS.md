@@ -5075,3 +5075,29 @@ Consequences: the mouse-driven Gamepad code paths were removed — the pointer-m
 Gamepad session (kept as the `.controller-input` visual toggle rather than rewiring every binding).
 The keyboard/Steam-Input path (B/Esc, Start/`F10`, confirmation to exit) is untouched, so a controller
 still drives everything and the app can always be left.
+
+## 2026-08-08 — "Open texture folder" is the texture subsystem's one allowed write
+
+The game context menu gained **Open texture folder** (desktop grid and list), which reveals the folder
+an emulator loads a game's replacement textures from and, when it doesn't exist, **creates it with the
+correct id** so a downloaded pack can be dropped straight in. It appears only for the six
+texture-capable systems (`TexturePackProviderRegistry.Find(SystemId) is not null`).
+
+This is a deliberate, bounded departure from the subsystem's read-only stance (see the
+`TexturePackSettingsContext` note: "no install, repair, move, rename, or delete … EmuShelf never
+performs one"). Creating the id folder is the **only** write the texture subsystem makes, and it is
+tightly scoped:
+
+- It creates an **empty** directory inside the emulator's own textures root, on explicit user action.
+- It never touches a game file and never modifies, moves, renames, or deletes an existing pack.
+
+The path is resolved by `TexturePackCoordinator.ResolveTextureFolderAsync`, which reuses the same
+provider/root resolution the scan uses (honouring the override and Flatpak, and sitting out when a
+different emulator is active for the system). The folder **id** comes from the game's stored
+identifiers via the pure `TexturePackFolderNaming.Build` (the inverse of `TexturePackMatcher`: serial
+for PS1/PS2, hyphen-less game-id for PSP, disc id for GameCube/Wii, title id for 3DS); when none are
+stored it extracts them locally (no network) exactly as the rescan backfill does and persists them, so
+the folder EmuShelf creates is the one a later scan will match. The create-and-open itself stays in the
+App command (`MainViewModel.OpenTextureFolderAsync` + `IDialogService.OpenFolderAsync` over Avalonia's
+`ILauncher`), so the coordinator keeps no UI or write policy and platform file-manager differences
+(Explorer/Finder/xdg-open) stay behind the launcher.

@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Importing;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
@@ -81,7 +82,8 @@ public class MainViewModelTests : IDisposable
         IScreenScraperPreviewService? screenScraperPreview = null,
         IGameScrapeApplicationService? scrapeApply = null,
         IScreenScraperAccountService? screenScraperAccount = null,
-        ISettingsService? settingsService = null)
+        ISettingsService? settingsService = null,
+        TexturePackCoordinator? texturePacks = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -92,6 +94,7 @@ public class MainViewModelTests : IDisposable
             _dialogs,
             KnownSystems.All,
             launchService,
+            texturePacks: texturePacks,
             emulatorConfigurations: emulatorConfigurations,
             covers: covers,
             themeService: themes,
@@ -794,6 +797,50 @@ public class MainViewModelTests : IDisposable
 
         Assert.True(game.CanOpenAchievementDetails);
         Assert.Equal(("Achievements game", 1234), _dialogs.AchievementDetailsRequest);
+    }
+
+    [AvaloniaFact]
+    public async Task OpenTextureFolder_CreatesTheSerialFolderAndRevealsIt()
+    {
+        var path = Path.Combine(_baseDirectory, "MetalGear.cue");
+        File.WriteAllText(path, "FILE \"MetalGear.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Metal Gear Solid", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        _metadataStore.ReplaceIdentifiers(gameId,
+            [new GameIdentifier(GameIdentifierKind.Serial, "SLUS-00594", "test", IsPrimary: true)]);
+
+        var textures = Path.Combine(_baseDirectory, "duckstation-textures");
+        Directory.CreateDirectory(textures);
+        var coordinator = new TexturePackCoordinator(
+            new AppPaths(_baseDirectory),
+            _metadataStore,
+            new AppSettings { TexturePacks = new TexturePackSettings().WithOverride("playstation", textures) },
+            NullAppLogger.Instance);
+        var vm = CreateViewModel(metadataStore: _metadataStore, texturePacks: coordinator);
+
+        await vm.ReloadGamesAsync();
+        var game = Assert.Single(vm.Games);
+        Assert.True(game.CanOpenTextureFolder);
+
+        await game.OpenTextureFolderCommand.ExecuteAsync(game);
+
+        var expected = Path.Combine(textures, "SLUS-00594");
+        Assert.True(Directory.Exists(expected));
+        Assert.Equal(expected, _dialogs.LastOpenedFolder);
+    }
+
+    [AvaloniaFact]
+    public async Task OpenTextureFolder_IsHiddenForSystemsWithoutTexturePackSupport()
+    {
+        var path = Path.Combine(_baseDirectory, "Sonic.md");
+        File.WriteAllText(path, "x");
+        _library.AddGames([new Game { SystemId = MegaDrive.Id, Path = path, Title = "Sonic", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(metadataStore: _metadataStore);
+
+        await vm.ReloadGamesAsync();
+        var game = Assert.Single(vm.Games);
+
+        Assert.False(game.CanOpenTextureFolder);
     }
 
     [AvaloniaFact]
