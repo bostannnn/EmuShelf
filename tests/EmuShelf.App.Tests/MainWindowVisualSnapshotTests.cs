@@ -1111,6 +1111,9 @@ public class MainWindowVisualSnapshotTests
             Assert.True(achievementTiles.Length >= 18);
             Assert.All(achievementTiles, tile => Assert.Equal(tile.Bounds.Width, tile.Bounds.Height, 1));
             Assert.Equal("First victory", viewModel.FocusedGamepadAchievement.Title);
+            // Gamepad mode is controller-only: the surface is non-hit-testable, so a real left click on
+            // a different achievement tile lands on nothing — focus stays put and the controller-input
+            // modality is never dropped. (Controller navigation still moves focus; only the mouse is off.)
             var pointerTarget = AchievementTileFor(
                 window, viewModel.GamepadAchievementDetails.VisibleAchievements[1]);
             var pointerPosition = pointerTarget.TranslatePoint(
@@ -1120,9 +1123,9 @@ public class MainWindowVisualSnapshotTests
             window.MouseDown(pointerPosition.Value, MouseButton.Left, RawInputModifiers.None);
             window.MouseUp(pointerPosition.Value, MouseButton.Left, RawInputModifiers.None);
             await PumpAsync();
-            Assert.Same(viewModel.GamepadAchievementDetails.VisibleAchievements[1],
+            Assert.Same(viewModel.GamepadAchievementDetails.VisibleAchievements[0],
                 viewModel.FocusedGamepadAchievement);
-            Assert.False(viewModel.IsGamepadControllerInputActive);
+            Assert.True(viewModel.IsGamepadControllerInputActive);
 
             viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[7];
             viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
@@ -1895,13 +1898,18 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-focus-tile-ring"));
             Assert.Equal(0, focusRing.Opacity);
-            viewModel.NotifyGamepadPointerInput();
-            var pseudoClasses = (IPseudoClasses)shortButton.Classes;
-            pseudoClasses.Add(":pointerover");
+            // Mouse input is disabled in Gamepad mode: the whole gamepad surface is non-hit-testable, so
+            // a REAL pointer move over a tile never marks it :pointerover and never lights the hover ring.
+            // This is the regression guard for "cursor hidden but elements still react to the pointer".
+            var shortCenter = shortButton.TranslatePoint(
+                new Point(shortButton.Bounds.Width / 2, shortButton.Bounds.Height / 2), window);
+            Assert.NotNull(shortCenter);
+            window.MouseMove(shortCenter.Value, RawInputModifiers.None);
             await PumpAsync();
 
-            Assert.False(viewModel.IsGamepadControllerInputActive);
-            Assert.Equal(1, hoverRing.Opacity);
+            Assert.False(shortButton.IsPointerOver);
+            Assert.True(viewModel.IsGamepadControllerInputActive);
+            Assert.Equal(0, hoverRing.Opacity);
             // The short NDS cover fills the same uniform frame as the tall PS2 cover instead of
             // bottom-aligning inside a taller mixed shelf cell: both frames are GamepadCoverHeight.
             // (The per-platform desktop frame really did differ — CoverHeight is shorter — so this
@@ -1916,11 +1924,13 @@ public class MainWindowVisualSnapshotTests
                 Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR"),
                 "emushelf-gamepad-uniform-cover-hover-1280x800.png");
 
+            // The pressed visual is style-only (controller/keyboard activation can still raise it), so
+            // force the pseudo-class and confirm a pressed tile keeps a transparent background.
+            var pseudoClasses = (IPseudoClasses)shortButton.Classes;
             pseudoClasses.Add(":pressed");
             await PumpAsync();
             Assert.Equal(0, Assert.IsAssignableFrom<ISolidColorBrush>(shortButton.Background).Color.A);
             pseudoClasses.Remove(":pressed");
-            pseudoClasses.Remove(":pointerover");
 
             viewModel.FocusedGame = shortGame;
             await PumpAsync();

@@ -1787,10 +1787,13 @@
 
     <!-- Steam Input's keyboard contract drives this deliberately separate, large-target view.
          It does not replace the desktop selection model or list view. -->
+    <!-- Gamepad mode is controller-only: the entire surface is non-hit-testable so the mouse cannot
+         hover, select, drag, or scroll anything (the cursor is also hidden by WindowInterfaceModeService).
+         Controller/keyboard input drives focus through the view model, which does not use hit-testing. -->
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
-          IsVisible="{Binding IsGamepadMode}" RowDefinitions="100,*,104"
+          IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,104"
           TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}"
-          Background="{DynamicResource EmuLibraryBrush}" PointerMoved="OnGamepadPointerMoved">
+          Background="{DynamicResource EmuLibraryBrush}">
         <Border Grid.Row="0" Padding="42,18,42,12" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="22">
@@ -2678,7 +2681,6 @@
                                                         <Panel Classes="gamepad-achievement-tile"
                                                                Classes.focused="{Binding IsFocused}"
                                                                ClipToBounds="False" Focusable="True"
-                                                               PointerPressed="OnGamepadAchievementPointerPressed"
                                                                AttachedToVisualTree="OnGamepadAchievementAttached"
                                                                DataContextChanged="OnGamepadAchievementDataContextChanged">
                                                             <!-- Same accent frame as the library grid: a solid pad

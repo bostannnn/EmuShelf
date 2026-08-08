@@ -346,6 +346,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsGamepadMode { get; set; }
 
+    // Drives the `.controller-input` visual state. Mouse input is disabled outright in Gamepad mode
+    // (the cursor is hidden and the gamepad surface is non-hit-testable), so controller input is
+    // always the active modality and this stays true throughout a Gamepad session.
     [ObservableProperty]
     public partial bool IsGamepadControllerInputActive { get; set; } = true;
 
@@ -1373,16 +1376,6 @@ public partial class MainViewModel : ViewModelBase
             ? null
             : details.VisibleAchievements[Math.Min(focusedIndex, details.VisibleAchievements.Count - 1)];
 
-    }
-
-    [RelayCommand]
-    private void FocusGamepadAchievement(AchievementRowViewModel? achievement)
-    {
-        if (IsGamepadAchievementsOpen && achievement is not null &&
-            GamepadAchievementDetails?.VisibleAchievements.Contains(achievement) == true)
-        {
-            FocusedGamepadAchievement = achievement;
-        }
     }
 
     [RelayCommand]
@@ -4224,12 +4217,6 @@ public partial class MainViewModel : ViewModelBase
         $"{count} conflict{(count == 1 ? "" : "s")} resolved" +
         (context is null ? "" : $" {context}") +
         " (older copy backed up)";
-
-    public void NotifyGamepadPointerInput()
-    {
-        if (IsGamepadMode)
-            IsGamepadControllerInputActive = false;
-    }
 
     private async Task RefreshRetroAchievementsAfterTrackedExitAsync(int retroAchievementsGameId)
     {
