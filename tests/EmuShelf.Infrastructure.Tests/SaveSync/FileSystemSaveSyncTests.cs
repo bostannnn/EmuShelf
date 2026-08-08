@@ -153,6 +153,50 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task FolderSnapshot_TreatsAnExistingButEmptyFolderAsNoLocalUnit()
+    {
+        // An empty-but-present save folder must not become an "empty content" snapshot: that would
+        // upload nothing over a good cloud copy (with no backup) and propagate emptiness. Report no
+        // local unit so the planner restores the cloud copy instead.
+        var save = Path.Combine(_memoryCardsDirectory, "Mcd001", "SLUS-20552");
+        Directory.CreateDirectory(save);
+        await File.WriteAllTextAsync(Path.Combine(_memoryCardsDirectory, "Mcd001", "_pcsx2_index"), "index");
+        WriteIni(autoManageFolderCards: false);
+
+        Assert.Null(await _endpoint.SnapshotAsync("pcsx2/Mcd001/SLUS-20552"));
+    }
+
+    [Fact]
+    public async Task Sync_DoesNotPushAnEmptiedFolderOverAGoodCloudSave()
+    {
+        // The field data-loss case: a folder synced with real content, then emptied (deleted in the
+        // emulator but the directory remains). The next sync must not overwrite the cloud copy with
+        // emptiness — it restores the good copy, exactly as a deleted file is restored.
+        var save = Path.Combine(_memoryCardsDirectory, "Mcd001", "SLUS-20552");
+        Directory.CreateDirectory(Path.Combine(save, "nested"));
+        await File.WriteAllTextAsync(Path.Combine(save, "save.bin"), "real progress");
+        await File.WriteAllTextAsync(Path.Combine(save, "nested", "icon.sys"), "icon");
+        await File.WriteAllTextAsync(Path.Combine(_memoryCardsDirectory, "Mcd001", "_pcsx2_index"), "index");
+        WriteIni(autoManageFolderCards: false);
+        var unit = new SaveUnit("pcsx2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder);
+        var remote = new InMemoryCloudSyncTransport();
+        var service = new SaveSyncService(_endpoint, remote, new JsonSaveSyncManifestStore(AppPaths));
+
+        Assert.Equal(1, (await service.SyncAsync(new FakeSaveLocationProvider("playstation2", unit))).Uploaded);
+        var cloudCopy = remote.Content(unit.UnitId);
+
+        // Empty the folder (files gone, directory stays) and sync again.
+        Directory.Delete(save, recursive: true);
+        Directory.CreateDirectory(save);
+        var report = await service.SyncAsync(new FakeSaveLocationProvider("playstation2", unit));
+
+        Assert.Equal(0, report.Uploaded);
+        Assert.Equal(1, report.Downloaded);
+        Assert.Equal(cloudCopy, remote.Content(unit.UnitId));
+        Assert.Equal("real progress", await File.ReadAllTextAsync(Path.Combine(save, "save.bin")));
+    }
+
+    [Fact]
     public void DefaultLocations_UseDocumentedWindowsAndFlatpakPaths()
     {
         var windows = Pcsx2SaveLocationProvider.GetDefaultMemoryCardsDirectory("ignored", isWindows: true);
@@ -391,7 +435,11 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         var relocatedMemcards = Path.Combine(BaseDirectory, "saves", "ps2", "pcsx2", "memcards");
         var folderCard = Path.Combine(relocatedMemcards, "Mcdf01.ps2");
         Directory.CreateDirectory(Path.Combine(folderCard, "BASCUS-97399GodOfWar"));
+        // PS2 BIOS system directories, not game saves — must not be enumerated (they otherwise churn,
+        // re-uploading every boot).
         Directory.CreateDirectory(Path.Combine(folderCard, "BADATA-SYSTEM"));
+        Directory.CreateDirectory(Path.Combine(folderCard, "BEDATA-SYSTEM"));
+        Directory.CreateDirectory(Path.Combine(folderCard, "BWNETCNF"));
         Directory.CreateDirectory(Path.Combine(folderCard, "_pcsx2_deleted_BASLUS-20504xyz"));
         await File.WriteAllTextAsync(Path.Combine(relocatedMemcards, "Mcd002.ps2"), "file-card");
         await File.WriteAllTextAsync(
@@ -411,7 +459,6 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             [
                 new SaveUnit("pcsx2/Mcd002.ps2", "Mcd002.ps2", SaveUnitKind.File),
-                new SaveUnit("pcsx2/Mcdf01.ps2/BADATA-SYSTEM", "Mcdf01.ps2 — BADATA-SYSTEM", SaveUnitKind.Folder),
                 new SaveUnit("pcsx2/Mcdf01.ps2/BASCUS-97399GodOfWar", "Mcdf01.ps2 — BASCUS-97399GodOfWar", SaveUnitKind.Folder),
             ],
             await provider.GetSaveUnitsAsync());

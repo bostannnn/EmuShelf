@@ -282,9 +282,20 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
 
     // A per-save subdirectory of a folder card, keyed by the PS2 memory-card directory name
     // (e.g. "BASCUS-97399GodOfWar"). PCSX2's own "_"-prefixed housekeeping entries
-    // (_pcsx2_index, _pcsx2_deleted_*) are not saves.
+    // (_pcsx2_index, _pcsx2_deleted_*) and the PS2 BIOS's own system directories are not saves.
     private static bool IsSaveDirectory(string name) =>
-        !name.StartsWith('_') && IsGameSerial(name);
+        !name.StartsWith('_') && !IsPs2SystemDirectory(name) && IsGameSerial(name);
+
+    // The PS2 memory-card system directories are console data, not game saves. The BIOS browser
+    // rewrites its "B<region>DATA-SYSTEM" data (card icons/settings) on essentially every boot, so
+    // syncing it re-uploads forever (a field card reached revision 15); "BWNETCNF" is the console's
+    // network configuration. Excluded like PCSX2's own "_"-prefixed housekeeping above.
+    private static bool IsPs2SystemDirectory(string name) =>
+        name.Equals("BWNETCNF", StringComparison.OrdinalIgnoreCase) ||
+        // B<region>DATA-SYSTEM — BADATA-SYSTEM (USA), BEDATA-SYSTEM (Europe), BJDATA-SYSTEM (Japan), etc.
+        (name.Length == "B?DATA-SYSTEM".Length &&
+            char.ToUpperInvariant(name[0]) == 'B' &&
+            name.EndsWith("DATA-SYSTEM", StringComparison.OrdinalIgnoreCase));
 
     private sealed record Pcsx2Configuration(
         string MemoryCardsDirectory,

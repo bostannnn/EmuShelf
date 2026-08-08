@@ -326,6 +326,69 @@ public class CloudSaveSyncCoordinatorTests
             new IOException("folder id is no longer reachable")));
     }
 
+    [Fact]
+    public void StatePhaseHint_IsEmpty_WhenStatesMatchedTheGame()
+    {
+        Assert.Equal(
+            string.Empty,
+            CloudSaveSyncCoordinator.StatePhaseHint(
+                compatible: true, localStatesMatched: 2, folder: "/states/bsnes", folderStates: 5, folderWarning: null));
+    }
+
+    [Fact]
+    public void StatePhaseHint_NamesTheIncompatibility_WhenCompatibilityCouldNotBeDetected()
+    {
+        var hint = CloudSaveSyncCoordinator.StatePhaseHint(
+            compatible: false, localStatesMatched: 0, folder: "/states/bsnes", folderStates: 5, folderWarning: null);
+
+        Assert.Contains("compatibilityDetected=false", hint);
+    }
+
+    [Fact]
+    public void StatePhaseHint_DistinguishesAnEmptyFolderFromAnUnmatchedName()
+    {
+        // The exact confusion this replaced: a zero match in an empty folder means "nothing was made
+        // yet", not "the names did not match" — and the message must say which of the two it is.
+        var emptyFolder = CloudSaveSyncCoordinator.StatePhaseHint(
+            compatible: true, localStatesMatched: 0, folder: "/states/bsnes", folderStates: 0, folderWarning: null);
+        var unmatched = CloudSaveSyncCoordinator.StatePhaseHint(
+            compatible: true, localStatesMatched: 0, folder: "/states/bsnes", folderStates: 5, folderWarning: null);
+
+        Assert.Contains("no manual save states yet", emptyFolder);
+        Assert.DoesNotContain("none matched", emptyFolder);
+        Assert.Contains("5 manual save state(s)", unmatched);
+        Assert.Contains("none matched", unmatched);
+        Assert.Contains("/states/bsnes", unmatched);
+    }
+
+    [Fact]
+    public void StatePhaseHint_SurfacesAnUnresolvedFolderAndItsWarning()
+    {
+        var hint = CloudSaveSyncCoordinator.StatePhaseHint(
+            compatible: true,
+            localStatesMatched: 0,
+            folder: null,
+            folderStates: 0,
+            folderWarning: "The emulator configuration does not expose a safe folder for save states.");
+
+        Assert.Contains("could not be resolved", hint);
+        Assert.Contains("does not expose a safe folder", hint);
+    }
+
+    [Fact]
+    public void StatePhaseHint_IncludesTheFolderNotYetCreatedWarning()
+    {
+        var hint = CloudSaveSyncCoordinator.StatePhaseHint(
+            compatible: true,
+            localStatesMatched: 0,
+            folder: "/states/bsnes",
+            folderStates: 0,
+            folderWarning: "The folder does not exist yet.");
+
+        Assert.Contains("no manual save states yet", hint);
+        Assert.Contains("The folder does not exist yet.", hint);
+    }
+
     private static IReadOnlyDictionary<string, string?> Overrides(params (string SystemId, string? Path)[] entries) =>
         entries.ToDictionary(entry => entry.SystemId, entry => entry.Path, StringComparer.Ordinal);
 

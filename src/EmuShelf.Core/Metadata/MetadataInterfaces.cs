@@ -101,6 +101,12 @@ public interface IGameDetailsStore
 {
     GameDetails GetDetails(long gameId);
 
+    /// <summary>Every game's list-view metadata projection, by game id, in a small fixed number of
+    /// queries (never one per game). Games with no stored details are absent. Mirrors
+    /// <see cref="IGameMetadataStore.GetAllIdentifiers"/>. Defaults to empty for stores that hold no details.</summary>
+    IReadOnlyDictionary<long, GameDetailsProjection> GetAllDetailsProjections() =>
+        new Dictionary<long, GameDetailsProjection>();
+
     bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode);
 
     GameMediaAsset SaveMedia(GameMediaAsset media);
