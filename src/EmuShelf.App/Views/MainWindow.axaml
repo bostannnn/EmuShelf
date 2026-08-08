@@ -975,7 +975,7 @@
             <Setter Property="CornerRadius" Value="7" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
-        <Style Selector="Grid.list-header TextBlock">
+        <Style Selector="ItemsControl.list-header TextBlock">
             <Setter Property="FontSize" Value="10" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="LetterSpacing" Value="0.9" />
@@ -1457,65 +1457,39 @@
             </ScrollViewer>
 
             <Grid IsVisible="{Binding !IsGridView}" RowDefinitions="38,*" Margin="20,14,20,20"
-                  Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}">
+                  Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
+                  SizeChanged="OnListViewportSizeChanged">
+                <!-- Header and rows both bind to the same ordered VisibleColumns collection, so a
+                     hide/reorder/resize is a data change and the two can never disagree (M40). -->
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="12,0">
-                    <Grid Classes="list-header" ColumnDefinitions="84,*,150,90,96,92,100">
-                        <Button Grid.Column="1" Classes="sort-header"
-                                Command="{Binding SortByCommand}"
-                                CommandParameter="{x:Static vm:LibrarySortColumn.Title}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="TITLE" />
-                                <TextBlock Text="{Binding TitleSortGlyph}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Column="2" Classes="sort-header"
-                                Command="{Binding SortByCommand}"
-                                CommandParameter="{x:Static vm:LibrarySortColumn.Console}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="CONSOLE" />
-                                <TextBlock Text="{Binding ConsoleSortGlyph}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Column="3" Classes="sort-header"
-                                Command="{Binding SortByCommand}"
-                                CommandParameter="{x:Static vm:LibrarySortColumn.Format}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="FORMAT" />
-                                <TextBlock Text="{Binding FormatSortGlyph}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Column="4" Classes="sort-header"
-                                Command="{Binding SortByCommand}"
-                                CommandParameter="{x:Static vm:LibrarySortColumn.Achievements}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="ACHIEVEMENTS" />
-                                <TextBlock Text="{Binding AchievementsSortGlyph}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Column="5" Classes="sort-header"
-                                Command="{Binding SortByCommand}"
-                                CommandParameter="{x:Static vm:LibrarySortColumn.Textures}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="TEXTURES" />
-                                <TextBlock Text="{Binding TexturesSortGlyph}" />
-                            </StackPanel>
-                        </Button>
-                        <Button Grid.Column="6" Classes="sort-header"
-                                Command="{Binding SortByCommand}"
-                                CommandParameter="{x:Static vm:LibrarySortColumn.Status}">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <TextBlock Text="STATUS" />
-                                <TextBlock Text="{Binding StatusSortGlyph}" />
-                            </StackPanel>
-                        </Button>
-                    </Grid>
+                    <ItemsControl Classes="list-header" ItemsSource="{Binding VisibleColumns}"
+                                  VerticalAlignment="Stretch">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LibraryColumn">
+                                <Button Classes="sort-header" Width="{Binding Width}"
+                                        IsHitTestVisible="{Binding IsSortable}"
+                                        Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).SortByCommand}"
+                                        CommandParameter="{Binding SortColumn}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="{Binding Header}" />
+                                        <TextBlock Text="{Binding SortGlyph}" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </Border>
                 <ListBox x:Name="LibraryList" Grid.Row="1" Classes="game-list" ItemsSource="{Binding Games}"
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
-                            <Grid ColumnDefinitions="84,*,150,90,96,92,100" Classes="game-row"
+                            <Grid Classes="game-row"
                                   Classes.selected="{Binding IsSelected}"
                                   Classes.unavailable="{Binding !IsAvailable}"
                                   ContextRequested="OnGameContextRequested"
@@ -1560,67 +1534,132 @@
                                                   Command="{Binding RemoveSelectedCommand}" />
                                     </ContextMenu>
                                 </Grid.ContextMenu>
-                                <Border Grid.Column="0"
-                                        Width="{Binding ListCoverWidth}" Height="{Binding ListCoverHeight}"
-                                        CornerRadius="4"
-                                        Background="{DynamicResource EmuCoverWellBrush}"
-                                        BorderBrush="{DynamicResource EmuCoverBorderBrush}"
-                                        BorderThickness="1" ClipToBounds="True"
-                                        HorizontalAlignment="Left"
-                                        AttachedToVisualTree="OnGameCoverAttached"
-                                        DataContextChanged="OnGameCoverDataContextChanged">
-                                    <Panel>
-                                        <Image Source="{Binding PlatformArtwork}" Width="29" Height="29"
-                                               Classes="cover-placeholder"
-                                               Classes.covered="{Binding HasCoverImage}"
-                                               RenderOptions.BitmapInterpolationMode="None" />
-                                        <Image Source="{Binding CoverImage}"
-                                               Classes="cover-image"
-                                               Classes.loaded="{Binding HasCoverImage}"
-                                               Stretch="UniformToFill" />
-                                    </Panel>
-                                </Border>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock IsVisible="{Binding IsMultiDisc}" Text="{Binding DiscBadgeText}"
-                                               FontSize="10" Foreground="{DynamicResource EmuAccentBrush}" />
-                                    <TextBlock Text="{Binding Path}" FontSize="10"
-                                               Foreground="{DynamicResource EmuTextTertiaryBrush}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding SystemName}"
-                                           VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="3" Text="{Binding FormatLabel}"
-                                           VerticalAlignment="Center"
-                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="5"
-                                            VerticalAlignment="Center"
-                                            ToolTip.Tip="{Binding AchievementsTooltip}">
-                                    <PathIcon IsVisible="{Binding ShowAchievementMark}"
-                                              Width="11" Height="11"
-                                              Data="{StaticResource AchievementTrophyGeometry}"
-                                              Foreground="{DynamicResource EmuAchievementBrush}" />
-                                    <TextBlock Text="{Binding AchievementsColumnText}"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="5"
-                                            VerticalAlignment="Center">
-                                    <ToolTip.Tip>
-                                        <TextBlock Text="{Binding TexturesTooltip}"
-                                                   MaxWidth="320" TextWrapping="Wrap" />
-                                    </ToolTip.Tip>
-                                    <PathIcon IsVisible="{Binding ShowTextureMark}"
-                                              Width="11" Height="11"
-                                              Data="{StaticResource TexturePackLayersGeometry}"
-                                              Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding TexturesColumnText}"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="6" VerticalAlignment="Center"
-                                           Text="{Binding AvailabilityText}"
-                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                <Popup Grid.Column="1" IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
+                                <ItemsControl ItemsSource="{Binding $parent[ListBox].((vm:MainViewModel)DataContext).VisibleColumns}"
+                                              HorizontalAlignment="Stretch" ClipToBounds="True">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <vm:LibraryColumnCellSelector>
+                                            <vm:LibraryColumnCellTemplate Key="Cover">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}">
+                                                        <Border Width="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext).ListCoverWidth}"
+                                                                Height="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext).ListCoverHeight}"
+                                                                CornerRadius="4"
+                                                                Background="{DynamicResource EmuCoverWellBrush}"
+                                                                BorderBrush="{DynamicResource EmuCoverBorderBrush}"
+                                                                BorderThickness="1" ClipToBounds="True"
+                                                                HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                                DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                AttachedToVisualTree="OnGameCoverAttached"
+                                                                DataContextChanged="OnGameCoverDataContextChanged">
+                                                            <Panel x:DataType="vm:GameViewModel">
+                                                                <Image Source="{Binding PlatformArtwork}" Width="29" Height="29"
+                                                                       Classes="cover-placeholder"
+                                                                       Classes.covered="{Binding HasCoverImage}"
+                                                                       RenderOptions.BitmapInterpolationMode="None" />
+                                                                <Image Source="{Binding CoverImage}"
+                                                                       Classes="cover-image"
+                                                                       Classes.loaded="{Binding HasCoverImage}"
+                                                                       Stretch="UniformToFill" />
+                                                            </Panel>
+                                                        </Border>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Title">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <StackPanel VerticalAlignment="Center" Spacing="2"
+                                                                    x:DataType="vm:GameViewModel"
+                                                                    DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}">
+                                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock IsVisible="{Binding IsMultiDisc}" Text="{Binding DiscBadgeText}"
+                                                                       FontSize="10" Foreground="{DynamicResource EmuAccentBrush}" />
+                                                            <TextBlock Text="{Binding Path}" FontSize="10"
+                                                                       Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Console">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding SystemName}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Format">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding FormatLabel}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Achievements">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                                                    x:DataType="vm:GameViewModel"
+                                                                    DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                    ToolTip.Tip="{Binding AchievementsTooltip}">
+                                                            <PathIcon IsVisible="{Binding ShowAchievementMark}"
+                                                                      Width="11" Height="11"
+                                                                      Data="{StaticResource AchievementTrophyGeometry}"
+                                                                      Foreground="{DynamicResource EmuAchievementBrush}" />
+                                                            <TextBlock Text="{Binding AchievementsColumnText}"
+                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Textures">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                                                    x:DataType="vm:GameViewModel"
+                                                                    DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}">
+                                                            <ToolTip.Tip>
+                                                                <TextBlock Text="{Binding TexturesTooltip}"
+                                                                           MaxWidth="320" TextWrapping="Wrap" />
+                                                            </ToolTip.Tip>
+                                                            <PathIcon IsVisible="{Binding ShowTextureMark}"
+                                                                      Width="11" Height="11"
+                                                                      Data="{StaticResource TexturePackLayersGeometry}"
+                                                                      Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                            <TextBlock Text="{Binding TexturesColumnText}"
+                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Status">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding AvailabilityText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                        </vm:LibraryColumnCellSelector>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <Popup IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
                                        Placement="Bottom" IsLightDismissEnabled="True">
                                     <Border Background="{DynamicResource EmuPopoverBrush}"
                                             BorderBrush="{DynamicResource EmuBorderBrush}"

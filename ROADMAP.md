@@ -1424,3 +1424,83 @@ in `docs/auto-update.md`; the framework-vs-hand-rolled call is in `DECISIONS.md`
       coordinator throttle/skip/apply logic. `dotnet build`/`dotnet test` green on macOS (1318 tests).
 - [ ] On real Windows and a real Steam Deck (gaming mode), install an update end to end and confirm
       the relaunch keeps portable data intact (Windows) and never drops to the desktop (SteamOS).
+
+## M40 — Configurable Desktop list-view columns (in progress)
+
+The Desktop list view is a fixed seven-column layout (cover, title/path, console, format,
+achievements, textures, status) whose column set is hard-coded twice — once in the header Grid and
+once in the row `DataTemplate` — so it cannot show the scraped/metadata state a user actually wants
+to scan a large library by. This milestone rebuilds it as an **iTunes-style configurable table**:
+the user picks which columns show, reorders and resizes them, and sorts by any of them, with the
+choice persisted in portable `Settings/`. New columns surface the metadata EmuShelf already stores
+(scraped completeness, artwork/description presence, rating, genre/year/players) plus the cheap
+record fields (Last Played, Date Added). Gamepad mode is untouched — this is Desktop-list only.
+
+Guardrails: virtualization, async off-thread cover loading, and the "no bulk work on the UI thread"
+rule from CLAUDE.md must survive; the new scraped columns must not reintroduce an N+1 read across the
+visible library. A Phase-0 spike rejected `Avalonia.Controls.DataGrid` (it regresses M25 marquee
+auto-scroll and fights VM-owned selection/sort) in favour of keeping the `ListBox` and driving its
+columns from the view model — same iTunes UX, no regression to shipped interactions. Architecture
+decision recorded in `DECISIONS.md`.
+
+### Phase 0 — View-model column model on the existing ListBox (the risk gate)
+
+- [ ] Keep the Desktop list as a `ListBox` so marquee/auto-scroll (M25), multi-select, per-row
+      context menu, inline title edit, custom VM sort, and the async cover-load hooks
+      (`OnGameCoverAttached` / `DataContextChanged`) stay untouched and un-regressed.
+- [ ] Introduce a view-model column model: an `ObservableCollection` of column descriptors (key,
+      header, `IsVisible`, resolved pixel `Width`, `LibrarySortColumn` mapping, order). One flex
+      column (Title) absorbs remaining viewport width (already reported by `OnLibrarySizeChanged`).
+- [ ] Drive both the header row and each `ListBox` row from that model: cells stay statically
+      defined but bind `Grid.Column` to the column's ordered position and their `Grid` widths to the
+      model, so reorder is a data move, resize updates a width, and hide collapses a position — all
+      via bindings, no control internals. Header keeps the existing `sort-header` buttons + glyphs.
+- [ ] Verify build + existing list-view visual snapshots (`MainWindowVisualSnapshotTests`,
+      `EMUSHELF_SNAPSHOT_DIR`) still render at parity (default column set unchanged); regenerate only
+      if the header/row markup changes pixels, with an approval note. `dotnet build`/`dotnet test`
+      green on macOS.
+
+### Phase 1 — The iTunes column chrome
+
+- [ ] Header right-click (and/or a "Columns" affordance) opens a checklist that shows/hides columns;
+      drag-reorder and drag-resize via self-contained header pointer handling in code-behind (view
+      wiring only) that mutates the view-model column model.
+- [ ] Persist per-column visibility, order, width, and the active sort column/direction to portable
+      `Settings/` (new `AppSettings` section), restored at startup and resilient to an unknown/removed
+      column id. A minimum always-on column (Title) so the table can never be emptied.
+- [ ] Tests: settings round-trip, unknown-column tolerance, and that a hidden column is not sortable
+      while a shown one is.
+
+### Phase 2 — Cheap record-field columns
+
+- [ ] Add **Last Played** (`Game.LastPlayedAt`, from M38) and **Date Added** (`Game.DateAdded`)
+      columns — off by default, sortable, null-safe formatting ("Never"). No new data plumbing; this
+      validates the picker/persistence/sort pipeline end to end.
+
+### Phase 3 — Bulk metadata projection (data plumbing; parallelizable)
+
+- [ ] Add a bulk read over the details store (today only per-game `IGameDetailsStore.GetDetails`):
+      one query set that returns, per game id in the current scope, the presence of each media kind
+      (BoxFront/Screenshot/Wheel/Fanart) and description, plus rating and genre/year/players/dev/pub.
+      Project it into the row view models once per scope build on the load worker — never per row on
+      the UI thread. Covered by an infrastructure round-trip test proving it matches N× `GetDetails`.
+
+### Phase 4 — Scraped-metadata columns
+
+- [ ] **Metadata completeness** column, on by default: an `n/5` (cover, screenshot, fanart, logo,
+      description) with a `ColumnText`/`Tooltip`/`SortKey` display object mirroring Achievements/
+      Textures; tooltip lists which are present/missing; sorts incomplete-first; a distinct
+      unmatched state (`—`) separate from "matched but partial".
+- [ ] Per-asset presence columns (Cover / Screenshot / Fanart / Logo / Description), Rating, and
+      Genre/Year/Players/Developer/Publisher — all off by default, toggled from the Phase 1 picker,
+      each sortable. Reuse the Phase 3 projection; no per-row reads.
+- [ ] Headless/view-model tests for completeness counting (unmatched vs partial vs complete), each
+      column's sort key, and tooltip content.
+
+### Phase 5 — Cloud save status column (depends on M29)
+
+- [ ] After M29 (battery/memory-card cloud sync) is far enough along, add a **Cloud save** column
+      that reads the sync manifest/local state and shows a per-game status (Synced / Local newer /
+      Cloud newer / Conflict / Not synced / Not set up), off by default. This needs a game→save-unit
+      resolution that does not stat files on the UI thread. The save-state variant is M33 territory
+      and stays out until that lands. Deferred behind M29; tracked here so the column set is planned.

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -281,6 +282,102 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(AchievementsSortGlyph));
         OnPropertyChanged(nameof(TexturesSortGlyph));
         OnPropertyChanged(nameof(StatusSortGlyph));
+        UpdateColumnSortGlyphs();
+    }
+
+    // ---- M40: configurable Desktop list-view columns ------------------------------------------
+
+    // Chrome subtracted from the list view's own width (reported by the list container, which already
+    // excludes the outer margin) to get the width the row's cells fill: the ListBox item padding
+    // (12 each side) plus room for the vertical scrollbar. The flex (Title) column absorbs the rest;
+    // the row's cell panel is stretch+clipped so a few px of estimate error can never overflow.
+    private const double ListColumnChromeWidth = 12 + 12 + 16;
+
+    private bool _columnsInitialized;
+
+    /// <summary>Width of the desktop list view, reported by the list container (the grid scroller that
+    /// feeds <see cref="LibraryViewportWidth"/> is collapsed in list mode). Drives the flex column.</summary>
+    [ObservableProperty]
+    public partial double ListViewportWidth { get; set; }
+
+    partial void OnListViewportWidthChanged(double value) => RecomputeColumnWidths();
+
+    /// <summary>Every list-view column in display order — the source for the column picker and for
+    /// persistence. See DECISIONS 2026-08-08.</summary>
+    public ObservableCollection<LibraryColumn> Columns { get; } = [];
+
+    /// <summary>The visible columns in order, bound by the list header and every row so hiding,
+    /// reordering, or resizing a column is a data change rather than a control-internal one.</summary>
+    public ObservableCollection<LibraryColumn> VisibleColumns { get; } = [];
+
+    private void InitializeColumns()
+    {
+        if (_columnsInitialized)
+            return;
+
+        foreach (var column in LibraryColumnCatalog.CreateDefault())
+        {
+            column.PropertyChanged += OnLibraryColumnPropertyChanged;
+            Columns.Add(column);
+        }
+
+        _columnsInitialized = true;
+        RebuildVisibleColumns();
+        RecomputeColumnWidths();
+        UpdateColumnSortGlyphs();
+    }
+
+    private void OnLibraryColumnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(LibraryColumn.IsVisible))
+            return;
+
+        // A hidden Title would leave the table with no identifying column; the picker disables that
+        // toggle, but guard here too so a bad persisted state can never blank the view.
+        if (sender is LibraryColumn { IsFlex: true, IsVisible: false } flex)
+        {
+            flex.IsVisible = true;
+            return;
+        }
+
+        RebuildVisibleColumns();
+        RecomputeColumnWidths();
+        ScheduleLibraryViewStateSave();
+    }
+
+    private void RebuildVisibleColumns()
+    {
+        var visible = Columns.Where(column => column.IsVisible).ToList();
+        VisibleColumns.Clear();
+        foreach (var column in visible)
+            VisibleColumns.Add(column);
+    }
+
+    /// <summary>Recomputes the flex (Title) column's pixel width so the visible columns fill the row
+    /// exactly. Fixed columns keep their own (optionally resized) width; only the flex column moves.</summary>
+    private void RecomputeColumnWidths()
+    {
+        if (Columns.FirstOrDefault(column => column.IsFlex) is not { } flex)
+            return;
+
+        var others = Columns
+            .Where(column => column.IsVisible && !column.IsFlex)
+            .Sum(column => column.Width);
+        var available = ListViewportWidth - ListColumnChromeWidth - others;
+        flex.Width = Math.Max(flex.MinWidth, available);
+    }
+
+    private void UpdateColumnSortGlyphs()
+    {
+        if (!_columnsInitialized)
+            return;
+
+        foreach (var column in Columns)
+        {
+            column.SortGlyph = column.SortColumn == SortColumn
+                ? (SortDescending ? "▼" : "▲")
+                : string.Empty;
+        }
     }
 
     [ObservableProperty]
@@ -867,6 +964,7 @@ public partial class MainViewModel : ViewModelBase
             _ = _libraryViewState.SaveAsync(BuildLibraryViewState());
         };
 
+        InitializeColumns();
         RestoreLibraryViewState();
     }
 

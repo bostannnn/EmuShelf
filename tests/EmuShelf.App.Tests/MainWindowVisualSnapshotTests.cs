@@ -599,9 +599,12 @@ public class MainWindowVisualSnapshotTests
             var row = window.GetVisualDescendants()
                 .OfType<Grid>()
                 .Single(control => control.Classes.Contains("game-row"));
+            // The cover cell's inner Border holds the artwork Panel; other game-context descendants
+            // (e.g. the cell ItemsControl's own template border) are excluded by requiring that child.
             var cover = row.GetVisualDescendants()
                 .OfType<Border>()
-                .Single(control => ReferenceEquals(control.DataContext, viewModel.Games[0]));
+                .Single(control => ReferenceEquals(control.DataContext, viewModel.Games[0])
+                    && control.Child is Panel);
             var title = row.GetVisualDescendants()
                 .OfType<TextBlock>()
                 .Single(control => control.Text == viewModel.Games[0].Title);

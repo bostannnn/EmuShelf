@@ -1256,6 +1256,15 @@ public partial class MainWindow : Window
         ApplyCellWidth(viewModel);
     }
 
+    // The desktop grid reports its width through OnLibrarySizeChanged, but that scroller is collapsed
+    // in list mode; the list view reports its own width here so the flex (Title) column can fill the
+    // row. View wiring only — the view model owns the column-width arithmetic (M40).
+    private void OnListViewportSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+            viewModel.ListViewportWidth = e.NewSize.Width;
+    }
+
     private void OnGamepadLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
