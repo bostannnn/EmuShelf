@@ -38,13 +38,15 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
         [HotkeyAction.LoadState] = "Load State/Load from Selected Slot",
     };
 
+    private readonly string _userDirectory;
     private readonly string _hotkeysPath;
     private readonly string _mainConfigPath;
 
     public DolphinHotkeyConfigurator(string userDirectory, string backupRoot, Action<string, string>? writeFile = null)
         : base(DolphinDefinition.Instance.Id, "Dolphin", backupRoot, writeFile)
     {
-        var configDirectory = Path.Combine(Path.GetFullPath(userDirectory), "Config");
+        _userDirectory = Path.GetFullPath(userDirectory);
+        var configDirectory = Path.Combine(_userDirectory, "Config");
         _hotkeysPath = Path.Combine(configDirectory, "Hotkeys.ini");
         // Dolphin always writes Config/Dolphin.ini on first run, so it marks a real Dolphin user
         // directory — used to tell "customised no hotkeys yet" apart from "we resolved the wrong folder".
@@ -69,7 +71,7 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
             // No Hotkeys.ini *and* no Dolphin.ini in this folder: it isn't Dolphin's user directory (we
             // resolved the wrong place), so report that instead of writing a file Dolphin will never read.
             return HotkeyPlan.NotFound(
-                $"Dolphin's user directory wasn't found at {Path.GetDirectoryName(_hotkeysPath)} (no Dolphin.ini there). Set the correct Dolphin folder in Settings.");
+                $"{_userDirectory} isn't Dolphin's user directory (no Config/Dolphin.ini there). Set the correct Dolphin folder in Settings.");
         }
 
         // A missing Hotkeys.ini in a real Dolphin user dir is not an error: Dolphin writes it lazily

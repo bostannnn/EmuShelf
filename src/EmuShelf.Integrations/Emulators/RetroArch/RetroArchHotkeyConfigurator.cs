@@ -79,10 +79,13 @@ public sealed class RetroArchHotkeyConfigurator : HotkeyConfiguratorBase
         // keys are RetroArch's own defaults for the same actions), so clear it specifically rather than
         // scanning every input_* key, which would risk unbinding player game-input keys. It even falls
         // back to the internal f8 default when absent, so neutralise it unless the user moved it off F8.
-        var closeValue = $"\"{profile[HotkeyAction.CloseGame].Label().ToLowerInvariant()}\"";
-        var screenshot = document.GetValue(null, "input_screenshot");
-        if (screenshot is null || string.Equals(screenshot, closeValue, StringComparison.Ordinal))
-            SetCfg(document, fileName, "input_screenshot", "nul", changes);
+        if (profile.Actions.Contains(HotkeyAction.CloseGame))
+        {
+            var closeValue = $"\"{profile[HotkeyAction.CloseGame].Label().ToLowerInvariant()}\"";
+            var screenshot = document.GetValue(null, "input_screenshot");
+            if (screenshot is null || string.Equals(screenshot, closeValue, StringComparison.Ordinal))
+                SetCfg(document, fileName, "input_screenshot", "nul", changes);
+        }
 
         // Rewind must be enabled or its hotkey is inert.
         SetCfg(document, fileName, "rewind_enable", "true", changes);
