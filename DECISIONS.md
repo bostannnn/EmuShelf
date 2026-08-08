@@ -5103,6 +5103,38 @@ Fix, mirroring how core *version* is already resolved for state-compatibility ke
 Core-name resolution therefore moved to the end of the constructor (it now depends on the platform and
 Flatpak flags). This fixes save states *and* the sibling base-save case, which previously failed closed
 for the same unresolved-name reason when files sorted by core.
+
+## 2026-08-08 — Save-sync robustness pass: empty folders, PS2 system data, shared cores, one pass per launch
+
+A two-agent review of real Steam Deck sync logs surfaced four issues; all four fixed together.
+
+1. **An empty save folder must never overwrite a good cloud copy.** `FileSystemLocalSaveEndpoint.Snapshot`
+   returned a *non-null* snapshot for a folder that exists but holds no files — hash-of-nothing plus an
+   epoch (1970) mtime. With a baseline present, the planner then chose **Upload**, and the Upload leg
+   (unlike a conflict) takes no backup, so an emptied folder destroyed the cloud copy and propagated
+   emptiness to other machines. This was the only permanent-data-loss path found. Fix: `Snapshot` returns
+   `null` for a contentless folder, so the planner restores the cloud copy instead — consistent with the
+   "sync never deletes" rule. (The field manifest's empty-hash/1970 Dolphin Wii NAND entries were this.)
+
+2. **PS2 memory-card system directories are not saves.** `BADATA-SYSTEM` (and the `B?DATA-SYSTEM`
+   region variants + `BWNETCNF`) are the PS2 BIOS browser's own data; the BIOS rewrites them on nearly
+   every boot, so they re-uploaded every session (a field card reached revision 15). Excluded from
+   `Pcsx2SaveLocationProvider.IsSaveDirectory` like PCSX2's own `_`-prefixed housekeeping.
+
+3. **A core shared by two systems no longer double-tracks its folder.** When "sort saves by core" is on,
+   a per-core folder was treated as *exclusive* (claim every file). That is correct for one-core-one-system
+   but wrong when one core serves several systems (mGBA for both GBA and GBC): both rows resolved to the
+   same `saves/mGBA` (and `states/mGBA`) folder and each claimed — and uploaded — every file, so every
+   Game-Boy-family save/state synced twice. The coordinator now detects a core configured for more than
+   one system and passes `CoreSharedAcrossSystems`; a shared provider claims only its own library's saves
+   (`IsExclusive` off) and states (`StateBelongsToThisSystem`). Single-system per-core folders are
+   unchanged (still claim the whole folder, so a save for an un-imported game still syncs).
+
+4. **One combined pass per launch instead of two.** `SyncSystemAsync` ran a saves pass then a separate
+   save-states pass, each with its own cloud index read + commit and manifest load/save. It now runs a
+   single `SyncContentScope.All` pass (base saves plus states when the toggle is on), halving the cloud
+   round-trips for a state-enabled platform. The pre-pass state diagnostic and the "states toggle off"
+   flag are preserved, and one combined result line is logged in place of the two.
 ## 2026-08-08 — "Show in folder" reveals a game's file in the OS file manager
 
 The desktop grid/list context menu gained an entry that opens the game's containing folder with

@@ -66,6 +66,13 @@ public sealed class FileSystemLocalSaveEndpoint : ILocalSaveEndpoint
                 return null;
 
             var files = EnumerateAllFolderFiles(location.Path, cancellationToken).ToList();
+            // A folder that exists but holds no files is not a save. Snapshotting it as empty content
+            // (hash of nothing, epoch mtime) would let it upload over — and destroy — a good cloud
+            // copy with no backup (the Upload leg, unlike a conflict, takes none), and would then
+            // propagate emptiness to other machines. Report "no local unit" so the planner restores
+            // the cloud copy instead: sync never deletes.
+            if (files.Count == 0)
+                return null;
             return new SaveUnitSnapshot(
                 unitId,
                 HashFolder(files, location.Path, cancellationToken),

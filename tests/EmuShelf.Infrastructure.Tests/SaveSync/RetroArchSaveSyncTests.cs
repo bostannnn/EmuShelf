@@ -118,6 +118,52 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task ASharedCoreFolderClaimsOnlyThisSystemsLibrarySavesEvenWhenSortedByCore()
+    {
+        // mGBA serves both Game Boy Advance and Game Boy Color, so with "sort saves by core" on both
+        // systems resolve to the same saves/mGBA folder. Flagged as a shared core, each claims only
+        // its own library — otherwise each would claim the whole folder and upload every save twice.
+        var installation = Path.Combine(BaseDirectory, "RetroArch-shared-core");
+        WriteConfig(installation, savefileDirectory: ":\\saves", extra: ["sort_savefiles_enable = \"true\""]);
+        var sorted = Path.Combine(installation, "saves", "mGBA");
+        Directory.CreateDirectory(sorted);
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Metroid Fusion (USA).srm"), "gba save");
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Wario Land 3 (World) (En,Ja).srm"), "gbc save");
+
+        var gba = SharedCoreProvider("gba", installation, ["Metroid Fusion (USA)"]);
+        var gbc = SharedCoreProvider("gbc", installation, ["Wario Land 3 (World) (En,Ja)"]);
+
+        Assert.Equal(
+            ["retroarch/gba/Metroid Fusion (USA).srm"],
+            (await gba.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        Assert.Equal(
+            ["retroarch/gbc/Wario Land 3 (World) (En,Ja).srm"],
+            (await gbc.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        // Not exclusive, so a cross-system download of the other system's save is refused too.
+        Assert.NotNull(gba.ResolveUnit("retroarch/gba/Metroid Fusion (USA).srm"));
+        Assert.Null(gba.ResolveUnit("retroarch/gba/Wario Land 3 (World) (En,Ja).srm"));
+    }
+
+    [Fact]
+    public void StateOwnershipFiltersByLibraryOnlyForASharedCore()
+    {
+        var installation = Path.Combine(BaseDirectory, "RetroArch-shared-states");
+
+        var shared = SharedCoreProvider("gba", installation, ["Metroid Fusion (USA)"]);
+        Assert.True(shared.StateBelongsToThisSystem("/x/Metroid Fusion (USA).state"));
+        Assert.True(shared.StateBelongsToThisSystem("/x/Metroid Fusion (USA).state3"));
+        Assert.True(shared.StateBelongsToThisSystem("/x/Metroid Fusion (USA).state.auto"));
+        Assert.False(shared.StateBelongsToThisSystem("/x/Wario Land 3 (World) (En,Ja).state"));
+
+        // An unshared core owns its whole state folder, unchanged.
+        var unshared = new RetroArchSaveLocationProvider(
+            "gba", "mgba_libretro.dll", installation,
+            homeDirectory: Path.Combine(installation, "unused-home"), isWindows: true, isMacOS: false,
+            gameFileNames: () => ["Metroid Fusion (USA)"], coreSharedAcrossSystems: false);
+        Assert.True(unshared.StateBelongsToThisSystem("/x/Wario Land 3 (World) (En,Ja).state"));
+    }
+
+    [Fact]
     public async Task ACoreOverrideRelocatesOnlyThatCoresSaves()
     {
         var installation = Path.Combine(BaseDirectory, "RetroArch-override");
@@ -449,6 +495,20 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
             isWindows: true,
             isMacOS: false,
             gameFileNames: gameFileNames is null ? null : () => gameFileNames);
+
+    private static RetroArchSaveLocationProvider SharedCoreProvider(
+        string systemId,
+        string installation,
+        IReadOnlyCollection<string> gameFileNames) =>
+        new(
+            systemId,
+            "mgba_libretro.dll",
+            installation,
+            homeDirectory: Path.Combine(installation, "unused-home"),
+            isWindows: true,
+            isMacOS: false,
+            gameFileNames: () => gameFileNames,
+            coreSharedAcrossSystems: true);
 
     private static void WriteConfig(
         string installationDirectory,

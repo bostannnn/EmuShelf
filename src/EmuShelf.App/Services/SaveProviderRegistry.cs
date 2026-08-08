@@ -30,6 +30,10 @@ namespace EmuShelf.App.Services;
 /// </param>
 /// <param name="LaunchArguments">The configured launch template, for emulators whose arguments can relocate data.</param>
 /// <param name="StateDirectoryOverride">The user's explicit save-state folder, or null to derive it.</param>
+/// <param name="CoreSharedAcrossSystems">
+/// True when the configured libretro core also serves another EmuShelf system, so this system's
+/// provider must claim only its own library's saves/states rather than the whole shared core folder.
+/// </param>
 public sealed record SaveProviderContext(
     string? DirectoryOverride,
     string? EmulatorDirectory,
@@ -41,7 +45,8 @@ public sealed record SaveProviderContext(
     string? ExecutablePath = null,
     string? FlatpakApplicationId = null,
     string? StateDirectoryOverride = null,
-    string? ActiveEmulatorId = null);
+    string? ActiveEmulatorId = null,
+    bool CoreSharedAcrossSystems = false);
 
 /// <summary>A provider's resolved save directory plus optional display text and compatibility note.</summary>
 public sealed record SaveProviderDetection(
@@ -367,7 +372,8 @@ public static class SaveProviderRegistry
             context.EmulatorDirectory ?? context.Paths.BaseDirectory,
             directoryOverride: context.DirectoryOverride,
             isFlatpak: context.IsFlatpak,
-            gameFileNames: context.GameFileNames);
+            gameFileNames: context.GameFileNames,
+            coreSharedAcrossSystems: context.CoreSharedAcrossSystems);
     }
 
     private static async Task<SaveProviderDetection> DetectRetroArchAsync(
@@ -489,7 +495,8 @@ public static class SaveProviderRegistry
                 path => HasExtension(path, ".savestat")),
             RetroArchSaveLocationProvider retroArch => State(
                 token => Await(retroArch.GetContentDirectoriesAsync(token)).SaveStates,
-                path => Path.GetFileName(path).Contains(".state", StringComparison.OrdinalIgnoreCase)),
+                path => Path.GetFileName(path).Contains(".state", StringComparison.OrdinalIgnoreCase) &&
+                    retroArch.StateBelongsToThisSystem(path)),
             _ => null,
         };
         if (source is null)

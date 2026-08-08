@@ -176,8 +176,15 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     private readonly bool _isWindows;
     private readonly bool _isMacOS;
     private readonly bool _isFlatpak;
+    private readonly bool _coreSharedAcrossSystems;
     private HashSet<string>? _knownGameFileNames;
 
+    /// <param name="coreSharedAcrossSystems">
+    /// True when the same libretro core is configured for more than one of EmuShelf's systems (e.g.
+    /// mGBA for both Game Boy Advance and Game Boy Color). Such systems resolve to the same
+    /// save/state folder, so this system must claim only its own library's files rather than the
+    /// whole folder — otherwise every sharing system tracks and uploads every file more than once.
+    /// </param>
     public RetroArchSaveLocationProvider(
         string systemId,
         string? corePath,
@@ -188,7 +195,8 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         bool? isWindows = null,
         bool? isMacOS = null,
         bool isFlatpak = false,
-        Func<IReadOnlyCollection<string>>? gameFileNames = null)
+        Func<IReadOnlyCollection<string>>? gameFileNames = null,
+        bool coreSharedAcrossSystems = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
         ArgumentException.ThrowIfNullOrWhiteSpace(installationDirectory);
@@ -212,6 +220,7 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         _isWindows = isWindows ?? OperatingSystem.IsWindows();
         _isMacOS = isMacOS ?? OperatingSystem.IsMacOS();
         _isFlatpak = isFlatpak;
+        _coreSharedAcrossSystems = coreSharedAcrossSystems;
 
         // Resolved last: naming the core reads its info entry, whose folders depend on the platform
         // and Flatpak flags set just above.
@@ -307,6 +316,28 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         return _knownGameFileNames.Contains(Path.GetFileNameWithoutExtension(fileName));
     }
 
+    /// <summary>
+    /// Whether a save-state file in this core's state folder belongs to this system. An unshared
+    /// core owns its whole state folder as before; a core shared across systems (mGBA for both Game
+    /// Boy Advance and Game Boy Color) owns only states named after one of this system's library
+    /// games, so the sharing systems do not each enumerate and sync every state in the folder.
+    /// </summary>
+    public bool StateBelongsToThisSystem(string stateFilePath)
+    {
+        if (!_coreSharedAcrossSystems)
+            return true;
+        _knownGameFileNames ??= _gameFileNames?.Invoke().ToHashSet(StringComparer.OrdinalIgnoreCase) ?? [];
+        return _knownGameFileNames.Contains(GameNameFromStateFile(Path.GetFileName(stateFilePath)));
+    }
+
+    // RetroArch names a state after the content: "<game>.state", ".state1".."stateN", ".state.auto",
+    // and ".state.png" thumbnails. The game name is everything before the first ".state".
+    private static string GameNameFromStateFile(string fileName)
+    {
+        var marker = fileName.IndexOf(".state", StringComparison.OrdinalIgnoreCase);
+        return marker < 0 ? Path.GetFileNameWithoutExtension(fileName) : fileName[..marker];
+    }
+
     // probePerGameOverride is only meaningful to detection, which surfaces HasUnreadPerGameOverride to
     // the user. The sync path (ResolveUnit/GetSaveUnits) never reads that field, so it skips the scan
     // that parses every per-game override cfg — work that would otherwise repeat on every unit.
@@ -381,7 +412,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             directory,
             core,
             sortedByCore,
-            IsExclusive: sortedByCore,
+            // A per-core folder is "all mine" only when this core serves one EmuShelf system. When it
+            // is shared (mGBA for both GBA and GBC), fall back to claiming only this system's library
+            // saves so the two systems do not each claim — and double-upload — the whole folder.
+            IsExclusive: sortedByCore && !_coreSharedAcrossSystems,
             HasUnreadPerGameOverride: probePerGameOverride &&
                 HasPerGameSaveOverride(overrideRoot, core, cancellationToken));
     }
