@@ -873,21 +873,42 @@
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
         </Style>
         <Style Selector="ListBox.system-list ListBoxItem">
-            <Setter Property="Height" Value="40" />
             <Setter Property="Margin" Value="10,1" />
-            <Setter Property="Padding" Value="10,5" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="0" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         </Style>
-        <Style Selector="ListBox.system-list ListBoxItem:pointerover">
-            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
-        </Style>
-        <Style Selector="ListBox.system-list ListBoxItem:selected">
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource EmuAccentBrush}" />
+        <!-- The row highlight lives on an inner Border (Border.nav-row) rather than the whole item, so
+             the manufacturer header that shares the item above the first system of each group is never
+             covered by the hover/selection fill. The item's own fills are cleared like GamepadRowList. -->
+        <Style Selector="ListBox.system-list ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
         </Style>
         <Style Selector="ListBox.system-list ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Border.nav-row">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem:pointerover Border.nav-row">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+        </Style>
+        <Style Selector="ListBox.system-list ListBoxItem:selected Border.nav-row">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+        </Style>
+        <!-- Manufacturer group header inside the console list (Nintendo / Sega / Sony / Arcade). An
+             explicit tertiary Foreground keeps the selected item's accent tint off the header text. -->
+        <Style Selector="TextBlock.nav-group-header">
+            <Setter Property="Margin" Value="12,12,12,4" />
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1.1" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
         </Style>
         <Style Selector="Border.nav-icon-well">
             <Setter Property="Width" Value="26" />
@@ -1063,17 +1084,32 @@
                          Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="sys:GameSystem">
-                            <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
-                                <Border Grid.Column="0" Classes="nav-icon-well">
-                                    <Image Source="{Binding Id, Converter={x:Static vm:PlatformArtwork.Converter}}"
-                                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <StackPanel Spacing="0">
+                                <!-- Manufacturer header: shown only above the first system of each group
+                                     (GroupLeaderSystemIds) and only when the sidebar is expanded. -->
+                                <TextBlock Classes="nav-group-header" Text="{Binding Manufacturer}">
+                                    <TextBlock.IsVisible>
+                                        <MultiBinding Converter="{x:Static vm:NavigationConverters.GroupHeaderVisible}">
+                                            <Binding Path="Id" />
+                                            <Binding Path="#SystemList.((vm:MainViewModel)DataContext).GroupLeaderSystemIds" />
+                                            <Binding Path="#SystemList.((vm:MainViewModel)DataContext).IsNavigationCollapsed" />
+                                        </MultiBinding>
+                                    </TextBlock.IsVisible>
+                                </TextBlock>
+                                <Border Classes="nav-row">
+                                    <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                        <Border Grid.Column="0" Classes="nav-icon-well">
+                                            <Image Source="{Binding Id, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                   FontSize="13.5" FontWeight="Medium"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding #SystemList.((vm:MainViewModel)DataContext).IsNavigationExpanded}"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </Grid>
                                 </Border>
-                                <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                           FontSize="13.5" FontWeight="Medium"
-                                           VerticalAlignment="Center"
-                                           IsVisible="{Binding #SystemList.((vm:MainViewModel)DataContext).IsNavigationExpanded}"
-                                           TextTrimming="CharacterEllipsis" />
-                            </Grid>
+                            </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>

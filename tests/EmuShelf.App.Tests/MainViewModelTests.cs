@@ -1384,6 +1384,27 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void GroupLeaderSystemIds_MarkTheFirstVisibleSystemOfEachManufacturer()
+    {
+        // Two Nintendo systems and one Sega system populated; every other platform stays empty and,
+        // under the default hide-empty behaviour, absent from the navigation list.
+        _library.AddGames([
+            new Game { SystemId = GameBoyAdvance.Id, Path = Path.Combine(_baseDirectory, "advance.gba"), Title = "GBA", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = Path.Combine(_baseDirectory, "cube.rvz"), Title = "GC", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = MegaDrive.Id, Path = Path.Combine(_baseDirectory, "genesis.md"), Title = "MD", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+
+        var vm = CreateViewModel();
+
+        // Game Boy Advance precedes GameCube in the catalogue, so it leads Nintendo; Mega Drive leads
+        // Sega. GameCube is Nintendo but not the first shown, so it is not a group leader (no header).
+        Assert.Equal(
+            new[] { GameBoyAdvance.Id, MegaDrive.Id }.Order(),
+            vm.GroupLeaderSystemIds.Order());
+        Assert.DoesNotContain(GameCube.Id, vm.GroupLeaderSystemIds);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadCovers_UsePlatformAspectRatioOnASharedShelf()
     {
         // Mixed-platform view: each tile keeps its own platform's cover height, while every tile

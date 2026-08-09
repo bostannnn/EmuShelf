@@ -5443,3 +5443,29 @@ branches are installed — so an app that launches fine looked uninstalled.
   (e.g. `net.pcsx2.PCSX2//stable`, `net.pcsx2.PCSX2//beta`) when several are, so the user explicitly
   picks stable vs nightly. The editable ComboBox is unchanged — the ref strings flow through as items.
 
+## 2026-08-09 — Platforms are grouped by manufacturer, oldest-manufacturer-first
+
+The navigation list had no ordering logic — `KnownSystems.All` was in the order systems were added
+during development (PlayStation family, then a scattered mix), so Nintendo appeared in three separate
+clumps and handhelds interleaved arbitrarily. Surveying comparable frontends (ES-DE's `systemsSortMode`,
+LaunchBox's platform categories, OpenEmu's maker-prefixed alphabetical list, NeoStation) the common,
+predictable axis is **manufacturer**. Chosen over hardware-type (console/handheld/arcade) or a
+user-configurable sort mode because EmuShelf ships a fixed ~15-system set, so one sensible default beats
+a settings surface. A per-mode picker can be layered on later — the metadata added here already supports it.
+
+- **`GameSystem` gains a `Manufacturer` grouping key** (optional trailing param, default `""` = ungrouped,
+  so the two direct `new GameSystem(...)` test constructions and any future ones stay source-compatible).
+- **`KnownSystems.All` is authored in display order:** groups run Nintendo → Sega → Sony → Arcade
+  (each group ordered by its *oldest* system, so the heritage reads chronologically), and within a group
+  systems are oldest-first with handhelds interleaved by year. This authored order *is* the navigation
+  order; ids are unchanged so libraries are untouched. Leading with Nintendo rather than the PS-centric
+  original is deliberate (chronology is the "logic"); flipping to Sony-first is a one-block move.
+- **Desktop renders a manufacturer header above the first *visible* system of each group.** Rather than
+  change `NavigationSystems` (kept as `ObservableCollection<GameSystem>` — selection binds to it and a test
+  asserts it equals `KnownSystems.All`), the VM exposes `GroupLeaderSystemIds` (recomputed on every
+  nav refresh, a fresh set each time so bindings re-fire) and a multi-value converter shows the header only
+  for leaders when the sidebar is expanded. The row hover/selection fill moved from the whole `ListBoxItem`
+  onto an inner `Border.nav-row`, so the header sharing the item is never highlighted.
+- **Gamepad mode inherits the reorder for free** — the horizontal rail and LB/RB platform cycling both walk
+  the same list, so they group by manufacturer without new couch UI (the rail stays icon-only by design).
+

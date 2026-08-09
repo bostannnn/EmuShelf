@@ -24,11 +24,15 @@ public class PlatformArtworkTests
     [AvaloniaFact]
     public void ExpansionSystems_HaveStableNavigationIdsAndLicensedArtwork()
     {
-        Assert.Equal(
-            ["psp", "megadrive", "nds", "gba", "3ds", "nes", "snes", "dreamcast", "arcade", "gbc"],
-            KnownSystems.All.Skip(5).Select(system => system.Id));
-        Assert.All(KnownSystems.All.Skip(5), system =>
-            Assert.NotNull(PlatformArtwork.ForSystem(system.Id)));
+        // The systems added after the original five, by stable id. Order-independent: the navigation
+        // list is grouped by manufacturer (see NavigationOrder_* below), so what matters here is that
+        // every expansion id is still present and still has licensed artwork.
+        string[] expansionSystemIds =
+            ["psp", "megadrive", "nds", "gba", "3ds", "nes", "snes", "dreamcast", "arcade", "gbc"];
+        Assert.All(expansionSystemIds, id =>
+            Assert.Contains(KnownSystems.All, system => system.Id == id));
+        Assert.All(expansionSystemIds, id =>
+            Assert.NotNull(PlatformArtwork.ForSystem(id)));
         Assert.Equal(
             0.708,
             KnownSystems.All.Single(system => system.Id == "megadrive").CoverAspectRatio);
@@ -64,5 +68,20 @@ public class PlatformArtworkTests
         Assert.Equal(
             1.0,
             KnownSystems.All.Single(system => system.Id == "gbc").CoverAspectRatio);
+    }
+
+    [AvaloniaFact]
+    public void NavigationOrder_GroupsSystemsByManufacturer_OldestFirst()
+    {
+        var manufacturers = KnownSystems.All.Select(system => system.Manufacturer).ToArray();
+
+        // The manufacturer value at the start of each run. If a maker were split across the list it
+        // would appear in this sequence twice, so asserting the exact run sequence proves both that
+        // every manufacturer is contiguous and that the groups run oldest-maker-first.
+        var groupOrder = manufacturers
+            .Where((manufacturer, index) => index == 0 || manufacturer != manufacturers[index - 1])
+            .ToArray();
+
+        Assert.Equal(["Nintendo", "Sega", "Sony", "Arcade"], groupOrder);
     }
 }
