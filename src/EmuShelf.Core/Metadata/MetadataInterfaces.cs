@@ -12,9 +12,16 @@ public interface IGameIdentifierExtractor
 
 public interface IGameMetadataCatalog
 {
+    /// <summary>
+    /// Resolves the best catalog entry for a game's identifiers. When one catalog key maps to
+    /// several regional releases — as a region-free cartridge's shared serial does — the optional
+    /// <paramref name="regionHint"/> (typically the game's filename, which carries a "(Europe)"-style
+    /// tag) selects the matching region instead of an arbitrary one.
+    /// </summary>
     Task<GameCatalogMatch?> FindMatchAsync(
         MetadataSystemProfile profile,
         IReadOnlyList<GameIdentifier> identifiers,
+        string? regionHint = null,
         CancellationToken cancellationToken = default);
 }
 

@@ -173,6 +173,15 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GameSystem? SelectedSystem { get; set; }
 
+    /// <summary>
+    /// Ids of the systems that lead their manufacturer group in <see cref="NavigationSystems"/> —
+    /// the first visible system of each manufacturer, in list order. The Desktop console list shows
+    /// a manufacturer header above exactly these rows. A fresh set instance is assigned whenever the
+    /// visible set changes so the header bindings re-evaluate.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlySet<string> GroupLeaderSystemIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
     [ObservableProperty]
     public partial LibraryScope CurrentLibraryScope { get; set; } = LibraryScope.System;
 
@@ -220,12 +229,14 @@ public partial class MainViewModel : ViewModelBase
     {
         NotifySortGlyphs();
         NotifyGamepadSortSelection();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
     partial void OnSortDescendingChanged(bool value)
     {
         NotifySortGlyphs();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
@@ -344,6 +355,36 @@ public partial class MainViewModel : ViewModelBase
         if (current < 0)
             current = 0; // current sort isn't a couch option (e.g. set on desktop): step from the first
         SelectGamepadSort(GamepadSortColumns[Math.Clamp(current + delta, 0, GamepadSortColumns.Length - 1)]);
+    }
+
+    /// <summary>Reverses the current couch sort's direction. Invoked on A (Confirm) while the sort row is
+    /// focused — the desktop list's ▲/▼ toggle has no other couch analogue. The header arrow reflects it.</summary>
+    private void ToggleGamepadSortDirection()
+    {
+        if (!IsGamepadMode)
+            return;
+        SortDescending = !SortDescending;
+        ApplyFilter();
+    }
+
+    /// <summary>Direction arrow shown in the couch sort header: down = descending, up = ascending.</summary>
+    public string GamepadSortDirectionArrow => SortDescending ? "↓" : "↑";
+
+    /// <summary>Plain-language direction for the couch sort header, phrased per field.</summary>
+    public string GamepadSortDirectionSummary => (SortColumn, SortDescending) switch
+    {
+        (LibrarySortColumn.Title, false) => "A to Z",
+        (LibrarySortColumn.Title, true) => "Z to A",
+        (LibrarySortColumn.Rating, false) => "Lowest first",
+        (LibrarySortColumn.Rating, true) => "Highest first",
+        (_, false) => "Oldest first",
+        (_, true) => "Newest first",
+    };
+
+    private void NotifyGamepadSortDirection()
+    {
+        OnPropertyChanged(nameof(GamepadSortDirectionArrow));
+        OnPropertyChanged(nameof(GamepadSortDirectionSummary));
     }
 
     private void NotifySortGlyphs()
@@ -632,6 +673,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GamepadBatchScraperViewModel? GamepadBatchScraperDetails { get; set; }
 
+    [ObservableProperty]
+    public partial GamepadHotkeysViewModel? GamepadHotkeys { get; set; }
+
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
     public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename ||
         IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
@@ -644,6 +688,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadBatchScraperOpen => GamepadOverlay == GamepadOverlayKind.BatchScraper;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
     public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
+    public bool IsGamepadHotkeysOpen => GamepadOverlay == GamepadOverlayKind.Hotkeys;
     public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
     /// <summary>Settings overlay open in its normal (non-modal) state, so the footer shows the
@@ -656,15 +701,17 @@ public partial class MainViewModel : ViewModelBase
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
-    // The Achievements, Settings, Scraper and BatchScraper overlays render their own bespoke bodies,
-    // so the shared option-button list and the chrome title are hidden for them.
+    // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
+    // bodies and footers, so the shared option-button list and default hint legend are hidden for them.
+    // (Hotkeys keeps the chrome title — it just needs its own body and hints, not a fresh header.)
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Settings);
+         GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
-         GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper);
+         GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
+         GamepadOverlayKind.Hotkeys);
     public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or
          GamepadOverlayKind.BatchScraper);
@@ -680,6 +727,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.BatchScraper => "Scrape games with ScreenScraper",
         GamepadOverlayKind.SystemMenu => "Menu",
         GamepadOverlayKind.Settings => "Settings",
+        GamepadOverlayKind.Hotkeys => "Hotkeys",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
@@ -1017,7 +1065,7 @@ public partial class MainViewModel : ViewModelBase
                 // grid over the preference they never changed.
                 IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
                 if (IsGamepadMode)
-                    CoerceCouchOffRecencyScope();
+                    CoerceCouchLibraryState();
                 else
                     ClearSpotlightHero(); // release the hero bitmap when leaving couch mode
             };
@@ -1074,6 +1122,7 @@ public partial class MainViewModel : ViewModelBase
         NavigationSystems = new ObservableCollection<GameSystem>(navigationSystems);
         GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
             navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
+        GroupLeaderSystemIds = ComputeGroupLeaders(navigationSystems);
 
         // Keep the gamepad row projection in lockstep with Games no matter how Games is changed
         // (reload, filter, or a direct test mutation), so the virtualized row grid never goes stale.
@@ -1146,6 +1195,9 @@ public partial class MainViewModel : ViewModelBase
                 ? column
                 : LibrarySortColumn.Title;
             SortDescending = state.SortDescending;
+            // Couch offers only four sort orders; restoring into gamepad mode with any other falls back to a
+            // couch default (the reload below applies it). No-op in desktop mode.
+            CoerceCouchSort();
             IsNavigationCollapsed = state.IsNavigationCollapsed;
             ApplyPersistedColumns(state.ListColumns);
 
@@ -1243,9 +1295,30 @@ public partial class MainViewModel : ViewModelBase
             GamepadPlatforms.Clear();
             foreach (var system in visible)
                 GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
+
+            GroupLeaderSystemIds = ComputeGroupLeaders(visible);
         }
 
         UpdateGamepadPlatformState();
+    }
+
+    /// <summary>
+    /// The id of the first system of each manufacturer in <paramref name="orderedVisibleSystems"/>,
+    /// which the Desktop console list uses to place a single manufacturer header per group. Systems
+    /// with no manufacturer are skipped (they carry no header). Order-dependent, so the caller passes
+    /// the systems in navigation order.
+    /// </summary>
+    private static IReadOnlySet<string> ComputeGroupLeaders(IEnumerable<GameSystem> orderedVisibleSystems)
+    {
+        var manufacturersSeen = new HashSet<string>(StringComparer.Ordinal);
+        var leaders = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var system in orderedVisibleSystems)
+        {
+            if (!string.IsNullOrEmpty(system.Manufacturer) && manufacturersSeen.Add(system.Manufacturer))
+                leaders.Add(system.Id);
+        }
+
+        return leaders;
     }
 
     private async Task SetShowEmptyPlatformsAsync(bool show)
@@ -1377,13 +1450,32 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task ShowRecentlyPlayedAsync() => ShowCollectionAsync(LibraryScope.RecentlyPlayed);
 
-    // Couch mode has no Recently-* place — there those are sort orders, not scopes. If we enter gamepad
-    // mode sitting in a recency scope (e.g. restored from a desktop session), fall back to All Games so
-    // the rail has a highlighted stop and the Sort row actually re-sorts.
-    private void CoerceCouchOffRecencyScope()
+    // Couch mode has no Recently-* place, and its Sort row offers only the four GamepadSortColumns. When we
+    // enter gamepad mode holding a scope or sort the couch can't represent (e.g. restored from a desktop
+    // session), fall back to couch defaults so the rail highlights a stop, a sort card is selected, and the
+    // Sort header stays honest.
+    private void CoerceCouchLibraryState()
     {
-        if (IsGamepadMode && CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
-            _ = ShowAllGamesAsync();
+        if (!IsGamepadMode)
+            return;
+
+        var sortChanged = CoerceCouchSort();
+
+        if (CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
+            _ = ShowAllGamesAsync();  // reloads and re-sorts with the (possibly coerced) sort
+        else if (sortChanged)
+            ApplyFilter();            // no scope change, so re-sort the current view in place
+    }
+
+    // The couch Sort row only offers GamepadSortColumns; any other column (set on the desktop) falls back to
+    // Recently played so a card is always selected. Returns whether it changed the sort. No-op on desktop.
+    private bool CoerceCouchSort()
+    {
+        if (!IsGamepadMode || Array.IndexOf(GamepadSortColumns, SortColumn) >= 0)
+            return false;
+        SortColumn = LibrarySortColumn.LastPlayed;
+        SortDescending = true;
+        return true;
     }
 
     [RelayCommand]
@@ -1609,7 +1701,7 @@ public partial class MainViewModel : ViewModelBase
             CloseGamepadSettingsProjection();
             var settings = await CreateSettingsViewModelAsync();
             GamepadSettings = new GamepadSettingsViewModel(
-                settings, _onScreenKeyboard, ThemeChoices, SetThemeAsync);
+                settings, _onScreenKeyboard, ThemeChoices, SetThemeAsync, OpenGamepadHotkeysFromSettings);
             OpenGamepadOverlay(GamepadOverlayKind.Settings);
         }
         catch (Exception ex)
@@ -1621,6 +1713,23 @@ public partial class MainViewModel : ViewModelBase
         {
             _openingGamepadSettings = false;
         }
+    }
+
+    /// <summary>
+    /// Opens the controller-native Hotkeys overlay from the gamepad Settings General row. It wraps the
+    /// same <see cref="EmulatorSettingsViewModel"/> the Settings projection is already showing — so no
+    /// config files are re-read and no Desktop window is ever involved — and B returns to Settings,
+    /// whose projection <see cref="OpenGamepadOverlay"/> deliberately leaves intact.
+    /// </summary>
+    private Task OpenGamepadHotkeysFromSettings()
+    {
+        if (!IsGamepadMode || GamepadSettings?.Settings is not { HasHotkeys: true } settings)
+            return Task.CompletedTask;
+
+        var details = new GamepadHotkeysViewModel(settings);
+        OpenGamepadOverlay(GamepadOverlayKind.Hotkeys);
+        GamepadHotkeys = details;
+        return Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -1704,8 +1813,14 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ActivateGamepadOverlay()
     {
-        // On either selector row (view-mode or sort), Left/Right already applied the choice live, so A is
-        // inert rather than firing whichever option index sits selected underneath.
+        // On the sort row, A reverses the current sort's direction — Left/Right already picked the field.
+        if (IsGamepadSystemMenuOpen && IsGamepadSortRowFocused)
+        {
+            ToggleGamepadSortDirection();
+            return;
+        }
+        // On the view-mode row, Left/Right already applied the choice live, so A is inert rather than
+        // firing whichever option index sits selected underneath.
         if (IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options)
             return;
         if (GamepadOverlayOptions.Count == 0)
@@ -1725,6 +1840,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
         DisposeGamepadBatchScraperDetails();
+        DisposeGamepadHotkeysDetails();
         if (closingOverlay == GamepadOverlayKind.Settings)
             CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
@@ -1758,6 +1874,17 @@ public partial class MainViewModel : ViewModelBase
             // A running batch is left alone (Cancel stops it via A on the focused button); before it
             // starts or after it finishes, B closes back to the library.
             if (GamepadBatchScraperDetails?.Batch.IsRunning != true)
+                CloseGamepadOverlay();
+            return;
+        }
+
+        if (GamepadOverlay == GamepadOverlayKind.Hotkeys)
+        {
+            // Opened from the gamepad Settings General row, whose projection survived the open, so B
+            // steps back into Settings. Only if that projection is gone (defensive) do we close out.
+            if (GamepadSettings is not null)
+                OpenGamepadOverlay(GamepadOverlayKind.Settings);
+            else
                 CloseGamepadOverlay();
             return;
         }
@@ -1843,9 +1970,36 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadBatchScraperOpen)
             return DispatchBatchScraperOverlayAction(action);
 
+        if (IsGamepadHotkeysOpen)
+            return DispatchHotkeysOverlayAction(action);
+
         return HasGamepadOverlay
             ? DispatchOverlayAction(action)
             : DispatchLibraryAction(action);
+    }
+
+    private bool DispatchHotkeysOverlayAction(GamepadAction action)
+    {
+        // Modal like the scraper: Up/Down move the ring through the global actions and the per-emulator
+        // Apply / Revert buttons, A activates the focused one, B backs out to Settings. Every other
+        // action is swallowed so it cannot leak to the library beneath (e.g. LB/RB switching platforms).
+        switch (action)
+        {
+            case GamepadAction.NavigateUp:
+                GamepadHotkeys?.MoveFocus(-1);
+                return true;
+            case GamepadAction.NavigateDown:
+                GamepadHotkeys?.MoveFocus(1);
+                return true;
+            case GamepadAction.Confirm:
+                GamepadHotkeys?.Activate();
+                return true;
+            case GamepadAction.Cancel:
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            default:
+                return true;
+        }
     }
 
     private bool DispatchBatchScraperOverlayAction(GamepadAction action)
@@ -2044,6 +2198,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
         DisposeGamepadBatchScraperDetails();
+        DisposeGamepadHotkeysDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         MenuFocusRegion = GamepadMenuFocusRegion.Options; // every open lands on the option list, not a selector row
@@ -2244,6 +2399,17 @@ public partial class MainViewModel : ViewModelBase
             _ = ReloadGamesAsync();
     }
 
+    private void DisposeGamepadHotkeysDetails()
+    {
+        if (GamepadHotkeys is not { } details)
+            return;
+
+        // Unhooks the shared settings view model and clears the focus ring off the reused rows; the
+        // settings projection itself is owned by GamepadSettings, so it is not disposed here.
+        details.Dispose();
+        GamepadHotkeys = null;
+    }
+
     private void NotifyGamepadOverlayState()
     {
         OnPropertyChanged(nameof(HasGamepadOverlay));
@@ -2257,6 +2423,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadBatchScraperOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsOpen));
+        OnPropertyChanged(nameof(IsGamepadHotkeysOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsNormal));

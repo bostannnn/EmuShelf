@@ -241,8 +241,13 @@ public partial class CoverSearchViewModel : ViewModelBase, IDisposable
         NotifyStateChanged();
         try
         {
+            // Prefer the full-resolution original, but fall back to the same proxied preview the
+            // user is looking at. Source hosts routinely 404, hotlink-block, or hand back a
+            // non-image page for the original even when the search engine's cached thumbnail still
+            // loads, so "no longer available" must mean neither address yielded an image — not
+            // merely that the pristine original moved.
             var downloaded = await _downloader.DownloadFirstAsync(
-                [result.OriginalCandidate],
+                [result.OriginalCandidate, result.ThumbnailCandidate],
                 _lifetimeCancellation.Token);
             if (downloaded is null)
             {

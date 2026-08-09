@@ -18,6 +18,16 @@ namespace EmuShelf.Integrations.Emulators.RetroArch;
 /// internal <c>f8</c> default) unless the user already moved it off F8. And <c>quit_press_twice</c>
 /// defaults to <c>true</c>, so exit needs two presses; it is set to <c>false</c> so a single close
 /// (behind a deliberate Steam Input combo) quits.
+///
+/// RetroArch also has a single hotkey-enable *gate* shared by keyboard and controller
+/// (<c>input_enable_hotkey</c> / <c>_btn</c>). The keyboard scheme needs that gate OFF (unset ⇒ hotkeys
+/// are always active) so a bare Steam-Input key like <c>f2</c> fires without a modifier — but "off" also
+/// un-gates any *controller* button RetroArch has bound as a hotkey, so a stock pad autoconfig that maps
+/// save-state-slot ± to the D-pad (or screenshot/pause/fps/runahead to the face buttons) makes those fire
+/// during play — e.g. D-pad left/right silently changing the save slot. Since the gate can't be "keyboard
+/// only", the controller hotkey bindings are cleared instead: this nul's the <c>_btn</c> and <c>_axis</c>
+/// bindings of the scheme's own actions plus those common autoconfig hotkeys, so the pad is game-input
+/// only and the keyboard (via Steam Input) is the sole hotkey path. All of it is backed up and revertible.
 /// </remarks>
 public sealed class RetroArchHotkeyConfigurator : HotkeyConfiguratorBase
 {
@@ -31,15 +41,29 @@ public sealed class RetroArchHotkeyConfigurator : HotkeyConfiguratorBase
         [HotkeyAction.LoadState] = "input_load_state",
     };
 
-    /// <summary>Controller hotkey buttons an earlier controller-scheme version may have set; cleared to nul.</summary>
-    private static readonly IReadOnlyList<string> ControllerButtonKeys =
+    /// <summary>
+    /// Hotkey controls whose controller bindings (<c>&lt;control&gt;_btn</c> and <c>&lt;control&gt;_axis</c>)
+    /// are cleared to <c>nul</c> on apply so an always-on hotkey can't fire from a bare pad press (see the
+    /// remarks on the class). Covers the scheme's own actions — a leftover trigger-axis bind for rewind or
+    /// fast-forward would otherwise fire alongside the keyboard key — plus <c>input_enable_hotkey</c> (nul
+    /// keeps the gate off) and the hotkeys a stock autoconfig commonly lands on the D-pad / face buttons.
+    /// Game inputs (<c>input_playerN_*</c>) are never touched, so the pad still plays.
+    /// </summary>
+    private static readonly IReadOnlyList<string> ClearedControllerHotkeys =
     [
-        "input_enable_hotkey_btn",
-        "input_exit_emulator_btn",
-        "input_rewind_btn",
-        "input_hold_fast_forward_btn",
-        "input_save_state_btn",
-        "input_load_state_btn",
+        "input_enable_hotkey",
+        "input_exit_emulator",
+        "input_rewind",
+        "input_hold_fast_forward",
+        "input_toggle_fast_forward",
+        "input_save_state",
+        "input_load_state",
+        "input_state_slot_increase",
+        "input_state_slot_decrease",
+        "input_screenshot",
+        "input_pause_toggle",
+        "input_fps_toggle",
+        "input_runahead_toggle",
     ];
 
     private readonly string _configPath;
@@ -93,10 +117,14 @@ public sealed class RetroArchHotkeyConfigurator : HotkeyConfiguratorBase
         // Exit defaults to needing two presses; a single deliberate close should quit.
         SetCfg(document, fileName, "quit_press_twice", "false", changes);
 
-        // Clear any controller hotkey buttons an earlier controller-scheme version wrote, so a stale
-        // joypad number can't fire an action alongside the keyboard keys.
-        foreach (var buttonKey in ControllerButtonKeys)
-            ClearCfg(document, fileName, buttonKey, changes);
+        // Clear the controller (joypad + axis) bindings of the scheme's actions and the hotkeys a stock
+        // autoconfig lands on game-facing buttons, so RetroArch's always-on hotkey mode can't fire one
+        // from a bare pad press (e.g. D-pad left/right changing the save-state slot mid-game).
+        foreach (var control in ClearedControllerHotkeys)
+        {
+            ClearCfg(document, fileName, $"{control}_btn", changes);
+            ClearCfg(document, fileName, $"{control}_axis", changes);
+        }
 
         IReadOnlyList<HotkeyFilePlan> files = document.Changed
             ? [new HotkeyFilePlan(_configPath, document.ToText())]

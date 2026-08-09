@@ -174,7 +174,11 @@ public sealed class GameMetadataService : IGameMetadataService
                 {
                     try
                     {
-                        match = await _catalog.FindMatchAsync(profile, identifiers, cancellationToken);
+                        // The filename carries the region tag ("(Europe)") the catalog needs to pick
+                        // the right entry when a region-free serial is shared across regional dumps.
+                        var regionHint = Path.GetFileNameWithoutExtension(game.Path);
+                        match = await _catalog.FindMatchAsync(
+                            profile, identifiers, regionHint, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {

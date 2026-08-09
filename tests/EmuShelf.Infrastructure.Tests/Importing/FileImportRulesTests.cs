@@ -90,7 +90,7 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
         var analysis = _rules.AnalyzeFile(path);
 
         Assert.Equal(
-            ["playstation", "playstation2", "gamecube", "wii"],
+            ["gamecube", "wii", "playstation", "playstation2"],
             analysis.SuggestedSystems.Select(system => system.Id));
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("playstation"));
         Assert.Equal(GameFileMatch.Unrecognized, analysis.MatchFor("gamecube"));
