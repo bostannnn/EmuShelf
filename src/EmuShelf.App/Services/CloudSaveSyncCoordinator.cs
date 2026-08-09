@@ -366,15 +366,38 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
         try
         {
-            var syncStates = _settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates;
-            var supportsStates = SaveProviderRegistry.Find(systemId)?.SupportsSaveStates == true;
-            // Name the resolved state folder before the pass so a later "nothing matched" is readable.
-            if (syncStates && supportsStates)
-                await LogStatePhaseDiagnosticsAsync(systemId, launchStateKeys);
+            var descriptor = SaveProviderRegistry.Find(systemId);
+            var ownSyncStates = _settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates;
+            var ownSupportsStates = descriptor?.SupportsSaveStates == true;
 
-            // One combined pass — base saves plus save states (when the toggle is on) — so a launch or
-            // exit makes a single cloud index round-trip for the platform instead of two. All includes
-            // states only when the toggle is on, so the toggle-off case reconciles just the base saves.
+            // A platform can delegate its save states to another system that owns the shared emulator
+            // state folder (Dolphin keeps GameCube and Wii states together). Its states sync only when
+            // the delegate's toggle is on, and they sync under the delegate's namespace — so a launch
+            // here uploads them under that same identity rather than a second copy.
+            var stateDelegateId = descriptor?.StateSyncSystemId;
+            string? activeStateSystemId = null;
+            if (stateDelegateId is not null)
+            {
+                if (_settings.CloudSaveSync.GetLocation(stateDelegateId).SyncSaveStates &&
+                    SaveProviderRegistry.Find(stateDelegateId)?.SupportsSaveStates == true)
+                    activeStateSystemId = stateDelegateId;
+            }
+            else if (ownSyncStates && ownSupportsStates)
+            {
+                activeStateSystemId = systemId;
+            }
+
+            // Name the resolved state folder before the pass so a later "nothing matched" is readable.
+            if (activeStateSystemId is not null)
+                await LogStatePhaseDiagnosticsAsync(activeStateSystemId, launchStateKeys);
+
+            // One combined pass: the launched system's base saves (plus its own states when it has a
+            // toggle that is on) and, for a delegating platform, the delegate's states-only target —
+            // all in a single cloud index round-trip. The delegate is added only when its states will
+            // actually sync, so a toggle-off delegate adds no empty work.
+            var stateOnlyDelegates = activeStateSystemId is not null && activeStateSystemId != systemId
+                ? new[] { activeStateSystemId }
+                : null;
             var outcome = await RunSyncPipelineAsync(
                 [systemId],
                 progress: null,
@@ -383,16 +406,19 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 gateAlreadyHeld: true,
                 contentScope: SyncContentScope.All,
                 recordOutcome: false,
-                stateGameKeys: launchStateKeys);
+                stateGameKeys: launchStateKeys,
+                stateOnlySystemIds: stateOnlyDelegates);
             RecordAutomaticOutcome(systemId, outcome);
             LogAutomaticSyncResult(systemId, outcome);
 
-            // Tell the launch/exit summary the states were skipped, but only where the platform
-            // actually offers save-state sync — otherwise there is no toggle for the user to turn on.
-            if (outcome.Status == CloudSaveSyncStatus.Completed && supportsStates && !syncStates)
+            // Tell the launch/exit summary the states were skipped when this platform has states to
+            // sync (its own, or a delegate's) but none will this pass — the toggle is off. For a
+            // delegating platform that toggle lives on the delegate's row.
+            var platformHasStates = ownSupportsStates || stateDelegateId is not null;
+            if (outcome.Status == CloudSaveSyncStatus.Completed && platformHasStates && activeStateSystemId is null)
             {
                 _logger.Information(
-                    $"Save-state sync skipped for '{systemId}': the platform's " +
+                    $"Save-state sync skipped for '{systemId}': the " +
                     "'Automatically sync save states' toggle is off on this machine.");
                 return outcome with { SaveStatesSkipped = true };
             }
@@ -602,12 +628,20 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         bool gateAlreadyHeld = false,
         SyncContentScope contentScope = SyncContentScope.SavesOnly,
         bool recordOutcome = true,
-        IReadOnlyCollection<string>? stateGameKeys = null)
+        IReadOnlyCollection<string>? stateGameKeys = null,
+        IReadOnlyCollection<string>? stateOnlySystemIds = null)
     {
         if (!IsConfigured)
             return CloudSaveSyncOutcome.NotConfigured();
 
         var requestedSystemIds = systemIds.Distinct(StringComparer.Ordinal).ToArray();
+        // Systems whose states ride along under another system's namespace (Dolphin's shared state
+        // folder). Never a system that is already a primary target, so its states cannot be claimed
+        // twice in one pass — the service rejects an overlapping unit id.
+        var stateDelegates = (stateOnlySystemIds ?? [])
+            .Where(id => !requestedSystemIds.Contains(id, StringComparer.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
         var ownsGate = false;
         if (!gateAlreadyHeld)
         {
@@ -636,6 +670,17 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                         targets.Add(target);
                         synced.Add(systemId);
                     }
+                    constructingSystemId = null;
+                }
+
+                // Delegated states only: another system's save states, added as a states-only target
+                // so they sync in this same pass under that system's own namespace. Not added to
+                // `synced` — the launching platform owns the recorded outcome.
+                foreach (var stateSystemId in stateDelegates)
+                {
+                    constructingSystemId = stateSystemId;
+                    if (CreateTarget(stateSystemId, SyncContentScope.SaveStatesOnly, stateGameKeys) is { } stateTarget)
+                        targets.Add(stateTarget);
                     constructingSystemId = null;
                 }
             }, cancellationToken);

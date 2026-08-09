@@ -87,6 +87,13 @@ public sealed record OptionalContentDetection(
 /// default. Dolphin keeps GameCube and Wii save states in one shared folder synced from the GameCube
 /// row, so that row's label names both platforms (the Wii row has no separate toggle by design).
 /// </param>
+/// <param name="StateSyncSystemId">
+/// The system whose save-state phase also covers this platform's states, or null when the platform
+/// syncs its own. Set when several systems share one emulator state folder (Dolphin's GameCube and
+/// Wii): a launch/exit of this platform also runs that system's state phase, so the shared states are
+/// uploaded under that system's namespace — one identity, no double-sync — and this platform needs no
+/// save-state toggle of its own.
+/// </param>
 public sealed record SaveProviderDescriptor(
     string SystemId,
     string DisplayName,
@@ -95,7 +102,8 @@ public sealed record SaveProviderDescriptor(
     Func<SaveProviderContext, ISaveLocationProvider?> CreateProvider,
     Func<ISaveLocationProvider, CancellationToken, Task<SaveProviderDetection>> DetectAsync,
     bool SupportsSaveStates = false,
-    string? SaveStatesLabel = null);
+    string? SaveStatesLabel = null,
+    string? StateSyncSystemId = null);
 
 /// <summary>The supported save-sync platforms, in the order Settings presents them.</summary>
 public static class SaveProviderRegistry
@@ -246,7 +254,12 @@ public static class SaveProviderRegistry
                     "Game save data is synced per Wii title. Console identity, Mii data, and channels stay local. " +
                     "Dolphin's shared StateSaves folder is configured once on the GameCube row.",
                     DescribeDolphinLocations(info));
-            }),
+            },
+            // Dolphin writes GameCube and Wii save states into one shared StateSaves folder, synced
+            // from the GameCube row. Delegating states here makes a Wii launch/exit also sweep and
+            // upload the (shared) states under the same dolphin/gc/states/ identity — no separate Wii
+            // toggle, and never a second copy.
+            StateSyncSystemId: "gamecube"),
 
         new SaveProviderDescriptor(
             SystemId: "3ds",

@@ -48,11 +48,11 @@ public class SaveProviderRegistryTests
     }
 
     [Fact]
-    public void Dolphin_SyncsSaveStatesFromTheGameCubeRowWhoseLabelNamesWiiToo()
+    public void Dolphin_WiiDelegatesSaveStatesToTheGameCubeRow_WhichNamesBoth()
     {
-        // Dolphin keeps GameCube and Wii save states in one shared StateSaves folder, wired to sync
-        // only from the GameCube provider. The GameCube row therefore owns the toggle for both, and
-        // its label says so; the Wii row deliberately has no save-states toggle of its own.
+        // Dolphin keeps GameCube and Wii save states in one shared StateSaves folder. The GameCube
+        // provider owns that folder's state sync, so its toggle governs both and its label says so;
+        // the Wii row has no toggle of its own and instead delegates its states to the GameCube row.
         var gameCube = SaveProviderRegistry.Find("gamecube");
         var wii = SaveProviderRegistry.Find("wii");
 
@@ -61,9 +61,16 @@ public class SaveProviderRegistryTests
         Assert.True(gameCube!.SupportsSaveStates);
         Assert.Equal("Automatically sync save states (GameCube + Wii)", gameCube.SaveStatesLabel);
         Assert.Contains("Wii", gameCube.SaveStatesLabel);
+        // GameCube owns its own states — it delegates to no one.
+        Assert.Null(gameCube.StateSyncSystemId);
 
+        // The Wii row exposes no toggle, and delegates its states to the GameCube row so a Wii
+        // launch/exit still uploads them (under the delegate's namespace).
         Assert.False(wii!.SupportsSaveStates);
         Assert.Null(wii.SaveStatesLabel);
+        Assert.Equal("gamecube", wii.StateSyncSystemId);
+        // The delegate must actually be able to carry states, or the delegation is a silent no-op.
+        Assert.True(SaveProviderRegistry.Find(wii.StateSyncSystemId!)!.SupportsSaveStates);
     }
 
     private sealed class StubPaths : IAppPaths
