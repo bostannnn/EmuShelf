@@ -703,6 +703,74 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task DesktopViews_ShowTheNormalizedScrapedTitleOverTheFilename()
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "gba");
+        const string filenameTitle = "Prince of Persia - The Sands of Time (USA) (En,Fr,Es)";
+        const string scrapedTitle = "Prince of Persia: The Sands of Time";
+        const string path = "/games/Prince of Persia - The Sands of Time (USA) (En,Fr,Es).gba";
+        var game = new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = system.Id,
+                Path = path,
+                Title = filenameTitle,
+                TitleOrigin = GameTitleOrigin.Filename,
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name,
+            system.ShortName,
+            system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio);
+        // The bulk scraped-title pass overlays the provider's normalized name onto the view model.
+        game.ApplyScrapedTitle(scrapedTitle);
+
+        var viewModel = new MainViewModel();
+        await viewModel.ReloadGamesAsync();
+        viewModel.Games.ReplaceAll([game]);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1200, Height = 640 };
+        window.Show();
+        try
+        {
+            // Grid tile: shows the normalized name, and never the raw filename title.
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var gridTitle = window.GetVisualDescendants()
+                .OfType<StackPanel>()
+                .Single(control => control.Classes.Contains("game-tile"))
+                .GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Select(control => control.Text)
+                .ToArray();
+            Assert.Contains(scrapedTitle, gridTitle);
+            Assert.DoesNotContain(filenameTitle, gridTitle);
+
+            // List row: the Title cell shows the normalized name; the raw filename stays visible on
+            // the row's path line so the underlying file is never hidden.
+            viewModel.IsGridView = false;
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            var rowTexts = window.GetVisualDescendants()
+                .OfType<Grid>()
+                .Single(control => control.Classes.Contains("game-row"))
+                .GetVisualDescendants()
+                .OfType<TextBlock>()
+                .Select(control => control.Text)
+                .ToArray();
+            Assert.Contains(scrapedTitle, rowTexts);
+            Assert.DoesNotContain(filenameTitle, rowTexts);
+            Assert.Contains(path, rowTexts);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task DesktopList_ManyColumnsOverflowHorizontallyRatherThanClipping()
     {
         var viewModel = new MainViewModel { IsGridView = false };

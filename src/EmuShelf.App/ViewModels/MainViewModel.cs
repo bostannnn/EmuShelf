@@ -717,10 +717,10 @@ public partial class MainViewModel : ViewModelBase
          GamepadOverlayKind.BatchScraper);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
-        GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
+        GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.DisplayTitle} actions",
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Rename => "Rename game",
-        GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.Title} — select disc",
+        GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
@@ -3410,7 +3410,7 @@ public partial class MainViewModel : ViewModelBase
 
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
-                ApplySpotlightTitles(viewModels);
+                ApplyScrapedTitles(viewModels);
                 if (listActive)
                     ApplyDetailsProjections(viewModels);
                 return viewModels;
@@ -3630,9 +3630,10 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    // Overlays the scraped canonical title onto each game for spotlight display, in one bulk read.
-    // Runs on the build worker before the view models are bound, so no cross-thread notify occurs.
-    private void ApplySpotlightTitles(IReadOnlyList<GameViewModel> viewModels)
+    // Overlays the normalized scraped title onto each game for display (grid, list, and spotlight),
+    // in one bulk read. Runs on the build worker before the view models are bound, so no cross-thread
+    // notify occurs. DisplayTitle keeps a user rename ahead of the scraped name.
+    private void ApplyScrapedTitles(IReadOnlyList<GameViewModel> viewModels)
     {
         if (_metadataStore is null || viewModels.Count == 0)
             return;
@@ -3644,12 +3645,12 @@ public partial class MainViewModel : ViewModelBase
                 return;
 
             foreach (var viewModel in viewModels)
-                if (titles.TryGetValue(viewModel.Id, out var canonical))
-                    viewModel.ApplySpotlightTitle(canonical);
+                if (titles.TryGetValue(viewModel.Id, out var scraped))
+                    viewModel.ApplyScrapedTitle(scraped);
         }
         catch (Exception ex)
         {
-            _logger.Warning($"Could not load canonical titles for the spotlight list: {ex.Message}");
+            _logger.Warning($"Could not load scraped titles for the library: {ex.Message}");
         }
     }
 
@@ -3829,7 +3830,7 @@ public partial class MainViewModel : ViewModelBase
                     return;
                 }
                 _logger.Warning($"Could not load the cover for game id {game.Id}.", ex);
-                SetStatus($"Could not load cover for {game.Title}: {ex.Message}", StatusSeverity.Error);
+                SetStatus($"Could not load cover for {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
             }
         }
         finally
@@ -3889,10 +3890,10 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Players => By(g => g.PlayersColumnText, text),
             LibrarySortColumn.Developer => By(g => g.DeveloperColumnText, text),
             LibrarySortColumn.Publisher => By(g => g.PublisherColumnText, text),
-            _ => By(g => g.Title, text),
+            _ => By(g => g.DisplayTitle, text),
         };
-        // Title is the stable secondary key so equal rows keep a deterministic order.
-        return ordered.ThenBy(g => g.Title, text);
+        // The displayed title is the stable secondary key so equal rows keep a deterministic order.
+        return ordered.ThenBy(g => g.DisplayTitle, text);
     }
 
     internal void ApplyFilter()
@@ -3904,6 +3905,7 @@ public partial class MainViewModel : ViewModelBase
         IEnumerable<GameViewModel> filtered = _systemGames;
         if (query.Length > 0)
             filtered = _systemGames.Where(g =>
+                g.DisplayTitle.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         Games.ReplaceAll(SortGames(filtered));
@@ -4584,10 +4586,10 @@ public partial class MainViewModel : ViewModelBase
         // write failure RememberSelectedDiscAsync leaves the previous disc active, so claiming success
         // would tell the user a switch happened that did not.
         if (await RememberSelectedDiscAsync(game, disc))
-            SetStatus($"Disc {disc.Number} selected for {game.Title}");
+            SetStatus($"Disc {disc.Number} selected for {game.DisplayTitle}");
         else
             SetStatus(
-                $"Could not select Disc {disc.Number} for {game.Title}.",
+                $"Could not select Disc {disc.Number} for {game.DisplayTitle}.",
                 StatusSeverity.Error);
     }
 
@@ -4596,6 +4598,10 @@ public partial class MainViewModel : ViewModelBase
         if (game is null || IsBusy)
             return;
 
+        // The name the user sees on the tile (the normalized scraped title when one exists), reused
+        // for every status toast in this launch — including the save-sync ones, which only have the
+        // Game model, so it is threaded in.
+        var displayTitle = game.DisplayTitle;
         var launchDisc = game.Discs.FirstOrDefault(disc => disc.Game.Id == game.LaunchModel.Id);
         if (launchDisc is null)
             return;
@@ -4608,14 +4614,14 @@ public partial class MainViewModel : ViewModelBase
             // specific disc that could not be found.
             SetStatus(
                 game.IsMultiDisc
-                    ? $"Cannot launch Disc {launchDisc.Number} of {game.Title}: its game file could not be found."
+                    ? $"Cannot launch Disc {launchDisc.Number} of {displayTitle}: its game file could not be found."
                     : game.UnavailableLaunchStatus,
                 StatusSeverity.Error);
             return;
         }
 
         IsBusy = true;
-        SetStatus($"Launching {game.Title}…", StatusSeverity.Progress);
+        SetStatus($"Launching {displayTitle}…", StatusSeverity.Progress);
         SuspendFrontendUiWork();
         // Hoisted so the Recently Played refresh runs in finally: it must happen whenever a play was
         // recorded (including a game stamped just before a start failure), and a refresh error must
@@ -4626,16 +4632,18 @@ public partial class MainViewModel : ViewModelBase
             CloudSaveSyncOutcome? beforeSync = null;
             var result = await _launchService.LaunchAsync(
                 launchGame,
+                displayTitle,
                 async cancellationToken =>
                 {
                     beforeSync = await SyncSavesForLaunchAsync(
                         launchGame,
+                        displayTitle,
                         afterExit: false,
                         cancellationToken);
                     SetStatus(
                         beforeSync?.Status == CloudSaveSyncStatus.Failed
-                            ? $"Save sync incomplete; launching {game.Title} with the saves currently on disk…"
-                            : $"Launching {game.Title}…",
+                            ? $"Save sync incomplete; launching {displayTitle} with the saves currently on disk…"
+                            : $"Launching {displayTitle}…",
                         StatusSeverity.Progress);
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
@@ -4654,6 +4662,7 @@ public partial class MainViewModel : ViewModelBase
             if (result.ProcessExited)
                 afterSync = await SyncSavesForLaunchAsync(
                     launchGame,
+                    displayTitle,
                     afterExit: true,
                     CancellationToken.None);
             SetStatus(
@@ -4662,12 +4671,12 @@ public partial class MainViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            SetStatus($"Launch cancelled for {game.Title}");
+            SetStatus($"Launch cancelled for {displayTitle}");
         }
         catch (Exception ex)
         {
             _logger.Error($"Unexpected launch failure for game id {game.Id}.", ex);
-            SetStatus($"Could not launch {game.Title}: {ex.Message}", StatusSeverity.Error);
+            SetStatus($"Could not launch {displayTitle}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -4733,6 +4742,7 @@ public partial class MainViewModel : ViewModelBase
 
     private async Task<CloudSaveSyncOutcome?> SyncSavesForLaunchAsync(
         Game game,
+        string displayTitle,
         bool afterExit,
         CancellationToken cancellationToken)
     {
@@ -4742,8 +4752,8 @@ public partial class MainViewModel : ViewModelBase
         IsSyncingSavesForLaunch = true;
         SetStatus(
             afterExit
-                ? $"{game.Title} finished. Syncing saves…"
-                : $"Syncing saves before launching {game.Title}…",
+                ? $"{displayTitle} finished. Syncing saves…"
+                : $"Syncing saves before launching {displayTitle}…",
             StatusSeverity.Progress);
 
         try
@@ -4913,7 +4923,7 @@ public partial class MainViewModel : ViewModelBase
                 // The cache read is small but remains off the UI thread, matching the desktop host.
                 var cached = await Task.Run(() => _retroDetails.GetCached(retroAchievementsGameId));
                 var details = new AchievementDetailsViewModel(
-                    game.Title,
+                    game.DisplayTitle,
                     retroAchievementsGameId,
                     _retroDetails,
                     _retroAccount,
@@ -4933,19 +4943,19 @@ public partial class MainViewModel : ViewModelBase
             catch (Exception ex)
             {
                 _logger.Error($"Could not open Gamepad achievements for game id {game.Id}.", ex);
-                SetStatus($"Could not open achievements for {game.Title}: {ex.Message}", StatusSeverity.Error);
+                SetStatus($"Could not open achievements for {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
                 return;
             }
         }
 
         try
         {
-            await _dialogs.ShowAchievementDetailsAsync(game.Title, retroAchievementsGameId);
+            await _dialogs.ShowAchievementDetailsAsync(game.DisplayTitle, retroAchievementsGameId);
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not open achievements for game id {game.Id}.", ex);
-            SetStatus($"Could not open achievements for {game.Title}: {ex.Message}", StatusSeverity.Error);
+            SetStatus($"Could not open achievements for {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -5006,7 +5016,7 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error($"Could not rename game id {game.Id}.", ex);
-            SetStatus($"Could not rename {game.Title}: {ex.Message}", StatusSeverity.Error);
+            SetStatus($"Could not rename {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -5049,7 +5059,7 @@ public partial class MainViewModel : ViewModelBase
             if (!resolution.IsResolved || resolution.FullPath is null)
             {
                 SetStatus(
-                    resolution.Diagnostic ?? $"Could not open the texture folder for {game.Title}.",
+                    resolution.Diagnostic ?? $"Could not open the texture folder for {game.DisplayTitle}.",
                     StatusSeverity.Error);
                 return;
             }
@@ -5058,12 +5068,12 @@ public partial class MainViewModel : ViewModelBase
             System.IO.Directory.CreateDirectory(resolution.FullPath);
             await _fileReveal.OpenDirectoryAsync(resolution.FullPath);
             SetStatus(existed
-                ? $"Opened texture folder {resolution.FolderId} for {game.Title}"
-                : $"Created and opened texture folder {resolution.FolderId} for {game.Title}");
+                ? $"Opened texture folder {resolution.FolderId} for {game.DisplayTitle}"
+                : $"Created and opened texture folder {resolution.FolderId} for {game.DisplayTitle}");
         }
         catch (Exception ex)
         {
-            SetStatus($"Could not open the texture folder for {game.Title}: {ex.Message}", StatusSeverity.Error);
+            SetStatus($"Could not open the texture folder for {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
         }
     }
 
@@ -5083,7 +5093,7 @@ public partial class MainViewModel : ViewModelBase
         {
             _logger.Error($"Could not reveal the folder for game id {game.Id}.", ex);
             SetStatus(
-                $"Could not open the folder for {game.Title}: {ex.Message}",
+                $"Could not open the folder for {game.DisplayTitle}: {ex.Message}",
                 StatusSeverity.Error);
         }
     }
@@ -5098,14 +5108,14 @@ public partial class MainViewModel : ViewModelBase
             ? system.CoverAspectRatio
             : game.CoverAspectRatio;
         var pickedCover = await _dialogs.PickGameCoverAsync(new GameCoverPickerContext(
-            game.Title,
+            game.DisplayTitle,
             game.SystemName,
             preferredAspectRatio));
         if (pickedCover is null)
             return;
 
         IsBusy = true;
-        SetStatus($"Preparing cover for {game.Title}…", StatusSeverity.Progress);
+        SetStatus($"Preparing cover for {game.DisplayTitle}…", StatusSeverity.Progress);
         var previousCoverPath = game.CoverPath;
         try
         {
@@ -5184,14 +5194,14 @@ public partial class MainViewModel : ViewModelBase
 
             SetStatus(
                 warnings.Count == 0
-                    ? $"Updated cover for {game.Title}"
-                    : $"Updated cover for {game.Title}, but {string.Join("; ", warnings)}",
+                    ? $"Updated cover for {game.DisplayTitle}"
+                    : $"Updated cover for {game.DisplayTitle}, but {string.Join("; ", warnings)}",
                 warnings.Count == 0 ? StatusSeverity.Info : StatusSeverity.Error);
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not set a cover for game id {game.Id}.", ex);
-            SetStatus($"Could not set cover for {game.Title}: {ex.Message}", StatusSeverity.Error);
+            SetStatus($"Could not set cover for {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {
@@ -5214,7 +5224,7 @@ public partial class MainViewModel : ViewModelBase
     private async Task RemoveGameAsync(GameViewModel? game)
     {
         if (game is null || IsBusy ||
-            !await _dialogs.ConfirmRemoveGameAsync(game.Title))
+            !await _dialogs.ConfirmRemoveGameAsync(game.DisplayTitle))
         {
             return;
         }
@@ -5232,12 +5242,12 @@ public partial class MainViewModel : ViewModelBase
         {
             await Task.Run(() => _library.RemoveGames(game.Discs.Select(disc => disc.Game.Id).ToArray()));
             await ReloadGamesAsync();
-            SetStatus($"Removed {game.Title} from the library — game files were not touched");
+            SetStatus($"Removed {game.DisplayTitle} from the library — game files were not touched");
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not remove game id {game.Id} from the library.", ex);
-            SetStatus($"Could not remove {game.Title}: {ex.Message}", StatusSeverity.Error);
+            SetStatus($"Could not remove {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
         }
         finally
         {

@@ -34,14 +34,19 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
 
     public async Task<GameLaunchResult> LaunchAsync(
         Game game,
+        string? displayName = null,
         Func<CancellationToken, Task>? beforeStart = null,
         CancellationToken cancellationToken = default)
     {
+        // The name shown to the user in the launch status. The App passes the normalized scraped
+        // title so these messages match the library; other callers get the game's own title.
+        var title = string.IsNullOrWhiteSpace(displayName) ? game.Title : displayName;
+
         // Portable installs commonly live on external drives. Keep the SQLite read and
         // filesystem probes off the UI thread so drive spin-up/disconnects cannot freeze
         // the window before it has a chance to repaint the launch status.
         var preparation = await Task.Run(
-            () => PrepareLaunch(game),
+            () => PrepareLaunch(game, title),
             cancellationToken);
         if (preparation.Failure is not null)
         {
@@ -63,7 +68,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             var exitCode = await _processRunner.RunAsync(preparation.StartSpec!, cancellationToken);
             _logger.Information($"{preparation.EmulatorName} exited with code {exitCode}.");
             if (exitCode == 0)
-                return new GameLaunchResult(true, $"{game.Title} finished", ProcessExited: true);
+                return new GameLaunchResult(true, $"{title} finished", ProcessExited: true);
 
             var failure = new GameLaunchResult(
                 false,
@@ -101,11 +106,11 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         return _emulators.FirstOrDefault(candidate => candidate.Supports(systemId));
     }
 
-    private LaunchPreparation PrepareLaunch(Game game)
+    private LaunchPreparation PrepareLaunch(Game game, string title)
     {
         if (!File.Exists(game.Path) && !Directory.Exists(game.Path))
             return LaunchPreparation.Failed(
-                $"Cannot launch {game.Title}: the game path is unavailable.");
+                $"Cannot launch {title}: the game path is unavailable.");
 
         // Several emulators can serve one system, so the active profile's own emulator id decides
         // which one launches. Falling back to the first supporting emulator keeps a system that was
@@ -114,12 +119,12 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         var emulator = ResolveEmulator(game.SystemId, configuration);
         if (emulator is null)
             return LaunchPreparation.Failed(
-                $"Cannot launch {game.Title}: no emulator supports this system.");
+                $"Cannot launch {title}: no emulator supports this system.");
 
         if (emulator.RequiresContentFile && !File.Exists(game.Path))
         {
             return LaunchPreparation.Failed(
-                $"Cannot launch {game.Title}: {emulator.Name} requires a game content file, not a folder.");
+                $"Cannot launch {title}: {emulator.Name} requires a game content file, not a folder.");
         }
         var target = configuration?.LaunchTarget ??
             (string.IsNullOrWhiteSpace(configuration?.ExecutablePath)
@@ -138,20 +143,20 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
 
         if (target is DirectExecutableTarget directTarget && !File.Exists(directTarget.Path))
             return LaunchPreparation.Failed(
-                $"Cannot launch {game.Title}: the configured {emulator.Name} executable was not found.");
+                $"Cannot launch {title}: the configured {emulator.Name} executable was not found.");
 
         if (emulator.RequiresCorePath)
         {
             if (string.IsNullOrWhiteSpace(configuration!.CorePath))
             {
                 return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: select an installed {emulator.Name} core in Settings first.");
+                    $"Cannot launch {title}: select an installed {emulator.Name} core in Settings first.");
             }
 
             if (!File.Exists(configuration.CorePath))
             {
                 return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: the configured {emulator.Name} core was not found.");
+                    $"Cannot launch {title}: the configured {emulator.Name} core was not found.");
             }
 
         }
@@ -163,14 +168,14 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
                 ArgumentTemplate.ContainsPlaceholder(launchArguments, "EmulatorDirectory"))
             {
                 return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: Flatpak launch arguments cannot use {{EmulatorDirectory}}.");
+                    $"Cannot launch {title}: Flatpak launch arguments cannot use {{EmulatorDirectory}}.");
             }
 
             if (emulator.RequiresCorePath &&
                 !ArgumentTemplate.HasExplicitCoreAndContentForm(launchArguments))
             {
                 return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: the launch arguments for {emulator.Name} must use " +
+                    $"Cannot launch {title}: the launch arguments for {emulator.Name} must use " +
                     "-L {CorePath} followed by {GamePath}.");
             }
 
@@ -180,14 +185,14 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             if (!dependencies.IsComplete)
             {
                 return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: {dependencies.FailureMessage ?? "all descriptor dependencies could not be resolved."}");
+                    $"Cannot launch {title}: {dependencies.FailureMessage ?? "all descriptor dependencies could not be resolved."}");
             }
 
             var inspection = _targetInspector.Inspect(target, dependencies.Paths);
             if (!inspection.CanLaunch)
             {
                 return LaunchPreparation.Failed(
-                    $"Cannot launch {game.Title}: {inspection.FailureMessage}");
+                    $"Cannot launch {title}: {inspection.FailureMessage}");
             }
 
             var templateExecutablePath = target switch
@@ -220,7 +225,7 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         }
         catch (FormatException ex)
         {
-            return LaunchPreparation.Failed($"Cannot launch {game.Title}: {ex.Message}");
+            return LaunchPreparation.Failed($"Cannot launch {title}: {ex.Message}");
         }
     }
 

@@ -41,22 +41,59 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
-    public void SpotlightDisplayTitle_PrefersTheCanonicalName_ButFallsBackToTitleAndTracksRenames()
+    public void DisplayTitle_PrefersTheScrapedName_ButFallsBackToTitleAndTracksRenames()
     {
         var viewModel = CreateGame();
 
-        // No canonical name scraped yet → the game's own title, and it follows an in-place rename.
-        Assert.Equal("Sample Game", viewModel.SpotlightDisplayTitle);
+        // No scraped name yet → the game's own title, and it follows an in-place rename.
+        Assert.Equal("Sample Game", viewModel.DisplayTitle);
         viewModel.CompleteTitleEdit("Renamed Game");
-        Assert.Equal("Renamed Game", viewModel.SpotlightDisplayTitle);
+        Assert.Equal("Renamed Game", viewModel.DisplayTitle);
 
-        // A scraped canonical name wins over the (filename-derived) title.
-        viewModel.ApplySpotlightTitle("Canonical Name");
-        Assert.Equal("Canonical Name", viewModel.SpotlightDisplayTitle);
+        // A scraped, normalized name wins over the (filename-derived) title.
+        viewModel.ApplyScrapedTitle("Canonical Name");
+        Assert.Equal("Canonical Name", viewModel.DisplayTitle);
 
-        // A blank canonical name clears the override and reverts to the current title.
-        viewModel.ApplySpotlightTitle("   ");
-        Assert.Equal("Renamed Game", viewModel.SpotlightDisplayTitle);
+        // A blank scraped name clears the override and reverts to the current title.
+        viewModel.ApplyScrapedTitle("   ");
+        Assert.Equal("Renamed Game", viewModel.DisplayTitle);
+    }
+
+    [Fact]
+    public void UnavailableLaunchStatus_NamesTheGameByItsDisplayedTitle()
+    {
+        var viewModel = CreateGame();
+        viewModel.IsAvailable = false;
+        viewModel.ApplyScrapedTitle("Prince of Persia: The Sands of Time");
+
+        // The "can't launch" status echoes the name shown on the tile, not the filename title.
+        Assert.Contains("Prince of Persia: The Sands of Time", viewModel.UnavailableLaunchStatus);
+        Assert.DoesNotContain("Sample Game", viewModel.UnavailableLaunchStatus);
+    }
+
+    [Fact]
+    public void DisplayTitle_KeepsAUserRenameAheadOfTheScrapedName()
+    {
+        // A game whose title the user has deliberately set (origin User).
+        var viewModel = new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = "playstation2",
+                Path = "/games/sample.chd",
+                Title = "My Name For It",
+                TitleOrigin = GameTitleOrigin.User,
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            "PlayStation 2", "PS2", "#4657D7",
+            platformArtwork: new DrawingImage());
+
+        // Even with a scraped title available, the user's rename is what shows — and drives the
+        // placeholder monogram.
+        viewModel.ApplyScrapedTitle("Provider Canonical Name");
+        Assert.Equal("My Name For It", viewModel.DisplayTitle);
+        Assert.Equal("MN", viewModel.Initials);
     }
 
     [Fact]

@@ -5653,3 +5653,33 @@ no language suffix, so it was the shortest and always won — a European `CTR-P-
   region and the filename's parenthetical tags are split on `, / & +` and upper-cased; a spelled-out
   DAT region ("Europe", "Korea") never collides with a two-letter language code ("En", "Ko"), so a
   `(En,Ja,Fr,…,Ko)` language list is not mistaken for a Korean region.
+
+## 2026-08-09 — Normalized scraped titles show across the whole library
+
+The normalized title scraped from a metadata provider (ScreenScraper's region-preferred game name,
+e.g. "Prince of Persia: The Sands of Time") was already read in bulk (`GetProviderTitles`) but only
+overlaid on the gamepad spotlight. It now feeds a view-agnostic `GameViewModel.DisplayTitle` used by
+the grid, list, gamepad tile, spotlight, placeholder monogram, search, and sort — so a file named
+"Prince of Persia - The Sands of Time (USA) (En,Fr,Es).gba" reads as the retail title everywhere,
+while the raw filename stays visible on the list row's path line.
+
+The user-facing **status surface** was aligned to the same name: launch/remove/cover/texture/disc/
+achievement toasts, the `UnavailableLaunchStatus`, the remove-confirmation and cover-picker dialogs,
+and the achievement-details title all name the game by its `DisplayTitle`. The launch flow threads the
+display name through the parts that only have the `Game` model: `SyncSavesForLaunchAsync`, and Core's
+`IEmulatorLaunchService.LaunchAsync`, which gained an optional `displayName` (defaulting to
+`Game.Title`) so the completion (`"{name} finished"`) and every `"Cannot launch {name}: …"` message it
+produces match the library too — otherwise the terminal launch toast would be the only stop still
+showing the raw filename. Two surfaces deliberately keep the raw `Title`: **diagnostic logs**
+(`_logger.*`, keyed to the real record + `game.Id` for debugging) and the **rename box seed**
+(`DraftTitle`) plus its no-op comparison — seeding the editor with the scraped name would bake it in as
+a `User` rename on an unchanged save. The ScreenScraper search seed also stays raw (it is the identity
+being searched, not a label).
+
+- **A deliberate user rename wins over the scraped title** (its `TitleOrigin` is `User`). Showing the
+  provider name over a name the user explicitly typed would look like the rename did nothing.
+- **The underlying `Game.Title` record is untouched.** `DisplayTitle` is a presentation overlay, so no
+  migration/write is needed and clearing a scrape reverts the shown name for free. (This differs from
+  the local-DAT catalog title, which `TryApplyCatalogTitle` does persist into `Game.Title`.)
+- **Search matches the displayed title OR the original title**, so scraping never makes a game
+  unfindable by the name it had before.

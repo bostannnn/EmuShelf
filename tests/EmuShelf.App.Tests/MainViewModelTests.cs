@@ -3427,6 +3427,7 @@ public class MainViewModelTests : IDisposable
 
         public Task<GameLaunchResult> LaunchAsync(
             Game game,
+            string? displayName = null,
             Func<CancellationToken, Task>? beforeStart = null,
             CancellationToken cancellationToken = default)
         {
@@ -3496,6 +3497,7 @@ public class MainViewModelTests : IDisposable
 
         public async Task<GameLaunchResult> LaunchAsync(
             Game game,
+            string? displayName = null,
             Func<CancellationToken, Task>? beforeStart = null,
             CancellationToken cancellationToken = default)
         {
@@ -3503,7 +3505,7 @@ public class MainViewModelTests : IDisposable
                 await beforeStart(cancellationToken);
             _started.TrySetResult();
             await _complete.Task.WaitAsync(cancellationToken);
-            return new GameLaunchResult(true, $"{game.Title} finished");
+            return new GameLaunchResult(true, $"{displayName ?? game.Title} finished");
         }
 
         public void Complete() => _complete.TrySetResult();

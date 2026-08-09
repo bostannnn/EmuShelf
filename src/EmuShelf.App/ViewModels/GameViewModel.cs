@@ -274,10 +274,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
             ? "The path recorded by its external emulator library could not be found. Reconnect its drive, then sync that library."
         : "The saved game path could not be found. Reconnect its drive or re-add the file.";
     public string UnavailableLaunchStatus => IsExternalSourceMissing
-        ? $"Cannot launch {Title}: it is no longer listed by its external emulator library."
+        ? $"Cannot launch {DisplayTitle}: it is no longer listed by its external emulator library."
         : IsExternalSourceGame
-            ? $"Cannot launch {Title}: the path recorded by its external emulator library could not be found."
-        : $"Cannot launch {Title}: its game file could not be found.";
+            ? $"Cannot launch {DisplayTitle}: the path recorded by its external emulator library could not be found."
+        : $"Cannot launch {DisplayTitle}: its game file could not be found.";
 
     [ObservableProperty]
     public partial string Title { get; set; }
@@ -391,25 +391,31 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     private const int SpotlightPrimaryFactCount = 3;
 
-    private string? _canonicalSpotlightTitle;
+    private string? _scrapedTitle;
 
-    /// <summary>The title shown in the spotlight list and hero — the canonical ScreenScraper name
-    /// when one was scraped, otherwise the game's own title (so a rename still shows through).
-    /// Spotlight-only, so the grid, desktop, and the underlying record keep <see cref="Title"/>
-    /// untouched.</summary>
-    public string SpotlightDisplayTitle => _canonicalSpotlightTitle ?? Title;
+    /// <summary>The title shown across every library view — grid, list, and the gamepad spotlight.
+    /// It prefers the normalized title scraped from a metadata provider (ScreenScraper) when one is
+    /// available, so a file named "Prince of Persia - The Sands of Time (USA) (En,Fr,Es)" reads as
+    /// "Prince of Persia: The Sands of Time". A deliberate user rename always wins (its origin is
+    /// <see cref="GameTitleOrigin.User"/>); a game with no scraped title keeps its own
+    /// <see cref="Title"/>, which still tracks an in-place rename. The underlying record's
+    /// <see cref="Title"/> is left untouched either way. See DECISIONS 2026-08-09.</summary>
+    public string DisplayTitle =>
+        _scrapedTitle is not null && Model.TitleOrigin != GameTitleOrigin.User ? _scrapedTitle : Title;
 
     /// <summary>Whether the spotlight hero shows the title in the logo's place. True only once the
     /// details have resolved and confirmed the game has no logo art, so a game that does have one
     /// never flashes its title in the gap before the logo bitmap decodes.</summary>
     public bool ShowSpotlightTitleFallback => AreSpotlightDetailsLoaded && WheelPath is null;
 
-    /// <summary>Applies the canonical provider title for spotlight display; a null/blank value keeps
-    /// the game's own title.</summary>
-    public void ApplySpotlightTitle(string? canonicalTitle)
+    /// <summary>Applies the normalized provider title used for display; a null/blank value clears it
+    /// so the game falls back to its own <see cref="Title"/>.</summary>
+    public void ApplyScrapedTitle(string? scrapedTitle)
     {
-        _canonicalSpotlightTitle = string.IsNullOrWhiteSpace(canonicalTitle) ? null : canonicalTitle;
-        OnPropertyChanged(nameof(SpotlightDisplayTitle));
+        _scrapedTitle = string.IsNullOrWhiteSpace(scrapedTitle) ? null : scrapedTitle;
+        OnPropertyChanged(nameof(DisplayTitle));
+        OnPropertyChanged(nameof(Initials));
+        OnPropertyChanged(nameof(UnavailableLaunchStatus));
     }
 
     /// <summary>Guards the one-time-per-game details resolve (fan-art/logo paths + rating) the
@@ -615,10 +621,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
         Model = Model with { Title = value };
         OnPropertyChanged(nameof(Initials));
         OnPropertyChanged(nameof(UnavailableLaunchStatus));
-        // The spotlight title falls back to Title when no canonical name was scraped, so a rename
-        // (which updates the view model in place, without a scope rebuild) must refresh it too.
-        if (_canonicalSpotlightTitle is null)
-            OnPropertyChanged(nameof(SpotlightDisplayTitle));
+        // DisplayTitle falls back to Title whenever no scraped title is showing (none was applied,
+        // or the user has renamed this game), so an in-place rename must refresh it.
+        OnPropertyChanged(nameof(DisplayTitle));
     }
 
     partial void OnCoverImageChanging(Bitmap? value)
@@ -709,12 +714,12 @@ public partial class GameViewModel : ObservableObject, IDisposable
         WheelImage = null;
     }
 
-    /// <summary>Up-to-two-letter monogram for the placeholder cover.</summary>
+    /// <summary>Up-to-two-letter monogram for the placeholder cover, taken from the displayed name.</summary>
     public string Initials
     {
         get
         {
-            var trimmed = Title.Trim();
+            var trimmed = DisplayTitle.Trim();
             if (trimmed.Length == 0)
                 return "?";
 
