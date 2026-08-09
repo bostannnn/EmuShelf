@@ -1037,7 +1037,7 @@ public class MainWindowVisualSnapshotTests
             // An empty library still opens the menu, and it offers only library-level entries — no
             // game-specific actions.
             Assert.Equal(
-                ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+                ["Search", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
                 viewModel.GamepadOverlayOptions.Select(option => option.Label));
         }
         finally
@@ -1329,25 +1329,26 @@ public class MainWindowVisualSnapshotTests
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             viewModel.OpenGamepadMenuCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
-            // view-mode picker row at the top size to content and stay well within the 800px-tall Deck
-            // viewport. The picker adds a row, so the ceiling is a touch higher than before (observed
-            // ~544 macOS / 551 Linux / 557 Windows — font metrics vary), still far under the viewport.
-            AssertGamepadOverlayHeightBelow(window, 580);
-            // The redundant shortcut bar is gone; the menu leads with the Grid/List view-mode picker.
-            var viewModeCards = window.GetVisualDescendants().OfType<Button>()
+            // The View mode picker plus the 2x2 Sort grid size to content and stay well within the
+            // 800px-tall Deck viewport. The sort grid adds two card rows, so the ceiling is higher than
+            // the one-row menu (font metrics vary across platforms), still comfortably under the viewport.
+            AssertGamepadOverlayHeightBelow(window, 730);
+            // The menu leads with the Grid/List view-mode picker and the four-card Sort row, both built
+            // from the same gamepad-viewmode-card component.
+            var pickerCards = window.GetVisualDescendants().OfType<Button>()
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-viewmode-card"))
                 .ToList();
-            Assert.Equal(2, viewModeCards.Count);
+            Assert.Equal(6, pickerCards.Count); // 2 view-mode (Grid/List) + 4 sort
             // Regression guard for the overlap that shipped once (the picker and a shortcut bar were both
-            // dropped into row 0 and drew on top of each other): the picker must sit entirely above the
-            // option list, not on top of it.
+            // dropped into row 0 and drew on top of each other): both picker rows must sit entirely above
+            // the option list, not on top of it.
             var optionsScroller = window.FindControl<ScrollViewer>("GamepadOverlayOptionsScroller");
             Assert.NotNull(optionsScroller);
-            var pickerBottom = viewModeCards
+            var pickerBottom = pickerCards
                 .Max(card => card.TranslatePoint(new Point(0, card.Bounds.Height), window)!.Value.Y);
             var optionsTop = optionsScroller.TranslatePoint(default, window)!.Value.Y;
             Assert.True(pickerBottom <= optionsTop,
-                $"the view-mode picker (bottom {pickerBottom}) overlaps the option list (top {optionsTop})");
+                $"the menu picker rows (bottom {pickerBottom}) overlap the option list (top {optionsTop})");
             Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Quit EmuShelf").IsDestructive);
             viewModel.RequestDesktopModeFromGamepadCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-desktop-confirmation-1280x800.png");
