@@ -82,6 +82,11 @@ public sealed record OptionalContentDetection(
 /// answer calls exactly this, so the two can never disagree.
 /// </param>
 /// <param name="DetectAsync">Resolves the concrete directory and optional warning Settings should display.</param>
+/// <param name="SaveStatesLabel">
+/// Overrides the "Automatically sync save states" checkbox label for this platform, or null for the
+/// default. Dolphin keeps GameCube and Wii save states in one shared folder synced from the GameCube
+/// row, so that row's label names both platforms (the Wii row has no separate toggle by design).
+/// </param>
 public sealed record SaveProviderDescriptor(
     string SystemId,
     string DisplayName,
@@ -89,7 +94,8 @@ public sealed record SaveProviderDescriptor(
     string OverridePlaceholder,
     Func<SaveProviderContext, ISaveLocationProvider?> CreateProvider,
     Func<ISaveLocationProvider, CancellationToken, Task<SaveProviderDetection>> DetectAsync,
-    bool SupportsSaveStates = false);
+    bool SupportsSaveStates = false,
+    string? SaveStatesLabel = null);
 
 /// <summary>The supported save-sync platforms, in the order Settings presents them.</summary>
 public static class SaveProviderRegistry
@@ -220,7 +226,10 @@ public static class SaveProviderRegistry
                     "GCI saves are synced as individual files.",
                     DescribeDolphinLocations(info));
             },
-            SupportsSaveStates: true),
+            SupportsSaveStates: true,
+            // Dolphin stores GameCube and Wii save states in one shared folder, synced from this row
+            // (see AddStateSources' gamecube guard), so the label names both — the Wii row has no toggle.
+            SaveStatesLabel: "Automatically sync save states (GameCube + Wii)"),
 
         new SaveProviderDescriptor(
             SystemId: "wii",
