@@ -2864,6 +2864,86 @@
                                     </Button>
                                 </Grid>
                             </Border>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="Sort by" FontSize="13" FontWeight="SemiBold"
+                                           LetterSpacing="0.6"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </Grid>
+                            <!-- Sort row: same gamepad-viewmode-row / -card component as View mode above,
+                                 laid out 2x2 so each card keeps the Grid/List card's width and the full
+                                 labels fit. Each card drives the shared SortColumn via SelectGamepadSortCommand;
+                                 the selected card carries the accent ✓. Left/Right step through all four in
+                                 reading order. -->
+                            <Border Classes="gamepad-viewmode-row"
+                                    Classes.focused="{Binding IsGamepadSortRowFocused}">
+                                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto"
+                                      ColumnSpacing="12" RowSpacing="12">
+                                    <Button Grid.Column="0" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsGamepadSortRecentlyPlayedSelected}"
+                                            Command="{Binding SelectGamepadSortCommand}"
+                                            CommandParameter="{x:Static vm:LibrarySortColumn.LastPlayed}">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0" Text="Recently played" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="1" IsVisible="{Binding IsGamepadSortRecentlyPlayedSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="1" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsGamepadSortRecentlyAddedSelected}"
+                                            Command="{Binding SelectGamepadSortCommand}"
+                                            CommandParameter="{x:Static vm:LibrarySortColumn.DateAdded}">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0" Text="Recently added" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="1" IsVisible="{Binding IsGamepadSortRecentlyAddedSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="0" Grid.Row="1" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsGamepadSortTitleSelected}"
+                                            Command="{Binding SelectGamepadSortCommand}"
+                                            CommandParameter="{x:Static vm:LibrarySortColumn.Title}">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0" Text="Title A–Z" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="1" IsVisible="{Binding IsGamepadSortTitleSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="1" Grid.Row="1" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsGamepadSortRatingSelected}"
+                                            Command="{Binding SelectGamepadSortCommand}"
+                                            CommandParameter="{x:Static vm:LibrarySortColumn.Rating}">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0" Text="Rating" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="1" IsVisible="{Binding IsGamepadSortRatingSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                </Grid>
+                            </Border>
                             <Border Height="1" Background="{DynamicResource EmuBorderBrush}" />
                         </StackPanel>
                         <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadAchievementsOpen}"

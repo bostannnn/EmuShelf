@@ -1255,8 +1255,9 @@ public class MainViewModelTests : IDisposable
         await vm.ReloadGamesAsync();
 
         // Recently Added is not a stop on the LB/RB cycle; from there the next press returns to
-        // All Games rather than dead-ending.
-        await vm.ShowGamepadRecentlyAddedCommand.ExecuteAsync(null);
+        // All Games rather than dead-ending. (Couch reaches this scope only via a cross-mode restore now,
+        // but the off-list snap behaviour is unchanged.)
+        await vm.ShowRecentlyAddedCommand.ExecuteAsync(null);
         Assert.Equal(LibraryScope.RecentlyAdded, vm.CurrentLibraryScope);
 
         await vm.NextPlatformCommand.ExecuteAsync(null);
@@ -1572,7 +1573,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            ["Search", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
@@ -1758,7 +1759,9 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.IsListViewModeSelected);
         Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
 
-        // Up from the top option lands the ring on the view-mode row (no option keeps the ring there).
+        // Up from the top option lands on the sort row; a second Up reaches the view-mode row above it.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadSortRowFocused);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
         Assert.True(vm.IsGamepadViewModeRowFocused);
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.IsFocused);
@@ -1775,11 +1778,44 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.IsGamepadSpotlightView);
         Assert.True(vm.IsGridViewModeSelected);
 
-        // Down drops back into the option list at the top entry.
+        // Down walks View mode → Sort → option list (top entry).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.True(vm.IsGamepadSortRowFocused);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
         Assert.False(vm.IsGamepadViewModeRowFocused);
+        Assert.False(vm.IsGamepadSortRowFocused);
         Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
         Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
+    }
+
+    [AvaloniaFact]
+    public void GamepadSystemMenu_SortRow_ChangesSortLiveWithLeftRight_AndIsInertOnConfirm()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.HasGames = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+
+        // Up from the top option lands on the sort row (the nearer of the two selector rows).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadSortRowFocused);
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.IsFocused);
+
+        // Right steps to the next sort option and applies it live; A on the row is inert.
+        var initial = vm.SortColumn;
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.NotEqual(initial, vm.SortColumn);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+
+        // Each option carries its own direction: recency and rating are descending, title is A–Z.
+        vm.SelectGamepadSortCommand.Execute(LibrarySortColumn.LastPlayed);
+        Assert.True(vm.IsGamepadSortRecentlyPlayedSelected);
+        Assert.True(vm.SortDescending);
+        vm.SelectGamepadSortCommand.Execute(LibrarySortColumn.Title);
+        Assert.True(vm.IsGamepadSortTitleSelected);
+        Assert.False(vm.SortDescending);
     }
 
     [AvaloniaFact]
