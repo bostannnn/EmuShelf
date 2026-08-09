@@ -10,6 +10,10 @@ namespace EmuShelf.Infrastructure.Updates;
 /// short-lived <c>.cmd</c> helper waits for this process to exit, overlays the new payload onto the
 /// app folder (leaving the portable <c>Data/ Covers/ …</c> directories untouched, since the release
 /// zip contains only program files), relaunches EmuShelf, and deletes itself.
+///
+/// When Steam started this run (the Gamepad-mode setup adds EmuShelf as a non-Steam game), the helper
+/// relaunches through <c>steam://rungameid</c> rather than the bare .exe so Steam Input reattaches and
+/// the controller keeps working — see <see cref="UpdateRelaunch"/>.
 /// </summary>
 public sealed class WindowsUpdateApplier : IUpdateApplier
 {
@@ -52,13 +56,18 @@ public sealed class WindowsUpdateApplier : IUpdateApplier
         var nested = Path.Combine(extractDirectory, "EmuShelf");
         var payloadRoot = Directory.Exists(nested) ? nested : extractDirectory;
 
+        // Relaunch through Steam when Steam launched us, so Steam Input reattaches and the controller
+        // keeps working; a plain (non-Steam) run relaunches the executable directly, as before.
+        var relaunchTarget = UpdateRelaunch.ResolveTarget(exePath);
+
         var scriptPath = Path.Combine(Path.GetTempPath(), $"emushelf-update-{Guid.NewGuid():N}.cmd");
-        File.WriteAllText(scriptPath, BuildScript(Environment.ProcessId, payloadRoot, targetDirectory, exePath));
-        _logger.Information($"Launching Windows update helper {scriptPath}; the app will now exit.");
+        File.WriteAllText(scriptPath, BuildScript(Environment.ProcessId, payloadRoot, targetDirectory, relaunchTarget));
+        _logger.Information(
+            $"Launching Windows update helper {scriptPath}; will relaunch via '{relaunchTarget}'. The app will now exit.");
         UpdateProcess.LaunchDetached("cmd.exe", ["/c", scriptPath]);
     }
 
-    private static string BuildScript(int pid, string source, string destination, string exePath) =>
+    private static string BuildScript(int pid, string source, string destination, string relaunchTarget) =>
         $"""
         @echo off
         setlocal
@@ -70,7 +79,7 @@ public sealed class WindowsUpdateApplier : IUpdateApplier
           goto waitloop
         )
         robocopy "{source}" "{destination}" /E /NFL /NDL /NJH /NJS /NC /NS /NP >nul
-        start "" "{exePath}"
+        start "" "{relaunchTarget}"
         del "%~f0"
         """;
 }
