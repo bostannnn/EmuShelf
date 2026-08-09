@@ -5474,3 +5474,20 @@ an *order*, not a *place*.
 - Future custom user collections get the rail as their home — extra stops after the systems — rather than
   reviving the overlay.
 
+## 2026-08-09 — Cover picker: fall back to the proxied preview the user can see
+
+The web cover picker showed DuckDuckGo image results, but selecting one often failed with "That image
+is no longer available" even though the thumbnail was plainly visible in the grid. The preview and the
+selection were fetching two different addresses.
+
+- **Selection now tries `[OriginalCandidate, ThumbnailCandidate]`, not the original alone.** The grid
+  previews the search engine's proxied thumbnail (a stable CDN), while selection downloaded the
+  full-resolution original from the *source* host — which routinely 404s, hotlink-blocks with a 403 or
+  an HTML page, exceeds the 8 MB cap, or serves an unsupported format. `DownloadFirstAsync` already
+  returns the first candidate that yields an image, so the picker prefers the crisp original and falls
+  back to the exact proxied preview on screen. "No longer available" now means *neither* address
+  produced an image.
+- **The user-driven web-artwork HttpClient sends a mainstream browser User-Agent, not `EmuShelf/1.0`.**
+  Arbitrary image hosts and CDNs refuse an unknown agent, so a browser UA materially raises how often
+  the full-resolution original is retrieved rather than the thumbnail fallback. Scoped to the
+  picker/ScreenScraper-media client only; the automatic metadata client keeps its honest EmuShelf agent.
