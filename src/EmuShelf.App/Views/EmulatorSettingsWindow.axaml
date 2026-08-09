@@ -882,7 +882,7 @@
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 <TextBlock TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                           Text="There is no importable file — Steam Input layouts are set up per game inside Steam, not dropped in. Because every emulator listens for the same keys, you only build this once and it works for all of them. Hold Select (Back / View — the share-side button) and press a button:" />
+                                           Text="Prefer the Install Steam Input template button above — it drops the bundled layout into Steam for you. To set it up by hand instead (or for a non-DualSense controller): every emulator listens for the same keys, so you build it once and it works for all of them. Hold Select (Back / View — the share-side button) and press a button:" />
                                 <Grid ColumnDefinitions="Auto,16,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="4,2,0,2">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Select + Square" FontFamily="Monospace" FontSize="12"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
