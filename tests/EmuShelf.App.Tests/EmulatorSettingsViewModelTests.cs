@@ -96,8 +96,8 @@ public class EmulatorSettingsViewModelTests
     public void DataFolder_IsSurfacedFromMaintenance_WhenProvided()
     {
         var maintenance = new LibraryMaintenanceActions(
-            RescanSystem: _ => Task.FromResult(string.Empty),
-            RescanAll: () => Task.FromResult(string.Empty),
+            RescanSystem: (_, _) => Task.FromResult(string.Empty),
+            RescanAll: _ => Task.FromResult(string.Empty),
             DataDirectory: "/portable/EmuShelf");
 
         var viewModel = CreateViewModel(maintenance: maintenance);
@@ -420,12 +420,12 @@ public class EmulatorSettingsViewModelTests
         var rescannedSystems = new List<string>();
         var allCalls = 0;
         var maintenance = new LibraryMaintenanceActions(
-            systemId =>
+            (systemId, _) =>
             {
                 rescannedSystems.Add(systemId);
                 return Task.FromResult($"{systemId} rescan complete");
             },
-            () =>
+            _ =>
             {
                 allCalls++;
                 return Task.FromResult("All console folders rescanned");
@@ -444,6 +444,34 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task RescanAll_SurfacesLivePerConsoleProgress_ThenTheFinalResult()
+    {
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            progress =>
+            {
+                progress.Report("Rescanning PlayStation… 12 found");
+                progress.Report("Rescanning GameCube… 4 found");
+                return Task.FromResult("Rescan added 3 game(s)");
+            });
+        var viewModel = CreateViewModel(maintenance);
+        var seen = new List<string>();
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(EmulatorSettingsViewModel.MaintenanceStatusText))
+                seen.Add(viewModel.MaintenanceStatusText);
+        };
+
+        await viewModel.RescanAllCommand.ExecuteAsync(null);
+
+        // The live per-console counts were surfaced as the scan walked each console…
+        Assert.Contains("Rescanning PlayStation… 12 found", seen);
+        Assert.Contains("Rescanning GameCube… 4 found", seen);
+        // …and the run's outcome is the final line, not a stale progress update.
+        Assert.Equal("Rescan added 3 game(s)", viewModel.MaintenanceStatusText);
+    }
+
+    [AvaloniaFact]
     public async Task EmulatorRow_ListsAndManagesEveryRememberedFolder()
     {
         var first = Path.Combine(Path.GetTempPath(), "emushelf-roms-first");
@@ -457,8 +485,8 @@ public class EmulatorSettingsViewModelTests
         };
         var nextId = 3L;
         var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult("unused"),
             _ => Task.FromResult("unused"),
-            () => Task.FromResult("unused"),
             Folders: new LibraryFolderManagementActions(
                 systemId => folders.Where(folder => folder.SystemId == systemId).ToArray(),
                 (systemId, path) =>
@@ -498,8 +526,8 @@ public class EmulatorSettingsViewModelTests
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult("unused"),
             _ => Task.FromResult("unused"),
-            () => Task.FromResult("unused"),
             Folders: new LibraryFolderManagementActions(
                 _ => [],
                 async (_, _) =>
@@ -564,8 +592,8 @@ public class EmulatorSettingsViewModelTests
     {
         bool? saved = null;
         var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult("unused"),
             _ => Task.FromResult("unused"),
-            () => Task.FromResult("unused"),
             GetShowEmptyPlatforms: () => true,
             SetShowEmptyPlatforms: value =>
             {
@@ -586,8 +614,8 @@ public class EmulatorSettingsViewModelTests
     {
         var calls = 0;
         var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult("unused"),
             _ => Task.FromResult("unused"),
-            () => Task.FromResult("unused"),
             SyncRpcs3Library: () =>
             {
                 calls++;

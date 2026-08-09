@@ -2206,8 +2206,8 @@ public class MainWindowVisualSnapshotTests
             (_, _) => { },
             _ => Task.FromResult(true));
         var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
             _ => Task.FromResult(string.Empty),
-            () => Task.FromResult(string.Empty),
             _ => Task.FromResult(string.Empty),
             _ => Task.FromResult(string.Empty),
             () => Task.FromResult(string.Empty),
@@ -2576,8 +2576,8 @@ public class MainWindowVisualSnapshotTests
             new NullEmulatorConfigurationStore(),
             new NullDialogService(),
             new LibraryMaintenanceActions(
-                systemId => Task.FromResult($"{systemId} rescan complete"),
-                () => Task.FromResult("All console folders rescanned")));
+                (systemId, _) => Task.FromResult($"{systemId} rescan complete"),
+                _ => Task.FromResult("All console folders rescanned")));
 
         Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
         var window = new EmulatorSettingsWindow
@@ -2815,6 +2815,45 @@ public class MainWindowVisualSnapshotTests
 
     private static double BottomEdge(Control control, Visual relativeTo) =>
         control.TranslatePoint(new Point(0, control.Bounds.Height), relativeTo)!.Value.Y;
+
+    [AvaloniaFact]
+    public async Task GamepadSpotlight_StatusToast_PaintsAboveTheOpaqueSpotlightBackdrop()
+    {
+        // Regression: the status toast (which carries launch errors like "PCSX2 executable was not
+        // found") is a direct child of GamepadRoot that shares a grid cell with the opaque single-game
+        // spotlight backdrop, declared after it. Panels paint their children in ZIndex order, so only a
+        // higher ZIndex keeps the toast on top; without it the backdrop hid launch errors in Spotlight
+        // view even though they showed in the grid and on desktop.
+        var viewModel = await BuildSpotlightViewModelAsync();
+        viewModel.StatusSeverity = StatusSeverity.Error;
+        viewModel.StatusText = "Cannot launch Game 4: the configured PCSX2 executable was not found.";
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+
+            Assert.True(viewModel.ShowGamepadSpotlight);
+            Assert.True(viewModel.HasStatusMessage);
+
+            var gamepadRoot = window.GetVisualDescendants().OfType<Grid>()
+                .Single(grid => grid.Name == "GamepadRoot");
+            var toast = gamepadRoot.Children.OfType<Border>()
+                .Single(child => child.Classes.Contains("status-toast"));
+            // The spotlight backdrop is the only bare Panel among GamepadRoot's direct children.
+            var spotlightBackdrop = gamepadRoot.Children.Single(child => child.GetType() == typeof(Panel));
+
+            Assert.True(
+                toast.ZIndex > spotlightBackdrop.ZIndex,
+                $"Toast ZIndex {toast.ZIndex} must exceed the spotlight backdrop's {spotlightBackdrop.ZIndex} " +
+                "so launch errors are not painted over in Spotlight view.");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
 
     [AvaloniaFact]
     public async Task GamepadSpotlight_SplitsChipsAcrossCenteredRowsAndAlignsListToActions()

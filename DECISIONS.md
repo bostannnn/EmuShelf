@@ -5319,3 +5319,60 @@ built once per scope build on the load worker, never a per-row `GetDetails` on t
 details store is per-game today, and a naive column binding would reintroduce the exact N+1 the M11
 performance work removed. The cloud-save-status column is deferred behind M29 (battery/memory-card
 sync) and the save-state variant behind M33.
+
+## 2026-08-09 — Gamepad progress/notification consistency
+
+Fixing "progress bars and notifications are missing or broken in gamepad mode":
+
+- **Settings progress text is cleared on completion, not just at start.** The metadata/RA/cloud
+  `*ProgressText` (+ their bar totals) were seeded per run but never reset, so the single Gamepad
+  settings pill — which ranks a section's progress text ahead of its status text — kept showing a
+  finished run's "N of N", and a later maintenance run could even re-show Desktop's metadata bar
+  (gated on the still-non-zero total). They are now reset in each op's `finally`, mirroring the
+  TexturePacks path that already did this.
+- **The General section clears its sibling status on start.** Metadata and library maintenance share
+  one Gamepad pill; a rescan now clears the metadata status/progress up front so the pill reflects the
+  most recent library action rather than whichever `FirstNonEmpty` happened to rank first.
+- **"Rescan all consoles" reports live per-console progress.** `LibraryMaintenanceActions.RescanSystem/
+  RescanAll` now take an `IProgress<string>`; `RescanAsync` already computed "Rescanning {system}… {n}
+  found" for the main-window bar (hidden behind the modal) and now also reports it to Settings. A
+  synchronous reporter is used (the scan already marshals to the UI thread) so the final result line
+  can't be reordered behind a late progress post the way `Progress<T>` could.
+- **Desktop maintenance/texture actions get an indeterminate bar** (gated on a rescan-specific flag /
+  `IsTexturePackBusy`) and the **Gamepad settings pill gets a section-scoped indeterminate bar**, so a
+  "working" affordance is consistent across surfaces instead of some actions showing a bar and others
+  only text. The bars are busy-gated, so they stay collapsed (no layout shift) in visual snapshots.
+- **Gamepad launch/exit save sync shows a large centered "Syncing saves…" panel** (`IsSyncingSavesForLaunch`)
+  rather than only the corner toast, which was too easy to miss at a couch distance — this is a UX
+  gap, not a code bug (the toast machinery was already correct and on the UI thread).
+
+## 2026-08-09 — Batch scraper and RPCS3 sync reachable from Gamepad mode
+
+Gamepad mode dropped the whole emulator-rows Settings section and had no multi-select, so two flows
+were controller-unreachable:
+
+- **Batch scrape** (the app's only multi-item determinate progress bar) is now reachable via a System
+  Menu "Scrape all in view" entry that batch-scrapes the games currently in view. A new
+  `GamepadBatchScraperViewModel` wraps the shared `GameBatchScraperViewModel` with a linear D-pad
+  focus model (Configure → determinate progress → summary). The couch flow keeps the sensible defaults
+  (fill missing, all media) and exposes only the "replace existing values" choice; per-field media
+  selection stays a Desktop power-user control.
+- **RPCS3 library sync** — the only PS3 import path, and deliberately skipped by "Rescan all consoles"
+  (`NonRpcs3Systems()`) — is exposed as a Gamepad General-section action so a controller-only user can
+  import PS3 games. It is `ExcludeFromParity` because Desktop reaches it from the PS3 emulator row, not
+  a General field. Per-system rescan was intentionally **not** added to Gamepad: "Rescan all consoles"
+  already covers every non-PS3 console, and RPCS3 sync covers PS3, so the two together are the couch
+  equivalent of Desktop's per-platform rescans.
+
+## 2026-08-09 — Gamepad status toast (and save-sync panel) hidden in Spotlight view
+
+The Gamepad status toast — which carries launch/preflight errors like "the configured PCSX2
+executable was not found" — and the new centered save-sync panel are direct children of GamepadRoot
+that share a grid cell with the single-game **Spotlight** view's opaque edge-to-edge backdrop, which
+is declared after them. Panels paint children in ZIndex order, so the backdrop painted over both:
+errors and sync status were visible in the cover grid and on Desktop but **invisible in Spotlight
+view** (a common couch view). Fixed by layering with ZIndex rather than reordering the markup: the
+toast and save-sync panel are ZIndex 1 (above the library/spotlight/dock content at 0), and the
+overlay scrim is ZIndex 2 (still above them, so an open overlay covers them). Pre-existing bug for the
+toast; the save-sync panel would have shipped with the same flaw. Regression test asserts the toast's
+ZIndex exceeds the spotlight backdrop's.

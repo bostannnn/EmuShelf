@@ -134,11 +134,17 @@
                                 Command="{Binding RescanAllCommand}"
                                 IsEnabled="{Binding CanRescanAll}"
                                 VerticalAlignment="Center" />
-                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
-                                   Text="{Binding MaintenanceStatusText}"
-                                   IsVisible="{Binding HasMaintenanceStatus}"
-                                   FontSize="11" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Spacing="4">
+                            <!-- A rescan has no unit total to count, so it shows an indeterminate bar
+                                 while it runs — the same "working" affordance the metadata, cloud, and
+                                 account actions give — over its live per-console status line. -->
+                            <ProgressBar IsIndeterminate="True" Height="4"
+                                         IsVisible="{Binding IsRescanningAllConsoles}" />
+                            <TextBlock Text="{Binding MaintenanceStatusText}"
+                                       IsVisible="{Binding HasMaintenanceStatus}"
+                                       FontSize="11" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        </StackPanel>
                     </Grid>
                 </Border>
                 <Border Classes="settings-card" Margin="0,0,0,12">
@@ -931,6 +937,8 @@
                                             IsEnabled="{Binding !IsTexturePackBusy}" />
                                 </Grid>
 
+                                <ProgressBar IsIndeterminate="True" Height="4"
+                                             IsVisible="{Binding IsTexturePackBusy}" />
                                 <TextBlock Text="{Binding TexturePackStatusText}"
                                            FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />

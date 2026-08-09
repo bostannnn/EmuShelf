@@ -136,6 +136,68 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task GeneralPill_ShowsRescanStatus_NotAFinishedMetadataFetchProgressLine()
+    {
+        // The General section collapses metadata and maintenance into one pill. Before the fix, a
+        // completed metadata fetch left its live "Fetching N of N" line set and the pill (which ranks
+        // progress text ahead of status) kept showing it, so a later rescan looked like it did nothing.
+        var maintenance = new LibraryMaintenanceActions(
+            RescanSystem: (_, _) => Task.FromResult(string.Empty),
+            RescanAll: _ => Task.FromResult("Rescan complete — no new games"),
+            FetchAllMetadata: progress =>
+            {
+                progress.Report(new MetadataEnrichmentProgress(40, 40, "Final Fantasy"));
+                return Task.FromResult("Added 40 covers");
+            });
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.General;
+
+        await viewModel.Rows.Single(row => row.Key == "general.fetch-metadata").SelectCommand.ExecuteAsync(null);
+        // The completion summary shows — not the frozen "Fetching 40 of 40" progress line.
+        Assert.Equal("Added 40 covers", viewModel.StatusText);
+        Assert.Equal(string.Empty, viewModel.Settings.MetadataProgressText);
+        Assert.False(viewModel.Settings.HasMetadataProgress);
+
+        await viewModel.Rows.Single(row => row.Key == "general.rescan").SelectCommand.ExecuteAsync(null);
+        // The rescan's own status wins; the earlier metadata summary no longer masks it.
+        Assert.Equal("Rescan complete — no new games", viewModel.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task GeneralSection_ExposesRpcs3LibrarySync_TheOnlyControllerPathToImportPs3()
+    {
+        var synced = 0;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            SyncRpcs3Library: () =>
+            {
+                synced++;
+                return Task.FromResult("RPCS3 library sync complete — 2 added");
+            });
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.General;
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "general.sync-rpcs3");
+        await row.SelectCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, synced);
+        Assert.Equal("RPCS3 library sync complete — 2 added", viewModel.StatusText);
+    }
+
+    [AvaloniaFact]
+    public void GeneralSection_OmitsRpcs3Sync_WhenTheMaintenanceActionIsUnavailable()
+    {
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.General;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "general.sync-rpcs3");
+    }
+
+    [AvaloniaFact]
     public async Task SaveRow_UsesExistingPersistenceAndReportsSavedClose()
     {
         bool? showEmpty = null;
@@ -328,8 +390,8 @@ public sealed class GamepadSettingsViewModelTests
             screenScraper: screenScraper);
 
     private static LibraryMaintenanceActions CreateMaintenance(Action<bool> setShowEmpty) => new(
+        (_, _) => Task.FromResult(string.Empty),
         _ => Task.FromResult(string.Empty),
-        () => Task.FromResult(string.Empty),
         _ => Task.FromResult(string.Empty),
         _ => Task.FromResult(string.Empty),
         () => Task.FromResult(string.Empty),
