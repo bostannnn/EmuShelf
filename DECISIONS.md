@@ -5462,6 +5462,11 @@ an *order*, not a *place*.
   View-mode row and Left/Right step the sorts. Labels are shortened (Played / Added / A–Z / Rating; full
   name in the tooltip) so all four fit the row; a 2×2 was tried first but made Up/Down ambiguous — it
   skipped the whole grid. No new style, brush, or background was added.
+- **Direction is reversible on the couch too.** Picking a field applies its sensible default (recency /
+  rating descending, title A→Z); **A while the sort row is focused flips ascending/descending** — the
+  desktop list's ▲/▼ has no other couch analogue. The sort header shows a direction arrow plus a
+  plain-language label ("↓ Newest first", "↑ A to Z"), and an "A Reverse" affordance appears there while
+  the row owns focus.
 - **The `GamepadOverlayKind.Collections` overlay is deleted.** With Recently-* demoted to sort, the couch
   has no Collections drill-in; the Start menu drops the "Collections" entry. The Desktop sidebar keeps its
   Recently Added/Played entries unchanged — this is a gamepad-only change.

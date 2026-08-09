@@ -2832,6 +2832,22 @@
                                 <TextBlock Text="Sort by" FontSize="13" FontWeight="SemiBold"
                                            LetterSpacing="0.6"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <!-- Current direction (always shown) plus the A=Reverse affordance, which
+                                     appears only while the sort row owns focus (A reverses only there). -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7"
+                                            VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding GamepadSortDirectionArrow}" FontSize="14"
+                                               FontWeight="Bold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuAccentBrush}" />
+                                    <TextBlock Text="{Binding GamepadSortDirectionSummary}" FontSize="13"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <Border Classes="gamepad-key action-a" Margin="10,0,0,0"
+                                            IsVisible="{Binding IsGamepadSortRowFocused}"><TextBlock Text="A" /></Border>
+                                    <TextBlock Text="Reverse" FontSize="13" VerticalAlignment="Center"
+                                               IsVisible="{Binding IsGamepadSortRowFocused}"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
                             </Grid>
                             <!-- Sort row: same gamepad-viewmode-row / -card component as View mode above,
                                  four cards across one row so Up/Down move between menu sections (exactly

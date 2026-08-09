@@ -220,12 +220,14 @@ public partial class MainViewModel : ViewModelBase
     {
         NotifySortGlyphs();
         NotifyGamepadSortSelection();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
     partial void OnSortDescendingChanged(bool value)
     {
         NotifySortGlyphs();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
@@ -344,6 +346,37 @@ public partial class MainViewModel : ViewModelBase
         if (current < 0)
             current = 0; // current sort isn't a couch option (e.g. set on desktop): step from the first
         SelectGamepadSort(GamepadSortColumns[Math.Clamp(current + delta, 0, GamepadSortColumns.Length - 1)]);
+    }
+
+    /// <summary>Reverses the current couch sort's direction. Bound to A while the sort row is focused —
+    /// the desktop list's ▲/▼ toggle has no other couch analogue. The header arrow reflects the result.</summary>
+    [RelayCommand]
+    private void ToggleGamepadSortDirection()
+    {
+        if (!IsGamepadMode)
+            return;
+        SortDescending = !SortDescending;
+        ApplyFilter();
+    }
+
+    /// <summary>Direction arrow shown in the couch sort header: down = descending, up = ascending.</summary>
+    public string GamepadSortDirectionArrow => SortDescending ? "↓" : "↑";
+
+    /// <summary>Plain-language direction for the couch sort header, phrased per field.</summary>
+    public string GamepadSortDirectionSummary => (SortColumn, SortDescending) switch
+    {
+        (LibrarySortColumn.Title, false) => "A to Z",
+        (LibrarySortColumn.Title, true) => "Z to A",
+        (LibrarySortColumn.Rating, false) => "Lowest first",
+        (LibrarySortColumn.Rating, true) => "Highest first",
+        (_, false) => "Oldest first",
+        (_, true) => "Newest first",
+    };
+
+    private void NotifyGamepadSortDirection()
+    {
+        OnPropertyChanged(nameof(GamepadSortDirectionArrow));
+        OnPropertyChanged(nameof(GamepadSortDirectionSummary));
     }
 
     private void NotifySortGlyphs()
@@ -1704,8 +1737,14 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ActivateGamepadOverlay()
     {
-        // On either selector row (view-mode or sort), Left/Right already applied the choice live, so A is
-        // inert rather than firing whichever option index sits selected underneath.
+        // On the sort row, A reverses the current sort's direction — Left/Right already picked the field.
+        if (IsGamepadSystemMenuOpen && IsGamepadSortRowFocused)
+        {
+            ToggleGamepadSortDirection();
+            return;
+        }
+        // On the view-mode row, Left/Right already applied the choice live, so A is inert rather than
+        // firing whichever option index sits selected underneath.
         if (IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options)
             return;
         if (GamepadOverlayOptions.Count == 0)

@@ -1781,12 +1781,19 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.IsGamepadSortRowFocused);
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.IsFocused);
 
-        // Right steps to the next sort option and applies it live; A on the row is inert.
+        // Right steps to the next sort option and applies it live.
         var initial = vm.SortColumn;
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
         Assert.NotEqual(initial, vm.SortColumn);
+
+        // A on the sort row reverses the current sort's direction (unlike the inert view-mode row) and
+        // stays in the menu; a second press toggles it back.
+        var descBefore = vm.SortDescending;
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.NotEqual(descBefore, vm.SortDescending);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(descBefore, vm.SortDescending);
 
         // Each option carries its own direction: recency and rating are descending, title is A–Z.
         vm.SelectGamepadSortCommand.Execute(LibrarySortColumn.LastPlayed);
