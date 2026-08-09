@@ -105,8 +105,11 @@ public class TexturePackViewTests
         {
             Dispatcher.UIThread.RunJobs();
 
+            // Only the visible (Texture Packs) section — other collapsed sections legitimately have
+            // Install/etc. buttons (e.g. the Hotkeys Steam-template action).
             var labels = window.GetVisualDescendants()
                 .OfType<Button>()
+                .Where(button => button.IsEffectivelyVisible)
                 .Select(button => button.Content as string)
                 .Where(content => content is not null)
                 .ToArray();

@@ -859,11 +859,19 @@
                                 <TextBlock TextWrapping="Wrap" FontSize="11"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                            Text="EmuShelf backs up each file before changing it. Close an emulator before applying — changes take effect the next time you open it." />
-                                <Button Content="Apply to all emulators"
-                                        AutomationProperties.AutomationId="hotkeys.apply-all"
-                                        Command="{Binding ApplyAllHotkeysCommand}"
-                                        IsEnabled="{Binding !IsHotkeyBusy}"
-                                        HorizontalAlignment="Left" Margin="0,4,0,0" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                    <Button Content="Apply to all emulators"
+                                            AutomationProperties.AutomationId="hotkeys.apply-all"
+                                            Command="{Binding ApplyAllHotkeysCommand}"
+                                            IsEnabled="{Binding !IsHotkeyBusy}" />
+                                    <Button Content="Install Steam Input template"
+                                            AutomationProperties.AutomationId="hotkeys.install-steam-template"
+                                            Command="{Binding InstallSteamTemplateCommand}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding SteamTemplateStatus}"
+                                           IsVisible="{Binding SteamTemplateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
 
@@ -874,7 +882,7 @@
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 <TextBlock TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                           Text="There is no importable file — Steam Input layouts are set up per game inside Steam, not dropped in. Because every emulator listens for the same keys, you only build this once and it works for all of them. Hold Select (Back / View — the share-side button) and press a button:" />
+                                           Text="Prefer the Install Steam Input template button above — it drops the bundled layout into Steam for you. To set it up by hand instead (or for a non-DualSense controller): every emulator listens for the same keys, so you build it once and it works for all of them. Hold Select (Back / View — the share-side button) and press a button:" />
                                 <Grid ColumnDefinitions="Auto,16,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="4,2,0,2">
                                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Select + Square" FontFamily="Monospace" FontSize="12"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -906,44 +914,81 @@
                             </StackPanel>
                         </Border>
 
-                        <ItemsControl ItemsSource="{Binding HotkeyEmulators}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Classes="settings-card" Margin="0,0,0,12">
-                                        <StackPanel Spacing="8">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="{Binding DisplayName}"
-                                                           FontWeight="SemiBold" FontSize="14"
-                                                           VerticalAlignment="Center" />
-                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
-                                                    <Button Content="Preview"
-                                                            Command="{Binding PreviewCommand}"
-                                                            IsEnabled="{Binding CanRun}" />
-                                                    <Button Content="Apply"
-                                                            Command="{Binding ApplyCommand}"
-                                                            IsEnabled="{Binding CanRun}" />
-                                                    <Button Content="Revert"
-                                                            Command="{Binding RevertCommand}"
-                                                            IsEnabled="{Binding CanRun}" />
-                                                </StackPanel>
-                                            </Grid>
-                                            <ItemsControl ItemsSource="{Binding Actions}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding Display}" FontSize="12"
-                                                                   TextWrapping="Wrap" Margin="0,1"
-                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
-                                                       TextWrapping="Wrap"
-                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                        <!-- Emulators × actions matrix. Fixed-width action columns keep the header
+                             aligned with every row; each row's status + actions sit on a line below. -->
+                        <StackPanel Spacing="6">
+                            <Grid Margin="12,2,12,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MinWidth="92" />
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="60" />
+                                    <ColumnDefinition Width="60" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="EMULATOR" FontSize="10" FontWeight="Bold" LetterSpacing="1"
+                                           VerticalAlignment="Bottom" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                <TextBlock Grid.Column="1" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="rewind&#x0a;R" />
+                                <TextBlock Grid.Column="2" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="fast-fwd&#x0a;L" />
+                                <TextBlock Grid.Column="3" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="save&#x0a;F2" />
+                                <TextBlock Grid.Column="4" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="load&#x0a;F4" />
+                                <TextBlock Grid.Column="5" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="close&#x0a;F8" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding HotkeyEmulators}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Classes="settings-card" Margin="0,0,0,8" Padding="12,10">
+                                            <StackPanel Spacing="8">
+                                                <Grid VerticalAlignment="Center">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" MinWidth="92" />
+                                                        <ColumnDefinition Width="60" />
+                                                        <ColumnDefinition Width="60" />
+                                                        <ColumnDefinition Width="60" />
+                                                        <ColumnDefinition Width="60" />
+                                                        <ColumnDefinition Width="60" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}"
+                                                               FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Rewind.Mark}" ToolTip.Tip="{Binding Rewind.Detail}"
+                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="2" Text="{Binding FastForward.Mark}" ToolTip.Tip="{Binding FastForward.Detail}"
+                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="3" Text="{Binding SaveState.Mark}" ToolTip.Tip="{Binding SaveState.Detail}"
+                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="4" Text="{Binding LoadState.Mark}" ToolTip.Tip="{Binding LoadState.Detail}"
+                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <TextBlock Grid.Column="5" Text="{Binding CloseGame.Mark}" ToolTip.Tip="{Binding CloseGame.Detail}"
+                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                </Grid>
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                                                    <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" TextWrapping="Wrap"
+                                                               VerticalAlignment="Center" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                        <Button Content="Preview" Padding="10,4" FontSize="12"
+                                                                Command="{Binding PreviewCommand}" IsEnabled="{Binding CanRun}" />
+                                                        <Button Content="Apply" Padding="10,4" FontSize="12"
+                                                                Command="{Binding ApplyCommand}" IsEnabled="{Binding CanRun}" />
+                                                        <Button Content="Revert" Padding="10,4" FontSize="12"
+                                                                Command="{Binding RevertCommand}" IsEnabled="{Binding CanRun}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
                     </StackPanel>
 
                     <StackPanel IsVisible="{Binding IsTexturePacksSection}" Spacing="12">
