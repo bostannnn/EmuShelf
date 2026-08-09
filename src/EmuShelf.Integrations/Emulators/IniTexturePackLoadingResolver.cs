@@ -22,7 +22,15 @@ public abstract class IniTexturePackLoadingResolver : ITexturePackLoadingResolve
     private readonly string _settingSection;
     private readonly IReadOnlyList<string> _settingKeys;
     private readonly string? _perGameDirectory;
+    private readonly string _perGameRootDirectory;
 
+    /// <param name="configurationDirectory">Directory the global <paramref name="relativeIniPaths"/> are
+    /// rooted at.</param>
+    /// <param name="perGameRootDirectory">Directory the <paramref name="perGameDirectory"/> is rooted at,
+    /// when it differs from <paramref name="configurationDirectory"/>. Dolphin splits these on Linux —
+    /// its global INI lives in the XDG config tree while <c>GameSettings/</c> stays under the data tree —
+    /// so the two roots are supplied separately. Defaults to <paramref name="configurationDirectory"/>,
+    /// which is correct for every emulator that keeps both under one directory.</param>
     protected IniTexturePackLoadingResolver(
         string emulatorId,
         string installationId,
@@ -33,7 +41,8 @@ public abstract class IniTexturePackLoadingResolver : ITexturePackLoadingResolve
         string? versionSection = null,
         string? versionKey = null,
         string? supportedVersion = null,
-        string? perGameDirectory = null)
+        string? perGameDirectory = null,
+        string? perGameRootDirectory = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(emulatorId);
         ArgumentException.ThrowIfNullOrWhiteSpace(installationId);
@@ -48,6 +57,9 @@ public abstract class IniTexturePackLoadingResolver : ITexturePackLoadingResolve
         _versionKey = versionKey;
         _supportedVersion = supportedVersion;
         _perGameDirectory = perGameDirectory;
+        _perGameRootDirectory = string.IsNullOrWhiteSpace(perGameRootDirectory)
+            ? _configurationDirectory
+            : Path.GetFullPath(perGameRootDirectory);
     }
 
     public string EmulatorId { get; }
@@ -111,7 +123,7 @@ public abstract class IniTexturePackLoadingResolver : ITexturePackLoadingResolve
         if (_perGameDirectory is null)
             return false;
 
-        var directory = Path.Combine(_configurationDirectory, _perGameDirectory);
+        var directory = Path.Combine(_perGameRootDirectory, _perGameDirectory);
         try
         {
             if (!Directory.Exists(directory))

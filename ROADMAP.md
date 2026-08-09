@@ -1559,9 +1559,19 @@ Config/Dolphin.ini there)"; details in `DECISIONS.md` (2026-08-10).
       `FindDolphin`'s precedence); `HotkeyProviderRegistry` feeds it to `DolphinHotkeyConfigurator`,
       which now takes the config directory outright. Only hotkeys surfaced this — saves/textures read
       the same wrong path but fall back to correct data-dir defaults when `Dolphin.ini` is absent.
-- [ ] **Follow-up:** `DolphinTextureRootResolver` and `DolphinSaveLocationProvider` still read
-      `<dataDir>/Config/Dolphin.ini`, so a *relocated* Load/save folder is silently ignored on
-      Linux/Flatpak. Thread `FindDolphinConfigDirectory` through both.
+- [x] **Follow-up:** `DolphinTextureRootResolver` and `DolphinSaveLocationProvider` no longer read
+      `<dataDir>/Config/Dolphin.ini` on Linux/Flatpak, so a *relocated* Load/save folder is now honoured.
+      The texture resolver takes a `configDirectory` (defaulting to `<userDir>/Config`) that
+      `TexturePackProviderRegistry` fills with `FindDolphinConfigDirectory`; the save provider resolves
+      the config dir internally (`GetConfigDirectory`), mirroring its own user-directory resolution
+      because it must also honour Settings overrides, `-u`/`--user`, and portable mode — cases the static
+      helper doesn't model. Details in `DECISIONS.md` (2026-08-10).
+- [x] **Follow-up (3rd consumer):** `DolphinTexturePackLoadingResolver` read `GFX.ini` from
+      `<dataDir>/Config` too, so the "will Dolphin load these packs?" status showed Unknown on
+      Linux/Flatpak. `GFX.ini` (config tree) and per-game `GameSettings/` (data tree) live in different
+      trees there, so the shared `IniTexturePackLoadingResolver` gained an optional `perGameRootDirectory`
+      (default = config dir, so the other emulators are unchanged) and Dolphin passes both roots. Details
+      in `DECISIONS.md` (2026-08-10).
 
 ### Deferred (recorded so it is not re-litigated)
 

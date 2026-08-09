@@ -50,6 +50,73 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task NativeLinux_ReadsDolphinIniFromTheXdgConfigTree_NotTheDataDirConfig()
+    {
+        // Dolphin splits its user directory on native Linux: saves and Load/ live under the XDG data
+        // tree, but Dolphin.ini lives directly under the XDG config tree (no Config/ level). Reading
+        // <data>/Config/Dolphin.ini — as the code used to — silently ignores a relocated save layout.
+        var home = Path.Combine(BaseDirectory, "home");
+        var xdgData = Path.Combine(home, ".local", "share");
+        var xdgConfig = Path.Combine(home, ".config");
+        var dataDir = Path.Combine(xdgData, "dolphin-emu");
+        var configDir = Path.Combine(xdgConfig, "dolphin-emu");
+
+        Directory.CreateDirectory(configDir);
+        await File.WriteAllTextAsync(Path.Combine(configDir, "Dolphin.ini"), "[Core]\nSlotA = 1\nSlotB = 255\n");
+        // A stale Dolphin.ini in the data tree's Config/ (a GCI-folder device) — where the old code
+        // looked — would produce different units, so it makes a clean discriminator; it must be ignored.
+        Directory.CreateDirectory(Path.Combine(dataDir, "Config"));
+        await File.WriteAllTextAsync(Path.Combine(dataDir, "Config", "Dolphin.ini"), "[Core]\nSlotA = 8\nSlotB = 8\n");
+        Directory.CreateDirectory(Path.Combine(dataDir, "GC"));
+        await File.WriteAllTextAsync(Path.Combine(dataDir, "GC", "MemoryCardA.USA.raw"), "card");
+
+        var provider = new DolphinSaveLocationProvider(
+            "gamecube",
+            Path.Combine(BaseDirectory, "Dolphin"),
+            homeDirectory: home,
+            xdgDataHome: xdgData,
+            xdgConfigHome: xdgConfig,
+            isWindows: false,
+            isMacOS: false);
+
+        var units = await provider.GetSaveUnitsAsync();
+
+        Assert.Contains(units, unit => unit.UnitId == "dolphin/gc/raw/a/USA");
+        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Flatpak_ReadsDolphinIniFromTheConfigTree_NotTheDataDirConfig()
+    {
+        // The Flatpak sandbox reflects the same split: config under .var/app/<id>/config/dolphin-emu,
+        // data under .var/app/<id>/data/dolphin-emu.
+        var home = Path.Combine(BaseDirectory, "home");
+        var appRoot = Path.Combine(home, ".var", "app", "org.DolphinEmu.dolphin-emu");
+        var dataDir = Path.Combine(appRoot, "data", "dolphin-emu");
+        var configDir = Path.Combine(appRoot, "config", "dolphin-emu");
+
+        Directory.CreateDirectory(configDir);
+        await File.WriteAllTextAsync(Path.Combine(configDir, "Dolphin.ini"), "[Core]\nSlotA = 1\nSlotB = 255\n");
+        Directory.CreateDirectory(Path.Combine(dataDir, "Config"));
+        await File.WriteAllTextAsync(Path.Combine(dataDir, "Config", "Dolphin.ini"), "[Core]\nSlotA = 8\nSlotB = 8\n");
+        Directory.CreateDirectory(Path.Combine(dataDir, "GC"));
+        await File.WriteAllTextAsync(Path.Combine(dataDir, "GC", "MemoryCardA.USA.raw"), "card");
+
+        var provider = new DolphinSaveLocationProvider(
+            "gamecube",
+            Path.Combine(BaseDirectory, "Dolphin"),
+            isFlatpak: true,
+            homeDirectory: home,
+            isWindows: false,
+            isMacOS: false);
+
+        var units = await provider.GetSaveUnitsAsync();
+
+        Assert.Contains(units, unit => unit.UnitId == "dolphin/gc/raw/a/USA");
+        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task RawCards_FollowConfiguredPathsAndRegionSubstitution()
     {
         var user = Path.Combine(BaseDirectory, "user");
