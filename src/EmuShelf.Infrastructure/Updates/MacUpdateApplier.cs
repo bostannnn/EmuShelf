@@ -9,6 +9,10 @@ namespace EmuShelf.Infrastructure.Updates;
 /// shell helper waits for this process to exit, replaces the bundle, and reopens it. The freshly
 /// downloaded bundle has its <c>com.apple.quarantine</c> flag cleared first — EmuShelf isn't
 /// notarized, and without that Gatekeeper would refuse to launch the replacement.
+///
+/// When Steam started this run (the Gamepad-mode setup adds EmuShelf as a non-Steam game), the helper
+/// reopens through <c>steam://rungameid</c> rather than <c>open</c>-ing the bundle directly so Steam
+/// Input reattaches and the controller keeps working — see <see cref="UpdateRelaunch"/>.
 /// </summary>
 public sealed class MacUpdateApplier : IUpdateApplier
 {
@@ -48,9 +52,14 @@ public sealed class MacUpdateApplier : IUpdateApplier
         // We downloaded this ourselves, so we may clear the quarantine flag; best-effort.
         UpdateProcess.Run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", newBundle], throwOnError: false);
 
+        // Reopen through Steam when Steam launched us, so Steam Input reattaches and the controller
+        // keeps working; a plain run reopens the freshly swapped bundle directly, as before.
+        var relaunchTarget = UpdateRelaunch.ResolveTarget(currentBundle);
+
         var scriptPath = Path.Combine(Path.GetTempPath(), $"emushelf-update-{Guid.NewGuid():N}.sh");
-        File.WriteAllText(scriptPath, BuildScript(Environment.ProcessId, newBundle, currentBundle));
-        _logger.Information($"Launching macOS update helper {scriptPath}; the app will now exit.");
+        File.WriteAllText(scriptPath, BuildScript(Environment.ProcessId, newBundle, currentBundle, relaunchTarget));
+        _logger.Information(
+            $"Launching macOS update helper {scriptPath}; will relaunch via '{relaunchTarget}'. The app will now exit.");
         UpdateProcess.LaunchDetached("/bin/bash", [scriptPath]);
     }
 
@@ -68,14 +77,14 @@ public sealed class MacUpdateApplier : IUpdateApplier
         return bundle is not null && bundle.EndsWith(".app", StringComparison.Ordinal) ? bundle : null;
     }
 
-    private static string BuildScript(int pid, string newBundle, string oldBundle) =>
+    private static string BuildScript(int pid, string newBundle, string oldBundle, string relaunchTarget) =>
         $"""
         #!/bin/bash
         PID="{pid}"
         while kill -0 "$PID" 2>/dev/null; do sleep 0.5; done
         rm -rf "{oldBundle}"
         mv "{newBundle}" "{oldBundle}"
-        open "{oldBundle}"
+        open "{relaunchTarget}"
         rm -- "$0"
         """;
 }

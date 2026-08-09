@@ -5791,3 +5791,26 @@ never overflows the column or clips About behind Save at 1280×720 or ×800; nav
 58→50 so the common (7-section) case still fits without scrolling. Reviewed real renders of the
 Library, Emulators, and About sections at 1280×800 confirmed the layout; the gamepad-settings
 snapshot test now also captures the Emulators and About sections.
+## 2026-08-09 — Self-update relaunches through Steam so the controller survives (Windows + macOS)
+
+Reported on Windows: after installing an update while in Gamepad mode (launched from Steam), the
+gamepad was dead until the app was quit and restarted from Steam. Cause: the Windows applier's `.cmd`
+helper relaunched the bare `EmuShelf.exe` (`start "" "<exe>"`). The documented Gamepad setup adds
+EmuShelf to Steam as a **non-Steam game**, and Steam Input attaches only to the process Steam launches.
+A self-started binary is outside Steam's launched-game tree, so Steam Input never attaches and the
+controller is unresponsive — restarting from Steam is what fixed it. The macOS applier has the same
+escape (`open` on the `.app`), so the fix is applied there too rather than left as a latent bug.
+
+The fix mirrors what the AppImage applier already does on SteamOS (same-PID `execv`, so "Steam never
+registers the game as stopped"). Windows and macOS can't keep the PID — the locked `.exe` / swapped
+bundle forces a fresh process — so the helper instead **re-enters Steam's launch path**: when
+`SteamGameId` is present in the environment (Steam exports it for every game it starts, including
+non-Steam shortcuts, and its value is exactly the `steam://rungameid/<id>` token), the relaunch becomes
+`start "" "steam://rungameid/<id>"` (Windows) / `open "steam://rungameid/<id>"` (macOS) rather than the
+app binary. That reapplies Steam Input and the shortcut's own launch options (`--gamepad-ui` included),
+which also removes the incidental loss of that flag on relaunch. A run with no `SteamGameId` (a plain
+shortcut or a dev run) relaunches the executable/bundle directly, unchanged.
+
+The target selection is one shared helper, `UpdateRelaunch.ResolveTarget`, so the two appliers can't
+diverge; it gates on `ulong.TryParse(...) && id != 0` so an empty or malformed value falls back to the
+app binary, and it is unit-tested. Linux needs nothing — its same-PID re-exec never leaves Steam.

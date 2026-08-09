@@ -38,6 +38,7 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         LastResultText = DescribeLastResult(platform);
         LastNoticeText = platform.LastNotice;
         SupportsSaveStates = platform.SupportsSaveStates;
+        SaveStatesLabel = platform.SaveStatesLabel ?? "Automatically sync save states";
         SyncSaveStates = platform.SyncSaveStates;
         _isInitializing = false;
     }
@@ -65,6 +66,9 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
     public string OverridePlaceholder { get; }
 
     public bool SupportsSaveStates { get; }
+
+    /// <summary>The save-states toggle label; platforms may override it (the GameCube row names GC + Wii).</summary>
+    public string SaveStatesLabel { get; }
 
     public bool HasOptionalContent => SupportsSaveStates;
 
