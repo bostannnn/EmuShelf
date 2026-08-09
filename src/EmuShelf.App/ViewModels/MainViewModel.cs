@@ -927,6 +927,11 @@ public partial class MainViewModel : ViewModelBase
     public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
+    /// <summary>Drives the Gamepad corner toast. A launch/exit save sync sets the same
+    /// <see cref="StatusText"/> that the large centered panel shows, so while that panel owns the
+    /// screen the corner toast would echo it word for word — suppress it so only one surface speaks.</summary>
+    public bool ShowGamepadStatusToast => HasStatusMessage && !IsSyncingSavesForLaunch;
+
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
     public bool IsStatusProgress => StatusSeverity == StatusSeverity.Progress;
@@ -1388,8 +1393,12 @@ public partial class MainViewModel : ViewModelBase
     partial void OnStatusTextChanged(string value)
     {
         OnPropertyChanged(nameof(HasStatusMessage));
+        OnPropertyChanged(nameof(ShowGamepadStatusToast));
         ScheduleStatusDismiss();
     }
+
+    partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
+        OnPropertyChanged(nameof(ShowGamepadStatusToast));
 
     /// <summary>
     /// The single entry point for the library toast. Severity is set first so the dismiss timer

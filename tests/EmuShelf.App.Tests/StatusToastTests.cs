@@ -148,6 +148,36 @@ public class StatusToastTests : IDisposable
         Assert.Equal(TimeSpan.Zero, viewModel.StatusDismissDelay);
     }
 
+    /// <summary>
+    /// A launch/exit save sync raises the large centered Gamepad panel from the same StatusText the
+    /// corner toast reads, so while that panel is up the corner toast must stay silent — otherwise
+    /// the couch player sees the identical sync line twice, once big and once in the corner.
+    /// </summary>
+    [AvaloniaFact]
+    public void TheGamepadCornerToastIsSuppressedWhileTheLaunchSyncPanelIsShowing()
+    {
+        var viewModel = CreateViewModel();
+        var changes = 0;
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.ShowGamepadStatusToast))
+                changes++;
+        };
+
+        viewModel.StatusText = "Syncing saves before launching Alpha…";
+        Assert.True(viewModel.HasStatusMessage);
+        Assert.True(viewModel.ShowGamepadStatusToast);
+
+        viewModel.IsSyncingSavesForLaunch = true;
+        Assert.True(viewModel.HasStatusMessage);
+        Assert.False(viewModel.ShowGamepadStatusToast);
+
+        viewModel.IsSyncingSavesForLaunch = false;
+        Assert.True(viewModel.ShowGamepadStatusToast);
+
+        Assert.True(changes >= 3);
+    }
+
     private async Task<GameViewModel> AddGameAsync(MainViewModel viewModel, string title)
     {
         var folder = Path.Combine(_baseDirectory, "roms");
