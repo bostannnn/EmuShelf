@@ -171,6 +171,38 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void NintendoExtractor_WiiWad_UsesGameCodeAndTitleIdWithIdAddressedGameTdbCovers()
+    {
+        var path = Path.Combine(BaseDirectory, "Misleading Channel Name.wad");
+        File.WriteAllBytes(path, WiiWadReaderTests.BuildWad("WB4E"));
+        var profile = KnownMetadataProfiles.All.Single(item => item.SystemId == "wii");
+
+        var identifiers = profile.IdentifierExtractor.Extract(NewGame("wii", path));
+
+        // The four-character title code is the primary (GameTDB cover) key; the full title id is
+        // retained as secondary evidence. WiiWare/VC titles are absent from the Wii Redump DAT, so
+        // this route resolves covers by id with no catalogue title match.
+        Assert.Collection(
+            identifiers,
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.DiscId, identifier.Kind);
+                Assert.Equal("WB4E", identifier.Value);
+                Assert.True(identifier.IsPrimary);
+            },
+            identifier =>
+            {
+                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
+                Assert.Equal("0001000157423445", identifier.Value);
+                Assert.False(identifier.IsPrimary);
+            });
+        Assert.Equal("gametdb", profile.ArtworkProviders[0].Id);
+        Assert.Equal(
+            "https://art.gametdb.com/wii/cover/US/WB4E.png",
+            profile.ArtworkProviders[0].GetCandidates(identifiers, match: null).First().SourceUri.AbsoluteUri);
+    }
+
+    [Fact]
     public void MegaDriveProfile_ExtractsOnlyTheNormalizedRomSha1AndUsesCanonicalArtwork()
     {
         var path = Path.Combine(BaseDirectory, "Misleading Filename.md");

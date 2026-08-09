@@ -5705,3 +5705,42 @@ the reconcile result's `AddedGameIds`.
 - **Any future `IExternalLibrarySource` must trigger enrichment the same way.** The enrichment
   kickoff lives at the app import-orchestration layer, not inside `ExternalLibrarySyncService`, so it
   is easy to forget for a new source. RPCS3 is currently the only such source.
+
+## 2026-08-09 — Wii WAD (WiiWare / Virtual Console / channels) import support
+
+`.wad` is now an importable Wii extension alongside the disc containers. A WAD is an installable
+title package, not a disc image, so it needs its own reader and deliberately different handling per
+subsystem.
+
+- **Recognition is structural, never extension-only.** `WiiWadReader` validates the WAD header
+  (`header_size == 0x20`, `"Is"` installable type) and that the cert/ticket/TMD/data sections fit
+  the 0x40-aligned layout within the file, so a Doom IWAD/PWAD or any other file that merely borrows
+  the extension is rejected. A WAD has no disc-header magic, so it never goes through
+  `NintendoDiscDetector`; `.wad` is added only to Wii's extension set and to no other system, so it
+  routes to Wii and never to GameCube.
+- **Identity comes from the TMD title id.** The four-character game code in the low word of the
+  64-bit title id (e.g. `WB4E`) is emitted as the primary `DiscId` identifier — the same id-addressed
+  key the existing `GameTdbArtworkProvider` already serves Wii covers by — with the full sixteen-hex
+  title id retained as secondary `TitleId` evidence. This mirrors the 3DS route: WiiWare/VC titles
+  are not in the Wii Redump DAT, so there is no catalogue title match; the cover resolves by id and
+  the title falls back to the filename. A system title / IOS WAD carries no printable code and yields
+  only the title id (or nothing), never a guess.
+- **RetroAchievements: WADs are hashed and matched** (WiiWare and Virtual Console titles have RA
+  sets, e.g. game 7739). rcheevos routes `.wad` through `rc_hash_wii` → `rc_hash_wiiware`, which is
+  **not** the disc reader: it MD5s the TMD followed by the leading bytes of each content section.
+  Crucially the content is hashed **encrypted, as stored** — no title-key or Wii common-key
+  decryption — so no Nintendo key material is embedded. `WiiWareHasher` is a line-for-line port, and
+  `GetAlgorithmVersion` returns a distinct `rcheevos-wiiware-v1` for a `.wad` so a disc hash and a WAD
+  hash for the same system are never confused. rcheevos ships **no** WAD test vector, so parity is
+  proven a different way than the disc hashers (which pinned an upstream constant): an independent
+  Python transcription of `rc_hash_wiiware` hashes a synthetic WAD, and the test pins both that MD5
+  and the fixture's SHA-256 so the two implementations are provably hashing identical bytes. A `.wad`
+  that is not an installable ("Is") WAD is rejected (`UnsupportedFormat`), never given a bogus hash.
+- **ScreenScraper** keeps `Profile("wii", ".iso")` unchanged: a WAD is not the Redump whole-file
+  dump ScreenScraper fingerprints, so (like a 3DS `.cia`) it name-searches instead of ROM-hashing.
+- **Launching** needs no change — Dolphin already boots a WAD through the existing `-b -e` template.
+- **Deliberate non-goals.** Cloud **save sync** stays disc-only: WiiWare/VC/channel saves live under
+  the NAND `title/00010001` group, which the 2026-07-28 Dolphin-save decision already excludes from
+  sync along with the rest of the NAND. **Texture packs** are unaffected: Dolphin keys texture
+  folders by 6- or 3-character disc ids, not the 4-character WAD code, so there is nothing new to
+  inventory. Both would be separate, independently verified efforts.

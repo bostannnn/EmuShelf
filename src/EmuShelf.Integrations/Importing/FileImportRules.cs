@@ -66,8 +66,12 @@ public sealed class FileImportRules : IGameImportRules
             [DreamcastId] = new(StringComparer.OrdinalIgnoreCase) { ".gdi", ".chd" },
             [GameCubeId] = new(StringComparer.OrdinalIgnoreCase)
                 { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
+            // Wii shares the disc containers with GameCube and adds .wad for installable titles
+            // (WiiWare, Virtual Console, channels). A .wad has no disc header, so it is recognized by
+            // WiiWadReader's own header/section validation rather than the shared disc-magic detector,
+            // and no other system claims the extension — so it never routes to GameCube.
             [WiiId] = new(StringComparer.OrdinalIgnoreCase)
-                { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso" },
+                { ".iso", ".rvz", ".wbfs", ".gcm", ".ciso", ".wad" },
             // FinalBurn Neo loads a romset from a .zip named by the set's short id. No other system
             // claims .zip, so it routes straight to Arcade; the archive itself is never opened at
             // import — the zip basename is the identity, resolved to a title later from the DAT.
@@ -122,6 +126,10 @@ public sealed class FileImportRules : IGameImportRules
         var superNintendoHeader = ExtensionsBySystem[SuperNintendoId].Contains(extension)
             ? SuperNintendoRomReader.TryRecognize(path)
             : null;
+        // A .wad is a Wii installable title (WiiWare/VC/channel), validated by its own header and
+        // section layout rather than the disc-magic detector below.
+        var isWad = extension.Equals(".wad", StringComparison.OrdinalIgnoreCase);
+        var wiiWadRecognized = isWad && WiiWadReader.TryRecognize(path);
         // A validated PSP image is never a Dreamcast one, so the shared .chd extension only pays
         // for the IP.BIN probe when the PSP evidence came back empty.
         var dreamcastImage = ExtensionsBySystem[DreamcastId].Contains(extension) &&
@@ -155,6 +163,11 @@ public sealed class FileImportRules : IGameImportRules
             if (detectedId is not null && FindSystem(detectedId) is { } detectedSystem)
                 suggestions.Add(detectedSystem);
         }
+
+        // A recognized WAD carries no disc header, so the detection above never fires for it. Add Wii
+        // here so the system picker defaults to it, mirroring the disc-detection suggestion.
+        if (wiiWadRecognized && FindSystem(WiiId) is { } wiiWadSystem)
+            suggestions.Add(wiiWadSystem);
 
         foreach (var system in _systems)
         {
@@ -196,6 +209,9 @@ public sealed class FileImportRules : IGameImportRules
                 ArcadeId => IsArcadeBiosArchive(path)
                     ? GameFileMatch.Incompatible
                     : GameFileMatch.Compatible,
+                // A .wad only ever matches Wii, and only when WiiWadReader validates its structure.
+                WiiId when isWad =>
+                    wiiWadRecognized ? GameFileMatch.Compatible : GameFileMatch.Incompatible,
                 _ => MatchSystem(
                     extension,
                     system.Id,
@@ -257,6 +273,10 @@ public sealed class FileImportRules : IGameImportRules
             return DreamcastDisc.TryRecognize(path);
         if (system.Id == ArcadeId)
             return ExtensionsBySystem[ArcadeId].Contains(extension) && !IsArcadeBiosArchive(path);
+        // A .wad routes only to Wii, and only when its WAD structure validates. Wii's disc
+        // extensions still fall through to the shared disc-magic path below.
+        if (system.Id == WiiId && extension.Equals(".wad", StringComparison.OrdinalIgnoreCase))
+            return WiiWadReader.TryRecognize(path);
 
         if (extension.Equals(".bin", StringComparison.OrdinalIgnoreCase) ||
             !ExtensionsBySystem.TryGetValue(system.Id, out var extensions) ||
