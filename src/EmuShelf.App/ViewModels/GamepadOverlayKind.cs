@@ -17,6 +17,7 @@ public enum GamepadOverlayKind
     RemoveConfirmation,
     CoverDesktopHandoff,
     Scraper,
+    BatchScraper,
     SystemMenu,
     Settings,
     DesktopModeConfirmation,

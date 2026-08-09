@@ -7,8 +7,8 @@ namespace EmuShelf.App.Services;
 /// message lets the modal report the result without coupling it to MainViewModel.
 /// </summary>
 public sealed record LibraryMaintenanceActions(
-    Func<string, Task<string>> RescanSystem,
-    Func<Task<string>> RescanAll,
+    Func<string, IProgress<string>, Task<string>> RescanSystem,
+    Func<IProgress<string>, Task<string>> RescanAll,
     Func<string, Task<string>>? FetchMetadataForSystem = null,
     Func<IProgress<MetadataEnrichmentProgress>, Task<string>>? FetchAllMetadata = null,
     Func<Task<string>>? SyncRpcs3Library = null,

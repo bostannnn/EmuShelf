@@ -265,6 +265,7 @@ public partial class App : Application
                 screenScraperAccount: screenScraperAccount,
                 screenScraperPreview: Bootstrapper.ScreenScraperPreview,
                 scrapeApply: scrapeApply,
+                scrapeBatch: scrapeBatch,
                 artworkDownloader: webArtworkDownloader,
                 settingsService: Bootstrapper.SettingsService,
                 onScreenKeyboard: new PlatformOnScreenKeyboardService(),

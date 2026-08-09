@@ -82,6 +82,7 @@ public class MainViewModelTests : IDisposable
         IApplicationLifetimeService? applicationLifetime = null,
         IScreenScraperPreviewService? screenScraperPreview = null,
         IGameScrapeApplicationService? scrapeApply = null,
+        IScreenScraperBatchService? scrapeBatch = null,
         IScreenScraperAccountService? screenScraperAccount = null,
         ISettingsService? settingsService = null,
         TexturePackCoordinator? texturePacks = null,
@@ -116,6 +117,7 @@ public class MainViewModelTests : IDisposable
             screenScraperAccount: screenScraperAccount,
             screenScraperPreview: screenScraperPreview,
             scrapeApply: scrapeApply,
+            scrapeBatch: scrapeBatch,
             settingsService: settingsService,
             fileReveal: fileReveal);
     }
@@ -683,7 +685,7 @@ public class MainViewModelTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "Gamma.chd"), "x");
         await vm.OpenSettingsCommand.ExecuteAsync(null);
 
-        await _dialogs.MaintenanceActions!.RescanAll();
+        await _dialogs.MaintenanceActions!.RescanAll(new Progress<string>());
         await identification.Called.WaitAsync(TimeSpan.FromSeconds(2));
 
         var gammaId = _library.GetGames().Single(game => game.Title == "Gamma").Id;
@@ -2235,6 +2237,34 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_FlagsSaveSyncInProgress_ForTheGamepadPanel()
+    {
+        var events = new List<string>();
+        var sync = new BlockingGameSaveSyncService(events);
+        var launcher = new RecordingLaunchService(
+            new GameLaunchResult(true, "Lumines finished"),
+            () => events.Add("launch"));
+        var path = Path.Combine(_baseDirectory, "Lumines-flag.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(launchService: launcher, gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+
+        Assert.False(vm.IsSyncingSavesForLaunch);
+        var launch = vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        await sync.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
+
+        // The centered "Syncing saves…" panel is shown from this flag while the pre-launch sync runs.
+        Assert.True(vm.IsSyncingSavesForLaunch);
+
+        sync.Complete();
+        await launch;
+
+        Assert.False(vm.IsSyncingSavesForLaunch);
+    }
+
+    [AvaloniaFact]
     public async Task LaunchGame_PreLaunchSyncFailureWarnsButStillLaunchesAndRetriesAfterExit()
     {
         var events = new List<string>();
@@ -2407,7 +2437,7 @@ public class MainViewModelTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "Gamma.chd"), "x");
         await vm.OpenSettingsCommand.ExecuteAsync(null);
 
-        await _dialogs.MaintenanceActions!.RescanAll();
+        await _dialogs.MaintenanceActions!.RescanAll(new Progress<string>());
 
         Assert.True(vm.IsAllGamesSelected);
         Assert.Equal(["Alpha", "Beta", "Gamma"], vm.Games.Select(game => game.Title));

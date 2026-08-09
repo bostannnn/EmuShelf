@@ -82,6 +82,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IScreenScraperAccountService? _screenScraperAccount;
     private readonly IScreenScraperPreviewService? _screenScraperPreview;
     private readonly IGameScrapeApplicationService? _scrapeApply;
+    private readonly IScreenScraperBatchService? _scrapeBatch;
     private readonly IRemoteArtworkDownloader? _artworkDownloader;
     private readonly ISettingsService? _settingsService;
     private readonly IRetroAchievementsMatchingService? _retroMatching;
@@ -509,6 +510,13 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    // True only while a launch/exit cloud save sync is actually running. The Gamepad shell shows a
+    // large centered "Syncing saves…" panel from this, because the corner status toast alone is too
+    // easy to miss at a couch distance — which is exactly when saves are being pulled before a game
+    // starts or pushed after it exits.
+    [ObservableProperty]
+    public partial bool IsSyncingSavesForLaunch { get; set; }
+
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
 
@@ -564,6 +572,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GamepadScraperViewModel? GamepadScraperDetails { get; set; }
 
+    [ObservableProperty]
+    public partial GamepadBatchScraperViewModel? GamepadBatchScraperDetails { get; set; }
+
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
     public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename ||
         IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
@@ -573,6 +584,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
     public bool IsGamepadScraperOpen => GamepadOverlay == GamepadOverlayKind.Scraper;
+    public bool IsGamepadBatchScraperOpen => GamepadOverlay == GamepadOverlayKind.BatchScraper;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
     public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
     public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
@@ -587,16 +599,18 @@ public partial class MainViewModel : ViewModelBase
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
-    // The Achievements, Settings and Scraper overlays render their own bespoke bodies, so the
-    // shared option-button list and the chrome title are hidden for them.
+    // The Achievements, Settings, Scraper and BatchScraper overlays render their own bespoke bodies,
+    // so the shared option-button list and the chrome title are hidden for them.
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
-         GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.Settings);
+         GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
+         GamepadOverlayKind.Settings);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
-         GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper);
+         GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper);
     public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
-        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper);
+        (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or
+         GamepadOverlayKind.BatchScraper);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
@@ -607,6 +621,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
+        GamepadOverlayKind.BatchScraper => "Scrape games with ScreenScraper",
         GamepadOverlayKind.SystemMenu => "Menu",
         GamepadOverlayKind.Settings => "Settings",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
@@ -900,6 +915,7 @@ public partial class MainViewModel : ViewModelBase
         IScreenScraperAccountService? screenScraperAccount = null,
         IScreenScraperPreviewService? screenScraperPreview = null,
         IGameScrapeApplicationService? scrapeApply = null,
+        IScreenScraperBatchService? scrapeBatch = null,
         IRemoteArtworkDownloader? artworkDownloader = null,
         ISettingsService? settingsService = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
@@ -916,6 +932,7 @@ public partial class MainViewModel : ViewModelBase
         _screenScraperAccount = screenScraperAccount;
         _screenScraperPreview = screenScraperPreview;
         _scrapeApply = scrapeApply;
+        _scrapeBatch = scrapeBatch;
         _artworkDownloader = artworkDownloader;
         _settingsService = settingsService;
         _library = library;
@@ -1447,6 +1464,39 @@ public partial class MainViewModel : ViewModelBase
         return scraper.LoadAsync();
     }
 
+    /// <summary>Whether a controller-native batch scrape can be started over the games now in view.</summary>
+    public bool CanScrapeAllInView => _scrapeBatch is not null && _settingsService is not null && HasGames;
+
+    /// <summary>
+    /// Opens the controller-native batch scraper over every game in the current view, giving Gamepad
+    /// mode the determinate multi-game progress bar Desktop reaches through multi-select. Hash/serial
+    /// only — unmatched games are reported, never guessed.
+    /// </summary>
+    [RelayCommand]
+    private void ScrapeAllInView()
+    {
+        if (!IsGamepadMode || _scrapeBatch is null || _settingsService is null)
+            return;
+
+        var gameIds = Games.Select(game => game.Id).Distinct().ToList();
+        if (gameIds.Count == 0)
+            return;
+
+        // A single-platform view names the console; a mixed view (All Games and the like) just says
+        // "selected", matching how the Desktop batch window titles a mixed selection.
+        var systemName = Games.Select(game => game.SystemName).Distinct().Count() == 1
+            ? Games[0].SystemName
+            : "selected";
+
+        var settings = _settingsService.Load().Scraping.ScreenScraper;
+        var batch = new GameBatchScraperViewModel(gameIds, systemName, _scrapeBatch, settings, _logger);
+        batch.CloseRequested += CloseGamepadOverlay;
+        var details = new GamepadBatchScraperViewModel(batch);
+
+        OpenGamepadOverlay(GamepadOverlayKind.BatchScraper);
+        GamepadBatchScraperDetails = details;
+    }
+
     [RelayCommand]
     private void OpenFocusedGameActions()
     {
@@ -1600,6 +1650,7 @@ public partial class MainViewModel : ViewModelBase
         }
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        DisposeGamepadBatchScraperDetails();
         if (closingOverlay == GamepadOverlayKind.Settings)
             CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
@@ -1625,6 +1676,15 @@ public partial class MainViewModel : ViewModelBase
             {
                 OpenGamepadOverlay(GamepadOverlayKind.Actions);
             }
+            return;
+        }
+
+        if (GamepadOverlay == GamepadOverlayKind.BatchScraper)
+        {
+            // A running batch is left alone (Cancel stops it via A on the focused button); before it
+            // starts or after it finishes, B closes back to the library.
+            if (GamepadBatchScraperDetails?.Batch.IsRunning != true)
+                CloseGamepadOverlay();
             return;
         }
 
@@ -1706,9 +1766,36 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadScraperOpen)
             return DispatchScraperOverlayAction(action);
 
+        if (IsGamepadBatchScraperOpen)
+            return DispatchBatchScraperOverlayAction(action);
+
         return HasGamepadOverlay
             ? DispatchOverlayAction(action)
             : DispatchLibraryAction(action);
+    }
+
+    private bool DispatchBatchScraperOverlayAction(GamepadAction action)
+    {
+        // Modal like the single-game scraper: Up/Down move the ring, A activates, B backs out. Every
+        // other action is swallowed so it cannot leak to the library beneath (e.g. LB/RB switching
+        // platforms mid-scrape).
+        switch (action)
+        {
+            case GamepadAction.NavigateUp:
+                GamepadBatchScraperDetails?.MoveFocus(-1);
+                return true;
+            case GamepadAction.NavigateDown:
+                GamepadBatchScraperDetails?.MoveFocus(1);
+                return true;
+            case GamepadAction.Confirm:
+                GamepadBatchScraperDetails?.Activate();
+                return true;
+            case GamepadAction.Cancel:
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            default:
+                return true;
+        }
     }
 
     private bool DispatchScraperOverlayAction(GamepadAction action)
@@ -1876,6 +1963,7 @@ public partial class MainViewModel : ViewModelBase
 
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        DisposeGamepadBatchScraperDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
         IsGamepadViewModeRowFocused = false; // every open lands on the option list, not the view-mode row
@@ -1908,12 +1996,15 @@ public partial class MainViewModel : ViewModelBase
                 FocusFirstAchievement();
                 break;
             case GamepadOverlayKind.Scraper:
-                // The scraper overlay renders its own body and owns its D-pad focus; no option list.
+            case GamepadOverlayKind.BatchScraper:
+                // These overlays render their own body and own their D-pad focus; no option list.
                 break;
             case GamepadOverlayKind.SystemMenu:
                 // The couch layout picker is the view-mode row at the top of the menu, not an option here.
                 AddOption("Search", OpenGamepadSearchCommand);
                 AddOption("Collections", OpenGamepadCollectionsCommand);
+                if (CanScrapeAllInView)
+                    AddOption("Scrape all in view", ScrapeAllInViewCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
                 AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
@@ -2064,6 +2155,20 @@ public partial class MainViewModel : ViewModelBase
             _ = ReloadGamesAsync();
     }
 
+    private void DisposeGamepadBatchScraperDetails()
+    {
+        if (GamepadBatchScraperDetails is not { } details)
+            return;
+
+        // A batch that wrote at least one field or image changed the visible tiles; reload so the
+        // library reflects it, matching the Desktop batch window's post-apply reload.
+        var reload = details.Batch.AppliedChanges;
+        details.Dispose();
+        GamepadBatchScraperDetails = null;
+        if (reload)
+            _ = ReloadGamesAsync();
+    }
+
     private void NotifyGamepadOverlayState()
     {
         OnPropertyChanged(nameof(HasGamepadOverlay));
@@ -2074,6 +2179,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
         OnPropertyChanged(nameof(IsGamepadScraperOpen));
+        OnPropertyChanged(nameof(IsGamepadBatchScraperOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
@@ -3758,7 +3864,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task RescanAllAsync() => RescanAsync(NonRpcs3Systems(), SelectedSystem);
 
-    private async Task<string> RescanSystemFromSettingsAsync(string systemId)
+    private async Task<string> RescanSystemFromSettingsAsync(string systemId, IProgress<string> progress)
     {
         var system = Systems.FirstOrDefault(candidate => candidate.Id == systemId);
         if (system is null)
@@ -3767,13 +3873,13 @@ public partial class MainViewModel : ViewModelBase
         if (system.Id == "playstation3")
             return "Use Sync RPCS3 library to refresh PlayStation 3 games.";
 
-        await RescanAsync([system], SelectedSystem);
+        await RescanAsync([system], SelectedSystem, progress);
         return StatusText;
     }
 
-    private async Task<string> RescanAllFromSettingsAsync()
+    private async Task<string> RescanAllFromSettingsAsync(IProgress<string> progress)
     {
-        await RescanAsync(NonRpcs3Systems(), SelectedSystem);
+        await RescanAsync(NonRpcs3Systems(), SelectedSystem, progress);
         return StatusText;
     }
 
@@ -3960,7 +4066,10 @@ public partial class MainViewModel : ViewModelBase
             : $"RPCS3 library sync complete — {string.Join(", ", changes)}";
     }
 
-    private async Task RescanAsync(IEnumerable<GameSystem> systems, GameSystem? systemToShow)
+    private async Task RescanAsync(
+        IEnumerable<GameSystem> systems,
+        GameSystem? systemToShow,
+        IProgress<string>? statusProgress = null)
     {
         if (IsBusy)
             return;
@@ -3975,8 +4084,15 @@ public partial class MainViewModel : ViewModelBase
                 var folders = await Task.Run(() => _library.GetLibraryFolders(system.Id));
                 foreach (var folder in folders)
                 {
+                    // The main-window toast is hidden behind the Settings modal, so mirror the same
+                    // live count to statusProgress when a rescan was launched from Settings — that is
+                    // what surfaces "Rescanning {system}… {n} found" in the modal (and Gamepad pill).
                     var progress = new Progress<ScanProgress>(p =>
-                        SetStatus($"Rescanning {system.Name}… {p.CandidatesFound} found", StatusSeverity.Progress));
+                    {
+                        var message = $"Rescanning {system.Name}… {p.CandidatesFound} found";
+                        SetStatus(message, StatusSeverity.Progress);
+                        statusProgress?.Report(message);
+                    });
                     var selection = await _scanner.ScanAsync(folder.Path, system, progress);
                     var importResult = await ReconcileImportAsync(system, selection);
                     total += importResult.AddedCount;
@@ -4395,6 +4511,7 @@ public partial class MainViewModel : ViewModelBase
         if (_gameSaveSync?.CanSyncSystem(game.SystemId) != true)
             return null;
 
+        IsSyncingSavesForLaunch = true;
         SetStatus(
             afterExit
                 ? $"{game.Title} finished. Syncing saves…"
@@ -4443,6 +4560,10 @@ public partial class MainViewModel : ViewModelBase
                 $"Unexpected cloud save sync failure {(afterExit ? "after" : "before")} launching game id {game.Id}.",
                 ex);
             return CloudSaveSyncOutcome.Failed(ex.Message);
+        }
+        finally
+        {
+            IsSyncingSavesForLaunch = false;
         }
     }
 

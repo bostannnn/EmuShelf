@@ -39,9 +39,23 @@ public sealed class FlatpakLaunchTargetInspector : ILaunchTargetInspector
         // the launch itself. Deliberately do NOT probe `flatpak info --file-access`: it reports only
         // the static manifest permissions and prints "hidden" for any path the ephemeral launch
         // grant will make visible, which would wrongly reject launches that actually succeed.
-        var installed = Execute("info", flatpak.AppId);
-        if (installed.ExitCode != 0)
-            return LaunchTargetInspection.Failed($"Flatpak application '{flatpak.AppId}' is not installed.");
+        //
+        // Check installation by listing installed refs rather than `flatpak info <appId>`: when both a
+        // stable and a beta/nightly branch of the same app are installed, `flatpak info <appId>` fails
+        // with "Multiple branches available…" and the app looks uninstalled even though it launches
+        // fine. Listing branches is unambiguous — an unpinned target passes if any branch is present,
+        // and a branch-pinned target (e.g. the nightly) passes only when that exact branch is present.
+        var listing = Execute("list", "--app", "--columns=application,branch");
+        if (listing.ExitCode != 0)
+            return LaunchTargetInspection.Failed($"Flatpak application '{flatpak.Ref}' is not installed.");
+
+        var installed = FlatpakApplicationDiscovery.ParseInstalledRefs(listing.StandardOutput ?? string.Empty);
+        var isInstalled = installed.Any(reference =>
+            string.Equals(reference.AppId, flatpak.AppId, StringComparison.Ordinal) &&
+            (string.IsNullOrWhiteSpace(flatpak.Branch) ||
+             string.Equals(reference.Branch, flatpak.Branch, StringComparison.Ordinal)));
+        if (!isInstalled)
+            return LaunchTargetInspection.Failed($"Flatpak application '{flatpak.Ref}' is not installed.");
 
         return LaunchTargetInspection.Passed();
     }

@@ -356,6 +356,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     };
 
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
+
+    /// <summary>Whether the current section has an operation running, so its status pill can show an
+    /// indeterminate bar — the same "working" affordance the Desktop settings cards give.</summary>
+    public bool IsWorkingInSection => !IsThemesSection && SelectedSection switch
+    {
+        SettingsSection.RetroAchievements => _settings.IsRetroAchievementsBusy,
+        SettingsSection.ScreenScraper => _settings.IsScreenScraperBusy,
+        SettingsSection.Saves => _settings.IsCloudBusy,
+        SettingsSection.TexturePacks => _settings.IsTexturePackBusy,
+        _ => _settings.IsMaintainingLibrary,
+    };
+
     public bool IsGeneralSection => !IsThemesSection && SelectedSection == SettingsSection.General;
     public bool IsRetroAchievementsSection => !IsThemesSection && SelectedSection == SettingsSection.RetroAchievements;
     public bool IsScreenScraperSection => !IsThemesSection && SelectedSection == SettingsSection.ScreenScraper;
@@ -878,6 +890,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SectionDescription));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
+        OnPropertyChanged(nameof(IsWorkingInSection));
         OnPropertyChanged(nameof(IsGeneralSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
         OnPropertyChanged(nameof(IsScreenScraperSection));
@@ -927,6 +940,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         RebuildRows(_focusedRowBySection.GetValueOrDefault(value));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
+        OnPropertyChanged(nameof(IsWorkingInSection));
         FocusRevision++;
     }
 
@@ -975,6 +989,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(SaveRow));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
+        OnPropertyChanged(nameof(IsWorkingInSection));
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildRows()
@@ -1028,6 +1043,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
+        // PS3 is skipped by "Rescan all consoles" and imported only from RPCS3's game list, so a
+        // controller-only player needs this dedicated action to bring PS3 games in.
+        if (_settings.HasRpcs3LibrarySync)
+        {
+            yield return ActionRow(
+                "general.sync-rpcs3",
+                "Sync PlayStation 3 library",
+                "Read the RPCS3 game list to import PlayStation 3 titles. PS3 games are imported only this way.",
+                _settings.IsMaintainingLibrary ? "WORKING" : "A SYNC",
+                _settings.SyncRpcs3LibraryGeneralCommand,
+                _settings.CanSyncRpcs3Library,
+                // Desktop reaches RPCS3 sync from the PS3 emulator row, not a General field, so this
+                // Gamepad-only General entry is intentionally outside Desktop/Gamepad field parity.
+                excludeFromParity: true);
+        }
         yield return ActionRow(
             "general.fetch-metadata",
             "Fetch missing metadata",
@@ -1644,6 +1674,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         RebuildRows();
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
+        OnPropertyChanged(nameof(IsWorkingInSection));
     }
 
     // A synchronous edit that writes straight to the Desktop settings model. Suppresses the echoed
