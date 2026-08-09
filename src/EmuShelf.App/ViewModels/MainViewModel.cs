@@ -173,6 +173,15 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GameSystem? SelectedSystem { get; set; }
 
+    /// <summary>
+    /// Ids of the systems that lead their manufacturer group in <see cref="NavigationSystems"/> —
+    /// the first visible system of each manufacturer, in list order. The Desktop console list shows
+    /// a manufacturer header above exactly these rows. A fresh set instance is assigned whenever the
+    /// visible set changes so the header bindings re-evaluate.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlySet<string> GroupLeaderSystemIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
     [ObservableProperty]
     public partial LibraryScope CurrentLibraryScope { get; set; } = LibraryScope.System;
 
@@ -1074,6 +1083,7 @@ public partial class MainViewModel : ViewModelBase
         NavigationSystems = new ObservableCollection<GameSystem>(navigationSystems);
         GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
             navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
+        GroupLeaderSystemIds = ComputeGroupLeaders(navigationSystems);
 
         // Keep the gamepad row projection in lockstep with Games no matter how Games is changed
         // (reload, filter, or a direct test mutation), so the virtualized row grid never goes stale.
@@ -1243,9 +1253,30 @@ public partial class MainViewModel : ViewModelBase
             GamepadPlatforms.Clear();
             foreach (var system in visible)
                 GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
+
+            GroupLeaderSystemIds = ComputeGroupLeaders(visible);
         }
 
         UpdateGamepadPlatformState();
+    }
+
+    /// <summary>
+    /// The id of the first system of each manufacturer in <paramref name="orderedVisibleSystems"/>,
+    /// which the Desktop console list uses to place a single manufacturer header per group. Systems
+    /// with no manufacturer are skipped (they carry no header). Order-dependent, so the caller passes
+    /// the systems in navigation order.
+    /// </summary>
+    private static IReadOnlySet<string> ComputeGroupLeaders(IEnumerable<GameSystem> orderedVisibleSystems)
+    {
+        var manufacturersSeen = new HashSet<string>(StringComparer.Ordinal);
+        var leaders = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var system in orderedVisibleSystems)
+        {
+            if (!string.IsNullOrEmpty(system.Manufacturer) && manufacturersSeen.Add(system.Manufacturer))
+                leaders.Add(system.Id);
+        }
+
+        return leaders;
     }
 
     private async Task SetShowEmptyPlatformsAsync(bool show)
