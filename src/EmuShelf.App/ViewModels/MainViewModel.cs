@@ -348,9 +348,8 @@ public partial class MainViewModel : ViewModelBase
         SelectGamepadSort(GamepadSortColumns[Math.Clamp(current + delta, 0, GamepadSortColumns.Length - 1)]);
     }
 
-    /// <summary>Reverses the current couch sort's direction. Bound to A while the sort row is focused —
-    /// the desktop list's ▲/▼ toggle has no other couch analogue. The header arrow reflects the result.</summary>
-    [RelayCommand]
+    /// <summary>Reverses the current couch sort's direction. Invoked on A (Confirm) while the sort row is
+    /// focused — the desktop list's ▲/▼ toggle has no other couch analogue. The header arrow reflects it.</summary>
     private void ToggleGamepadSortDirection()
     {
         if (!IsGamepadMode)
@@ -1050,7 +1049,7 @@ public partial class MainViewModel : ViewModelBase
                 // grid over the preference they never changed.
                 IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
                 if (IsGamepadMode)
-                    CoerceCouchOffRecencyScope();
+                    CoerceCouchLibraryState();
                 else
                     ClearSpotlightHero(); // release the hero bitmap when leaving couch mode
             };
@@ -1179,6 +1178,9 @@ public partial class MainViewModel : ViewModelBase
                 ? column
                 : LibrarySortColumn.Title;
             SortDescending = state.SortDescending;
+            // Couch offers only four sort orders; restoring into gamepad mode with any other falls back to a
+            // couch default (the reload below applies it). No-op in desktop mode.
+            CoerceCouchSort();
             IsNavigationCollapsed = state.IsNavigationCollapsed;
             ApplyPersistedColumns(state.ListColumns);
 
@@ -1410,13 +1412,32 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task ShowRecentlyPlayedAsync() => ShowCollectionAsync(LibraryScope.RecentlyPlayed);
 
-    // Couch mode has no Recently-* place — there those are sort orders, not scopes. If we enter gamepad
-    // mode sitting in a recency scope (e.g. restored from a desktop session), fall back to All Games so
-    // the rail has a highlighted stop and the Sort row actually re-sorts.
-    private void CoerceCouchOffRecencyScope()
+    // Couch mode has no Recently-* place, and its Sort row offers only the four GamepadSortColumns. When we
+    // enter gamepad mode holding a scope or sort the couch can't represent (e.g. restored from a desktop
+    // session), fall back to couch defaults so the rail highlights a stop, a sort card is selected, and the
+    // Sort header stays honest.
+    private void CoerceCouchLibraryState()
     {
-        if (IsGamepadMode && CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
-            _ = ShowAllGamesAsync();
+        if (!IsGamepadMode)
+            return;
+
+        var sortChanged = CoerceCouchSort();
+
+        if (CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
+            _ = ShowAllGamesAsync();  // reloads and re-sorts with the (possibly coerced) sort
+        else if (sortChanged)
+            ApplyFilter();            // no scope change, so re-sort the current view in place
+    }
+
+    // The couch Sort row only offers GamepadSortColumns; any other column (set on the desktop) falls back to
+    // Recently played so a card is always selected. Returns whether it changed the sort. No-op on desktop.
+    private bool CoerceCouchSort()
+    {
+        if (!IsGamepadMode || Array.IndexOf(GamepadSortColumns, SortColumn) >= 0)
+            return false;
+        SortColumn = LibrarySortColumn.LastPlayed;
+        SortDescending = true;
+        return true;
     }
 
     [RelayCommand]

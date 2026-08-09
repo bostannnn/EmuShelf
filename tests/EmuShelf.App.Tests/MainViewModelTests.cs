@@ -1805,6 +1805,22 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task EnteringGamepadMode_CoercesADesktopOnlySortToRecentlyPlayed()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Desktop);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.SortColumn = LibrarySortColumn.Console; // a column the couch Sort row does not offer
+        vm.SortDescending = false;
+
+        await mode.SetModeAsync(InterfaceMode.Gamepad);
+
+        Assert.True(vm.IsGamepadMode);
+        Assert.Equal(LibrarySortColumn.LastPlayed, vm.SortColumn);
+        Assert.True(vm.SortDescending);
+        Assert.True(vm.IsGamepadSortRecentlyPlayedSelected);
+    }
+
+    [AvaloniaFact]
     public void GamepadSpotlight_LeftRightArmTheHeroActions_ResettingToPlay()
     {
         GameViewModel Make(long id, bool hasAchievements)

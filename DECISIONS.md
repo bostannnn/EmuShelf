@@ -5474,9 +5474,10 @@ an *order*, not a *place*.
   `GamepadMenuFocusRegion` enum (ViewMode / Sort / Options); the old bool stays as a computed alias so
   existing bindings and tests keep working. Up/Down walk the regions, Left/Right pick within the focused
   row and apply live, A is inert on either selector row.
-- **Couch never lands in a Recency scope.** Entering gamepad mode (or restoring into it) coerces a leftover
-  `RecentlyAdded`/`RecentlyPlayed` scope to All Games, so the rail always has a highlighted stop and the
-  Sort row is never a no-op.
+- **Couch never lands in a scope or sort it can't show.** Entering gamepad mode (or restoring into it)
+  coerces a leftover `RecentlyAdded`/`RecentlyPlayed` scope to All Games, and any non-couch sort column
+  (e.g. Console/Genre set on the desktop) to Recently played — so the rail always highlights a stop, a sort
+  card is always selected, and the Sort header stays honest.
 - Future custom user collections get the rail as their home — extra stops after the systems — rather than
   reviving the overlay.
 
