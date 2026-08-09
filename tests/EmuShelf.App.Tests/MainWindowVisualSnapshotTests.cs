@@ -1397,10 +1397,10 @@ public class MainWindowVisualSnapshotTests
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             viewModel.OpenGamepadMenuCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
-            // The View mode picker plus the 2x2 Sort grid size to content and stay well within the
-            // 800px-tall Deck viewport. The sort grid adds two card rows, so the ceiling is higher than
-            // the one-row menu (font metrics vary across platforms), still comfortably under the viewport.
-            AssertGamepadOverlayHeightBelow(window, 730);
+            // The View mode and Sort picker rows size to content and stay well within the 800px-tall Deck
+            // viewport. Sort adds one four-across card row (font metrics vary across platforms), still
+            // comfortably under the viewport.
+            AssertGamepadOverlayHeightBelow(window, 700);
             // The menu leads with the Grid/List view-mode picker and the four-card Sort row, both built
             // from the same gamepad-viewmode-card component.
             var pickerCards = window.GetVisualDescendants().OfType<Button>()
@@ -2727,7 +2727,6 @@ public class MainWindowVisualSnapshotTests
             emulators,
             (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
             (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
-            (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
             "EmuShelf writes a uniform keyboard scheme into each emulator: R rewinds, L fast-forwards, F2 saves, F4 loads, and F8 closes the game. Import the bundled Steam Input layout to drive these from a controller.");
 
         var viewModel = new EmulatorSettingsViewModel(
@@ -2766,6 +2765,178 @@ public class MainWindowVisualSnapshotTests
                 using var output = File.Create(Path.Combine(outputDirectory, "emushelf-hotkeys-matrix-dark.png"));
                 frame.Save(output, PngBitmapEncoderOptions.Default);
             }
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    // The seven-emulator matrix the Desktop RenderHotkeysMatrixInDarkTheme fixture uses, reused for the
+    // gamepad overlay tests so both surfaces render the same data. PCSX2 carries a "needs the emulator
+    // closed" status so both the render and the status wiring are exercised.
+    private static GamepadHotkeysViewModel CreateGamepadHotkeysViewModel()
+    {
+        static HotkeyActionLine Line(HotkeyAction action, bool available)
+        {
+            var key = action switch
+            {
+                HotkeyAction.Rewind => "R",
+                HotkeyAction.FastForward => "L",
+                HotkeyAction.SaveState => "F2",
+                HotkeyAction.LoadState => "F4",
+                _ => "F8",
+            };
+            return new HotkeyActionLine(action, action.ToString(),
+                available ? key : "Not available — this emulator has no such feature.", available);
+        }
+
+        static HotkeyEmulatorSnapshot Emu(string id, string name, string status, HotkeyRowTone tone, params HotkeyAction[] supported)
+        {
+            HotkeyAction[] all = [HotkeyAction.Rewind, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame];
+            var lines = all.Select(a => Line(a, supported.Contains(a))).ToArray();
+            return new HotkeyEmulatorSnapshot(id, name, lines, status, tone, CanOperate: true);
+        }
+
+        HotkeyAction[] every = [HotkeyAction.Rewind, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame];
+        var emulators = new[]
+        {
+            Emu("duckstation", "DuckStation", "Applied. Takes effect next time you open DuckStation.", HotkeyRowTone.Success, every),
+            Emu("pcsx2", "PCSX2", "PCSX2 is running — close it first, then apply.", HotkeyRowTone.Warning, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame),
+            Emu("dolphin", "Dolphin", "Already applied.", HotkeyRowTone.Success, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame),
+            Emu("ppsspp", "PPSSPP", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, every),
+            Emu("retroarch", "RetroArch", "Applied. Takes effect next time you open RetroArch.", HotkeyRowTone.Success, every),
+            Emu("azahar", "Azahar", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, HotkeyAction.FastForward, HotkeyAction.SaveState, HotkeyAction.LoadState, HotkeyAction.CloseGame),
+            Emu("rpcs3", "RPCS3", "Recommended hotkeys aren't applied yet.", HotkeyRowTone.Info, HotkeyAction.CloseGame),
+        };
+
+        var hotkeys = new HotkeySettingsContext(
+            emulators,
+            (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
+            (id, _) => Task.FromResult(emulators.First(e => e.EmulatorId == id)),
+            "EmuShelf writes a uniform keyboard scheme into each emulator: R rewinds, L fast-forwards, F2 saves, F4 loads, and F8 closes the game. To drive these from a controller, set up a Steam Input layout once using the mapping below.");
+
+        var settings = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(system => system.Id, _ => (EmulatorConfiguration?)null, StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            hotkeys: hotkeys);
+
+        return new GamepadHotkeysViewModel(settings);
+    }
+
+    [AvaloniaFact]
+    public async Task RenderGamepadHotkeysOverlayInDarkTheme()
+    {
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var gamepadHotkeys = CreateGamepadHotkeysViewModel();
+        var emulatorCount = gamepadHotkeys.Emulators.Count;
+
+        var viewModel = new MainViewModel
+        {
+            IsGamepadMode = true,
+            GamepadHotkeys = gamepadHotkeys,
+            GamepadOverlay = GamepadOverlayKind.Hotkeys,
+        };
+
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-hotkeys-1280x800.png");
+
+            // The overlay fills the host like the dense Settings overlay does.
+            var overlay = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("gamepad-overlay"));
+            var host = window.FindControl<Panel>("GamepadOverlayHost");
+            Assert.NotNull(host);
+            Assert.Equal(host.Bounds.Width, overlay.Bounds.Width, 1);
+            Assert.Equal(host.Bounds.Height, overlay.Bounds.Height, 1);
+
+            // Every one of the seven emulators shows a matrix row that a controller can operate: two
+            // focusable buttons (Apply + Revert) each.
+            var actionButtons = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-hotkey-action"))
+                .ToArray();
+            Assert.Equal(emulatorCount * 2, actionButtons.Length);
+
+            // The two global actions and the hold-Select mapping a controller-only user needs are on screen.
+            var applyAll = window.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .SingleOrDefault(control => control.IsVisible && control.Text == "Apply to all emulators");
+            var installTemplate = window.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .SingleOrDefault(control => control.IsVisible && control.Text == "Install Steam Input template");
+            var mapping = window.GetVisualDescendants()
+                .OfType<TextBlock>()
+                .SingleOrDefault(control => control.IsVisible && control.Text == "Select + Start");
+            Assert.NotNull(applyAll);
+            Assert.NotNull(installTemplate);
+            Assert.NotNull(mapping);
+
+            // The "needs the emulator closed" status is reachable, not hidden.
+            Assert.Contains(
+                window.GetVisualDescendants().OfType<TextBlock>(),
+                control => control.IsVisible && control.Text == "PCSX2 is running — close it first, then apply.");
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadHotkeys_FocusingABelowFoldEmulatorScrollsItIntoView()
+    {
+        var gamepadHotkeys = CreateGamepadHotkeysViewModel();
+        var viewModel = new MainViewModel { IsGamepadMode = true };
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            // Open the overlay the way the app does — assign it while the window is already bound, so the
+            // code-behind subscribes to the wrapped view model's focus changes.
+            viewModel.GamepadOverlay = GamepadOverlayKind.Hotkeys;
+            viewModel.GamepadHotkeys = gamepadHotkeys;
+            await PumpAsync();
+
+            var scroller = window.FindControl<ScrollViewer>("GamepadHotkeysScroller");
+            Assert.NotNull(scroller);
+            // The seven-row matrix overflows the viewport at 1280x800, so the last emulator starts off-screen —
+            // which is exactly why scroll-to-focus has to work for a controller-only user.
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height,
+                "The matrix must overflow so scroll-to-focus is meaningful.");
+
+            var rpcs3 = gamepadHotkeys.Emulators.Single(row => row.EmulatorId == "rpcs3");
+            var guard = 0;
+            while (!(gamepadHotkeys.FocusedKind == GamepadHotkeyTargetKind.EmulatorApply
+                     && ReferenceEquals(gamepadHotkeys.FocusedRow, rpcs3)) && guard++ < 60)
+            {
+                Assert.True(viewModel.DispatchGamepadAction(GamepadAction.NavigateDown));
+            }
+            Assert.Equal(GamepadHotkeyTargetKind.EmulatorApply, gamepadHotkeys.FocusedKind);
+            Assert.Same(rpcs3, gamepadHotkeys.FocusedRow);
+            await PumpAsync();
+
+            var apply = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => button.Classes.Contains("gamepad-hotkey-action")
+                    && ReferenceEquals(button.DataContext, rpcs3)
+                    && (string?)button.Content == "Apply");
+            var top = apply.TranslatePoint(default, scroller);
+            Assert.NotNull(top);
+            // The focused button now sits inside the viewport rather than scrolled off the bottom.
+            Assert.InRange(top.Value.Y, 0, scroller.Viewport.Height - apply.Bounds.Height + 1);
         }
         finally
         {

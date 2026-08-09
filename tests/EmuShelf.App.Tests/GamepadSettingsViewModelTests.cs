@@ -2,11 +2,13 @@ using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.TexturePacks;
+using EmuShelf.Core.Updates;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Systems;
 
@@ -356,6 +358,38 @@ public sealed class GamepadSettingsViewModelTests
         Assert.True(viewModel.Rows.Single(row => row.Key == "textures.empty").IsInformation);
     }
 
+    [AvaloniaFact]
+    public void GeneralUpdateRow_WhileDownloading_ShowsCoordinatorLiveProgressText()
+    {
+        var coordinator = CreateUpdateCoordinator();
+        using var viewModel = CreateGamepadSettings(updates: coordinator);
+        string CheckRowHint() => viewModel.Rows.Single(row => row.Key == "general.check-updates").Description;
+
+        // Idle: the check row falls back to its static prompt.
+        Assert.Equal("Look on GitHub for a newer EmuShelf.", CheckRowHint());
+
+        // A download begins: the coordinator drives the live percentage on its own object, which must
+        // rebuild the row so its hint reflects the moving progress rather than a static line.
+        coordinator.IsBusy = true;
+        coordinator.StatusText = "Downloading update… 42%";
+        Assert.Equal("Downloading update… 42%", CheckRowHint());
+
+        coordinator.StatusText = "Downloading update… 87%";
+        Assert.Equal("Downloading update… 87%", CheckRowHint());
+
+        // Once the download settles the row returns to the static status the Desktop view model owns.
+        coordinator.IsBusy = false;
+        Assert.Equal("Look on GitHub for a newer EmuShelf.", CheckRowHint());
+    }
+
+    private static AppUpdateCoordinator CreateUpdateCoordinator() => new(
+        new StubUpdateService(),
+        new StubUpdateApplier(),
+        new StubSettingsService(),
+        new AppSettings(),
+        NullAppLogger.Instance,
+        requestExit: () => { });
+
     private GamepadSettingsViewModel CreateGamepadSettings(
         LibraryMaintenanceActions? maintenance = null,
         IMetadataPreferencesService? metadataPreferences = null,
@@ -363,8 +397,9 @@ public sealed class GamepadSettingsViewModelTests
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        IOnScreenKeyboardService? onScreenKeyboard = null) => new(
-            CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks, screenScraper),
+        IOnScreenKeyboardService? onScreenKeyboard = null,
+        AppUpdateCoordinator? updates = null) => new(
+            CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks, screenScraper, updates),
             onScreenKeyboard);
 
     private EmulatorSettingsViewModel CreateSettings(
@@ -373,7 +408,8 @@ public sealed class GamepadSettingsViewModelTests
         RetroAchievementsSettingsContext? retroAchievements = null,
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
-        ScreenScraperSettingsContext? screenScraper = null) => new(
+        ScreenScraperSettingsContext? screenScraper = null,
+        AppUpdateCoordinator? updates = null) => new(
             KnownSystems.All,
             KnownEmulators.All,
             KnownSystems.All.ToDictionary(
@@ -387,7 +423,8 @@ public sealed class GamepadSettingsViewModelTests
             retroAchievements: retroAchievements,
             cloudSaves: cloudSaves,
             texturePacks: texturePacks,
-            screenScraper: screenScraper);
+            screenScraper: screenScraper,
+            updates: updates);
 
     private static LibraryMaintenanceActions CreateMaintenance(Action<bool> setShowEmpty) => new(
         (_, _) => Task.FromResult(string.Empty),
@@ -529,5 +566,41 @@ public sealed class GamepadSettingsViewModelTests
             LastRequest = request;
             return true;
         }
+    }
+
+    // The update rows only need a coordinator whose live download state can be driven directly, so
+    // these stubs satisfy its dependencies without performing a real check, download, or persist.
+    private sealed class StubUpdateService : IUpdateService
+    {
+        public Task<UpdateCheckResult> CheckAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<UpdateCheckResult>(new UpdateCheckResult.UpToDate(SemanticVersion.Zero));
+
+        public Task<StagedUpdate> DownloadAndStageAsync(
+            UpdateCheckResult.UpdateAvailable update,
+            IProgress<double>? progress = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new StagedUpdate(update.Version, "/staged"));
+    }
+
+    private sealed class StubUpdateApplier : IUpdateApplier
+    {
+        public bool CanApply(out string? reason)
+        {
+            reason = null;
+            return true;
+        }
+
+        public void ApplyAndRelaunch(StagedUpdate staged)
+        {
+        }
+    }
+
+    private sealed class StubSettingsService : ISettingsService
+    {
+        private AppSettings _current = new();
+
+        public AppSettings Load() => _current;
+
+        public void Save(AppSettings settings) => _current = settings;
     }
 }

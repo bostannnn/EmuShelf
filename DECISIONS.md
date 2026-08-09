@@ -5443,6 +5443,113 @@ branches are installed — so an app that launches fine looked uninstalled.
   (e.g. `net.pcsx2.PCSX2//stable`, `net.pcsx2.PCSX2//beta`) when several are, so the user explicitly
   picks stable vs nightly. The editable ComboBox is unchanged — the ref strings flow through as items.
 
+## 2026-08-09 — Gamepad Hotkeys is a dedicated overlay wrapping the same settings view model (M40)
+
+The Desktop **Settings › Hotkeys** section (a per-emulator × per-action matrix with Apply-to-all,
+Install-Steam-template, per-emulator Apply/Preview/Revert, and the hold-Select controller mapping) had
+no counterpart in Gamepad mode: `GamepadSettingsViewModel` projects Desktop settings into a flat list
+of controller rows, and a matrix does not survive that projection (the same reason Themes is a
+dedicated gallery page rather than rows). A controller-only user could see every other settings
+section on the couch but not the one that most needs a controller.
+
+Decision: a **dedicated `GamepadOverlayKind.Hotkeys` overlay** driven by `MainViewModel.GamepadOverlay`,
+built exactly like the other gamepad overlays. `GamepadHotkeysViewModel` **wraps the same
+`EmulatorSettingsViewModel` instance** the gamepad Settings projection already holds — reusing its
+`HotkeyEmulators` rows, `ApplyAllHotkeysCommand`, `InstallSteamTemplateCommand`, `SteamTemplateStatus`
+and `HotkeySchemeSummary` verbatim — and adds *only* a linear D-pad focus model (the same pattern as
+`GamepadScraperViewModel` over `GameScraperViewModel`). No hotkey logic, no config files, and no engine
+are duplicated; nothing is re-read when the overlay opens; and it is Gamepad-native, never a Desktop
+window hand-off.
+
+- **Entry point is the gamepad Settings General row, not a projected section or a System-Menu peer.**
+  `SettingsSection.Hotkeys` is excluded from the gamepad Settings rail (alongside Emulators/Themes/About
+  — a latent gap since PR #71 added the Desktop section but not a gamepad projection), and a
+  General-section "Emulator hotkeys" action row opens the overlay through a `Func<Task>` callback
+  (mirroring the existing `applyTheme` callback). B returns to Settings, whose projection
+  `OpenGamepadOverlay` deliberately leaves intact — the same "open bespoke overlay B from overlay A,
+  B backs to A" contract the scraper uses from the game Actions menu. The row is excluded from the
+  Desktop↔Gamepad `general.*` field parity because Desktop's equivalents are the `hotkeys.*` controls
+  *inside* its own section.
+- **Preview was dropped from the hotkey UI entirely — both surfaces expose only Apply / Revert.** It
+  started as a controller simplification (the gamepad surface never had it) and then came off Desktop
+  too: Preview was a dry run that surfaced only a change *count* ("N settings would change"), not a diff,
+  and the same dry-run that runs when the panel opens already shows each action's support and the
+  applied / not-applied status — so it added almost nothing on screen, while Apply is fully backed-up and
+  revertible. The underlying dry-run (`configurator.Preview`) stays — it's what populates the matrix
+  cells and the initial status — but the user-facing button/command, `HotkeySettingsContext.PreviewAsync`,
+  and the coordinator's `Operation.Preview` were removed.
+- **Focus flags live on the shared row, not a new row type.** `HotkeyEmulatorRowViewModel` gained
+  `IsApplyFocused`/`IsRevertFocused` observable flags the Desktop matrix ignores, so the one row type
+  carries the D-pad ring on the couch and the Apply/Revert buttons on the desktop — reuse over a
+  parallel VM, as with `ScraperFieldRowViewModel.IsFocused`.
+- **Non-operable emulators show in the matrix but are never focus targets.** A row whose config dir
+  can't be resolved (`CanOperate == false`) still renders its cells and status (so the user reads
+  *why*), but offers no focusable Apply/Revert — matching the Desktop buttons being disabled there.
+- **The matrix scrolls the focused row into view** (`RevealGamepadHotkeysFocus`, mirroring the
+  scraper's reveal): seven emulator rows overflow the viewport at 1280×800, so without scroll-to-focus
+  the ring on Azahar/RPCS3 would walk off-screen. The two global actions sit above the scroll and are
+  always visible, so only per-emulator buttons need revealing; the `.focused` class carries the ring
+  and the view model routes A directly, so no keyboard focus is taken (no Fluent adorner to suppress).
+
+## 2026-08-09 — RetroArch apply clears controller hotkey bindings so the D-pad stops misfiring (M40)
+
+Real-hardware follow-up: after applying the keyboard scheme, a Deck user's **D-pad left/right started
+changing the save-state slot mid-game** (and screenshot/pause/fps fired off face buttons). Root cause is
+a RetroArch design constraint, not a bad token: RetroArch has a **single hotkey-enable gate shared by
+keyboard and controller** (`input_enable_hotkey` / `_btn`). The keyboard scheme deliberately leaves it
+**off** (unset ⇒ hotkeys always active) so a bare Steam-Input key like `f2` fires without a modifier — but
+"off" also un-gates every *controller* button RetroArch has bound as a hotkey. A stock pad autoconfig
+lands those on game-facing buttons (verified in the user's `retroarch.cfg`:
+`input_state_slot_decrease_btn = "h0left"`, `input_state_slot_increase_btn = "h0right"`,
+`input_screenshot_btn = "0"`, `input_pause_toggle_btn = "1"`, `input_fps_toggle_btn = "2"`,
+`input_runahead_toggle_btn = "h0up"`, plus trigger-axis binds `input_rewind_axis`/`input_hold_fast_forward_axis`),
+so bare presses fire them during play.
+
+The gate can't be "keyboard only" — it's one switch — so re-introducing a modifier would break the
+bare-keyboard scheme. **Decision (option A1): the RetroArch configurator clears the controller bindings
+instead.** On apply it nul's both `<control>_btn` and `<control>_axis` for the scheme's own actions
+(so a leftover trigger-axis can't rewind/fast-forward alongside the keyboard key), for
+`input_enable_hotkey` (nul keeps the gate off), and for the hotkeys a stock autoconfig commonly puts on
+game buttons: `state_slot_increase`/`decrease`, `screenshot`, `pause_toggle`, `fps_toggle`,
+`runahead_toggle`, `toggle_fast_forward`. Game inputs (`input_playerN_*`) are never touched, so the pad
+still plays; clearing only rewrites keys that exist and hold a non-`nul` value, and everything is backed
+up and revertible. Net model: **on RetroArch the controller is game-input only and the keyboard (via
+Steam Input) is the sole hotkey path** — consistent with the rest of M40.
+
+Bounds and follow-ups: it clears by hotkey *name*, not by "is this button a game input", so it also
+silences one of these hotkeys bound to a non-game button — acceptable under M40's controller-is-game-only
+model and reversible. Two things a bare files check can't settle and are left for hardware: (1) if the
+pad's **autoconfig profile** re-applies these binds on reconnect, editing `retroarch.cfg` won't be
+durable — the fix would then belong in the autoconfig, a larger scope; (2) the bundled Steam Input
+template covers rewind/ff/save/load/close but **not slot ±**, so after this a controller has no
+slot-change unless the template is extended (deferred). RetroArch-specific: the other emulators use
+explicit keyboard tokens and have no shared always-on gate, so none of them need this.
+
+## 2026-08-09 — Platforms are grouped by manufacturer, oldest-manufacturer-first
+
+The navigation list had no ordering logic — `KnownSystems.All` was in the order systems were added
+during development (PlayStation family, then a scattered mix), so Nintendo appeared in three separate
+clumps and handhelds interleaved arbitrarily. Surveying comparable frontends (ES-DE's `systemsSortMode`,
+LaunchBox's platform categories, OpenEmu's maker-prefixed alphabetical list, NeoStation) the common,
+predictable axis is **manufacturer**. Chosen over hardware-type (console/handheld/arcade) or a
+user-configurable sort mode because EmuShelf ships a fixed ~15-system set, so one sensible default beats
+a settings surface. A per-mode picker can be layered on later — the metadata added here already supports it.
+
+- **`GameSystem` gains a `Manufacturer` grouping key** (optional trailing param, default `""` = ungrouped,
+  so the two direct `new GameSystem(...)` test constructions and any future ones stay source-compatible).
+- **`KnownSystems.All` is authored in display order:** groups run Nintendo → Sega → Sony → Arcade
+  (each group ordered by its *oldest* system, so the heritage reads chronologically), and within a group
+  systems are oldest-first with handhelds interleaved by year. This authored order *is* the navigation
+  order; ids are unchanged so libraries are untouched. Leading with Nintendo rather than the PS-centric
+  original is deliberate (chronology is the "logic"); flipping to Sony-first is a one-block move.
+- **Desktop renders a manufacturer header above the first *visible* system of each group.** Rather than
+  change `NavigationSystems` (kept as `ObservableCollection<GameSystem>` — selection binds to it and a test
+  asserts it equals `KnownSystems.All`), the VM exposes `GroupLeaderSystemIds` (recomputed on every
+  nav refresh, a fresh set each time so bindings re-fire) and a multi-value converter shows the header only
+  for leaders when the sidebar is expanded. The row hover/selection fill moved from the whole `ListBoxItem`
+  onto an inner `Border.nav-row`, so the header sharing the item is never highlighted.
+- **Gamepad mode inherits the reorder for free** — the horizontal rail and LB/RB platform cycling both walk
+  the same list, so they group by manufacturer without new couch UI (the rail stays icon-only by design).
 ## 2026-08-09 — Gamepad collections: Recently-* become a Sort row, not places; Collections overlay removed
 
 The controller "Collections" overlay was a dead end: buried two levels deep (Start → Collections), and
@@ -5458,9 +5565,15 @@ an *order*, not a *place*.
   via the list-header `SortByCommand`, whose toggle semantics would force ascending and float
   never-played / unrated games to the top.
 - **The Sort row reuses the View-mode picker verbatim.** Same `gamepad-viewmode-row` / `gamepad-viewmode-card`
-  styles and brushes, laid out 2×2 so each card keeps the Grid/List card's width and the full labels fit
-  (four-across truncated "Recently played"/"Recently added" to an identical "Rec…"). No new style, brush,
-  or background was added.
+  styles and brushes — four cards across one row, so Up/Down move between menu sections exactly like the
+  View-mode row and Left/Right step the sorts. Labels are shortened (Played / Added / A–Z / Rating; full
+  name in the tooltip) so all four fit the row; a 2×2 was tried first but made Up/Down ambiguous — it
+  skipped the whole grid. No new style, brush, or background was added.
+- **Direction is reversible on the couch too.** Picking a field applies its sensible default (recency /
+  rating descending, title A→Z); **A while the sort row is focused flips ascending/descending** — the
+  desktop list's ▲/▼ has no other couch analogue. The sort header shows a direction arrow plus a
+  plain-language label ("↓ Newest first", "↑ A to Z"), and an "A Reverse" affordance appears there while
+  the row owns focus.
 - **The `GamepadOverlayKind.Collections` overlay is deleted.** With Recently-* demoted to sort, the couch
   has no Collections drill-in; the Start menu drops the "Collections" entry. The Desktop sidebar keeps its
   Recently Added/Played entries unchanged — this is a gamepad-only change.
@@ -5468,12 +5581,78 @@ an *order*, not a *place*.
   `GamepadMenuFocusRegion` enum (ViewMode / Sort / Options); the old bool stays as a computed alias so
   existing bindings and tests keep working. Up/Down walk the regions, Left/Right pick within the focused
   row and apply live, A is inert on either selector row.
-- **Couch never lands in a Recency scope.** Entering gamepad mode (or restoring into it) coerces a leftover
-  `RecentlyAdded`/`RecentlyPlayed` scope to All Games, so the rail always has a highlighted stop and the
-  Sort row is never a no-op.
+- **Couch never lands in a scope or sort it can't show.** Entering gamepad mode (or restoring into it)
+  coerces a leftover `RecentlyAdded`/`RecentlyPlayed` scope to All Games, and any non-couch sort column
+  (e.g. Console/Genre set on the desktop) to Recently played — so the rail always highlights a stop, a sort
+  card is always selected, and the Sort header stays honest.
 - Future custom user collections get the rail as their home — extra stops after the systems — rather than
   reviving the overlay.
 
+## 2026-08-09 — RVZ junk-padding regeneration fixed; Wii/GameCube achievement hashes recomputed
+
+Almost no .rvz Wii games were being matched to RetroAchievements (and a few GameCube titles, e.g. Mario
+Power Tennis), while .iso Wii games worked. Root cause was in the RVZ reader's lagged-Fibonacci "junk"
+generator (`RvzLaggedFibonacciGenerator` in [NintendoDiscImageReader.cs](src/EmuShelf.Integrations/Achievements/NintendoDiscImageReader.cs)),
+which reconstructs the pseudo-random padding Dolphin strips out of RVZ.
+
+- **The generator was missing Dolphin's per-word `Initialize` transform** — `x = swap32((x & 0xFF00FFFF) |
+  ((x >> 2) & 0x00FF0000))` applied to the whole buffer after seed extension — **and extracted bytes
+  big-endian instead of little-endian** (host order, matching Dolphin's `reinterpret_cast<u8*>`). Both are
+  now corrected. An earlier audit fix (`>>18`→`>>16`) had patched only one byte lane and left the real
+  defect. Verified by reconstructing full Ghost Squad + Mario Kart Wii (Wii) and Luigi's Mansion + Mario
+  Power Tennis (GameCube) discs **byte-for-byte** against DolphinTool-produced ISOs.
+- **Why Wii was hit hard but GameCube barely:** the Wii hash reads 1024 partition clusters (~32 MiB), which
+  for smaller games routinely includes junk padding; GameCube hashes only the disc header + apploader + DOL,
+  which is real data unless a title's hashed region happens to abut junk (measured: 1 of 23 local GC titles).
+- **Both algorithm versions were bumped** (`gamecube-v3`, `wii-v4`) and both dropped from the legacy
+  `disc-v2` compatibility set, so the corrected reader recomputes every Wii/GameCube hash the broken reader
+  had already stored — otherwise the wrong hashes would be reused forever and the games would stay
+  unidentified. PlayStation stays compatible with the legacy version.
+- **Added a regression test that emits an actual RVZ junk segment.** The pre-existing synthetic RVZ builders
+  only exercised literal packing, never the junk path — which is why this shipped twice. The new test pins
+  the generator's output (cross-checked against Dolphin) so a future byte-order/transform regression fails.
+
+## 2026-08-09 — Cover picker: fall back to the proxied preview the user can see
+
+The web cover picker showed DuckDuckGo image results, but selecting one often failed with "That image
+is no longer available" even though the thumbnail was plainly visible in the grid. The preview and the
+selection were fetching two different addresses.
+
+- **Selection now tries `[OriginalCandidate, ThumbnailCandidate]`, not the original alone.** The grid
+  previews the search engine's proxied thumbnail (a stable CDN), while selection downloaded the
+  full-resolution original from the *source* host — which routinely 404s, hotlink-blocks with a 403 or
+  an HTML page, exceeds the 8 MB cap, or serves an unsupported format. `DownloadFirstAsync` already
+  returns the first candidate that yields an image, so the picker prefers the crisp original and falls
+  back to the exact proxied preview on screen. "No longer available" now means *neither* address
+  produced an image.
+- **The user-driven web-artwork HttpClient sends a mainstream browser User-Agent, not `EmuShelf/1.0`.**
+  Arbitrary image hosts and CDNs refuse an unknown agent, so a browser UA materially raises how often
+  the full-resolution original is retrieved rather than the thumbnail fallback. Scoped to the
+  picker/ScreenScraper-media client only; the automatic metadata client keeps its honest EmuShelf agent.
+
+## 2026-08-09 — Region-free catalog serials: keep every regional entry, disambiguate by filename
+
+A region-free 3DS cartridge (late Pokémon titles such as Ultra Sun/Moon) carries one NCCH product
+code for *every* regional dump, so a single serial keys several No-Intro DAT entries whose only
+difference is the region and the localized name. `LibretroDatCatalog` collapsed a shared key to the
+lowest `PreferenceScore` (title length, plus Beta/Proto/Rev penalties). The Korean No-Intro name has
+no language suffix, so it was the shortest and always won — a European `CTR-P-A2BA` dump was labelled
+"Pocket Monsters Ultra Moon (Korea)".
+
+- **The catalog index keeps all entries per key, not just the preferred one.** `CatalogIndex` stores
+  `IReadOnlyList<CatalogEntry>` per (kind, key); the region is already parsed into `CatalogEntry.Region`
+  and was simply being discarded by the old collapse. The region-agnostic pick is unchanged — the same
+  `PreferenceScore`, ties broken by first-seen order — so `Entries`, the 3-arg `TryGetValue`, and every
+  system whose key is unique behave exactly as before.
+- **`IGameMetadataCatalog.FindMatchAsync` gained an optional `regionHint`.** The coordinator passes the
+  game's filename (which carries the No-Intro `(Europe)` tag); when a key is shared, the entry whose
+  region the filename advertises wins, else the preferred entry is returned. The serial stays the only
+  3DS catalogue key — this fixes a *wrong* match without dropping the key (contrast the DS decision to
+  drop the ambiguous game code entirely).
+- **Region matching is a token intersection, needing no maintained region vocabulary.** Both the DAT
+  region and the filename's parenthetical tags are split on `, / & +` and upper-cased; a spelled-out
+  DAT region ("Europe", "Korea") never collides with a two-letter language code ("En", "Ko"), so a
+  `(En,Ja,Fr,…,Ko)` language list is not mistaken for a Korean region.
 
 ## 2026-08-09 — Normalized scraped titles show across the whole library
 

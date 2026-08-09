@@ -975,8 +975,6 @@
                                                     <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" TextWrapping="Wrap"
                                                                VerticalAlignment="Center" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                        <Button Content="Preview" Padding="10,4" FontSize="12"
-                                                                Command="{Binding PreviewCommand}" IsEnabled="{Binding CanRun}" />
                                                         <Button Content="Apply" Padding="10,4" FontSize="12"
                                                                 Command="{Binding ApplyCommand}" IsEnabled="{Binding CanRun}" />
                                                         <Button Content="Revert" Padding="10,4" FontSize="12"

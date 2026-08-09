@@ -17,17 +17,17 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     [Theory]
     [InlineData("playstation", "rcheevos-2ac45d3-playstation-v4")]
     [InlineData("playstation2", "rcheevos-2ac45d3-playstation-v4")]
-    [InlineData("gamecube", "rcheevos-2ac45d3-nintendo-v2")]
-    [InlineData("wii", "rcheevos-2ac45d3-wii-v3")]
+    [InlineData("gamecube", "rcheevos-2ac45d3-gamecube-v3")]
+    [InlineData("wii", "rcheevos-2ac45d3-wii-v4")]
     public void AlgorithmVersion_IsScopedByHashReader(string systemId, string expectedVersion)
     {
         var game = Game(systemId, Path.Combine(BaseDirectory, "game.iso"));
 
         Assert.Equal(expectedVersion, _hasher.GetAlgorithmVersion(game));
-        // The corrected Wii reader no longer accepts the pre-split global version; every other
-        // reader is unchanged and still does.
+        // The corrected Wii and GameCube RVZ readers no longer accept the pre-split global version;
+        // only the unchanged PlayStation readers still do.
         Assert.Equal(
-            systemId != "wii",
+            systemId is "playstation" or "playstation2",
             _hasher.IsAlgorithmVersionCompatible(game, "rcheevos-2ac45d3-disc-v2"));
     }
 
@@ -480,6 +480,73 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
 
         Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
         Assert.Equal("97b7907eb06bfe07780b7b0f666f6a6e", result.CanonicalHash);
+    }
+
+    [Fact]
+    public void RvzReader_RegeneratesLaggedFibonacciJunkPadding()
+    {
+        // Regression guard for the RVZ junk generator (the Dolphin/rcheevos lagged-Fibonacci PRNG).
+        // A missing per-word transform or big-endian byte extraction silently corrupts regenerated
+        // padding, which broke RetroAchievements hashing for almost every .rvz Wii game and for
+        // GameCube titles whose hashed region overlaps junk (e.g. Mario Power Tennis). The other
+        // RVZ builders here only exercise literal packing, never a junk segment, so this closes
+        // that gap. The reader that produces these bytes was verified byte-for-byte against
+        // DolphinTool-produced ISOs of real discs; this vector pins its output for a fixed seed so a
+        // future byte-order/transform regression fails here.
+        Directory.CreateDirectory(BaseDirectory);
+        const int chunkSize = 0x8000;
+        var seed = new byte[68];
+        for (var i = 0; i < seed.Length; i++)
+            seed[i] = (byte)((i * 7) + 1);
+        var path = Path.Combine(BaseDirectory, "junk.rvz");
+        File.WriteAllBytes(path, BuildJunkTailRvz(chunkSize, seed));
+
+        using var disc = NintendoDiscImageReader.TryOpen(path);
+        Assert.NotNull(disc);
+        var buffer = new byte[chunkSize];
+        Assert.True(disc!.ReadAt(chunkSize, buffer)); // the second group is a single junk segment
+
+        Assert.Equal(
+            "18367516200F15E2D17C4F0F3D775B10" +
+            "C28960A0AC145037A7CF2C75D7EBB0F7" +
+            "44092E8DEBCB7481FC1581CE46B2706F",
+            Convert.ToHexString(buffer.AsSpan(0, 48)));
+        Assert.Equal(
+            "e1f3f558cfe794f6e4242f162336ab91",
+            Convert.ToHexString(MD5.HashData(buffer)).ToLowerInvariant());
+    }
+
+    [Fact]
+    public void RvzReader_JunkSkipContinuesTheSameSequence()
+    {
+        // A junk segment that does not begin on a 0x8000 boundary must resume the same PRNG stream
+        // at the right position (the reader Skips (dataOffset + destinationOffset) % 0x8000). Read
+        // the junk that follows a 0x100-byte literal and confirm it equals the tail of a full-chunk
+        // junk run with the same seed. Together with the pinned Dolphin-anchored vector above, this
+        // proves non-zero skips are correct too, not just skip 0.
+        Directory.CreateDirectory(BaseDirectory);
+        const int chunkSize = 0x8000;
+        const int prefix = 0x100;
+        var seed = new byte[68];
+        for (var i = 0; i < seed.Length; i++)
+            seed[i] = (byte)((i * 7) + 1);
+
+        var fullPath = Path.Combine(BaseDirectory, "junk-full.rvz");
+        var splitPath = Path.Combine(BaseDirectory, "junk-split.rvz");
+        File.WriteAllBytes(fullPath, BuildJunkTailRvz(chunkSize, seed));
+        File.WriteAllBytes(splitPath, BuildJunkTailRvz(chunkSize, seed, prefix));
+
+        using var full = NintendoDiscImageReader.TryOpen(fullPath);
+        using var split = NintendoDiscImageReader.TryOpen(splitPath);
+        Assert.NotNull(full);
+        Assert.NotNull(split);
+
+        var fullChunk = new byte[chunkSize];
+        Assert.True(full!.ReadAt(chunkSize, fullChunk)); // group 1 = pure junk from position 0
+        var skippedJunk = new byte[chunkSize - prefix];
+        Assert.True(split!.ReadAt(chunkSize + prefix, skippedJunk)); // junk after the 0x100 literal
+
+        Assert.Equal(fullChunk.AsSpan(prefix).ToArray(), skippedJunk);
     }
 
     [Fact]
@@ -1184,6 +1251,77 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
         BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(0x0C, 4), header2Size);
         SHA1.HashData(header2).CopyTo(header1.Slice(0x10, 20));
         BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x24, 8), partitionDataOffset + chunkSize);
+        BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x2C, 8), (ulong)output.Length);
+        SHA1.HashData(header1.Slice(0, 0x34)).CopyTo(header1.Slice(0x34, 20));
+        return output;
+    }
+
+    // Minimal RVZ (GameCube discType) with one raw-data entry spanning two groups: group 0 stored
+    // literally, group 1 a single RVZ "junk" segment (a seed the reader must expand with the
+    // lagged-Fibonacci generator). Deliberately the only builder here that emits a junk segment.
+    // literalPrefix > 0 precedes the junk with a literal segment, so the junk starts at a non-zero
+    // in-sector offset and exercises the generator's Skip path.
+    private static byte[] BuildJunkTailRvz(int chunkSize, byte[] seed, int literalPrefix = 0)
+    {
+        const int header1Size = 0x48;
+        const int header2Size = 0xDC;
+        const int groupCount = 2;
+
+        var rawOffset = header1Size + header2Size;
+        var rawEntry = new byte[24];
+        BinaryPrimitives.WriteUInt64BigEndian(rawEntry.AsSpan(8, 8), (ulong)(chunkSize * groupCount));
+        BinaryPrimitives.WriteUInt32BigEndian(rawEntry.AsSpan(20, 4), groupCount);
+
+        var groupOffset = Align4(rawOffset + rawEntry.Length);
+        var groupTable = new byte[groupCount * 12];
+        var dataOffset = Align4(groupOffset + groupTable.Length);
+
+        var g0 = new byte[chunkSize]; // literal group 0 (zeroes)
+        // Group 1 packed stream: an optional literal segment, then the junk segment
+        // ([u32 size|junk-bit][68-byte seed]). literalPrefix + junkSize == chunkSize.
+        var junkSize = chunkSize - literalPrefix;
+        var g1 = new byte[(literalPrefix > 0 ? 4 + literalPrefix : 0) + 4 + seed.Length];
+        var g1Cursor = 0;
+        if (literalPrefix > 0)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(g1.AsSpan(g1Cursor, 4), (uint)literalPrefix);
+            g1Cursor += 4 + literalPrefix; // the literal bytes themselves stay zero
+        }
+        BinaryPrimitives.WriteUInt32BigEndian(g1.AsSpan(g1Cursor, 4), 0x80000000u | (uint)junkSize);
+        seed.CopyTo(g1.AsSpan(g1Cursor + 4));
+
+        var cursor = dataOffset;
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(0, 4), (uint)(cursor >> 2));
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(4, 4), (uint)g0.Length);
+        var g0Pos = cursor;
+        cursor += Align4(g0.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(12, 4), (uint)(cursor >> 2));
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(16, 4), (uint)g1.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(groupTable.AsSpan(20, 4), (uint)g1.Length); // PackedSize
+        var g1Pos = cursor;
+        cursor += Align4(g1.Length);
+
+        var output = new byte[cursor];
+        rawEntry.CopyTo(output.AsSpan(rawOffset));
+        groupTable.CopyTo(output.AsSpan(groupOffset));
+        g0.CopyTo(output.AsSpan(g0Pos));
+        g1.CopyTo(output.AsSpan(g1Pos));
+
+        var header2 = output.AsSpan(header1Size, header2Size);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0, 4), 1); // GameCube
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0x0C, 4), (uint)chunkSize);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xB4, 4), 1);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0xB8, 8), (ulong)rawOffset);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xC0, 4), (uint)rawEntry.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xC4, 4), groupCount);
+        BinaryPrimitives.WriteUInt64BigEndian(header2.Slice(0xC8, 8), (ulong)groupOffset);
+        BinaryPrimitives.WriteUInt32BigEndian(header2.Slice(0xD0, 4), (uint)groupTable.Length);
+
+        var header1 = output.AsSpan(0, header1Size);
+        "RVZ\x01"u8.CopyTo(header1);
+        BinaryPrimitives.WriteUInt32BigEndian(header1.Slice(0x0C, 4), header2Size);
+        SHA1.HashData(header2).CopyTo(header1.Slice(0x10, 20));
+        BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x24, 8), (ulong)(chunkSize * groupCount));
         BinaryPrimitives.WriteUInt64BigEndian(header1.Slice(0x2C, 8), (ulong)output.Length);
         SHA1.HashData(header1.Slice(0, 0x34)).CopyTo(header1.Slice(0x34, 20));
         return output;
