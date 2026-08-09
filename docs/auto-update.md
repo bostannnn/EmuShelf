@@ -59,12 +59,23 @@ exit, overlays the new payload onto the app folder, relaunches, and deletes itse
 writes program files, so the portable `Data/ Covers/ Cache/ Logs/ Settings/ Saves/` directories are
 left untouched. The relaunched app restores the saved interface mode from settings.
 
+When Steam launched EmuShelf (the Gamepad-mode setup adds it as a non-Steam game), the helper
+relaunches through `steam://rungameid/<id>` — the id Steam exports in the `SteamGameId` environment
+variable — instead of the bare `.exe`. Relaunching the executable directly escapes Steam Input, so the
+controller stays dead until the user quits and restarts from Steam; going back through Steam reapplies
+Steam Input and the shortcut's launch options (e.g. `--gamepad-ui`). This is the Windows counterpart to
+the AppImage's same-PID re-exec, which keeps the Steam session alive on SteamOS.
+
 ### macOS
 
 The user's data lives in `~/Library/Application Support/EmuShelf` (see `DECISIONS.md`), so the whole
 `.app` bundle can be swapped. A helper waits for exit, replaces the bundle, and reopens it. Because
 EmuShelf isn't notarized, the freshly downloaded bundle has its `com.apple.quarantine` flag cleared
 first (EmuShelf downloaded it, so it may) — otherwise Gatekeeper would refuse the replacement.
+
+As on Windows, when Steam launched EmuShelf the reopen goes through `steam://rungameid/<id>` (the id
+from the `SteamGameId` environment variable) instead of `open`-ing the bundle directly, so Steam Input
+reattaches to the controller.
 
 ## Known limitations
 
