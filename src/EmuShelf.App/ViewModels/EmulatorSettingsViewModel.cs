@@ -111,8 +111,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// <summary>Whether in-app update checking is wired up (false in tests/design-time).</summary>
     public bool HasUpdateChecker => _updates is not null;
 
-    /// <summary>The shared update coordinator, so the About card can bind the same live download
-    /// progress the main-window banner shows instead of only a static status line.</summary>
+    /// <summary>The shared update coordinator, exposed so the About card and the Gamepad settings
+    /// projection can bind the same live download progress the main-window banner shows, instead of
+    /// only a static status line; null in tests/design-time.</summary>
     public AppUpdateCoordinator? Updates => _updates;
 
     /// <summary>Result of the most recent manual check, shown under the button.</summary>
