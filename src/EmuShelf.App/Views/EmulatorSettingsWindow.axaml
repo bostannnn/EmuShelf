@@ -761,7 +761,7 @@
                                                     <TextBlock Text="SAVE STATES" FontSize="10" FontWeight="SemiBold"
                                                                LetterSpacing="0.7"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                    <CheckBox Content="Automatically sync save states"
+                                                    <CheckBox Content="{Binding SaveStatesLabel}"
                                                               AutomationProperties.AutomationId="{Binding SaveStatesFieldId}"
                                                               IsVisible="{Binding SupportsSaveStates}"
                                                               IsChecked="{Binding SyncSaveStates, Mode=TwoWay}"

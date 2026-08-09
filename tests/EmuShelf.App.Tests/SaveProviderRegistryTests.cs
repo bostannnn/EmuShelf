@@ -47,6 +47,25 @@ public class SaveProviderRegistryTests
         Assert.Equal("playstation", ((RetroArchSaveLocationProvider)retroArch!).SystemId);
     }
 
+    [Fact]
+    public void Dolphin_SyncsSaveStatesFromTheGameCubeRowWhoseLabelNamesWiiToo()
+    {
+        // Dolphin keeps GameCube and Wii save states in one shared StateSaves folder, wired to sync
+        // only from the GameCube provider. The GameCube row therefore owns the toggle for both, and
+        // its label says so; the Wii row deliberately has no save-states toggle of its own.
+        var gameCube = SaveProviderRegistry.Find("gamecube");
+        var wii = SaveProviderRegistry.Find("wii");
+
+        Assert.NotNull(gameCube);
+        Assert.NotNull(wii);
+        Assert.True(gameCube!.SupportsSaveStates);
+        Assert.Equal("Automatically sync save states (GameCube + Wii)", gameCube.SaveStatesLabel);
+        Assert.Contains("Wii", gameCube.SaveStatesLabel);
+
+        Assert.False(wii!.SupportsSaveStates);
+        Assert.Null(wii.SaveStatesLabel);
+    }
+
     private sealed class StubPaths : IAppPaths
     {
         public string BaseDirectory => "/app";

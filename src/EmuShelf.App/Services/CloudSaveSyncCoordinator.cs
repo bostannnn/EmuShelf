@@ -533,7 +533,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 location.LastNotice,
                 descriptor.SupportsSaveStates,
                 location.SyncSaveStates,
-                location.StateDirectoryOverride);
+                location.StateDirectoryOverride,
+                descriptor.SaveStatesLabel);
         }).ToArray();
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
@@ -1066,7 +1067,8 @@ public sealed record CloudSaveSyncPlatformContext(
     string? LastNotice = null,
     bool SupportsSaveStates = false,
     bool SyncSaveStates = false,
-    string? StateOverride = null);
+    string? StateOverride = null,
+    string? SaveStatesLabel = null);
 
 /// <summary>
 /// The cloud save-sync operations the Settings view model drives, wrapped as delegates so the view
