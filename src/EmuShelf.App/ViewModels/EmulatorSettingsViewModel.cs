@@ -111,6 +111,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// <summary>Whether in-app update checking is wired up (false in tests/design-time).</summary>
     public bool HasUpdateChecker => _updates is not null;
 
+    /// <summary>The shared download coordinator, exposed so the Gamepad settings projection can read
+    /// its live download state (percentage and status line); null in tests/design-time.</summary>
+    public AppUpdateCoordinator? Updates => _updates;
+
     /// <summary>Result of the most recent manual check, shown under the button.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasUpdateStatus))]
