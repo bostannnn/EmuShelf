@@ -11,8 +11,10 @@ namespace EmuShelf.Integrations.Emulators.Dolphin;
 /// Limit" (hold-to-uncap). Dolphin only writes <c>Config/Hotkeys.ini</c> once a hotkey is customised in
 /// its UI, so even a long-used install may have none; rather than refuse, this creates the file with a
 /// <c>[Hotkeys]</c> section that Dolphin reads on its next launch — but only when the resolved folder is
-/// really Dolphin's user directory (it has a <c>Config/Dolphin.ini</c>). If neither file is there we
-/// resolved the wrong folder, so it reports that instead of writing a file Dolphin will never read.
+/// really Dolphin's config directory (it has a <c>Dolphin.ini</c>). If neither file is there we resolved
+/// the wrong folder, so it reports that instead of writing a file Dolphin will never read. The config
+/// directory is passed in already resolved (see <see cref="EmulatorUserDirectories.FindDolphinConfigDirectory"/>),
+/// because on Linux it is a separate XDG tree, not a <c>Config/</c> subfolder of the user directory.
 /// </summary>
 public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
 {
@@ -38,19 +40,18 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
         [HotkeyAction.LoadState] = "Load State/Load from Selected Slot",
     };
 
-    private readonly string _userDirectory;
+    private readonly string _configDirectory;
     private readonly string _hotkeysPath;
     private readonly string _mainConfigPath;
 
-    public DolphinHotkeyConfigurator(string userDirectory, string backupRoot, Action<string, string>? writeFile = null)
+    public DolphinHotkeyConfigurator(string configDirectory, string backupRoot, Action<string, string>? writeFile = null)
         : base(DolphinDefinition.Instance.Id, "Dolphin", backupRoot, writeFile)
     {
-        _userDirectory = Path.GetFullPath(userDirectory);
-        var configDirectory = Path.Combine(_userDirectory, "Config");
-        _hotkeysPath = Path.Combine(configDirectory, "Hotkeys.ini");
-        // Dolphin always writes Config/Dolphin.ini on first run, so it marks a real Dolphin user
-        // directory — used to tell "customised no hotkeys yet" apart from "we resolved the wrong folder".
-        _mainConfigPath = Path.Combine(configDirectory, "Dolphin.ini");
+        _configDirectory = Path.GetFullPath(configDirectory);
+        _hotkeysPath = Path.Combine(_configDirectory, "Hotkeys.ini");
+        // Dolphin always writes Dolphin.ini on first run, so it marks a real Dolphin config directory —
+        // used to tell "customised no hotkeys yet" apart from "we resolved the wrong folder".
+        _mainConfigPath = Path.Combine(_configDirectory, "Dolphin.ini");
     }
 
     public override IReadOnlyList<HotkeyActionSupport> DescribeSupport(HotkeyProfile profile) =>
@@ -68,10 +69,12 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
         var text = ReadTextOrNull(_hotkeysPath);
         if (text is null && !File.Exists(_mainConfigPath))
         {
-            // No Hotkeys.ini *and* no Dolphin.ini in this folder: it isn't Dolphin's user directory (we
+            // No Hotkeys.ini *and* no Dolphin.ini in this folder: it isn't Dolphin's config directory (we
             // resolved the wrong place), so report that instead of writing a file Dolphin will never read.
+            // Point at what the user can actually do — there is no config-folder picker in Settings, but
+            // launching Dolphin writes Dolphin.ini here, and the emulator path drives resolution.
             return HotkeyPlan.NotFound(
-                $"{_userDirectory} isn't Dolphin's user directory (no Config/Dolphin.ini there). Set the correct Dolphin folder in Settings.");
+                $"{_configDirectory} has no Dolphin.ini, so it isn't Dolphin's config folder. Launch Dolphin once so it writes its configuration, or check the Dolphin path in Settings.");
         }
 
         // A missing Hotkeys.ini in a real Dolphin user dir is not an error: Dolphin writes it lazily

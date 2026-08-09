@@ -211,7 +211,7 @@ public sealed class HotkeyConfiguratorTests : IDisposable
     [Fact]
     public void Dolphin_Apply_WritesKeyboardTokens_KeepsDeviceAndUnrelated_ReportsRewindUnsupported()
     {
-        Write(Path.Combine("Config", "Hotkeys.ini"),
+        Write("Hotkeys.ini",
             "[Hotkeys]",
             "Device = SDL/0/DualSense Wireless Controller",
             "General/Exit = @(Back+Start)",
@@ -220,7 +220,7 @@ public sealed class HotkeyConfiguratorTests : IDisposable
         var result = new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
 
         Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
-        var document = Read(Path.Combine("Config", "Hotkeys.ini"));
+        var document = Read("Hotkeys.ini");
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F8`", document.GetValue("Hotkeys", "General/Exit"));
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:L`", document.GetValue("Hotkeys", "Emulation Speed/Disable Emulation Speed Limit"));
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F2`", document.GetValue("Hotkeys", "Save State/Save to Selected Slot"));
@@ -237,18 +237,18 @@ public sealed class HotkeyConfiguratorTests : IDisposable
     public void Dolphin_Apply_Binds_WithoutADeviceLine()
     {
         // Fully-qualified keyboard tokens resolve regardless of the [Hotkeys] Device line.
-        Write(Path.Combine("Config", "Hotkeys.ini"), "[Hotkeys]");
+        Write("Hotkeys.ini", "[Hotkeys]");
 
         var result = new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
 
         Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
-        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F8`", Read(Path.Combine("Config", "Hotkeys.ini")).GetValue("Hotkeys", "General/Exit"));
+        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F8`", Read("Hotkeys.ini").GetValue("Hotkeys", "General/Exit"));
     }
 
     [Fact]
     public void Dolphin_Apply_ClearsBarewordSlotDefaultsThatCollideWithOurKeys()
     {
-        Write(Path.Combine("Config", "Hotkeys.ini"),
+        Write("Hotkeys.ini",
             "[Hotkeys]",
             "Device = SDL/0/DualSense Wireless Controller",
             "Load State/Load State Slot 1 = F1",
@@ -259,7 +259,7 @@ public sealed class HotkeyConfiguratorTests : IDisposable
 
         new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
 
-        var document = Read(Path.Combine("Config", "Hotkeys.ini"));
+        var document = Read("Hotkeys.ini");
         // Our fully-qualified keys are written.
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F2`", document.GetValue("Hotkeys", "Save State/Save to Selected Slot"));
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F4`", document.GetValue("Hotkeys", "Load State/Load from Selected Slot"));
@@ -273,16 +273,16 @@ public sealed class HotkeyConfiguratorTests : IDisposable
     }
 
     [Fact]
-    public void Dolphin_Apply_CreatesHotkeysIni_WhenMissingButUserDirIsReal()
+    public void Dolphin_Apply_CreatesHotkeysIni_WhenMissingButConfigDirIsReal()
     {
-        // Dolphin writes Config/Hotkeys.ini only after a hotkey is customised, so even a used install can
-        // lack it. A Config/Dolphin.ini confirms this is Dolphin's real user dir, so EmuShelf creates it.
-        Write(Path.Combine("Config", "Dolphin.ini"), "[General]", "ISOPath0 = /roms");
+        // Dolphin writes Hotkeys.ini only after a hotkey is customised, so even a used install can lack
+        // it. A Dolphin.ini in the config directory confirms it is the real one, so EmuShelf creates it.
+        Write("Dolphin.ini", "[General]", "ISOPath0 = /roms");
 
         var result = new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
 
         Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
-        var document = Read(Path.Combine("Config", "Hotkeys.ini"));
+        var document = Read("Hotkeys.ini");
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F8`", document.GetValue("Hotkeys", "General/Exit"));
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F2`", document.GetValue("Hotkeys", "Save State/Save to Selected Slot"));
         Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F4`", document.GetValue("Hotkeys", "Load State/Load from Selected Slot"));
@@ -296,7 +296,22 @@ public sealed class HotkeyConfiguratorTests : IDisposable
         var result = new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
 
         Assert.Equal(HotkeyApplyStatus.ConfigurationNotFound, result.Status);
-        Assert.False(File.Exists(Path.Combine(_root, "Config", "Hotkeys.ini")));
+        Assert.False(File.Exists(Path.Combine(_root, "Hotkeys.ini")));
+    }
+
+    [Fact]
+    public void FindDolphinConfigDirectory_Portable_IsConfigUnderTheUserFolder_NotTheDataConfig()
+    {
+        // Portable keeps config under the adjacent User folder (User/Config) on every platform — the one
+        // Linux-independent case. The native/Flatpak XDG split (config/dolphin-emu vs data/dolphin-emu)
+        // depends on the host's real home, so it isn't asserted here; see DolphinHotkeyConfigurator docs.
+        var install = Path.Combine(_root, "Emulators", "dolphin-emu");
+        Directory.CreateDirectory(Path.Combine(install, "User", "Config"));
+        File.WriteAllText(Path.Combine(install, "portable.txt"), string.Empty);
+
+        Assert.Equal(
+            Path.Combine(install, "User", "Config"),
+            EmulatorUserDirectories.FindDolphinConfigDirectory(install, isFlatpak: false));
     }
 
     // ---- PPSSPP --------------------------------------------------------------------------------

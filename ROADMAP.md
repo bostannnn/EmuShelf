@@ -1546,6 +1546,23 @@ First Steam Deck run surfaced four issues; details in `DECISIONS.md` (2026-08-09
       once, **Export Config** in Steam (Steam-generated template), and reuse it across every emulator
       (`docs/steam-input-preset.md`).
 
+### Phase 6 — Steam Deck real-hardware fixes, round 2 (2026-08-10)
+
+A second Steam Deck run showed Dolphin still reporting "isn't Dolphin's user directory (no
+Config/Dolphin.ini there)"; details in `DECISIONS.md` (2026-08-10).
+
+- [x] **Dolphin config directory on Linux is a separate XDG tree.** Phase 5's create-`Hotkeys.ini` fix
+      was rooted at `<dataDir>/Config`, but Dolphin's `SetUserDirectory` puts config under
+      `$XDG_CONFIG_HOME/dolphin-emu` (Flatpak `.var/app/<id>/config/dolphin-emu`), holding the `.ini`
+      files directly, while saves/textures stay under the data user dir. New
+      `EmulatorUserDirectories.FindDolphinConfigDirectory` resolves it per platform (mirroring
+      `FindDolphin`'s precedence); `HotkeyProviderRegistry` feeds it to `DolphinHotkeyConfigurator`,
+      which now takes the config directory outright. Only hotkeys surfaced this — saves/textures read
+      the same wrong path but fall back to correct data-dir defaults when `Dolphin.ini` is absent.
+- [ ] **Follow-up:** `DolphinTextureRootResolver` and `DolphinSaveLocationProvider` still read
+      `<dataDir>/Config/Dolphin.ini`, so a *relocated* Load/save folder is silently ignored on
+      Linux/Flatpak. Thread `FindDolphinConfigDirectory` through both.
+
 ### Deferred (recorded so it is not re-litigated)
 
 - The original controller-chord implementation was abandoned as fundamentally controller/driver-specific

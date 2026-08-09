@@ -5814,3 +5814,32 @@ shortcut or a dev run) relaunches the executable/bundle directly, unchanged.
 The target selection is one shared helper, `UpdateRelaunch.ResolveTarget`, so the two appliers can't
 diverge; it gates on `ulong.TryParse(...) && id != 0` so an empty or malformed value falls back to the
 app binary, and it is unit-tested. Linux needs nothing — its same-PID re-exec never leaves Steam.
+
+## 2026-08-10 — Dolphin's config directory is a separate XDG tree on Linux, not `<userDir>/Config`
+
+Real-hardware retest on a Steam Deck: the M40 hotkey applier reported Dolphin's Flatpak folder
+`~/.var/app/org.DolphinEmu.dolphin-emu/data/dolphin-emu` "isn't Dolphin's user directory (no
+Config/Dolphin.ini there)". It was looking in the wrong tree. Dolphin's `SetUserDirectory` (UICommon)
+splits its user directory on non-Apple POSIX: the **data** user dir is `$XDG_DATA_HOME/dolphin-emu`
+(saves, `Load/`), but it explicitly overrides `D_CONFIG_IDX` to `$XDG_CONFIG_HOME/dolphin-emu`, which
+holds `Dolphin.ini`/`Hotkeys.ini`/`GFX.ini` **directly** — there is no `Config/` level. The Flatpak
+sandbox reflects this (`org.DolphinEmu.dolphin-emu`'s manifest sets no XDG override and no `--persist`),
+so config is `.var/app/<id>/config/dolphin-emu` and data is `.var/app/<id>/data/dolphin-emu`. On
+Windows, macOS and portable installs config *is* `<userDir>/Config`, which is why the single assumption
+"append `Config` to the user dir" had passed Windows verification.
+
+`EmulatorUserDirectories.FindDolphin` (the data user dir) stays as-is; a new sibling
+`FindDolphinConfigDirectory` resolves the config dir per platform with a candidate list that mirrors
+`FindDolphin`'s precedence — Flatpak `config/dolphin-emu`; else portable `User/Config`, Windows
+`Documents\Dolphin Emulator\Config`, native Linux `$XDG_CONFIG_HOME/dolphin-emu` (absolute var or
+`~/.config`), macOS `…/Dolphin/Config`. `HotkeyProviderRegistry` passes that to
+`DolphinHotkeyConfigurator`, which now treats its argument as the config directory outright (the
+`Dolphin.ini` sanity gate and lazy `Hotkeys.ini` creation from the previous entry are unchanged, just
+rooted correctly).
+
+Why only hotkeys surfaced this: saves and textures read `Config/Dolphin.ini` **only to follow a
+relocated path**, and fall back to defaults that live under the data dir when it is absent — which is
+correct on Flatpak, so they worked by luck of the fallback. The hotkey applier has no default location
+to fall back to (it must find and write `Hotkeys.ini`), so it is the canary. `DolphinTextureRootResolver`
+and `DolphinSaveLocationProvider` still read the wrong `<dataDir>/Config/Dolphin.ini` on Linux and would
+silently ignore a user's *moved* Load/save folder there; that latent bug is tracked separately.
