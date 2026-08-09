@@ -32,6 +32,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     public async Task<GameCatalogMatch?> FindMatchAsync(
         MetadataSystemProfile profile,
         IReadOnlyList<GameIdentifier> identifiers,
+        string? regionHint = null,
         CancellationToken cancellationToken = default)
     {
         var relevant = identifiers
@@ -62,7 +63,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         foreach (var identifier in relevant)
         {
             var key = NormalizeKey(identifier.Kind, identifier.Value);
-            if (index.TryGetValue(identifier.Kind, key, out var entry))
+            if (index.TryGetValue(identifier.Kind, key, regionHint, out var entry))
             {
                 return new GameCatalogMatch(
                     "libretro-database",
@@ -179,7 +180,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
 
         var entriesByKind = distinctKinds.ToDictionary(
             kind => kind,
-            _ => new Dictionary<string, CatalogEntry>(StringComparer.OrdinalIgnoreCase));
+            _ => new Dictionary<string, List<CatalogEntry>>(StringComparer.OrdinalIgnoreCase));
         var depth = 0;
         string? name = null;
         string? region = null;
@@ -217,7 +218,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                             continue;
 
                         var normalizedKey = NormalizeKey(kind, key);
-                        AddPreferred(entriesByKind[kind], normalizedKey, new CatalogEntry(name, region));
+                        Accumulate(entriesByKind[kind], normalizedKey, new CatalogEntry(name, region));
                     }
                 }
                 continue;
@@ -260,10 +261,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
                 region = parsedRegion;
         }
 
-        var readonlyIndexes = entriesByKind.ToDictionary(
-            pair => pair.Key,
-            pair => (IReadOnlyDictionary<string, CatalogEntry>)pair.Value);
-        return new CatalogIndex(readonlyIndexes[distinctKinds[0]], readonlyIndexes);
+        return BuildIndex(distinctKinds, entriesByKind);
     }
 
     // The FinalBurn Neo arcade DAT is Logiqx XML, not clrmamepro text. Its game `name` attribute is
@@ -297,7 +295,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
 
     private static CatalogIndex ParseLogiqxXml(XmlReader reader, GameIdentifierKind keyKind)
     {
-        var entries = new Dictionary<string, CatalogEntry>(StringComparer.OrdinalIgnoreCase);
+        var entries = new Dictionary<string, List<CatalogEntry>>(StringComparer.OrdinalIgnoreCase);
 
         while (reader.Read())
         {
@@ -323,15 +321,14 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
             }
 
             var title = string.IsNullOrWhiteSpace(description) ? name : description.Trim();
-            AddPreferred(entries, NormalizeKey(keyKind, name), new CatalogEntry(title, null));
+            Accumulate(entries, NormalizeKey(keyKind, name), new CatalogEntry(title, null));
         }
 
-        IReadOnlyDictionary<string, CatalogEntry> readonlyEntries = entries;
-        return new CatalogIndex(
-            readonlyEntries,
-            new Dictionary<GameIdentifierKind, IReadOnlyDictionary<string, CatalogEntry>>
+        return BuildIndex(
+            [keyKind],
+            new Dictionary<GameIdentifierKind, Dictionary<string, List<CatalogEntry>>>
             {
-                [keyKind] = readonlyEntries,
+                [keyKind] = entries,
             });
     }
 
@@ -448,16 +445,115 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         return true;
     }
 
-    private static void AddPreferred(
-        Dictionary<string, CatalogEntry> entries,
+    // Every game that carries a key is kept, in first-seen order. Most keys are unique, but a
+    // region-free cartridge's serial (a late 3DS Pokémon title, say) is shared by every regional
+    // dump, so the region is only decidable at query time against the game's own filename.
+    private static void Accumulate(
+        Dictionary<string, List<CatalogEntry>> entries,
         string key,
         CatalogEntry candidate)
     {
-        if (!entries.TryGetValue(key, out var existing) ||
-            PreferenceScore(candidate.Title) < PreferenceScore(existing.Title))
+        if (!entries.TryGetValue(key, out var list))
         {
-            entries[key] = candidate;
+            list = [];
+            entries[key] = list;
         }
+        list.Add(candidate);
+    }
+
+    private static CatalogIndex BuildIndex(
+        IReadOnlyList<GameIdentifierKind> orderedKinds,
+        IReadOnlyDictionary<GameIdentifierKind, Dictionary<string, List<CatalogEntry>>> entriesByKind)
+    {
+        var byKind = entriesByKind.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyDictionary<string, IReadOnlyList<CatalogEntry>>)pair.Value.ToDictionary(
+                entry => entry.Key,
+                entry => (IReadOnlyList<CatalogEntry>)entry.Value,
+                StringComparer.OrdinalIgnoreCase));
+
+        var primary = byKind[orderedKinds[0]];
+        var entries = primary.ToDictionary(
+            entry => entry.Key,
+            entry => PreferredEntry(entry.Value),
+            StringComparer.OrdinalIgnoreCase);
+        return new CatalogIndex(entries, byKind);
+    }
+
+    // The region-agnostic pick, kept identical to the historical behaviour: the lowest preference
+    // score, ties broken by first-seen order. This is what a caller with no region hint still gets.
+    private static CatalogEntry PreferredEntry(IReadOnlyList<CatalogEntry> candidates)
+    {
+        var best = candidates[0];
+        var bestScore = PreferenceScore(best.Title);
+        for (var i = 1; i < candidates.Count; i++)
+        {
+            var score = PreferenceScore(candidates[i].Title);
+            if (score < bestScore)
+            {
+                best = candidates[i];
+                bestScore = score;
+            }
+        }
+        return best;
+    }
+
+    // Among entries sharing a key, prefer one whose region the filename advertises; otherwise fall
+    // back to the region-agnostic preferred entry. The filename's parenthetical tags include both
+    // the region ("(Europe)") and language codes ("(En,Ja,Fr,…)"); DAT regions are spelled-out
+    // words that never collide with the two-letter language codes, so a token intersection is safe.
+    private static CatalogEntry SelectEntry(IReadOnlyList<CatalogEntry> candidates, string? regionHint)
+    {
+        if (candidates.Count == 1)
+            return candidates[0];
+
+        var hintRegions = RegionTokens(FilenameTags(regionHint));
+        if (hintRegions.Count > 0)
+        {
+            CatalogEntry? best = null;
+            var bestScore = int.MaxValue;
+            foreach (var candidate in candidates)
+            {
+                if (!RegionTokens(candidate.Region).Overlaps(hintRegions))
+                    continue;
+                var score = PreferenceScore(candidate.Title);
+                if (best is null || score < bestScore)
+                {
+                    best = candidate;
+                    bestScore = score;
+                }
+            }
+            if (best is not null)
+                return best;
+        }
+        return PreferredEntry(candidates);
+    }
+
+    private static IEnumerable<string> FilenameTags(string? filename)
+    {
+        if (string.IsNullOrWhiteSpace(filename))
+            return [];
+        return ParentheticalTagRegex().Matches(filename).Select(match => match.Groups["tag"].Value);
+    }
+
+    private static readonly char[] RegionSeparators = [',', '/', '&', '+'];
+
+    private static HashSet<string> RegionTokens(string? region) =>
+        RegionTokens(region is null ? [] : [region]);
+
+    private static HashSet<string> RegionTokens(IEnumerable<string> tags)
+    {
+        var tokens = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var tag in tags)
+        {
+            foreach (var piece in tag.Split(
+                         RegionSeparators,
+                         StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                tokens.Add(piece.ToUpperInvariant());
+            }
+        }
+        return tokens;
     }
 
     private static int PreferenceScore(string title)
@@ -495,13 +591,25 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
 
     internal sealed record CatalogIndex(
         IReadOnlyDictionary<string, CatalogEntry> Entries,
-        IReadOnlyDictionary<GameIdentifierKind, IReadOnlyDictionary<string, CatalogEntry>> EntriesByKind)
+        IReadOnlyDictionary<GameIdentifierKind, IReadOnlyDictionary<string, IReadOnlyList<CatalogEntry>>> EntriesByKind)
     {
-        public bool TryGetValue(GameIdentifierKind kind, string key, out CatalogEntry entry)
+        // Region-agnostic lookup (the historical contract): the preferred entry for the key.
+        public bool TryGetValue(GameIdentifierKind kind, string key, out CatalogEntry entry) =>
+            TryGetValue(kind, key, regionHint: null, out entry);
+
+        // Region-aware lookup: when a key is shared by several regional releases, the hint (the
+        // game's filename) selects the matching region; otherwise the preferred entry is returned.
+        public bool TryGetValue(
+            GameIdentifierKind kind,
+            string key,
+            string? regionHint,
+            out CatalogEntry entry)
         {
             if (EntriesByKind.TryGetValue(kind, out var entries) &&
-                entries.TryGetValue(key, out entry!))
+                entries.TryGetValue(key, out var candidates) &&
+                candidates.Count > 0)
             {
+                entry = SelectEntry(candidates, regionHint);
                 return true;
             }
 
@@ -514,4 +622,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         @"^([A-Z]{4})[\s_-]*([0-9]{3})[.\s_-]*([0-9]{2})(?:$|[-/])",
         RegexOptions.CultureInvariant)]
     private static partial Regex PlayStationSerialRegex();
+
+    [GeneratedRegex(@"[\(\[]\s*(?<tag>[^\)\]]+?)\s*[\)\]]", RegexOptions.CultureInvariant)]
+    private static partial Regex ParentheticalTagRegex();
 }

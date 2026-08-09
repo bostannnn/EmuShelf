@@ -53,6 +53,45 @@ public class GameMetadataServiceTests
     }
 
     [Fact]
+    public async Task Enrich_ForwardsTheFilenameToTheCatalogAsRegionHint()
+    {
+        // A region-free serial resolves to the wrong region unless the catalog is told which
+        // regional dump this is; the filename carries that tag, so the coordinator must forward it.
+        var game = new Game
+        {
+            Id = 12,
+            SystemId = "test-system",
+            Path = "/roms/Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko).3ds",
+            Title = "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)",
+            TitleOrigin = GameTitleOrigin.Filename,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game);
+        var catalog = new CapturingCatalog();
+        var service = new GameMetadataService(
+            store,
+            [
+                new MetadataSystemProfile(
+                    "test-system",
+                    GameIdentifierKind.Serial,
+                    new Uri("https://example.test/catalog.dat"),
+                    new FixedExtractor(),
+                    []),
+            ],
+            catalog,
+            new FixedDownloader(null),
+            new RecordingCoverService());
+
+        await service.EnrichAsync(
+            [game.Id],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)",
+            catalog.LastRegionHint);
+    }
+
+    [Fact]
     public async Task Enrich_CatalogUnavailable_StillUsesIdentifierBasedCoverProvider()
     {
         var game = new Game
@@ -328,6 +367,7 @@ public class GameMetadataServiceTests
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
+            string? regionHint = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<GameCatalogMatch?>(new(
                 "test-catalog",
@@ -341,6 +381,7 @@ public class GameMetadataServiceTests
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
+            string? regionHint = null,
             CancellationToken cancellationToken = default) =>
             Task.FromException<GameCatalogMatch?>(new HttpRequestException("Catalog unavailable"));
     }
@@ -350,8 +391,24 @@ public class GameMetadataServiceTests
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
+            string? regionHint = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<GameCatalogMatch?>(null);
+    }
+
+    private sealed class CapturingCatalog : IGameMetadataCatalog
+    {
+        public string? LastRegionHint { get; private set; }
+
+        public Task<GameCatalogMatch?> FindMatchAsync(
+            MetadataSystemProfile profile,
+            IReadOnlyList<GameIdentifier> identifiers,
+            string? regionHint = null,
+            CancellationToken cancellationToken = default)
+        {
+            LastRegionHint = regionHint;
+            return Task.FromResult<GameCatalogMatch?>(null);
+        }
     }
 
     private sealed class FixedArtworkProvider(ArtworkCandidate candidate) : IGameArtworkProvider

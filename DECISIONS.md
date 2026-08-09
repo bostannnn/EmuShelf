@@ -5523,3 +5523,27 @@ selection were fetching two different addresses.
   Arbitrary image hosts and CDNs refuse an unknown agent, so a browser UA materially raises how often
   the full-resolution original is retrieved rather than the thumbnail fallback. Scoped to the
   picker/ScreenScraper-media client only; the automatic metadata client keeps its honest EmuShelf agent.
+
+## 2026-08-09 — Region-free catalog serials: keep every regional entry, disambiguate by filename
+
+A region-free 3DS cartridge (late Pokémon titles such as Ultra Sun/Moon) carries one NCCH product
+code for *every* regional dump, so a single serial keys several No-Intro DAT entries whose only
+difference is the region and the localized name. `LibretroDatCatalog` collapsed a shared key to the
+lowest `PreferenceScore` (title length, plus Beta/Proto/Rev penalties). The Korean No-Intro name has
+no language suffix, so it was the shortest and always won — a European `CTR-P-A2BA` dump was labelled
+"Pocket Monsters Ultra Moon (Korea)".
+
+- **The catalog index keeps all entries per key, not just the preferred one.** `CatalogIndex` stores
+  `IReadOnlyList<CatalogEntry>` per (kind, key); the region is already parsed into `CatalogEntry.Region`
+  and was simply being discarded by the old collapse. The region-agnostic pick is unchanged — the same
+  `PreferenceScore`, ties broken by first-seen order — so `Entries`, the 3-arg `TryGetValue`, and every
+  system whose key is unique behave exactly as before.
+- **`IGameMetadataCatalog.FindMatchAsync` gained an optional `regionHint`.** The coordinator passes the
+  game's filename (which carries the No-Intro `(Europe)` tag); when a key is shared, the entry whose
+  region the filename advertises wins, else the preferred entry is returned. The serial stays the only
+  3DS catalogue key — this fixes a *wrong* match without dropping the key (contrast the DS decision to
+  drop the ambiguous game code entirely).
+- **Region matching is a token intersection, needing no maintained region vocabulary.** Both the DAT
+  region and the filename's parenthetical tags are split on `, / & +` and upper-cased; a spelled-out
+  DAT region ("Europe", "Korea") never collides with a two-letter language code ("En", "Ko"), so a
+  `(En,Ja,Fr,…,Ko)` language list is not mistaken for a Korean region.
