@@ -1229,8 +1229,13 @@
                     </Button>
                 </StackPanel>
 
-                <ProgressBar Grid.ColumnSpan="5" Height="2" Margin="0,0,0,-10"
+                <!-- Ambient busy shimmer on the toolbar seam. Indeterminate, so the track is
+                     dropped (Background transparent) — otherwise a caught frame reads as a stuck,
+                     half-full bar — leaving only the themed segment sweeping. -->
+                <ProgressBar Grid.ColumnSpan="5" Height="2" MinHeight="2" Margin="0,0,0,-10"
                              IsIndeterminate="True" IsVisible="{Binding IsBusy}"
+                             Background="Transparent"
+                             Foreground="{DynamicResource EmuProgressBrush}"
                              VerticalAlignment="Bottom" />
             </Grid>
         </Border>
