@@ -2379,10 +2379,10 @@
              opaque single-game spotlight backdrop and the focused dock, which are declared after it and
              would otherwise paint over it, hiding launch errors in Spotlight view. It stays below the
              overlay scrim (ZIndex 2) so an open overlay still covers it. -->
-        <Border Grid.Row="1" ZIndex="1" Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
+        <Border Grid.Row="1" ZIndex="1" Classes="status-toast" Classes.showing="{Binding ShowGamepadStatusToast}"
                 Classes.progress="{Binding IsStatusProgress}"
                 Classes.error="{Binding IsStatusError}"
-                IsHitTestVisible="{Binding HasStatusMessage}"
+                IsHitTestVisible="{Binding ShowGamepadStatusToast}"
                 HorizontalAlignment="Right" VerticalAlignment="Bottom" MaxWidth="560"
                 Margin="36" Padding="16,12" CornerRadius="10"
                 Background="{DynamicResource EmuPopoverBrush}"
