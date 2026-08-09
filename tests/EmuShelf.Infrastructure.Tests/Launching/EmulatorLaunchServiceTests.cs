@@ -68,7 +68,7 @@ public class EmulatorLaunchServiceTests : IDisposable
 
         var result = await service.LaunchAsync(
             game,
-            _ =>
+            beforeStart: _ =>
             {
                 callbackInvoked = true;
                 return Task.CompletedTask;
@@ -90,7 +90,7 @@ public class EmulatorLaunchServiceTests : IDisposable
 
         var result = await service.LaunchAsync(
             game,
-            _ =>
+            beforeStart: _ =>
             {
                 Assert.False(_frontend.WasMinimized);
                 Assert.False(_runner.WasRun);
@@ -101,6 +101,50 @@ public class EmulatorLaunchServiceTests : IDisposable
         Assert.True(result.Succeeded);
         Assert.True(callbackInvoked);
         Assert.True(_runner.WasRun);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_NamesTheGameByTheDisplayName_OnCompletion()
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("test-emulator.exe");
+        _configurations.Configuration = new(game.SystemId, executable, null);
+        var service = CreateService();
+
+        // The App passes the normalized scraped title so the completion status matches the library,
+        // rather than the game's own (filename-derived) Title.
+        var result = await service.LaunchAsync(game, displayName: "Prince of Persia: The Sands of Time");
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Prince of Persia: The Sands of Time finished", result.StatusText);
+        Assert.DoesNotContain("Test Game", result.StatusText);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_NamesTheGameByTheDisplayName_OnFailure()
+    {
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(
+            GameAt(Path.Combine(_directory, "missing.cue")),
+            displayName: "Prince of Persia: The Sands of Time");
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Cannot launch Prince of Persia: The Sands of Time", result.StatusText);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_FallsBackToTheGameTitle_WhenNoDisplayNameIsGiven()
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("test-emulator.exe");
+        _configurations.Configuration = new(game.SystemId, executable, null);
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal("Test Game finished", result.StatusText);
     }
 
     [Fact]
