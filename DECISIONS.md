@@ -5525,3 +5525,83 @@ template covers rewind/ff/save/load/close but **not slot ±**, so after this a c
 slot-change unless the template is extended (deferred). RetroArch-specific: the other emulators use
 explicit keyboard tokens and have no shared always-on gate, so none of them need this.
 
+## 2026-08-09 — Platforms are grouped by manufacturer, oldest-manufacturer-first
+
+The navigation list had no ordering logic — `KnownSystems.All` was in the order systems were added
+during development (PlayStation family, then a scattered mix), so Nintendo appeared in three separate
+clumps and handhelds interleaved arbitrarily. Surveying comparable frontends (ES-DE's `systemsSortMode`,
+LaunchBox's platform categories, OpenEmu's maker-prefixed alphabetical list, NeoStation) the common,
+predictable axis is **manufacturer**. Chosen over hardware-type (console/handheld/arcade) or a
+user-configurable sort mode because EmuShelf ships a fixed ~15-system set, so one sensible default beats
+a settings surface. A per-mode picker can be layered on later — the metadata added here already supports it.
+
+- **`GameSystem` gains a `Manufacturer` grouping key** (optional trailing param, default `""` = ungrouped,
+  so the two direct `new GameSystem(...)` test constructions and any future ones stay source-compatible).
+- **`KnownSystems.All` is authored in display order:** groups run Nintendo → Sega → Sony → Arcade
+  (each group ordered by its *oldest* system, so the heritage reads chronologically), and within a group
+  systems are oldest-first with handhelds interleaved by year. This authored order *is* the navigation
+  order; ids are unchanged so libraries are untouched. Leading with Nintendo rather than the PS-centric
+  original is deliberate (chronology is the "logic"); flipping to Sony-first is a one-block move.
+- **Desktop renders a manufacturer header above the first *visible* system of each group.** Rather than
+  change `NavigationSystems` (kept as `ObservableCollection<GameSystem>` — selection binds to it and a test
+  asserts it equals `KnownSystems.All`), the VM exposes `GroupLeaderSystemIds` (recomputed on every
+  nav refresh, a fresh set each time so bindings re-fire) and a multi-value converter shows the header only
+  for leaders when the sidebar is expanded. The row hover/selection fill moved from the whole `ListBoxItem`
+  onto an inner `Border.nav-row`, so the header sharing the item is never highlighted.
+- **Gamepad mode inherits the reorder for free** — the horizontal rail and LB/RB platform cycling both walk
+  the same list, so they group by manufacturer without new couch UI (the rail stays icon-only by design).
+## 2026-08-09 — Gamepad collections: Recently-* become a Sort row, not places; Collections overlay removed
+
+The controller "Collections" overlay was a dead end: buried two levels deep (Start → Collections), and
+picking Recently Played/Added dropped the couch into a `LibraryScope` that is not a stop on the LB/RB rail,
+so nothing highlighted and B could not get back. The fix reframes the concept — Recently Played/Added are
+an *order*, not a *place*.
+
+- **Recently Played / Recently Added are couch sort orders, not scopes.** The Gamepad Start menu gains a
+  "Sort by" row — Recently played / Recently added / Title A–Z / Rating — that drives the existing global
+  `SortColumn`/`SortDescending`. Couch sorting therefore reuses the desktop's sort path and persists across
+  restarts for free (both already round-trip through `LibraryViewSettings`). Cards set the sort state
+  *directly* — each carrying its own direction (recency/rating descending, title ascending) — rather than
+  via the list-header `SortByCommand`, whose toggle semantics would force ascending and float
+  never-played / unrated games to the top.
+- **The Sort row reuses the View-mode picker verbatim.** Same `gamepad-viewmode-row` / `gamepad-viewmode-card`
+  styles and brushes — four cards across one row, so Up/Down move between menu sections exactly like the
+  View-mode row and Left/Right step the sorts. Labels are shortened (Played / Added / A–Z / Rating; full
+  name in the tooltip) so all four fit the row; a 2×2 was tried first but made Up/Down ambiguous — it
+  skipped the whole grid. No new style, brush, or background was added.
+- **Direction is reversible on the couch too.** Picking a field applies its sensible default (recency /
+  rating descending, title A→Z); **A while the sort row is focused flips ascending/descending** — the
+  desktop list's ▲/▼ has no other couch analogue. The sort header shows a direction arrow plus a
+  plain-language label ("↓ Newest first", "↑ A to Z"), and an "A Reverse" affordance appears there while
+  the row owns focus.
+- **The `GamepadOverlayKind.Collections` overlay is deleted.** With Recently-* demoted to sort, the couch
+  has no Collections drill-in; the Start menu drops the "Collections" entry. The Desktop sidebar keeps its
+  Recently Added/Played entries unchanged — this is a gamepad-only change.
+- **Menu focus grew from one selector row to two.** The single `IsGamepadViewModeRowFocused` bool became a
+  `GamepadMenuFocusRegion` enum (ViewMode / Sort / Options); the old bool stays as a computed alias so
+  existing bindings and tests keep working. Up/Down walk the regions, Left/Right pick within the focused
+  row and apply live, A is inert on either selector row.
+- **Couch never lands in a scope or sort it can't show.** Entering gamepad mode (or restoring into it)
+  coerces a leftover `RecentlyAdded`/`RecentlyPlayed` scope to All Games, and any non-couch sort column
+  (e.g. Console/Genre set on the desktop) to Recently played — so the rail always highlights a stop, a sort
+  card is always selected, and the Sort header stays honest.
+- Future custom user collections get the rail as their home — extra stops after the systems — rather than
+  reviving the overlay.
+
+## 2026-08-09 — Cover picker: fall back to the proxied preview the user can see
+
+The web cover picker showed DuckDuckGo image results, but selecting one often failed with "That image
+is no longer available" even though the thumbnail was plainly visible in the grid. The preview and the
+selection were fetching two different addresses.
+
+- **Selection now tries `[OriginalCandidate, ThumbnailCandidate]`, not the original alone.** The grid
+  previews the search engine's proxied thumbnail (a stable CDN), while selection downloaded the
+  full-resolution original from the *source* host — which routinely 404s, hotlink-blocks with a 403 or
+  an HTML page, exceeds the 8 MB cap, or serves an unsupported format. `DownloadFirstAsync` already
+  returns the first candidate that yields an image, so the picker prefers the crisp original and falls
+  back to the exact proxied preview on screen. "No longer available" now means *neither* address
+  produced an image.
+- **The user-driven web-artwork HttpClient sends a mainstream browser User-Agent, not `EmuShelf/1.0`.**
+  Arbitrary image hosts and CDNs refuse an unknown agent, so a browser UA materially raises how often
+  the full-resolution original is retrieved rather than the thumbnail fallback. Scoped to the
+  picker/ScreenScraper-media client only; the automatic metadata client keeps its honest EmuShelf agent.

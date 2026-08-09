@@ -1255,8 +1255,9 @@ public class MainViewModelTests : IDisposable
         await vm.ReloadGamesAsync();
 
         // Recently Added is not a stop on the LB/RB cycle; from there the next press returns to
-        // All Games rather than dead-ending.
-        await vm.ShowGamepadRecentlyAddedCommand.ExecuteAsync(null);
+        // All Games rather than dead-ending. (Couch reaches this scope only via a cross-mode restore now,
+        // but the off-list snap behaviour is unchanged.)
+        await vm.ShowRecentlyAddedCommand.ExecuteAsync(null);
         Assert.Equal(LibraryScope.RecentlyAdded, vm.CurrentLibraryScope);
 
         await vm.NextPlatformCommand.ExecuteAsync(null);
@@ -1381,6 +1382,27 @@ public class MainViewModelTests : IDisposable
         // LB from All Games wraps to the last system.
         await vm.PreviousPlatformCommand.ExecuteAsync(null);
         Assert.Equal(vm.NavigationSystems[^1].Id, vm.SelectedSystem?.Id);
+    }
+
+    [AvaloniaFact]
+    public void GroupLeaderSystemIds_MarkTheFirstVisibleSystemOfEachManufacturer()
+    {
+        // Two Nintendo systems and one Sega system populated; every other platform stays empty and,
+        // under the default hide-empty behaviour, absent from the navigation list.
+        _library.AddGames([
+            new Game { SystemId = GameBoyAdvance.Id, Path = Path.Combine(_baseDirectory, "advance.gba"), Title = "GBA", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = GameCube.Id, Path = Path.Combine(_baseDirectory, "cube.rvz"), Title = "GC", DateAdded = DateTimeOffset.UtcNow },
+            new Game { SystemId = MegaDrive.Id, Path = Path.Combine(_baseDirectory, "genesis.md"), Title = "MD", DateAdded = DateTimeOffset.UtcNow },
+        ]);
+
+        var vm = CreateViewModel();
+
+        // Game Boy Advance precedes GameCube in the catalogue, so it leads Nintendo; Mega Drive leads
+        // Sega. GameCube is Nintendo but not the first shown, so it is not a group leader (no header).
+        Assert.Equal(
+            new[] { GameBoyAdvance.Id, MegaDrive.Id }.Order(),
+            vm.GroupLeaderSystemIds.Order());
+        Assert.DoesNotContain(GameCube.Id, vm.GroupLeaderSystemIds);
     }
 
     [AvaloniaFact]
@@ -1551,7 +1573,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Collections", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            ["Search", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
@@ -1737,7 +1759,9 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.IsListViewModeSelected);
         Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
 
-        // Up from the top option lands the ring on the view-mode row (no option keeps the ring there).
+        // Up from the top option lands on the sort row; a second Up reaches the view-mode row above it.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadSortRowFocused);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
         Assert.True(vm.IsGamepadViewModeRowFocused);
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.IsFocused);
@@ -1754,11 +1778,67 @@ public class MainViewModelTests : IDisposable
         Assert.False(vm.IsGamepadSpotlightView);
         Assert.True(vm.IsGridViewModeSelected);
 
-        // Down drops back into the option list at the top entry.
+        // Down walks View mode → Sort → option list (top entry).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.True(vm.IsGamepadSortRowFocused);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
         Assert.False(vm.IsGamepadViewModeRowFocused);
+        Assert.False(vm.IsGamepadSortRowFocused);
         Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
         Assert.True(vm.GamepadOverlayOptions[0].IsFocused);
+    }
+
+    [AvaloniaFact]
+    public void GamepadSystemMenu_SortRow_ChangesSortLiveWithLeftRight_AndIsInertOnConfirm()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.HasGames = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+
+        // Up from the top option lands on the sort row (the nearer of the two selector rows).
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadSortRowFocused);
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.IsFocused);
+
+        // Right steps to the next sort option and applies it live.
+        var initial = vm.SortColumn;
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.NotEqual(initial, vm.SortColumn);
+
+        // A on the sort row reverses the current sort's direction (unlike the inert view-mode row) and
+        // stays in the menu; a second press toggles it back.
+        var descBefore = vm.SortDescending;
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.NotEqual(descBefore, vm.SortDescending);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(descBefore, vm.SortDescending);
+
+        // Each option carries its own direction: recency and rating are descending, title is A–Z.
+        vm.SelectGamepadSortCommand.Execute(LibrarySortColumn.LastPlayed);
+        Assert.True(vm.IsGamepadSortRecentlyPlayedSelected);
+        Assert.True(vm.SortDescending);
+        vm.SelectGamepadSortCommand.Execute(LibrarySortColumn.Title);
+        Assert.True(vm.IsGamepadSortTitleSelected);
+        Assert.False(vm.SortDescending);
+    }
+
+    [AvaloniaFact]
+    public async Task EnteringGamepadMode_CoercesADesktopOnlySortToRecentlyPlayed()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Desktop);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.SortColumn = LibrarySortColumn.Console; // a column the couch Sort row does not offer
+        vm.SortDescending = false;
+
+        await mode.SetModeAsync(InterfaceMode.Gamepad);
+
+        Assert.True(vm.IsGamepadMode);
+        Assert.Equal(LibrarySortColumn.LastPlayed, vm.SortColumn);
+        Assert.True(vm.SortDescending);
+        Assert.True(vm.IsGamepadSortRecentlyPlayedSelected);
     }
 
     [AvaloniaFact]

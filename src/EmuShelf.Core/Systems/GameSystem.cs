@@ -10,9 +10,16 @@ namespace EmuShelf.Core.Systems;
 /// library grid frames each cover at this ratio so <c>Stretch="Uniform"</c> fills
 /// the frame without cropping the art or leaving grey letterbox bands.
 /// </param>
+/// <param name="Manufacturer">
+/// The hardware maker (e.g. "Nintendo", "Sony", "Sega", "Arcade"). The navigation list
+/// groups systems under this label and orders the groups by their oldest system. It is
+/// purely a grouping key — the empty default leaves a system ungrouped. The chronological
+/// order <em>within</em> a manufacturer is the authored order in <c>KnownSystems.All</c>.
+/// </param>
 public sealed record GameSystem(
     string Id,
     string Name,
     string ShortName,
     string AccentColor,
-    double CoverAspectRatio);
+    double CoverAspectRatio,
+    string Manufacturer = "");

@@ -402,6 +402,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             .ToArray();
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;
+        // The update-download coordinator is a separate ObservableObject, so its per-percent progress
+        // (StatusText/DownloadPercent) never echoes through _settings.PropertyChanged. Route it through
+        // the same rebuild path so the General update rows' hint text stays live during a download.
+        if (_settings.Updates is { } updates)
+            updates.PropertyChanged += OnSettingsPropertyChanged;
         _settings.CloseRequested += OnSettingsCloseRequested;
         HookCollection(_settings.CloudPlatforms);
         HookCollection(_settings.TexturePlatforms);
@@ -1025,6 +1030,14 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>The update rows' hint text. While a download runs, the shared coordinator's StatusText
+    /// carries the live percentage ("Downloading update… 42%"), so prefer it over the static line the
+    /// Desktop view model sets once at kickoff; checks and idle state fall back to that static text.</summary>
+    private string UpdateStatusHint =>
+        _settings.Updates is { IsBusy: true } updates && !string.IsNullOrWhiteSpace(updates.StatusText)
+            ? updates.StatusText
+            : _settings.UpdateStatusText;
+
     private IEnumerable<GamepadSettingsRowSpec> BuildGeneralRows()
     {
         yield return ToggleRow(
@@ -1107,8 +1120,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return ActionRow(
                 "general.check-updates",
                 "Check for updates",
-                _settings.HasUpdateStatus
-                    ? _settings.UpdateStatusText
+                !string.IsNullOrWhiteSpace(UpdateStatusHint)
+                    ? UpdateStatusHint
                     : "Look on GitHub for a newer EmuShelf.",
                 _settings.IsUpdateBusy ? "WORKING" : "A CHECK",
                 _settings.CheckForUpdatesCommand,
@@ -1754,6 +1767,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             return;
         _disposed = true;
         _settings.PropertyChanged -= OnSettingsPropertyChanged;
+        if (_settings.Updates is { } updates)
+            updates.PropertyChanged -= OnSettingsPropertyChanged;
         _settings.CloseRequested -= OnSettingsCloseRequested;
         UnhookCollection(_settings.CloudPlatforms);
         UnhookCollection(_settings.TexturePlatforms);

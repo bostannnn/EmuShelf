@@ -173,6 +173,15 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GameSystem? SelectedSystem { get; set; }
 
+    /// <summary>
+    /// Ids of the systems that lead their manufacturer group in <see cref="NavigationSystems"/> —
+    /// the first visible system of each manufacturer, in list order. The Desktop console list shows
+    /// a manufacturer header above exactly these rows. A fresh set instance is assigned whenever the
+    /// visible set changes so the header bindings re-evaluate.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlySet<string> GroupLeaderSystemIds { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
     [ObservableProperty]
     public partial LibraryScope CurrentLibraryScope { get; set; } = LibraryScope.System;
 
@@ -219,12 +228,15 @@ public partial class MainViewModel : ViewModelBase
     partial void OnSortColumnChanged(LibrarySortColumn value)
     {
         NotifySortGlyphs();
+        NotifyGamepadSortSelection();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
     partial void OnSortDescendingChanged(bool value)
     {
         NotifySortGlyphs();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
@@ -265,12 +277,25 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGridViewModeSelected => !IsGamepadSpotlightView;
     public bool IsListViewModeSelected => IsGamepadSpotlightView;
 
-    /// <summary>True while the controller focus ring is on the system menu's view-mode row (above the
-    /// option list). Left/Right pick Grid/List, Down drops into the options, and A is inert there.</summary>
+    /// <summary>Which region of the system menu owns the focus ring: the view-mode row, the sort row, or
+    /// the option list below them. Up/Down walk between the regions; Left/Right pick within a row and
+    /// apply live; A is inert on either row. Was a single bool before the sort row was added.</summary>
     [ObservableProperty]
-    public partial bool IsGamepadViewModeRowFocused { get; set; }
+    public partial GamepadMenuFocusRegion MenuFocusRegion { get; set; } = GamepadMenuFocusRegion.Options;
 
-    partial void OnIsGamepadViewModeRowFocusedChanged(bool value) => UpdateGamepadOverlayOptionFocus();
+    /// <summary>Focus ring is on the view-mode row. Computed alias over <see cref="MenuFocusRegion"/>,
+    /// kept so existing XAML bindings and tests keep working.</summary>
+    public bool IsGamepadViewModeRowFocused => MenuFocusRegion == GamepadMenuFocusRegion.ViewMode;
+
+    /// <summary>Focus ring is on the sort row.</summary>
+    public bool IsGamepadSortRowFocused => MenuFocusRegion == GamepadMenuFocusRegion.Sort;
+
+    partial void OnMenuFocusRegionChanged(GamepadMenuFocusRegion value)
+    {
+        OnPropertyChanged(nameof(IsGamepadViewModeRowFocused));
+        OnPropertyChanged(nameof(IsGamepadSortRowFocused));
+        UpdateGamepadOverlayOptionFocus();
+    }
 
     /// <summary>Selects the cover-grid couch layout. Bound to the Grid tile and D-pad Left on the row.</summary>
     [RelayCommand]
@@ -286,6 +311,80 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadMode)
             IsGamepadSpotlightView = true;
+    }
+
+    // ---- Gamepad "Sort by" row (Start menu). Reuses the view-mode card component and drives the same
+    // global SortColumn/SortDescending the desktop uses, so couch and desktop stay in sync and the choice
+    // persists across restarts for free. ----
+
+    // The four couch sort options, in Left/Right order, each an existing sort column.
+    private static readonly LibrarySortColumn[] GamepadSortColumns =
+        [LibrarySortColumn.LastPlayed, LibrarySortColumn.DateAdded, LibrarySortColumn.Title, LibrarySortColumn.Rating];
+
+    public bool IsGamepadSortRecentlyPlayedSelected => SortColumn == LibrarySortColumn.LastPlayed;
+    public bool IsGamepadSortRecentlyAddedSelected => SortColumn == LibrarySortColumn.DateAdded;
+    public bool IsGamepadSortTitleSelected => SortColumn == LibrarySortColumn.Title;
+    public bool IsGamepadSortRatingSelected => SortColumn == LibrarySortColumn.Rating;
+
+    private void NotifyGamepadSortSelection()
+    {
+        OnPropertyChanged(nameof(IsGamepadSortRecentlyPlayedSelected));
+        OnPropertyChanged(nameof(IsGamepadSortRecentlyAddedSelected));
+        OnPropertyChanged(nameof(IsGamepadSortTitleSelected));
+        OnPropertyChanged(nameof(IsGamepadSortRatingSelected));
+    }
+
+    /// <summary>Applies one of the couch sort options. Sets the shared sort state DIRECTLY — not via the
+    /// list-header <see cref="SortByCommand"/>, whose toggle semantics would force ascending and float
+    /// never-played / unrated games to the top — then re-sorts. Each option carries its own direction:
+    /// recency and rating are newest / highest first, title is A–Z.</summary>
+    [RelayCommand]
+    private void SelectGamepadSort(LibrarySortColumn column)
+    {
+        if (!IsGamepadMode)
+            return;
+        SortColumn = column;
+        SortDescending = column is not LibrarySortColumn.Title;
+        ApplyFilter();
+    }
+
+    // Left/Right on the sort row steps through GamepadSortColumns, clamped at the ends like the grid.
+    private void MoveGamepadSortSelection(int delta)
+    {
+        var current = Array.IndexOf(GamepadSortColumns, SortColumn);
+        if (current < 0)
+            current = 0; // current sort isn't a couch option (e.g. set on desktop): step from the first
+        SelectGamepadSort(GamepadSortColumns[Math.Clamp(current + delta, 0, GamepadSortColumns.Length - 1)]);
+    }
+
+    /// <summary>Reverses the current couch sort's direction. Invoked on A (Confirm) while the sort row is
+    /// focused — the desktop list's ▲/▼ toggle has no other couch analogue. The header arrow reflects it.</summary>
+    private void ToggleGamepadSortDirection()
+    {
+        if (!IsGamepadMode)
+            return;
+        SortDescending = !SortDescending;
+        ApplyFilter();
+    }
+
+    /// <summary>Direction arrow shown in the couch sort header: down = descending, up = ascending.</summary>
+    public string GamepadSortDirectionArrow => SortDescending ? "↓" : "↑";
+
+    /// <summary>Plain-language direction for the couch sort header, phrased per field.</summary>
+    public string GamepadSortDirectionSummary => (SortColumn, SortDescending) switch
+    {
+        (LibrarySortColumn.Title, false) => "A to Z",
+        (LibrarySortColumn.Title, true) => "Z to A",
+        (LibrarySortColumn.Rating, false) => "Lowest first",
+        (LibrarySortColumn.Rating, true) => "Highest first",
+        (_, false) => "Oldest first",
+        (_, true) => "Newest first",
+    };
+
+    private void NotifyGamepadSortDirection()
+    {
+        OnPropertyChanged(nameof(GamepadSortDirectionArrow));
+        OnPropertyChanged(nameof(GamepadSortDirectionSummary));
     }
 
     private void NotifySortGlyphs()
@@ -600,7 +699,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
-        GamepadOverlayKind.Actions or GamepadOverlayKind.Collections or
+        GamepadOverlayKind.Actions or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
     // bodies and footers, so the shared option-button list and default hint legend are hidden for them.
@@ -620,7 +719,6 @@ public partial class MainViewModel : ViewModelBase
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.Title} actions",
         GamepadOverlayKind.Search => "Search",
-        GamepadOverlayKind.Collections => "Collections",
         GamepadOverlayKind.Rename => "Rename game",
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.Title} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game",
@@ -966,7 +1064,9 @@ public partial class MainViewModel : ViewModelBase
                 // a list-view user in a grid and, on their next unrelated change, persist that
                 // grid over the preference they never changed.
                 IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
-                if (!IsGamepadMode)
+                if (IsGamepadMode)
+                    CoerceCouchLibraryState();
+                else
                     ClearSpotlightHero(); // release the hero bitmap when leaving couch mode
             };
         }
@@ -1022,6 +1122,7 @@ public partial class MainViewModel : ViewModelBase
         NavigationSystems = new ObservableCollection<GameSystem>(navigationSystems);
         GamepadPlatforms = new ObservableCollection<GamepadPlatformTabViewModel>(
             navigationSystems.Select(system => new GamepadPlatformTabViewModel(system)));
+        GroupLeaderSystemIds = ComputeGroupLeaders(navigationSystems);
 
         // Keep the gamepad row projection in lockstep with Games no matter how Games is changed
         // (reload, filter, or a direct test mutation), so the virtualized row grid never goes stale.
@@ -1094,6 +1195,9 @@ public partial class MainViewModel : ViewModelBase
                 ? column
                 : LibrarySortColumn.Title;
             SortDescending = state.SortDescending;
+            // Couch offers only four sort orders; restoring into gamepad mode with any other falls back to a
+            // couch default (the reload below applies it). No-op in desktop mode.
+            CoerceCouchSort();
             IsNavigationCollapsed = state.IsNavigationCollapsed;
             ApplyPersistedColumns(state.ListColumns);
 
@@ -1115,7 +1219,11 @@ public partial class MainViewModel : ViewModelBase
             }
             else
             {
-                CurrentLibraryScope = scope;
+                // Couch mode has no Recently-* place; fall back to All Games there so the rail highlights
+                // a stop and the Sort row is not a no-op.
+                CurrentLibraryScope = IsGamepadMode && scope is (LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
+                    ? LibraryScope.AllGames
+                    : scope;
                 _selectedSystemLoad = ReloadGamesAsync();
             }
         }
@@ -1187,9 +1295,30 @@ public partial class MainViewModel : ViewModelBase
             GamepadPlatforms.Clear();
             foreach (var system in visible)
                 GamepadPlatforms.Add(new GamepadPlatformTabViewModel(system));
+
+            GroupLeaderSystemIds = ComputeGroupLeaders(visible);
         }
 
         UpdateGamepadPlatformState();
+    }
+
+    /// <summary>
+    /// The id of the first system of each manufacturer in <paramref name="orderedVisibleSystems"/>,
+    /// which the Desktop console list uses to place a single manufacturer header per group. Systems
+    /// with no manufacturer are skipped (they carry no header). Order-dependent, so the caller passes
+    /// the systems in navigation order.
+    /// </summary>
+    private static IReadOnlySet<string> ComputeGroupLeaders(IEnumerable<GameSystem> orderedVisibleSystems)
+    {
+        var manufacturersSeen = new HashSet<string>(StringComparer.Ordinal);
+        var leaders = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var system in orderedVisibleSystems)
+        {
+            if (!string.IsNullOrEmpty(system.Manufacturer) && manufacturersSeen.Add(system.Manufacturer))
+                leaders.Add(system.Id);
+        }
+
+        return leaders;
     }
 
     private async Task SetShowEmptyPlatformsAsync(bool show)
@@ -1321,6 +1450,34 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task ShowRecentlyPlayedAsync() => ShowCollectionAsync(LibraryScope.RecentlyPlayed);
 
+    // Couch mode has no Recently-* place, and its Sort row offers only the four GamepadSortColumns. When we
+    // enter gamepad mode holding a scope or sort the couch can't represent (e.g. restored from a desktop
+    // session), fall back to couch defaults so the rail highlights a stop, a sort card is selected, and the
+    // Sort header stays honest.
+    private void CoerceCouchLibraryState()
+    {
+        if (!IsGamepadMode)
+            return;
+
+        var sortChanged = CoerceCouchSort();
+
+        if (CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
+            _ = ShowAllGamesAsync();  // reloads and re-sorts with the (possibly coerced) sort
+        else if (sortChanged)
+            ApplyFilter();            // no scope change, so re-sort the current view in place
+    }
+
+    // The couch Sort row only offers GamepadSortColumns; any other column (set on the desktop) falls back to
+    // Recently played so a card is always selected. Returns whether it changed the sort. No-op on desktop.
+    private bool CoerceCouchSort()
+    {
+        if (!IsGamepadMode || Array.IndexOf(GamepadSortColumns, SortColumn) >= 0)
+            return false;
+        SortColumn = LibrarySortColumn.LastPlayed;
+        SortDescending = true;
+        return true;
+    }
+
     [RelayCommand]
     private async Task PreviousPlatformAsync() => await MovePlatformAsync(-1);
 
@@ -1335,8 +1492,8 @@ public partial class MainViewModel : ViewModelBase
     }
 
     // LB/RB cycle one ordered list the rail mirrors — All Games, then each system — and wrap at
-    // both ends. Collections and Recently Added are not platforms; they live in the Start menu and
-    // the Collections overlay respectively, so they are not stops on this cycle.
+    // both ends. Recently Added / Recently Played are couch sort orders (Start menu → Sort), not
+    // places, so they are not stops on this cycle.
     private async Task MovePlatformAsync(int direction)
     {
         var count = NavigationSystems.Count + 1; // [All Games, systems…]
@@ -1512,9 +1669,6 @@ public partial class MainViewModel : ViewModelBase
     private void OpenGamepadSearch() => OpenGamepadOverlay(GamepadOverlayKind.Search);
 
     [RelayCommand]
-    private void OpenGamepadCollections() => OpenGamepadOverlay(GamepadOverlayKind.Collections);
-
-    [RelayCommand]
     private void OpenGamepadMenu()
     {
         if (IsGamepadSystemMenuOpen)
@@ -1591,16 +1745,19 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // The system menu's view-mode row sits above the option list: Up from the top option lands the
-        // ring on it, and Up while already on it stays put.
+        // Two selector rows sit above the option list. Up walks Options(top) → Sort → View mode → stay.
         if (IsGamepadSystemMenuOpen)
         {
-            if (IsGamepadViewModeRowFocused)
-                return;
-            if (GamepadOverlaySelectionIndex == 0)
+            switch (MenuFocusRegion)
             {
-                IsGamepadViewModeRowFocused = true;
-                return;
+                case GamepadMenuFocusRegion.ViewMode:
+                    return; // already on the top row
+                case GamepadMenuFocusRegion.Sort:
+                    MenuFocusRegion = GamepadMenuFocusRegion.ViewMode;
+                    return;
+                case GamepadMenuFocusRegion.Options when GamepadOverlaySelectionIndex == 0:
+                    MenuFocusRegion = GamepadMenuFocusRegion.Sort;
+                    return;
             }
         }
 
@@ -1616,11 +1773,16 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        // Down from the view-mode row drops back into the option list at the top entry.
-        if (IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused)
+        // Down walks View mode → Sort → option list (top entry).
+        if (IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options)
         {
+            if (MenuFocusRegion == GamepadMenuFocusRegion.ViewMode)
+            {
+                MenuFocusRegion = GamepadMenuFocusRegion.Sort;
+                return;
+            }
             GamepadOverlaySelectionIndex = 0;
-            IsGamepadViewModeRowFocused = false; // refreshes the option ring onto the top entry
+            MenuFocusRegion = GamepadMenuFocusRegion.Options; // refreshes the option ring onto the top entry
             return;
         }
 
@@ -1651,9 +1813,15 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ActivateGamepadOverlay()
     {
+        // On the sort row, A reverses the current sort's direction — Left/Right already picked the field.
+        if (IsGamepadSystemMenuOpen && IsGamepadSortRowFocused)
+        {
+            ToggleGamepadSortDirection();
+            return;
+        }
         // On the view-mode row, Left/Right already applied the choice live, so A is inert rather than
         // firing whichever option index sits selected underneath.
-        if (IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused)
+        if (IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options)
             return;
         if (GamepadOverlayOptions.Count == 0)
             return;
@@ -1936,6 +2104,12 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NavigateRight when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
                 SelectListViewModeCommand.Execute(null);
                 return true;
+            case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadSortRowFocused:
+                MoveGamepadSortSelection(-1);
+                return true;
+            case GamepadAction.NavigateRight when IsGamepadSystemMenuOpen && IsGamepadSortRowFocused:
+                MoveGamepadSortSelection(1);
+                return true;
             case GamepadAction.NavigateUp:
                 MoveGamepadOverlayUpCommand.Execute(null);
                 return true;
@@ -2027,7 +2201,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadHotkeysDetails();
         FocusedGamepadAchievement = null;
         GamepadOverlayOptions.Clear();
-        IsGamepadViewModeRowFocused = false; // every open lands on the option list, not the view-mode row
+        MenuFocusRegion = GamepadMenuFocusRegion.Options; // every open lands on the option list, not a selector row
         GamepadOverlay = overlay;
         IsGameActionsOpen = overlay == GamepadOverlayKind.Actions; // compatibility for existing bindings/tests
 
@@ -2037,10 +2211,6 @@ public partial class MainViewModel : ViewModelBase
                 AddGameActions();
                 break;
             case GamepadOverlayKind.Search:
-                break;
-            case GamepadOverlayKind.Collections:
-                AddOption("Recently Played", ShowGamepadRecentlyPlayedCommand);
-                AddOption("Recently Added", ShowGamepadRecentlyAddedCommand);
                 break;
             case GamepadOverlayKind.Rename:
                 break;
@@ -2063,7 +2233,6 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.SystemMenu:
                 // The couch layout picker is the view-mode row at the top of the menu, not an option here.
                 AddOption("Search", OpenGamepadSearchCommand);
-                AddOption("Collections", OpenGamepadCollectionsCommand);
                 if (CanScrapeAllInView)
                     AddOption("Scrape all in view", ScrapeAllInViewCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
@@ -2129,8 +2298,8 @@ public partial class MainViewModel : ViewModelBase
 
     private void UpdateGamepadOverlayOptionFocus()
     {
-        // No option carries the ring while the system menu's view-mode row owns focus.
-        var rowFocused = IsGamepadViewModeRowFocused;
+        // No option carries the ring while either system-menu selector row owns focus.
+        var rowFocused = IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options;
         for (var index = 0; index < GamepadOverlayOptions.Count; index++)
             GamepadOverlayOptions[index].IsFocused = !rowFocused && index == GamepadOverlaySelectionIndex;
     }
@@ -2295,20 +2464,6 @@ public partial class MainViewModel : ViewModelBase
     {
         CloseGamepadOverlay();
         _applicationLifetime?.Shutdown();
-    }
-
-    [RelayCommand]
-    private async Task ShowGamepadRecentlyAddedAsync()
-    {
-        await ShowRecentlyAddedAsync();
-        CloseGamepadOverlay();
-    }
-
-    [RelayCommand]
-    private async Task ShowGamepadRecentlyPlayedAsync()
-    {
-        await ShowRecentlyPlayedAsync();
-        CloseGamepadOverlay();
     }
 
     private async Task ShowCollectionAsync(LibraryScope scope)

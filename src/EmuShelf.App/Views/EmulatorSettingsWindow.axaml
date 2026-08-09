@@ -1299,6 +1299,13 @@
                                 <TextBlock Text="{Binding UpdateStatusText}" TextWrapping="Wrap"
                                            FontSize="12" IsVisible="{Binding HasUpdateStatus}"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <!-- Same live download state the main-window banner binds, so the
+                                     progress shows inline here instead of only behind this window. -->
+                                <ProgressBar Height="6" Minimum="0" Maximum="100"
+                                             AutomationProperties.AutomationId="about.update-progress"
+                                             IsVisible="{Binding Updates.IsBusy, FallbackValue=False}"
+                                             IsIndeterminate="{Binding Updates.IsProgressIndeterminate}"
+                                             Value="{Binding Updates.DownloadPercent}" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

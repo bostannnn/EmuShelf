@@ -11,7 +11,6 @@ public enum GamepadOverlayKind
     Actions,
     Achievements,
     Search,
-    Collections,
     Rename,
     DiscSelection,
     RemoveConfirmation,
