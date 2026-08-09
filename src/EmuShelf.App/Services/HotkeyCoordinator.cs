@@ -37,7 +37,6 @@ public sealed record HotkeyEmulatorSnapshot(
 public sealed record HotkeySettingsContext(
     IReadOnlyList<HotkeyEmulatorSnapshot> Emulators,
     Func<string, CancellationToken, Task<HotkeyEmulatorSnapshot>> ApplyAsync,
-    Func<string, CancellationToken, Task<HotkeyEmulatorSnapshot>> PreviewAsync,
     Func<string, CancellationToken, Task<HotkeyEmulatorSnapshot>> RevertAsync,
     string SchemeSummary);
 
@@ -69,7 +68,6 @@ public sealed class HotkeyCoordinator
     private enum Operation
     {
         Initial,
-        Preview,
         Apply,
         Revert,
     }
@@ -102,7 +100,7 @@ public sealed class HotkeyCoordinator
 
     /// <summary>The delegate context for the Settings view model. Reads the config files, so call it off the UI thread.</summary>
     public HotkeySettingsContext CreateSettingsContext() =>
-        new(Describe(), ApplyAsync, PreviewAsync, RevertAsync, SchemeSummary);
+        new(Describe(), ApplyAsync, RevertAsync, SchemeSummary);
 
     /// <summary>A snapshot per configured, supported emulator, built from a dry-run preview.</summary>
     public IReadOnlyList<HotkeyEmulatorSnapshot> Describe()
@@ -122,9 +120,6 @@ public sealed class HotkeyCoordinator
 
         return snapshots;
     }
-
-    public Task<HotkeyEmulatorSnapshot> PreviewAsync(string emulatorId, CancellationToken cancellationToken) =>
-        OperateAsync(emulatorId, Operation.Preview, cancellationToken);
 
     public Task<HotkeyEmulatorSnapshot> ApplyAsync(string emulatorId, CancellationToken cancellationToken) =>
         OperateAsync(emulatorId, Operation.Apply, cancellationToken);
@@ -152,11 +147,13 @@ public sealed class HotkeyCoordinator
                 operation);
         }
 
+        // Only Apply and Revert reach here (Initial is a Describe-time dry-run that never operates); be
+        // explicit so a future caller can't fall through to an unintended write.
         var result = await Task.Run(() => operation switch
         {
             Operation.Apply => configurator.Apply(_profile, cancellationToken),
             Operation.Revert => configurator.Revert(cancellationToken),
-            _ => configurator.Preview(_profile, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Only Apply and Revert are operable."),
         }, cancellationToken);
 
         if (operation == Operation.Apply)
@@ -232,7 +229,6 @@ public sealed class HotkeyCoordinator
                 {
                     Operation.Apply => ($"Applied. Takes effect next time you open {name}.{note}", HotkeyRowTone.Success),
                     Operation.Revert => ("Reverted to your previous configuration.", HotkeyRowTone.Success),
-                    Operation.Preview => ($"Preview: {result.Changes.Count} setting(s) would change.{note}", HotkeyRowTone.Info),
                     _ => ($"Recommended hotkeys aren't applied yet.{note}", HotkeyRowTone.Info),
                 };
         }

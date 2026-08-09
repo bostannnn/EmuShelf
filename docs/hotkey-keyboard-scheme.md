@@ -107,9 +107,21 @@ Token = quoted lowercase key, e.g. `"f2"`. Defaults already match rewind/save/lo
 - `input_save_state = "f2"`
 - `input_load_state = "f4"`
 - `input_exit_emulator = "f8"` (default was `"escape"`)
-- **Also clear the controller hotkeys the first implementation wrote** — set these back to `"nul"`:
-  `input_enable_hotkey_btn`, `input_exit_emulator_btn`, `input_rewind_btn`,
-  `input_hold_fast_forward_btn`, `input_save_state_btn`, `input_load_state_btn`.
+- **Clear the controller hotkey bindings so an always-on hotkey can't fire from a bare pad press.**
+  RetroArch has a single hotkey-enable *gate* shared by keyboard and controller
+  (`input_enable_hotkey` / `_btn`). The keyboard scheme needs it **off** (unset ⇒ hotkeys always active)
+  so a bare Steam-Input key like `f2` fires without a modifier — but "off" also un-gates any *controller*
+  button bound as a hotkey. A stock pad autoconfig lands these on game-facing buttons (save-state-slot ±
+  on the D-pad, screenshot/pause/fps on the face buttons), so a bare D-pad left/right would change the
+  save slot mid-game. The gate can't be "keyboard only", so clear the controller bindings instead:
+  set both `<control>_btn` **and** `<control>_axis` to `"nul"` for `input_enable_hotkey`,
+  `input_exit_emulator`, `input_rewind`, `input_hold_fast_forward`, `input_toggle_fast_forward`,
+  `input_save_state`, `input_load_state`, `input_state_slot_increase`, `input_state_slot_decrease`,
+  `input_screenshot`, `input_pause_toggle`, `input_fps_toggle`, `input_runahead_toggle`. The scheme's own
+  actions are included because a leftover trigger-axis bind (e.g. `input_rewind_axis = "+4"`) would fire
+  alongside the keyboard key. Game inputs (`input_playerN_*`) are never touched, so the pad still plays.
+  All changes are backed up and revertible. (Only clears keys that exist and hold a non-`nul` value, so
+  no stray keys are added.)
 
 ### Azahar — `user/config/qt-config.ini` `[UI]` (Qt `QSettings`)
 Keys are URL-encoded with `%20` for spaces and `\` separators, paired with a `\default` flag. To set

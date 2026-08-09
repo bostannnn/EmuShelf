@@ -5443,3 +5443,85 @@ branches are installed — so an app that launches fine looked uninstalled.
   (e.g. `net.pcsx2.PCSX2//stable`, `net.pcsx2.PCSX2//beta`) when several are, so the user explicitly
   picks stable vs nightly. The editable ComboBox is unchanged — the ref strings flow through as items.
 
+## 2026-08-09 — Gamepad Hotkeys is a dedicated overlay wrapping the same settings view model (M40)
+
+The Desktop **Settings › Hotkeys** section (a per-emulator × per-action matrix with Apply-to-all,
+Install-Steam-template, per-emulator Apply/Preview/Revert, and the hold-Select controller mapping) had
+no counterpart in Gamepad mode: `GamepadSettingsViewModel` projects Desktop settings into a flat list
+of controller rows, and a matrix does not survive that projection (the same reason Themes is a
+dedicated gallery page rather than rows). A controller-only user could see every other settings
+section on the couch but not the one that most needs a controller.
+
+Decision: a **dedicated `GamepadOverlayKind.Hotkeys` overlay** driven by `MainViewModel.GamepadOverlay`,
+built exactly like the other gamepad overlays. `GamepadHotkeysViewModel` **wraps the same
+`EmulatorSettingsViewModel` instance** the gamepad Settings projection already holds — reusing its
+`HotkeyEmulators` rows, `ApplyAllHotkeysCommand`, `InstallSteamTemplateCommand`, `SteamTemplateStatus`
+and `HotkeySchemeSummary` verbatim — and adds *only* a linear D-pad focus model (the same pattern as
+`GamepadScraperViewModel` over `GameScraperViewModel`). No hotkey logic, no config files, and no engine
+are duplicated; nothing is re-read when the overlay opens; and it is Gamepad-native, never a Desktop
+window hand-off.
+
+- **Entry point is the gamepad Settings General row, not a projected section or a System-Menu peer.**
+  `SettingsSection.Hotkeys` is excluded from the gamepad Settings rail (alongside Emulators/Themes/About
+  — a latent gap since PR #71 added the Desktop section but not a gamepad projection), and a
+  General-section "Emulator hotkeys" action row opens the overlay through a `Func<Task>` callback
+  (mirroring the existing `applyTheme` callback). B returns to Settings, whose projection
+  `OpenGamepadOverlay` deliberately leaves intact — the same "open bespoke overlay B from overlay A,
+  B backs to A" contract the scraper uses from the game Actions menu. The row is excluded from the
+  Desktop↔Gamepad `general.*` field parity because Desktop's equivalents are the `hotkeys.*` controls
+  *inside* its own section.
+- **Preview was dropped from the hotkey UI entirely — both surfaces expose only Apply / Revert.** It
+  started as a controller simplification (the gamepad surface never had it) and then came off Desktop
+  too: Preview was a dry run that surfaced only a change *count* ("N settings would change"), not a diff,
+  and the same dry-run that runs when the panel opens already shows each action's support and the
+  applied / not-applied status — so it added almost nothing on screen, while Apply is fully backed-up and
+  revertible. The underlying dry-run (`configurator.Preview`) stays — it's what populates the matrix
+  cells and the initial status — but the user-facing button/command, `HotkeySettingsContext.PreviewAsync`,
+  and the coordinator's `Operation.Preview` were removed.
+- **Focus flags live on the shared row, not a new row type.** `HotkeyEmulatorRowViewModel` gained
+  `IsApplyFocused`/`IsRevertFocused` observable flags the Desktop matrix ignores, so the one row type
+  carries the D-pad ring on the couch and the Apply/Revert buttons on the desktop — reuse over a
+  parallel VM, as with `ScraperFieldRowViewModel.IsFocused`.
+- **Non-operable emulators show in the matrix but are never focus targets.** A row whose config dir
+  can't be resolved (`CanOperate == false`) still renders its cells and status (so the user reads
+  *why*), but offers no focusable Apply/Revert — matching the Desktop buttons being disabled there.
+- **The matrix scrolls the focused row into view** (`RevealGamepadHotkeysFocus`, mirroring the
+  scraper's reveal): seven emulator rows overflow the viewport at 1280×800, so without scroll-to-focus
+  the ring on Azahar/RPCS3 would walk off-screen. The two global actions sit above the scroll and are
+  always visible, so only per-emulator buttons need revealing; the `.focused` class carries the ring
+  and the view model routes A directly, so no keyboard focus is taken (no Fluent adorner to suppress).
+
+## 2026-08-09 — RetroArch apply clears controller hotkey bindings so the D-pad stops misfiring (M40)
+
+Real-hardware follow-up: after applying the keyboard scheme, a Deck user's **D-pad left/right started
+changing the save-state slot mid-game** (and screenshot/pause/fps fired off face buttons). Root cause is
+a RetroArch design constraint, not a bad token: RetroArch has a **single hotkey-enable gate shared by
+keyboard and controller** (`input_enable_hotkey` / `_btn`). The keyboard scheme deliberately leaves it
+**off** (unset ⇒ hotkeys always active) so a bare Steam-Input key like `f2` fires without a modifier — but
+"off" also un-gates every *controller* button RetroArch has bound as a hotkey. A stock pad autoconfig
+lands those on game-facing buttons (verified in the user's `retroarch.cfg`:
+`input_state_slot_decrease_btn = "h0left"`, `input_state_slot_increase_btn = "h0right"`,
+`input_screenshot_btn = "0"`, `input_pause_toggle_btn = "1"`, `input_fps_toggle_btn = "2"`,
+`input_runahead_toggle_btn = "h0up"`, plus trigger-axis binds `input_rewind_axis`/`input_hold_fast_forward_axis`),
+so bare presses fire them during play.
+
+The gate can't be "keyboard only" — it's one switch — so re-introducing a modifier would break the
+bare-keyboard scheme. **Decision (option A1): the RetroArch configurator clears the controller bindings
+instead.** On apply it nul's both `<control>_btn` and `<control>_axis` for the scheme's own actions
+(so a leftover trigger-axis can't rewind/fast-forward alongside the keyboard key), for
+`input_enable_hotkey` (nul keeps the gate off), and for the hotkeys a stock autoconfig commonly puts on
+game buttons: `state_slot_increase`/`decrease`, `screenshot`, `pause_toggle`, `fps_toggle`,
+`runahead_toggle`, `toggle_fast_forward`. Game inputs (`input_playerN_*`) are never touched, so the pad
+still plays; clearing only rewrites keys that exist and hold a non-`nul` value, and everything is backed
+up and revertible. Net model: **on RetroArch the controller is game-input only and the keyboard (via
+Steam Input) is the sole hotkey path** — consistent with the rest of M40.
+
+Bounds and follow-ups: it clears by hotkey *name*, not by "is this button a game input", so it also
+silences one of these hotkeys bound to a non-game button — acceptable under M40's controller-is-game-only
+model and reversible. Two things a bare files check can't settle and are left for hardware: (1) if the
+pad's **autoconfig profile** re-applies these binds on reconnect, editing `retroarch.cfg` won't be
+durable — the fix would then belong in the autoconfig, a larger scope; (2) the bundled Steam Input
+template covers rewind/ff/save/load/close but **not slot ±**, so after this a controller has no
+slot-change unless the template is extended (deferred). RetroArch-specific: the other emulators use
+explicit keyboard tokens and have no shared always-on gate, so none of them need this.
+

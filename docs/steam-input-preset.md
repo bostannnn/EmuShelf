@@ -61,13 +61,21 @@ layout from scratch. This is the reliable way to "share" one preset across all o
 ship a `.vdf` because a hand-authored Steam Input config (hold-modifier action layers emitting key
 presses) is undocumented, version-sensitive, and cannot be verified without Steam's own exporter.
 
-## RetroArch — F8 conflicts EmuShelf clears for you
+## RetroArch — conflicts EmuShelf clears for you
 
 RetroArch's built-in **screenshot** key is also `f8` — the same key this scheme uses to close — and its
 `quit_press_twice` defaults to **true**, so a bare setup would make Select + Start take a screenshot and
 need two presses to quit. When you apply the scheme, EmuShelf fixes both in `retroarch.cfg`: it unbinds
 the screenshot key off F8 (`input_screenshot = "nul"`) and sets `quit_press_twice = "false"`, so a single
 Select + Start closes the game. Both changes are backed up and revertible.
+
+EmuShelf also **clears RetroArch's controller hotkey bindings** on apply. RetroArch has one hotkey-enable
+gate shared by keyboard and controller; this scheme leaves it off so a bare Steam-Input key fires without
+a modifier, but "off" also means any controller button RetroArch has bound as a hotkey fires on its own
+during play. A stock pad autoconfig commonly puts these on game buttons — save-state-slot ± on the D-pad,
+screenshot/pause/fps on the face buttons — so without this you'd see the D-pad silently changing the save
+slot mid-game. EmuShelf sets those joypad/axis bindings to `nul` (game inputs are untouched, so the pad
+still plays); slot-change and the like now live in the Steam Input layer if you want them on the pad.
 
 ## ⚠️ RetroArch — verify injected input before relying on it
 

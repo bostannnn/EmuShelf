@@ -1489,9 +1489,18 @@ per-emulator tokens are in `DECISIONS.md` (2026-08-08) and `docs/hotkey-keyboard
 ### Phase 4 — Settings surface, Steam Input preset, and verification
 
 - [x] A `SettingsSection.Hotkeys` presenting the five canonical actions once, a per-emulator
-      status (applied / unsupported-here / needs the emulator closed), and Apply / Preview / Revert —
-      one apply-to-all plus per-emulator. Gate Apply on the emulator not running; keep all write policy
-      in the view model/services, code-behind as view wiring only.
+      status (applied / unsupported-here / needs the emulator closed), and Apply / Revert —
+      one apply-to-all plus per-emulator. (A dry-run Preview button was later removed as redundant — it
+      only showed a change count, not a diff; see `DECISIONS.md` 2026-08-09.) Gate Apply on the emulator
+      not running; keep all write policy in the view model/services, code-behind as view wiring only.
+- [x] A controller-native Hotkeys surface for Gamepad mode at parity with the Desktop section, reached
+      from the gamepad Settings General row (Desktop's matrix section can't be walked as a flat row
+      list). `GamepadHotkeysViewModel` wraps the *same* `EmulatorSettingsViewModel` the gamepad Settings
+      already built — reusing its rows, Apply-to-all / Install-Steam-template commands, scheme summary
+      and Steam status verbatim — and adds only a linear D-pad focus model over Apply-to-all, Install
+      template, and each operable emulator's Apply / Revert. A `GamepadOverlayKind.Hotkeys` overlay
+      (`MainWindow.axaml`) renders the emulators × actions matrix beside the hold-Select controller
+      mapping; the matrix scrolls the focused row into view. Gamepad-native, never a Desktop hand-off.
 - [x] Deterministic tests: surgical edits preserve comments/order/unknown keys/version markers on real
       fixture configs; each emulator's tokens and unsupported-action reporting; backup/preview/revert;
       the refuse-while-running guard; and idempotent re-apply. `dotnet build`/`dotnet test` green on
@@ -1518,6 +1527,14 @@ First Steam Deck run surfaced four issues; details in `DECISIONS.md` (2026-08-09
       survey confirmed F8 stays (no key is unbound everywhere *and* bindable on Dolphin/macOS); RetroArch
       is the only emulator with an *internal* F8 screenshot default, so it's the only one needing this —
       PCSX2 ships no default hotkey keys, DuckStation's screenshot is F10, Dolphin's is F9.
+- [x] **RetroArch**: the D-pad started changing the save-state slot (and screenshot/pause/fps fired off
+      face buttons) after apply. RetroArch's single hotkey-enable gate is shared by keyboard and
+      controller; the keyboard scheme leaves it off (so bare Steam-Input keys fire), which also un-gates
+      controller buttons a stock autoconfig binds to game buttons. Fix: clear those controller bindings —
+      nul both `<control>_btn` and `<control>_axis` for the scheme's actions, `input_enable_hotkey`, and
+      the usual autoconfig hotkeys (`state_slot ±`, `screenshot`, `pause_toggle`, `fps_toggle`,
+      `runahead_toggle`, `toggle_fast_forward`); game inputs (`input_playerN_*`) are untouched. Option A1,
+      backed up and revertible; details in `DECISIONS.md` (2026-08-09).
 - [x] **DuckStation**: the `SettingsVersion` gate now refuses only a *different* explicit version; a
       *missing* one is accepted when the `[Main]` section is present (newer AppImage/fork builds omit it),
       which fixes the Steam Deck `unknown` refusal. Diagnostics also name the exact file read.
