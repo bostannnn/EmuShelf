@@ -229,12 +229,14 @@ public partial class MainViewModel : ViewModelBase
     {
         NotifySortGlyphs();
         NotifyGamepadSortSelection();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
     partial void OnSortDescendingChanged(bool value)
     {
         NotifySortGlyphs();
+        NotifyGamepadSortDirection();
         ScheduleLibraryViewStateSave();
     }
 
@@ -353,6 +355,36 @@ public partial class MainViewModel : ViewModelBase
         if (current < 0)
             current = 0; // current sort isn't a couch option (e.g. set on desktop): step from the first
         SelectGamepadSort(GamepadSortColumns[Math.Clamp(current + delta, 0, GamepadSortColumns.Length - 1)]);
+    }
+
+    /// <summary>Reverses the current couch sort's direction. Invoked on A (Confirm) while the sort row is
+    /// focused — the desktop list's ▲/▼ toggle has no other couch analogue. The header arrow reflects it.</summary>
+    private void ToggleGamepadSortDirection()
+    {
+        if (!IsGamepadMode)
+            return;
+        SortDescending = !SortDescending;
+        ApplyFilter();
+    }
+
+    /// <summary>Direction arrow shown in the couch sort header: down = descending, up = ascending.</summary>
+    public string GamepadSortDirectionArrow => SortDescending ? "↓" : "↑";
+
+    /// <summary>Plain-language direction for the couch sort header, phrased per field.</summary>
+    public string GamepadSortDirectionSummary => (SortColumn, SortDescending) switch
+    {
+        (LibrarySortColumn.Title, false) => "A to Z",
+        (LibrarySortColumn.Title, true) => "Z to A",
+        (LibrarySortColumn.Rating, false) => "Lowest first",
+        (LibrarySortColumn.Rating, true) => "Highest first",
+        (_, false) => "Oldest first",
+        (_, true) => "Newest first",
+    };
+
+    private void NotifyGamepadSortDirection()
+    {
+        OnPropertyChanged(nameof(GamepadSortDirectionArrow));
+        OnPropertyChanged(nameof(GamepadSortDirectionSummary));
     }
 
     private void NotifySortGlyphs()
@@ -1026,7 +1058,7 @@ public partial class MainViewModel : ViewModelBase
                 // grid over the preference they never changed.
                 IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
                 if (IsGamepadMode)
-                    CoerceCouchOffRecencyScope();
+                    CoerceCouchLibraryState();
                 else
                     ClearSpotlightHero(); // release the hero bitmap when leaving couch mode
             };
@@ -1156,6 +1188,9 @@ public partial class MainViewModel : ViewModelBase
                 ? column
                 : LibrarySortColumn.Title;
             SortDescending = state.SortDescending;
+            // Couch offers only four sort orders; restoring into gamepad mode with any other falls back to a
+            // couch default (the reload below applies it). No-op in desktop mode.
+            CoerceCouchSort();
             IsNavigationCollapsed = state.IsNavigationCollapsed;
             ApplyPersistedColumns(state.ListColumns);
 
@@ -1408,13 +1443,32 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private Task ShowRecentlyPlayedAsync() => ShowCollectionAsync(LibraryScope.RecentlyPlayed);
 
-    // Couch mode has no Recently-* place — there those are sort orders, not scopes. If we enter gamepad
-    // mode sitting in a recency scope (e.g. restored from a desktop session), fall back to All Games so
-    // the rail has a highlighted stop and the Sort row actually re-sorts.
-    private void CoerceCouchOffRecencyScope()
+    // Couch mode has no Recently-* place, and its Sort row offers only the four GamepadSortColumns. When we
+    // enter gamepad mode holding a scope or sort the couch can't represent (e.g. restored from a desktop
+    // session), fall back to couch defaults so the rail highlights a stop, a sort card is selected, and the
+    // Sort header stays honest.
+    private void CoerceCouchLibraryState()
     {
-        if (IsGamepadMode && CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
-            _ = ShowAllGamesAsync();
+        if (!IsGamepadMode)
+            return;
+
+        var sortChanged = CoerceCouchSort();
+
+        if (CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
+            _ = ShowAllGamesAsync();  // reloads and re-sorts with the (possibly coerced) sort
+        else if (sortChanged)
+            ApplyFilter();            // no scope change, so re-sort the current view in place
+    }
+
+    // The couch Sort row only offers GamepadSortColumns; any other column (set on the desktop) falls back to
+    // Recently played so a card is always selected. Returns whether it changed the sort. No-op on desktop.
+    private bool CoerceCouchSort()
+    {
+        if (!IsGamepadMode || Array.IndexOf(GamepadSortColumns, SortColumn) >= 0)
+            return false;
+        SortColumn = LibrarySortColumn.LastPlayed;
+        SortDescending = true;
+        return true;
     }
 
     [RelayCommand]
@@ -1735,8 +1789,14 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void ActivateGamepadOverlay()
     {
-        // On either selector row (view-mode or sort), Left/Right already applied the choice live, so A is
-        // inert rather than firing whichever option index sits selected underneath.
+        // On the sort row, A reverses the current sort's direction — Left/Right already picked the field.
+        if (IsGamepadSystemMenuOpen && IsGamepadSortRowFocused)
+        {
+            ToggleGamepadSortDirection();
+            return;
+        }
+        // On the view-mode row, Left/Right already applied the choice live, so A is inert rather than
+        // firing whichever option index sits selected underneath.
         if (IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options)
             return;
         if (GamepadOverlayOptions.Count == 0)

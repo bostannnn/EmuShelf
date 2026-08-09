@@ -5483,9 +5483,15 @@ an *order*, not a *place*.
   via the list-header `SortByCommand`, whose toggle semantics would force ascending and float
   never-played / unrated games to the top.
 - **The Sort row reuses the View-mode picker verbatim.** Same `gamepad-viewmode-row` / `gamepad-viewmode-card`
-  styles and brushes, laid out 2×2 so each card keeps the Grid/List card's width and the full labels fit
-  (four-across truncated "Recently played"/"Recently added" to an identical "Rec…"). No new style, brush,
-  or background was added.
+  styles and brushes — four cards across one row, so Up/Down move between menu sections exactly like the
+  View-mode row and Left/Right step the sorts. Labels are shortened (Played / Added / A–Z / Rating; full
+  name in the tooltip) so all four fit the row; a 2×2 was tried first but made Up/Down ambiguous — it
+  skipped the whole grid. No new style, brush, or background was added.
+- **Direction is reversible on the couch too.** Picking a field applies its sensible default (recency /
+  rating descending, title A→Z); **A while the sort row is focused flips ascending/descending** — the
+  desktop list's ▲/▼ has no other couch analogue. The sort header shows a direction arrow plus a
+  plain-language label ("↓ Newest first", "↑ A to Z"), and an "A Reverse" affordance appears there while
+  the row owns focus.
 - **The `GamepadOverlayKind.Collections` overlay is deleted.** With Recently-* demoted to sort, the couch
   has no Collections drill-in; the Start menu drops the "Collections" entry. The Desktop sidebar keeps its
   Recently Added/Played entries unchanged — this is a gamepad-only change.
@@ -5493,9 +5499,10 @@ an *order*, not a *place*.
   `GamepadMenuFocusRegion` enum (ViewMode / Sort / Options); the old bool stays as a computed alias so
   existing bindings and tests keep working. Up/Down walk the regions, Left/Right pick within the focused
   row and apply live, A is inert on either selector row.
-- **Couch never lands in a Recency scope.** Entering gamepad mode (or restoring into it) coerces a leftover
-  `RecentlyAdded`/`RecentlyPlayed` scope to All Games, so the rail always has a highlighted stop and the
-  Sort row is never a no-op.
+- **Couch never lands in a scope or sort it can't show.** Entering gamepad mode (or restoring into it)
+  coerces a leftover `RecentlyAdded`/`RecentlyPlayed` scope to All Games, and any non-couch sort column
+  (e.g. Console/Genre set on the desktop) to Recently played — so the rail always highlights a stop, a sort
+  card is always selected, and the Sort header stays honest.
 - Future custom user collections get the rail as their home — extra stops after the systems — rather than
   reviving the overlay.
 

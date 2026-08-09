@@ -1329,10 +1329,10 @@ public class MainWindowVisualSnapshotTests
             viewModel.CloseGamepadOverlayCommand.Execute(null);
             viewModel.OpenGamepadMenuCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-menu-1280x800.png");
-            // The View mode picker plus the 2x2 Sort grid size to content and stay well within the
-            // 800px-tall Deck viewport. The sort grid adds two card rows, so the ceiling is higher than
-            // the one-row menu (font metrics vary across platforms), still comfortably under the viewport.
-            AssertGamepadOverlayHeightBelow(window, 730);
+            // The View mode and Sort picker rows size to content and stay well within the 800px-tall Deck
+            // viewport. Sort adds one four-across card row (font metrics vary across platforms), still
+            // comfortably under the viewport.
+            AssertGamepadOverlayHeightBelow(window, 700);
             // The menu leads with the Grid/List view-mode picker and the four-card Sort row, both built
             // from the same gamepad-viewmode-card component.
             var pickerCards = window.GetVisualDescendants().OfType<Button>()
