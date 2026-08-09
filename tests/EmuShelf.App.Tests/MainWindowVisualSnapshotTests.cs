@@ -2399,7 +2399,9 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Button>()
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-nav"))
                 .ToArray();
-            Assert.Equal(5, navigationButtons.Length);
+            // Library, Emulators, RetroAchievements, ScreenScraper, Saves, Texture Packs, About.
+            // (Hotkeys needs a hotkey context and Themes needs theme choices — neither is set up here.)
+            Assert.Equal(7, navigationButtons.Length);
             Assert.All(
                 navigationButtons,
                 button => Assert.Equal(navigationButtons[0].Bounds.Width, button.Bounds.Width, 1));
@@ -2562,6 +2564,26 @@ public class MainWindowVisualSnapshotTests
             gamepadSettings.SelectedSection = SettingsSection.Saves;
             await PumpAsync();
             AssertGamepadSettingsParity(SettingsSection.Saves, "saves.");
+
+            // Emulators and About are couch sections now (not Desktop-only); capture them so the
+            // per-platform library actions and the read-only build/update rows stay reviewed. Done
+            // last so navigating these virtualized sections can't perturb the row-width assertions above;
+            // the window was resized to 2048×1152 for the wide Saves capture, so reset it to 1280×800.
+            window.Width = 1280;
+            window.Height = 800;
+            gamepadSettings.SelectedSection = SettingsSection.Emulators;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-emulators-1280x800.png");
+
+            gamepadSettings.SelectedSection = SettingsSection.About;
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-about-1280x800.png");
 
             void AssertGamepadSettingsParity(SettingsSection section, string prefix)
             {

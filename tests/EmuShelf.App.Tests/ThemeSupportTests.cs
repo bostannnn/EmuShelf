@@ -182,11 +182,12 @@ public class ThemeSupportTests
         Assert.True(desktop.HasThemes);
         Assert.Equal(choices.Length, desktop.ThemeChoices.Count);
 
-        // Gamepad presents themes as its own gallery page, so Themes is not a projected row section,
-        // but the gallery is available — appearance is reachable from both modes.
+        // Gamepad presents themes as its own gallery page, so Themes is the one section that is not a
+        // projected row (the gallery is still reachable via ShowThemes). Every other section, Emulators
+        // included, is a projected rail section so both modes share one structure.
         var gamepad = new GamepadSettingsViewModel(desktop, null, choices, _ => Task.CompletedTask);
         Assert.DoesNotContain(SettingsSection.Themes, gamepad.Sections);
-        Assert.DoesNotContain(SettingsSection.Emulators, gamepad.Sections);
+        Assert.Contains(SettingsSection.Emulators, gamepad.Sections);
         Assert.True(gamepad.ShowThemes);
     }
 
@@ -202,11 +203,17 @@ public class ThemeSupportTests
         gamepad.Dispatch(GamepadAction.NavigateLeft);
         Assert.True(gamepad.IsRailFocused);
 
-        // On the rail, Down/Up move between sections (here General <-> the Themes page).
+        // On the rail, Down/Up move between adjacent sections (Library <-> Emulators).
+        Assert.Equal(SettingsSection.General, gamepad.SelectedSection);
         gamepad.Dispatch(GamepadAction.NavigateDown);
-        Assert.True(gamepad.IsThemesSection);
+        Assert.Equal(SettingsSection.Emulators, gamepad.SelectedSection);
         gamepad.Dispatch(GamepadAction.NavigateUp);
-        Assert.False(gamepad.IsThemesSection);
+        Assert.Equal(SettingsSection.General, gamepad.SelectedSection);
+
+        // Paging Down through every section lands on the Themes gallery page appended at the end.
+        for (var index = 0; index < gamepad.Sections.Count; index++)
+            gamepad.Dispatch(GamepadAction.NavigateDown);
+        Assert.True(gamepad.IsThemesSection);
 
         // Right (or A) returns to the content column.
         gamepad.Dispatch(GamepadAction.NavigateRight);
