@@ -54,6 +54,43 @@ public sealed class CoverSearchViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Select_FallsBackToProxiedThumbnailWhenOriginalIsGone()
+    {
+        // The original lives on a source host that no longer serves it; the thumbnail the user is
+        // looking at is on a search-engine proxy that still does.
+        var result = new ArtworkSearchResult(
+            "web-search",
+            new Uri("https://origin.example/cover.png"),
+            new Uri("https://proxy.example/preview.png"),
+            new Uri("https://source.example/game"),
+            600,
+            900,
+            "Example cover",
+            ".png");
+        var downloader = new SelectiveDownloader(_directory, unavailableHost: "origin.example");
+        using var viewModel = new CoverSearchViewModel(
+            new GameCoverPickerContext("Example Game", "Dreamcast", 0.708),
+            new RecordingSearchProvider([result]),
+            downloader,
+            () => Task.FromResult<string?>(null));
+        PickedGameCover? selection = null;
+        viewModel.CloseRequested += picked => selection = picked;
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.Single(viewModel.Results);
+
+        await viewModel.Results[0].SelectCommand.ExecuteAsync(null);
+
+        // A visible cover still resolves instead of failing with "no longer available"…
+        Assert.NotNull(selection);
+        Assert.True(selection.IsTemporary);
+        Assert.True(File.Exists(selection.SourcePath));
+        // …by downloading the proxied thumbnail candidate, while still recording the original image.
+        Assert.Equal("web-search-preview", downloader.LastDownloaded!.ProviderId);
+        Assert.Equal(result.ImageUri.ToString(), selection.SourceUri);
+    }
+
+    [AvaloniaFact]
     public async Task ChooseLocalImage_ReturnsNonTemporarySelection()
     {
         var localPath = Path.Combine(_directory, "local.png");
@@ -130,10 +167,34 @@ public sealed class CoverSearchViewModelTests : IDisposable
             IReadOnlyList<ArtworkCandidate> candidates,
             CancellationToken cancellationToken = default)
         {
-            var candidate = Assert.Single(candidates);
+            var candidate = candidates[0];
             var path = Path.Combine(directory, $"{Guid.NewGuid():N}.png");
             await File.WriteAllBytesAsync(path, TinyPng, cancellationToken);
             return new DownloadedArtwork(candidate, path);
+        }
+    }
+
+    // Mirrors the real downloader: tries candidates in order and returns the first host that is
+    // still serving the image, so a dead original falls through to the proxied thumbnail.
+    private sealed class SelectiveDownloader(string directory, string unavailableHost)
+        : IRemoteArtworkDownloader
+    {
+        public ArtworkCandidate? LastDownloaded { get; private set; }
+
+        public async Task<DownloadedArtwork?> DownloadFirstAsync(
+            IReadOnlyList<ArtworkCandidate> candidates,
+            CancellationToken cancellationToken = default)
+        {
+            foreach (var candidate in candidates)
+            {
+                if (string.Equals(candidate.SourceUri.Host, unavailableHost, StringComparison.Ordinal))
+                    continue;
+                var path = Path.Combine(directory, $"{Guid.NewGuid():N}.png");
+                await File.WriteAllBytesAsync(path, TinyPng, cancellationToken);
+                LastDownloaded = candidate;
+                return new DownloadedArtwork(candidate, path);
+            }
+            return null;
         }
     }
 

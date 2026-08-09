@@ -100,7 +100,14 @@ public partial class App : Application
             {
                 Timeout = TimeSpan.FromSeconds(30),
             };
-            _webArtworkHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd("EmuShelf/1.0");
+            // User-driven web covers are fetched from arbitrary third-party hosts and CDNs, many of
+            // which refuse an unknown "EmuShelf/1.0" agent with a 403 or a hotlink-protection page.
+            // A mainstream browser agent is the reliable way to retrieve the full-resolution original
+            // the user picked; the picker still falls back to the proxied thumbnail if it is refused.
+            // (The automatic metadata client above keeps its honest EmuShelf agent.)
+            _webArtworkHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36");
             var webArtworkDownloader = new RemoteArtworkDownloader(
                 Bootstrapper.Paths,
                 _webArtworkHttpClient,
