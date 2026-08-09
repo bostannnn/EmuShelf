@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -9,6 +10,7 @@ using EmuShelf.App.Views;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Updates;
 using EmuShelf.Infrastructure.Achievements;
+using EmuShelf.Infrastructure.Emulators;
 using EmuShelf.Infrastructure.Input;
 using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Metadata.ScreenScraper;
@@ -24,6 +26,7 @@ public partial class App : Application
     private HttpClient? _webArtworkHttpClient;
     private HttpClient? _retroAchievementsHttpClient;
     private HttpClient? _updateHttpClient;
+    private HttpClient? _emulatorInstallHttpClient;
     private GamepadInputService? _gamepadInput;
 
     public override void Initialize()
@@ -195,6 +198,26 @@ public partial class App : Application
                 Bootstrapper.Settings,
                 Bootstrapper.Logger,
                 requestExit: () => desktop.Shutdown());
+            // In-app emulator install/update manager. Downloads supported emulators into a portable
+            // Emulators/ folder and auto-wires them for systems the user hasn't configured. Its own
+            // HttpClient has a long timeout for large downloads.
+            _emulatorInstallHttpClient = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+            _emulatorInstallHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"EmuShelf/{AppBuildInfo.Version}");
+            var emulatorInstallService = new EmulatorInstallService(
+                Bootstrapper.Emulators,
+                Bootstrapper.Paths,
+                new JsonEmulatorInstallManifestStore(Bootstrapper.Paths, Bootstrapper.Logger),
+                new GitHubEmulatorReleaseClient(_emulatorInstallHttpClient, Bootstrapper.Logger),
+                Bootstrapper.Logger,
+                userProvidedExecutableProbe: emulatorId =>
+                    ResolveUserProvidedExecutable(Bootstrapper, emulatorId));
+            var emulatorInstallCoordinator = new EmulatorInstallCoordinator(
+                emulatorInstallService,
+                Bootstrapper.Emulators,
+                Bootstrapper.Logger,
+                onInstalled: (emulatorId, executablePath) =>
+                    AutoAssignManagedExecutableAsync(Bootstrapper, emulatorId, executablePath),
+                openDownloadPage: OpenExternalUrlAsync);
             var viewModel = new MainViewModel(
                 Bootstrapper.Library,
                 Bootstrapper.FolderScanner,
@@ -249,7 +272,8 @@ public partial class App : Application
                 gameDetails: Bootstrapper.GameDetailsStore,
                 appPaths: Bootstrapper.Paths,
                 updates: updateCoordinator,
-                fileReveal: new FileRevealService());
+                fileReveal: new FileRevealService(),
+                emulatorInstalls: emulatorInstallCoordinator);
 
             mainWindow.DataContext = viewModel;
             desktop.MainWindow = mainWindow;
@@ -283,6 +307,7 @@ public partial class App : Application
                 _metadataHttpClient?.Dispose();
                 _retroAchievementsHttpClient?.Dispose();
                 _updateHttpClient?.Dispose();
+                _emulatorInstallHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");
             };
 
@@ -303,5 +328,98 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// The user's own configured executable for an emulator when it is not one EmuShelf manages (i.e. it
+    /// lives outside the managed <c>Emulators/&lt;id&gt;/</c> folder), so the install manager reports it as
+    /// user-provided instead of offering to overwrite it. Null when only a managed/no install is configured.
+    /// </summary>
+    private static string? ResolveUserProvidedExecutable(AppBootstrapper bootstrapper, string emulatorId)
+    {
+        var definition = bootstrapper.Emulators
+            .FirstOrDefault(emulator => string.Equals(emulator.Id, emulatorId, StringComparison.Ordinal));
+        if (definition is null)
+            return null;
+
+        var managedRoot = Path.Combine(bootstrapper.Paths.EmulatorsDirectory, emulatorId);
+        foreach (var systemId in definition.SupportedSystemIds)
+        {
+            var executable = bootstrapper.EmulatorConfigurations.GetForEmulator(systemId, emulatorId)?.ExecutablePath;
+            if (!string.IsNullOrWhiteSpace(executable) && !IsUnderDirectory(executable, managedRoot))
+                return executable;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// After a managed install, point every system the emulator supports that has no executable configured
+    /// yet at the managed executable. Never overrides a system the user already set up. Skips core-based
+    /// emulators (RetroArch), where an executable alone would not make a system launchable.
+    /// </summary>
+    private static Task AutoAssignManagedExecutableAsync(
+        AppBootstrapper bootstrapper,
+        string emulatorId,
+        string executablePath) =>
+        Task.Run(() =>
+        {
+            var definition = bootstrapper.Emulators
+                .FirstOrDefault(emulator => string.Equals(emulator.Id, emulatorId, StringComparison.Ordinal));
+            if (definition is null || definition.RequiresCorePath)
+                return;
+
+            var toSave = new List<EmulatorConfiguration>();
+            foreach (var systemId in definition.SupportedSystemIds)
+            {
+                // Skip a system the user already configured with any emulator (its active profile has a
+                // launch target). SaveAll activates every system it writes, so already-configured systems
+                // must be excluded entirely rather than saved.
+                if (bootstrapper.EmulatorConfigurations.Get(systemId)?.LaunchTarget is not null)
+                    continue;
+
+                toSave.Add(new EmulatorConfiguration(systemId, executablePath, LaunchArguments: null)
+                {
+                    LaunchTarget = new DirectExecutableTarget(executablePath),
+                    EmulatorId = emulatorId,
+                    // Explicit so RetroArch would share one install and per-system emulators stay separate;
+                    // the store converts the absolute path to a portable relative one on write.
+                    EmulatorInstallationId = definition.GetDefaultInstallationId(systemId),
+                });
+            }
+
+            if (toSave.Count > 0)
+                bootstrapper.EmulatorConfigurations.SaveAll(toSave);
+        });
+
+    private static bool IsUnderDirectory(string path, string directory)
+    {
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            var root = Path.GetFullPath(directory);
+            return string.Equals(fullPath, root, StringComparison.OrdinalIgnoreCase)
+                || fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Opens an emulator's download page in the user's browser. Best-effort; the caller logs failures.</summary>
+    private static Task OpenExternalUrlAsync(string url)
+    {
+        var startInfo = OperatingSystem.IsWindows()
+            ? new ProcessStartInfo { FileName = url, UseShellExecute = true }
+            : new ProcessStartInfo
+            {
+                FileName = OperatingSystem.IsMacOS() ? "open" : "xdg-open",
+                UseShellExecute = false,
+            };
+        if (!OperatingSystem.IsWindows())
+            startInfo.ArgumentList.Add(url);
+        using var process = Process.Start(startInfo);
+        return Task.CompletedTask;
     }
 }

@@ -17,5 +17,8 @@ public static class RetroArchDefinition
         "-L \"{CorePath}\" \"{GamePath}\"",
         RequiresCorePath: true,
         SharesDefaultInstallation: true,
-        RequiresContentFile: true);
+        RequiresContentFile: true)
+    {
+        ReleaseSource = EmulatorReleaseSources.RetroArch,
+    };
 }

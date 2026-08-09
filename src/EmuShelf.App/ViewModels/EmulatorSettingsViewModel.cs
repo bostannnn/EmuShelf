@@ -16,6 +16,7 @@ public enum SettingsSection
 {
     General,
     Emulators,
+    EmulatorManager,
     Hotkeys,
     RetroAchievements,
     ScreenScraper,
@@ -39,6 +40,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly TexturePackSettingsContext? _texturePacks;
     private readonly HotkeySettingsContext? _hotkeys;
     private readonly AppUpdateCoordinator? _updates;
+    private readonly EmulatorManagerSettingsContext? _emulatorManager;
     private readonly IAppLogger _logger;
     // Held only for the duration of one cloud operation so the Stop button can reach it.
     private CancellationTokenSource? _cloudCancellation;
@@ -51,11 +53,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool HasCloudSaves => _cloudSaves is not null;
     public bool HasTexturePacks => _texturePacks is not null;
     public bool HasHotkeys => _hotkeys is { Emulators.Count: > 0 };
+    public bool HasEmulatorManager => _emulatorManager is not null;
+
+    /// <summary>The Install Emulators rows, empty when the host did not wire the install manager.</summary>
+    public IReadOnlyList<EmulatorInstallRowViewModel> EmulatorInstallRows => _emulatorManager?.Rows ?? [];
     public event Action<bool>? CloseRequested;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGeneralSection))]
     [NotifyPropertyChangedFor(nameof(IsEmulatorsSection))]
+    [NotifyPropertyChangedFor(nameof(IsEmulatorManagerSection))]
     [NotifyPropertyChangedFor(nameof(IsHotkeysSection))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
     [NotifyPropertyChangedFor(nameof(IsScreenScraperSection))]
@@ -72,6 +79,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     {
         SettingsSection.General => "Library upkeep, metadata, and where EmuShelf keeps its data.",
         SettingsSection.Emulators => "Point each system at its emulator and set how it launches.",
+        SettingsSection.EmulatorManager => "Download and update the emulators EmuShelf launches.",
         SettingsSection.Hotkeys => "Write one keyboard-hotkey scheme into each emulator's own settings.",
         SettingsSection.RetroAchievements => "Connect your RetroAchievements account to track progress.",
         SettingsSection.ScreenScraper => "Connect ScreenScraper to fetch game metadata and artwork.",
@@ -84,6 +92,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     public bool IsGeneralSection => SelectedSection == SettingsSection.General;
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
+    public bool IsEmulatorManagerSection => SelectedSection == SettingsSection.EmulatorManager;
     public bool IsHotkeysSection => SelectedSection == SettingsSection.Hotkeys;
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
     public bool IsScreenScraperSection => SelectedSection == SettingsSection.ScreenScraper;
@@ -450,9 +459,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null,
         AppUpdateCoordinator? updates = null,
-        IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null)
+        IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null,
+        EmulatorManagerSettingsContext? emulatorManager = null)
     {
         _configurations = configurations;
+        _emulatorManager = emulatorManager;
         _dialogs = dialogs;
         _maintenance = maintenance;
         _metadataPreferences = metadataPreferences;
@@ -473,6 +484,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _suppressAmbientCallback = false;
 
         var sections = new List<SettingsSection> { SettingsSection.General, SettingsSection.Emulators };
+        if (emulatorManager is not null)
+            sections.Add(SettingsSection.EmulatorManager);
         if (hotkeys is { Emulators.Count: > 0 })
             sections.Add(SettingsSection.Hotkeys);
         if (retroAchievements is not null)
@@ -1323,11 +1336,36 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         if (value == SettingsSection.TexturePacks && _texturePacks is not null)
             ApplyTexturePackInventory();
 
+        if (value == SettingsSection.EmulatorManager && _emulatorManager is not null)
+            _ = RefreshEmulatorInstallsAsync();
+
         if (value != SettingsSection.Saves || _cloudSaves is null)
             return;
 
         foreach (var platform in CloudPlatforms.Where(row => row.DetectedDirectory is null))
             _ = platform.RefreshDetectedDirectoryAsync();
+    }
+
+    private bool _refreshingEmulatorInstalls;
+
+    private async Task RefreshEmulatorInstallsAsync()
+    {
+        // Re-selecting the section shouldn't stack overlapping refresh passes over the GitHub API.
+        if (_refreshingEmulatorInstalls)
+            return;
+        _refreshingEmulatorInstalls = true;
+        try
+        {
+            await _emulatorManager!.RefreshAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Refreshing emulator install status failed.", ex);
+        }
+        finally
+        {
+            _refreshingEmulatorInstalls = false;
+        }
     }
 
     [RelayCommand]

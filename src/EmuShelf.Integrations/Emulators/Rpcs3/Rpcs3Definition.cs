@@ -8,5 +8,8 @@ public static class Rpcs3Definition
         "rpcs3",
         "RPCS3",
         ["playstation3"],
-        "--no-gui \"{GamePath}\"");
+        "--no-gui \"{GamePath}\"")
+    {
+        ReleaseSource = EmulatorReleaseSources.Rpcs3,
+    };
 }

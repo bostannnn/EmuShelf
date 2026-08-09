@@ -12,5 +12,8 @@ public static class PpssppDefinition
         "ppsspp",
         "PPSSPP",
         ["psp"],
-        "\"{GamePath}\"");
+        "\"{GamePath}\"")
+    {
+        ReleaseSource = EmulatorReleaseSources.Ppsspp,
+    };
 }

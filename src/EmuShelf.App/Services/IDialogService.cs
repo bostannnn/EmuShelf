@@ -76,7 +76,8 @@ public interface IDialogService
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         AppUpdateCoordinator? updates = null,
-        Func<HotkeySettingsContext?>? createHotkeyContext = null);
+        Func<HotkeySettingsContext?>? createHotkeyContext = null,
+        EmulatorManagerSettingsContext? emulatorManager = null);
 
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);

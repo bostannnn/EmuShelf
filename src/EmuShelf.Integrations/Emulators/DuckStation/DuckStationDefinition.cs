@@ -8,5 +8,8 @@ public static class DuckStationDefinition
         "duckstation",
         "DuckStation",
         ["playstation"],
-        "-batch -- \"{GamePath}\"");
+        "-batch -- \"{GamePath}\"")
+    {
+        ReleaseSource = EmulatorReleaseSources.DuckStation,
+    };
 }

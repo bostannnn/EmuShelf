@@ -151,7 +151,8 @@ internal sealed class NullDialogService : IDialogService
         bool ambientThemeFromArtwork = false,
         Func<bool, Task>? setAmbientThemeFromArtwork = null,
         AppUpdateCoordinator? updates = null,
-        Func<HotkeySettingsContext?>? createHotkeyContext = null) => Task.CompletedTask;
+        Func<HotkeySettingsContext?>? createHotkeyContext = null,
+        EmulatorManagerSettingsContext? emulatorManager = null) => Task.CompletedTask;
     public Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId) =>
         Task.CompletedTask;
 }

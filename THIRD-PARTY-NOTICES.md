@@ -100,6 +100,18 @@ controller polling.
 - License: zlib; the complete text is retained in
   `src/EmuShelf.App/Assets/ThirdParty/SDL2-LICENSE.txt`.
 
+## Archive extraction for the emulator install manager
+
+EmuShelf uses the managed [`SharpCompress`](https://github.com/adamhathcock/sharpcompress) package to
+unpack the `.7z` and `.tar.xz` archives some emulators publish (e.g. PCSX2, RPCS3), when the user
+installs an emulator through the in-app install/update manager. `.zip` and `.AppImage` archives use the
+framework's built-in reader and a chmod; macOS `.dmg` images use the system `hdiutil`. SharpCompress is
+used read-only, to extract a user-initiated download into the portable `Emulators/` folder.
+
+- Copyright: Copyright (c) 2014 Adam Hathcock.
+- License: MIT; the complete text is retained in
+  `src/EmuShelf.App/Assets/ThirdParty/SharpCompress-LICENSE.txt`.
+
 ## Opt-in network metadata sources (not distributed)
 
 EmuShelf can, only after the user opts in, request title catalogs and individual

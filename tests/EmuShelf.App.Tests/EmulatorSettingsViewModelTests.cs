@@ -1,7 +1,14 @@
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
+using Avalonia.Threading;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
+using EmuShelf.App.Views;
 using EmuShelf.Core.Achievements;
+using EmuShelf.Core.Diagnostics;
+using EmuShelf.Core.Emulators;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
@@ -1270,6 +1277,76 @@ public class EmulatorSettingsViewModelTests
         Assert.False(string.IsNullOrEmpty(viewModel.ScreenScraperStatusText));
     }
 
+    [AvaloniaFact]
+    public async Task Render_InstallEmulatorsSection_Preview()
+    {
+        // A representative row for each install state, so the preview shows every affordance at once.
+        var service = new PreviewInstallService();
+        service.Statuses["duckstation"] = new EmulatorInstallStatus.NotInstalled("0.1-7800");
+        service.Statuses["pcsx2"] = new EmulatorInstallStatus.Managed("2.0.0");
+        service.Statuses["rpcs3"] = new EmulatorInstallStatus.UpdateAvailable("0.0.30-16800", "0.0.34-17100");
+        service.Statuses["dolphin"] = new EmulatorInstallStatus.Unsupported(
+            "EmuShelf can't install this emulator yet — use its download page.", "https://dolphin-emu.org/download/");
+        service.Statuses["ppsspp"] = new EmulatorInstallStatus.UserProvided("/Applications/PPSSPP.app", null);
+        service.Statuses["azahar"] = new EmulatorInstallStatus.NotInstalled(null);
+        service.Statuses["retroarch"] = new EmulatorInstallStatus.Unsupported(
+            "EmuShelf can't install this emulator yet — use its download page.", "https://www.retroarch.com/?page=platforms");
+
+        var rows = new List<EmulatorInstallRowViewModel>();
+        foreach (var definition in KnownEmulators.All)
+        {
+            var row = new EmulatorInstallRowViewModel(definition.Id, definition.Name, service, NullAppLogger.Instance);
+            await row.RefreshAsync();
+            rows.Add(row);
+        }
+        var context = new EmulatorManagerSettingsContext(rows, _ => Task.CompletedTask);
+
+        var snapshotDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        foreach (var variant in new[] { ThemeVariant.Light, ThemeVariant.Dark })
+        {
+            var viewModel = CreateViewModel(emulatorManager: context);
+            viewModel.SelectedSection = SettingsSection.EmulatorManager;
+            var window = new EmulatorSettingsWindow
+            {
+                DataContext = viewModel,
+                RequestedThemeVariant = variant,
+            };
+            window.Show();
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            Assert.Equal(SettingsSection.EmulatorManager, viewModel.SelectedSection);
+            Assert.Equal(KnownEmulators.All.Count, viewModel.EmulatorInstallRows.Count);
+
+            using var frame = window.CaptureRenderedFrame();
+            Assert.NotNull(frame);
+            if (snapshotDirectory is not null)
+            {
+                Directory.CreateDirectory(snapshotDirectory);
+                await using var output = File.Create(Path.Combine(
+                    snapshotDirectory, $"install-emulators-{variant}.png"));
+                frame!.Save(output, PngBitmapEncoderOptions.Default);
+            }
+        }
+    }
+
+    private sealed class PreviewInstallService : IEmulatorInstallService
+    {
+        public Dictionary<string, EmulatorInstallStatus> Statuses { get; } = new(StringComparer.Ordinal);
+
+        public Task<EmulatorInstallStatus> GetStatusAsync(string emulatorId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Statuses.TryGetValue(emulatorId, out var status)
+                ? status
+                : new EmulatorInstallStatus.CheckFailed("no status"));
+
+        public Task<EmulatorInstallResult> InstallAsync(string emulatorId, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<EmulatorInstallResult>(new EmulatorInstallResult.Failed("preview"));
+
+        public Task<EmulatorInstallResult> UpdateAsync(string emulatorId, IProgress<double>? progress = null, CancellationToken cancellationToken = default) =>
+            Task.FromResult<EmulatorInstallResult>(new EmulatorInstallResult.Failed("preview"));
+    }
+
     private EmulatorSettingsViewModel CreateViewModel(
         LibraryMaintenanceActions? maintenance = null,
         RetroAchievementsSettingsContext? retroAchievements = null,
@@ -1277,6 +1354,7 @@ public class EmulatorSettingsViewModelTests
         IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
+        EmulatorManagerSettingsContext? emulatorManager = null,
         FakeDialogService? dialogs = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
@@ -1290,7 +1368,8 @@ public class EmulatorSettingsViewModelTests
         retroAchievements: retroAchievements,
         cloudSaves: cloudSaves,
         texturePacks: texturePacks,
-        screenScraper: screenScraper);
+        screenScraper: screenScraper,
+        emulatorManager: emulatorManager);
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,

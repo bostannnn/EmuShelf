@@ -8,5 +8,8 @@ public static class DolphinDefinition
         "dolphin",
         "Dolphin",
         ["gamecube", "wii"],
-        "-b -e \"{GamePath}\"");
+        "-b -e \"{GamePath}\"")
+    {
+        ReleaseSource = EmulatorReleaseSources.Dolphin,
+    };
 }

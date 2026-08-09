@@ -8,5 +8,8 @@ public static class Pcsx2Definition
         "pcsx2",
         "PCSX2",
         ["playstation2"],
-        "-batch -- \"{GamePath}\"");
+        "-batch -- \"{GamePath}\"")
+    {
+        ReleaseSource = EmulatorReleaseSources.Pcsx2,
+    };
 }
