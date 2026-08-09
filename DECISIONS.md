@@ -5474,3 +5474,27 @@ an *order*, not a *place*.
 - Future custom user collections get the rail as their home — extra stops after the systems — rather than
   reviving the overlay.
 
+## 2026-08-09 — RVZ junk-padding regeneration fixed; Wii/GameCube achievement hashes recomputed
+
+Almost no .rvz Wii games were being matched to RetroAchievements (and a few GameCube titles, e.g. Mario
+Power Tennis), while .iso Wii games worked. Root cause was in the RVZ reader's lagged-Fibonacci "junk"
+generator (`RvzLaggedFibonacciGenerator` in [NintendoDiscImageReader.cs](src/EmuShelf.Integrations/Achievements/NintendoDiscImageReader.cs)),
+which reconstructs the pseudo-random padding Dolphin strips out of RVZ.
+
+- **The generator was missing Dolphin's per-word `Initialize` transform** — `x = swap32((x & 0xFF00FFFF) |
+  ((x >> 2) & 0x00FF0000))` applied to the whole buffer after seed extension — **and extracted bytes
+  big-endian instead of little-endian** (host order, matching Dolphin's `reinterpret_cast<u8*>`). Both are
+  now corrected. An earlier audit fix (`>>18`→`>>16`) had patched only one byte lane and left the real
+  defect. Verified by reconstructing full Ghost Squad + Mario Kart Wii (Wii) and Luigi's Mansion + Mario
+  Power Tennis (GameCube) discs **byte-for-byte** against DolphinTool-produced ISOs.
+- **Why Wii was hit hard but GameCube barely:** the Wii hash reads 1024 partition clusters (~32 MiB), which
+  for smaller games routinely includes junk padding; GameCube hashes only the disc header + apploader + DOL,
+  which is real data unless a title's hashed region happens to abut junk (measured: 1 of 23 local GC titles).
+- **Both algorithm versions were bumped** (`gamecube-v3`, `wii-v4`) and both dropped from the legacy
+  `disc-v2` compatibility set, so the corrected reader recomputes every Wii/GameCube hash the broken reader
+  had already stored — otherwise the wrong hashes would be reused forever and the games would stay
+  unidentified. PlayStation stays compatible with the legacy version.
+- **Added a regression test that emits an actual RVZ junk segment.** The pre-existing synthetic RVZ builders
+  only exercised literal packing, never the junk path — which is why this shipped twice. The new test pins
+  the generator's output (cross-checked against Dolphin) so a future byte-order/transform regression fails.
+

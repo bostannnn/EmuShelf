@@ -34,12 +34,16 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     private const string LegacyGlobalV2 = "rcheevos-2ac45d3-disc-v2";
     // v4 recognizes sync-stripped Mode 2 CHD frames. It advances only the affected reader.
     private const string PlayStationAlgorithmV4 = "rcheevos-2ac45d3-playstation-v4";
-    // GameCube's reader is unchanged, so it keeps the original combined-Nintendo version string;
-    // persisted GameCube hashes stay valid and are not needlessly recomputed.
-    private const string GameCubeAlgorithm = "rcheevos-2ac45d3-nintendo-v2";
-    // The Wii decrypted-partition reader was corrected to scale DOL segment sizes by wii_shift
-    // (matching rcheevos); the bump recomputes any hash stored by the earlier, incorrect reader.
-    private const string WiiAlgorithmV3 = "rcheevos-2ac45d3-wii-v3";
+    // v3 corrects the RVZ lagged-Fibonacci junk generator (missing per-word transform + wrong
+    // byte order), which corrupted regenerated padding. GameCube reads header + apploader + DOL,
+    // so only titles whose hashed region overlaps junk padding were affected — but that does
+    // happen (e.g. Mario Power Tennis), so the bump recomputes any GameCube hash the earlier
+    // reader stored.
+    private const string GameCubeAlgorithm = "rcheevos-2ac45d3-gamecube-v3";
+    // v4 corrects the same RVZ junk generator for Wii. Wii hashes 1024 partition clusters, which
+    // routinely include junk padding for smaller games, so the earlier reader produced a wrong
+    // hash for almost every .rvz Wii title; the bump recomputes them.
+    private const string WiiAlgorithmV4 = "rcheevos-2ac45d3-wii-v4";
     // Not suffixed with the container: the hash is PARAM.SFO plus EBOOT.BIN read by logical
     // sector, so adding CHD reads the same bytes and must not invalidate stored ISO/CSO hashes.
     private const string PspAlgorithm = "rcheevos-2ac45d3-psp-v1";
@@ -62,7 +66,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     {
         PlayStationId or PlayStation2Id => PlayStationAlgorithmV4,
         GameCubeId => GameCubeAlgorithm,
-        WiiId => WiiAlgorithmV3,
+        WiiId => WiiAlgorithmV4,
         PspId => PspAlgorithm,
         MegaDriveId => MegaDriveAlgorithm,
         NintendoDsId => NintendoDsAlgorithm,
@@ -79,10 +83,11 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     {
         if (persistedVersion == GetAlgorithmVersion(game))
             return true;
-        // The pre-per-system global version stays valid for readers unchanged since, but the Wii
-        // decrypted-partition reader was corrected, so a Wii hash stored under it is recomputed.
+        // The pre-per-system global version stays valid only for readers unchanged since it. Both
+        // the Wii and GameCube RVZ readers were corrected (junk-padding regeneration), so a Wii or
+        // GameCube hash stored under the legacy version is now recomputed rather than reused.
         return persistedVersion == LegacyGlobalV2 && game.SystemId is
-            PlayStationId or PlayStation2Id or GameCubeId;
+            PlayStationId or PlayStation2Id;
     }
 
     public RetroAchievementsSourceSnapshot Inspect(Game game) =>

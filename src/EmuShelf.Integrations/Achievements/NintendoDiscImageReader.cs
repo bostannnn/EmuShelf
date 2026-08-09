@@ -1314,6 +1314,15 @@ internal abstract class NintendoDiscImageReader : IDisposable
                 _buffer[index] = BinaryPrimitives.ReadUInt32BigEndian(seed.Slice(index * 4, 4));
             for (var index = SeedWords; index < WordCount; index++)
                 _buffer[index] = (_buffer[index - 17] << 23) ^ (_buffer[index - 16] >> 9) ^ _buffer[index - 1];
+            // rcheevos/Dolphin apply this per-word transform to the whole buffer after the seed
+            // extension and before the warm-up rounds. Omitting it (or reading words big-endian
+            // below) corrupts every regenerated junk byte and breaks RVZ Wii/GameCube hashing.
+            for (var index = 0; index < WordCount; index++)
+            {
+                var value = _buffer[index];
+                _buffer[index] = BinaryPrimitives.ReverseEndianness(
+                    (value & 0xFF00FFFFu) | ((value >> 2) & 0x00FF0000u));
+            }
             for (var round = 0; round < 4; round++)
                 Advance();
         }
@@ -1343,13 +1352,9 @@ internal abstract class NintendoDiscImageReader : IDisposable
                 var count = Math.Min(destination.Length, 4 - byteIndex);
                 for (var index = 0; index < count; index++)
                 {
-                    destination[index] = (byte)((byteIndex + index) switch
-                    {
-                        0 => word >> 24,
-                        1 => word >> 16,
-                        2 => word >> 8,
-                        _ => word,
-                    });
+                    // Bytes are read from the buffer in little-endian (host) order, matching
+                    // Dolphin's reinterpret_cast<u8*>(m_buffer) access.
+                    destination[index] = (byte)(word >> (8 * (byteIndex + index)));
                 }
 
                 _position += count;
