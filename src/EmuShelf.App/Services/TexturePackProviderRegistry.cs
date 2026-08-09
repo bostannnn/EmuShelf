@@ -217,6 +217,13 @@ public static class TexturePackProviderRegistry
         if (userDirectory is null && context.DirectoryOverride is null)
             return null;
 
+        // Dolphin.ini names the Load directory, but on native Linux and Flatpak it lives in a
+        // separate XDG config tree, not <User>/Config — so resolve the config directory itself
+        // rather than deriving it from the data user directory above.
+        var configDirectory = EmulatorUserDirectories.FindDolphinConfigDirectory(
+            context.EmulatorDirectory,
+            context.IsFlatpak);
+
         // GameCube and Wii share one Dolphin installation, so they must share one installation id;
         // otherwise the same folder would be scanned and cached twice under different keys.
         var installationId = InstallationId(
@@ -227,11 +234,15 @@ public static class TexturePackProviderRegistry
             new DolphinTextureRootResolver(
                 installationId,
                 userDirectory ?? context.Paths.BaseDirectory,
-                context.DirectoryOverride),
+                context.DirectoryOverride,
+                configDirectory),
             root => new DolphinTexturePackSource(installationId, root),
             userDirectory is null
                 ? null
-                : new DolphinTexturePackLoadingResolver(installationId, userDirectory));
+                : new DolphinTexturePackLoadingResolver(
+                    installationId,
+                    configDirectory ?? Path.Combine(userDirectory, "Config"),
+                    userDirectory));
     }
 
     // The cache is keyed by installation, so the key has to be stable across restarts and distinct

@@ -5843,3 +5843,55 @@ correct on Flatpak, so they worked by luck of the fallback. The hotkey applier h
 to fall back to (it must find and write `Hotkeys.ini`), so it is the canary. `DolphinTextureRootResolver`
 and `DolphinSaveLocationProvider` still read the wrong `<dataDir>/Config/Dolphin.ini` on Linux and would
 silently ignore a user's *moved* Load/save folder there; that latent bug is tracked separately.
+
+## 2026-08-10 — Dolphin texture and save resolvers read the split config tree too
+
+Follow-up to the entry above: `DolphinTextureRootResolver` and `DolphinSaveLocationProvider` now read
+`Dolphin.ini` from Dolphin's real config directory instead of `<dataDir>/Config`. Before this, a Linux
+or Flatpak user who *relocated* their Load or save folder inside Dolphin had the override silently
+ignored — the resolvers read a `Dolphin.ini` that isn't there, so they fell back to the data-dir
+defaults, which is right only until the folder actually moves.
+
+The two resolvers reach the config directory differently, because they sit at different layers:
+
+- **Texture resolver.** `DolphinTextureRootResolver` gains an optional `configDirectory` argument that
+  defaults to `<userDir>/Config` (so Windows, macOS, portable, and every existing test are unchanged).
+  `TexturePackProviderRegistry` resolves it with the shared `FindDolphinConfigDirectory` and threads it
+  in. The user (data) directory is still needed and still passed — it supplies the `<User>/Load` default
+  and is the base for a *relative* `LoadPath`, which Dolphin resolves against the user dir, not the
+  config dir.
+- **Save provider.** `DolphinSaveLocationProvider` can't call the static `FindDolphinConfigDirectory`:
+  that helper only knows `(installationDirectory, isFlatpak)`, but the provider's effective directory
+  can also come from a Settings override, a `-u`/`--user` launch argument, or portable mode — cases the
+  helper doesn't model. It instead resolves the config dir internally (`GetConfigDirectory`), mirroring
+  its own user-directory resolution: an explicit directory (override/`-u`/portable) and the
+  Windows/macOS defaults keep config at `<userDir>/Config`; Flatpak and native Linux use the separate
+  XDG config tree (honouring an injected `xdgConfigHome`, else `~/.config`), with the pre-XDG unified
+  `~/.dolphin-emu` layout kept on `<userDir>/Config`. Flatpak is checked before Windows/macOS, matching
+  `GetUserDirectory`, so the config and data trees can never disagree about which install this is.
+
+Tests assert the split directly: the texture resolver follows a `LoadPath` written into a *separate*
+config directory (and still resolves a relative `LoadPath` against the data dir), and the save provider
+reads a raw-card layout from the XDG/Flatpak config tree while ignoring a decoy `Dolphin.ini` planted in
+the old `<dataDir>/Config` location.
+
+## 2026-08-10 — The texture-loading status reads GFX.ini from the config tree too
+
+A third consumer had the same `<dataDir>/Config` assumption: `DolphinTexturePackLoadingResolver` reads
+`GFX.ini`'s `[Settings] HiresTextures` to tell Settings whether Dolphin will actually load the packs it
+found. It read `<dataDir>/Config/GFX.ini`, so on Linux/Flatpak the status showed *Unknown* ("settings
+file not found") even when the user had custom textures enabled in the real
+`$XDG_CONFIG_HOME/dolphin-emu/GFX.ini`. It fails safe (Unknown, never a confident wrong answer) and
+touches no save data, which is why it was a quieter symptom than the two resolvers above.
+
+Unlike those, this one couldn't just be pointed at the config directory, because `GFX.ini` and the
+per-game `GameSettings/` directory live in **different** trees on Linux: `GFX.ini` is config
+(`D_CONFIG_IDX`), but `GameSettings/` is data (`D_USER_IDX + GameSettings`). The shared base
+`IniTexturePackLoadingResolver` rooted both at one directory. It now takes an optional
+`perGameRootDirectory` that defaults to the configuration directory — so DuckStation, PCSX2, PPSSPP,
+and Azahar (which keep both under one directory) are unchanged — and `DolphinTexturePackLoadingResolver`
+passes the resolved config directory for `GFX.ini` and the data user directory for `GameSettings`.
+`TexturePackProviderRegistry` feeds it the same `FindDolphinConfigDirectory` value it already resolves
+for the texture-root resolver. Tests assert `GFX.ini` is read from the config tree (ignoring a decoy in
+`<dataDir>/Config`) and that a per-game override is found under the data tree's `GameSettings`, not the
+config tree's.

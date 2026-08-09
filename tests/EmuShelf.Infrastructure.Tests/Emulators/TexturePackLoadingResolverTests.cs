@@ -139,13 +139,35 @@ public sealed class TexturePackLoadingResolverTests : IDisposable
     }
 
     [Fact]
-    public async Task Dolphin_ReadsHiresTexturesFromItsGraphicsIni()
+    public async Task Dolphin_ReadsHiresTexturesFromTheConfigTree_NotTheOldDataDirConfig()
     {
-        WriteIni(Path.Combine("Config", "GFX.ini"), "[Settings]", "HiresTextures = True");
+        // On native Linux and Flatpak, GFX.ini lives in Dolphin's separate config tree, not
+        // <data>/Config. A stale GFX.ini in the old data-dir location must be ignored.
+        WriteIni(Path.Combine("config", "GFX.ini"), "[Settings]", "HiresTextures = True");
+        WriteIni(Path.Combine("data", "Config", "GFX.ini"), "[Settings]", "HiresTextures = False");
 
-        var resolution = await new DolphinTexturePackLoadingResolver("i", _root).ResolveAsync();
+        var resolution = await new DolphinTexturePackLoadingResolver(
+            "i", Path.Combine(_root, "config"), Path.Combine(_root, "data")).ResolveAsync();
 
         Assert.Equal(TexturePackLoadingStatus.Enabled, resolution.Status);
+    }
+
+    [Fact]
+    public async Task Dolphin_FindsPerGameOverridesInTheDataTreeGameSettings_NotTheConfigTree()
+    {
+        // GameSettings stays under the data user directory even when the global GFX.ini is split into
+        // the config tree, so a per-game file there must make that game's answer Unknown.
+        WriteIni(Path.Combine("config", "GFX.ini"), "[Settings]", "HiresTextures = True");
+        WriteIni(Path.Combine("data", "GameSettings", "GALE01.ini"), "[Video_Settings]");
+        // A decoy under the config tree's GameSettings must not be consulted.
+        WriteIni(Path.Combine("config", "GameSettings", "RMGE01.ini"), "[Video_Settings]");
+
+        var resolver = new DolphinTexturePackLoadingResolver(
+            "i", Path.Combine(_root, "config"), Path.Combine(_root, "data"));
+
+        Assert.Equal(TexturePackLoadingStatus.Unknown, (await resolver.ResolveAsync("GALE01")).Status);
+        Assert.Equal(TexturePackLoadingStatus.Enabled, (await resolver.ResolveAsync("RMGE01")).Status);
+        Assert.Equal(TexturePackLoadingStatus.Enabled, (await resolver.ResolveAsync()).Status);
     }
 
     [Fact]

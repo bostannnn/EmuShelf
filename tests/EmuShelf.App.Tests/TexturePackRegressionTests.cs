@@ -237,6 +237,51 @@ public sealed class TexturePackRegressionTests : IDisposable
     }
 
     [Fact]
+    public async Task DolphinTextures_ReadLoadPathFromASeparateConfigDirectory_OnTheLinuxXdgSplit()
+    {
+        // On native Linux and Flatpak, Dolphin.ini lives in a separate XDG config tree, not
+        // <data>/Config. The resolver reads the config directory it is handed; a stale Dolphin.ini in
+        // the data tree's Config/ — where the old code wrongly looked — must be ignored.
+        var dataUser = Path.Combine(_root, "data", "dolphin-emu");
+        var configDirectory = Path.Combine(_root, "config", "dolphin-emu");
+        var moved = Path.Combine(_root, "packs", "Load");
+        Directory.CreateDirectory(Path.Combine(moved, "Textures", "GALE01"));
+        Directory.CreateDirectory(configDirectory);
+        File.WriteAllLines(
+            Path.Combine(configDirectory, "Dolphin.ini"),
+            ["[General]", "LoadPath = " + moved.Replace('\\', '/') + "/"]);
+        Directory.CreateDirectory(Path.Combine(dataUser, "Config"));
+        File.WriteAllLines(
+            Path.Combine(dataUser, "Config", "Dolphin.ini"),
+            ["[General]", "LoadPath = " + Path.Combine(_root, "WRONG").Replace('\\', '/') + "/"]);
+
+        var resolution = await new DolphinTextureRootResolver(
+            "i", dataUser, overrideDirectory: null, configDirectory: configDirectory)
+            .ResolveAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(Path.Combine(moved, "Textures"), resolution.RootDirectory);
+    }
+
+    [Fact]
+    public async Task DolphinTextures_ResolveARelativeLoadPathAgainstTheDataDirectory_NotTheConfigDirectory()
+    {
+        // Dolphin resolves a relative LoadPath against the user (data) directory, so a split config
+        // tree must not change where the relative value lands.
+        var dataUser = Path.Combine(_root, "data", "dolphin-emu");
+        var configDirectory = Path.Combine(_root, "config", "dolphin-emu");
+        Directory.CreateDirectory(configDirectory);
+        File.WriteAllLines(
+            Path.Combine(configDirectory, "Dolphin.ini"),
+            ["[General]", @"LoadPath = .\CustomLoad\"]);
+
+        var resolution = await new DolphinTextureRootResolver(
+            "i", dataUser, overrideDirectory: null, configDirectory: configDirectory)
+            .ResolveAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(Path.Combine(dataUser, "CustomLoad", "Textures"), resolution.RootDirectory);
+    }
+
+    [Fact]
     public void DolphinUserDirectory_HonoursThePortableMarkerBesideTheExecutable()
     {
         // Dolphin's own rule: portable.txt makes the adjacent User folder authoritative, ahead of

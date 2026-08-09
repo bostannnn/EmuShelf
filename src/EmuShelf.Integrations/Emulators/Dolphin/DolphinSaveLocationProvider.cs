@@ -27,6 +27,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
     private readonly string _homeDirectory;
     private readonly string _documentsDirectory;
     private readonly string? _xdgDataHome;
+    private readonly string? _xdgConfigHome;
     private readonly bool _isWindows;
     private readonly bool _isMacOS;
     private readonly bool _isFlatpak;
@@ -40,6 +41,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
         string? homeDirectory = null,
         string? documentsDirectory = null,
         string? xdgDataHome = null,
+        string? xdgConfigHome = null,
         bool? isWindows = null,
         bool? isMacOS = null)
     {
@@ -60,6 +62,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             ? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
             : Path.GetFullPath(documentsDirectory);
         _xdgDataHome = string.IsNullOrWhiteSpace(xdgDataHome) ? null : Path.GetFullPath(xdgDataHome);
+        _xdgConfigHome = string.IsNullOrWhiteSpace(xdgConfigHome) ? null : Path.GetFullPath(xdgConfigHome);
         _isWindows = isWindows ?? OperatingSystem.IsWindows();
         _isMacOS = isMacOS ?? OperatingSystem.IsMacOS();
         _isFlatpak = isFlatpak;
@@ -356,9 +359,54 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
     private DolphinState ReadState(CancellationToken cancellationToken)
     {
         var userDirectory = GetUserDirectory(cancellationToken);
-        var configuration = IniDocument.Read(Path.Combine(userDirectory, "Config", "Dolphin.ini"));
+        var configDirectory = GetConfigDirectory(userDirectory, cancellationToken);
+        var configuration = IniDocument.Read(Path.Combine(configDirectory, "Dolphin.ini"));
         var overrides = ReadPerGameOverrides(userDirectory, configuration, cancellationToken);
         return new DolphinState(userDirectory, configuration, overrides);
+    }
+
+    /// <summary>
+    /// Where Dolphin keeps <c>Dolphin.ini</c>, which is not always <c>&lt;userDirectory&gt;/Config</c>.
+    /// An explicit user directory (Settings override, <c>-u</c>/<c>--user</c>, or portable mode) and
+    /// the Windows/macOS defaults keep config beside the data under <c>Config/</c>. Native Linux and
+    /// Flatpak are the exception: config lives in a separate XDG tree that holds <c>Dolphin.ini</c>
+    /// directly (no <c>Config/</c> level), while saves and <c>Load/</c> stay under the data directory
+    /// returned by <see cref="GetUserDirectory"/>.
+    /// </summary>
+    private string GetConfigDirectory(string userDirectory, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // An explicit user directory keeps everything in one tree, so config sits under <userDir>/Config.
+        if (_userDirectoryOverride is not null ||
+            TryGetUserArgument(_launchArguments, out _) ||
+            File.Exists(Path.Combine(_installationDirectory, "portable.txt")))
+        {
+            return Path.Combine(userDirectory, "Config");
+        }
+
+        // Platform defaults, in the same precedence GetUserDirectory uses (Flatpak before Windows/macOS)
+        // so the config and data trees never disagree about which install this is.
+        if (_isFlatpak)
+        {
+            return Path.Combine(
+                _homeDirectory,
+                ".var",
+                "app",
+                "org.DolphinEmu.dolphin-emu",
+                "config",
+                "dolphin-emu");
+        }
+        if (_isWindows || _isMacOS)
+            return Path.Combine(userDirectory, "Config");
+
+        // The pre-XDG unified layout (~/.dolphin-emu) keeps Config inside the user directory;
+        // GetUserDirectory only returns it when the modern data tree is absent, so match that here.
+        var legacy = Path.Combine(_homeDirectory, ".dolphin-emu");
+        if (PathComparer.Equals(userDirectory, legacy))
+            return Path.Combine(userDirectory, "Config");
+
+        return Path.Combine(_xdgConfigHome ?? Path.Combine(_homeDirectory, ".config"), "dolphin-emu");
     }
 
     private Dictionary<(char Slot, string GameId), string> ReadPerGameOverrides(
