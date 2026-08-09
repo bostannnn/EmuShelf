@@ -251,6 +251,38 @@ public sealed class TexturePackRegressionTests : IDisposable
             EmulatorUserDirectories.FindDolphin(install, isFlatpak: false));
     }
 
+    [Fact]
+    public void FindDolphinConfigDirectory_Flatpak_ResolvesTheXdgConfigTree_NotDataConfig()
+    {
+        // The Steam Deck regression: Dolphin's Flatpak keeps config under the sandbox's XDG_CONFIG_HOME
+        // (config/dolphin-emu), a *different* tree from data/dolphin-emu — so appending "Config" to the
+        // data user directory pointed at nothing. The Flatpak branch is a single candidate, so redirecting
+        // HOME/USERPROFILE (SpecialFolder.UserProfile) makes this deterministic on every platform.
+        var home = Directory.CreateTempSubdirectory("emushelf-dolphin-flatpak").FullName;
+        var config = Path.Combine(home, ".var", "app", "org.DolphinEmu.dolphin-emu", "config", "dolphin-emu");
+        var dataConfig = Path.Combine(home, ".var", "app", "org.DolphinEmu.dolphin-emu", "data", "dolphin-emu", "Config");
+        Directory.CreateDirectory(config);
+        Directory.CreateDirectory(dataConfig); // the wrong tree the old code appended "Config" to; must be ignored.
+
+        var previousHome = Environment.GetEnvironmentVariable("HOME");
+        var previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        Environment.SetEnvironmentVariable("HOME", home);
+        Environment.SetEnvironmentVariable("USERPROFILE", home);
+        try
+        {
+            var resolved = EmulatorUserDirectories.FindDolphinConfigDirectory(installationDirectory: null, isFlatpak: true);
+
+            Assert.Equal(Path.GetFullPath(config), resolved);
+            Assert.NotEqual(Path.GetFullPath(dataConfig), resolved);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("HOME", previousHome);
+            Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile);
+            try { Directory.Delete(home, true); } catch (IOException) { }
+        }
+    }
+
     private static void WriteDolphinIni(string userDirectory, string generalLine)
     {
         var config = Path.Combine(userDirectory, "Config");

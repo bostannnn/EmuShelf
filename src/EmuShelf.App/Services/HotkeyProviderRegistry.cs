@@ -45,8 +45,10 @@ public static class HotkeyProviderRegistry
             EmulatorUserDirectories.FindPcsx2(context.EmulatorDirectory, context.IsFlatpak),
             directory => new Pcsx2HotkeyConfigurator(directory, context.BackupRoot, context.WriteFile))),
 
+        // Dolphin's hotkeys live in its config directory, which on Linux (native and Flatpak) is a
+        // separate XDG tree from the data user directory — not a Config/ subfolder of it.
         new(DolphinDefinition.Instance.Id, "Dolphin", context => Build(
-            EmulatorUserDirectories.FindDolphin(context.EmulatorDirectory, context.IsFlatpak),
+            EmulatorUserDirectories.FindDolphinConfigDirectory(context.EmulatorDirectory, context.IsFlatpak),
             directory => new DolphinHotkeyConfigurator(directory, context.BackupRoot, context.WriteFile))),
 
         new(PpssppDefinition.Instance.Id, "PPSSPP", context => Build(

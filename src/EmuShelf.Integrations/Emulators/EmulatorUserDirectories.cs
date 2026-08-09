@@ -97,6 +97,47 @@ public static class EmulatorUserDirectories
         }
     }
 
+    /// <summary>
+    /// Dolphin's configuration directory — where <c>Dolphin.ini</c>, <c>Hotkeys.ini</c> and
+    /// <c>GFX.ini</c> live.
+    /// </summary>
+    /// <remarks>
+    /// This is <em>not</em> always a <c>Config/</c> subfolder of the user directory
+    /// <see cref="FindDolphin"/> returns. On Windows, macOS and portable installs it is; but on native
+    /// Linux Dolphin splits configuration out to <c>$XDG_CONFIG_HOME/dolphin-emu</c> (its
+    /// <c>SetUserDirectory</c> overrides <c>D_CONFIG_IDX</c> to the XDG config root, holding the
+    /// <c>.ini</c> files directly with no <c>Config/</c> level), while saves and textures stay under the
+    /// XDG data root. A Flatpak sandbox reflects the same split — config in
+    /// <c>~/.var/app/&lt;id&gt;/config/dolphin-emu</c>, data in <c>~/.var/app/&lt;id&gt;/data/dolphin-emu</c>.
+    /// Appending <c>Config</c> to the data directory therefore points at the wrong tree on Linux, which
+    /// is exactly what made the hotkey applier fail to find <c>Dolphin.ini</c> on the Steam Deck's
+    /// Flatpak build. Candidate order mirrors <see cref="FindDolphin"/> so both agree on which install wins.
+    /// </remarks>
+    public static string? FindDolphinConfigDirectory(string? installationDirectory, bool isFlatpak)
+    {
+        return First(Candidates());
+
+        IEnumerable<string?> Candidates()
+        {
+            if (isFlatpak)
+            {
+                // The sandbox's XDG_CONFIG_HOME is ~/.var/app/<id>/config, so Dolphin's config lands
+                // under config/dolphin-emu — a different tree from data/dolphin-emu.
+                yield return Flatpak("org.DolphinEmu.dolphin-emu", "config", "dolphin-emu");
+                yield break;
+            }
+
+            // Portable keeps everything under the adjacent User folder on every platform, config included.
+            if (HasAny(installationDirectory, "portable.txt"))
+                yield return Combine(installationDirectory, "User", "Config");
+
+            yield return Documents("Dolphin Emulator", "Config");                    // Windows
+            yield return XdgConfig("dolphin-emu");                                    // native Linux
+            yield return Home("Library", "Application Support", "Dolphin", "Config"); // macOS
+            yield return Combine(installationDirectory, "User", "Config");            // non-authoritative portable fallback
+        }
+    }
+
     /// <summary>PPSSPP's configuration directory, which holds <c>ppsspp.ini</c>.</summary>
     public static string? FindPpssppConfiguration(string? installationDirectory, bool isFlatpak)
     {
@@ -207,6 +248,21 @@ public static class EmulatorUserDirectories
 
     private static string? Home(params string[] segments) =>
         Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), segments);
+
+    /// <summary>
+    /// Native Linux's XDG config root for <paramref name="segments"/>: <c>$XDG_CONFIG_HOME</c> when it
+    /// is an absolute path (as Dolphin itself requires — it checks the leading slash), otherwise
+    /// <c>~/.config</c>. On non-Linux hosts the variable is normally unset, so this resolves under
+    /// <c>~/.config</c>, which does not exist there and is skipped by the existence check.
+    /// </summary>
+    private static string? XdgConfig(params string[] segments)
+    {
+        var configHome = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME");
+        var root = !string.IsNullOrWhiteSpace(configHome) && Path.IsPathFullyQualified(configHome)
+            ? configHome
+            : Home(".config");
+        return Combine(root, segments);
+    }
 
     private static string? Documents(params string[] segments) =>
         Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), segments);
