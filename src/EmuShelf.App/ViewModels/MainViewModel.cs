@@ -4249,7 +4249,15 @@ public partial class MainViewModel : ViewModelBase
                 await ShowSystemAsync(playStation3);
 
             SetStatus(BuildRpcs3SyncStatus(result));
-            return StatusText;
+            var syncStatus = StatusText;
+
+            // Newly synced RPCS3 games take the same opt-in metadata/cover path as every other
+            // import. This sync is the only route PlayStation 3 games enter the library — all four
+            // file/folder import paths deliberately reserve PS3 for it — so without this call they
+            // would never be enriched and would show no cover. A re-sync reports existing entries as
+            // updated (not added), so AddedGameIds is empty and nothing already present is refetched.
+            await MaybeStartMetadataForImportAsync(result.AddedGameIds);
+            return syncStatus;
         }
         catch (Rpcs3LibraryFormatException ex)
         {

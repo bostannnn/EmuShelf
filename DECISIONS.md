@@ -5683,3 +5683,25 @@ being searched, not a label).
   the local-DAT catalog title, which `TryApplyCatalogTitle` does persist into `Game.Title`.)
 - **Search matches the displayed title OR the original title**, so scraping never makes a game
   unfindable by the name it had before.
+
+## 2026-08-09 — The RPCS3 library sync must enrich metadata like every other import
+
+PlayStation 3 games enter the library through exactly one path — the RPCS3 `games.yml` sync
+(`SyncRpcs3LibraryFromSettingsAsync`). All four file/folder import paths deliberately refuse PS3
+("imported only from RPCS3"), so that sync is the sole importer for the platform. It was, however, the
+only import path that never called `MaybeStartMetadataForImportAsync`; newly synced PS3 games were
+therefore never handed to the opt-in title/cover enrichment (nor RetroAchievements identification) and
+stayed cover-less regardless of provider — the live library had 53 PS3 games with valid serials, full
+covers on every other system, and zero enrichment attempts for PS3. The sync now makes that call with
+the reconcile result's `AddedGameIds`.
+
+- **Only `AddedGameIds` (genuinely inserted rows) is enriched, never updated ones.**
+  `ReconcileExternalLibrary` appends to `addedIds` only on insert; a re-sync reports existing entries
+  as updated, so an empty added-list makes the enrichment call a no-op — it cannot re-download the
+  whole library on every sync.
+- **Existing cover-less PS3 entries are not backfilled by a re-sync** (they are "updated", not
+  "added"). The one-time **Fetch all metadata** action is the route for those, since it selects on
+  missing cover/title rather than on import recency.
+- **Any future `IExternalLibrarySource` must trigger enrichment the same way.** The enrichment
+  kickoff lives at the app import-orchestration layer, not inside `ExternalLibrarySyncService`, so it
+  is easy to forget for a new source. RPCS3 is currently the only such source.
