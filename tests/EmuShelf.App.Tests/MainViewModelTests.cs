@@ -456,6 +456,36 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task SettingsSyncRpcs3Library_StartsMetadataEnrichmentForNewlyAddedGames()
+    {
+        // PlayStation 3 games enter the library only through the RPCS3 sync — every file/folder
+        // import path reserves PS3 for it — so the sync must hand newly added games to the same
+        // opt-in enrichment path, or PS3 games would never receive a title or cover.
+        var configuration = Path.Combine(_baseDirectory, "rpcs3", "config");
+        var game = Path.Combine(_baseDirectory, "rpcs3", "games", "Example Game");
+        Directory.CreateDirectory(configuration);
+        Directory.CreateDirectory(game);
+        File.WriteAllText(Path.Combine(configuration, "games.yml"), $"BLES12345: '{game}'\n");
+        _dialogs.Rpcs3ConfigurationDirectoryToReturn = configuration;
+        _dialogs.MetadataConsentToReturn = MetadataConsentChoice.Always;
+        var metadata = new RecordingMetadataService();
+        var viewModel = CreateViewModel(
+            metadata: metadata,
+            metadataPreferences: new RecordingMetadataPreferences());
+
+        await viewModel.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.SyncRpcs3Library!();
+        await metadata.Called.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var added = Assert.Single(_library.GetGames("playstation3"));
+        Assert.Equal(added.Id, Assert.Single(metadata.GameIds));
+
+        // A re-sync adds nothing, so it must not re-enrich the whole library on every sync.
+        await _dialogs.MaintenanceActions.SyncRpcs3Library();
+        Assert.Equal(1, metadata.CallCount);
+    }
+
+    [AvaloniaFact]
     public async Task SettingsSyncRpcs3Library_ShowsFileMissingWhenRpcs3StillListsThePath()
     {
         var configuration = Path.Combine(_baseDirectory, "rpcs3", "config");
@@ -3594,6 +3624,7 @@ public class MainViewModelTests : IDisposable
 
         public Task Called => _called.Task;
         public IReadOnlyList<long> GameIds { get; private set; } = [];
+        public int CallCount { get; private set; }
 
         public Task<MetadataEnrichmentSummary> EnrichAsync(
             IEnumerable<long> gameIds,
@@ -3601,6 +3632,7 @@ public class MainViewModelTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             GameIds = gameIds.ToArray();
+            CallCount++;
             _called.TrySetResult();
             return Task.FromResult(new MetadataEnrichmentSummary(
                 GameIds.Count,
