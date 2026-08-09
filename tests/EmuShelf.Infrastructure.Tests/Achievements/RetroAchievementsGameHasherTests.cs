@@ -151,6 +151,82 @@ public class RetroAchievementsGameHasherTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Identify_WiiWad_MatchesReferenceWiiwareHash()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        var image = WiiWadReaderTests.BuildWadWithContents("WB4E", (0x30, 0xC1), (0x50, 0xC2));
+        // Guard: the fixture is byte-for-byte the one the independent Python transcription of
+        // rc_hash_wiiware ran on, so the expected MD5 below is a genuine cross-implementation check.
+        Assert.Equal(
+            "abf4440b6afe725925dd2bb925a4bcb856c079b6dcf86b9e266906d9d9c19803",
+            Convert.ToHexString(SHA256.HashData(image)).ToLowerInvariant());
+        var path = Path.Combine(BaseDirectory, "WiiWare Title.wad");
+        File.WriteAllBytes(path, image);
+        var timestamp = new DateTime(2026, 8, 9, 12, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(path, timestamp);
+        var bytesBefore = SHA256.HashData(File.ReadAllBytes(path));
+
+        var result = _hasher.Identify(Game("wii", path));
+
+        // MD5 of the TMD followed by each content's leading encrypted bytes — the exact output of
+        // rcheevos rc_hash_wiiware, verified against the independent reference implementation.
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("42c5536c932c59a2c5dc0bcfc00adcf9", result.CanonicalHash);
+        // The WAD is read only, never modified.
+        Assert.Equal(bytesBefore, SHA256.HashData(File.ReadAllBytes(path)));
+        Assert.Equal(timestamp, File.GetLastWriteTimeUtc(path));
+    }
+
+    [Fact]
+    public void Identify_WiiWadWithLargeContent_HashesAcrossReadChunks()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        // A 1.5 MiB content crosses the hasher's 1 MiB read-chunk boundary — the streaming path every
+        // real (multi-megabyte) WiiWare content takes. Verified against the same independent
+        // rc_hash_wiiware reference implementation.
+        var image = WiiWadReaderTests.BuildWadWithContents("WB4E", (0x180000, 0xAB));
+        Assert.Equal(
+            "2782dd55ae893b1f1bdf5ecfa317d4fee65c20d9e85134998335f67e7ffbf5ec",
+            Convert.ToHexString(SHA256.HashData(image)).ToLowerInvariant());
+        var path = Path.Combine(BaseDirectory, "Big WiiWare Title.wad");
+        File.WriteAllBytes(path, image);
+
+        var result = _hasher.Identify(Game("wii", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.Hashed, result.Status);
+        Assert.Equal("760c8224cfde20932aa92f121989d6aa", result.CanonicalHash);
+    }
+
+    [Fact]
+    public void Identify_MalformedWad_IsUnsupportedFormat()
+    {
+        Directory.CreateDirectory(BaseDirectory);
+        // A Doom IWAD borrows the extension but is not an installable Wii package, so the WAD hasher
+        // rejects it rather than producing a bogus hash.
+        var path = Path.Combine(BaseDirectory, "doom.wad");
+        var bytes = new byte[0x100];
+        Encoding.ASCII.GetBytes("IWAD").CopyTo(bytes, 0);
+        File.WriteAllBytes(path, bytes);
+
+        var result = _hasher.Identify(Game("wii", path));
+
+        Assert.Equal(RetroAchievementsIdentificationStatus.UnsupportedFormat, result.Status);
+        Assert.Null(result.CanonicalHash);
+    }
+
+    [Fact]
+    public void AlgorithmVersion_WiiWad_IsScopedToTheWiiwareReader()
+    {
+        // A WAD and a disc are both system "wii" but hash through different readers, so their
+        // algorithm versions must differ — a stored disc hash is never confused with a WAD one.
+        var wad = Game("wii", Path.Combine(BaseDirectory, "channel.wad"));
+        var disc = Game("wii", Path.Combine(BaseDirectory, "game.iso"));
+
+        Assert.Equal("rcheevos-wiiware-v1", _hasher.GetAlgorithmVersion(wad));
+        Assert.Equal("rcheevos-2ac45d3-wii-v4", _hasher.GetAlgorithmVersion(disc));
+    }
+
+    [Fact]
     public void Identify_NesRom_SkipsInesHeaderAndTrimsOverdumpWithoutWriting()
     {
         Directory.CreateDirectory(BaseDirectory);

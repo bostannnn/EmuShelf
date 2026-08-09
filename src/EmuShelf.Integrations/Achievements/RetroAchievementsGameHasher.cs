@@ -44,6 +44,10 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     // routinely include junk padding for smaller games, so the earlier reader produced a wrong
     // hash for almost every .rvz Wii title; the bump recomputes them.
     private const string WiiAlgorithmV4 = "rcheevos-2ac45d3-wii-v4";
+    // Wii .wad titles (WiiWare/VC/channels) take a distinct reader (rcheevos rc_hash_wiiware): MD5 of
+    // the TMD plus each content's leading encrypted bytes. Kept separate from the disc version so a
+    // stored disc hash is never invalidated by a WAD reader change and vice versa.
+    private const string WiiWareAlgorithm = "rcheevos-wiiware-v1";
     // Not suffixed with the container: the hash is PARAM.SFO plus EBOOT.BIN read by logical
     // sector, so adding CHD reads the same bytes and must not invalidate stored ISO/CSO hashes.
     private const string PspAlgorithm = "rcheevos-2ac45d3-psp-v1";
@@ -66,7 +70,7 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
     {
         PlayStationId or PlayStation2Id => PlayStationAlgorithmV4,
         GameCubeId => GameCubeAlgorithm,
-        WiiId => WiiAlgorithmV4,
+        WiiId => IsWad(game.Path) ? WiiWareAlgorithm : WiiAlgorithmV4,
         PspId => PspAlgorithm,
         MegaDriveId => MegaDriveAlgorithm,
         NintendoDsId => NintendoDsAlgorithm,
@@ -78,6 +82,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
         ArcadeId => ArcadeAlgorithm,
         _ => LegacyGlobalV2,
     };
+
+    private static bool IsWad(string path) =>
+        Path.GetExtension(path).Equals(".wad", StringComparison.OrdinalIgnoreCase);
 
     public bool IsAlgorithmVersionCompatible(Game game, string persistedVersion)
     {
@@ -130,9 +137,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
                 GameCubeId => GameCubeDiscHasher.Hash(
                     inspected.SourcePath!,
                     cancellationToken),
-                WiiId => WiiDiscHasher.Hash(
-                    inspected.SourcePath!,
-                    cancellationToken),
+                WiiId => IsWad(inspected.SourcePath!)
+                    ? WiiWareHasher.Hash(inspected.SourcePath!, cancellationToken)
+                    : WiiDiscHasher.Hash(inspected.SourcePath!, cancellationToken),
                 PspId => PspDiscHasher.Hash(
                     inspected.SourcePath!,
                     cancellationToken),
@@ -246,7 +253,9 @@ public sealed class RetroAchievementsGameHasher : IRetroAchievementsGameHasher
             else if (game.SystemId == WiiId)
             {
                 var extension = Path.GetExtension(sourcePath).ToLowerInvariant();
-                canHash = extension is ".iso" or ".ciso" or ".wbfs" or ".rvz";
+                // Disc images use the logical-disc reader; a .wad (WiiWare/VC/channel) is hashed as an
+                // installable title by WiiWareHasher, matching rcheevos' rc_hash_wiiware.
+                canHash = extension is ".iso" or ".ciso" or ".wbfs" or ".rvz" or ".wad";
                 if (!canHash)
                     error = $"{extension.ToUpperInvariant()} needs a verified logical-disc reader.";
             }

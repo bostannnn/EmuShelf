@@ -134,6 +134,38 @@ public class FileImportRulesTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void AnalyzeFile_WiiWad_SelectsWiiAndNeverGameCube()
+    {
+        var path = Path.Combine(BaseDirectory, "Bomberman Blast.wad");
+        File.WriteAllBytes(path, WiiWadReaderTests.BuildWad("WB4E"));
+
+        var analysis = _rules.AnalyzeFile(path);
+
+        // A WAD is a Wii installable title; GameCube never claims the extension.
+        Assert.Equal(["wii"], analysis.SuggestedSystems.Select(system => system.Id));
+        Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("wii"));
+        Assert.Equal(GameFileMatch.Unsupported, analysis.MatchFor("gamecube"));
+        Assert.True(_rules.IsFolderCandidate(path, System("wii")));
+        Assert.False(_rules.IsFolderCandidate(path, System("gamecube")));
+    }
+
+    [Fact]
+    public void AnalyzeFile_MalformedWad_IsIncompatibleAndNotAFolderCandidate()
+    {
+        // A file that merely borrows the .wad extension (here a Doom IWAD) is not a Wii title.
+        var path = Path.Combine(BaseDirectory, "doom.wad");
+        var bytes = new byte[0x100];
+        Encoding.ASCII.GetBytes("IWAD").CopyTo(bytes, 0);
+        File.WriteAllBytes(path, bytes);
+
+        var analysis = _rules.AnalyzeFile(path);
+
+        Assert.DoesNotContain(analysis.SuggestedSystems, system => system.Id == "wii");
+        Assert.Equal(GameFileMatch.Incompatible, analysis.MatchFor("wii"));
+        Assert.False(_rules.IsFolderCandidate(path, System("wii")));
+    }
+
+    [Fact]
     public void AnalyzeFile_NintendoIsoHeader_RulesOutPlayStationSystems()
     {
         var analysis = _rules.AnalyzeFile(WriteNintendoImage(".iso", isWii: true));
