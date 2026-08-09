@@ -858,6 +858,18 @@
             <Setter Property="MinWidth" Value="6" />
             <Setter Property="Background" Value="{DynamicResource EmuTextTertiaryBrush}" />
         </Style>
+        <!-- Sidebar scroll region (consoles + collections). Slim overlay thumb so the console
+             icons keep their full width; mirrors the gamepad rail's scrollbar treatment. -->
+        <Style Selector="ScrollViewer.sidebar-scroll /template/ ScrollBar:vertical">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="MinWidth" Value="8" />
+            <Setter Property="MaxWidth" Value="8" />
+            <Setter Property="Margin" Value="1,0,1,0" />
+        </Style>
+        <Style Selector="ScrollViewer.sidebar-scroll /template/ ScrollBar:vertical /template/ Thumb">
+            <Setter Property="MinWidth" Value="6" />
+            <Setter Property="Background" Value="{DynamicResource EmuTextTertiaryBrush}" />
+        </Style>
         <Style Selector="ToggleButton.view-toggle">
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="28" />
@@ -1070,7 +1082,7 @@
                 Background="{DynamicResource EmuSidebarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}"
                 BorderThickness="0,0,1,0">
-            <Grid RowDefinitions="68,Auto,Auto,Auto,Auto,*,Auto">
+            <Grid RowDefinitions="68,*,Auto">
                 <Border Grid.Row="0" BorderBrush="{DynamicResource EmuBorderBrush}"
                         BorderThickness="0,0,0,1" Padding="18,0"
                         WindowDecorationProperties.ElementRole="TitleBar">
@@ -1103,95 +1115,102 @@
                     </Grid>
                 </Border>
 
-                <TextBlock Grid.Row="1" Text="CONSOLES" Margin="18,17,18,7"
-                           FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
-                           IsVisible="{Binding !IsNavigationCollapsed}"
-                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-
-                <ListBox Grid.Row="2" Classes="system-list" x:Name="SystemList"
-                         ItemsSource="{Binding NavigationSystems}"
-                         SelectedItem="{Binding SelectedSystem}"
-                         Background="Transparent" BorderThickness="0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="sys:GameSystem">
-                            <StackPanel Spacing="0">
-                                <!-- Manufacturer header: shown only above the first system of each group
-                                     (GroupLeaderSystemIds) and only when the sidebar is expanded. -->
-                                <TextBlock Classes="nav-group-header" Text="{Binding Manufacturer}">
-                                    <TextBlock.IsVisible>
-                                        <MultiBinding Converter="{x:Static vm:NavigationConverters.GroupHeaderVisible}">
-                                            <Binding Path="Id" />
-                                            <Binding Path="#SystemList.((vm:MainViewModel)DataContext).GroupLeaderSystemIds" />
-                                            <Binding Path="#SystemList.((vm:MainViewModel)DataContext).IsNavigationCollapsed" />
-                                        </MultiBinding>
-                                    </TextBlock.IsVisible>
-                                </TextBlock>
-                                <Border Classes="nav-row">
-                                    <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
-                                        <Border Grid.Column="0" Classes="nav-icon-well">
-                                            <Image Source="{Binding Id, Converter={x:Static vm:PlatformArtwork.Converter}}"
-                                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                <!-- Consoles + collections share one scroll region so a long console list can
+                     never push the collection shortcuts off-screen (they used to overflow past
+                     the bottom edge). The header (Row 0) and Add-to-Library button (Row 2) stay
+                     pinned. The CONSOLES section label was dropped — the Nintendo/Sega/Sony group
+                     headers already carry the structure. -->
+                <ScrollViewer Grid.Row="1" x:Name="SidebarScroller" Classes="sidebar-scroll"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,6,0,0">
+                        <ListBox Classes="system-list" x:Name="SystemList"
+                                 ItemsSource="{Binding NavigationSystems}"
+                                 SelectedItem="{Binding SelectedSystem}"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 Background="Transparent" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="sys:GameSystem">
+                                    <StackPanel Spacing="0">
+                                        <!-- Manufacturer header: shown only above the first system of each group
+                                             (GroupLeaderSystemIds) and only when the sidebar is expanded. -->
+                                        <TextBlock Classes="nav-group-header" Text="{Binding Manufacturer}">
+                                            <TextBlock.IsVisible>
+                                                <MultiBinding Converter="{x:Static vm:NavigationConverters.GroupHeaderVisible}">
+                                                    <Binding Path="Id" />
+                                                    <Binding Path="#SystemList.((vm:MainViewModel)DataContext).GroupLeaderSystemIds" />
+                                                    <Binding Path="#SystemList.((vm:MainViewModel)DataContext).IsNavigationCollapsed" />
+                                                </MultiBinding>
+                                            </TextBlock.IsVisible>
+                                        </TextBlock>
+                                        <Border Classes="nav-row">
+                                            <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                                <Border Grid.Column="0" Classes="nav-icon-well">
+                                                    <Image Source="{Binding Id, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                                                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                                </Border>
+                                                <TextBlock Grid.Column="1" Text="{Binding Name}"
+                                                           FontSize="13.5" FontWeight="Medium"
+                                                           VerticalAlignment="Center"
+                                                           IsVisible="{Binding #SystemList.((vm:MainViewModel)DataContext).IsNavigationExpanded}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </Grid>
                                         </Border>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}"
-                                                   FontSize="13.5" FontWeight="Medium"
-                                                   VerticalAlignment="Center"
-                                                   IsVisible="{Binding #SystemList.((vm:MainViewModel)DataContext).IsNavigationExpanded}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                    </Grid>
-                                </Border>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
 
-                <TextBlock Grid.Row="3" Text="COLLECTIONS" Margin="18,18,18,7"
-                           FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
-                           IsVisible="{Binding !IsNavigationCollapsed}"
-                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                        <TextBlock Text="COLLECTIONS" Margin="18,18,18,7"
+                                   FontSize="10" FontWeight="Bold" LetterSpacing="1.3"
+                                   IsVisible="{Binding !IsNavigationCollapsed}"
+                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
 
-                <StackPanel Grid.Row="4">
-                    <Button Classes="collection-item"
-                            Classes.selected="{Binding IsAllGamesSelected}"
-                            Command="{Binding ShowAllGamesCommand}">
-                        <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
-                            <Border Classes="nav-icon-well">
-                                <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-simple@2x.png"
-                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="All Games" FontSize="13.5"
-                                       FontWeight="Medium" VerticalAlignment="Center"
-                                       IsVisible="{Binding !IsNavigationCollapsed}" />
-                        </Grid>
-                    </Button>
-                    <Button Classes="collection-item"
-                            Classes.selected="{Binding IsRecentlyPlayedSelected}"
-                            Command="{Binding ShowRecentlyPlayedCommand}">
-                        <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
-                            <Border Classes="nav-icon-well">
-                                <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
-                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="Recently Played" FontSize="13.5"
-                                       FontWeight="Medium" VerticalAlignment="Center"
-                                       IsVisible="{Binding !IsNavigationCollapsed}" />
-                        </Grid>
-                    </Button>
-                    <Button Classes="collection-item"
-                            Classes.selected="{Binding IsRecentlyAddedSelected}"
-                            Command="{Binding ShowRecentlyAddedCommand}">
-                        <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
-                            <Border Classes="nav-icon-well">
-                                <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
-                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Text="Recently Added" FontSize="13.5"
-                                       FontWeight="Medium" VerticalAlignment="Center"
-                                       IsVisible="{Binding !IsNavigationCollapsed}" />
-                        </Grid>
-                    </Button>
-                </StackPanel>
+                        <StackPanel>
+                            <Button Classes="collection-item"
+                                    Classes.selected="{Binding IsAllGamesSelected}"
+                                    Command="{Binding ShowAllGamesCommand}">
+                                <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                    <Border Classes="nav-icon-well">
+                                        <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-simple@2x.png"
+                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="All Games" FontSize="13.5"
+                                               FontWeight="Medium" VerticalAlignment="Center"
+                                               IsVisible="{Binding !IsNavigationCollapsed}" />
+                                </Grid>
+                            </Button>
+                            <Button Classes="collection-item"
+                                    Classes.selected="{Binding IsRecentlyPlayedSelected}"
+                                    Command="{Binding ShowRecentlyPlayedCommand}">
+                                <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                    <Border Classes="nav-icon-well">
+                                        <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
+                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="Recently Played" FontSize="13.5"
+                                               FontWeight="Medium" VerticalAlignment="Center"
+                                               IsVisible="{Binding !IsNavigationCollapsed}" />
+                                </Grid>
+                            </Button>
+                            <Button Classes="collection-item"
+                                    Classes.selected="{Binding IsRecentlyAddedSelected}"
+                                    Command="{Binding ShowRecentlyAddedCommand}">
+                                <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
+                                    <Border Classes="nav-icon-well">
+                                        <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
+                                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                                    </Border>
+                                    <TextBlock Grid.Column="1" Text="Recently Added" FontSize="13.5"
+                                               FontWeight="Medium" VerticalAlignment="Center"
+                                               IsVisible="{Binding !IsNavigationCollapsed}" />
+                                </Grid>
+                            </Button>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
 
-                <Button Grid.Row="6" Classes="add-library" Margin="14,12,14,15"
+                <Button Grid.Row="2" Classes="add-library" Margin="14,12,14,15"
                         HorizontalAlignment="Stretch"
                         IsEnabled="{Binding !IsBusy}" Padding="12,8">
                     <Grid ColumnDefinitions="22,*" ColumnSpacing="8">
