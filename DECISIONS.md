@@ -5745,6 +5745,52 @@ subsystem.
   folders by 6- or 3-character disc ids, not the 4-character WAD code, so there is nothing new to
   inventory. Both would be separate, independently verified efforts.
 
+## 2026-08-09 — Desktop and Gamepad Settings share one section structure
+
+Gamepad Settings had drifted from Desktop: it dropped the Emulators, Hotkeys, and About sections and
+relocated their controller-relevant actions into General, so General became a catch-all (empty
+platforms + metadata *plus* PS3 sync from Emulators, a Hotkeys overlay entry, and the update
+actions from About). The enforced "parity" was only **field-level** — every mutating control that
+appears in *both* modes shares a stable id — not **structural**, so nothing stopped the section sets
+from diverging. An audit reorganized both surfaces around one rule.
+
+**Both modes present the same section list, in the same order. Only Themes is special** (appearance
+is not part of the settings model, so it stays a gamepad gallery page appended after the projected
+sections, matching the earlier Themes decision). Everything a controller can't project as flat rows
+still appears as its own rail section rather than leaking into General:
+
+- **Emulators is now a gamepad section** projecting per-platform *library* actions from the same
+  `EmulatorSettingsRowViewModel` rows Desktop uses — PS3 `Sync RPCS3 library` (the one import that
+  "Rescan all consoles" skips), per-platform rescan, and remembered-folder add/forget — reusing the
+  same commands and stable field ids (`emulators.{id}.sync`, `.rescan`, `.add-folder`). Editing an
+  emulator's executable, arguments, and RetroArch core stays Desktop-only for now, as the section
+  description says.
+  This removed the bespoke `general.sync-rpcs3` entry and the now-dead `SyncRpcs3LibraryGeneralCommand`
+  / `HasRpcs3LibrarySync` on `EmulatorSettingsViewModel` — the gamepad row drives the per-emulator
+  command directly, so there is one RPCS3-sync path, not two.
+- **Hotkeys is a gamepad section** whose row opens the controller-native `GamepadHotkeysViewModel`
+  overlay (same B-returns-to-Settings contract as the M40 hotkeys entry), replacing the General row.
+- **About is a gamepad section** projecting the read-only version/commit rows and the in-place update
+  actions (`about.check-updates` / `about.install-update`), replacing the General update rows. Version
+  and commit are now visible on a controller for the first time.
+- **General is renamed "Library"** in both modes (the `SettingsSection.General` enum member and its
+  `general.*` field ids are unchanged for settings/parity stability; only the display label changed).
+  After the moves it holds exactly what Desktop's does: empty platforms, metadata, rescan-all, data
+  folder.
+
+The executable field-parity test is unchanged and still passes: the removed General rows were all
+already `ExcludeFromParity`, and Emulators/Hotkeys/About sit outside the prefix-scoped parity
+comparison (like Themes) because the two surfaces intentionally expose different subsets there
+(Desktop edits paths; the couch runs library actions). RetroAchievements + ScreenScraper stay
+separate peers rather than nesting under an "Accounts" parent — nine rail entries is not enough to
+justify the extra hierarchy.
+
+Because the rail can now hold up to nine entries, it is wrapped in a hidden-scrollbar `ScrollViewer`
+whose selected section is brought into view from code-behind (`RevealSelectedGamepadSection`), so it
+never overflows the column or clips About behind Save at 1280×720 or ×800; nav button height dropped
+58→50 so the common (7-section) case still fits without scrolling. Reviewed real renders of the
+Library, Emulators, and About sections at 1280×800 confirmed the layout; the gamepad-settings
+snapshot test now also captures the Emulators and About sections.
 ## 2026-08-09 — Self-update relaunches through Steam so the controller survives (Windows + macOS)
 
 Reported on Windows: after installing an update while in Gamepad mode (launched from Steam), the

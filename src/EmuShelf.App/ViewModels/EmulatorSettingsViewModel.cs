@@ -282,12 +282,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool CanFetchAllMetadata =>
         !IsWorking && _maintenance?.FetchAllMetadata is not null;
 
-    // PlayStation 3 titles are imported only by reading RPCS3's own game list, and the general
-    // "Rescan all consoles" deliberately skips PS3. Desktop reaches this on the PS3 emulator row;
-    // Gamepad drops the emulator rows, so it needs its own General-section entry point or a
-    // controller-only user can never import PS3 games.
-    public bool HasRpcs3LibrarySync => _maintenance?.SyncRpcs3Library is not null;
-    public bool CanSyncRpcs3Library => !IsWorking && HasRpcs3LibrarySync;
     public bool IsWorking => IsSaving || IsMaintainingLibrary;
 
     /// <summary>True while ANY async settings operation is running — save, library maintenance,
@@ -655,8 +649,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanRescanAll));
         OnPropertyChanged(nameof(CanFetchAllMetadata));
-        OnPropertyChanged(nameof(CanSyncRpcs3Library));
-        SyncRpcs3LibraryGeneralCommand.NotifyCanExecuteChanged();
         UpdateRowMaintenanceState();
     }
 
@@ -664,8 +656,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanRescanAll));
         OnPropertyChanged(nameof(CanFetchAllMetadata));
-        OnPropertyChanged(nameof(CanSyncRpcs3Library));
-        SyncRpcs3LibraryGeneralCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsWorking));
         OnPropertyChanged(nameof(IsBusy));
         UpdateRowMaintenanceState();
@@ -684,29 +674,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             await RunMaintenanceAsync(
                 _maintenance?.RescanAll,
                 "Rescanning remembered folders…",
-                message => MaintenanceStatusText = message);
-        }
-        finally
-        {
-            IsRescanningAllConsoles = false;
-        }
-    }
-
-    /// <summary>
-    /// Reads the RPCS3 game list to import PlayStation 3 titles, reporting into the General-section
-    /// status (not a per-emulator row). This is the Gamepad-reachable equivalent of the PS3 row's
-    /// "Sync RPCS3 library" action on Desktop.
-    /// </summary>
-    [RelayCommand(CanExecute = nameof(CanSyncRpcs3Library))]
-    private async Task SyncRpcs3LibraryGeneralAsync()
-    {
-        MetadataStatusText = string.Empty;
-        IsRescanningAllConsoles = true;
-        try
-        {
-            await RunMaintenanceAsync(
-                _maintenance?.SyncRpcs3Library is null ? null : _ => _maintenance.SyncRpcs3Library!(),
-                "Reading the RPCS3 game list…",
                 message => MaintenanceStatusText = message);
         }
         finally

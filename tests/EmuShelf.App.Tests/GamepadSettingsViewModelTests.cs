@@ -20,33 +20,37 @@ public sealed class GamepadSettingsViewModelTests
     private readonly RecordingConfigurationStore _configurations = new();
 
     [AvaloniaFact]
-    public void ShoulderSections_ExcludeDeferredEmulatorsAndRestoreEachRowsFocus()
+    public void ShoulderSections_MirrorDesktopStructureAndRestoreEachRowsFocus()
     {
         using var viewModel = CreateGamepadSettings(
             retroAchievements: CreateRetroAchievementsContext(),
             cloudSaves: CreateCloudContext(),
             texturePacks: CreateTextureContext());
 
+        // Both modes present the same sections in the same order (only Themes is a separate gallery
+        // page); Emulators is now a couch section rather than a Desktop-only slice.
         Assert.Equal(
-            [SettingsSection.General, SettingsSection.RetroAchievements, SettingsSection.Saves, SettingsSection.TexturePacks],
+            [
+                SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements,
+                SettingsSection.Saves, SettingsSection.TexturePacks, SettingsSection.About,
+            ],
             viewModel.Sections);
-        Assert.DoesNotContain(SettingsSection.Emulators, viewModel.Sections);
 
         viewModel.Dispatch(GamepadAction.NavigateDown);
         var rememberedGeneralRow = viewModel.FocusedRow!.Key;
-        Assert.True(viewModel.Dispatch(GamepadAction.NextPlatform));
-        Assert.Equal(SettingsSection.RetroAchievements, viewModel.SelectedSection);
+
+        viewModel.SelectedSection = SettingsSection.RetroAchievements;
         viewModel.Dispatch(GamepadAction.NavigateDown);
         var rememberedRetroRow = viewModel.FocusedRow!.Key;
 
-        viewModel.Dispatch(GamepadAction.PreviousPlatform);
+        viewModel.SelectedSection = SettingsSection.General;
         Assert.Equal(rememberedGeneralRow, viewModel.FocusedRow!.Key);
-        viewModel.Dispatch(GamepadAction.NextPlatform);
+        viewModel.SelectedSection = SettingsSection.RetroAchievements;
         Assert.Equal(rememberedRetroRow, viewModel.FocusedRow!.Key);
 
-        viewModel.SelectedSection = SettingsSection.TexturePacks;
-        viewModel.Dispatch(GamepadAction.NextPlatform);
-        Assert.Equal(SettingsSection.TexturePacks, viewModel.SelectedSection);
+        // Shoulder buttons still page through the sections, now including Emulators between them.
+        Assert.True(viewModel.Dispatch(GamepadAction.PreviousPlatform));
+        Assert.Equal(SettingsSection.Emulators, viewModel.SelectedSection);
     }
 
     [AvaloniaFact]
@@ -166,7 +170,7 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public async Task GeneralSection_ExposesRpcs3LibrarySync_TheOnlyControllerPathToImportPs3()
+    public async Task EmulatorsSection_ExposesRpcs3LibrarySync_TheOnlyControllerPathToImportPs3()
     {
         var synced = 0;
         var maintenance = new LibraryMaintenanceActions(
@@ -178,9 +182,11 @@ public sealed class GamepadSettingsViewModelTests
                 return Task.FromResult("RPCS3 library sync complete — 2 added");
             });
         using var viewModel = CreateGamepadSettings(maintenance);
-        viewModel.SelectedSection = SettingsSection.General;
+        viewModel.SelectedSection = SettingsSection.Emulators;
 
-        var row = viewModel.Rows.Single(candidate => candidate.Key == "general.sync-rpcs3");
+        // Same stable id and command as Desktop's PS3-row "Sync RPCS3 library" button — now reachable
+        // on a controller because Emulators is a couch section instead of Desktop-only.
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.playstation3.sync");
         await row.SelectCommand.ExecuteAsync(null);
 
         Assert.Equal(1, synced);
@@ -188,15 +194,55 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void GeneralSection_OmitsRpcs3Sync_WhenTheMaintenanceActionIsUnavailable()
+    public void EmulatorsSection_OmitsRpcs3Sync_WhenTheMaintenanceActionIsUnavailable()
     {
         var maintenance = new LibraryMaintenanceActions(
             (_, _) => Task.FromResult(string.Empty),
             _ => Task.FromResult(string.Empty));
         using var viewModel = CreateGamepadSettings(maintenance);
-        viewModel.SelectedSection = SettingsSection.General;
+        viewModel.SelectedSection = SettingsSection.Emulators;
 
-        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "general.sync-rpcs3");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "emulators.playstation3.sync");
+    }
+
+    [AvaloniaFact]
+    public async Task HotkeysSection_IsItsOwnRailEntryAndOpensTheControllerNativeEditor()
+    {
+        var snapshot = new HotkeyEmulatorSnapshot(
+            "duckstation", "DuckStation", [], "Recommended hotkeys aren't applied yet.",
+            HotkeyRowTone.Info, CanOperate: true);
+        var hotkeys = new HotkeySettingsContext(
+            [snapshot],
+            (_, _) => Task.FromResult(snapshot),
+            (_, _) => Task.FromResult(snapshot),
+            "R rewinds, L fast-forwards, F2 saves, F4 loads, F8 closes the game.");
+        var settings = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(system => system.Id, _ => (EmulatorConfiguration?)null, StringComparer.Ordinal),
+            _configurations,
+            _dialogs,
+            hotkeys: hotkeys);
+        var opened = 0;
+        using var viewModel = new GamepadSettingsViewModel(
+            settings,
+            onScreenKeyboard: null,
+            themeChoices: null,
+            applyTheme: null,
+            openHotkeys: () => { opened++; return Task.CompletedTask; });
+
+        // Hotkeys is a peer rail section (matching Desktop), not a Library row.
+        Assert.Contains(SettingsSection.Hotkeys, viewModel.Sections);
+        viewModel.SelectedSection = SettingsSection.Hotkeys;
+        Assert.True(viewModel.IsHotkeysSection);
+        Assert.Equal("Hotkeys", viewModel.SectionTitle);
+        Assert.Contains(viewModel.Rows, row => row.Key == "hotkeys.scheme");
+
+        // A controller can't navigate the per-emulator matrix as a flat list, so the section's row
+        // opens the controller-native overlay through the same callback the shell wires.
+        var open = viewModel.Rows.Single(row => row.Key == "hotkeys.open");
+        await open.SelectCommand.ExecuteAsync(null);
+        Assert.Equal(1, opened);
     }
 
     [AvaloniaFact]
@@ -359,14 +405,15 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void GeneralUpdateRow_WhileDownloading_ShowsCoordinatorLiveProgressText()
+    public void AboutUpdateRow_WhileDownloading_ShowsCoordinatorLiveProgressText()
     {
         var coordinator = CreateUpdateCoordinator();
         using var viewModel = CreateGamepadSettings(updates: coordinator);
-        string CheckRowHint() => viewModel.Rows.Single(row => row.Key == "general.check-updates").Description;
+        viewModel.SelectedSection = SettingsSection.About;
+        string CheckRowHint() => viewModel.Rows.Single(row => row.Key == "about.check-updates").Description;
 
         // Idle: the check row falls back to its static prompt.
-        Assert.Equal("Look on GitHub for a newer EmuShelf.", CheckRowHint());
+        Assert.Equal("Look on GitHub for a newer EmuShelf. Only the public releases page is contacted.", CheckRowHint());
 
         // A download begins: the coordinator drives the live percentage on its own object, which must
         // rebuild the row so its hint reflects the moving progress rather than a static line.
@@ -379,7 +426,7 @@ public sealed class GamepadSettingsViewModelTests
 
         // Once the download settles the row returns to the static status the Desktop view model owns.
         coordinator.IsBusy = false;
-        Assert.Equal("Look on GitHub for a newer EmuShelf.", CheckRowHint());
+        Assert.Equal("Look on GitHub for a newer EmuShelf. Only the public releases page is contacted.", CheckRowHint());
     }
 
     private static AppUpdateCoordinator CreateUpdateCoordinator() => new(

@@ -460,6 +460,11 @@ public partial class MainWindow : Window
         if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
             return;
 
+        // The section rail scrolls, so keep the selected section visible however the section changed
+        // (LB/RB from the content column, or Up/Down while the rail itself is focused).
+        if (viewModel.IsGamepadSettingsOpen)
+            RevealSelectedGamepadSection();
+
         if (viewModel.IsGamepadSettingsTextEntryOpen && viewModel.GamepadSettings is { } textSettings)
         {
             var textBox = textSettings.IsSecretEntry
@@ -586,6 +591,19 @@ public partial class MainWindow : Window
                 FocusManager?.Focus(focusedOption, NavigationMethod.Directional);
             }
         }
+    }
+
+    // The section rail scrolls when it holds more sections than fit the column, so keep the current
+    // section's button in view. The selected button carries the "selected" style class (bound to the
+    // matching IsXxxSection flag), so find it after a layout pass and bring it into view.
+    private void RevealSelectedGamepadSection()
+    {
+        GamepadSettingsNavScroller.UpdateLayout();
+        GamepadSettingsNavScroller.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.Classes.Contains("gamepad-settings-nav")
+                && button.Classes.Contains("selected"))
+            ?.BringIntoView();
     }
 
     // Visual focus only for the scraper overlay: keyboard focus follows the wrapped view model's

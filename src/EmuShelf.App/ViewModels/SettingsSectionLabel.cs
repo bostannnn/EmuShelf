@@ -10,6 +10,10 @@ public static class SettingsSectionLabel
 {
     public static FuncValueConverter<SettingsSection, string> Converter { get; } = new(section => section switch
     {
+        // "General" undersold what the section holds (library visibility, metadata, maintenance),
+        // so both settings surfaces label it "Library". The enum member stays General for stable
+        // field ids (general.*) and settings compatibility.
+        SettingsSection.General => "Library",
         SettingsSection.TexturePacks => "Texture Packs",
         _ => section.ToString(),
     });

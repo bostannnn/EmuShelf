@@ -314,17 +314,24 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     public string SectionTitle => IsThemesSection ? "Themes" : SelectedSection switch
     {
+        SettingsSection.Emulators => "Emulators",
+        SettingsSection.Hotkeys => "Hotkeys",
         SettingsSection.RetroAchievements => "RetroAchievements",
         SettingsSection.ScreenScraper => "ScreenScraper",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
-        _ => "General",
+        SettingsSection.About => "About",
+        _ => "Library",
     };
 
     public string SectionDescription => IsThemesSection
         ? "Personalize EmuShelf's colors. A theme applies instantly and is shared with Desktop mode."
         : SelectedSection switch
     {
+        SettingsSection.Emulators =>
+            "Import games and manage each system's folders. Edit emulator paths, arguments, and cores in Desktop Settings.",
+        SettingsSection.Hotkeys =>
+            "Write one in-game hotkey scheme into each emulator and see the Steam Input mapping.",
         SettingsSection.RetroAchievements =>
             "Read achievement sets and your progress. Emulators still own unlocks and submission.",
         SettingsSection.ScreenScraper =>
@@ -333,11 +340,17 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             "Reconcile emulator saves through your own rclone remote. Game files are never included.",
         SettingsSection.TexturePacks =>
             "Inspect installed replacement textures without changing packs or emulator configuration.",
+        SettingsSection.About =>
+            "Version, build, and updates. Updating in place keeps gaming mode without dropping to the desktop.",
         _ => "Library visibility, metadata consent, and safe maintenance.",
     };
 
     public string StatusText => IsThemesSection ? string.Empty : SelectedSection switch
     {
+        SettingsSection.Emulators => EmulatorsSectionStatus(),
+        SettingsSection.Hotkeys => FirstNonEmpty(
+            _settings.SteamTemplateStatus,
+            _settings.HotkeySchemeSummary),
         SettingsSection.RetroAchievements => FirstNonEmpty(
             _settings.RetroAchievementsProgressText,
             _settings.RetroAchievementsStatusText),
@@ -349,6 +362,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.TexturePackStatusText,
             _settings.TexturePackSummary,
             _settings.TexturePackLastScanText),
+        SettingsSection.About => UpdateStatusHint,
         _ => FirstNonEmpty(
             _settings.StatusText,
             _settings.MetadataProgressText,
@@ -356,24 +370,46 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.MaintenanceStatusText),
     };
 
+    /// <summary>The Emulators section pill prefers the status of the platform the cursor is on, so
+    /// acting on one console never surfaces a stale line left by another; the shared rescan-all line
+    /// belongs to the Library section, so it is deliberately not a fallback here.</summary>
+    private string EmulatorsSectionStatus()
+    {
+        if (FocusedRow?.SystemId is { Length: > 0 } focusedSystemId
+            && _settings.Rows.FirstOrDefault(row => row.SystemId == focusedSystemId) is { } focused
+            && !string.IsNullOrWhiteSpace(focused.MaintenanceStatusText))
+        {
+            return focused.MaintenanceStatusText;
+        }
+        return _settings.Rows
+            .Select(row => row.MaintenanceStatusText)
+            .FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? string.Empty;
+    }
+
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusText);
 
     /// <summary>Whether the current section has an operation running, so its status pill can show an
     /// indeterminate bar — the same "working" affordance the Desktop settings cards give.</summary>
     public bool IsWorkingInSection => !IsThemesSection && SelectedSection switch
     {
+        SettingsSection.Emulators => _settings.IsMaintainingLibrary,
+        SettingsSection.Hotkeys => _settings.IsHotkeyBusy,
         SettingsSection.RetroAchievements => _settings.IsRetroAchievementsBusy,
         SettingsSection.ScreenScraper => _settings.IsScreenScraperBusy,
         SettingsSection.Saves => _settings.IsCloudBusy,
         SettingsSection.TexturePacks => _settings.IsTexturePackBusy,
+        SettingsSection.About => _settings.IsUpdateBusy,
         _ => _settings.IsMaintainingLibrary,
     };
 
     public bool IsGeneralSection => !IsThemesSection && SelectedSection == SettingsSection.General;
+    public bool IsEmulatorsSection => !IsThemesSection && SelectedSection == SettingsSection.Emulators;
+    public bool IsHotkeysSection => !IsThemesSection && SelectedSection == SettingsSection.Hotkeys;
     public bool IsRetroAchievementsSection => !IsThemesSection && SelectedSection == SettingsSection.RetroAchievements;
     public bool IsScreenScraperSection => !IsThemesSection && SelectedSection == SettingsSection.ScreenScraper;
     public bool IsSavesSection => !IsThemesSection && SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => !IsThemesSection && SelectedSection == SettingsSection.TexturePacks;
+    public bool IsAboutSection => !IsThemesSection && SelectedSection == SettingsSection.About;
 
     public event Action<bool>? CloseRequested;
 
@@ -389,25 +425,27 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         _themeChoices = themeChoices ?? [];
         _applyTheme = applyTheme;
         _openHotkeys = openHotkeys;
-        // Emulators is a Desktop-only slice for now; Themes is presented as the gamepad gallery page
-        // rather than a projected row section; About is a Desktop-only read-only detail page (the
-        // gamepad shell only projects interactive row sections). Hotkeys is a per-emulator × per-action
-        // matrix, not a flat row list, so it is its own controller-native overlay
-        // (GamepadHotkeysViewModel) reached from a General row below rather than a projected section.
-        // All four are excluded here.
+        // Both modes present the same section list, in the same order, so the couch surface mirrors
+        // Desktop's structure. Only Themes is excluded here: appearance is not part of the settings
+        // model, so it is a dedicated gamepad gallery page appended after these sections rather than a
+        // projected row section. Emulators projects per-platform library actions (paths/args/cores stay
+        // Desktop-only); Hotkeys is a per-emulator × per-action matrix that a controller can't navigate
+        // as a flat list, so its section row opens the controller-native GamepadHotkeysViewModel overlay;
+        // About projects read-only build info plus the in-place update actions.
         Sections = settings.Sections
-            .Where(section => section is not (
-                SettingsSection.Emulators or SettingsSection.Hotkeys or
-                SettingsSection.Themes or SettingsSection.About))
+            .Where(section => section is not SettingsSection.Themes)
             .ToArray();
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;
         // The update-download coordinator is a separate ObservableObject, so its per-percent progress
         // (StatusText/DownloadPercent) never echoes through _settings.PropertyChanged. Route it through
-        // the same rebuild path so the General update rows' hint text stays live during a download.
+        // the same rebuild path so the About update rows' hint text stays live during a download.
         if (_settings.Updates is { } updates)
             updates.PropertyChanged += OnSettingsPropertyChanged;
         _settings.CloseRequested += OnSettingsCloseRequested;
+        // The Emulators section projects each per-platform row, so a per-row sync/rescan status change
+        // (which writes to that row, not the shared settings model) has to rebuild the section too.
+        HookCollection(_settings.Rows);
         HookCollection(_settings.CloudPlatforms);
         HookCollection(_settings.TexturePlatforms);
         HookCollection(_settings.TexturePackEntries);
@@ -904,10 +942,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(HasStatus));
         OnPropertyChanged(nameof(IsWorkingInSection));
         OnPropertyChanged(nameof(IsGeneralSection));
+        OnPropertyChanged(nameof(IsEmulatorsSection));
+        OnPropertyChanged(nameof(IsHotkeysSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
         OnPropertyChanged(nameof(IsScreenScraperSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
+        OnPropertyChanged(nameof(IsAboutSection));
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
         OnPropertyChanged(nameof(IsAmbientToggleFocused));
@@ -945,10 +986,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _synchronizingSection = false;
         }
         OnPropertyChanged(nameof(IsGeneralSection));
+        OnPropertyChanged(nameof(IsEmulatorsSection));
+        OnPropertyChanged(nameof(IsHotkeysSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
         OnPropertyChanged(nameof(IsScreenScraperSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
+        OnPropertyChanged(nameof(IsAboutSection));
         RebuildRows(_focusedRowBySection.GetValueOrDefault(value));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
@@ -1019,10 +1063,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
         foreach (var row in SelectedSection switch
         {
+            SettingsSection.Emulators => BuildEmulatorsRows(),
+            SettingsSection.Hotkeys => BuildHotkeysRows(),
             SettingsSection.RetroAchievements => BuildRetroAchievementsRows(),
             SettingsSection.ScreenScraper => BuildScreenScraperRows(),
             SettingsSection.Saves => BuildSaveRows(),
             SettingsSection.TexturePacks => BuildTextureRows(),
+            SettingsSection.About => BuildAboutRows(),
             _ => BuildGeneralRows(),
         })
         {
@@ -1059,25 +1106,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         yield return ActionRow(
             "general.rescan",
             "Rescan all consoles",
-            "Recheck every console's remembered folders. Individual rescans remain available per platform in Desktop Settings.",
+            "Recheck every console's remembered folders. Per-platform rescans and folder management live in the Emulators section.",
             _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
-        // PS3 is skipped by "Rescan all consoles" and imported only from RPCS3's game list, so a
-        // controller-only player needs this dedicated action to bring PS3 games in.
-        if (_settings.HasRpcs3LibrarySync)
-        {
-            yield return ActionRow(
-                "general.sync-rpcs3",
-                "Sync PlayStation 3 library",
-                "Read the RPCS3 game list to import PlayStation 3 titles. PS3 games are imported only this way.",
-                _settings.IsMaintainingLibrary ? "WORKING" : "A SYNC",
-                _settings.SyncRpcs3LibraryGeneralCommand,
-                _settings.CanSyncRpcs3Library,
-                // Desktop reaches RPCS3 sync from the PS3 emulator row, not a General field, so this
-                // Gamepad-only General entry is intentionally outside Desktop/Gamepad field parity.
-                excludeFromParity: true);
-        }
         yield return ActionRow(
             "general.fetch-metadata",
             "Fetch missing metadata",
@@ -1085,21 +1117,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
             _settings.FetchAllMetadataCommand,
             _settings.CanFetchAllMetadata);
-        // Desktop keeps Hotkeys as its own Settings section (a per-emulator × per-action matrix); a
-        // controller can't navigate that as a flat row list, so it opens the dedicated, controller-
-        // native Hotkeys overlay instead. Excluded from general.* parity — Desktop has no general.*
-        // counterpart (its equivalents are the hotkeys.* controls inside the Hotkeys section).
-        if (_openHotkeys is not null && _settings.HasHotkeys)
-        {
-            yield return new GamepadSettingsRowSpec(
-                "general.hotkeys",
-                "Emulator hotkeys",
-                "Write one keyboard-hotkey scheme (rewind, fast-forward, save, load, close) into each emulator, and see the Steam Input controller mapping.",
-                "A OPEN",
-                GamepadSettingsRowKind.Action,
-                Activate: () => _openHotkeys(),
-                ExcludeFromParity: true);
-        }
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
         // folder too, and so the two surfaces' general.* field sets stay in parity.
         if (_settings.HasDataDirectory)
@@ -1112,17 +1129,139 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 _settings.OpenDataFolderCommand,
                 enabled: true);
         }
-        // The update actions live here rather than an About page so a controller can reach them: an
-        // AppImage update re-execs in place, so installing from gaming mode never drops to the desktop.
-        // Desktop exposes these as about.*, so they are excluded from the Desktop/Gamepad field parity.
+    }
+
+    /// <summary>
+    /// Per-platform library actions, grouped under each platform's header. Editing an emulator's
+    /// executable, launch arguments, and RetroArch core stays Desktop-only for now, so this projects
+    /// only the operations a controller-only player needs: PS3 sync (the one platform "Rescan all"
+    /// skips), per-platform rescan, and remembered-folder management. The sync/rescan/folder rows reuse
+    /// the same commands and stable field ids as Desktop's Emulators cards.
+    /// </summary>
+    private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
+    {
+        // Header then action cards per platform, matching how Saves and Texture Packs render. No
+        // per-platform read-only info line: a flat, card-less row wedged between the header and the
+        // action cards read as unfinished, and the section is for running library actions, not
+        // inspecting which emulator is bound (that lives in Desktop Settings).
+        foreach (var row in _settings.Rows)
+        {
+            yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
+            if (row.HasSyncLibrary)
+            {
+                // Same command and stable id as Desktop's PS3-row "Sync RPCS3 library" button. PS3 is
+                // skipped by "Rescan all consoles" and imported only from RPCS3's game list, so this is
+                // the controller path to bring PS3 games in.
+                yield return ActionRow(
+                    row.SyncFieldId,
+                    "Sync PlayStation 3 library",
+                    "Read the RPCS3 game list to import PlayStation 3 titles. PS3 games are imported only this way.",
+                    _settings.IsMaintainingLibrary ? "WORKING" : "A SYNC",
+                    row.SyncLibraryCommand,
+                    row.CanSyncLibrary,
+                    isGrouped: true,
+                    systemId: row.SystemId);
+            }
+            if (row.HasRescanLibrary)
+            {
+                yield return ActionRow(
+                    row.RescanFieldId,
+                    "Rescan library",
+                    "Recheck this console's remembered folders for added or removed games.",
+                    _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
+                    row.RescanLibraryCommand,
+                    row.CanRescan,
+                    isGrouped: true,
+                    systemId: row.SystemId);
+            }
+            if (row.HasFolderManagement)
+            {
+                yield return ActionRow(
+                    row.AddFolderFieldId,
+                    "Add game folder",
+                    "Remember another folder to scan for this platform's games.",
+                    "A ADD FOLDER",
+                    row.AddLibraryFolderCommand,
+                    row.CanManageLibraryFolders,
+                    isGrouped: true,
+                    systemId: row.SystemId);
+                foreach (var folder in row.LibraryFolders)
+                {
+                    yield return ActionRow(
+                        $"emulators.{row.SystemId}.folder.{folder.Id}",
+                        folder.Path,
+                        $"{folder.AvailabilityText} — forgetting a folder stops scanning it; games already imported and the files on disk stay.",
+                        "A FORGET",
+                        folder.ForgetCommand,
+                        row.CanManageLibraryFolders,
+                        isDestructive: true,
+                        confirmationTitle: "Forget this folder?",
+                        confirmationText: "EmuShelf stops rescanning this folder. Games already imported and the files on disk are left untouched.",
+                        isGrouped: true,
+                        systemId: row.SystemId);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hotkeys is a per-emulator × per-action matrix that a controller can't navigate as a flat row
+    /// list, so — like Themes — the section is an entry point: a read-only scheme summary plus a row
+    /// that opens the controller-native <c>GamepadHotkeysViewModel</c> overlay. B returns to Settings.
+    /// </summary>
+    private IEnumerable<GamepadSettingsRowSpec> BuildHotkeysRows()
+    {
+        yield return InformationRow(
+            "hotkeys.scheme",
+            "In-game hotkey scheme",
+            "One keyboard scheme (rewind, fast-forward, save, load, close) is written into each emulator; a Steam Input preset maps it to controller chords.",
+            _settings.HotkeySchemeSummary);
+        if (_openHotkeys is not null)
+        {
+            yield return new GamepadSettingsRowSpec(
+                "hotkeys.open",
+                "Open hotkey editor",
+                "Apply the scheme per emulator, install the Steam Input template, and see each emulator's applied status.",
+                "A OPEN",
+                GamepadSettingsRowKind.Action,
+                Activate: () => _openHotkeys(),
+                ExcludeFromParity: true);
+        }
+    }
+
+    /// <summary>
+    /// Read-only build info plus the in-place update actions. Desktop keeps the same content in its
+    /// About section; the update actions matter on a controller because an AppImage/Deck update
+    /// re-execs in place, so installing from gaming mode never drops to the desktop.
+    /// </summary>
+    private IEnumerable<GamepadSettingsRowSpec> BuildAboutRows()
+    {
+        yield return InformationRow(
+            "about.version",
+            "Version",
+            "Follows the newest release tag on GitHub.",
+            _settings.AppVersionDisplay);
+        yield return InformationRow(
+            "about.commit",
+            "Last commit",
+            "The exact source this build was compiled from.",
+            _settings.AppCommitDisplay);
+        if (_settings.HasCommitDate)
+        {
+            yield return InformationRow(
+                "about.commit-date",
+                "Committed",
+                string.Empty,
+                _settings.AppCommitDateDisplay);
+        }
         if (_settings.HasUpdateChecker)
         {
             yield return ActionRow(
-                "general.check-updates",
+                "about.check-updates",
                 "Check for updates",
                 !string.IsNullOrWhiteSpace(UpdateStatusHint)
                     ? UpdateStatusHint
-                    : "Look on GitHub for a newer EmuShelf.",
+                    : "Look on GitHub for a newer EmuShelf. Only the public releases page is contacted.",
                 _settings.IsUpdateBusy ? "WORKING" : "A CHECK",
                 _settings.CheckForUpdatesCommand,
                 !_settings.IsUpdateBusy,
@@ -1130,7 +1269,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             if (_settings.IsUpdateAvailable)
             {
                 yield return ActionRow(
-                    "general.install-update",
+                    "about.install-update",
                     "Install update",
                     "Download the new version and restart. On the Steam Deck this stays in gaming mode.",
                     _settings.IsUpdateBusy ? "WORKING" : "A UPDATE",
@@ -1770,6 +1909,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         if (_settings.Updates is { } updates)
             updates.PropertyChanged -= OnSettingsPropertyChanged;
         _settings.CloseRequested -= OnSettingsCloseRequested;
+        UnhookCollection(_settings.Rows);
         UnhookCollection(_settings.CloudPlatforms);
         UnhookCollection(_settings.TexturePlatforms);
         UnhookCollection(_settings.TexturePackEntries);
