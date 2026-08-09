@@ -196,6 +196,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly Dictionary<SettingsSection, string> _focusedRowBySection = [];
     private readonly IReadOnlyList<ThemeChoiceViewModel> _themeChoices;
     private readonly Func<ThemePreference, Task>? _applyTheme;
+    private readonly Func<Task>? _openHotkeys;
     private Func<Task>? _pendingConfirmation;
     private Action<string>? _commitText;
     private bool _synchronizingSection;
@@ -380,18 +381,24 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         EmulatorSettingsViewModel settings,
         IOnScreenKeyboardService? onScreenKeyboard = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
-        Func<ThemePreference, Task>? applyTheme = null)
+        Func<ThemePreference, Task>? applyTheme = null,
+        Func<Task>? openHotkeys = null)
     {
         _settings = settings;
         _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         _themeChoices = themeChoices ?? [];
         _applyTheme = applyTheme;
+        _openHotkeys = openHotkeys;
         // Emulators is a Desktop-only slice for now; Themes is presented as the gamepad gallery page
         // rather than a projected row section; About is a Desktop-only read-only detail page (the
-        // gamepad shell only projects interactive row sections). All three are excluded here.
+        // gamepad shell only projects interactive row sections). Hotkeys is a per-emulator × per-action
+        // matrix, not a flat row list, so it is its own controller-native overlay
+        // (GamepadHotkeysViewModel) reached from a General row below rather than a projected section.
+        // All four are excluded here.
         Sections = settings.Sections
             .Where(section => section is not (
-                SettingsSection.Emulators or SettingsSection.Themes or SettingsSection.About))
+                SettingsSection.Emulators or SettingsSection.Hotkeys or
+                SettingsSection.Themes or SettingsSection.About))
             .ToArray();
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;
@@ -1078,6 +1085,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
             _settings.FetchAllMetadataCommand,
             _settings.CanFetchAllMetadata);
+        // Desktop keeps Hotkeys as its own Settings section (a per-emulator × per-action matrix); a
+        // controller can't navigate that as a flat row list, so it opens the dedicated, controller-
+        // native Hotkeys overlay instead. Excluded from general.* parity — Desktop has no general.*
+        // counterpart (its equivalents are the hotkeys.* controls inside the Hotkeys section).
+        if (_openHotkeys is not null && _settings.HasHotkeys)
+        {
+            yield return new GamepadSettingsRowSpec(
+                "general.hotkeys",
+                "Emulator hotkeys",
+                "Write one keyboard-hotkey scheme (rewind, fast-forward, save, load, close) into each emulator, and see the Steam Input controller mapping.",
+                "A OPEN",
+                GamepadSettingsRowKind.Action,
+                Activate: () => _openHotkeys(),
+                ExcludeFromParity: true);
+        }
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
         // folder too, and so the two surfaces' general.* field sets stay in parity.
         if (_settings.HasDataDirectory)

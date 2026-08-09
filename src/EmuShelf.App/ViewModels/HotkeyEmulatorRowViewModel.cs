@@ -8,7 +8,7 @@ namespace EmuShelf.App.ViewModels;
 
 /// <summary>
 /// One emulator's row in the Hotkeys settings section: the per-action grid, a status line, and the
-/// Apply / Preview / Revert actions. All work is delegated to the <see cref="HotkeySettingsContext"/>,
+/// Apply / Revert actions. All work is delegated to the <see cref="HotkeySettingsContext"/>,
 /// so the row holds no emulator knowledge and stays testable with a fake context.
 /// </summary>
 public partial class HotkeyEmulatorRowViewModel : ObservableObject
@@ -64,11 +64,17 @@ public partial class HotkeyEmulatorRowViewModel : ObservableObject
     /// <summary>Whether the action buttons are enabled: the config is resolvable and no op is in flight.</summary>
     public bool CanRun => CanOperate && !IsBusy;
 
-    [RelayCommand]
-    private Task Apply() => RunAsync(_context.ApplyAsync);
+    // Controller-overlay focus flags. The Desktop matrix ignores them; the Gamepad Hotkeys overlay
+    // (GamepadHotkeysViewModel) drives them so this same row can carry the D-pad ring on its Apply /
+    // Revert buttons without a second row type.
+    [ObservableProperty]
+    public partial bool IsApplyFocused { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsRevertFocused { get; set; }
 
     [RelayCommand]
-    private Task Preview() => RunAsync(_context.PreviewAsync);
+    private Task Apply() => RunAsync(_context.ApplyAsync);
 
     [RelayCommand]
     private Task Revert() => RunAsync(_context.RevertAsync);

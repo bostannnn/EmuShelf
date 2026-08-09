@@ -18,6 +18,7 @@ public partial class MainWindow : Window
 {
     private MainViewModel? _gamepadViewModel;
     private GamepadScraperViewModel? _gamepadScraper;
+    private GamepadHotkeysViewModel? _gamepadHotkeys;
     private int _requestedSettingsTextEntryRevision = -1;
     // False until the sliding rail pill has been snapped onto the active tab once; the first placement
     // must not animate in from the left edge.
@@ -113,6 +114,7 @@ public partial class MainWindow : Window
             _gamepadViewModel.PropertyChanged -= OnGamepadViewModelPropertyChanged;
 
         SyncGamepadScraperSubscription(null);
+        SyncGamepadHotkeysSubscription(null);
 
         _gamepadViewModel = DataContext as MainViewModel;
         if (_gamepadViewModel is not null)
@@ -142,6 +144,27 @@ public partial class MainWindow : Window
         }
     }
 
+    // The controller Hotkeys overlay tracks its focus index on the wrapped view model, so — like the
+    // scraper — the window observes that view model directly to scroll the focused matrix button into
+    // view (its matrix can be taller than the viewport).
+    private void SyncGamepadHotkeysSubscription(GamepadHotkeysViewModel? hotkeys)
+    {
+        if (ReferenceEquals(_gamepadHotkeys, hotkeys))
+            return;
+
+        if (_gamepadHotkeys is not null)
+            _gamepadHotkeys.PropertyChanged -= OnGamepadHotkeysPropertyChanged;
+        _gamepadHotkeys = hotkeys;
+        if (_gamepadHotkeys is not null)
+            _gamepadHotkeys.PropertyChanged += OnGamepadHotkeysPropertyChanged;
+    }
+
+    private void OnGamepadHotkeysPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GamepadHotkeysViewModel.FocusIndex))
+            Dispatcher.UIThread.Post(RevealGamepadHotkeysFocus, DispatcherPriority.Input);
+    }
+
     // View-focused coordination only: the view model selects a logical platform; this window
     // reveals the corresponding realized tab without making layout/visual concerns business logic.
     private void OnGamepadViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -169,6 +192,13 @@ public partial class MainWindow : Window
         {
             SyncGamepadScraperSubscription(_gamepadViewModel?.GamepadScraperDetails);
             Dispatcher.UIThread.Post(RevealGamepadScraperFocus, DispatcherPriority.Input);
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.GamepadHotkeys))
+        {
+            SyncGamepadHotkeysSubscription(_gamepadViewModel?.GamepadHotkeys);
+            Dispatcher.UIThread.Post(RevealGamepadHotkeysFocus, DispatcherPriority.Input);
             return;
         }
 
@@ -561,6 +591,21 @@ public partial class MainWindow : Window
     // Visual focus only for the scraper overlay: keyboard focus follows the wrapped view model's
     // focus ring onto the matching text box (so the Steam on-screen keyboard types into it) or the
     // focused command button. D-pad routing and modal state stay in the view models.
+    // Visual focus only for the Hotkeys overlay: the two global buttons sit above the scroll and are
+    // always visible, so only the focused per-emulator Apply / Revert button (inside the matrix
+    // scroller, which can overflow) needs bringing into view. The .focused class carries the ring; no
+    // keyboard focus is taken (the overlay has no text entry and the VM routes A directly).
+    private void RevealGamepadHotkeysFocus()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadHotkeysOpen: true })
+            return;
+
+        GamepadHotkeysScroller.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.IsVisible && button.Classes.Contains("focused"))
+            ?.BringIntoView();
+    }
+
     private void RevealGamepadScraperFocus()
     {
         if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadScraperOpen: true } viewModel ||

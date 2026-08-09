@@ -19,6 +19,7 @@ public enum GamepadOverlayKind
     BatchScraper,
     SystemMenu,
     Settings,
+    Hotkeys,
     DesktopModeConfirmation,
     QuitConfirmation,
 }

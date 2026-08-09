@@ -443,6 +443,58 @@ public sealed class HotkeyConfiguratorTests : IDisposable
     }
 
     [Fact]
+    public void RetroArch_Apply_ClearsControllerHotkeysThatMisfireInAlwaysOnMode_ButKeepsGameInputs()
+    {
+        // RetroArch's hotkey gate is off under the keyboard scheme (bare Steam-Input keys fire), which
+        // also un-gates any controller button bound as a hotkey. A stock pad autoconfig lands these on
+        // game-facing buttons — the D-pad and face buttons — so during play a bare D-pad left/right would
+        // change the save-state slot, and the scheme's own rewind/fast-forward have leftover trigger-axis
+        // binds. Apply must silence all of them (joypad and axis) while leaving game inputs alone.
+        Write("retroarch.cfg",
+            "input_enable_hotkey_btn = \"nul\"",
+            "input_exit_emulator = \"escape\"",
+            "input_rewind = \"r\"",
+            "input_rewind_axis = \"+4\"",
+            "input_hold_fast_forward = \"l\"",
+            "input_hold_fast_forward_axis = \"+5\"",
+            "input_save_state = \"f2\"",
+            "input_load_state = \"f4\"",
+            "input_state_slot_decrease_btn = \"h0left\"",
+            "input_state_slot_increase_btn = \"h0right\"",
+            "input_runahead_toggle_btn = \"h0up\"",
+            "input_screenshot_btn = \"0\"",
+            "input_pause_toggle_btn = \"1\"",
+            "input_fps_toggle_btn = \"2\"",
+            // The game inputs those very buttons actually drive — these must survive so the pad plays.
+            "input_player1_left = \"left\"",
+            "input_player1_right = \"right\"",
+            "input_player1_a_btn = \"0\"");
+
+        var result = new RetroArchHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
+        var document = Read("retroarch.cfg");
+        foreach (var key in new[]
+                 {
+                     "input_state_slot_decrease_btn", "input_state_slot_increase_btn",
+                     "input_runahead_toggle_btn", "input_screenshot_btn",
+                     "input_pause_toggle_btn", "input_fps_toggle_btn",
+                     "input_rewind_axis", "input_hold_fast_forward_axis",
+                 })
+        {
+            Assert.Equal("\"nul\"", document.GetValue(null, key));
+        }
+        // Game inputs are untouched, so the D-pad and face buttons still play the game.
+        Assert.Equal("\"left\"", document.GetValue(null, "input_player1_left"));
+        Assert.Equal("\"right\"", document.GetValue(null, "input_player1_right"));
+        Assert.Equal("\"0\"", document.GetValue(null, "input_player1_a_btn"));
+
+        // Idempotent: a second apply over the now-cleared config changes nothing.
+        var again = new RetroArchHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+        Assert.Equal(HotkeyApplyStatus.Unchanged, again.Status);
+    }
+
+    [Fact]
     public void RetroArch_MissingFile_IsConfigurationNotFound()
     {
         var result = new RetroArchHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
