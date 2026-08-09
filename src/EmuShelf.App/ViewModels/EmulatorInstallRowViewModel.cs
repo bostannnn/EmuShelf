@@ -73,6 +73,11 @@ public partial class EmulatorInstallRowViewModel : ViewModelBase
     /// <summary>Re-reads this emulator's install status and updates the row's buttons/labels.</summary>
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
+        // A refresh while an install/update is running would read a not-yet-written manifest and reset
+        // the progress bar and buttons mid-download; the post-action resync runs after IsBusy clears.
+        if (IsBusy)
+            return;
+
         try
         {
             // Offload the synchronous prefix (manifest read + the user-install probe's DB read) and the
@@ -100,7 +105,9 @@ public partial class EmulatorInstallRowViewModel : ViewModelBase
                     canInstall: true, canUpdate: false, downloadPage: null, version: null);
                 break;
             case EmulatorInstallStatus.Managed managed:
-                SetStatus($"Installed · {managed.InstalledVersion} (up to date)",
+                // No "up to date" claim here — a managed install whose latest-build check could not reach
+                // the source also lands on Managed, and we must not assert freshness we didn't verify.
+                SetStatus($"Installed · {managed.InstalledVersion}",
                     canInstall: false, canUpdate: false, downloadPage: null, version: managed.InstalledVersion);
                 break;
             case EmulatorInstallStatus.UpdateAvailable update:
@@ -172,8 +179,19 @@ public partial class EmulatorInstallRowViewModel : ViewModelBase
             switch (result)
             {
                 case EmulatorInstallResult.Installed installed:
+                    // Config auto-wiring is best-effort; its failure must not report a completed install
+                    // as failed.
                     if (_onInstalled is not null)
-                        await _onInstalled(EmulatorId, installed.ExecutablePath);
+                    {
+                        try
+                        {
+                            await _onInstalled(EmulatorId, installed.ExecutablePath);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.Error($"Auto-configuring {EmulatorName} after install failed.", ex);
+                        }
+                    }
                     StatusText = $"Installed · {installed.Version}";
                     resyncFromStatus = true;
                     break;

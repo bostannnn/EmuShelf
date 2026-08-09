@@ -206,6 +206,53 @@ public class EmulatorInstallServiceTests : TempAppDirectoryTestBase
         Assert.Equal(new EmulatorInstallStatus.NotInstalled(null), await service.GetStatusAsync(EmulatorId));
     }
 
+    [Fact]
+    public async Task Update_WhenManifestSaveFails_RollsBackToThePreviousInstall()
+    {
+        var manifest = new JsonEmulatorInstallManifestStore(AppPaths);
+        var client = new FakeReleaseClient { Release = ReleaseWithZip("tag-1"), SourceFileToCopy = MakeZip("OLD") };
+        var definition = Def(ManagedZipSource());
+        await new EmulatorInstallService([definition], AppPaths, manifest, client, NullAppLogger.Instance)
+            .InstallAsync(EmulatorId);
+
+        // Update to a newer build, but the manifest write fails partway through the swap.
+        client.Release = ReleaseWithZip("tag-2");
+        client.SourceFileToCopy = MakeZip("NEW");
+        var throwingManifest = new ThrowingOnSaveManifestStore(manifest);
+        var result = await new EmulatorInstallService(
+            [definition], AppPaths, throwingManifest, client, NullAppLogger.Instance).UpdateAsync(EmulatorId);
+
+        Assert.IsType<EmulatorInstallResult.Failed>(result);
+        var executable = Path.Combine(AppPaths.EmulatorsDirectory, EmulatorId, "payload", "tool.exe");
+        Assert.Equal("OLD", File.ReadAllText(executable));
+        Assert.Empty(Directory.EnumerateDirectories(AppPaths.EmulatorsDirectory, $"{EmulatorId}.old-*"));
+    }
+
+    [Fact]
+    public async Task FreshInstall_WhenManifestSaveFails_LeavesNoFilesThatWouldBlockRetry()
+    {
+        var throwingManifest = new ThrowingOnSaveManifestStore(new JsonEmulatorInstallManifestStore(AppPaths));
+        var client = new FakeReleaseClient { Release = ReleaseWithZip("tag-1"), SourceFileToCopy = MakeZip("X") };
+        var service = new EmulatorInstallService(
+            [Def(ManagedZipSource())], AppPaths, throwingManifest, client, NullAppLogger.Instance);
+
+        var result = await service.InstallAsync(EmulatorId);
+
+        Assert.IsType<EmulatorInstallResult.Failed>(result);
+        var installDirectory = Path.Combine(AppPaths.EmulatorsDirectory, EmulatorId);
+        var hasLeftovers = Directory.Exists(installDirectory)
+            && Directory.EnumerateFileSystemEntries(installDirectory).Any();
+        Assert.False(hasLeftovers);
+    }
+
+    private sealed class ThrowingOnSaveManifestStore(IEmulatorInstallManifestStore inner) : IEmulatorInstallManifestStore
+    {
+        public EmulatorInstallRecord? Get(string emulatorId) => inner.Get(emulatorId);
+        public IReadOnlyList<EmulatorInstallRecord> GetAll() => inner.GetAll();
+        public void Save(EmulatorInstallRecord record) => throw new IOException("simulated manifest write failure");
+        public void Remove(string emulatorId) => inner.Remove(emulatorId);
+    }
+
     private sealed class FakeReleaseClient : IEmulatorReleaseClient
     {
         public GitHubEmulatorRelease? Release { get; set; }

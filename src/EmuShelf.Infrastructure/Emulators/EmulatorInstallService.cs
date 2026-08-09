@@ -171,10 +171,14 @@ public sealed class EmulatorInstallService : IEmulatorInstallService
             return new EmulatorInstallResult.Failed(
                 $"The latest {definition.Name} release has no download matching your platform.");
 
+        // Reclaim any staging/backup leftovers from a previous interrupted install of this emulator.
+        CleanInstallLeftovers(emulatorId);
+
         var stagingRoot = Path.Combine(_paths.CacheDirectory, "emulator-installs", emulatorId);
         RecreateDirectory(stagingRoot);
         var extractDirectory = Path.Combine(
             _paths.EmulatorsDirectory, $".staging-{emulatorId}-{Guid.NewGuid():N}");
+        string? backupDirectory = null;
 
         try
         {
@@ -194,22 +198,41 @@ public sealed class EmulatorInstallService : IEmulatorInstallService
                 return new EmulatorInstallResult.Failed(
                     $"Couldn't find {definition.Name}'s executable in the downloaded archive.");
 
-            // Swap the freshly extracted tree into the managed directory.
-            if (Directory.Exists(installDirectory))
-                Directory.Delete(installDirectory, recursive: true);
+            // Swap the freshly extracted tree into the managed directory. Move any existing managed
+            // install aside first so a failed move or manifest write can be rolled back — a failed
+            // update must never uninstall a working emulator, and a failed fresh install must not leave
+            // unmanaged files behind that then block every future install.
             Directory.CreateDirectory(Path.GetDirectoryName(installDirectory)!);
-            Directory.Move(extractDirectory, installDirectory);
+            if (Directory.Exists(installDirectory))
+            {
+                backupDirectory = $"{installDirectory}.old-{Guid.NewGuid():N}";
+                Directory.Move(installDirectory, backupDirectory);
+            }
 
-            var absoluteExecutable = Path.Combine(
-                installDirectory, relativeExecutable.Replace('/', Path.DirectorySeparatorChar));
-            EmulatorArchiveExtractor.MarkExecutable(absoluteExecutable);
-            StripQuarantine(installDirectory);
+            try
+            {
+                Directory.Move(extractDirectory, installDirectory);
 
-            var executableRelativeToBase = ToBaseRelative(absoluteExecutable);
-            _manifest.Save(new EmulatorInstallRecord(
-                emulatorId, release.Tag, DateTimeOffset.UtcNow, executableRelativeToBase, release.Tag));
-            _logger.Information($"Installed {definition.Name} {release.Tag} to {installDirectory}.");
-            return new EmulatorInstallResult.Installed(release.Tag, absoluteExecutable);
+                var absoluteExecutable = Path.Combine(
+                    installDirectory, relativeExecutable.Replace('/', Path.DirectorySeparatorChar));
+                EmulatorArchiveExtractor.MarkExecutable(absoluteExecutable);
+                StripQuarantine(installDirectory);
+
+                var executableRelativeToBase = ToBaseRelative(absoluteExecutable);
+                _manifest.Save(new EmulatorInstallRecord(
+                    emulatorId, release.Tag, DateTimeOffset.UtcNow, executableRelativeToBase, release.Tag));
+                _logger.Information($"Installed {definition.Name} {release.Tag} to {installDirectory}.");
+                return new EmulatorInstallResult.Installed(release.Tag, absoluteExecutable);
+            }
+            catch
+            {
+                // Roll back: drop the half-applied new tree and restore the previous install.
+                TryDeleteDirectory(installDirectory);
+                if (backupDirectory is not null && Directory.Exists(backupDirectory))
+                    Directory.Move(backupDirectory, installDirectory);
+                backupDirectory = null;
+                throw;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -224,7 +247,29 @@ public sealed class EmulatorInstallService : IEmulatorInstallService
         {
             if (Directory.Exists(extractDirectory))
                 TryDeleteDirectory(extractDirectory);
+            // On a successful swap the old install's backup is no longer needed; on a rollback it was
+            // already consumed (set to null), so this only removes the superseded backup after success.
+            if (backupDirectory is not null)
+                TryDeleteDirectory(backupDirectory);
             TryDeleteDirectory(stagingRoot);
+        }
+    }
+
+    private void CleanInstallLeftovers(string emulatorId)
+    {
+        if (!Directory.Exists(_paths.EmulatorsDirectory))
+            return;
+        try
+        {
+            foreach (var directory in Directory.EnumerateDirectories(
+                _paths.EmulatorsDirectory, $".staging-{emulatorId}-*"))
+                TryDeleteDirectory(directory);
+            foreach (var directory in Directory.EnumerateDirectories(
+                _paths.EmulatorsDirectory, $"{emulatorId}.old-*"))
+                TryDeleteDirectory(directory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
         }
     }
 

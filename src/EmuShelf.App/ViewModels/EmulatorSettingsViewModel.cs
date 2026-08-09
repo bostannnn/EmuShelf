@@ -1267,8 +1267,14 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             _ = platform.RefreshDetectedDirectoryAsync();
     }
 
+    private bool _refreshingEmulatorInstalls;
+
     private async Task RefreshEmulatorInstallsAsync()
     {
+        // Re-selecting the section shouldn't stack overlapping refresh passes over the GitHub API.
+        if (_refreshingEmulatorInstalls)
+            return;
+        _refreshingEmulatorInstalls = true;
         try
         {
             await _emulatorManager!.RefreshAsync(CancellationToken.None);
@@ -1276,6 +1282,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Error("Refreshing emulator install status failed.", ex);
+        }
+        finally
+        {
+            _refreshingEmulatorInstalls = false;
         }
     }
 

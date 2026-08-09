@@ -120,10 +120,12 @@ public static class EmulatorArchiveExtractor
     private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
     {
         Directory.CreateDirectory(destinationDirectory);
+        // Rebase each entry by its path relative to the source root. String.Replace would rewrite every
+        // occurrence of the source path, mis-targeting entries where that token recurs deeper in the tree.
         foreach (var directory in Directory.EnumerateDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
-            Directory.CreateDirectory(directory.Replace(sourceDirectory, destinationDirectory));
+            Directory.CreateDirectory(Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, directory)));
         foreach (var file in Directory.EnumerateFiles(sourceDirectory, "*", SearchOption.AllDirectories))
-            File.Copy(file, file.Replace(sourceDirectory, destinationDirectory), overwrite: true);
+            File.Copy(file, Path.Combine(destinationDirectory, Path.GetRelativePath(sourceDirectory, file)), overwrite: true);
     }
 
     private static void TryDeleteDirectory(string path)
