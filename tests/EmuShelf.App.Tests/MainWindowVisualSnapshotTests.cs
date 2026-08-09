@@ -93,6 +93,60 @@ public class MainWindowVisualSnapshotTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task DesktopSidebar_ConsolesAndCollectionsScrollWithoutHidingAddButton()
+    {
+        // Show every known console so the console list + collections overflow the sidebar. This is the
+        // case that used to push the collection shortcuts and Add-to-Library button off the bottom edge
+        // with no way to scroll to them. ShowEmptyPlatforms surfaces all systems; the reload is what
+        // rebuilds NavigationSystems, so it has to run before the window is measured. (Headless enforces
+        // a minimum window size, so the full list is what forces overflow, not a small Height.)
+        var viewModel = new MainViewModel { ShowEmptyPlatforms = true };
+        await viewModel.ReloadGamesAsync();
+        Assert.True(viewModel.NavigationSystems.Count > 6, "Test needs a full console list to overflow.");
+
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1000,
+            Height = 360,
+        };
+        window.Show();
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
+
+            var scroller = window.FindControl<ScrollViewer>("SidebarScroller");
+            Assert.NotNull(scroller);
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height,
+                "Sidebar consoles + collections must overflow into a scroll region.");
+
+            // The Add-to-Library button lives outside the scroller (pinned) and stays fully on-screen no
+            // matter how long the console list grows — the regression was it being shoved off the bottom.
+            var addButton = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(control => control.Classes.Contains("add-library"));
+            Assert.DoesNotContain(addButton, scroller.GetVisualDescendants());
+            var addBottom = addButton.TranslatePoint(default, window)!.Value.Y + addButton.Bounds.Height;
+            Assert.True(addBottom <= window.Bounds.Height + 1,
+                $"Add-to-Library must stay within the window ({window.Bounds.Height}); bottom was {addBottom}.");
+            Assert.True(addButton.Bounds.Height > 0 && addButton.IsVisible);
+
+            // The collection shortcuts scroll with the consoles rather than overflowing the window:
+            // the last one lives inside the scroll region.
+            var lastCollection = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Single(control => control.Classes.Contains("collection-item") &&
+                    control.GetVisualDescendants().OfType<TextBlock>()
+                        .Any(text => text.Text == "Recently Added"));
+            Assert.Contains(lastCollection, scroller.GetVisualDescendants());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     // The gamepad achievements grid renders as a row-virtualized ListBox (GamepadAchievementRowList),
     // one ItemsControl row per line; each realized badge tile is a Border.gamepad-achievement. These
     // helpers gather and locate those tiles the way the old flat ItemsRepeater's TryGetElement did.
