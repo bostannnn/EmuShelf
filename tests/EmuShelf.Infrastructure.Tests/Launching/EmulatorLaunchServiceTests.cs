@@ -176,6 +176,33 @@ public class EmulatorLaunchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LaunchAsync_BranchPinnedFlatpakTarget_RunsThatBranchRef()
+    {
+        var game = CreateGameFile("Game.iso");
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, null, "--batch \"{GamePath}\"")
+        {
+            LaunchTarget = new FlatpakApplicationTarget("net.pcsx2.PCSX2", "beta"),
+        };
+        var service = new EmulatorLaunchService(
+            _configurations,
+            _runner,
+            _frontend,
+            [_emulator],
+            _logger,
+            new PassingTargetInspector(),
+            new FixedDependencyResolver(game.Path));
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        // The pinned branch travels to the command line as an appId//branch ref so flatpak launches the
+        // nightly rather than "whichever branch is current" when both are installed.
+        Assert.Equal(
+            ["run", $"--filesystem={_directory}:ro", "net.pcsx2.PCSX2//beta", "--batch", game.Path],
+            _runner.StartSpec!.Arguments);
+    }
+
+    [Fact]
     public async Task LaunchAsync_FlatpakRetroArch_PassesCorePathThroughAfterAppId()
     {
         var game = CreateGameFile("Game With Spaces.gba", "core-system");

@@ -91,6 +91,11 @@ public abstract class HotkeyConfiguratorBase : IEmulatorHotkeyConfigurator
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 _backup.Capture(file.Path);
+                // A configurator may plan a file the emulator has not written yet (Dolphin only creates
+                // Config/Hotkeys.ini once a hotkey is customised), so ensure its directory exists first.
+                var directory = Path.GetDirectoryName(file.Path);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
                 _writeFile(file.Path, file.NewText);
             }
         }

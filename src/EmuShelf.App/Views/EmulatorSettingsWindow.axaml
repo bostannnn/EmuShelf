@@ -867,6 +867,45 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Classes="settings-card" Margin="0,0,0,12">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="CONTROLLER SETUP (STEAM INPUT)" FontSize="10" FontWeight="Bold"
+                                           LetterSpacing="1"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                           Text="There is no importable file — Steam Input layouts are set up per game inside Steam, not dropped in. Because every emulator listens for the same keys, you only build this once and it works for all of them. Hold Select (Back / View — the share-side button) and press a button:" />
+                                <Grid ColumnDefinitions="Auto,16,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="4,2,0,2">
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Select + Square" FontFamily="Monospace" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Rewind (R)" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Select + Circle" FontFamily="Monospace" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Fast-forward (L)" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Select + Triangle" FontFamily="Monospace" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Save state (F2)" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Select + Cross" FontFamily="Monospace" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Load state (F4)" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Select + Start" FontFamily="Monospace" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="2" Text="Close game (F8)" FontSize="12"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </Grid>
+                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                           Text="Square / Circle / Triangle / Cross are the PlayStation face buttons; on an Xbox pad they are X / B / Y / A by position." />
+                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                           Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                           Text="Steam Deck: add each emulator as a non-Steam game if it isn't already, open its Controller Settings → Edit Layout, make Select activate a hold Action Layer, and bind the buttons above to those keys. On desktop, launch the emulator through Steam so the layout applies." />
+                            </StackPanel>
+                        </Border>
+
                         <ItemsControl ItemsSource="{Binding HotkeyEmulators}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>

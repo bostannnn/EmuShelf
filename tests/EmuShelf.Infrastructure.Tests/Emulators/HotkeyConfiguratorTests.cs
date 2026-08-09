@@ -91,6 +91,35 @@ public sealed class HotkeyConfiguratorTests : IDisposable
 
         Assert.Equal(HotkeyApplyStatus.UnsupportedFormat, result.Status);
         Assert.Null(Read("settings.ini").GetValue("Hotkeys", "PowerOff"));
+        // The diagnostic names the setting and the exact file read, so a wrong Steam Deck config dir is
+        // diagnosable from the message alone.
+        Assert.Contains("SettingsVersion", result.Diagnostic);
+        Assert.Contains("settings.ini", result.Diagnostic);
+    }
+
+    [Fact]
+    public void DuckStation_MissingSettingsVersion_ButValidConfig_StillApplies()
+    {
+        // Newer AppImage/fork builds (e.g. on the Steam Deck) omit SettingsVersion; as long as the [Main]
+        // section is there, EmuShelf still writes the scheme rather than refusing with "unknown".
+        Write("settings.ini", "[Main]", "RewindEnable = false", "[Hotkeys]");
+
+        var result = new DuckStationHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
+        Assert.Equal("Keyboard/F8", Read("settings.ini").GetValue("Hotkeys", "PowerOff"));
+    }
+
+    [Fact]
+    public void DuckStation_NoMainSection_IsRefusedAsUnknownFormat()
+    {
+        // No version and not even a [Main] section: a stub the locator picked up, not a config to edit.
+        Write("settings.ini", "[Something]", "key = value");
+
+        var result = new DuckStationHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal(HotkeyApplyStatus.UnsupportedFormat, result.Status);
+        Assert.Null(Read("settings.ini").GetValue("Hotkeys", "PowerOff"));
     }
 
     [Fact]
@@ -147,6 +176,23 @@ public sealed class HotkeyConfiguratorTests : IDisposable
 
         var rewind = result.Bindings.Single(binding => binding.Action == HotkeyAction.Rewind);
         Assert.Equal(HotkeyBindingStatus.Unsupported, rewind.Status);
+    }
+
+    [Fact]
+    public void Pcsx2_Apply_ClearsAUserSetF8Screenshot()
+    {
+        // Modern PCSX2 ships no default hotkey keys, but if the user bound Screenshot to F8 (our close
+        // key) the overwrite policy must unbind it so a single close doesn't also screenshot.
+        Write(Path.Combine("inis", "PCSX2.ini"),
+            "[UI]", "SettingsVersion = 1",
+            "[Hotkeys]",
+            "Screenshot = Keyboard/F8");
+
+        new Pcsx2HotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        var document = Read(Path.Combine("inis", "PCSX2.ini"));
+        Assert.Equal("Keyboard/F8", document.GetValue("Hotkeys", "ShutdownVM"));
+        Assert.Null(document.GetValue("Hotkeys", "Screenshot"));
     }
 
     [Fact]
@@ -224,6 +270,33 @@ public sealed class HotkeyConfiguratorTests : IDisposable
         // A slot on another key stays, and Shift+F2 is a different input so it stays too.
         Assert.Equal("F1", document.GetValue("Hotkeys", "Load State/Load State Slot 1"));
         Assert.Equal("@(Shift+F2)", document.GetValue("Hotkeys", "Save State/Save State Slot 2"));
+    }
+
+    [Fact]
+    public void Dolphin_Apply_CreatesHotkeysIni_WhenMissingButUserDirIsReal()
+    {
+        // Dolphin writes Config/Hotkeys.ini only after a hotkey is customised, so even a used install can
+        // lack it. A Config/Dolphin.ini confirms this is Dolphin's real user dir, so EmuShelf creates it.
+        Write(Path.Combine("Config", "Dolphin.ini"), "[General]", "ISOPath0 = /roms");
+
+        var result = new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
+        var document = Read(Path.Combine("Config", "Hotkeys.ini"));
+        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F8`", document.GetValue("Hotkeys", "General/Exit"));
+        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F2`", document.GetValue("Hotkeys", "Save State/Save to Selected Slot"));
+        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F4`", document.GetValue("Hotkeys", "Load State/Load from Selected Slot"));
+    }
+
+    [Fact]
+    public void Dolphin_Apply_MissingHotkeysAndNoDolphinIni_IsConfigurationNotFound()
+    {
+        // No Hotkeys.ini and no Dolphin.ini: EmuShelf resolved the wrong folder, so it must report that
+        // rather than create a Hotkeys.ini in a directory Dolphin never reads.
+        var result = new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal(HotkeyApplyStatus.ConfigurationNotFound, result.Status);
+        Assert.False(File.Exists(Path.Combine(_root, "Config", "Hotkeys.ini")));
     }
 
     // ---- PPSSPP --------------------------------------------------------------------------------
@@ -304,6 +377,51 @@ public sealed class HotkeyConfiguratorTests : IDisposable
         Assert.Equal("\"nul\"", document.GetValue(null, "input_hold_fast_forward_btn"));
         Assert.Equal("\"nul\"", document.GetValue(null, "input_save_state_btn"));
         Assert.Equal("\"nul\"", document.GetValue(null, "input_load_state_btn"));
+    }
+
+    [Fact]
+    public void RetroArch_Apply_ClearsF8ScreenshotConflict_AndDisablesQuitPressTwice()
+    {
+        Write("retroarch.cfg",
+            "input_exit_emulator = \"escape\"",
+            "input_screenshot = \"f8\"",
+            "input_rewind = \"r\"",
+            "input_hold_fast_forward = \"l\"",
+            "input_save_state = \"f2\"",
+            "input_load_state = \"f4\"",
+            "quit_press_twice = \"true\"");
+
+        var result = new RetroArchHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal(HotkeyApplyStatus.Changed, result.Status);
+        var document = Read("retroarch.cfg");
+        Assert.Equal("\"f8\"", document.GetValue(null, "input_exit_emulator"));
+        // The default screenshot key shared F8 with close, so it is unbound — a single F8 only closes.
+        Assert.Equal("\"nul\"", document.GetValue(null, "input_screenshot"));
+        // A single deliberate close should quit rather than needing two presses.
+        Assert.Equal("\"false\"", document.GetValue(null, "quit_press_twice"));
+    }
+
+    [Fact]
+    public void RetroArch_Apply_NeutralisesScreenshotEvenWhenAbsent()
+    {
+        // An absent input_screenshot still falls back to RetroArch's internal f8 default, which shares
+        // our close key, so it is written out as nul.
+        Write("retroarch.cfg", "input_exit_emulator = \"escape\"");
+
+        new RetroArchHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal("\"nul\"", Read("retroarch.cfg").GetValue(null, "input_screenshot"));
+    }
+
+    [Fact]
+    public void RetroArch_Apply_KeepsAScreenshotKeyTheUserMovedOffF8()
+    {
+        Write("retroarch.cfg", "input_exit_emulator = \"escape\"", "input_screenshot = \"f10\"");
+
+        new RetroArchHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        Assert.Equal("\"f10\"", Read("retroarch.cfg").GetValue(null, "input_screenshot"));
     }
 
     [Fact]
