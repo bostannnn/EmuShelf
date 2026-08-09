@@ -32,6 +32,8 @@
         <StreamGeometry x:Key="TexturePackLayersGeometry">M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,18.54L4.62,12.81L3,14.07L12,21.07L21,14.07L19.37,12.8L12,18.54Z</StreamGeometry>
         <!-- mdi-alert: marks a failed operation in the status toast. -->
         <StreamGeometry x:Key="StatusWarningGeometry">M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16</StreamGeometry>
+        <!-- mdi-sync: circular arrows, the Gamepad save-sync panel's "transferring" mark. -->
+        <StreamGeometry x:Key="CloudSyncGeometry">M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z</StreamGeometry>
         <StreamGeometry x:Key="AchievementTrophyGeometry">M18,2H6V4H2V9C2,11.21 3.79,13 6,13V13.5C6,15.43 7.5,17 9.34,17.15L9,18H7V20H17V18H15L14.66,17.15C16.5,17 18,15.43 18,13.5V13C20.21,13 22,11.21 22,9V4H18V2M6,11C4.9,11 4,10.1 4,9V6H6V11M20,9C20,10.1 19.1,11 18,11V6H20V9Z</StreamGeometry>
         <!-- The Fluent Button theme paints its internal presenter on pointer/pressed states even
              when Button.Background is transparent. Game tiles provide cover-sized hover/focus
@@ -544,6 +546,12 @@
             <Setter Property="Margin" Value="0" />
             <Setter Property="Width" Value="1000" />
             <Setter Property="Height" Value="640" />
+        </Style>
+        <Style Selector="Border.gamepad-overlay.batch-scraper">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Width" Value="720" />
+            <Setter Property="Height" Value="520" />
         </Style>
         <!-- One controller-focusable row in the scraper overlay (a field/media toggle or candidate). -->
         <Style Selector="Border.gamepad-scraper-row">
@@ -2296,7 +2304,11 @@
             <TextBlock Text="Press X to edit or clear the search."
                        FontSize="17" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
         </StackPanel>
-        <Border Grid.Row="1" Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
+        <!-- ZIndex keeps the toast above the library content it shares a cell with — in particular the
+             opaque single-game spotlight backdrop and the focused dock, which are declared after it and
+             would otherwise paint over it, hiding launch errors in Spotlight view. It stays below the
+             overlay scrim (ZIndex 2) so an open overlay still covers it. -->
+        <Border Grid.Row="1" ZIndex="1" Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
                 Classes.progress="{Binding IsStatusProgress}"
                 Classes.error="{Binding IsStatusError}"
                 IsHitTestVisible="{Binding HasStatusMessage}"
@@ -2328,6 +2340,29 @@
                               Data="M2,1 L10,9 L9,10 L1,2 Z M9,1 L10,2 L2,10 L1,9 Z" />
                 </Button>
             </Grid>
+        </Border>
+        <!-- Save sync is the one launch/exit step a couch player waits on: saves are pulled before the
+             game starts and pushed after it exits. The corner toast is too easy to miss at that
+             distance, so surface a large centered panel over the whole shell while it runs. -->
+        <Border Grid.Row="0" Grid.RowSpan="3" ZIndex="1" IsVisible="{Binding IsSyncingSavesForLaunch}"
+                Background="#B0000000" IsHitTestVisible="False">
+            <Border Padding="44,34" CornerRadius="18" MaxWidth="560"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="{DynamicResource EmuPopoverBrush}"
+                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
+                <StackPanel Spacing="20" HorizontalAlignment="Center">
+                    <PathIcon Width="46" Height="46"
+                              Data="{StaticResource CloudSyncGeometry}"
+                              Foreground="{DynamicResource EmuProgressBrush}" />
+                    <TextBlock Text="{Binding StatusText}" FontSize="21" FontWeight="SemiBold"
+                               TextAlignment="Center" TextWrapping="Wrap"
+                               HorizontalAlignment="Center" />
+                    <ProgressBar IsIndeterminate="True" Width="360" Height="4" />
+                    <TextBlock Text="Game files are never uploaded — only emulator saves."
+                               FontSize="13" TextAlignment="Center" TextWrapping="Wrap"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
         </Border>
         <Border x:Name="GamepadFocusedDock" Grid.Row="2" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0"
@@ -2687,8 +2722,9 @@
                 </Grid>
         </Panel>
 
-        <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window. -->
-        <Grid Grid.RowSpan="3" Classes="gamepad-scrim" IsHitTestVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
+        <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window.
+             ZIndex 2 keeps the scrim and its overlay above the elevated toast/save-sync layer (ZIndex 1). -->
+        <Grid Grid.RowSpan="3" ZIndex="2" Classes="gamepad-scrim" IsHitTestVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
             <!-- The panel is the overlay's height budget: it keeps a margin off the screen edges,
                  and the overlay's MaxHeight tracks it so a 720p or windowed viewport shrinks the
                  sheet instead of clipping it. Height is the preferred size, not the actual one. -->
@@ -2697,6 +2733,7 @@
                     Classes.side-sheet="{Binding IsGameActionsOpen}"
                     Classes.achievements="{Binding IsGamepadAchievementsOpen}"
                     Classes.scraper="{Binding IsGamepadScraperOpen}"
+                    Classes.batch-scraper="{Binding IsGamepadBatchScraperOpen}"
                     Classes.settings="{Binding IsGamepadSettingsOpen}"
                     VerticalAlignment="Center"
                     MaxHeight="{Binding #GamepadOverlayHost.Bounds.Height}"
@@ -3105,15 +3142,23 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     </StackPanel>
-                                    <Border Grid.Column="1" IsVisible="{Binding GamepadSettings.HasStatus}"
+                                    <Border Grid.Column="1"
+                                            IsVisible="{Binding GamepadSettings.HasStatus}"
                                             MaxWidth="430" Padding="14,9" CornerRadius="10"
                                             VerticalAlignment="Center"
                                             Background="{DynamicResource EmuFormatPillBrush}"
                                             BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
-                                        <TextBlock Text="{Binding GamepadSettings.StatusText}"
-                                                   FontSize="14" TextWrapping="Wrap" MaxLines="3"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <StackPanel Spacing="8">
+                                            <TextBlock Text="{Binding GamepadSettings.StatusText}"
+                                                       FontSize="14" TextWrapping="Wrap" MaxLines="3"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <!-- Section-scoped "working" bar so long actions (rescan, sync,
+                                                 refresh, scan) don't sit on a static line the way they used
+                                                 to; hides on completion, leaving the outcome text. -->
+                                            <ProgressBar IsIndeterminate="True" Height="3"
+                                                         IsVisible="{Binding GamepadSettings.IsWorkingInSection}" />
+                                        </StackPanel>
                                     </Border>
                                 </Grid>
 
@@ -3750,6 +3795,79 @@
                                 </Panel>
                             </Grid>
                         </Grid>
+                        <!-- Controller-native batch scraper: the shared GameBatchScraperViewModel with a
+                             linear D-pad focus model. Configuring → determinate progress → summary. -->
+                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadBatchScraperOpen}">
+                            <Grid DataContext="{Binding GamepadBatchScraperDetails}"
+                                  x:DataType="vm:GamepadBatchScraperViewModel" RowDefinitions="Auto,*">
+                                <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,14">
+                                    <TextBlock Text="{Binding Batch.Heading}" FontSize="22" FontWeight="Bold" />
+                                    <TextBlock Text="Matches by hash and serial only. Unmatched games are skipped — nothing is guessed."
+                                               FontSize="13" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                </StackPanel>
+
+                                <Panel Grid.Row="1">
+                                    <!-- Configure: one couch-relevant choice, then Start. -->
+                                    <StackPanel IsVisible="{Binding Batch.IsConfiguring}" Spacing="14"
+                                                VerticalAlignment="Center" MaxWidth="560">
+                                        <TextBlock Text="{Binding Batch.StatusMessage}" TextWrapping="Wrap"
+                                                   TextAlignment="Center" HorizontalAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <Border Classes="gamepad-scraper-row" Classes.focused="{Binding IsRefreshFocused}">
+                                            <CheckBox Content="Replace values ScreenScraper already set"
+                                                      IsChecked="{Binding Batch.RefreshOwnedValues}" />
+                                        </Border>
+                                        <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsStartFocused}"
+                                                HorizontalContentAlignment="Center"
+                                                Command="{Binding Batch.StartCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                <TextBlock Text="Start scraping" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- Running: determinate bar over the current game, plus Cancel. -->
+                                    <StackPanel IsVisible="{Binding Batch.IsRunning}" Spacing="16"
+                                                VerticalAlignment="Center" MaxWidth="560">
+                                        <ProgressBar Minimum="0" Maximum="{Binding Batch.ProgressTotal}"
+                                                     Value="{Binding Batch.ProgressCompleted}" Height="8" />
+                                        <TextBlock Text="{Binding Batch.StatusMessage}" TextAlignment="Center"
+                                                   HorizontalAlignment="Center" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Batch.CurrentGameTitle}" TextAlignment="Center"
+                                                   HorizontalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   IsVisible="{Binding Batch.CurrentGameTitle, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsCancelFocused}"
+                                                HorizontalContentAlignment="Center" HorizontalAlignment="Center"
+                                                MinWidth="200" Command="{Binding Batch.CancelCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                <TextBlock Text="Stop" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- Done: summary + Close. -->
+                                    <StackPanel IsVisible="{Binding Batch.IsDone}" Spacing="18"
+                                                VerticalAlignment="Center" MaxWidth="560">
+                                        <ProgressBar Minimum="0" Maximum="{Binding Batch.ProgressTotal}"
+                                                     Value="{Binding Batch.ProgressCompleted}" Height="8" />
+                                        <TextBlock Text="{Binding Batch.StatusMessage}" TextAlignment="Center"
+                                                   TextWrapping="Wrap" HorizontalAlignment="Center" FontSize="16" />
+                                        <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsCloseFocused}"
+                                                HorizontalContentAlignment="Center" HorizontalAlignment="Center"
+                                                MinWidth="200" Command="{Binding Batch.CloseCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                                <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                                <TextBlock Text="Done" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Panel>
+                            </Grid>
+                        </Grid>
                         <StackPanel IsVisible="{Binding IsGamepadDesktopModeConfirmationOpen}" Spacing="12">
                             <TextBlock Text="Gamepad mode will close and the desktop library will be shown."
                                        TextWrapping="Wrap" FontSize="18" />
@@ -3828,6 +3946,15 @@
                             <TextBlock Text="Select" />
                             <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="Steam+X" /></Border>
                             <TextBlock Text="Keyboard" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Back" />
+                        </StackPanel>
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding IsGamepadBatchScraperOpen}">
+                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Move" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Select" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
                         </StackPanel>

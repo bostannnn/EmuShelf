@@ -246,6 +246,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsMaintainingLibrary { get; set; }
 
+    // Distinct from IsMaintainingLibrary (which the metadata fetch also raises): true only while a
+    // General-section scan action runs (Rescan all consoles, or the Gamepad RPCS3 library sync), so
+    // that card's indeterminate bar shows without lighting up during a metadata fetch, a per-system
+    // rescan, or a folder edit.
+    [ObservableProperty]
+    public partial bool IsRescanningAllConsoles { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMaintenanceStatus))]
     public partial string MaintenanceStatusText { get; set; } = string.Empty;
@@ -268,6 +275,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool CanRescanAll => !IsWorking && _maintenance is not null;
     public bool CanFetchAllMetadata =>
         !IsWorking && _maintenance?.FetchAllMetadata is not null;
+
+    // PlayStation 3 titles are imported only by reading RPCS3's own game list, and the general
+    // "Rescan all consoles" deliberately skips PS3. Desktop reaches this on the PS3 emulator row;
+    // Gamepad drops the emulator rows, so it needs its own General-section entry point or a
+    // controller-only user can never import PS3 games.
+    public bool HasRpcs3LibrarySync => _maintenance?.SyncRpcs3Library is not null;
+    public bool CanSyncRpcs3Library => !IsWorking && HasRpcs3LibrarySync;
     public bool IsWorking => IsSaving || IsMaintainingLibrary;
 
     /// <summary>True while ANY async settings operation is running — save, library maintenance,
@@ -552,8 +566,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 isExecutableShared: false,
                 logger: _logger,
                 folderActions: system.Id == "playstation3" ? null : maintenance?.Folders,
+                // Folder edits (add/change/forget) are immediate and single-step, so they ignore the
+                // per-console progress reporter the scan actions use.
                 runFolderMaintenance: (action, report) => RunMaintenanceAsync(
-                    action,
+                    _ => action(),
                     "Updating remembered folders…",
                     report),
                 supportedEmulators: supportedEmulators,
@@ -612,6 +628,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(CanRescanAll));
         OnPropertyChanged(nameof(CanFetchAllMetadata));
+        OnPropertyChanged(nameof(CanSyncRpcs3Library));
+        SyncRpcs3LibraryGeneralCommand.NotifyCanExecuteChanged();
         UpdateRowMaintenanceState();
     }
 
@@ -619,16 +637,56 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanRescanAll));
         OnPropertyChanged(nameof(CanFetchAllMetadata));
+        OnPropertyChanged(nameof(CanSyncRpcs3Library));
+        SyncRpcs3LibraryGeneralCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsWorking));
         OnPropertyChanged(nameof(IsBusy));
         UpdateRowMaintenanceState();
     }
 
     [RelayCommand]
-    private Task RescanAllAsync() => RunMaintenanceAsync(
-        _maintenance?.RescanAll,
-        "Rescanning remembered folders…",
-        message => MaintenanceStatusText = message);
+    private async Task RescanAllAsync()
+    {
+        // Gamepad collapses the whole General section into one status pill, so a prior metadata
+        // fetch's completion line (MetadataStatusText, which outranks MaintenanceStatusText in the
+        // pill's FirstNonEmpty) would otherwise mask this rescan's status. Clear it up front.
+        MetadataStatusText = string.Empty;
+        IsRescanningAllConsoles = true;
+        try
+        {
+            await RunMaintenanceAsync(
+                _maintenance?.RescanAll,
+                "Rescanning remembered folders…",
+                message => MaintenanceStatusText = message);
+        }
+        finally
+        {
+            IsRescanningAllConsoles = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads the RPCS3 game list to import PlayStation 3 titles, reporting into the General-section
+    /// status (not a per-emulator row). This is the Gamepad-reachable equivalent of the PS3 row's
+    /// "Sync RPCS3 library" action on Desktop.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSyncRpcs3Library))]
+    private async Task SyncRpcs3LibraryGeneralAsync()
+    {
+        MetadataStatusText = string.Empty;
+        IsRescanningAllConsoles = true;
+        try
+        {
+            await RunMaintenanceAsync(
+                _maintenance?.SyncRpcs3Library is null ? null : _ => _maintenance.SyncRpcs3Library!(),
+                "Reading the RPCS3 game list…",
+                message => MaintenanceStatusText = message);
+        }
+        finally
+        {
+            IsRescanningAllConsoles = false;
+        }
+    }
 
     /// <summary>Reveals EmuShelf's data folder in the desktop file manager. Nothing there is modified.</summary>
     [RelayCommand]
@@ -702,21 +760,28 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             _logger.Error("Metadata fetch failed from Settings.", ex);
             MetadataStatusText = $"Metadata fetch failed: {ex.Message}";
         }
-        finally { IsMaintainingLibrary = false; }
+        finally
+        {
+            // The final count lives in MetadataStatusText; the live progress line and its bar total
+            // have served their purpose. Clear them so a later maintenance run cannot re-show the
+            // stale bar (desktop) or mask its own status behind "Fetching N of N" (the Gamepad pill).
+            ResetMetadataProgress();
+            IsMaintainingLibrary = false;
+        }
     }
 
     private Task RescanSystemAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
-        _maintenance is null ? null : () => _maintenance.RescanSystem(row.SystemId),
+        _maintenance is null ? null : progress => _maintenance.RescanSystem(row.SystemId, progress),
         "Rescanning remembered folders…",
         message => row.MaintenanceStatusText = message);
 
     private Task SyncRpcs3LibraryAsync(EmulatorSettingsRowViewModel row) => RunMaintenanceAsync(
-        _maintenance?.SyncRpcs3Library,
+        _maintenance?.SyncRpcs3Library is null ? null : _ => _maintenance.SyncRpcs3Library!(),
         "Reading the RPCS3 game list…",
         message => row.MaintenanceStatusText = message);
 
     private async Task RunMaintenanceAsync(
-        Func<Task<string>>? action,
+        Func<IProgress<string>, Task<string>>? action,
         string startingMessage,
         Action<string> report)
     {
@@ -724,10 +789,20 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             return;
 
         IsMaintainingLibrary = true;
+        // Maintenance shares IsMaintainingLibrary with the metadata fetch, and the desktop metadata
+        // bar is gated on that flag AND a non-zero total. Zero the stale metadata progress a prior
+        // fetch left set so this run does not transiently re-show that bar.
+        ResetMetadataProgress();
         report(startingMessage);
         try
         {
-            report(await action());
+            // Live per-console counts flow back through this reporter so the modal (and the Gamepad
+            // pill) update as the scan walks each console, instead of sitting on the static start
+            // line until the whole run finishes. The scan already marshals its counts to the UI
+            // thread before reporting, so a synchronous reporter is thread-safe here and, unlike
+            // Progress<T>, guarantees the final result below is the last line written.
+            var progress = new SynchronousProgress<string>(report);
+            report(await action(progress));
         }
         catch (Exception ex)
         {
@@ -909,6 +984,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
         finally
         {
+            // Keep the summary in RetroAchievementsStatusText; drop the live progress line so it
+            // cannot mask that summary in the Gamepad pill or linger as a stale bar on desktop.
+            ResetRetroAchievementsProgress();
             IsRetroAchievementsBusy = false;
         }
     }
@@ -1041,6 +1119,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         }
         finally
         {
+            ResetRetroAchievementsProgress();
             IsRetroAchievementsBusy = false;
         }
     }
@@ -1430,6 +1509,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         {
             _cloudCancellation = null;
             IsCloudBusy = false;
+            // The outcome is in CloudStatusText now; clear the transfer progress line so the Gamepad
+            // Saves pill shows that outcome instead of a stale "Transferring… 100%".
+            ResetCloudProgress();
             CancelCloudSyncCommand.NotifyCanExecuteChanged();
             // A successful sync creates the log after SyncLogPath was first assigned, so notify
             // the view that the previously hidden activity-log link is now available.
@@ -1478,6 +1560,42 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         CloudSyncProgressTotal = progress.Total;
         var position = Math.Min(progress.Completed + 1, progress.Total);
         CloudSyncProgressText = $"{DescribeAction(progress.Action)} {position} of {progress.Total}: {progress.CurrentUnit}";
+    }
+
+    // Progress fields are write-once-per-operation: they are seeded at the start of the run that
+    // owns them, but the completion summary lives in the matching *StatusText. Clearing the progress
+    // line and its bar total on completion keeps both surfaces honest — the desktop bar hides and the
+    // single Gamepad status pill (which ranks progress text ahead of status text) shows the summary
+    // rather than a frozen "N of N" from the finished run.
+    private void ResetMetadataProgress()
+    {
+        MetadataProgressText = string.Empty;
+        MetadataProgressCompleted = 0;
+        MetadataProgressTotal = 0;
+    }
+
+    private void ResetRetroAchievementsProgress()
+    {
+        RetroAchievementsProgressText = string.Empty;
+        RetroAchievementsProgressCompleted = 0;
+        RetroAchievementsProgressTotal = 0;
+    }
+
+    private void ResetCloudProgress()
+    {
+        CloudSyncProgressText = string.Empty;
+        CloudSyncProgressCompleted = 0;
+        CloudSyncProgressTotal = 0;
+        IsCloudTransferIndeterminate = false;
+    }
+
+    // Reports on the caller's thread rather than posting to the synchronization context the way
+    // Progress<T> does. Maintenance progress is already produced on the UI thread, so inline delivery
+    // is safe and keeps the run's final result — reported immediately after the action returns — from
+    // being overwritten by a progress update that Progress<T> would have queued behind it.
+    private sealed class SynchronousProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 
     private void PersistCloudSaveLocations()
