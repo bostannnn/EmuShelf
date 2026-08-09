@@ -245,6 +245,95 @@ public class LibretroDatCatalogTests
         Assert.True(optedIn.TryGetValue(GameIdentifierKind.Serial, "T40205N", out _));
     }
 
+    // A region-free 3DS cartridge (a late Pokémon title) has one product code for every regional
+    // dump, so a single serial keys several DAT entries whose only difference is the region and the
+    // localized name. The No-Intro Korean name has no language suffix, so it is the shortest and
+    // historically won the collapse — labelling a European dump "Korea". The filename's region tag
+    // must break the tie toward the region the user actually owns.
+    [Fact]
+    public void Parser_RegionFreeSerial_PrefersTheRegionTheFilenameAdvertises()
+    {
+        const string dat = """
+            game (
+                name "Pocket Monsters Ultra Moon (Korea)"
+                region "Korea"
+                serial "CTR-P-A2BA"
+            )
+            game (
+                name "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)"
+                region "Europe"
+                serial "CTR-P-A2BA"
+            )
+            game (
+                name "Pokemon Ultra Moon (USA) (En,Ja,Fr,De,Es,It,Zh,Ko)"
+                region "USA"
+                serial "CTR-P-A2BA"
+            )
+            """;
+
+        var index = LibretroDatCatalog.Parse(new StringReader(dat), GameIdentifierKind.Serial);
+        const string key = "CTRPA2BA";
+
+        // A European dump resolves to the European entry, not the shorter Korean one.
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Serial,
+            key,
+            "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)",
+            out var europe));
+        Assert.Equal("Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)", europe.Title);
+        Assert.Equal("Europe", europe.Region);
+
+        // The same shared serial resolves to the US entry for a US dump.
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Serial,
+            key,
+            "Pokemon Ultra Moon (USA) (En,Ja,Fr,De,Es,It,Zh,Ko)",
+            out var usa));
+        Assert.Equal("USA", usa.Region);
+
+        // With no hint the historical region-agnostic pick (the shortest title) is unchanged.
+        Assert.True(index.TryGetValue(GameIdentifierKind.Serial, key, out var noHint));
+        Assert.Equal("Pocket Monsters Ultra Moon (Korea)", noHint.Title);
+
+        // A region the DAT does not carry (Japan is absent here) falls back to that same pick
+        // rather than inventing a match.
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Serial,
+            key,
+            "Pokemon Ultra Moon (Japan) (En,Ja,Fr,De,Es,It,Zh,Ko)",
+            out var japan));
+        Assert.Equal("Pocket Monsters Ultra Moon (Korea)", japan.Title);
+    }
+
+    // The language list a No-Intro filename carries ("(En,Ja,Fr,…)") must never be mistaken for a
+    // region: a "Ko" language code does not select a "Korea" entry.
+    [Fact]
+    public void Parser_RegionFreeSerial_DoesNotTreatLanguageCodesAsRegions()
+    {
+        const string dat = """
+            game (
+                name "Pocket Monsters Ultra Moon (Korea)"
+                region "Korea"
+                serial "CTR-P-A2BA"
+            )
+            game (
+                name "Pokemon Ultra Moon (USA) (En,Ja,Fr,De,Es,It,Zh,Ko)"
+                region "USA"
+                serial "CTR-P-A2BA"
+            )
+            """;
+
+        var index = LibretroDatCatalog.Parse(new StringReader(dat), GameIdentifierKind.Serial);
+
+        // The USA filename lists Korean ("Ko") among its languages; the entry must still be USA.
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Serial,
+            "CTRPA2BA",
+            "Pokemon Ultra Moon (USA) (En,Ja,Fr,De,Es,It,Zh,Ko)",
+            out var usa));
+        Assert.Equal("USA", usa.Region);
+    }
+
     // The game's own serial is still read when a rom record also carries one, whether or not the
     // profile opted in, because `??=` keeps the first and the game-level field comes first.
     [Fact]
