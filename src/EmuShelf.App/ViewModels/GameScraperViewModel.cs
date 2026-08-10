@@ -91,9 +91,10 @@ public sealed partial class ScraperMediaRowViewModel : ObservableObject, IDispos
         Import = import;
         CurrentPath = current?.LocalPath;
         ProposedUri = import.SourceUri;
+        var noun = kind == GameMediaKind.Video ? "video" : "image";
         ProposedText = import is { Width: { } width, Height: { } height }
-            ? $"New image from {import.SourceUri.Host} · {width}×{height}"
-            : $"New image from {import.SourceUri.Host}";
+            ? $"New {noun} from {import.SourceUri.Host} · {width}×{height}"
+            : $"New {noun} from {import.SourceUri.Host}";
         IsUserOwned = current is not null &&
             (current.Origin == GameMediaOrigin.User ||
              current.SelectionOrigin == GameMediaSelectionOrigin.User);
@@ -162,13 +163,22 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial string? QuotaText { get; set; }
 
-    /// <summary>The matched box art, shown in the review header. Owned by the box-front media row.</summary>
+    /// <summary>The matched cover art, shown in the review header. Owned by the cover-source media
+    /// row — the box front for most systems, the title screen for arcade (per the preview's CoverKind).</summary>
     [ObservableProperty]
-    public partial Bitmap? BoxArtPreview { get; set; }
+    public partial Bitmap? CoverArtPreview { get; set; }
 
-    /// <summary>The box-front row, surfaced beside the cover safe-zone so it carries its own checkbox.</summary>
+    /// <summary>The cover-source row (box front, or title screen for arcade), surfaced beside the cover
+    /// safe-zone so it carries its own checkbox.</summary>
     [ObservableProperty]
-    public partial ScraperMediaRowViewModel? BoxArtRow { get; set; }
+    public partial ScraperMediaRowViewModel? CoverArtRow { get; set; }
+
+    /// <summary>Label for the cover safe-zone, matching this system's cover source ("Box art" or,
+    /// for arcade, "Title screen").</summary>
+    public string CoverArtLabel => _current is null ? "Cover" : MediaLabel(_current.CoverKind);
+
+    /// <summary>Empty-state text for the cover safe-zone ("No box art" / "No title screen").</summary>
+    public string CoverArtEmptyText => $"No {CoverArtLabel.ToLowerInvariant()}";
 
     /// <summary>Refresh values ScreenScraper already owns instead of only filling empty ones.</summary>
     [ObservableProperty]
@@ -414,11 +424,14 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
             var row = new ScraperMediaRowViewModel(MediaLabel(kind), kind, current, ToImport(kind, candidate));
             row.PropertyChanged += OnRowChanged;
             Media.Add(row);
-            if (kind == GameMediaKind.BoxFront)
-                BoxArtRow = row;
+            if (kind == preview.CoverKind)
+                CoverArtRow = row;
             else
                 OtherMedia.Add(row);
         }
+
+        OnPropertyChanged(nameof(CoverArtLabel));
+        OnPropertyChanged(nameof(CoverArtEmptyText));
 
         OnPropertyChanged(nameof(HasOtherMedia));
 
@@ -448,6 +461,11 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
         SemaphoreSlim gate,
         CancellationToken cancellationToken)
     {
+        // Video has no in-app player and cannot decode to a bitmap; the row shows its text instead of
+        // a thumbnail, so don't spend bandwidth downloading the clip just for a preview.
+        if (row.Kind == GameMediaKind.Video)
+            return;
+
         DownloadedArtwork? downloaded = null;
         var entered = false;
         try
@@ -470,8 +488,8 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
             else
             {
                 row.Preview = bitmap;
-                if (row.Kind == GameMediaKind.BoxFront)
-                    BoxArtPreview = bitmap;
+                if (_current is not null && row.Kind == _current.CoverKind)
+                    CoverArtPreview = bitmap;
             }
         }
         catch (OperationCanceledException)
@@ -529,7 +547,7 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
         try
         {
             var result = await _apply.ApplyAsync(
-                new GameScrapeApplyRequest(_gameId, _current.Match, metadata, media, mode),
+                new GameScrapeApplyRequest(_gameId, _current.Match, metadata, media, mode, _current.CoverKind),
                 _lifetime.Token);
             LastApplyResult = result;
             SetMessage(GameScraperState.Applied, SummarizeResult(result));
@@ -706,14 +724,20 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
         GameMediaKind.Screenshot => "Screenshot",
         GameMediaKind.Wheel => "Logo",
         GameMediaKind.Fanart => "Fan art",
+        GameMediaKind.TitleScreen => "Title screen",
+        GameMediaKind.BoxBack => "Box back",
+        GameMediaKind.BoxSpine => "Box spine",
+        GameMediaKind.PhysicalMedia => "Cartridge / disc",
+        GameMediaKind.PhysicalMediaTexture => "Cartridge / disc texture",
+        GameMediaKind.Video => "Video",
         _ => kind.ToString(),
     };
 
     private void ClearRows()
     {
         // Drop the shared references before the owning rows dispose their bitmaps.
-        BoxArtPreview = null;
-        BoxArtRow = null;
+        CoverArtPreview = null;
+        CoverArtRow = null;
         foreach (var field in Fields)
             field.PropertyChanged -= OnRowChanged;
         foreach (var item in Media)
@@ -726,6 +750,8 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
         OtherMedia.Clear();
         OnPropertyChanged(nameof(HasOtherMedia));
         _current = null;
+        OnPropertyChanged(nameof(CoverArtLabel));
+        OnPropertyChanged(nameof(CoverArtEmptyText));
     }
 
     public void Dispose()

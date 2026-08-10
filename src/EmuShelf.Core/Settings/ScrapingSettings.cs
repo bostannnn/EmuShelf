@@ -43,11 +43,18 @@ public sealed record ScreenScraperSettings
         GameMetadataField.Rating,
     ];
 
+    // Video is intentionally absent: it has no in-app player yet, so it is opt-in (add
+    // GameMediaKind.Video here) rather than downloaded by default.
     public GameMediaKind[] MediaKinds { get; init; } =
     [
         GameMediaKind.BoxFront,
         GameMediaKind.Screenshot,
         GameMediaKind.Wheel,
         GameMediaKind.Fanart,
+        GameMediaKind.TitleScreen,
+        GameMediaKind.BoxBack,
+        GameMediaKind.BoxSpine,
+        GameMediaKind.PhysicalMedia,
+        GameMediaKind.PhysicalMediaTexture,
     ];
 }

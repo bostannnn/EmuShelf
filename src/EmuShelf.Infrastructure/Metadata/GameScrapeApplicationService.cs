@@ -65,8 +65,8 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
             mediaResults.Add(result);
 
             if (saved is { IsSelected: true } &&
-                import.Kind == GameMediaKind.BoxFront &&
-                request.ProjectBoxFrontToCover &&
+                request.CoverKind is { } coverKind &&
+                import.Kind == coverKind &&
                 _games.TryApplyDownloadedCover(
                     request.GameId,
                     saved.LocalPath,
@@ -117,7 +117,8 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
                 "A user-owned or another provider's asset already holds this media."), null);
         }
 
-        var candidate = new ArtworkCandidate(import.ProviderId, import.SourceUri, extension);
+        var mediaKind = import.Kind == GameMediaKind.Video ? RemoteMediaKind.Video : RemoteMediaKind.Image;
+        var candidate = new ArtworkCandidate(import.ProviderId, import.SourceUri, extension, mediaKind);
         DownloadedArtwork? downloaded;
         try
         {

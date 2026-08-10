@@ -5895,3 +5895,53 @@ passes the resolved config directory for `GFX.ini` and the data user directory f
 for the texture-root resolver. Tests assert `GFX.ini` is read from the config tree (ignoring a decoy in
 `<dataDir>/Config`) and that a per-game override is found under the data tree's `GameSettings`, not the
 config tree's.
+
+## 2026-08-10 — ScreenScraper: more media kinds, per-system cover source, and opt-in video
+
+ScreenScraper exposes far more media than the initial four kinds. Six were added to
+`GameMediaKind` (appended, since the enum is persisted by ordinal in `SqliteGameDetailsStore`):
+`TitleScreen` (`sstitle`), `BoxBack` (`box-2D-back`), `BoxSpine` (`box-2D-side`), `PhysicalMedia`
+(`support-2D`, the cartridge/disc label), `PhysicalMediaTexture` (`support-texture`), and `Video`
+(prefers `video-normalized` over `video`). The five image kinds join the default
+`ScreenScraperSettings.MediaKinds`; the desktop batch window gained checkboxes for them and the
+gamepad batch inherits them through the shared view-model defaults.
+
+The cover source is now per-system instead of a hardcoded box front. `GameScrapeApplyRequest` carries
+a `CoverKind` (default `BoxFront`, null disables projection), and `ScreenScraperMetadataMapper.CoverKindFor`
+returns `TitleScreen` for arcade and `BoxFront` otherwise — computed once in the preview service and
+carried on the preview. Arcade box art is nearly nonexistent and the built-in arcade cover already
+prefers the Libretro title thumbnail, so a scraped `box-2D` was overwriting a good title-screen cover;
+now the scraped title screen becomes the arcade cover instead. User-set covers stay protected by the
+existing `TryApplyDownloadedCover` origin guard; box art is still stored, just not used as the cover.
+
+Video is **opt-in and off by default**: it is absent from the default `MediaKinds`, so nothing
+downloads video until a user adds `GameMediaKind.Video` to their settings. There is no in-app player
+yet — that is a later addition — so a video row in the single-game scraper shows text instead of a
+decoded thumbnail (and skips the preview download). The image-only `RemoteArtworkDownloader` became
+media-kind aware via a `RemoteMediaKind` on `ArtworkCandidate` (no interface change, so existing call
+sites and test doubles are untouched): images keep the exact prior behavior (`image/*`, 8 MB cap,
+PNG/JPEG/BMP/WEBP signatures); video allows `video/*`, a 64 MB cap, and an MP4 `ftyp` signature check.
+
+## 2026-08-10 — Cover well follows CoverKind; list-view columns for the new artwork
+
+Two follow-ups after adding the new ScreenScraper media kinds.
+
+The scrape dialog's "cover safe-zone" was hardwired to the box front (`BoxArtRow`/`BoxArtPreview`,
+literal "Box art" / "No box art"). Once arcade started projecting the title screen to the cover, that
+well misrepresented the outcome — it showed "No box art" while the title screen was what actually
+became the cover. It now follows the preview's `CoverKind`: the row whose kind is the cover owns the
+well, with a dynamic label (`CoverArtLabel`/`CoverArtEmptyText`) that reads "Title screen" for arcade
+and "Box art" elsewhere. Renamed `BoxArt*`→`CoverArt*` and `GamepadScraperTargetKind.BoxArt`→`Cover`
+for honest naming. Consoles are unchanged.
+
+The desktop list view now surfaces all five new image kinds as opt-in presence columns (Title screen,
+Box back, Box spine, Cartridge/disc, Cartridge/disc texture), matching the existing Screenshot/Fan
+art/Logo pattern — hidden by default, sortable, fed by `GameDetailsProjection`. The five new
+`GameDetailsProjection` flags are appended with defaults so existing constructions are unaffected.
+
+The "Metadata" completeness score moves from n/5 to **n/6**: it adds the title screen — a core,
+reliably-available type (and the arcade cover source) — but deliberately excludes the four sparse
+secondary kinds (box back, box spine, cartridge/disc, cartridge/disc texture). Those are near-absent on
+ScreenScraper, especially for arcade, so counting them made a full score unreachable and left a
+well-scraped game reading as perpetually incomplete; they remain standalone presence columns instead.
+Video is excluded from the list view entirely (opt-in scrape, no player, no presence column).

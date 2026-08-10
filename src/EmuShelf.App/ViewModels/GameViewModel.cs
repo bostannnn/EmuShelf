@@ -95,6 +95,11 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasScrapedFanart));
         OnPropertyChanged(nameof(HasScrapedLogo));
         OnPropertyChanged(nameof(HasScrapedDescription));
+        OnPropertyChanged(nameof(HasScrapedTitleScreen));
+        OnPropertyChanged(nameof(HasScrapedBoxBack));
+        OnPropertyChanged(nameof(HasScrapedBoxSpine));
+        OnPropertyChanged(nameof(HasScrapedPhysicalMedia));
+        OnPropertyChanged(nameof(HasScrapedPhysicalMediaTexture));
         OnPropertyChanged(nameof(RatingColumnText));
         OnPropertyChanged(nameof(GenreColumnText));
         OnPropertyChanged(nameof(YearColumnText));
@@ -110,10 +115,20 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public bool HasScrapedFanart => _detailsProjection?.HasFanart ?? false;
     public bool HasScrapedLogo => _detailsProjection?.HasWheel ?? false;
     public bool HasScrapedDescription => _detailsProjection?.HasDescription ?? false;
+    public bool HasScrapedTitleScreen => _detailsProjection?.HasTitleScreen ?? false;
+    public bool HasScrapedBoxBack => _detailsProjection?.HasBoxBack ?? false;
+    public bool HasScrapedBoxSpine => _detailsProjection?.HasBoxSpine ?? false;
+    public bool HasScrapedPhysicalMedia => _detailsProjection?.HasPhysicalMedia ?? false;
+    public bool HasScrapedPhysicalMediaTexture => _detailsProjection?.HasPhysicalMediaTexture ?? false;
 
+    // Completeness tracks the artwork/text ScreenScraper reliably offers, so a fully scraped game can
+    // actually reach the top of the scale. The sparse secondary kinds (box back/spine, cartridge/disc
+    // and its texture) are near-absent for most games — especially arcade — so they are presence-only
+    // columns, deliberately excluded here rather than leaving a well-scraped game reading as forever
+    // incomplete.
     private int CompletenessCount =>
         (HasScrapedCover ? 1 : 0) + (HasScrapedScreenshot ? 1 : 0) + (HasScrapedFanart ? 1 : 0) +
-        (HasScrapedLogo ? 1 : 0) + (HasScrapedDescription ? 1 : 0);
+        (HasScrapedLogo ? 1 : 0) + (HasScrapedDescription ? 1 : 0) + (HasScrapedTitleScreen ? 1 : 0);
 
     /// <summary>A game reads as never-scraped only when it has no stored details at all — the
     /// projection is null, i.e. it is absent from the media, metadata, and provider-match tables —
@@ -122,10 +137,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// never-scraped dash; this is why the projection carries <c>HasProviderMatch</c>.</summary>
     private bool IsUnscraped => _detailsProjection is null && CoverPath is null;
 
-    /// <summary>Metadata completeness column: <c>n/5</c> (cover, screenshot, fan art, logo,
-    /// description) or an em dash when the game has never been scraped.</summary>
+    /// <summary>Metadata completeness column: <c>n/6</c> (cover, screenshot, fan art, logo,
+    /// description, title screen) or an em dash when the game has never been scraped.</summary>
     public string MetadataCompletenessText =>
-        IsUnscraped ? RetroAchievementsDisplay.Dash : $"{CompletenessCount}/5";
+        IsUnscraped ? RetroAchievementsDisplay.Dash : $"{CompletenessCount}/6";
 
     /// <summary>Sort key for completeness: -1 never scraped, otherwise the present-asset count, so a
     /// least-complete-first sort surfaces the games that still need work.</summary>
@@ -135,7 +150,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         ? "Not scraped yet."
         : $"Cover: {YesNo(HasScrapedCover)}\nScreenshot: {YesNo(HasScrapedScreenshot)}\n" +
           $"Fan art: {YesNo(HasScrapedFanart)}\nLogo: {YesNo(HasScrapedLogo)}\n" +
-          $"Description: {YesNo(HasScrapedDescription)}";
+          $"Description: {YesNo(HasScrapedDescription)}\nTitle screen: {YesNo(HasScrapedTitleScreen)}";
 
     public string RatingColumnText => FormatRating(_detailsProjection?.Rating);
 

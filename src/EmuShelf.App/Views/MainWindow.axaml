@@ -1882,6 +1882,61 @@
                                                     </Border>
                                                 </DataTemplate>
                                             </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="TitleScreen">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedTitleScreen, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="BoxBack">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedBoxBack, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="BoxSpine">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedBoxSpine, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="PhysicalMedia">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedPhysicalMedia, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="PhysicalMediaTexture">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding HasScrapedPhysicalMediaTexture, Converter={x:Static vm:LibraryColumnConverters.Presence}}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
                                             <vm:LibraryColumnCellTemplate Key="Rating">
                                                 <DataTemplate x:DataType="vm:LibraryColumn">
                                                     <Border Width="{Binding Width}" VerticalAlignment="Stretch">
@@ -3905,23 +3960,23 @@
                                                 </ItemsControl>
 
                                                 <Border Classes="gamepad-scraper-row"
-                                                        Classes.focused="{Binding Scraper.BoxArtRow.IsFocused}"
-                                                        IsVisible="{Binding Scraper.BoxArtRow, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                        Classes.focused="{Binding Scraper.CoverArtRow.IsFocused}"
+                                                        IsVisible="{Binding Scraper.CoverArtRow, Converter={x:Static ObjectConverters.IsNotNull}}">
                                                     <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="12">
-                                                        <CheckBox IsChecked="{Binding Scraper.BoxArtRow.IsSelected}"
-                                                                  IsEnabled="{Binding Scraper.BoxArtRow.CanApply}"
+                                                        <CheckBox IsChecked="{Binding Scraper.CoverArtRow.IsSelected}"
+                                                                  IsEnabled="{Binding Scraper.CoverArtRow.CanApply}"
                                                                   VerticalAlignment="Center" />
                                                         <Border Grid.Column="1" Width="64" Height="84" CornerRadius="5"
                                                                 ClipToBounds="True" VerticalAlignment="Center"
                                                                 Background="{DynamicResource EmuCoverWellBrush}">
-                                                            <Image Source="{Binding Scraper.BoxArtRow.Preview}"
+                                                            <Image Source="{Binding Scraper.CoverArtRow.Preview}"
                                                                    Stretch="Uniform" />
                                                         </Border>
                                                         <StackPanel Grid.Column="2" Spacing="2"
                                                                     VerticalAlignment="Center">
-                                                            <TextBlock Text="{Binding Scraper.BoxArtRow.Label}"
+                                                            <TextBlock Text="{Binding Scraper.CoverArtRow.Label}"
                                                                        FontWeight="SemiBold" />
-                                                            <TextBlock Text="{Binding Scraper.BoxArtRow.ProposedText}"
+                                                            <TextBlock Text="{Binding Scraper.CoverArtRow.ProposedText}"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                         </StackPanel>
@@ -3985,11 +4040,11 @@
                                                     VerticalAlignment="Top">
                                             <Border Classes="gamepad-scraper-cover">
                                                 <Panel>
-                                                    <TextBlock Text="No box art" HorizontalAlignment="Center"
+                                                    <TextBlock Text="{Binding Scraper.CoverArtEmptyText}" HorizontalAlignment="Center"
                                                                VerticalAlignment="Center" FontSize="12"
-                                                               IsVisible="{Binding Scraper.BoxArtPreview, Converter={x:Static ObjectConverters.IsNull}}"
+                                                               IsVisible="{Binding Scraper.CoverArtPreview, Converter={x:Static ObjectConverters.IsNull}}"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                    <Image Source="{Binding Scraper.BoxArtPreview}" Stretch="Uniform" />
+                                                    <Image Source="{Binding Scraper.CoverArtPreview}" Stretch="Uniform" />
                                                 </Panel>
                                             </Border>
                                         </StackPanel>

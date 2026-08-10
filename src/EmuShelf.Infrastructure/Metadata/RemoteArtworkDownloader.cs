@@ -8,6 +8,9 @@ namespace EmuShelf.Infrastructure.Metadata;
 public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
 {
     private const long MaximumArtworkBytes = 8 * 1024 * 1024;
+    // Videos are much larger than still artwork; cap them well above image size but still bounded so
+    // one runaway file cannot fill a portable drive.
+    private const long MaximumVideoBytes = 64 * 1024 * 1024;
     private readonly HttpClient _httpClient;
     private readonly string _downloadDirectory;
     private readonly IAppLogger _logger;
@@ -81,15 +84,17 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
                 continue;
             }
 
+            var expectedPrefix = candidate.MediaKind == RemoteMediaKind.Video ? "video/" : "image/";
+            var maxBytes = MaxBytesFor(candidate.MediaKind);
             var mediaType = response.Content.Headers.ContentType?.MediaType;
-            if (mediaType is null || !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            if (mediaType is null || !mediaType.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                LogCandidateFailure(candidate, "provider returned a non-image response");
+                LogCandidateFailure(candidate, $"provider returned a non-{TypeNoun(candidate.MediaKind)} response");
                 continue;
             }
-            if (response.Content.Headers.ContentLength is > MaximumArtworkBytes)
+            if (response.Content.Headers.ContentLength is { } declaredLength && declaredLength > maxBytes)
             {
-                LogCandidateFailure(candidate, "cover exceeded EmuShelf's safety limit");
+                LogCandidateFailure(candidate, "media exceeded EmuShelf's safety limit");
                 continue;
             }
 
@@ -107,12 +112,12 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
                     81920,
                     FileOptions.Asynchronous))
                 {
-                    await CopyWithLimitAsync(source, destination, cancellationToken);
+                    await CopyWithLimitAsync(source, destination, maxBytes, cancellationToken);
                 }
-                if (!HasSupportedImageSignature(path))
+                if (!HasSupportedSignature(path, candidate.MediaKind))
                 {
                     File.Delete(path);
-                    LogCandidateFailure(candidate, "download did not contain a supported image");
+                    LogCandidateFailure(candidate, $"download did not contain a supported {TypeNoun(candidate.MediaKind)}");
                     continue;
                 }
                 return new DownloadedArtwork(candidate, path);
@@ -156,12 +161,12 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
                 81920,
                 FileOptions.Asynchronous))
             {
-                await CopyWithLimitAsync(source, destination, cancellationToken);
+                await CopyWithLimitAsync(source, destination, MaxBytesFor(candidate.MediaKind), cancellationToken);
             }
-            if (!HasSupportedImageSignature(path))
+            if (!HasSupportedSignature(path, candidate.MediaKind))
             {
                 File.Delete(path);
-                LogCandidateFailure(candidate, "local file was not a supported image");
+                LogCandidateFailure(candidate, $"local file was not a supported {TypeNoun(candidate.MediaKind)}");
                 return null;
             }
             return new DownloadedArtwork(candidate, path);
@@ -268,6 +273,15 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
         candidate.SourceUri,
         exception);
 
+    private static long MaxBytesFor(RemoteMediaKind kind) =>
+        kind == RemoteMediaKind.Video ? MaximumVideoBytes : MaximumArtworkBytes;
+
+    private static string TypeNoun(RemoteMediaKind kind) =>
+        kind == RemoteMediaKind.Video ? "video" : "image";
+
+    private static bool HasSupportedSignature(string path, RemoteMediaKind kind) =>
+        kind == RemoteMediaKind.Video ? HasSupportedVideoSignature(path) : HasSupportedImageSignature(path);
+
     private static bool HasSupportedImageSignature(string path)
     {
         Span<byte> header = stackalloc byte[12];
@@ -281,9 +295,20 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
                               header[8..12].SequenceEqual("WEBP"u8));
     }
 
+    // ScreenScraper videos are ISO Base Media (MP4), whose first box is the "ftyp" file-type box at
+    // offset 4. A size prefix precedes it, so bytes 4..8 carry the "ftyp" marker.
+    private static bool HasSupportedVideoSignature(string path)
+    {
+        Span<byte> header = stackalloc byte[12];
+        using var stream = File.OpenRead(path);
+        var read = stream.Read(header);
+        return read >= 8 && header[4..8].SequenceEqual("ftyp"u8);
+    }
+
     private static async Task CopyWithLimitAsync(
         Stream source,
         Stream destination,
+        long maxBytes,
         CancellationToken cancellationToken)
     {
         var buffer = new byte[81920];
@@ -294,8 +319,8 @@ public sealed class RemoteArtworkDownloader : IRemoteArtworkDownloader
             if (read == 0)
                 break;
             total += read;
-            if (total > MaximumArtworkBytes)
-                throw new InvalidDataException("The downloaded cover exceeded EmuShelf's safety limit.");
+            if (total > maxBytes)
+                throw new InvalidDataException("The downloaded media exceeded EmuShelf's safety limit.");
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
     }

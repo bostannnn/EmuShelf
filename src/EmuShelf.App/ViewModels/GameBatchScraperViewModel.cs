@@ -65,6 +65,21 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IncludeFanart { get; set; } = true;
 
+    [ObservableProperty]
+    public partial bool IncludeTitleScreen { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludeBoxBack { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludeBoxSpine { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludePhysicalMedia { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IncludePhysicalMediaTexture { get; set; } = true;
+
     /// <summary>Replace values ScreenScraper already owns, instead of only filling blanks.</summary>
     [ObservableProperty]
     public partial bool RefreshOwnedValues { get; set; }
@@ -166,6 +181,16 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
             kinds.Add(GameMediaKind.Wheel);
         if (IncludeFanart)
             kinds.Add(GameMediaKind.Fanart);
+        if (IncludeTitleScreen)
+            kinds.Add(GameMediaKind.TitleScreen);
+        if (IncludeBoxBack)
+            kinds.Add(GameMediaKind.BoxBack);
+        if (IncludeBoxSpine)
+            kinds.Add(GameMediaKind.BoxSpine);
+        if (IncludePhysicalMedia)
+            kinds.Add(GameMediaKind.PhysicalMedia);
+        if (IncludePhysicalMediaTexture)
+            kinds.Add(GameMediaKind.PhysicalMediaTexture);
         return kinds;
     }
 

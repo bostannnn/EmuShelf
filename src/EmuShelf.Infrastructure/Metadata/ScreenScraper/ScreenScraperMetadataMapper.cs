@@ -130,10 +130,27 @@ public static class ScreenScraperMetadataMapper
             GameMediaKind.Screenshot => ["ss-hd", "ss"],
             GameMediaKind.Wheel => ["wheel-hd", "wheel"],
             GameMediaKind.Fanart => new[] { "fanart" },
+            GameMediaKind.TitleScreen => ["sstitle"],
+            GameMediaKind.BoxBack => ["box-2D-back"],
+            GameMediaKind.BoxSpine => ["box-2D-side"],
+            GameMediaKind.PhysicalMedia => ["support-2D"],
+            GameMediaKind.PhysicalMediaTexture => ["support-texture"],
+            // Prefer the normalized encode (standardized, smaller) over the raw source video.
+            GameMediaKind.Video => ["video-normalized", "video"],
             _ => [],
         };
         return Array.FindIndex(types, type => string.Equals(type, mediaType, StringComparison.OrdinalIgnoreCase));
     }
+
+    /// <summary>
+    /// Which media kind is projected to a game's cover, by EmuShelf system. Arcade uses the title
+    /// screen because arcade box art is nearly nonexistent (its built-in cover already prefers the
+    /// Libretro title thumbnail); every other system keeps the box front.
+    /// </summary>
+    public static GameMediaKind CoverKindFor(string systemId) =>
+        string.Equals(systemId, "arcade", StringComparison.OrdinalIgnoreCase)
+            ? GameMediaKind.TitleScreen
+            : GameMediaKind.BoxFront;
 
     private static int GetRegionRank(string? region, IReadOnlyList<string>? priority)
     {

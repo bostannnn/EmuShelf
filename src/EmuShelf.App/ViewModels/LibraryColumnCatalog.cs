@@ -81,6 +81,26 @@ internal static class LibraryColumnCatalog
             sortColumn: LibrarySortColumn.Description, defaultWidth: 108, minWidth: 84,
             isFlex: false, canHide: true, visibleByDefault: false),
 
+        new LibraryColumn(LibraryColumnKey.TitleScreen, "Title Screen", header: "TITLE SCREEN",
+            sortColumn: LibrarySortColumn.TitleScreen, defaultWidth: 104, minWidth: 80,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.BoxBack, "Box Back", header: "BOX BACK",
+            sortColumn: LibrarySortColumn.BoxBack, defaultWidth: 84, minWidth: 64,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.BoxSpine, "Box Spine", header: "BOX SPINE",
+            sortColumn: LibrarySortColumn.BoxSpine, defaultWidth: 84, minWidth: 64,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.PhysicalMedia, "Cartridge / Disc", header: "CARTRIDGE / DISC",
+            sortColumn: LibrarySortColumn.PhysicalMedia, defaultWidth: 120, minWidth: 90,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.PhysicalMediaTexture, "Cartridge / Disc Texture", header: "CARTRIDGE / DISC TEXTURE",
+            sortColumn: LibrarySortColumn.PhysicalMediaTexture, defaultWidth: 160, minWidth: 110,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
         new LibraryColumn(LibraryColumnKey.Rating, "Rating", header: "RATING",
             sortColumn: LibrarySortColumn.Rating, defaultWidth: 80, minWidth: 60,
             isFlex: false, canHide: true, visibleByDefault: false),

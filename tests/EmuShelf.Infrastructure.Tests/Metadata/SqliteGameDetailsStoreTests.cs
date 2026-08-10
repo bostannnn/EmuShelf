@@ -309,7 +309,12 @@ public class SqliteGameDetailsStoreTests : TempAppDirectoryTestBase
             First(GameMetadataField.ReleaseDate),
             First(GameMetadataField.Players),
             First(GameMetadataField.Developer),
-            First(GameMetadataField.Publisher));
+            First(GameMetadataField.Publisher),
+            HasMedia(GameMediaKind.TitleScreen),
+            HasMedia(GameMediaKind.BoxBack),
+            HasMedia(GameMediaKind.BoxSpine),
+            HasMedia(GameMediaKind.PhysicalMedia),
+            HasMedia(GameMediaKind.PhysicalMediaTexture));
     }
 
     private void ApplyProviderField(long gameId, GameMetadataField field, string value, string locale = "en") =>

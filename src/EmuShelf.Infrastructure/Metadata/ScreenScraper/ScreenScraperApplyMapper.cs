@@ -27,7 +27,8 @@ public static class ScreenScraperApplyMapper
             .Select(entry => ToImport(entry.Key, entry.Value))
             .ToList();
 
-        return new GameScrapeApplyRequest(preview.GameId, preview.Match, metadata, media, mode);
+        return new GameScrapeApplyRequest(
+            preview.GameId, preview.Match, metadata, media, mode, preview.CoverKind);
     }
 
     private static GameMediaImport ToImport(GameMediaKind kind, ScreenScraperMediaCandidate candidate) =>

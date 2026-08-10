@@ -56,7 +56,7 @@ public class ScreenScraperClientTests
         Assert.Equal("Fixture Publisher", game.Publisher);
         Assert.Equal("1-2", game.Players);
         Assert.Equal("18.5", game.Rating);
-        Assert.Equal(7, game.Media.Count);
+        Assert.Equal(14, game.Media.Count);
         Assert.All(game.Media, media => Assert.Equal("https", media.SourceUri.Scheme));
         Assert.Equal(3, result.Quota!.MaxThreads);
         Assert.Equal(25, result.Quota.RequestsToday);
@@ -278,7 +278,35 @@ public class ScreenScraperClientTests
         Assert.Equal("shot-hd", media[GameMediaKind.Screenshot].ProviderMediaId);
         Assert.Equal("wheel-hd", media[GameMediaKind.Wheel].ProviderMediaId);
         Assert.Equal("fanart", media[GameMediaKind.Fanart].ProviderMediaId);
+        Assert.Equal("title", media[GameMediaKind.TitleScreen].ProviderMediaId);
+        Assert.Equal("box-back", media[GameMediaKind.BoxBack].ProviderMediaId);
+        Assert.Equal("box-side", media[GameMediaKind.BoxSpine].ProviderMediaId);
+        Assert.Equal("support", media[GameMediaKind.PhysicalMedia].ProviderMediaId);
+        Assert.Equal("support-texture", media[GameMediaKind.PhysicalMediaTexture].ProviderMediaId);
+        // Video is opt-in: it is absent from the default media kinds, so it is not selected here.
+        Assert.False(media.ContainsKey(GameMediaKind.Video));
     }
+
+    [Fact]
+    public async Task MetadataMapper_SelectsVideo_OnlyWhenEnabled_PreferringNormalizedEncode()
+    {
+        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));
+        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
+        var result = await client.GetGameInfoAsync(
+            UserCredentials,
+            new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
+        var settings = new ScreenScraperSettings { MediaKinds = [GameMediaKind.Video] };
+
+        var media = ScreenScraperMetadataMapper.SelectMedia(result.Data!, settings);
+
+        Assert.Equal("video-normalized", media[GameMediaKind.Video].ProviderMediaId);
+    }
+
+    [Theory]
+    [InlineData("arcade", GameMediaKind.TitleScreen)]
+    [InlineData("playstation2", GameMediaKind.BoxFront)]
+    public void CoverKindFor_UsesTitleScreenForArcade_BoxFrontOtherwise(string systemId, GameMediaKind expected) =>
+        Assert.Equal(expected, ScreenScraperMetadataMapper.CoverKindFor(systemId));
 
     [Fact]
     public async Task GetGameInfo_WithDebugOptions_AppendsDebugParametersToRequest()

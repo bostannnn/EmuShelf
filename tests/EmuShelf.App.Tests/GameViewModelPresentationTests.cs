@@ -258,14 +258,38 @@ public sealed class GameViewModelPresentationTests
             Rating: "14", Genre: "RPG", ReleaseDate: "1999-09-09", Players: "1-2",
             Developer: "Dev", Publisher: "Pub"));
 
-        // Completeness counts the shown cover (absent here) + screenshot + fanart + logo + description.
-        Assert.Equal("3/5", viewModel.MetadataCompletenessText);
+        // Of the 6 tracked assets, screenshot + fanart + description are present here.
+        Assert.Equal("3/6", viewModel.MetadataCompletenessText);
         Assert.Equal(3, viewModel.MetadataCompletenessSortKey);
         Assert.False(viewModel.HasScrapedCover);
         Assert.True(viewModel.HasScrapedScreenshot);
         Assert.True(viewModel.HasScrapedFanart);
         Assert.False(viewModel.HasScrapedLogo);
         Assert.True(viewModel.HasScrapedDescription);
+    }
+
+    [Fact]
+    public void MetadataCompleteness_CountsTitleScreen_ButNotTheSparseSecondaryArtwork()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyDetailsProjection(new GameDetailsProjection(
+            HasBoxFront: false, HasScreenshot: false, HasWheel: false, HasFanart: false,
+            HasDescription: false, HasProviderMatch: true,
+            Rating: null, Genre: null, ReleaseDate: null, Players: null,
+            Developer: null, Publisher: null,
+            HasTitleScreen: true, HasBoxBack: true, HasBoxSpine: true,
+            HasPhysicalMedia: true, HasPhysicalMediaTexture: true));
+
+        // Only the title screen counts toward completeness; the sparse box/cartridge kinds are
+        // presence-only, so a game full of them still reads as 1 of 6 — never a misleading near-full score.
+        Assert.Equal("1/6", viewModel.MetadataCompletenessText);
+        Assert.Equal(1, viewModel.MetadataCompletenessSortKey);
+        // Their presence flags stay true so the standalone columns still light up.
+        Assert.True(viewModel.HasScrapedBoxBack);
+        Assert.True(viewModel.HasScrapedBoxSpine);
+        Assert.True(viewModel.HasScrapedPhysicalMedia);
+        Assert.True(viewModel.HasScrapedPhysicalMediaTexture);
     }
 
     [Fact]

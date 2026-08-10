@@ -122,6 +122,15 @@ public enum GameMediaKind
     Screenshot,
     Wheel,
     Fanart,
+    // Appended and persisted by ordinal (see SqliteGameDetailsStore) — never reorder or insert.
+    // ScreenScraper title screen (sstitle), box back/spine, the physical cartridge/disc label and
+    // its texture wrap, and a preview video.
+    TitleScreen,
+    BoxBack,
+    BoxSpine,
+    PhysicalMedia,
+    PhysicalMediaTexture,
+    Video,
 }
 
 public enum GameMediaOrigin
@@ -205,7 +214,13 @@ public sealed record GameDetailsProjection(
     string? ReleaseDate,
     string? Players,
     string? Developer,
-    string? Publisher);
+    string? Publisher,
+    // Appended after the original set so existing positional/named constructions stay valid.
+    bool HasTitleScreen = false,
+    bool HasBoxBack = false,
+    bool HasBoxSpine = false,
+    bool HasPhysicalMedia = false,
+    bool HasPhysicalMediaTexture = false);
 
 /// <summary>
 /// A provider media candidate to download and import for a game. Provider-neutral so the apply
@@ -236,7 +251,10 @@ public sealed record GameScrapeApplyRequest(
     IReadOnlyList<GameMetadataValue> Metadata,
     IReadOnlyList<GameMediaImport> Media,
     GameMetadataApplyMode Mode,
-    bool ProjectBoxFrontToCover = true);
+    // Which imported media kind, if any, is projected into the fast Games.CoverPath grid column.
+    // Defaults to the box front; arcade uses the title screen (its box art is nearly nonexistent).
+    // Null disables cover projection.
+    GameMediaKind? CoverKind = GameMediaKind.BoxFront);
 
 public enum GameMediaApplyOutcome
 {
