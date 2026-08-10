@@ -1774,6 +1774,86 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void GamepadShelfView_IsAThirdLayout_StepsOneGameHorizontally_AndPersists()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 6).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Game {index + 1}.cue",
+                Title = $"Game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+        vm.HasGames = true;
+
+        // Select the shelf: it is its own layout, mutually exclusive with the grid and the spotlight.
+        vm.SelectShelfViewModeCommand.Execute(null);
+        Assert.Equal(GamepadLibraryLayout.Shelf, vm.GamepadLayout);
+        Assert.True(vm.IsGamepadShelfView);
+        Assert.True(vm.ShowGamepadShelf);
+        Assert.False(vm.ShowGamepadGrid);
+        Assert.False(vm.ShowGamepadSpotlight);
+        Assert.False(vm.IsGamepadSpotlightView);
+        Assert.True(vm.IsShelfViewModeSelected);
+        // The focused dock is a grid-only chrome; the shelf carries its own title.
+        Assert.False(vm.IsGamepadGridLayout);
+
+        // The shelf is a single horizontal row: Right/Left step exactly one game, Up/Down are inert.
+        vm.FocusedGame = vm.Games[1];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Same(vm.Games[2], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+
+        // The layout is persisted by name and round-trips back to the shelf.
+        var saved = vm.BuildLibraryViewState();
+        Assert.Equal("Shelf", saved.GamepadLayout);
+        Assert.False(saved.GamepadSpotlightView);
+    }
+
+    [AvaloniaFact]
+    public void GamepadViewModeRow_StepsGridSpotlightShelf_WithLeftRight_Clamped()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.HasGames = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        // Walk focus up to the view-mode row.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadViewModeRowFocused);
+
+        // Grid → Spotlight → Shelf as Right steps across the three tiles, then clamps at the end.
+        Assert.True(vm.IsGridViewModeSelected);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(GamepadLibraryLayout.Spotlight, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(GamepadLibraryLayout.Shelf, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight)); // clamps
+        Assert.Equal(GamepadLibraryLayout.Shelf, vm.GamepadLayout);
+
+        // Left steps back the other way and clamps at Grid.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal(GamepadLibraryLayout.Spotlight, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal(GamepadLibraryLayout.Grid, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft)); // clamps
+        Assert.Equal(GamepadLibraryLayout.Grid, vm.GamepadLayout);
+    }
+
+    [AvaloniaFact]
     public void GamepadSystemMenu_ViewModeRow_SwitchesLayoutWithLeftRight_AndDropsIntoOptions()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);

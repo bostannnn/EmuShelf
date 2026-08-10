@@ -183,8 +183,19 @@ public partial class MainWindow : Window
         if (e.PropertyName is nameof(MainViewModel.FocusedGame))
         {
             // A d-pad move: ease the grid so a held direction glides. A far change (scope restore of a
-            // deep row) is detected inside and snaps instead.
+            // deep row) is detected inside and snaps instead. Both are cheap no-ops for the layout that
+            // is not on screen (RevealFocusedGame acts on the hidden grid, CentreShelf on the hidden strip).
             RevealFocusedGame(animate: true);
+            CentreShelf();
+            return;
+        }
+
+        // Entering the shelf (or any couch-layout switch): re-centre from scratch once the newly visible
+        // strip has laid out and its viewport has a real width. A fresh landing, so it snaps.
+        if (e.PropertyName is nameof(MainViewModel.GamepadLayout))
+        {
+            _lastShelfIndex = null;
+            Dispatcher.UIThread.Post(() => CentreShelf(viewportWidth: null, forceSnap: true), DispatcherPriority.Loaded);
             return;
         }
 
@@ -217,7 +228,10 @@ public partial class MainWindow : Window
         // A scope/platform switch replaces the whole grid, so the next focus reveal must be treated as
         // a fresh landing (snap to centre), not an ease from wherever the old content was scrolled.
         if (e.PropertyName is nameof(MainViewModel.SelectedSystem) or nameof(MainViewModel.CurrentLibraryScope))
+        {
             _lastRevealedRowIndex = null;
+            _lastShelfIndex = null; // the new scope's first shelf centring is a fresh landing (snap)
+        }
 
         if (e.PropertyName is not (nameof(MainViewModel.SelectedSystem) or
             nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.GamepadOverlay) or
@@ -248,6 +262,59 @@ public partial class MainWindow : Window
     // discrete jump — a scope restore of a deep row, a pointer tap on a distant tile — and snaps rather
     // than easing across many screens (which would realize and flash a cover on every intermediate row).
     private const int GamepadMaxEaseRowStep = 2;
+
+    // ---- Physical-media shelf (couch) coverflow centring ----
+    // The shelf lays its games out in fixed-width slots; the strip (GamepadShelfStrip) is translated so
+    // the focused slot lands on the viewport centre. Slots are uniform, so the target is exact arithmetic
+    // (index * slot), independent of each cover's own aspect and of realization — no scroll offset, no
+    // realized-container reads. See docs/couch-physical-media-shelf.md.
+
+    /// <summary>Uniform per-game slot width on the shelf. MUST match the item slot Width in the XAML.</summary>
+    public const double ShelfSlotWidth = 410;
+
+    // A d-pad step moves the shelf one game; a larger jump (platform/scope switch) snaps rather than
+    // whooshing the strip across the whole library and flashing every intermediate cover.
+    private const int GamepadMaxShelfEaseStep = 4;
+    private int? _lastShelfIndex;
+
+    private void CentreShelf() => CentreShelf(viewportWidth: null, forceSnap: false);
+
+    private void CentreShelf(double? viewportWidth, bool forceSnap)
+    {
+        if (DataContext is not MainViewModel viewModel || !viewModel.ShowGamepadShelf)
+            return;
+        if (viewModel.FocusedGame is not { } focused)
+            return;
+        var index = viewModel.Games.IndexOf(focused);
+        if (index < 0)
+            return;
+        var width = viewportWidth ?? GamepadShelfViewport.Bounds.Width;
+        if (width <= 0)
+            return;
+
+        var builder = new TransformOperations.Builder(1);
+        builder.AppendTranslate(width / 2 - (index * ShelfSlotWidth + ShelfSlotWidth / 2), 0);
+        var target = builder.Build();
+
+        // Glide only for a near step; a far jump (or an explicit snap on resize / first show) lands
+        // immediately by suspending the strip's transition for that one placement — the same snap path
+        // the rail indicator uses.
+        var previous = _lastShelfIndex;
+        _lastShelfIndex = index;
+        if (forceSnap || previous is not { } prev || Math.Abs(index - prev) > GamepadMaxShelfEaseStep)
+        {
+            var transitions = GamepadShelfStrip.Transitions;
+            GamepadShelfStrip.Transitions = null;
+            GamepadShelfStrip.RenderTransform = target;
+            GamepadShelfStrip.UpdateLayout();
+            GamepadShelfStrip.Transitions = transitions;
+            return;
+        }
+        GamepadShelfStrip.RenderTransform = target;
+    }
+
+    private void OnGamepadShelfViewportSizeChanged(object? sender, SizeChangedEventArgs e) =>
+        CentreShelf(e.NewSize.Width, forceSnap: true);
 
     // View-focused coordination only: the view model owns which game is focused; this window reveals that
     // game's ROW and keeps it centred on one fixed viewport line, so the selector sits in the same place
@@ -1394,6 +1461,14 @@ public partial class MainWindow : Window
     private void OnGamepadLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
+            return;
+
+        // Both the cover grid and the shelf raise this, and switching couch layout collapses the
+        // outgoing one (IsVisible=false → width 0) while the incoming one lays out. A zero-width
+        // reading is that collapse, never a real viewport, so ignore it — otherwise the order of the
+        // two events would decide whether the surviving layout keeps its cover size or snaps to the
+        // minimum. The visible layout's real-width event is the one that counts.
+        if (e.NewSize.Width <= 0)
             return;
 
         viewModel.GamepadViewportWidth = e.NewSize.Width;
