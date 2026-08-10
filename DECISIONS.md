@@ -5976,3 +5976,51 @@ projected the PS3 sync row as "Sync PlayStation 3 library" while Desktop's PS3 c
 supplies the missing half — but a control shared by field id should read the same on both, so the
 gamepad row now uses Desktop's wording; the gamepad section's own "PlayStation 3" header still supplies
 the platform.
+
+## 2026-08-10 — Settings load re-merges ScreenScraper's catalogue-default lists
+
+`ScreenScraperSettings.MediaKinds` and `.MetadataFields` are code-owned catalogue defaults — nothing in
+the app edits them (the batch window's per-kind toggles build a *per-run* include set, not this list).
+They are nonetheless serialized into the portable `settings.json` like every other public property, so a
+file written by an older build froze the shorter lists that build shipped with. After the newer media
+kinds landed (title screen, box back, box spine, cartridge/disc, and its texture — 2026-08-09) and users
+auto-updated in place, `JsonSettingsService.Load()` deserialized the stale four-kind array
+(`BoxFront, Screenshot, Wheel, Fanart`) and `SelectMedia` filtered every new kind out *before* it reached
+the scraper — so the review dialog only ever offered the original four, even though the code and the
+provider both had the rest. It was reported as a suspected bad merge; it was not (the commit was in the
+running build), it was stale on-disk settings shadowing the new default.
+
+Fix: `Load()` calls `ScreenScraperSettings.WithCatalogDefaultsEnsured()`, which appends any default kind/
+field the persisted list is missing (preserving what the file already had, and returning the array
+untouched when nothing is missing so an already-current file is a no-op). Because these two lists are not
+user-editable, "ensure all defaults are present" is the whole contract — a future kind is picked up by
+every existing install automatically. The heal runs on the load path only (so `Update()` persists the
+merged set on its next write); the file is not rewritten just for being opened. The round-trip test was
+relaxed accordingly: it now asserts the entries a file lists are preserved *and* the current defaults are
+ensured, rather than faithful round-trip of an arbitrary subset. If these ever become a real user
+preference (e.g. an opt-out list), that will need an explicit disabled-set rather than this allow-list.
+
+The same load-path heal now also tolerates a hand-edited `"Scraping": null` / `"ScreenScraper": null` by
+substituting defaults, so a malformed-but-valid-JSON edit can't throw an NRE out of `Load()` (whose
+try/catch only covers `JsonException`/IO/permission errors, not a null property).
+
+## 2026-08-10 — An explicitly selected scrape media row replaces the current art
+
+The single-game scraper's "Replace values ScreenScraper already set" checkbox drove one shared
+`GameMetadataApplyMode` for both metadata *and* media, so with it unchecked (fill-missing) a media kind
+the game already had was skipped — even though the user had ticked that exact art row and could see the
+new image in the dialog. Reported as "if I select art it should overwrite any pre-existing art," which is
+right: ticking a media row is a direct per-item choice, unlike the bulk field-refresh policy the checkbox
+governs.
+
+`GameScrapeApplyRequest` gains `OverwriteExistingMedia`. The single-game scraper
+(`GameScraperViewModel.ApplyAsync`) sets it true, so a selected media kind replaces the game's current
+asset of that kind regardless of the checkbox (which now only affects text fields). Batch leaves it false,
+so a fill-missing batch still skips games that already have the kind — batch has no per-item review, so
+its checkbox stays the only overwrite control there. The change is media-only and does not touch metadata
+precedence: user-owned art is still unreachable (its scraper row is disabled), and the detail store still
+refuses to overwrite a user-owned or foreign-provider file on disk, so "replace" only ever swaps
+provider/downloaded art — which is exactly what the cover projection already permitted (it overwrites a
+`Downloaded` cover but never a `User` one). Cross-provider covers (e.g. a built-in-catalogue cover) were
+already replaced on first scrape because they leave no detail-store asset to skip; this fixes the
+re-scrape case, where the prior ScreenScraper asset was being skipped.

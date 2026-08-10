@@ -63,12 +63,47 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.True(loaded.Scraping.ScreenScraper.AutomaticallyScrapeAfterImport);
         Assert.Equal("fr", loaded.Scraping.ScreenScraper.PreferredLanguage);
         Assert.Equal(["fr", "eu", "wor"], loaded.Scraping.ScreenScraper.RegionPriority);
-        Assert.Equal(
-            [GameMetadataField.Description, GameMetadataField.Genre],
-            loaded.Scraping.ScreenScraper.MetadataFields);
-        Assert.Equal(
-            [GameMediaKind.BoxFront, GameMediaKind.Wheel],
-            loaded.Scraping.ScreenScraper.MediaKinds);
+        // MetadataFields and MediaKinds are code-owned catalogue defaults (no UI edits them), so loading
+        // re-merges the current defaults: the entries the file listed are preserved AND every supported
+        // kind/field is ensured, so an older file can never hide one the app now scrapes.
+        Assert.Contains(GameMetadataField.Description, loaded.Scraping.ScreenScraper.MetadataFields);
+        Assert.Contains(GameMetadataField.Genre, loaded.Scraping.ScreenScraper.MetadataFields);
+        Assert.Contains(GameMetadataField.Title, loaded.Scraping.ScreenScraper.MetadataFields);
+        Assert.Contains(GameMediaKind.BoxFront, loaded.Scraping.ScreenScraper.MediaKinds);
+        Assert.Contains(GameMediaKind.Wheel, loaded.Scraping.ScreenScraper.MediaKinds);
+        Assert.Contains(GameMediaKind.TitleScreen, loaded.Scraping.ScreenScraper.MediaKinds);
+    }
+
+    [Fact]
+    public void Load_OlderFileMissingNewMediaKinds_MergesCurrentCatalogueDefaults()
+    {
+        // A settings.json written by a build that predated the extra media kinds froze the old four-kind
+        // allow-list. After an in-place update, the new kinds (title screen, box back/spine, cartridge/disc
+        // and its texture) must still reach the scraper instead of being filtered out on load.
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            """
+            {
+              "Scraping": {
+                "ScreenScraper": {
+                  "Enabled": true,
+                  "MediaKinds": ["BoxFront", "Screenshot", "Wheel", "Fanart"]
+                }
+              }
+            }
+            """);
+        var service = new JsonSettingsService(AppPaths);
+
+        var mediaKinds = service.Load().Scraping.ScreenScraper.MediaKinds;
+
+        Assert.Contains(GameMediaKind.TitleScreen, mediaKinds);
+        Assert.Contains(GameMediaKind.BoxBack, mediaKinds);
+        Assert.Contains(GameMediaKind.BoxSpine, mediaKinds);
+        Assert.Contains(GameMediaKind.PhysicalMedia, mediaKinds);
+        Assert.Contains(GameMediaKind.PhysicalMediaTexture, mediaKinds);
+        // The kinds the file already listed remain present.
+        Assert.Contains(GameMediaKind.BoxFront, mediaKinds);
+        Assert.Contains(GameMediaKind.Screenshot, mediaKinds);
     }
 
     [Fact]

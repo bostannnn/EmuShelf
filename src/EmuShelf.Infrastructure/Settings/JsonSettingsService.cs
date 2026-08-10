@@ -99,7 +99,8 @@ public sealed class JsonSettingsService : ISettingsService
         try
         {
             var json = File.ReadAllText(_appPaths.SettingsFilePath);
-            return JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings();
+            var loaded = JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions) ?? new AppSettings();
+            return WithCatalogDefaultsEnsured(loaded);
         }
         catch (Exception ex) when (
             fallbackToDefaultsOnError &&
@@ -110,6 +111,28 @@ public sealed class JsonSettingsService : ISettingsService
             _logger.Warning("Could not load Settings/settings.json; defaults were used.", ex);
             return new AppSettings();
         }
+    }
+
+    // ScreenScraper's media-kind and metadata-field lists are code-owned catalogue defaults that are
+    // still serialized into settings.json. A file written by an older build froze the shorter lists it
+    // shipped with, which would silently filter newly added kinds/fields out of the scraper after an
+    // in-place update. Re-merge the current defaults on every load so existing installs stay current.
+    private static AppSettings WithCatalogDefaultsEnsured(AppSettings settings)
+    {
+        // settings.json is hand-editable, so tolerate an explicit "Scraping": null / "ScreenScraper": null
+        // by substituting defaults instead of throwing an NRE out of the (otherwise robust) load path.
+        if (settings.Scraping is null)
+            return settings with { Scraping = new ScrapingSettings() };
+        if (settings.Scraping.ScreenScraper is null)
+            return settings with { Scraping = settings.Scraping with { ScreenScraper = new ScreenScraperSettings() } };
+
+        return settings with
+        {
+            Scraping = settings.Scraping with
+            {
+                ScreenScraper = settings.Scraping.ScreenScraper.WithCatalogDefaultsEnsured(),
+            },
+        };
     }
 
     private void SaveCore(AppSettings settings)

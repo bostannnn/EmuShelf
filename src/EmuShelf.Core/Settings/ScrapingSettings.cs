@@ -57,4 +57,42 @@ public sealed record ScreenScraperSettings
         GameMediaKind.PhysicalMedia,
         GameMediaKind.PhysicalMediaTexture,
     ];
+
+    /// <summary>
+    /// Re-merges the current catalogue defaults into <see cref="MediaKinds"/> and
+    /// <see cref="MetadataFields"/>. These two lists are code-owned defaults, not user preferences —
+    /// nothing in the app edits them — yet they are serialized into <c>settings.json</c>. A file
+    /// written by an older build therefore froze the shorter lists that build shipped with, so after an
+    /// in-place update the newly added kinds/fields (e.g. the title screen) would be filtered out of the
+    /// scraper before ever reaching the UI. Loading calls this so every supported kind/field is present,
+    /// while anything the file already listed is preserved.
+    /// </summary>
+    public ScreenScraperSettings WithCatalogDefaultsEnsured()
+    {
+        var defaults = new ScreenScraperSettings();
+        return this with
+        {
+            MetadataFields = EnsureAll(MetadataFields, defaults.MetadataFields),
+            MediaKinds = EnsureAll(MediaKinds, defaults.MediaKinds),
+        };
+    }
+
+    // Appends any default entry the persisted list is missing, keeping the persisted order and returning
+    // the original array untouched when nothing needs adding (so an already-current file is a no-op).
+    private static T[] EnsureAll<T>(T[]? current, T[] defaults)
+    {
+        if (current is null || current.Length == 0)
+            return defaults;
+
+        List<T>? merged = null;
+        foreach (var value in defaults)
+        {
+            if (Array.IndexOf(current, value) >= 0 || (merged?.Contains(value) ?? false))
+                continue;
+            merged ??= [.. current];
+            merged.Add(value);
+        }
+
+        return merged?.ToArray() ?? current;
+    }
 }
