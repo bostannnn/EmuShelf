@@ -93,10 +93,16 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
         GameMediaImport import,
         CancellationToken cancellationToken)
     {
-        // Fill-missing never replaces a media kind that already has an active (selected) asset.
+        // Fill-missing never replaces a media kind that already has an active (selected) asset — unless
+        // the caller explicitly opted in (OverwriteExistingMedia), which the single-game scraper does so a
+        // ticked media row means "use this art" and replaces the current one instead of being skipped.
         var activeForKind = existing.Media.FirstOrDefault(media => media.Kind == import.Kind && media.IsSelected);
-        if (request.Mode == GameMetadataApplyMode.FillMissing && activeForKind is not null)
+        if (request.Mode == GameMetadataApplyMode.FillMissing &&
+            !request.OverwriteExistingMedia &&
+            activeForKind is not null)
+        {
             return (new GameMediaApplyResult(import.Kind, GameMediaApplyOutcome.SkippedExisting), null);
+        }
 
         var extension = NormalizeExtension(import.FileExtension);
         var finalPath = MediaFilePath(request.GameId, import.Kind, import.ProviderId, extension);

@@ -128,6 +128,41 @@ public class GameScrapeApplicationServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task FillMissing_WithOverwriteExistingMedia_ReplacesTheActiveProviderAsset()
+    {
+        // A re-scrape: the game already has ScreenScraper box art. Ticking the box-art row again is an
+        // explicit "use this art" choice, so it replaces the current asset in place — even in fill-missing
+        // mode, which without the opt-in would skip a kind that already has an active asset.
+        var game = AddGame("Reselect.iso");
+        await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [],
+            [MediaImport(GameMediaKind.BoxFront, "box-v1")],
+            GameMetadataApplyMode.FillMissing));
+        Assert.Equal(1, _downloader.Calls);
+
+        var result = await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [],
+            [MediaImport(GameMediaKind.BoxFront, "box-v2")],
+            GameMetadataApplyMode.FillMissing,
+            OverwriteExistingMedia: true));
+
+        Assert.Equal(GameMediaApplyOutcome.Imported, result.Media.Single().Outcome);
+        Assert.Equal(2, _downloader.Calls); // it downloaded the replacement rather than skipping
+        Assert.True(result.CoverProjected);
+
+        var details = _details.GetDetails(game.Id);
+        // Replaced in place: still exactly one box-front asset, now pointing at the newly chosen art.
+        var box = Assert.Single(details.Media, media => media.Kind == GameMediaKind.BoxFront);
+        Assert.True(box.IsSelected);
+        Assert.Equal("box-v2", box.ProviderItemId);
+        Assert.Contains("box-v2", box.SourceUri);
+    }
+
+    [Fact]
     public async Task Apply_NeverOverwritesAUserOwnedFileAtTheProviderPath()
     {
         var game = AddGame("Protected.iso");

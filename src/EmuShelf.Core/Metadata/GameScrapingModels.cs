@@ -254,7 +254,13 @@ public sealed record GameScrapeApplyRequest(
     // Which imported media kind, if any, is projected into the fast Games.CoverPath grid column.
     // Defaults to the box front; arcade uses the title screen (its box art is nearly nonexistent).
     // Null disables cover projection.
-    GameMediaKind? CoverKind = GameMediaKind.BoxFront);
+    GameMediaKind? CoverKind = GameMediaKind.BoxFront,
+    // When true, an included media kind replaces the game's current asset of that kind instead of being
+    // skipped as already-present. The single-game scraper sets it: ticking a media row is an explicit
+    // "use this art" choice, so it overrides fill-missing. Batch leaves it off so a fill-missing run still
+    // skips games that already have the kind. User-owned art is never reached here (its scraper row is
+    // disabled) and the store still refuses to overwrite user or foreign-provider files on disk.
+    bool OverwriteExistingMedia = false);
 
 public enum GameMediaApplyOutcome
 {

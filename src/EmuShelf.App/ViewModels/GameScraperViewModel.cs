@@ -547,7 +547,11 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
         try
         {
             var result = await _apply.ApplyAsync(
-                new GameScrapeApplyRequest(_gameId, _current.Match, metadata, media, mode, _current.CoverKind),
+                // Media rows here are an explicit, per-item selection: applying replaces whatever art the
+                // game currently has for that kind, rather than skipping kinds that are already filled.
+                new GameScrapeApplyRequest(
+                    _gameId, _current.Match, metadata, media, mode, _current.CoverKind,
+                    OverwriteExistingMedia: true),
                 _lifetime.Token);
             LastApplyResult = result;
             SetMessage(GameScraperState.Applied, SummarizeResult(result));
