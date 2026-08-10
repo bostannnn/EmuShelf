@@ -1455,12 +1455,12 @@ public class MainWindowVisualSnapshotTests
             // viewport. Sort adds one four-across card row (font metrics vary across platforms), still
             // comfortably under the viewport.
             AssertGamepadOverlayHeightBelow(window, 700);
-            // The menu leads with the Grid/List view-mode picker and the four-card Sort row, both built
-            // from the same gamepad-viewmode-card component.
+            // The menu leads with the Grid/List/Shelf view-mode picker and the four-card Sort row, both
+            // built from the same gamepad-viewmode-card component.
             var pickerCards = window.GetVisualDescendants().OfType<Button>()
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-viewmode-card"))
                 .ToList();
-            Assert.Equal(6, pickerCards.Count); // 2 view-mode (Grid/List) + 4 sort
+            Assert.Equal(7, pickerCards.Count); // 3 view-mode (Grid/List/Shelf) + 4 sort
             // Regression guard for the overlap that shipped once (the picker and a shortcut bar were both
             // dropped into row 0 and drew on top of each other): both picker rows must sit entirely above
             // the option list, not on top of it.
@@ -3201,7 +3201,7 @@ public class MainWindowVisualSnapshotTests
         viewModel.Games.ReplaceAll(games);
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
-        viewModel.IsGamepadSpotlightView = true;
+        viewModel.GamepadLayout = GamepadLibraryLayout.Spotlight;
         viewModel.FocusedGame = games[3];
         games[3].ApplySpotlightDetails(
             fanartPath: null,

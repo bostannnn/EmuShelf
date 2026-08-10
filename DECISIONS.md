@@ -6070,3 +6070,31 @@ This intentionally drops rescan's re-read of embedded evidence for already-impor
 retry is redundant: a missing identifier already self-heals on demand elsewhere (texture-pack
 matching, metadata scraping, ScreenScraper preview all re-extract when none is stored), and
 re-adding the file still retries. Not worth re-reading every file on every rescan to cover it.
+
+## 2026-08-10 — Couch layout is a three-way enum (Grid/Spotlight/Shelf), not a bool
+
+Phase 1 of the physical-media shelf (`docs/couch-physical-media-shelf.md`) needed a third couch layout
+beside the cover grid and the spotlight. The couch layout was a single `bool IsGamepadSpotlightView`
+(grid when false, spotlight when true), threaded through ~30 view-model sites, the XAML picker/panels,
+and tests. Rather than add a second parallel bool (which makes "both true" unrepresentable and every
+call site test three states by hand), the source of truth is now
+`MainViewModel.GamepadLayout` — a `GamepadLibraryLayout { Grid, Spotlight, Shelf }` observable.
+`IsGamepadSpotlightView`, `IsGamepadShelfView`, and `IsGamepadGridLayout` are computed aliases over it,
+so the many spotlight-only checks and their XAML bindings are untouched; only the handful of writes moved
+to setting the enum. `ToggleGamepadViewCommand` stays a binary grid⇄spotlight flip (the shelf is reached
+from the picker), so its existing tests are unaffected; the view-mode row's Left/Right now steps the
+three tiles clamped instead of the old absolute grid/list pair.
+
+Persistence keeps both keys for compatibility: `LibraryViewSettings` gained a by-name
+`GamepadLayout` string (like `Scope`/`SortColumn`) and still writes the legacy `GamepadSpotlightView`
+bool. Restore prefers the parsed layout name, falls back to the bool when the name is missing/unknown
+(so a pre-Shelf settings file still opens into spotlight), then to the grid — and a `Grid` name plus a
+true legacy bool resolves to spotlight, since an absent name deserializes to the record default "Grid".
+
+The shelf view (Phase 1) is a passive horizontal `ListBox` (`GamepadShelfList`): `SelectedItem` tracks
+`FocusedGame` and the list auto-scrolls it into view, exactly like the spotlight list, while the focused
+cover's enlarge/dim emphasis is driven by `GameViewModel.IsFocused` (maintained centrally in
+`OnFocusedGameChanged`), not the ListBox's own selection chrome. Its root is a `Border`, not a bare
+`Panel`, so the spotlight snapshot test's "the backdrop is the only bare Panel among GamepadRoot's
+children" assertion still holds. The 3D media models and right-stick rotation are later phases; Phase 1
+renders flat covers on a calm monochrome background.

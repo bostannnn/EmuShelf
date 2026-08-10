@@ -239,6 +239,16 @@ public partial class GameViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _gamepadCoverHeight, value);
     }
 
+    /// <summary>The physical-media shelf shows one large hero cover at the centre. Unlike the grid it
+    /// is sized to a fixed height (not the viewport-derived grid width), with the width following the
+    /// platform aspect — so a SNES box reads wide and a portrait case reads tall. Constant per game
+    /// (aspect never changes), so plain computed getters. See docs/couch-physical-media-shelf.md.</summary>
+    public double GamepadShelfCoverHeight => GamepadShelfCoverTargetHeight;
+    public double GamepadShelfCoverWidth => Math.Round(GamepadShelfCoverTargetHeight * CoverAspectRatio);
+
+    /// <summary>The hero cover's height on the couch physical-media shelf, in device-independent px.</summary>
+    internal const double GamepadShelfCoverTargetHeight = 300;
+
     /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
     /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame
     /// height is decided per view by the library — null means "use this platform's true height",

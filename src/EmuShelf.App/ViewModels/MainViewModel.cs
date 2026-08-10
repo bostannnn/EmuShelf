@@ -191,10 +191,22 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsGridView { get; set; } = true;
 
-    /// <summary>Gamepad (couch) mode only: the spotlight layout (list + fanart hero) when true, the
-    /// cover grid when false. Toggled from the couch toolbar and remembered across launches.</summary>
+    /// <summary>Gamepad (couch) mode only: which couch layout is on screen — the cover grid, the
+    /// spotlight (list + fanart hero), or the physical-media shelf. Chosen from the system-menu picker
+    /// and remembered across launches.</summary>
     [ObservableProperty]
-    public partial bool IsGamepadSpotlightView { get; set; }
+    public partial GamepadLibraryLayout GamepadLayout { get; set; } = GamepadLibraryLayout.Grid;
+
+    /// <summary>The spotlight layout is on screen. Kept as a computed alias over
+    /// <see cref="GamepadLayout"/> so the many spotlight-only checks and XAML bindings are unchanged.</summary>
+    public bool IsGamepadSpotlightView => GamepadLayout == GamepadLibraryLayout.Spotlight;
+
+    /// <summary>The physical-media shelf layout is on screen.</summary>
+    public bool IsGamepadShelfView => GamepadLayout == GamepadLibraryLayout.Shelf;
+
+    /// <summary>The cover grid is the active layout. Drives the focused-game dock, which the grid
+    /// shows and the other two layouts (each carrying their own title/hero) hide.</summary>
+    public bool IsGamepadGridLayout => GamepadLayout == GamepadLibraryLayout.Grid;
 
     /// <summary>In the spotlight hero, whether the Achievements action is armed (so A opens it)
     /// instead of Play, the default. Left/Right move between the two; it resets to Play whenever the
@@ -249,33 +261,40 @@ public partial class MainViewModel : ViewModelBase
             EnsureDetailsProjectionsLoaded();
     }
 
-    partial void OnIsGamepadSpotlightViewChanged(bool value)
+    partial void OnGamepadLayoutChanged(GamepadLibraryLayout value)
     {
         ScheduleLibraryViewStateSave();
+        OnPropertyChanged(nameof(IsGamepadSpotlightView));
+        OnPropertyChanged(nameof(IsGamepadShelfView));
+        OnPropertyChanged(nameof(IsGamepadGridLayout));
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(IsGridViewModeSelected));
         OnPropertyChanged(nameof(IsListViewModeSelected));
+        OnPropertyChanged(nameof(IsShelfViewModeSelected));
         IsSpotlightAchievementsFocused = false; // the hero always opens on Play
         OnPropertyChanged(nameof(IsSpotlightPlayFocused));
-        if (value)
+        if (value == GamepadLibraryLayout.Spotlight)
             LoadSpotlightHero(FocusedGame);
         else
             ClearSpotlightHero();
     }
 
-    /// <summary>Flips the couch layout between the cover grid and the spotlight list + hero.</summary>
+    /// <summary>Flips the couch layout between the cover grid and the spotlight list + hero. The
+    /// shelf is reached from the picker, not this toggle, which stays a binary grid⇄spotlight flip.</summary>
     [RelayCommand]
     private void ToggleGamepadView()
     {
         if (IsGamepadMode)
-            IsGamepadSpotlightView = !IsGamepadSpotlightView;
+            GamepadLayout = IsGamepadSpotlightView ? GamepadLibraryLayout.Grid : GamepadLibraryLayout.Spotlight;
     }
 
-    /// <summary>The couch layout picker shown at the top of the system menu. Grid is the active tile
-    /// when the spotlight is off, List when it is on; both re-raise when the layout flips.</summary>
-    public bool IsGridViewModeSelected => !IsGamepadSpotlightView;
-    public bool IsListViewModeSelected => IsGamepadSpotlightView;
+    /// <summary>The couch layout picker shown at the top of the system menu — the three tiles light
+    /// their active one and re-raise when the layout changes.</summary>
+    public bool IsGridViewModeSelected => GamepadLayout == GamepadLibraryLayout.Grid;
+    public bool IsListViewModeSelected => GamepadLayout == GamepadLibraryLayout.Spotlight;
+    public bool IsShelfViewModeSelected => GamepadLayout == GamepadLibraryLayout.Shelf;
 
     /// <summary>Which region of the system menu owns the focus ring: the view-mode row, the sort row, or
     /// the option list below them. Up/Down walk between the regions; Left/Right pick within a row and
@@ -297,20 +316,45 @@ public partial class MainViewModel : ViewModelBase
         UpdateGamepadOverlayOptionFocus();
     }
 
-    /// <summary>Selects the cover-grid couch layout. Bound to the Grid tile and D-pad Left on the row.</summary>
+    /// <summary>The couch layouts in the picker's Left→Right tile order. D-pad Left/Right steps this
+    /// list (clamped); each tile also sets its layout directly on click.</summary>
+    private static readonly GamepadLibraryLayout[] GamepadLayoutOrder =
+        [GamepadLibraryLayout.Grid, GamepadLibraryLayout.Spotlight, GamepadLibraryLayout.Shelf];
+
+    /// <summary>Selects the cover-grid couch layout. Bound to the Grid tile.</summary>
     [RelayCommand]
     private void SelectGridViewMode()
     {
         if (IsGamepadMode)
-            IsGamepadSpotlightView = false;
+            GamepadLayout = GamepadLibraryLayout.Grid;
     }
 
-    /// <summary>Selects the spotlight list couch layout. Bound to the List tile and D-pad Right on the row.</summary>
+    /// <summary>Selects the spotlight list couch layout. Bound to the List tile.</summary>
     [RelayCommand]
     private void SelectListViewMode()
     {
         if (IsGamepadMode)
-            IsGamepadSpotlightView = true;
+            GamepadLayout = GamepadLibraryLayout.Spotlight;
+    }
+
+    /// <summary>Selects the physical-media shelf couch layout. Bound to the Shelf tile.</summary>
+    [RelayCommand]
+    private void SelectShelfViewMode()
+    {
+        if (IsGamepadMode)
+            GamepadLayout = GamepadLibraryLayout.Shelf;
+    }
+
+    /// <summary>Steps the view-mode picker one tile Left (-1) or Right (+1), clamped at the ends.
+    /// Drives the D-pad on the focused view-mode row.</summary>
+    private void MoveGamepadViewModeSelection(int delta)
+    {
+        if (!IsGamepadMode)
+            return;
+        var index = Array.IndexOf(GamepadLayoutOrder, GamepadLayout);
+        if (index < 0)
+            index = 0;
+        GamepadLayout = GamepadLayoutOrder[Math.Clamp(index + delta, 0, GamepadLayoutOrder.Length - 1)];
     }
 
     // ---- Gamepad "Sort by" row (Start menu). Reuses the view-mode card component and drives the same
@@ -581,17 +625,21 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool HasGames { get; set; }
 
-    /// <summary>The couch cover grid is on screen: gamepad mode, games present, spotlight off.</summary>
-    public bool ShowGamepadGrid => IsGamepadMode && HasGames && !IsGamepadSpotlightView;
+    /// <summary>The couch cover grid is on screen: gamepad mode, games present, grid layout.</summary>
+    public bool ShowGamepadGrid => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Grid;
 
     /// <summary>The couch spotlight (list + fanart hero) is on screen: gamepad mode, games present,
-    /// spotlight on.</summary>
-    public bool ShowGamepadSpotlight => IsGamepadMode && HasGames && IsGamepadSpotlightView;
+    /// spotlight layout.</summary>
+    public bool ShowGamepadSpotlight => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Spotlight;
+
+    /// <summary>The couch physical-media shelf is on screen: gamepad mode, games present, shelf layout.</summary>
+    public bool ShowGamepadShelf => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Shelf;
 
     partial void OnHasGamesChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(ShowGamepadShelf));
     }
 
     /// <summary>True only when the selected system has no games at all — drives the "add your first game" prompt.</summary>
@@ -1211,8 +1259,16 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             IsGridView = state.IsGridView;
-            // Couch-only preference, independent of the desktop grid/list choice above.
-            IsGamepadSpotlightView = state.GamepadSpotlightView;
+            // Couch-only preference, independent of the desktop grid/list choice above. Prefer the named
+            // layout; fall back to the legacy spotlight bool (so a pre-Shelf settings file still opens
+            // into spotlight), then to the grid.
+            var layout = Enum.TryParse<GamepadLibraryLayout>(state.GamepadLayout, out var parsedLayout)
+                && Enum.IsDefined(typeof(GamepadLibraryLayout), parsedLayout)
+                ? parsedLayout
+                : GamepadLibraryLayout.Grid;
+            if (layout == GamepadLibraryLayout.Grid && state.GamepadSpotlightView)
+                layout = GamepadLibraryLayout.Spotlight;
+            GamepadLayout = layout;
             SortColumn = Enum.TryParse<LibrarySortColumn>(state.SortColumn, out var column)
                 ? column
                 : LibrarySortColumn.Title;
@@ -1261,6 +1317,8 @@ public partial class MainViewModel : ViewModelBase
         // Gamepad mode forces a grid to render its tiles, which is not a statement about what the
         // user wants on the desktop. Keep the stored desktop preference while that mode is active.
         IsGridView = IsGamepadMode ? _libraryViewState.Current.IsGridView : IsGridView,
+        GamepadLayout = GamepadLayout.ToString(),
+        // Kept in sync so an older build (which only reads this bool) still restores grid-vs-spotlight.
         GamepadSpotlightView = IsGamepadSpotlightView,
         SortColumn = SortColumn.ToString(),
         SortDescending = SortDescending,
@@ -2131,10 +2189,10 @@ public partial class MainViewModel : ViewModelBase
                 MoveGamepadOverlaySelection(1); // step onto the action (right button)
                 return true;
             case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
-                SelectGridViewModeCommand.Execute(null);
+                MoveGamepadViewModeSelection(-1);
                 return true;
             case GamepadAction.NavigateRight when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
-                SelectListViewModeCommand.Execute(null);
+                MoveGamepadViewModeSelection(1);
                 return true;
             case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadSortRowFocused:
                 MoveGamepadSortSelection(-1);
@@ -2187,35 +2245,64 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.Menu:
                 OpenGamepadMenuCommand.Execute(null);
                 return true;
-            // The spotlight is a single-column list: Up/Down step one game. Left/Right instead move the
-            // hero action ring — Left arms the Achievements widget (only when the game has a set),
-            // Right arms Play. The cover grid keeps its 2-D movement (Up/Down span a full row).
+            // Each layout reads the d-pad differently. Spotlight is a single-column list: Up/Down step
+            // one game, Left/Right move the hero action ring (Left arms Achievements when the game has a
+            // set, Right arms Play). The shelf is a single horizontal row: Left/Right step one game and
+            // Up/Down are inert. The cover grid keeps 2-D movement (Up/Down span a full row).
             case GamepadAction.NavigateLeft:
-                if (IsGamepadSpotlightView)
+                switch (GamepadLayout)
                 {
-                    if (FocusedGame?.ShowAchievementMark == true)
-                        IsSpotlightAchievementsFocused = true;
+                    case GamepadLibraryLayout.Spotlight:
+                        if (FocusedGame?.ShowAchievementMark == true)
+                            IsSpotlightAchievementsFocused = true;
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        FocusPreviousGameCommand.Execute(null);
+                        break;
+                    default:
+                        MoveGamepadFocusLeftCommand.Execute(null);
+                        break;
                 }
-                else
-                    MoveGamepadFocusLeftCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateRight:
-                if (IsGamepadSpotlightView)
-                    IsSpotlightAchievementsFocused = false;
-                else
-                    MoveGamepadFocusRightCommand.Execute(null);
+                switch (GamepadLayout)
+                {
+                    case GamepadLibraryLayout.Spotlight:
+                        IsSpotlightAchievementsFocused = false;
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        FocusNextGameCommand.Execute(null);
+                        break;
+                    default:
+                        MoveGamepadFocusRightCommand.Execute(null);
+                        break;
+                }
                 return true;
             case GamepadAction.NavigateUp:
-                if (IsGamepadSpotlightView)
-                    FocusPreviousGameCommand.Execute(null);
-                else
-                    MoveGamepadFocusUpCommand.Execute(null);
+                switch (GamepadLayout)
+                {
+                    case GamepadLibraryLayout.Spotlight:
+                        FocusPreviousGameCommand.Execute(null);
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        break; // a horizontal row has nothing above/below
+                    default:
+                        MoveGamepadFocusUpCommand.Execute(null);
+                        break;
+                }
                 return true;
             case GamepadAction.NavigateDown:
-                if (IsGamepadSpotlightView)
-                    FocusNextGameCommand.Execute(null);
-                else
-                    MoveGamepadFocusDownCommand.Execute(null);
+                switch (GamepadLayout)
+                {
+                    case GamepadLibraryLayout.Spotlight:
+                        FocusNextGameCommand.Execute(null);
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        break;
+                    default:
+                        MoveGamepadFocusDownCommand.Execute(null);
+                        break;
+                }
                 return true;
             default:
                 return false;
@@ -2988,6 +3075,7 @@ public partial class MainViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(ShowGamepadShelf));
 
         if (value)
         {
