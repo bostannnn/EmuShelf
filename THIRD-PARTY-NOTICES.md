@@ -147,3 +147,42 @@ the source project's terms and to the rights of their respective publishers.
   single variable font covering every weight. It is unmodified, and Desktop mode does not use it.
 - License: SIL Open Font License 1.1; the complete text ships at `ThirdParty/Fonts/Exo2-OFL.txt` and
   is retained in `src/EmuShelf.App/Assets/ThirdParty/Exo2-OFL.txt`.
+
+## Bundled 3D models (couch physical-media shelf)
+
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The three
+shells are third-party models bundled inside `EmuShelf.Rendering` at
+`src/EmuShelf.Rendering/Assets/*.glb`. They are used unmodified in geometry; only their
+embedded textures were downsampled to reduce the binary, and the game artwork the original
+authors photographed onto them is always painted over at render time with the player's own
+scraped cover or a flat tint, so no third-party game packaging is displayed.
+
+All three are licensed
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
+including in commercial and differently licensed works — provided the author is credited.
+Credit is given here and the models keep their authorship metadata inside the `.glb` files.
+
+- **SNES Cartridge** — by [Steven-Bennis](https://sketchfab.com/Steven-Bennis), from
+  [Sketchfab](https://sketchfab.com/3d-models/snes-cartridge-1caba5630eb0435187d6e975d4eed6c5).
+  Bundled as `snes-cartridge.glb`.
+- **Gameboy Advance Cartridge** — by [Vxcl](https://sketchfab.com/vxclhd), from
+  [Sketchfab](https://sketchfab.com/3d-models/gameboy-advance-cartridge-38c1e6702e5d4f21af1d0930689b1d10).
+  Bundled as `gba-cartridge.glb`.
+- **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
+  [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
+  Bundled as `disc-keep-case.glb`.
+
+These models are not affiliated with or endorsed by Nintendo, Sony, or any console
+manufacturer, and no console manufacturer's branding is used as EmuShelf's own.
+
+## Rendering libraries
+
+- [Silk.NET](https://github.com/dotnet/Silk.NET) supplies the OpenGL bindings the shell renderer
+  calls through. It is bindings only — the entry points are resolved from the context Avalonia
+  makes current, so no native library is bundled.
+  License: [MIT](https://github.com/dotnet/Silk.NET/blob/main/LICENSE.md).
+- [SharpGLTF](https://github.com/vpenades/SharpGLTF) reads the bundled `.glb` shells.
+  License: [MIT](https://github.com/vpenades/SharpGLTF/blob/master/LICENSE).
+- [StbImageSharp](https://github.com/StbSharp/StbImageSharp) decodes the PNG textures embedded in
+  those shells. It is a managed port of Sean Barrett's `stb_image`.
+  License: public domain / MIT.

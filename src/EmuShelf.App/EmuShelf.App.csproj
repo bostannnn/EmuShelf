@@ -68,6 +68,7 @@
     <ProjectReference Include="..\EmuShelf.Core\EmuShelf.Core.csproj" />
     <ProjectReference Include="..\EmuShelf.Infrastructure\EmuShelf.Infrastructure.csproj" />
     <ProjectReference Include="..\EmuShelf.Integrations\EmuShelf.Integrations.csproj" />
+    <ProjectReference Include="..\EmuShelf.Rendering\EmuShelf.Rendering.csproj" />
   </ItemGroup>
 
   <!--
