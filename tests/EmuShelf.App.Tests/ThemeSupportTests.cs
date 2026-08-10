@@ -145,7 +145,7 @@ public class ThemeSupportTests
 
         Assert.True(gamepad.ShowThemes);
 
-        // Themes is the page after the model sections; LB/RB reaches it and back.
+        // Themes has its own gallery page in the rail; LB/RB reaches it and steps back off.
         Assert.False(gamepad.IsThemesSection);
         gamepad.SelectThemesCommand.Execute(null);
         Assert.True(gamepad.IsThemesSection);
@@ -210,10 +210,20 @@ public class ThemeSupportTests
         gamepad.Dispatch(GamepadAction.NavigateUp);
         Assert.Equal(SettingsSection.General, gamepad.SelectedSection);
 
-        // Paging Down through every section lands on the Themes gallery page appended at the end.
-        for (var index = 0; index < gamepad.Sections.Count; index++)
-            gamepad.Dispatch(GamepadAction.NavigateDown);
+        // Themes takes Desktop's slot — immediately before About, the always-last section — so paging
+        // Down reaches the gallery before the final About page rather than after it.
+        gamepad.Dispatch(GamepadAction.NavigateDown); // Library -> Emulators
+        Assert.Equal(SettingsSection.Emulators, gamepad.SelectedSection);
+        gamepad.Dispatch(GamepadAction.NavigateDown); // Emulators -> Themes
         Assert.True(gamepad.IsThemesSection);
+        gamepad.Dispatch(GamepadAction.NavigateDown); // Themes -> About (last)
+        Assert.False(gamepad.IsThemesSection);
+        Assert.Equal(SettingsSection.About, gamepad.SelectedSection);
+
+        // About is the last page: paging Down again stays put, so Themes never sits after it.
+        gamepad.Dispatch(GamepadAction.NavigateDown);
+        Assert.Equal(SettingsSection.About, gamepad.SelectedSection);
+        Assert.False(gamepad.IsThemesSection);
 
         // Right (or A) returns to the content column.
         gamepad.Dispatch(GamepadAction.NavigateRight);

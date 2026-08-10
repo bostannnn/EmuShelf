@@ -3290,19 +3290,9 @@
                                                 <TextBlock Grid.Column="1" Text="Texture Packs" VerticalAlignment="Center" />
                                             </Grid>
                                         </Button>
+                                        <!-- Themes sits in Desktop's slot — right before About — so both surfaces read
+                                             top-to-bottom identically. About stays the always-visible last row. -->
                                         <Button Grid.Row="7" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
-                                                Classes.selected="{Binding GamepadSettings.IsAboutSection}"
-                                                Focusable="False"
-                                                Command="{Binding GamepadSettings.SelectSectionCommand}"
-                                                CommandParameter="{x:Static vm:SettingsSection.About}">
-                                            <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
-                                                <Border Width="5" CornerRadius="3"
-                                                        Background="{DynamicResource EmuAccentBrush}"
-                                                        IsVisible="{Binding GamepadSettings.IsAboutSection}" />
-                                                <TextBlock Grid.Column="1" Text="About" VerticalAlignment="Center" />
-                                            </Grid>
-                                        </Button>
-                                        <Button Grid.Row="8" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsThemesSection}"
                                                 IsVisible="{Binding GamepadSettings.ShowThemes}"
                                                 Focusable="False"
@@ -3312,6 +3302,18 @@
                                                         Background="{DynamicResource EmuAccentBrush}"
                                                         IsVisible="{Binding GamepadSettings.IsThemesSection}" />
                                                 <TextBlock Grid.Column="1" Text="Themes" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Button>
+                                        <Button Grid.Row="8" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
+                                                Classes.selected="{Binding GamepadSettings.IsAboutSection}"
+                                                Focusable="False"
+                                                Command="{Binding GamepadSettings.SelectSectionCommand}"
+                                                CommandParameter="{x:Static vm:SettingsSection.About}">
+                                            <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
+                                                <Border Width="5" CornerRadius="3"
+                                                        Background="{DynamicResource EmuAccentBrush}"
+                                                        IsVisible="{Binding GamepadSettings.IsAboutSection}" />
+                                                <TextBlock Grid.Column="1" Text="About" VerticalAlignment="Center" />
                                             </Grid>
                                         </Button>
                                     </Grid>
