@@ -4,6 +4,10 @@
     <Project Path="src/EmuShelf.Core/EmuShelf.Core.csproj" />
     <Project Path="src/EmuShelf.Infrastructure/EmuShelf.Infrastructure.csproj" />
     <Project Path="src/EmuShelf.Integrations/EmuShelf.Integrations.csproj" />
+    <Project Path="src/EmuShelf.Rendering/EmuShelf.Rendering.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/EmuShelf.Rendering.Preview/EmuShelf.Rendering.Preview.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EmuShelf.Infrastructure.Tests/EmuShelf.Infrastructure.Tests.csproj" />
