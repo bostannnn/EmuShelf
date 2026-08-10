@@ -1,7 +1,6 @@
 using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using EmuShelf.App.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Core.Achievements;
@@ -249,18 +248,6 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     /// <summary>The hero cover's height on the couch physical-media shelf, in device-independent px.</summary>
     internal const double GamepadShelfCoverTargetHeight = 300;
-
-    /// <summary>The physical medium this game's system renders as on the shelf's focused hero, or null to
-    /// keep the flat cover. Constant per game. See <see cref="Media3DProjection.ForSystem"/>.</summary>
-    public MediaType? ShelfMediaType => Media3DProjection.ForSystem(SystemId);
-
-    /// <summary>Per-system accent as a colour, tinting the 3D hero's body/spine.</summary>
-    public Color ShelfAccentColor => Color.Parse(AccentColor);
-
-    /// <summary>True when the shelf should swap this game's flat cover for the rotatable 3D medium: it is
-    /// focused, its system has an authored medium, and it has cover art to texture the front. Drives both
-    /// the 3D overlay's visibility and the hiding of the flat focused cover behind it.</summary>
-    public bool ShelfUses3DHero => IsFocused && ShelfMediaType is not null && HasCoverImage;
 
     /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
     /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame
@@ -673,13 +660,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     // The frame never adopts the loaded bitmap's own ratio: the cover fills the platform's canonical
     // frame (UniformToFill in the tile), which keeps every tile of a system uniform and stops one
     // off-ratio scan from ballooning the shared shelf. So loading a cover only toggles HasCoverImage.
-    partial void OnCoverImageChanged(Bitmap? value)
-    {
-        OnPropertyChanged(nameof(HasCoverImage));
-        OnPropertyChanged(nameof(ShelfUses3DHero));
-    }
-
-    partial void OnIsFocusedChanged(bool value) => OnPropertyChanged(nameof(ShelfUses3DHero));
+    partial void OnCoverImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasCoverImage));
 
     partial void OnFanartImageChanging(Bitmap? value)
     {
