@@ -427,11 +427,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         _openHotkeys = openHotkeys;
         // Both modes present the same section list, in the same order, so the couch surface mirrors
         // Desktop's structure. Only Themes is excluded here: appearance is not part of the settings
-        // model, so it is a dedicated gamepad gallery page appended after these sections rather than a
-        // projected row section. Emulators projects per-platform library actions (paths/args/cores stay
-        // Desktop-only); Hotkeys is a per-emulator × per-action matrix that a controller can't navigate
-        // as a flat list, so its section row opens the controller-native GamepadHotkeysViewModel overlay;
-        // About projects read-only build info plus the in-place update actions.
+        // model, so it is a dedicated gamepad gallery page rather than a projected row section. The rail
+        // and LB/RB paging still show Themes in Desktop's slot — right before About — by splicing it back
+        // into the ordered page list (see Pages), not by appending it after every section. Emulators
+        // projects per-platform library actions (paths/args/cores stay Desktop-only); Hotkeys is a
+        // per-emulator × per-action matrix that a controller can't navigate as a flat list, so its
+        // section row opens the controller-native GamepadHotkeysViewModel overlay; About projects
+        // read-only build info plus the in-place update actions.
         Sections = settings.Sections
             .Where(section => section is not SettingsSection.Themes)
             .ToArray();
@@ -650,12 +652,31 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         _onScreenKeyboard.TryShow(new OnScreenKeyboardRequest(TextEntryTitle, IsSecretEntry));
     }
 
+    /// <summary>The rail's page order. It mirrors Desktop's section order exactly, including where the
+    /// Themes gallery sits — immediately before About, Desktop's always-last section — rather than
+    /// appended after it. Themes is the one page that is not a projected-row <see cref="Sections"/>
+    /// entry, so it is spliced back in here and only when the controller has theme choices
+    /// (<see cref="ShowThemes"/>).</summary>
+    private IReadOnlyList<SettingsSection> Pages
+    {
+        get
+        {
+            if (!ShowThemes)
+                return Sections;
+            var pages = Sections.ToList();
+            // Desktop places Themes right before About; match that slot instead of appending at the end.
+            var about = pages.IndexOf(SettingsSection.About);
+            pages.Insert(about >= 0 ? about : pages.Count, SettingsSection.Themes);
+            return pages;
+        }
+    }
+
     public void MoveSection(int delta)
     {
         if (!IsNormal)
             return;
 
-        var pageCount = Sections.Count + (ShowThemes ? 1 : 0);
+        var pageCount = Pages.Count;
         if (pageCount == 0)
             return;
 
@@ -669,16 +690,17 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private int CurrentPageIndex()
     {
-        if (IsThemesSection)
-            return Sections.Count;
-        var index = Sections.ToList().IndexOf(SelectedSection);
+        var target = IsThemesSection ? SettingsSection.Themes : SelectedSection;
+        var index = Pages.ToList().IndexOf(target);
         return index < 0 ? 0 : index;
     }
 
     private void SelectPage(int index)
     {
         RememberFocusedRow();
-        if (index >= Sections.Count)
+        var pages = Pages;
+        var target = pages[Math.Clamp(index, 0, pages.Count - 1)];
+        if (target == SettingsSection.Themes)
         {
             EnterThemes();
             return;
@@ -686,7 +708,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
         if (IsThemesSection)
             IsThemesSection = false;
-        SelectedSection = Sections[Math.Clamp(index, 0, Sections.Count - 1)];
+        SelectedSection = target;
     }
 
     private void EnterThemes()
@@ -1154,7 +1176,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 // the controller path to bring PS3 games in.
                 yield return ActionRow(
                     row.SyncFieldId,
-                    "Sync PlayStation 3 library",
+                    // Same wording as Desktop's PS3-row button, so the shared field id reads identically
+                    // on both surfaces; the row's own "PlayStation 3" header supplies the platform.
+                    "Sync RPCS3 library",
                     "Read the RPCS3 game list to import PlayStation 3 titles. PS3 games are imported only this way.",
                     _settings.IsMaintainingLibrary ? "WORKING" : "A SYNC",
                     row.SyncLibraryCommand,
