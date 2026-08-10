@@ -2,6 +2,8 @@ using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
+using EmuShelf.App.Rendering;
+using EmuShelf.Rendering.Shells;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
@@ -248,6 +250,44 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     /// <summary>The hero cover's height on the couch physical-media shelf, in device-independent px.</summary>
     internal const double GamepadShelfCoverTargetHeight = 300;
+
+    /// <summary>The physical medium this game's system renders as on the shelf's focused hero, or
+    /// null to keep the flat cover. Constant per game.</summary>
+    public MediaShell? ShelfMediaShell => MediaShellMap.ForSystem(SystemId);
+
+    /// <summary>Per-system accent as a colour, tinting the 3D hero's studio and its unprinted faces.</summary>
+    public Color ShelfAccent => Color.Parse(AccentColor);
+
+    /// <summary>
+    /// False once the GPU hero has been ruled out for this session, which sends every game back to
+    /// its flat cover.
+    /// </summary>
+    /// <remarks>
+    /// Set by the library when <c>Media3DControl</c> reports that it could not bring up a GL
+    /// context — a headless session, a driver that will not give us GLES 3.0, a remote desktop. The
+    /// couch shelf has to stay usable there, so this is a normal outcome rather than an error.
+    /// </remarks>
+    public bool ShelfHeroSupported
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+
+            field = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShelfUses3DHero));
+        }
+    } = true;
+
+    /// <summary>True when the shelf should swap this game's flat cover for the rotatable 3D medium:
+    /// it is focused, its system has an authored shell, it has cover art to print on it, and the GPU
+    /// path came up. Drives both the hero's visibility and the hiding of the flat cover behind it.</summary>
+    public bool ShelfUses3DHero =>
+        IsFocused && ShelfHeroSupported && ShelfMediaShell is not null && HasCoverImage;
 
     /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
     /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame
@@ -660,7 +700,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
     // The frame never adopts the loaded bitmap's own ratio: the cover fills the platform's canonical
     // frame (UniformToFill in the tile), which keeps every tile of a system uniform and stops one
     // off-ratio scan from ballooning the shared shelf. So loading a cover only toggles HasCoverImage.
-    partial void OnCoverImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasCoverImage));
+    partial void OnCoverImageChanged(Bitmap? value)
+    {
+        OnPropertyChanged(nameof(HasCoverImage));
+        OnPropertyChanged(nameof(ShelfUses3DHero));
+    }
+
+    partial void OnIsFocusedChanged(bool value) => OnPropertyChanged(nameof(ShelfUses3DHero));
 
     partial void OnFanartImageChanging(Bitmap? value)
     {

@@ -153,6 +153,48 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
 
+    /// <summary>
+    /// True until the couch shelf's 3D hero is ruled out, after which every game keeps its flat
+    /// cover. Latches once per session: a GL context that failed to come up will not come up later.
+    /// </summary>
+    private bool _shelfHeroSupported = true;
+
+    /// <summary>
+    /// Sends the shelf back to flat covers for the rest of the session.
+    /// </summary>
+    /// <remarks>
+    /// Called by the view when <c>Media3DControl</c> reports it could not bring up a GL context.
+    /// Games realized later pick this up through <see cref="ApplyShelfHeroSupport"/>, so a scope
+    /// switch after the failure does not quietly re-enable a hero that cannot render.
+    /// </remarks>
+    public void DisableShelfHero()
+    {
+        if (!_shelfHeroSupported)
+        {
+            return;
+        }
+
+        _shelfHeroSupported = false;
+        foreach (var game in Games)
+        {
+            game.ShelfHeroSupported = false;
+        }
+    }
+
+    /// <summary>Applies the session's hero support to a freshly built game list.</summary>
+    private void ApplyShelfHeroSupport(IEnumerable<GameViewModel> games)
+    {
+        if (_shelfHeroSupported)
+        {
+            return;
+        }
+
+        foreach (var game in games)
+        {
+            game.ShelfHeroSupported = false;
+        }
+    }
+
     // Row projection of Games for the gamepad grid. The grid is rendered as a virtualized ListBox with
     // one row per line, so only the ~5 visible rows realize (mature couch-UI pattern) — vastly cheaper
     // than laying out every tile, and it avoids the phantom-cell defect of a virtualized UniformGrid.
@@ -4042,6 +4084,7 @@ public partial class MainViewModel : ViewModelBase
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         Games.ReplaceAll(SortGames(filtered));
+        ApplyShelfHeroSupport(Games);
         ApplyVisibleCoverShelf(GridCoverWidth > 0 ? GridCoverWidth : MinCoverWidth);
 
         HasGames = Games.Count > 0;

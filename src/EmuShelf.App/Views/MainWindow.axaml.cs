@@ -316,6 +316,12 @@ public partial class MainWindow : Window
     private void OnGamepadShelfViewportSizeChanged(object? sender, SizeChangedEventArgs e) =>
         CentreShelf(e.NewSize.Width, forceSnap: true);
 
+    // View wiring only: the 3D hero could not bring up a GL context (a driver that will not serve
+    // GLES 3.0, a remote session), so tell the library to put every game back on its flat cover.
+    // The shelf stays fully usable without the GPU path — that is the designed fallback, not an error.
+    private void OnGamepadShelfHeroFailed(object? sender, EventArgs e) =>
+        (DataContext as MainViewModel)?.DisableShelfHero();
+
     // View-focused coordination only: the view model owns which game is focused; this window reveals that
     // game's ROW and keeps it centred on one fixed viewport line, so the selector sits in the same place
     // on every platform regardless of cover aspect ratio. A d-pad move (animate) EASES the offset toward

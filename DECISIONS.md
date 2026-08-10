@@ -6098,3 +6098,62 @@ cover's enlarge/dim emphasis is driven by `GameViewModel.IsFocused` (maintained 
 `Panel`, so the spotlight snapshot test's "the backdrop is the only bare Panel among GamepadRoot's
 children" assertion still holds. The 3D media models and right-stick rotation are later phases; Phase 1
 renders flat covers on a calm monochrome background.
+
+## 2026-08-10 — The couch shelf's 3D hero renders on the GPU (Silk.NET), not in Skia
+
+Phase 2 of the physical-media shelf first shipped as a hand-rolled Skia software renderer, per the
+feasibility research's "no OpenGL, no new native dependency" recommendation. That renderer is
+reverted. The goal for the shelf hero is that a keep case reads as *plastic* — a broad soft highlight
+sliding across the sleeve as the player turns it — and that requires a prefiltered environment
+sampled per fragment at a roughness-dependent mip. A painter-sorted CPU rasteriser drawing textured
+`DrawVertices` quads has no path to it: it can shade a face, but it cannot reflect a room. The
+research had optimised for "can we draw a rotating box without new dependencies", which was the
+wrong question — the box was never the hard part.
+
+The renderer is a new project, `src/EmuShelf.Rendering`, rather than living in the app. It is
+neither UI-framework code nor domain nor persistence, and keeping it out of `EmuShelf.App` buys the
+property that matters: it takes a `Silk.NET` `GL` whose context *somebody else* made current plus a
+framebuffer id to draw into, so the identical renderer serves both Avalonia's `OpenGlControlBase`
+and a headless EGL context. `tools/EmuShelf.Rendering.Preview` uses the latter to render every shell
+to PNG over Mesa's surfaceless platform, which is how the hero is looked at and tuned — the app
+cannot be run from a headless checkout, and the previous phase's defects were exactly the kind that
+only a picture reveals. Two shipped-quality bugs were caught this way: artwork projected onto the
+*back* of a turned shell (a world-space normal compared against an object-space panel normal), and
+mirrored back/spine panels (a hard-coded u axis per face instead of deriving it from the face).
+
+Silk.NET is bindings only — no native payload, no window/GLFW dependency, entry points resolved from
+Avalonia's loader. Shaders are written to the intersection of GLSL ES 3.00 and desktop GLSL 1.50
+with only the `#version` header injected per backend, because Avalonia hands us ANGLE (GLES 3.0) on
+Windows and a core profile on macOS; attribute locations are bound with `glBindAttribLocation`
+rather than `layout(location=)`, which would demand GLSL 330. If the context cannot be brought up at
+all, the control raises `InitializationFailed` and the shelf puts every game back on its flat cover
+— a supported outcome, not an error.
+
+Lighting is a **procedural** studio baked to a cubemap at load and re-baked per accent change, then
+convolved into diffuse irradiance and a GGX-prefiltered specular chain, with Karis' analytic
+environment BRDF instead of a lookup texture. A shipped HDR panorama would be a multi-megabyte asset
+in an app whose whole premise is portability, and generating the room lets it pick up the focused
+system's accent so the hero belongs to the shelf it sits on. The non-obvious part is that the
+softboxes sit **in front of** the subject rather than above it: a flat vertical face reflects the
+hemisphere in front of it, so the intuitive overhead rig puts every highlight where the shell can
+never show one, and the case comes out looking matte. This is a beauty-dish-beside-the-camera
+arrangement, and it is the difference between "a lit box" and "plastic".
+
+Artwork is projected onto faces in **object space** rather than through the models' UVs. Two of the
+three shells cannot carry a UV decal at all — the SNES cartridge's coordinates span -93 to 1.7, and
+the GBA's label is packed rotated into a shared atlas — so a projected rectangle per face is the
+only approach that serves every shell with one code path, and it survives a model being re-exported.
+Each panel carries its own roughness, aspect fitting, and whether printed art flattens the moulding
+beneath it: a cartridge label is a sticker laid over grooves and hides them, while a keep case's
+sleeve sits under a curved clear cover whose curvature is exactly what makes it read as a case.
+
+The shells are three CC BY 4.0 Sketchfab models rather than original geometry, which departs from
+the design doc's "shell geometry must be wholly original" note. That note existed to keep OpenEmu's
+work out of EmuShelf, and it still does — these are independently authored, and CC BY permits
+redistribution given attribution, which `THIRD-PARTY-NOTICES.md` now carries. The game artwork their
+authors photographed onto them (a Mortal Kombat sleeve, a Wario Kart label) is always painted over
+at render time by a panel, so no third-party packaging is ever displayed.
+
+One shell serves four consoles: PS2, PS3, GameCube and Wii all shipped in the same 135x190x14mm keep
+case. PS1 and Dreamcast (jewel cases) and PSP (UMD) are genuinely different shapes and stay on flat
+covers rather than borrowing a case that is not theirs.

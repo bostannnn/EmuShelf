@@ -27,9 +27,15 @@ Delivered:
   scale/dim; per-system accent-tinted background; title + platform below. No focus ring.
 - Flat covers only (grid covers reused at a larger fixed shelf height).
 
-Not started: **Phase 2** (`Media3DControl` — Skia software 3D, the actual cartridge/case),
-**Phase 3** (right-stick + R3 input plumbing), **Phase 4** (polish, ScreenScraper box/support
-textures, reduce-motion). See the design doc's build-order + §2/§2a/§3 for the plan; the
+**Phase 2 (the 3D hero) landed 2026-08-10**, as a GPU renderer (Silk.NET + OpenGL) rather than the
+Skia software renderer originally planned — see `DECISIONS.md` for why, and §2 of the design doc for
+what it is. Three shells ship: a SNES cartridge, a GBA cartridge, and the DVD keep case shared by
+PS2/PS3/GameCube/Wii. Render it without a display via
+`dotnet run --project tools/EmuShelf.Rendering.Preview` (Linux; needs `libegl1` + `libgl1-mesa-dri`),
+which writes a contact sheet of every shell at five poses.
+
+Not started: **Phase 3** (right-stick + R3 input plumbing), **Phase 4** (polish, ScreenScraper
+box/support textures, reduce-motion). See the design doc's build-order + §2/§2a/§3 for the plan; the
 feasibility research (rendering=Skia lease, input=SDL already exposes right stick + R3) is
 summarised there and in `DECISIONS.md` (2026-08-10 entry).
 

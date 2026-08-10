@@ -13,14 +13,17 @@ namespace EmuShelf.Rendering.Shells;
 public static class MediaShellCatalog
 {
     /// <summary>
-    /// Cyclic axis swap (x,y,z) -> (y,z,x). The GBA cartridge was authored lying on its side with
-    /// the label facing +X and its long axis along Z; this stands it up with the label out of +Z.
+    /// The GBA cartridge was authored standing upright but facing +X, so it only needs a quarter
+    /// turn about Y to bring its label round to +Z.
     /// </summary>
-    private static readonly Matrix4x4 GbaOrientation = new(
-        0f, 0f, 1f, 0f,
-        1f, 0f, 0f, 0f,
-        0f, 1f, 0f, 0f,
-        0f, 0f, 0f, 1f);
+    /// <remarks>
+    /// Worth stating why this is a plain quarter turn rather than an axis permutation: a Game Pak
+    /// is <em>wider than it is tall</em>, and the model's contact fingers — the exposed edge of its
+    /// Motherboard mesh — run the length of its long axis. Standing the cartridge on that long edge
+    /// is what puts the pins along the bottom where they belong; permuting the axes instead stands
+    /// it on a short edge and leaves the pins running up one side.
+    /// </remarks>
+    private static readonly Matrix4x4 GbaOrientation = Matrix4x4.CreateRotationY(-MathF.PI / 2f);
 
     private static readonly Dictionary<MediaShell, MediaShellDefinition> Definitions = new()
     {
@@ -48,15 +51,16 @@ public static class MediaShellCatalog
             GbaOrientation,
             MaxTextureSize: 512,
             // Taken from the model's own label mesh, which is a separate flat quad: its bounds
-            // measured against the whole cartridge's give this rectangle. It sits off-centre because
-            // the cartridge's grip ridge eats into one side.
-            CoverPanel: new ArtPanel(ArtFace.Front, -0.765f, 0.505f, -0.715f, 0.715f),
+            // measured against the whole cartridge's give this rectangle. It sits above centre
+            // because the cartridge's grip ridge eats into the bottom, next to the contacts.
+            CoverPanel: new ArtPanel(ArtFace.Front, -0.715f, 0.715f, -0.765f, 0.505f),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
             ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
-        // Authored upright and true to size (135 x 190 x 14mm), so no reorientation is needed.
+        // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
+        // the lid), so no reorientation is needed.
         [MediaShell.DiscKeepCase] = new MediaShellDefinition(
             MediaShell.DiscKeepCase,
             "EmuShelf.Rendering.Assets.disc-keep-case.glb",
