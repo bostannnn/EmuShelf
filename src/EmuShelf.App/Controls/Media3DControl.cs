@@ -49,16 +49,35 @@ public sealed class Media3DControl : OpenGlControlBase
     private IImage? _uploadedCover;
     private Color _uploadedAccent;
 
-    static Media3DControl()
-    {
-        // Everything here changes what the next frame looks like but nothing about layout, so ask
-        // for a redraw rather than invalidating measure.
-        AffectsRender<Media3DControl>(
-            ShellProperty, CoverProperty, AccentProperty, YawProperty, PitchProperty);
-    }
-
     /// <summary>Raised on the UI thread when the GPU path is unavailable for this session.</summary>
     public event EventHandler? InitializationFailed;
+
+    /// <summary>
+    /// Asks for a fresh GL frame whenever what the hero should show changes.
+    /// </summary>
+    /// <remarks>
+    /// <c>AffectsRender</c> is the obvious tool here and it is the wrong one. It calls
+    /// <c>Visual.InvalidateVisual()</c>, which is non-virtual, and <see cref="OpenGlControlBase"/>
+    /// hides rather than overrides it — so the base call marks the compositor dirty, the existing
+    /// framebuffer is blitted again unchanged, and <see cref="OnOpenGlRender"/> is never reached.
+    /// The hero then renders once and freezes on whatever game happened to be focused first, which
+    /// looks exactly like the shell and cover being hard-coded. Only
+    /// <see cref="OpenGlControlBase.RequestNextFrameRendering"/> schedules a real GL frame.
+    /// </remarks>
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+
+        if (change.Property == ShellProperty
+            || change.Property == CoverProperty
+            || change.Property == AccentProperty
+            || change.Property == YawProperty
+            || change.Property == PitchProperty
+            || change.Property == BoundsProperty)
+        {
+            RequestNextFrameRendering();
+        }
+    }
 
     /// <summary>Which medium to draw; null draws nothing.</summary>
     public MediaShell? Shell

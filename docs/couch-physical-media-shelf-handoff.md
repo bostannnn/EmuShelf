@@ -84,7 +84,21 @@ on macOS), D-pad/arrow **Up** to the View mode row, **Right** to the Shelf tile.
 persisted layout: in the app's settings JSON set `LibraryView.GamepadLayout` to `"Shelf"` (the
 file is the portable `Settings/settings.json` beside the exe, or the per-user app-data copy).
 
-## Gotchas learned (mostly macOS-only — why the user moved to Windows)
+## Gotchas learned
+
+- **`AffectsRender` does not drive an `OpenGlControlBase`.** This one shipped as a bug and is worth
+  knowing before touching `Media3DControl`. `AffectsRender` ends up calling
+  `Visual.InvalidateVisual()`, which is **non-virtual**, and `OpenGlControlBase` *hides* it with
+  `new` rather than overriding it. So the base call marks the compositor dirty, the previous
+  framebuffer is blitted again unchanged, and `OnOpenGlRender` is never reached. The symptom is
+  nasty precisely because it does not look like a redraw bug: the hero renders once for whichever
+  game happened to be focused first and then freezes, so every console shows the same shell with
+  the same cover, exactly as if the shell and art were hard-coded. Only
+  `RequestNextFrameRendering()` schedules a real GL frame — `Media3DControl` now calls it from an
+  `OnPropertyChanged` override.
+
+### Older notes
+ (mostly macOS-only — why the user moved to Windows)
 
 - **macOS dual-copy trap (not a Windows problem):** an installed `EmuShelf.app` and the worktree
   build share bundle id `com.emushelf.app`; `open_application` fronts the installed one, and

@@ -3012,7 +3012,7 @@
                          turned on its axis sweeps wider than it stands; the renderer frames itself
                          inside whatever box it is given. -->
                     <controls:Media3DControl x:Name="GamepadShelfHero"
-                                             Width="470" Height="350"
+                                             Width="560" Height="360"
                                              HorizontalAlignment="Center" VerticalAlignment="Center"
                                              IsVisible="{Binding FocusedGame.ShelfUses3DHero}"
                                              Shell="{Binding FocusedGame.ShelfMediaShell}"

@@ -30,7 +30,10 @@ public sealed class MediaShellRenderer : IDisposable
     /// on the near corner reads as a toy; ~22 degrees keeps the case's edges close to parallel.</summary>
     private const float FieldOfViewDegrees = 22f;
 
-    private const float FramingMargin = 1.12f;
+    // Just enough headroom that a shell turned to its widest diagonal still clears the control
+    // edge. Measured: every shell lands ~336px tall in the shelf's 560x360 box, against the 300px
+    // of the flat cover it replaces, so the focused item reads as the largest thing on screen.
+    private const float FramingMargin = 1.07f;
 
     private readonly GL _gl;
     private readonly GlslDialect _dialect;
