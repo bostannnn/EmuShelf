@@ -5945,3 +5945,34 @@ secondary kinds (box back, box spine, cartridge/disc, cartridge/disc texture). T
 ScreenScraper, especially for arcade, so counting them made a full score unreachable and left a
 well-scraped game reading as perpetually incomplete; they remain standalone presence columns instead.
 Video is excluded from the list view entirely (opt-in scrape, no player, no presence column).
+## 2026-08-10 — Gamepad Settings shows Themes in Desktop's slot (before About), not after it
+
+The 2026-08-09 "one section structure" work left a real ordering bug: it excluded Themes from the
+gamepad `Sections` list (correct — Themes is a gallery page, not projected rows) but then re-attached
+it as a page **after** the projected sections. Because Desktop always makes About its last section,
+"after the projected sections" meant *after About*, so the couch rail and LB/RB paging read
+`… Texture Packs, About, Themes` while Desktop reads `… Texture Packs, Themes, About`. The stated goal
+of that commit — both surfaces present the same sections in the same order — was met for every entry
+except the one it special-cased. No test caught it because the only navigation test asserted the buggy
+"paging Down lands on Themes last" behavior.
+
+Fix: the gamepad now derives an ordered **page list** (`GamepadSettingsViewModel.Pages`) that splices
+Themes back into Desktop's slot — immediately before About — instead of appending it. `Pages` is
+`Sections` when there are no theme choices, otherwise `Sections` with `Themes` inserted right before
+`About` (falling back to the end if About is somehow absent, though Desktop always emits it last).
+`MoveSection`/`CurrentPageIndex`/`SelectPage` page over `Pages`; `Sections` keeps its narrower meaning
+(the projected-row sections) for row building and the `SelectSection` guard. The hardcoded rail markup
+in `MainWindow.axaml` was reordered to match: the Themes button is now the second-to-last row (Row 7,
+shown only when `ShowThemes`) and About the always-visible last row (Row 8). Because Themes is hidden
+when there are no theme choices, its now-collapsed Auto row leaves About in the same visual position, so
+the gamepad-settings visual snapshots (none of which seed theme choices) are unaffected.
+
+Themes staying a dedicated gallery page rather than a projected `Sections` entry is unchanged from the
+earlier appearance decision — only *where* that page sits in the navigation order was wrong.
+
+The same audit also aligned one label the earlier commit left divergent: the gamepad Emulators section
+projected the PS3 sync row as "Sync PlayStation 3 library" while Desktop's PS3 card button (same
+`SyncFieldId`) reads "Sync RPCS3 library". Both were internally consistent — each surface's own header
+supplies the missing half — but a control shared by field id should read the same on both, so the
+gamepad row now uses Desktop's wording; the gamepad section's own "PlayStation 3" header still supplies
+the platform.

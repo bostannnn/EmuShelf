@@ -54,6 +54,42 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void SectionPaging_PlacesThemesBeforeAbout_MirroringDesktopOrder()
+    {
+        var choices = ThemeCatalog.All.Select(theme => new ThemeChoiceViewModel(theme)).ToArray();
+        using var viewModel = CreateGamepadSettings(
+            retroAchievements: CreateRetroAchievementsContext(),
+            screenScraper: CreateScreenScraperContext(),
+            cloudSaves: CreateCloudContext(),
+            texturePacks: CreateTextureContext(),
+            themeChoices: choices);
+
+        SettingsSection CurrentPage() =>
+            viewModel.IsThemesSection ? SettingsSection.Themes : viewModel.SelectedSection;
+
+        // Page right (RB) from the first section to the last, recording each page. The Themes gallery is
+        // its own page, but it must occupy Desktop's slot — right before About, which stays last — so
+        // both surfaces read top-to-bottom identically. RB clamps at the final page.
+        var order = new List<SettingsSection> { CurrentPage() };
+        for (var step = 0; step < 16; step++)
+        {
+            viewModel.Dispatch(GamepadAction.NextPlatform);
+            var page = CurrentPage();
+            if (page == order[^1])
+                break;
+            order.Add(page);
+        }
+
+        Assert.Equal(
+            [
+                SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements,
+                SettingsSection.ScreenScraper, SettingsSection.Saves, SettingsSection.TexturePacks,
+                SettingsSection.Themes, SettingsSection.About,
+            ],
+            order);
+    }
+
+    [AvaloniaFact]
     public async Task TextAndSecretEntry_CommitToExistingModelWithoutExposingTheSecret()
     {
         var keyboard = new RecordingOnScreenKeyboardService();
@@ -445,9 +481,11 @@ public sealed class GamepadSettingsViewModelTests
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
-        AppUpdateCoordinator? updates = null) => new(
+        AppUpdateCoordinator? updates = null,
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null) => new(
             CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks, screenScraper, updates),
-            onScreenKeyboard);
+            onScreenKeyboard,
+            themeChoices);
 
     private EmulatorSettingsViewModel CreateSettings(
         LibraryMaintenanceActions? maintenance = null,
