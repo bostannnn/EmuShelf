@@ -301,8 +301,14 @@ public sealed class TexturePackRegressionTests : IDisposable
     {
         // The Steam Deck regression: Dolphin's Flatpak keeps config under the sandbox's XDG_CONFIG_HOME
         // (config/dolphin-emu), a *different* tree from data/dolphin-emu — so appending "Config" to the
-        // data user directory pointed at nothing. The Flatpak branch is a single candidate, so redirecting
-        // HOME/USERPROFILE (SpecialFolder.UserProfile) makes this deterministic on every platform.
+        // data user directory pointed at nothing. The Flatpak branch resolves against the home directory
+        // (SpecialFolder.UserProfile). On Unix that follows $HOME, so the redirect below makes this
+        // deterministic; on Windows SpecialFolder.UserProfile reads the real profile from the OS and
+        // ignores %USERPROFILE%, so the redirect can't take — and Flatpak is a Linux-only path anyway.
+        Assert.SkipWhen(
+            OperatingSystem.IsWindows(),
+            "SpecialFolder.UserProfile ignores the %USERPROFILE% override on Windows; Flatpak is Linux-only.");
+
         var home = Directory.CreateTempSubdirectory("emushelf-dolphin-flatpak").FullName;
         var config = Path.Combine(home, ".var", "app", "org.DolphinEmu.dolphin-emu", "config", "dolphin-emu");
         var dataConfig = Path.Combine(home, ".var", "app", "org.DolphinEmu.dolphin-emu", "data", "dolphin-emu", "Config");
