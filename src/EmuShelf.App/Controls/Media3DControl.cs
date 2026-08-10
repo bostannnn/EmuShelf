@@ -49,8 +49,17 @@ public sealed class Media3DControl : OpenGlControlBase
     private IImage? _uploadedCover;
     private Color _uploadedAccent;
 
-    /// <summary>Raised on the UI thread when the GPU path is unavailable for this session.</summary>
-    public event EventHandler? InitializationFailed;
+    /// <summary>
+    /// Raised on the UI thread when the GPU path is unavailable for this session, carrying the
+    /// failure so it can be logged.
+    /// </summary>
+    /// <remarks>
+    /// The exception is the whole diagnosis. A driver that will not compile the shaders is the most
+    /// likely way this feature dies on a machine we cannot test on, and <see cref="GlProgram"/>
+    /// throws with the driver's own info log plus the numbered source. Swallowing that leaves a
+    /// silent fallback to flat covers and nothing in Logs/ to explain it.
+    /// </remarks>
+    public event EventHandler<Exception>? InitializationFailed;
 
     /// <summary>
     /// Asks for a fresh GL frame whenever what the hero should show changes.
@@ -132,13 +141,13 @@ public sealed class Media3DControl : OpenGlControlBase
             _uploadedAccent = Accent;
             UploadCover();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             // A missing GPU path is a supported outcome, not a crash: the shelf still works with
-            // flat covers, so swallow it and tell the library to fall back.
+            // flat covers, so fall back rather than bringing the app down — but report why.
             _renderer = null;
             _gl = null;
-            Fail();
+            Fail(exception);
         }
     }
 
@@ -169,11 +178,11 @@ public sealed class Media3DControl : OpenGlControlBase
 
             _renderer.Render(shell, (uint)fb, width, height, (float)Yaw, (float)Pitch);
         }
-        catch (Exception)
+        catch (Exception exception)
         {
             _renderer.Dispose();
             _renderer = null;
-            Fail();
+            Fail(exception);
         }
     }
 
@@ -194,7 +203,7 @@ public sealed class Media3DControl : OpenGlControlBase
         _uploadedCover = null;
     }
 
-    private void Fail()
+    private void Fail(Exception exception)
     {
         if (_failed)
         {
@@ -202,7 +211,7 @@ public sealed class Media3DControl : OpenGlControlBase
         }
 
         _failed = true;
-        InitializationFailed?.Invoke(this, EventArgs.Empty);
+        InitializationFailed?.Invoke(this, exception);
     }
 
     private void UploadCover()

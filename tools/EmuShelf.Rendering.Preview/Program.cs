@@ -25,6 +25,8 @@ Directory.CreateDirectory(outputDirectory);
     ("turned", -1.05f, -0.06f),
     ("spine", -1.48f, 0f),
     ("back", MathF.PI, 0f),
+    ("top-edge", -0.3f, -0.85f),
+    ("bottom-edge", -0.3f, 0.85f),
 ];
 
 Console.WriteLine("Creating a surfaceless EGL context...");
@@ -45,7 +47,21 @@ var stopwatch = Stopwatch.StartNew();
 using var renderer = MediaShellRenderer.Create(gl, GlslDialect.Desktop, 3, 3, accent);
 Console.WriteLine($"  renderer ready in {stopwatch.ElapsedMilliseconds} ms (includes baking the IBL)");
 
-renderer.SetCoverArt(TestCover.Create());
+// --no-cover exercises the real fallback for a game with no scraped art, and is the check that
+// no retail artwork baked into the authored shells can show through.
+if (!args.Contains("--no-cover"))
+{
+    renderer.SetCoverArt(TestCover.Create());
+}
+
+// Canonical proportions, printed so a shell that loads rotated or mis-scaled is caught here
+// rather than by squinting at a render.
+foreach (var candidate in MediaShellCatalog.All)
+{
+    var size = MediaShellCatalog.Load(candidate).Size;
+    Console.WriteLine(
+        $"  {Slug(candidate),-16} W/H {size.X / size.Y:F3}  D/H {size.Z / size.Y:F3}");
+}
 
 var sheetColumns = poses.Length;
 var shells = MediaShellCatalog.All.ToArray();

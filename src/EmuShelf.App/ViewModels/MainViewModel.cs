@@ -167,12 +167,19 @@ public partial class MainViewModel : ViewModelBase
     /// Games realized later pick this up through <see cref="ApplyShelfHeroSupport"/>, so a scope
     /// switch after the failure does not quietly re-enable a hero that cannot render.
     /// </remarks>
-    public void DisableShelfHero()
+    /// <param name="reason">Why the GPU path is unavailable, for the log. A silent revert to flat
+    /// covers is indistinguishable from the feature never having been built, and on a machine we
+    /// cannot test on this exception — a driver's shader info log, most likely — is the whole
+    /// diagnosis.</param>
+    public void DisableShelfHero(Exception? reason = null)
     {
         if (!_shelfHeroSupported)
         {
             return;
         }
+
+        _logger.Warning(
+            "The couch shelf's 3D hero could not start; falling back to flat covers.", reason);
 
         _shelfHeroSupported = false;
         foreach (var game in Games)
