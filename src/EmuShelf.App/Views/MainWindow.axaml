@@ -3018,7 +3018,8 @@
                                              Shell="{Binding FocusedGame.ShelfMediaShell}"
                                              Cover="{Binding FocusedGame.CoverImage}"
                                              Accent="{Binding FocusedGame.ShelfAccent}"
-                                             Yaw="-0.42" Pitch="-0.10"
+                                             Yaw="{Binding ShelfHeroYaw}"
+                                             Pitch="{Binding ShelfHeroPitch}"
                                              InitializationFailed="OnGamepadShelfHeroFailed" />
                     </Panel>
 

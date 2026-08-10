@@ -202,8 +202,21 @@ bundled Steam Input template already carry the right stick and R3:
         cartridge's landscape label is filled by cropping the portrait box scan — the box art is
         the wrong asset for a cartridge, and `support-2D` is the right one — and a case's back and
         spine take a flat accent tint rather than their real printing.
-- [ ] **Phase 3 — Right-stick wiring.** `GamepadReading` fields → `MediaRotationModel` →
-      the control; R3 = recenter; recenter on focus change. *Ships R3 rotation.*
+- [ ] **UNVERIFIED — the hero has never been seen running.** Blocking sign-off on Phases 2 and 3.
+      Everything so far was built against a headless surfaceless-EGL context on llvmpipe, plus the
+      preview tool; no frame has been watched in the actual app on real hardware, and one bug
+      (frozen first frame) already reached a build because of that. See
+      [the handoff's verification plan](couch-physical-media-shelf-handoff.md#verifying-the-hero-on-real-hardware)
+      for what to look at and, for each symptom, the hypothesis to test first.
+- [x] **Phase 3 — Right-stick wiring.** Landed 2026-08-10, but **unverified on hardware** — see the
+      blocking item above. `GamepadReading` gained defaulted `RightStickX/Y` and `GamepadButtons`
+      gained `RightStick`; `SdlGamepadReader` reads axes 2/3 and button 8;
+      `MediaRotationModel` (pure, 15 unit tests) integrates them into yaw/pitch;
+      `MainViewModel.ApplyRightStickRotation` drives the bound pose and is gated to the shelf.
+      R3 and any change of focus recentre.
+      **Deviation from §3:** recentre returns to a slight three-quarter pose, not face-on. At yaw 0
+      a keep case is a flat rectangle and reads as the flat cover it just replaced — the thickness,
+      spine and highlight sweep all vanish. `MediaRotationModel.RestYaw/RestPitch` hold the pose.
 - [ ] **Phase 4 — Polish.** Reduce-motion setting, spine title, shading/shadow tuning,
       more media types (GameCube/Wii disc-case reuse the PS2 archetype; PS1 jewel case;
       handheld carts reuse the SNES archetype).

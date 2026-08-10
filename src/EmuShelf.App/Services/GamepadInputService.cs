@@ -22,6 +22,7 @@ public sealed class GamepadInputService : IDisposable
     private readonly GamepadNavigationController _navigation = new();
     private readonly DispatcherTimer _timer;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private long? _previousTickMs;
     private bool _loggedAvailability;
     private bool _disposed;
 
@@ -63,14 +64,26 @@ public sealed class GamepadInputService : IDisposable
         if (_viewModel.IsGamepadInputSuspended)
         {
             _navigation.Reset();
+            // Drop the timebase too: resuming after a long emulator session would otherwise hand
+            // the rotation model one enormous dt and spin the hero on the first frame back.
+            _previousTickMs = null;
             return;
         }
+
+        var now = _clock.ElapsedMilliseconds;
+        var deltaMs = _previousTickMs is { } previous ? now - previous : 0L;
+        _previousTickMs = now;
 
         var reading = _reader.Read();
         LogAvailabilityOnce();
 
-        foreach (var action in _navigation.Poll(reading, _clock.ElapsedMilliseconds))
+        foreach (var action in _navigation.Poll(reading, now))
             _viewModel.DispatchGamepadAction(action);
+
+        // Analog rotation runs beside the discrete routing rather than through it: the navigation
+        // controller exists to turn continuous input into repeated discrete edges, which is the
+        // opposite of what a rotation wants.
+        _viewModel.ApplyRightStickRotation(reading.RightStickX, reading.RightStickY, deltaMs);
     }
 
     private void LogAvailabilityOnce()

@@ -2071,6 +2071,44 @@ public partial class MainViewModel : ViewModelBase
     /// handler), so both input paths behave identically. Returns whether the action was consumed,
     /// letting the key handler mark the event handled.
     /// </summary>
+    private readonly MediaRotationModel _shelfHeroRotation = new();
+
+    /// <summary>The shelf hero's yaw, in radians, bound straight to the 3D control.</summary>
+    public double ShelfHeroYaw => _shelfHeroRotation.Yaw;
+
+    /// <summary>The shelf hero's pitch, in radians.</summary>
+    public double ShelfHeroPitch => _shelfHeroRotation.Pitch;
+
+    /// <summary>
+    /// Advances the shelf hero's pose from one tick of right-stick input.
+    /// </summary>
+    /// <remarks>
+    /// Gated on the hero actually being on screen, so the model neither accumulates rotation the
+    /// player cannot see nor asks for a redraw while the shelf is showing flat covers. Returns
+    /// without notifying when the stick is centred, which is the common case every tick.
+    /// </remarks>
+    public void ApplyRightStickRotation(float rightStickX, float rightStickY, double deltaMilliseconds)
+    {
+        if (!IsGamepadMode || IsGamepadInputSuspended || !ShowGamepadShelf || HasGamepadOverlay)
+            return;
+
+        if (_shelfHeroRotation.Update(rightStickX, rightStickY, deltaMilliseconds))
+            NotifyShelfHeroPose();
+    }
+
+    /// <summary>Returns the hero to face-on. Driven by R3 and by any change of focus.</summary>
+    public void RecentreShelfHero()
+    {
+        if (_shelfHeroRotation.Recentre())
+            NotifyShelfHeroPose();
+    }
+
+    private void NotifyShelfHeroPose()
+    {
+        OnPropertyChanged(nameof(ShelfHeroYaw));
+        OnPropertyChanged(nameof(ShelfHeroPitch));
+    }
+
     public bool DispatchGamepadAction(GamepadAction action)
     {
         if (!IsGamepadMode)
@@ -2083,6 +2121,14 @@ public partial class MainViewModel : ViewModelBase
         // Desktop-mode switch.
         if (IsGamepadInputSuspended)
             return true;
+
+        // Recentring is about the hero, not about whatever pane has focus, so it is answered here
+        // rather than in each view's routing. Harmless when the shelf is not showing.
+        if (action == GamepadAction.ResetRotation)
+        {
+            RecentreShelfHero();
+            return true;
+        }
 
         if (IsGamepadSettingsOpen && GamepadSettings is { } settings)
             return settings.Dispatch(action);
@@ -2774,6 +2820,11 @@ public partial class MainViewModel : ViewModelBase
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
             PrefetchCoversAroundFocus(newValue);
         }
+
+        // A new game arrives face-on. Carrying the previous game's angle over would present the
+        // next cover already turned away, which reads as the shelf being broken rather than as
+        // the pose being preserved.
+        RecentreShelfHero();
 
         // Picking a new game re-arms Play, so A always launches the freshly focused game by default.
         IsSpotlightAchievementsFocused = false;

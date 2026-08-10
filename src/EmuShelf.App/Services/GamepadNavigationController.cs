@@ -21,6 +21,9 @@ public sealed class GamepadNavigationController
         (GamepadButtons.Start, GamepadAction.Menu),
         (GamepadButtons.LeftShoulder, GamepadAction.PreviousPlatform),
         (GamepadButtons.RightShoulder, GamepadAction.NextPlatform),
+        // Edge-triggered like every other button, so holding R3 recentres once rather than
+        // fighting the stick every tick.
+        (GamepadButtons.RightStick, GamepadAction.ResetRotation),
     ];
 
     private readonly long _initialRepeatDelayMs;

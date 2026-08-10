@@ -84,6 +84,58 @@ on macOS), D-pad/arrow **Up** to the View mode row, **Right** to the Shelf tile.
 persisted layout: in the app's settings JSON set `LibraryView.GamepadLayout` to `"Shelf"` (the
 file is the portable `Settings/settings.json` beside the exe, or the per-user app-data copy).
 
+## Verifying the hero on real hardware
+
+**Nothing below has been observed running.** Phases 2 and 3 were built against a headless
+surfaceless-EGL context on llvmpipe plus `tools/EmuShelf.Rendering.Preview`. That harness proves
+the geometry, the shading and the framing; it cannot prove anything about Avalonia's GL host, ANGLE,
+or a real controller. One bug — the hero freezing on its first frame — shipped precisely because of
+that gap, so treat this list as outstanding work rather than a formality.
+
+Run `EmuShelf.exe --gamepad-ui`, open the Shelf layout, and walk the checks in order. Each failure
+lists the hypothesis to test **first**, chosen because it is both the most likely cause and the
+cheapest to falsify.
+
+| # | Check | Expected |
+|---|-------|----------|
+| 1 | Focus a SNES, a GBA and a PS2 game in turn | Three *different* shells, each with that game's own cover |
+| 2 | Move along one system's shelf | Cover changes on every step, no lag or stale frame |
+| 3 | Move between systems | Studio tint shifts with the accent |
+| 4 | Look at the silhouette against the backdrop | Clean edge, no dark halo, no stair-stepping |
+| 5 | Focus a game with no cover | Flat cover, no shell |
+| 6 | Push the right stick | Smooth rotation, no shelf scrolling |
+| 7 | Press R3, then change focus | Snaps back to front in both cases |
+| 8 | Watch a while, then check `Logs/` | No repeated GL errors, no runaway CPU |
+
+**If a check fails, test this first:**
+
+- **1 or 2 — one shell/cover for everything, or a stale frame.** The frozen-frame bug is back.
+  Hypothesis: something is invalidating rather than requesting a frame. Put a log line at the top of
+  `Media3DControl.OnOpenGlRender` and count frames while moving focus. No new frames means the
+  `RequestNextFrameRendering()` path is not firing — check whether `OnPropertyChanged` sees the
+  property at all, since a binding that never updates and a frame that never redraws look identical
+  from the outside. Frames arriving but the image unchanged points instead at
+  `MediaShellRenderer.SetCoverArt` or the `ReferenceEquals(Cover, _uploadedCover)` guard.
+- **1 — right cover, wrong shell.** Hypothesis: `MediaShellMap.ForSystem` missed the id. Check the
+  system id spelling against `KnownSystems`; only `snes`, `gba`, `playstation2`, `playstation3`,
+  `gamecube` and `wii` map to a shell today, and everything else is *meant* to stay flat.
+- **Nothing renders at all, and the shelf silently falls back to flat covers.** The GPU path
+  refused to come up and `InitializationFailed` fired. Hypothesis, on Windows: ANGLE rejected the
+  shaders as GLES 3.0. `GlProgram` throws with the driver's log and the numbered source, so log the
+  exception rather than swallowing it, and check the `#version 300 es` header and the precision
+  qualifiers first. On macOS, suspect the core profile being below 3.3 and therefore GLSL 150.
+- **4 — a dark fringe around the shell.** Hypothesis: Avalonia composites this surface as straight
+  alpha, not premultiplied. The renderer resolves a premultiplied buffer, which is correct for
+  filtering but wrong if the host expects straight. Un-premultiply in the resolve to confirm.
+- **6 — the shelf scrolls while rotating.** Hypothesis: the right stick is reaching
+  `GamepadNavigationController.StickDirections`. It must read the left stick only.
+- **6 — rotation drifts, or is jerky at low deflection.** Hypothesis: `dt`. `MediaRotationModel`
+  integrates real elapsed milliseconds; if the caller passes a fixed tick instead, speed follows
+  frame rate. Its unit tests cover the maths, so suspect the wiring, not the model.
+- **8 — CPU spins with nothing moving.** Hypothesis: a frame is being requested every tick.
+  `ApplyRightStickRotation` must return early and request no frame when the stick is inside the
+  deadzone and the pose has not changed.
+
 ## Gotchas learned
 
 - **`AffectsRender` does not drive an `OpenGlControlBase`.** This one shipped as a bug and is worth

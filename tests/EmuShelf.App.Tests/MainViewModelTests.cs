@@ -4176,4 +4176,96 @@ public class MainViewModelTests : IDisposable
             }
         }
     }
+
+    // ── Shelf hero rotation (Phase 3) ─────────────────────────────────────────────────────────
+    // The hero is a GPU surface, so these assert the *wiring* the last bug lived in — whether the
+    // pose actually advances, and whether it is gated to the one view that shows it.
+
+    private MainViewModel ShelfViewModel()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 4).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Rot {index + 1}.cue",
+                Title = $"Rot {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+        vm.HasGames = true;
+        vm.SelectShelfViewModeCommand.Execute(null);
+        return vm;
+    }
+
+    [AvaloniaFact]
+    public void RightStick_TurnsTheShelfHero_AndRaisesTheBoundPose()
+    {
+        var vm = ShelfViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        vm.ApplyRightStickRotation(1f, 0f, 100d);
+
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        // The control only redraws off these notifications; without them the hero freezes, which
+        // is exactly how the first cut of this shipped.
+        Assert.Contains(nameof(MainViewModel.ShelfHeroYaw), raised);
+        Assert.Contains(nameof(MainViewModel.ShelfHeroPitch), raised);
+    }
+
+    [AvaloniaFact]
+    public void RightStick_IsIgnoredOutsideTheShelf()
+    {
+        var vm = ShelfViewModel();
+        vm.SelectGridViewModeCommand.Execute(null);
+
+        vm.ApplyRightStickRotation(1f, 0f, 100d);
+
+        Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+    }
+
+    [AvaloniaFact]
+    public void RightStick_AtRest_RaisesNothing()
+    {
+        var vm = ShelfViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        // A centred stick ticks constantly; requesting a frame each time would spin the CPU.
+        vm.ApplyRightStickRotation(0f, 0f, 100d);
+
+        Assert.DoesNotContain(nameof(MainViewModel.ShelfHeroYaw), raised);
+    }
+
+    [AvaloniaFact]
+    public void ChangingTheFocusedGame_ReturnsTheHeroToRest()
+    {
+        var vm = ShelfViewModel();
+        vm.ApplyRightStickRotation(1f, 1f, 100d);
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+
+        vm.FocusedGame = vm.Games[2];
+
+        // A new cover must arrive face-on rather than inheriting the previous game's angle.
+        Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        Assert.Equal(MediaRotationModel.RestPitch, vm.ShelfHeroPitch);
+    }
+
+    [AvaloniaFact]
+    public void ResetRotationAction_ReturnsTheHeroToRest()
+    {
+        var vm = ShelfViewModel();
+        vm.ApplyRightStickRotation(1f, 1f, 100d);
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.ResetRotation));
+
+        Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+    }
 }
