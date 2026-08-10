@@ -180,17 +180,17 @@
                                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
                                 Background="{DynamicResource EmuCoverWellBrush}">
                             <Panel>
-                                <TextBlock Text="No box art" HorizontalAlignment="Center"
+                                <TextBlock Text="{Binding CoverArtEmptyText}" HorizontalAlignment="Center"
                                            VerticalAlignment="Center" FontSize="12"
-                                           IsVisible="{Binding BoxArtPreview, Converter={x:Static ObjectConverters.IsNull}}"
+                                           IsVisible="{Binding CoverArtPreview, Converter={x:Static ObjectConverters.IsNull}}"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                <Image Source="{Binding BoxArtPreview}" Stretch="Uniform" />
+                                <Image Source="{Binding CoverArtPreview}" Stretch="Uniform" />
                             </Panel>
                         </Border>
-                        <CheckBox Content="Box art" HorizontalAlignment="Center"
-                                  IsChecked="{Binding BoxArtRow.IsSelected}"
-                                  IsEnabled="{Binding BoxArtRow.CanApply}"
-                                  IsVisible="{Binding BoxArtRow, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                        <CheckBox Content="{Binding CoverArtLabel}" HorizontalAlignment="Center"
+                                  IsChecked="{Binding CoverArtRow.IsSelected}"
+                                  IsEnabled="{Binding CoverArtRow.CanApply}"
+                                  IsVisible="{Binding CoverArtRow, Converter={x:Static ObjectConverters.IsNotNull}}" />
                     </StackPanel>
                 </Grid>
             </Grid>

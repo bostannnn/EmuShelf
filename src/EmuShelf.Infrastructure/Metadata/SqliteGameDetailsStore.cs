@@ -64,6 +64,21 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
                     case GameMediaKind.Fanart:
                         accumulator.HasFanart = true;
                         break;
+                    case GameMediaKind.TitleScreen:
+                        accumulator.HasTitleScreen = true;
+                        break;
+                    case GameMediaKind.BoxBack:
+                        accumulator.HasBoxBack = true;
+                        break;
+                    case GameMediaKind.BoxSpine:
+                        accumulator.HasBoxSpine = true;
+                        break;
+                    case GameMediaKind.PhysicalMedia:
+                        accumulator.HasPhysicalMedia = true;
+                        break;
+                    case GameMediaKind.PhysicalMediaTexture:
+                        accumulator.HasPhysicalMediaTexture = true;
+                        break;
                 }
             }
         }
@@ -614,6 +629,11 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         public bool HasScreenshot;
         public bool HasWheel;
         public bool HasFanart;
+        public bool HasTitleScreen;
+        public bool HasBoxBack;
+        public bool HasBoxSpine;
+        public bool HasPhysicalMedia;
+        public bool HasPhysicalMediaTexture;
         public bool HasDescription;
         public bool HasProviderMatch;
         public string? Rating;
@@ -635,6 +655,11 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
             ReleaseDate,
             Players,
             Developer,
-            Publisher);
+            Publisher,
+            HasTitleScreen,
+            HasBoxBack,
+            HasBoxSpine,
+            HasPhysicalMedia,
+            HasPhysicalMediaTexture);
     }
 }

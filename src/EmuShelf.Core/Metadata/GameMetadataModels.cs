@@ -15,10 +15,19 @@ public sealed record GameCatalogMatch(
     string CanonicalTitle,
     string? Region);
 
+/// <summary>Whether a remote media candidate is a still image or a video. This selects the
+/// downloader's content-type allow-list, size cap, and file-signature check.</summary>
+public enum RemoteMediaKind
+{
+    Image,
+    Video,
+}
+
 public sealed record ArtworkCandidate(
     string ProviderId,
     Uri SourceUri,
-    string FileExtension);
+    string FileExtension,
+    RemoteMediaKind MediaKind = RemoteMediaKind.Image);
 
 public sealed record DownloadedArtwork(
     ArtworkCandidate Candidate,

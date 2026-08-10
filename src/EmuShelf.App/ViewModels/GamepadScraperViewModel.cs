@@ -13,7 +13,7 @@ public enum GamepadScraperTargetKind
     None,
     Field,
     Media,
-    BoxArt,
+    Cover,
     RefreshToggle,
     Apply,
     Username,
@@ -156,9 +156,9 @@ public sealed partial class GamepadScraperViewModel : ObservableObject, IDisposa
                 foreach (var field in Scraper.Fields)
                     _targets.Add(ToggleTarget(GamepadScraperTargetKind.Field, field, field.CanApply,
                         () => field.IsSelected = !field.IsSelected, value => field.IsFocused = value));
-                if (Scraper.BoxArtRow is { } boxArt)
-                    _targets.Add(ToggleTarget(GamepadScraperTargetKind.BoxArt, boxArt, boxArt.CanApply,
-                        () => boxArt.IsSelected = !boxArt.IsSelected, value => boxArt.IsFocused = value));
+                if (Scraper.CoverArtRow is { } coverArt)
+                    _targets.Add(ToggleTarget(GamepadScraperTargetKind.Cover, coverArt, coverArt.CanApply,
+                        () => coverArt.IsSelected = !coverArt.IsSelected, value => coverArt.IsFocused = value));
                 foreach (var media in Scraper.OtherMedia)
                     _targets.Add(ToggleTarget(GamepadScraperTargetKind.Media, media, media.CanApply,
                         () => media.IsSelected = !media.IsSelected, value => media.IsFocused = value));

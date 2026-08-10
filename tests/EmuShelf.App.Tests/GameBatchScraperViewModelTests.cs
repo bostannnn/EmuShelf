@@ -18,7 +18,7 @@ public class GameBatchScraperViewModelTests
         Assert.Equal(GameBatchScraperState.Done, vm.State);
         Assert.Equal(GameMetadataApplyMode.FillMissing, batch.Mode);
         Assert.Null(batch.IncludeFields); // metadata on -> all fields
-        Assert.Equal(4, batch.IncludeMedia!.Count);
+        Assert.Equal(9, batch.IncludeMedia!.Count);
         Assert.True(vm.AppliedChanges);
         Assert.Contains("3 scraped", vm.StatusMessage);
     }
@@ -33,6 +33,11 @@ public class GameBatchScraperViewModelTests
             IncludeScreenshot = false,
             IncludeWheel = false,
             IncludeFanart = false,
+            IncludeTitleScreen = false,
+            IncludeBoxBack = false,
+            IncludeBoxSpine = false,
+            IncludePhysicalMedia = false,
+            IncludePhysicalMediaTexture = false,
             RefreshOwnedValues = true,
         };
 

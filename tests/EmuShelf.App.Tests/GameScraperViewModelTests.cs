@@ -50,12 +50,37 @@ public class GameScraperViewModelTests
 
         await vm.LoadAsync();
 
-        Assert.NotNull(vm.BoxArtRow);
-        Assert.Equal(GameMediaKind.BoxFront, vm.BoxArtRow!.Kind);
+        Assert.NotNull(vm.CoverArtRow);
+        Assert.Equal(GameMediaKind.BoxFront, vm.CoverArtRow!.Kind);
+        Assert.Equal("Box art", vm.CoverArtLabel);
         Assert.Single(vm.OtherMedia);
         Assert.Equal(GameMediaKind.Screenshot, vm.OtherMedia[0].Kind);
         // Media still holds both, so box art is applied alongside the rest.
         Assert.Equal(2, vm.Media.Count);
+    }
+
+    [Fact]
+    public async Task Arcade_UsesTitleScreenAsTheCoverRow_NotBoxArt()
+    {
+        var vm = CreateViewModel(
+            new FakePreviewService(SuccessPreview(
+                EmptyDetails(),
+                [],
+                new Dictionary<GameMediaKind, ScreenScraperMediaCandidate>
+                {
+                    [GameMediaKind.BoxFront] = Candidate("box"),
+                    [GameMediaKind.TitleScreen] = Candidate("title"),
+                },
+                coverKind: GameMediaKind.TitleScreen)),
+            new FakeApplyService());
+
+        await vm.LoadAsync();
+
+        // Arcade projects the title screen to the cover, so it — not box art — owns the cover row.
+        Assert.NotNull(vm.CoverArtRow);
+        Assert.Equal(GameMediaKind.TitleScreen, vm.CoverArtRow!.Kind);
+        Assert.Equal("Title screen", vm.CoverArtLabel);
+        Assert.Contains(vm.OtherMedia, row => row.Kind == GameMediaKind.BoxFront);
     }
 
     [Fact]
@@ -357,7 +382,8 @@ public class GameScraperViewModelTests
     private static ScreenScraperPreviewResult SuccessPreview(
         GameDetails existing,
         IReadOnlyList<GameMetadataValue> metadata,
-        IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> media)
+        IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> media,
+        GameMediaKind coverKind = GameMediaKind.BoxFront)
     {
         var match = new GameProviderMatch(
             1, ScreenScraperProvider.Id, "58", 1, "100", "200",
@@ -365,7 +391,8 @@ public class GameScraperViewModelTests
         var preview = new ScreenScraperGamePreview(
             1, match, metadata, media, existing,
             new ScreenScraperQuota(1, 5, 20000, 0, 2000, null),
-            ScreenScraperFingerprintStatus.Computed);
+            ScreenScraperFingerprintStatus.Computed,
+            coverKind);
         return new ScreenScraperPreviewResult(
             ScreenScraperPreviewStatus.Success, preview, ScreenScraperRequestStatus.Success, null);
     }

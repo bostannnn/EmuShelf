@@ -35,8 +35,13 @@
                                   IsChecked="{Binding IncludeMetadata}" />
                         <CheckBox Content="Box art" IsChecked="{Binding IncludeBoxArt}" />
                         <CheckBox Content="Screenshot" IsChecked="{Binding IncludeScreenshot}" />
+                        <CheckBox Content="Title screen" IsChecked="{Binding IncludeTitleScreen}" />
                         <CheckBox Content="Logo" IsChecked="{Binding IncludeWheel}" />
                         <CheckBox Content="Fan art" IsChecked="{Binding IncludeFanart}" />
+                        <CheckBox Content="Box back" IsChecked="{Binding IncludeBoxBack}" />
+                        <CheckBox Content="Box spine" IsChecked="{Binding IncludeBoxSpine}" />
+                        <CheckBox Content="Cartridge / disc" IsChecked="{Binding IncludePhysicalMedia}" />
+                        <CheckBox Content="Cartridge / disc texture" IsChecked="{Binding IncludePhysicalMediaTexture}" />
 
                         <TextBlock TextWrapping="Wrap" FontSize="12"
                                    Foreground="{DynamicResource EmuTextTertiaryBrush}"

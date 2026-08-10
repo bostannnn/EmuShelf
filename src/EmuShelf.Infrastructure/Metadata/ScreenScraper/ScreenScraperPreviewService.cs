@@ -225,7 +225,8 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         return new ScreenScraperPreviewResult(
             ScreenScraperPreviewStatus.Success,
             new ScreenScraperGamePreview(
-                game.Id, match, metadata, media, existingDetails, quota, fingerprintStatus),
+                game.Id, match, metadata, media, existingDetails, quota, fingerprintStatus,
+                ScreenScraperMetadataMapper.CoverKindFor(game.SystemId)),
             ScreenScraperRequestStatus.Success,
             null);
     }

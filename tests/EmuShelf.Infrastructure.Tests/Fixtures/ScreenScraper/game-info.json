@@ -112,6 +112,56 @@
           "url": "http://media.example.test/insecure.jpg",
           "format": "jpg",
           "region": "us"
+        },
+        {
+          "id": "title",
+          "type": "sstitle",
+          "url": "https://media.example.test/title.png",
+          "format": "png",
+          "region": "us",
+          "langue": "en"
+        },
+        {
+          "id": "box-back",
+          "type": "box-2D-back",
+          "url": "https://media.example.test/box-back.png",
+          "format": "png",
+          "region": "wor"
+        },
+        {
+          "id": "box-side",
+          "type": "box-2D-side",
+          "url": "https://media.example.test/box-side.png",
+          "format": "png",
+          "region": "wor"
+        },
+        {
+          "id": "support",
+          "type": "support-2D",
+          "url": "https://media.example.test/support.png",
+          "format": "png",
+          "region": "wor"
+        },
+        {
+          "id": "support-texture",
+          "type": "support-texture",
+          "url": "https://media.example.test/support-texture.png",
+          "format": "png",
+          "region": "wor"
+        },
+        {
+          "id": "video-normalized",
+          "type": "video-normalized",
+          "url": "https://media.example.test/video-normalized.mp4",
+          "format": "mp4",
+          "region": "wor"
+        },
+        {
+          "id": "video-raw",
+          "type": "video",
+          "url": "https://media.example.test/video.mp4",
+          "format": "mp4",
+          "region": "wor"
         }
       ]
     }

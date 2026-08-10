@@ -190,7 +190,9 @@ public sealed record ScreenScraperGamePreview(
     IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> Media,
     GameDetails ExistingDetails,
     ScreenScraperQuota? Quota,
-    ScreenScraperFingerprintStatus? FingerprintStatus);
+    ScreenScraperFingerprintStatus? FingerprintStatus,
+    // The media kind projected to the cover for this game's system (arcade -> title screen).
+    GameMediaKind CoverKind = GameMediaKind.BoxFront);
 
 public sealed record ScreenScraperPreviewResult(
     ScreenScraperPreviewStatus Status,

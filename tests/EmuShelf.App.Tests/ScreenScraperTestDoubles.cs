@@ -28,7 +28,8 @@ internal static class ScraperFixtures
     public static ScreenScraperPreviewResult SuccessPreview(
         GameDetails existing,
         IReadOnlyList<GameMetadataValue> metadata,
-        IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> media)
+        IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> media,
+        GameMediaKind coverKind = GameMediaKind.BoxFront)
     {
         var match = new GameProviderMatch(
             1, ScreenScraperProvider.Id, "58", 1, "100", "200",
@@ -36,7 +37,8 @@ internal static class ScraperFixtures
         var preview = new ScreenScraperGamePreview(
             1, match, metadata, media, existing,
             new ScreenScraperQuota(1, 5, 20000, 0, 2000, null),
-            ScreenScraperFingerprintStatus.Computed);
+            ScreenScraperFingerprintStatus.Computed,
+            coverKind);
         return new ScreenScraperPreviewResult(
             ScreenScraperPreviewStatus.Success, preview, ScreenScraperRequestStatus.Success, null);
     }

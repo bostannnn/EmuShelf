@@ -44,8 +44,8 @@ public class GamepadScraperOverlayTests
         Assert.False(vm.Scraper.Fields[0].IsSelected);
 
         vm.MoveFocus(1);
-        Assert.Equal(GamepadScraperTargetKind.BoxArt, vm.FocusedKind);
-        Assert.True(vm.Scraper.BoxArtRow!.IsFocused);
+        Assert.Equal(GamepadScraperTargetKind.Cover, vm.FocusedKind);
+        Assert.True(vm.Scraper.CoverArtRow!.IsFocused);
 
         vm.MoveFocus(1);
         Assert.Equal(GamepadScraperTargetKind.Media, vm.FocusedKind);

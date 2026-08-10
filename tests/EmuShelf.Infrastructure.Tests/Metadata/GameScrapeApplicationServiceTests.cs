@@ -67,6 +67,45 @@ public class GameScrapeApplicationServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Apply_ProjectsTitleScreenToCover_WhenCoverKindIsTitleScreen()
+    {
+        var game = AddGame("Arcade.zip");
+
+        var result = await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [],
+            [MediaImport(GameMediaKind.BoxFront, "box"), MediaImport(GameMediaKind.TitleScreen, "title")],
+            GameMetadataApplyMode.FillMissing,
+            GameMediaKind.TitleScreen));
+
+        Assert.True(result.CoverProjected);
+        var details = _details.GetDetails(game.Id);
+
+        // The title screen — not the box front — becomes the cover for a title-screen system (arcade).
+        var title = details.Media.Single(media => media.Kind == GameMediaKind.TitleScreen);
+        Assert.True(PathsEqual(title.LocalPath, CoverPath(game.Id)!));
+        var box = details.Media.Single(media => media.Kind == GameMediaKind.BoxFront);
+        Assert.False(PathsEqual(box.LocalPath, CoverPath(game.Id)!));
+    }
+
+    [Fact]
+    public async Task Apply_DoesNotProjectTitleScreen_WhenCoverKindIsBoxFront()
+    {
+        var game = AddGame("Console.iso");
+
+        var result = await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [],
+            [MediaImport(GameMediaKind.TitleScreen, "title")],
+            GameMetadataApplyMode.FillMissing)); // default cover kind is the box front
+
+        Assert.False(result.CoverProjected);
+        Assert.Null(CoverPath(game.Id));
+    }
+
+    [Fact]
     public async Task FillMissing_SkipsAKindThatAlreadyHasAnActiveAsset_WithoutDownloading()
     {
         var game = AddGame("Skip.iso");
