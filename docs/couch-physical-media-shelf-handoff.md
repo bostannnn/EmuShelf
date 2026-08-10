@@ -27,7 +27,7 @@ Delivered:
   scale/dim; per-system accent-tinted background; title + platform below. No focus ring.
 - Flat covers only (grid covers reused at a larger fixed shelf height).
 
-**Phase 2 (the 3D hero) landed 2026-08-10**, as a GPU renderer (Silk.NET + OpenGL) rather than the
+**Phase 2's renderer landed 2026-08-10** (its ScreenScraper face textures, §2a, are still open), as a GPU renderer (Silk.NET + OpenGL) rather than the
 Skia software renderer originally planned — see `DECISIONS.md` for why, and §2 of the design doc for
 what it is. Three shells ship: a SNES cartridge, a GBA cartridge, and the DVD keep case shared by
 PS2/PS3/GameCube/Wii. Render it without a display via

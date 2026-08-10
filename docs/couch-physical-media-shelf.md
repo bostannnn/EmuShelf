@@ -189,15 +189,19 @@ bundled Steam Input template already carry the right stick and R3:
       (`GamepadLibraryLayout` enum, `GamepadShelfList`, picker Shelf tile; see `DECISIONS.md`).
       Follow-ups still open: per-system background tint (currently a flat calm surface) and
       centring the focused cover (currently auto-scroll-into-view).
-- [x] **Phase 2 — the 3D hero.** Landed 2026-08-10 as a GPU renderer, not the Skia control
-      originally planned (see `DECISIONS.md`). `EmuShelf.Rendering` draws a shell with metallic-
-      roughness PBR under a procedurally baked studio environment; `Media3DControl :
-      OpenGlControlBase` hosts exactly one live instance, bound to `FocusedGame`. Cover art is
-      projected onto faces in object space. Flat-cover fallback for every other system, for
-      no-cover games, and for a GL context that will not come up.
-      Still open from this phase: the ScreenScraper box/support media kinds (§2a) and the layered
-      texture→per-face→accent fallback. Until those land, a cartridge's landscape label is filled
-      by cropping the portrait box scan, and a case's back and spine take the accent tint.
+- [ ] **Phase 2 — the 3D hero.** *Renderer done 2026-08-10; face textures (§2a) still open.*
+  - [x] The renderer and its host, landed as a GPU renderer rather than the Skia control
+        originally planned (see `DECISIONS.md`). `EmuShelf.Rendering` draws a shell with
+        metallic-roughness PBR under a procedurally baked studio environment; `Media3DControl :
+        OpenGlControlBase` hosts exactly one live instance, bound to `FocusedGame`. Cover art is
+        projected onto faces in object space. Flat-cover fallback for every other system, for
+        no-cover games, and for a GL context that will not come up. Three shells: SNES cartridge,
+        GBA cartridge, and the keep case shared by PS2/PS3/GameCube/Wii.
+  - [ ] The ScreenScraper box/support media kinds (§2a) and the layered
+        texture→per-face→accent fallback, fetched lazily for the focused game. Until this lands a
+        cartridge's landscape label is filled by cropping the portrait box scan — the box art is
+        the wrong asset for a cartridge, and `support-2D` is the right one — and a case's back and
+        spine take a flat accent tint rather than their real printing.
 - [ ] **Phase 3 — Right-stick wiring.** `GamepadReading` fields → `MediaRotationModel` →
       the control; R3 = recenter; recenter on focus change. *Ships R3 rotation.*
 - [ ] **Phase 4 — Polish.** Reduce-motion setting, spine title, shading/shadow tuning,

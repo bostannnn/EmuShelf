@@ -6,7 +6,8 @@ namespace EmuShelf.Rendering.Shells;
 /// <remarks>
 /// One entry per authored shell, not per console: a PS2, GameCube, Wii and PS3 game all shipped in
 /// the same 135x190x14mm keep case, so they share <see cref="DiscKeepCase"/>. Systems with no shell
-/// keep their flat cover — see <c>MediaShellCatalog.ForSystem</c>.
+/// keep their flat cover — the console-to-medium table lives in the app layer, at
+/// <c>EmuShelf.App.Rendering.MediaShellMap</c>.
 /// </remarks>
 public enum MediaShell
 {
