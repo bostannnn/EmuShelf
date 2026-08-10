@@ -324,7 +324,10 @@
              centred selection reads as the one "in your hands". No focus ring — the centre position and
              the size/opacity lift ARE the selector. Scale + opacity ease so browsing glides. -->
         <Style Selector="Panel.shelf-media">
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+            <!-- Percentages, not bare 0.5 — Avalonia parses "0.5,0.5" as an ABSOLUTE 0.5px origin (the
+                 top-left corner), so the neighbour scale pivoted at the corner and shifted covers left,
+                 making the focused cover's left/right margins unequal. "50%,50%" is the real centre. -->
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
             <Setter Property="RenderTransform" Value="scale(0.66)" />
             <Setter Property="Opacity" Value="0.5" />
             <Setter Property="Transitions">
@@ -2907,13 +2910,23 @@
 
                 <StackPanel VerticalAlignment="Center" Spacing="22">
                     <!-- Coverflow strip viewport. GamepadShelfStrip is translated by the code-behind so
-                         the focused slot lands on centre; ClipToBounds hides the off-screen covers. Slots
-                         are a uniform 410px wide (matching MainWindow.ShelfSlotWidth) so the centring is
-                         exact arithmetic, independent of each cover's own aspect. -->
-                    <Panel x:Name="GamepadShelfViewport" Height="360" ClipToBounds="True"
+                         the focused slot lands on centre; the viewport's ClipToBounds hides the off-screen
+                         covers. Slots are a uniform 410px wide (matching MainWindow.ShelfSlotWidth) so the
+                         centring is exact arithmetic, independent of each cover's own aspect.
+                         The strip itself must NOT clip: a Left-aligned child wider than its slot is arranged
+                         to the viewport width, so a self-clip would cut off every cover whose translated
+                         position lands past that width — i.e. the focused cover vanishes once you scroll a
+                         few games in. The viewport Panel is the sole clipper. -->
+                    <!-- 360-tall host co-centring the flat coverflow strip and the single 3D hero overlay.
+                         The hero is a SIBLING of the (clipping) viewport, so it is not clipped to the strip
+                         band, yet the host keeps the strip's 360 footprint so the tuned vertical rhythm is
+                         unchanged. Exactly one live Media3DControl exists — bound to FocusedGame. -->
+                    <Panel Height="360">
+                    <Panel x:Name="GamepadShelfViewport" ClipToBounds="True"
                            SizeChanged="OnGamepadShelfViewportSizeChanged">
                         <ItemsControl x:Name="GamepadShelfStrip" ItemsSource="{Binding Games}"
-                                      HorizontalAlignment="Left" VerticalAlignment="Center">
+                                      HorizontalAlignment="Left" VerticalAlignment="Center"
+                                      ClipToBounds="False">
                             <ItemsControl.Transitions>
                                 <Transitions>
                                     <TransformOperationsTransition Property="RenderTransform"
@@ -2932,6 +2945,7 @@
                                     <Panel Classes="shelf-media" Classes.focused="{Binding IsFocused}"
                                            Width="410" VerticalAlignment="Center" ClipToBounds="False">
                                         <Border CornerRadius="10" ClipToBounds="True"
+                                                IsVisible="{Binding !ShelfUses3DHero}"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Width="{Binding GamepadShelfCoverWidth}"
                                                 Height="{Binding GamepadShelfCoverHeight}"
@@ -2959,6 +2973,14 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                    </Panel>
+                    <controls:Media3DControl x:Name="GamepadShelfHero"
+                                             Width="480" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                                             IsVisible="{Binding FocusedGame.ShelfUses3DHero}"
+                                             Media="{Binding FocusedGame.ShelfMediaType}"
+                                             Cover="{Binding FocusedGame.CoverImage}"
+                                             Accent="{Binding FocusedGame.ShelfAccentColor}"
+                                             Yaw="0.16" Pitch="-0.09" />
                     </Panel>
 
                     <!-- Focused game's platform + title, centred beneath the shelf (the dock is hidden here). -->
