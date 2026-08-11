@@ -273,6 +273,33 @@ public sealed class HotkeyConfiguratorTests : IDisposable
     }
 
     [Fact]
+    public void Dolphin_Apply_ClearsBacktickQuotedSlotDefaultsThatCollideWithOurKeys()
+    {
+        // Dolphin serializes some single keys backtick-quoted (`F2`) rather than bare, so a Slot-1 save on
+        // `F2` and Save-to-Selected-Slot both fired on one press (save state twice). Both forms bind the
+        // same key, so the quoted ones must be cleared just like barewords.
+        Write("Hotkeys.ini",
+            "[Hotkeys]",
+            "Device = XInput2/0/Virtual core pointer",
+            "Load State/Load State Slot 1 = `F4`",
+            "Load State/Load State Slot 3 = F3",
+            "Save State/Save State Slot 1 = `F2`",
+            "Save State/Save State Slot 2 = @(Shift+F2)");
+
+        new DolphinHotkeyConfigurator(_root, BackupRoot).Apply(HotkeyProfile.Default);
+
+        var document = Read("Hotkeys.ini");
+        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F2`", document.GetValue("Hotkeys", "Save State/Save to Selected Slot"));
+        Assert.Equal($"`{DolphinHotkeyConfigurator.KeyboardDevice}:F4`", document.GetValue("Hotkeys", "Load State/Load from Selected Slot"));
+        // The backtick-quoted slots on F2/F4 are gone so a single press no longer saves/loads twice.
+        Assert.Null(document.GetValue("Hotkeys", "Save State/Save State Slot 1"));
+        Assert.Null(document.GetValue("Hotkeys", "Load State/Load State Slot 1"));
+        // A slot on another key stays, and Shift+F2 is a different input so it stays too.
+        Assert.Equal("F3", document.GetValue("Hotkeys", "Load State/Load State Slot 3"));
+        Assert.Equal("@(Shift+F2)", document.GetValue("Hotkeys", "Save State/Save State Slot 2"));
+    }
+
+    [Fact]
     public void Dolphin_Apply_CreatesHotkeysIni_WhenMissingButConfigDirIsReal()
     {
         // Dolphin writes Hotkeys.ini only after a hotkey is customised, so even a used install can lack

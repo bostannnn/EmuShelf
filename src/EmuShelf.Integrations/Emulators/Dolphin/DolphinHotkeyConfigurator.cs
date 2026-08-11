@@ -91,20 +91,25 @@ public sealed class DolphinHotkeyConfigurator : HotkeyConfiguratorBase
             _ => "Dolphin has no rewind feature.",
             action => $"`{KeyboardDevice}:{profile[action].Label()}`");
 
-        // Dolphin's built-in slot hotkeys are bareword keys (e.g. `Load State Slot 2 = F2`) that resolve
-        // to the same physical key as our fully-qualified token but don't match it by value, so the
-        // base's value-based clearing misses them. Clear any that hold a bareword key we're claiming, so
-        // pressing the key can't also trigger a slot action (only barewords — `@(Shift+F2)` is a
-        // different input and stays).
+        // Dolphin's built-in slot hotkeys are plain keys (e.g. `Load State Slot 2 = F2`) that resolve to
+        // the same physical key as our fully-qualified token but don't match it by value, so the base's
+        // value-based clearing misses them. Dolphin serializes these inconsistently — some bare (`F3`),
+        // some backtick-quoted (`` `F2` ``) — and both forms bind the same key, so clear either that holds
+        // a key we're claiming; otherwise it keeps firing alongside our binding (a Slot-1 save on the same
+        // press as Save-to-Selected-Slot = save state twice). Only these two literal forms — `@(Shift+F2)`
+        // is a different input and stays.
         foreach (var action in profile.Actions)
         {
             if (ActionKeys[action] is null)
                 continue;
             var bareword = profile[action].Label();
-            foreach (var conflicting in document.KeysWithValue(Section, bareword))
+            foreach (var value in new[] { bareword, $"`{bareword}`" })
             {
-                if (document.RemoveKey(Section, conflicting))
-                    changes.Add(new HotkeyChange(fileName, Section, conflicting, bareword, "(unbound — conflicted with EmuShelf's scheme)"));
+                foreach (var conflicting in document.KeysWithValue(Section, value))
+                {
+                    if (document.RemoveKey(Section, conflicting))
+                        changes.Add(new HotkeyChange(fileName, Section, conflicting, value, "(unbound — conflicted with EmuShelf's scheme)"));
+                }
             }
         }
 
