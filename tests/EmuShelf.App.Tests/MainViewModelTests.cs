@@ -1608,7 +1608,9 @@ public class MainViewModelTests : IDisposable
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
         Assert.Equal(GamepadOverlayKind.DesktopModeConfirmation, vm.GamepadOverlay);
-        Assert.Equal(["Switch to Desktop mode"], vm.GamepadOverlayOptions.Select(option => option.Label));
+        // Standard two-button confirmation: Cancel plus the short affirmative verb, landing on the action.
+        Assert.Equal(["Cancel", "Switch"], vm.GamepadOverlayOptions.Select(option => option.Label));
+        Assert.Equal("Switch", vm.GamepadOverlayOptions[vm.GamepadOverlaySelectionIndex].Label);
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);

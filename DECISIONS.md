@@ -6025,6 +6025,29 @@ provider/downloaded art — which is exactly what the cover projection already p
 already replaced on first scrape because they leave no detail-store asset to skip; this fixes the
 re-scrape case, where the prior ScreenScraper asset was being skipped.
 
+## 2026-08-12 — Gamepad confirmations use a standard two-button dialog
+
+The controller-native confirmations (Remove, Switch-to-Desktop, Quit) reused the picker overlays'
+generic single-option list: the chrome title posed the question, then one full-width button repeated the
+same words as the menu item that opened it ("Switch to Desktop mode" → title "Switch to Desktop mode?" →
+button "Switch to Desktop mode"), with dismissal only offered as a `B` footer hint. Reported as redundant
+and un-standard — pressing a menu action and being asked again with identical text.
+
+All three now render a self-contained, centred modal in a tighter 500px card (`.confirmation` on the
+overlay Border): a centred title poses the question, a centred body explains the consequence, and an
+equal-halves **[Cancel] [verb]** button bar (Cancel + "Remove"/"Switch"/"Quit") sits beneath it. This
+replaced a first attempt that reused the picker layout — top-left body, bottom-right buttons, bottom-left
+footer — which read as scattered/unaligned. The group is vertically centred as one unit rather than
+pinning the title to the sheet's top-left. Left/Right walk the pair, A confirms the focused button, B
+cancels; focus lands on the action so a deliberate pick still confirms in one press.
+
+The focus ring is colour-coded to the controller prompts: the confirm half rings **green** (the A button),
+the Cancel half rings **red** (the B button) — matching the "A Select / B Cancel" footer legend so the
+ring communicates the outcome of pressing A on that button. Destructive confirms (Remove/Quit) keep red
+label text as an extra warning. A `bool IsCancel` was added to `GamepadOverlayOptionViewModel` to drive the
+Cancel ring; the buttons still bind the same `GamepadOverlayOptions` list the pickers use, so focus/activate
+routing is unchanged. Redundant secondary "Press B to…" body lines and the Remove dialog's duplicate bold
+heading were dropped now that the button + footer cover cancellation.
 ## 2026-08-12 — Rescan reads embedded evidence only for newly discovered entries
 
 "Rescan all consoles" re-read every candidate file's embedded evidence on each run:

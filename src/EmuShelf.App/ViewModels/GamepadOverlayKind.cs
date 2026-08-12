@@ -30,14 +30,18 @@ public partial class GamepadOverlayOptionViewModel : ObservableObject
     public string Label { get; }
     public ICommand Command { get; }
     public bool IsDestructive { get; }
+    /// <summary>The dismiss half of a confirmation dialog. Drives the red (B-button) focus ring, versus
+    /// the green (A-button) ring on the confirm half — mirroring the controller prompts.</summary>
+    public bool IsCancel { get; }
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
 
-    public GamepadOverlayOptionViewModel(string label, ICommand command, bool isDestructive = false)
+    public GamepadOverlayOptionViewModel(string label, ICommand command, bool isDestructive = false, bool isCancel = false)
     {
         Label = label;
         Command = command;
         IsDestructive = isDestructive;
+        IsCancel = isCancel;
     }
 }

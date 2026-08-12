@@ -1985,9 +1985,12 @@ public class MainWindowVisualSnapshotTests
             await PumpAsync();
 
             var body = window.FindControl<StackPanel>("GamepadRemoveBody");
-            var actions = window.FindControl<ItemsControl>("GamepadOverlayOptions");
+            var actions = window.FindControl<ItemsControl>("GamepadConfirmationActions");
             Assert.NotNull(body);
             Assert.NotNull(actions);
+            // Confirmations use the dedicated Cancel/action row, not the picker overlays' vertical list.
+            Assert.False(viewModel.ShowsGamepadOverlayOptions);
+            Assert.True(viewModel.ShowsGamepadConfirmationActions);
             var bodyOrigin = body.TranslatePoint(default, window);
             var actionsOrigin = actions.TranslatePoint(default, window);
             Assert.NotNull(bodyOrigin);
