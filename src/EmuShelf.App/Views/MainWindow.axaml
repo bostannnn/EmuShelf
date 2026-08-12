@@ -530,6 +530,39 @@
             <Setter Property="Margin" Value="0,0,30,0" />
             <Setter Property="Width" Value="460" />
         </Style>
+        <!-- Confirmations are compact modals, not the 620px picker sheet: a tighter card centres its
+             title/body/buttons as one group. -->
+        <Style Selector="Border.gamepad-overlay.confirmation">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Width" Value="500" />
+        </Style>
+        <!-- The two dialog buttons share one row as equal halves (a couch-native button bar), so neither
+             floats against an edge. Reuses the settings-confirm focus/danger brushes. -->
+        <Style Selector="Button.gamepad-confirm-button">
+            <Setter Property="Height" Value="54" />
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontSize" Value="17" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <!-- The focus ring colour follows the controller prompts: the confirm half rings green (the A
+             button), the Cancel half rings red (the B button). Destructive confirms additionally keep red
+             label text as a warning. -->
+        <Style Selector="Button.gamepad-confirm-button.focused, Button.gamepad-confirm-button:focus">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuGamepadAButtonBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-confirm-button.cancel.focused, Button.gamepad-confirm-button.cancel:focus">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuGamepadBButtonBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-confirm-button.danger">
+            <Setter Property="Foreground" Value="{DynamicResource EmuDangerBrush}" />
+        </Style>
         <Style Selector="Border.gamepad-overlay.side-sheet">
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="Margin" Value="0,0,30,0" />
@@ -2881,6 +2914,7 @@
                     Classes.batch-scraper="{Binding IsGamepadBatchScraperOpen}"
                     Classes.settings="{Binding IsGamepadSettingsOpen}"
                     Classes.hotkeys="{Binding IsGamepadHotkeysOpen}"
+                    Classes.confirmation="{Binding IsGamepadConfirmationOverlay}"
                     VerticalAlignment="Center"
                     MaxHeight="{Binding #GamepadOverlayHost.Bounds.Height}"
                     MaxWidth="{Binding #GamepadOverlayHost.Bounds.Width}"
@@ -3788,11 +3822,53 @@
                             <TextBox x:Name="GamepadRenameBox" Text="{Binding FocusedGame.DraftTitle, Mode=TwoWay}" FontSize="24"
                                      PlaceholderText="Steam + X opens the on-screen keyboard" KeyDown="OnGamepadTextInputKeyDown" />
                         </StackPanel>
-                        <StackPanel x:Name="GamepadRemoveBody" IsVisible="{Binding IsGamepadRemoveOpen}" Spacing="12">
-                            <TextBlock Text="Remove this game from your library?" FontSize="20" FontWeight="Bold" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding FocusedGame.Title}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
-                            <TextBlock Text="This removes only EmuShelf’s library record. Your game files and cover files are not deleted."
-                                       TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
+                        <!-- Self-contained confirmation dialog (Remove / Desktop switch / Quit). Spans both
+                             body rows and centres the whole group — title, explanation, then an equal-halves
+                             button bar — so nothing floats against an edge the way the shared picker layout
+                             (top-left body, bottom-right buttons) did. Bound to the same GamepadOverlayOptions
+                             the pickers use, so D-pad focus and A/B routing are unchanged. -->
+                        <StackPanel x:Name="GamepadConfirmationCard" Grid.RowSpan="2"
+                                    IsVisible="{Binding IsGamepadConfirmationOverlay}"
+                                    VerticalAlignment="Center" HorizontalAlignment="Stretch" Spacing="22">
+                            <TextBlock Text="{Binding GamepadOverlayTitle}"
+                                       IsVisible="{Binding IsGamepadConfirmationOverlay}"
+                                       FontSize="26" FontWeight="Bold"
+                                       TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" />
+                            <StackPanel x:Name="GamepadRemoveBody" IsVisible="{Binding IsGamepadRemoveOpen}" Spacing="8">
+                                <TextBlock Text="{Binding FocusedGame.Title}" FontSize="18" FontWeight="SemiBold"
+                                           TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center" />
+                                <TextBlock Text="This removes only EmuShelf’s library record. Your game files and cover files are not deleted."
+                                           FontSize="15" TextAlignment="Center" TextWrapping="Wrap"
+                                           HorizontalAlignment="Center" MaxWidth="380"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </StackPanel>
+                            <TextBlock IsVisible="{Binding IsGamepadDesktopModeConfirmationOpen}"
+                                       Text="Gamepad mode will close and the desktop library will be shown."
+                                       FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                                       HorizontalAlignment="Center" MaxWidth="400"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            <TextBlock IsVisible="{Binding IsGamepadQuitConfirmationOpen}"
+                                       Text="Any running library work will stop and EmuShelf will close. Your game files are never changed."
+                                       FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                                       HorizontalAlignment="Center" MaxWidth="400"
+                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            <ItemsControl x:Name="GamepadConfirmationActions" Margin="0,6,0,0"
+                                          ItemsSource="{Binding GamepadOverlayOptions}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="1" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
+                                        <Button Classes="gamepad-confirm-button" Margin="7,0"
+                                                Classes.danger="{Binding IsDestructive}"
+                                                Classes.cancel="{Binding IsCancel}"
+                                                Classes.focused="{Binding IsFocused}"
+                                                Content="{Binding Label}" Command="{Binding Command}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                         <StackPanel IsVisible="{Binding IsGamepadCoverHandoffOpen}" Spacing="12">
                             <TextBlock Text="Set cover in Desktop mode" FontSize="20" FontWeight="Bold" />
@@ -4281,19 +4357,6 @@
                         </Grid>
                         </Grid>
 
-                        <StackPanel IsVisible="{Binding IsGamepadDesktopModeConfirmationOpen}" Spacing="12">
-                            <TextBlock Text="Gamepad mode will close and the desktop library will be shown."
-                                       TextWrapping="Wrap" FontSize="18" />
-                            <TextBlock Text="Press B to stay in Gamepad mode."
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
-                        </StackPanel>
-                        <StackPanel IsVisible="{Binding IsGamepadQuitConfirmationOpen}" Spacing="12">
-                            <TextBlock Text="Any running library work will stop and EmuShelf will close. Your game files are never changed."
-                                       TextWrapping="Wrap" FontSize="18" />
-                            <TextBlock Text="Press B to keep EmuShelf open."
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
-                        </StackPanel>
-
                         <ScrollViewer x:Name="GamepadOverlayOptionsScroller" Classes="gamepad-scroll"
                                       Grid.Row="1" MaxHeight="360"
                                       VerticalScrollBarVisibility="Auto"
@@ -4323,6 +4386,17 @@
                             <TextBlock Text="Select" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
+                        </StackPanel>
+                        <!-- Confirmations: Left/Right pick between Cancel and the action, A confirms
+                             the focused one, B cancels — the couch reading of a standard dialog. -->
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding ShowsGamepadConfirmationActions}">
+                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Choose" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Select" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Cancel" />
                         </StackPanel>
                         <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
                                     IsVisible="{Binding IsGamepadAchievementsOpen}">

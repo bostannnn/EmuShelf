@@ -698,30 +698,47 @@ public partial class MainViewModel : ViewModelBase
     public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
+    /// <summary>The three yes/no confirmations (Remove, Desktop-mode switch, Quit). They share one
+    /// standard two-button layout — an explanatory body over a right-aligned [Cancel] [action] row that
+    /// Left/Right walk — instead of the vertical option list the picker overlays use.</summary>
+    public bool IsGamepadConfirmationOverlay => GamepadOverlay is
+        GamepadOverlayKind.RemoveConfirmation or
+        GamepadOverlayKind.DesktopModeConfirmation or
+        GamepadOverlayKind.QuitConfirmation;
+    /// <summary>Confirmations render their Cancel/action pair in a dedicated horizontal row, so the
+    /// shared vertical option list is hidden for them (see <see cref="ShowsGamepadOverlayOptions"/>).</summary>
+    public bool ShowsGamepadConfirmationActions => IsGamepadConfirmationOverlay;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
     // bodies and footers, so the shared option-button list and default hint legend are hidden for them.
     // (Hotkeys keeps the chrome title — it just needs its own body and hints, not a fresh header.)
+    // Confirmations also swap the default legend for their own "A Confirm / B Cancel" one.
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys);
+         GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
+         GamepadOverlayKind.RemoveConfirmation or GamepadOverlayKind.DesktopModeConfirmation or
+         GamepadOverlayKind.QuitConfirmation);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
          GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Hotkeys);
+         GamepadOverlayKind.Hotkeys or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
+    // Confirmations render their own centred title inside the dialog card, so the chrome header title
+    // is suppressed for them (it would otherwise pin a second title to the top-left of the sheet).
     public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or
-         GamepadOverlayKind.BatchScraper);
+         GamepadOverlayKind.BatchScraper or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
         GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.DisplayTitle} actions",
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Rename => "Rename game",
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
-        GamepadOverlayKind.RemoveConfirmation => "Remove game",
+        GamepadOverlayKind.RemoveConfirmation => "Remove game?",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
         GamepadOverlayKind.BatchScraper => "Scrape games with ScreenScraper",
@@ -2107,6 +2124,12 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NavigateRight when IsGamepadAchievementsOpen:
                 MoveFocusedAchievementHorizontal(1);
                 return true;
+            case GamepadAction.NavigateLeft when IsGamepadConfirmationOverlay:
+                MoveGamepadOverlaySelection(-1); // step onto Cancel (left button)
+                return true;
+            case GamepadAction.NavigateRight when IsGamepadConfirmationOverlay:
+                MoveGamepadOverlaySelection(1); // step onto the action (right button)
+                return true;
             case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
                 SelectGridViewModeCommand.Execute(null);
                 return true;
@@ -2227,7 +2250,8 @@ public partial class MainViewModel : ViewModelBase
                 AddDiscSelectionOptions();
                 break;
             case GamepadOverlayKind.RemoveConfirmation:
-                AddOption("Remove from library", ConfirmGamepadRemoveCommand, true);
+                AddOption("Cancel", BackFromGamepadOverlayCommand, isCancel: true);
+                AddOption("Remove", ConfirmGamepadRemoveCommand, true);
                 break;
             case GamepadOverlayKind.CoverDesktopHandoff:
                 AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
@@ -2251,15 +2275,20 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.Settings:
                 break;
             case GamepadOverlayKind.DesktopModeConfirmation:
-                AddOption("Switch to Desktop mode", SwitchToDesktopModeCommand);
+                AddOption("Cancel", BackFromGamepadOverlayCommand, isCancel: true);
+                AddOption("Switch", SwitchToDesktopModeCommand);
                 break;
             case GamepadOverlayKind.QuitConfirmation:
-                AddOption("Quit EmuShelf", ConfirmQuitGamepadCommand, true);
+                AddOption("Cancel", BackFromGamepadOverlayCommand, isCancel: true);
+                AddOption("Quit", ConfirmQuitGamepadCommand, true);
                 break;
         }
 
         GamepadOverlaySelectionIndex = overlay == GamepadOverlayKind.DiscSelection && FocusedGame is { } selectedGame
             ? Math.Max(0, selectedGame.Discs.ToList().FindIndex(disc => disc.Game.Id == selectedGame.LaunchModel.Id))
+            // Confirmations lay out [Cancel, action]; land on the action (index 1, the right button) so a
+            // deliberate menu pick still confirms with a single A, and Left steps back onto Cancel.
+            : IsGamepadConfirmationOverlay ? 1
             : 0;
         UpdateGamepadOverlayOptionFocus();
         NotifyGamepadOverlayState();
@@ -2292,8 +2321,8 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void AddOption(string label, ICommand command, bool isDestructive = false) =>
-        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command, isDestructive));
+    private void AddOption(string label, ICommand command, bool isDestructive = false, bool isCancel = false) =>
+        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command, isDestructive, isCancel));
 
     private void MoveGamepadOverlaySelection(int delta)
     {
@@ -2439,6 +2468,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
+        OnPropertyChanged(nameof(IsGamepadConfirmationOverlay));
+        OnPropertyChanged(nameof(ShowsGamepadConfirmationActions));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
         OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
