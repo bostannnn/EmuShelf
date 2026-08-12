@@ -6024,3 +6024,26 @@ provider/downloaded art — which is exactly what the cover projection already p
 `Downloaded` cover but never a `User` one). Cross-provider covers (e.g. a built-in-catalogue cover) were
 already replaced on first scrape because they leave no detail-store asset to skip; this fixes the
 re-scrape case, where the prior ScreenScraper asset was being skipped.
+
+## 2026-08-12 — Rescan reads embedded evidence only for newly discovered entries
+
+"Rescan all consoles" re-read every candidate file's embedded evidence on each run:
+`RescanAsync` fed the whole scan selection into `PrepareImportEntriesAsync`, which opens each
+file (disc serials, ISO/ROM headers) even for games already in the library. The database write
+was already idempotent (`INSERT OR IGNORE` on `(SystemId, Path)`) and evidence persistence only
+fills empty identifiers, so all that file I/O for known games was wasted — the dominant cost of a
+rescan on a large library.
+
+`RescanAsync` now loads the system's existing game paths once and, via `SelectUnimportedEntries`,
+drops already-imported entries before preparing them, so a steady-state rescan of an unchanged
+library opens no files. The recursive folder walk still enumerates everything (needed so
+descriptor/playlist/multi-disc collapse in `SelectGameEntries` stays correct), and `SuppressedPaths`
+still flow through unchanged so stale components are removed even when their descriptor was imported
+earlier. Removals remain handled by the existing `UpdateAvailabilityAsync` stat pass. Existing rows
+keep their titles/identifiers — a rescan adds new and drops missing rather than re-deriving.
+
+This intentionally drops rescan's re-read of embedded evidence for already-imported games, which
+`PersistImportEvidenceAsync` previously used to retry a transiently-failed identifier write. That
+retry is redundant: a missing identifier already self-heals on demand elsewhere (texture-pack
+matching, metadata scraping, ScreenScraper preview all re-extract when none is stored), and
+re-adding the file still retries. Not worth re-reading every file on every rescan to cover it.
