@@ -6048,3 +6048,25 @@ label text as an extra warning. A `bool IsCancel` was added to `GamepadOverlayOp
 Cancel ring; the buttons still bind the same `GamepadOverlayOptions` list the pickers use, so focus/activate
 routing is unchanged. Redundant secondary "Press B to…" body lines and the Remove dialog's duplicate bold
 heading were dropped now that the button + footer cover cancellation.
+## 2026-08-12 — Rescan reads embedded evidence only for newly discovered entries
+
+"Rescan all consoles" re-read every candidate file's embedded evidence on each run:
+`RescanAsync` fed the whole scan selection into `PrepareImportEntriesAsync`, which opens each
+file (disc serials, ISO/ROM headers) even for games already in the library. The database write
+was already idempotent (`INSERT OR IGNORE` on `(SystemId, Path)`) and evidence persistence only
+fills empty identifiers, so all that file I/O for known games was wasted — the dominant cost of a
+rescan on a large library.
+
+`RescanAsync` now loads the system's existing game paths once and, via `SelectUnimportedEntries`,
+drops already-imported entries before preparing them, so a steady-state rescan of an unchanged
+library opens no files. The recursive folder walk still enumerates everything (needed so
+descriptor/playlist/multi-disc collapse in `SelectGameEntries` stays correct), and `SuppressedPaths`
+still flow through unchanged so stale components are removed even when their descriptor was imported
+earlier. Removals remain handled by the existing `UpdateAvailabilityAsync` stat pass. Existing rows
+keep their titles/identifiers — a rescan adds new and drops missing rather than re-deriving.
+
+This intentionally drops rescan's re-read of embedded evidence for already-imported games, which
+`PersistImportEvidenceAsync` previously used to retry a transiently-failed identifier write. That
+retry is redundant: a missing identifier already self-heals on demand elsewhere (texture-pack
+matching, metadata scraping, ScreenScraper preview all re-extract when none is stored), and
+re-adding the file still retries. Not worth re-reading every file on every rescan to cover it.
