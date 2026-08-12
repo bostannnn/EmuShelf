@@ -4334,6 +4334,13 @@ public partial class MainViewModel : ViewModelBase
             foreach (var system in systems.Where(system => system.Id != "playstation3"))
             {
                 var folders = await Task.Run(() => _library.GetLibraryFolders(system.Id));
+                // Paths already in the library for this system. The scan walk still enumerates every
+                // folder (needed so descriptor/playlist collapse stays correct), but reading each
+                // candidate's embedded evidence opens the file, so restrict that to genuinely new
+                // entries — a steady-state rescan of an unchanged library then does no file reads.
+                var knownPaths = await Task.Run(() => _library.GetGames(system.Id)
+                    .Select(game => Path.GetFullPath(game.Path))
+                    .ToHashSet(PathComparer));
                 foreach (var folder in folders)
                 {
                     // The main-window toast is hidden behind the Settings modal, so mirror the same
@@ -4346,7 +4353,11 @@ public partial class MainViewModel : ViewModelBase
                         statusProgress?.Report(message);
                     });
                     var selection = await _scanner.ScanAsync(folder.Path, system, progress);
-                    var importResult = await ReconcileImportAsync(system, selection);
+                    var newSelection = SelectUnimportedEntries(selection, knownPaths);
+                    var importResult = await ReconcileImportAsync(system, newSelection);
+                    // Overlapping folders shouldn't re-read an entry the previous folder just added.
+                    foreach (var path in newSelection.EntryPaths)
+                        knownPaths.Add(Path.GetFullPath(path));
                     total += importResult.AddedCount;
                     addedIds.AddRange(importResult.AddedGameIds);
                 }
@@ -4381,6 +4392,27 @@ public partial class MainViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Drops entries already in the library so a rescan only reads embedded evidence for new files.
+    /// Suppressed paths are preserved: descriptor/playlist collapse still removes stale components
+    /// even when the descriptor itself was imported on an earlier scan.
+    /// </summary>
+    private static GameEntrySelection SelectUnimportedEntries(
+        GameEntrySelection selection,
+        IReadOnlySet<string> knownFullPaths)
+    {
+        if (selection.EntryPaths.Count == 0)
+            return selection;
+
+        var newEntries = selection.EntryPaths
+            .Where(path => !knownFullPaths.Contains(Path.GetFullPath(path)))
+            .ToArray();
+
+        return newEntries.Length == selection.EntryPaths.Count
+            ? selection
+            : selection with { EntryPaths = newEntries };
     }
 
     private async Task<GameImportResult> ReconcileImportAsync(

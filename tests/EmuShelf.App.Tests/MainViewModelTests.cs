@@ -2209,6 +2209,38 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task Rescan_ReadsEmbeddedEvidenceOnlyForNewlyDiscoveredEntries()
+    {
+        var folder = Path.Combine(_baseDirectory, "roms");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "Alpha.chd"), "x");
+        File.WriteAllText(Path.Combine(folder, "Beta.chd"), "x");
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var rules = new CountingEvidenceImportRules(Ps1);
+        var vm = CreateViewModel(rules);
+
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        Assert.Equal(2, _library.GetGames(Ps1.Id).Count);
+        var readsAfterImport = rules.ReadImportMetadataCalls;
+        Assert.Equal(2, readsAfterImport);
+
+        // A single new ROM arrives; the rescan walk still enumerates all three files, but only the
+        // new one may have its file opened for embedded evidence — the two known entries are skipped.
+        File.WriteAllText(Path.Combine(folder, "Gamma.chd"), "x");
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, _library.GetGames(Ps1.Id).Count);
+        Assert.Equal(readsAfterImport + 1, rules.ReadImportMetadataCalls);
+
+        // Re-running against an unchanged library reads nothing further.
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, _library.GetGames(Ps1.Id).Count);
+        Assert.Equal(readsAfterImport + 1, rules.ReadImportMetadataCalls);
+    }
+
+    [AvaloniaFact]
     public async Task AddGames_CueAddedLater_SuppressesPersistedBinWithoutDeletingFile()
     {
         var folder = MakeRomsFolder();
@@ -3380,6 +3412,30 @@ public class MainViewModelTests : IDisposable
                     title,
                     [new GameIdentifier(GameIdentifierKind.Serial, discId, "PSP PARAM.SFO", true)])
                 : GameImportMetadata.Empty;
+    }
+
+    private sealed class CountingEvidenceImportRules(GameSystem system) : IGameImportRules
+    {
+        public int ReadImportMetadataCalls { get; private set; }
+
+        public GameFileAnalysis AnalyzeFile(string path) => new(
+            path,
+            [system],
+            new Dictionary<string, GameFileMatch> { [system.Id] = GameFileMatch.Compatible });
+
+        public bool IsFolderCandidate(string path, GameSystem candidateSystem) =>
+            candidateSystem.Id == system.Id &&
+            Path.GetExtension(path).Equals(".chd", StringComparison.OrdinalIgnoreCase);
+
+        public GameEntrySelection SelectGameEntries(
+            IReadOnlyList<string> candidates,
+            GameSystem candidateSystem) => new(candidates, []);
+
+        public GameImportMetadata ReadImportMetadata(string path, GameSystem candidateSystem)
+        {
+            ReadImportMetadataCalls++;
+            return GameImportMetadata.Empty;
+        }
     }
 
     private sealed class FileContentIdentityImportRules(GameSystem system) : IGameImportRules
