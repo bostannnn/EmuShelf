@@ -19,17 +19,27 @@ public enum GamepadButtons
     DpadLeft = 1 << 8,
     DpadRight = 1 << 9,
     Start = 1 << 10,
+    /// <summary>R3, the right stick clicked in. Recentres the shelf's 3D hero.</summary>
+    RightStick = 1 << 11,
 }
 
 /// <summary>
-/// A single polled snapshot of a controller: which buttons are held plus the left-stick position
+/// A single polled snapshot of a controller: which buttons are held plus both stick positions
 /// (each axis in the range -1..1). <see cref="IsConnected"/> is false when no controller is present.
 /// </summary>
+/// <remarks>
+/// The right-stick axes are defaulted so every existing four-argument construction still compiles.
+/// They are kept raw — undeadzoned, unrescaled — because the two consumers want different things
+/// from them: navigation wants a coarse direction, and the shelf's rotation wants a continuous
+/// magnitude with its own, much smaller deadzone.
+/// </remarks>
 public readonly record struct GamepadReading(
     GamepadButtons Buttons,
     float LeftStickX,
     float LeftStickY,
-    bool IsConnected)
+    bool IsConnected,
+    float RightStickX = 0f,
+    float RightStickY = 0f)
 {
     public static GamepadReading Disconnected { get; } = new(GamepadButtons.None, 0f, 0f, false);
 }

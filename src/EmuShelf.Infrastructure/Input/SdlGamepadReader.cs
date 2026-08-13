@@ -32,10 +32,13 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
     private const int ButtonDpadDown = 12;
     private const int ButtonDpadLeft = 13;
     private const int ButtonDpadRight = 14;
+    private const int ButtonRightStick = 8;
 
     // SDL_GameControllerAxis values.
     private const int AxisLeftX = 0;
     private const int AxisLeftY = 1;
+    private const int AxisRightX = 2;
+    private const int AxisRightY = 3;
     private const float AxisRange = 32767f;
 
     private nint _controller;
@@ -71,6 +74,7 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
             buttons |= Held(ButtonX, GamepadButtons.X);
             buttons |= Held(ButtonY, GamepadButtons.Y);
             buttons |= Held(ButtonStart, GamepadButtons.Start);
+            buttons |= Held(ButtonRightStick, GamepadButtons.RightStick);
             buttons |= Held(ButtonLeftShoulder, GamepadButtons.LeftShoulder);
             buttons |= Held(ButtonRightShoulder, GamepadButtons.RightShoulder);
             buttons |= Held(ButtonDpadUp, GamepadButtons.DpadUp);
@@ -80,7 +84,9 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
 
             var leftX = SDL_GameControllerGetAxis(_controller, AxisLeftX) / AxisRange;
             var leftY = SDL_GameControllerGetAxis(_controller, AxisLeftY) / AxisRange;
-            return new GamepadReading(buttons, leftX, leftY, true);
+            var rightX = SDL_GameControllerGetAxis(_controller, AxisRightX) / AxisRange;
+            var rightY = SDL_GameControllerGetAxis(_controller, AxisRightY) / AxisRange;
+            return new GamepadReading(buttons, leftX, leftY, true, rightX, rightY);
         }
         catch (DllNotFoundException)
         {

@@ -1776,6 +1776,86 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void GamepadShelfView_IsAThirdLayout_StepsOneGameHorizontally_AndPersists()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 6).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Game {index + 1}.cue",
+                Title = $"Game {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+        vm.HasGames = true;
+
+        // Select the shelf: it is its own layout, mutually exclusive with the grid and the spotlight.
+        vm.SelectShelfViewModeCommand.Execute(null);
+        Assert.Equal(GamepadLibraryLayout.Shelf, vm.GamepadLayout);
+        Assert.True(vm.IsGamepadShelfView);
+        Assert.True(vm.ShowGamepadShelf);
+        Assert.False(vm.ShowGamepadGrid);
+        Assert.False(vm.ShowGamepadSpotlight);
+        Assert.False(vm.IsGamepadSpotlightView);
+        Assert.True(vm.IsShelfViewModeSelected);
+        // The focused dock is a grid-only chrome; the shelf carries its own title.
+        Assert.False(vm.IsGamepadGridLayout);
+
+        // The shelf is a single horizontal row: Right/Left step exactly one game, Up/Down are inert.
+        vm.FocusedGame = vm.Games[1];
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Same(vm.Games[2], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Same(vm.Games[1], vm.FocusedGame);
+
+        // The layout is persisted by name and round-trips back to the shelf.
+        var saved = vm.BuildLibraryViewState();
+        Assert.Equal("Shelf", saved.GamepadLayout);
+        Assert.False(saved.GamepadSpotlightView);
+    }
+
+    [AvaloniaFact]
+    public void GamepadViewModeRow_StepsGridSpotlightShelf_WithLeftRight_Clamped()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.HasGames = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        // Walk focus up to the view-mode row.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.True(vm.IsGamepadViewModeRowFocused);
+
+        // Grid → Spotlight → Shelf as Right steps across the three tiles, then clamps at the end.
+        Assert.True(vm.IsGridViewModeSelected);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(GamepadLibraryLayout.Spotlight, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal(GamepadLibraryLayout.Shelf, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight)); // clamps
+        Assert.Equal(GamepadLibraryLayout.Shelf, vm.GamepadLayout);
+
+        // Left steps back the other way and clamps at Grid.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal(GamepadLibraryLayout.Spotlight, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal(GamepadLibraryLayout.Grid, vm.GamepadLayout);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft)); // clamps
+        Assert.Equal(GamepadLibraryLayout.Grid, vm.GamepadLayout);
+    }
+
+    [AvaloniaFact]
     public void GamepadSystemMenu_ViewModeRow_SwitchesLayoutWithLeftRight_AndDropsIntoOptions()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
@@ -2399,13 +2479,33 @@ public class MainViewModelTests : IDisposable
         var launch = vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
         await sync.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
 
-        // The centered "Syncing saves…" panel is shown from this flag while the pre-launch sync runs.
+        // Presentation is layout-specific, but this lifecycle flag remains true for the complete sync.
         Assert.True(vm.IsSyncingSavesForLaunch);
 
         sync.Complete();
         await launch;
 
         Assert.False(vm.IsSyncingSavesForLaunch);
+    }
+
+    [AvaloniaFact]
+    public void PhysicalShelf_SaveSyncUsesTheNonModalStatusToast()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.HasGames = true;
+        vm.GamepadLayout = GamepadLibraryLayout.Shelf;
+        vm.StatusText = "Syncing saves before launch…";
+        vm.StatusSeverity = StatusSeverity.Progress;
+        vm.IsSyncingSavesForLaunch = true;
+
+        Assert.True(vm.ShowGamepadStatusToast);
+        Assert.False(vm.ShowBlockingLaunchSaveSync);
+
+        vm.GamepadLayout = GamepadLibraryLayout.Grid;
+
+        Assert.False(vm.ShowGamepadStatusToast);
+        Assert.True(vm.ShowBlockingLaunchSaveSync);
     }
 
     [AvaloniaFact]
@@ -4095,5 +4195,120 @@ public class MainViewModelTests : IDisposable
                 Thread.Sleep(50);
             }
         }
+    }
+
+    // ── Shelf hero rotation (Phase 3) ─────────────────────────────────────────────────────────
+    // The hero is a GPU surface, so these assert the *wiring* the last bug lived in — whether the
+    // pose actually advances, and whether it is gated to the one view that shows it.
+
+    private MainViewModel ShelfViewModel()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll(Enumerable.Range(0, 4).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index + 1,
+                SystemId = Ps1.Id,
+                Path = $"/Games/Rot {index + 1}.cue",
+                Title = $"Rot {index + 1}",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)));
+        vm.HasGames = true;
+        vm.SelectShelfViewModeCommand.Execute(null);
+        return vm;
+    }
+
+    [AvaloniaFact]
+    public void RightStick_TurnsTheShelfHero_AndRaisesTheBoundPose()
+    {
+        var vm = ShelfViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        vm.ApplyRightStickRotation(1f, 0f, 100d);
+
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        // The control only redraws off these notifications; without them the hero freezes, which
+        // is exactly how the first cut of this shipped.
+        Assert.Contains(nameof(MainViewModel.ShelfHeroYaw), raised);
+        Assert.Contains(nameof(MainViewModel.ShelfHeroPitch), raised);
+    }
+
+    [AvaloniaFact]
+    public void RightStick_IsIgnoredOutsideTheShelf()
+    {
+        var vm = ShelfViewModel();
+        vm.SelectGridViewModeCommand.Execute(null);
+
+        vm.ApplyRightStickRotation(1f, 0f, 100d);
+
+        Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+    }
+
+    [AvaloniaFact]
+    public void RightStick_AtRest_RaisesNothing()
+    {
+        var vm = ShelfViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        // A centred stick ticks constantly; requesting a frame each time would spin the CPU.
+        vm.ApplyRightStickRotation(0f, 0f, 100d);
+
+        Assert.DoesNotContain(nameof(MainViewModel.ShelfHeroYaw), raised);
+    }
+
+    [AvaloniaFact]
+    public void ChangingTheFocusedGame_ReturnsTheHeroToRest()
+    {
+        var vm = ShelfViewModel();
+        vm.FocusedGame = vm.Games[0];
+        vm.ApplyRightStickRotation(1f, 1f, 100d);
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        var outgoing = Assert.IsType<GameViewModel>(vm.FocusedGame);
+        var outgoingYaw = (float)vm.ShelfHeroYaw;
+        var outgoingPitch = (float)vm.ShelfHeroPitch;
+
+        vm.FocusedGame = vm.Games[2];
+
+        // A new cover must arrive face-on rather than inheriting the previous game's angle.
+        Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        Assert.Equal(MediaRotationModel.RestPitch, vm.ShelfHeroPitch);
+        var departure = Assert.IsType<PhysicalShelfDeparturePose>(vm.ShelfDeparturePose);
+        Assert.Equal(outgoing.Id, departure.GameKey);
+        Assert.Equal(outgoingYaw, departure.Yaw);
+        Assert.Equal(outgoingPitch, departure.Pitch);
+    }
+
+    [AvaloniaFact]
+    public void ChangingFocusedGame_MovesTheShelfContinuously()
+    {
+        var vm = ShelfViewModel();
+        vm.FocusedGame = vm.Games[0];
+        Assert.Equal(0d, vm.ShelfPosition);
+
+        vm.FocusedGame = vm.Games[1];
+        var immediatelyAfterFocus = vm.ShelfPosition;
+        vm.AdvanceShelfMotion(16d);
+
+        Assert.Equal(0d, immediatelyAfterFocus);
+        Assert.InRange(vm.ShelfPosition, 0.001d, 0.999d);
+    }
+
+    [AvaloniaFact]
+    public void ResetRotationAction_ReturnsTheHeroToRest()
+    {
+        var vm = ShelfViewModel();
+        vm.ApplyRightStickRotation(1f, 1f, 100d);
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.ResetRotation));
+
+        Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
     }
 }

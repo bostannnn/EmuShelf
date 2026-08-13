@@ -13,10 +13,20 @@ public sealed record LibraryViewSettings
 
     /// <summary>
     /// Gamepad (couch) mode only: the spotlight layout — a scrolling game list beside a large
-    /// fanart hero — when true, or the cover grid when false. Independent of <see cref="IsGridView"/>,
-    /// which stays a desktop preference the couch mode does not touch.
+    /// fanart hero — when true, or the cover grid when false. Superseded by
+    /// <see cref="GamepadLayout"/>, which also carries the "Shelf" layout; retained (and still
+    /// written) so an older build, or a build that cannot parse the layout name, keeps working.
     /// </summary>
     public bool GamepadSpotlightView { get; init; }
+
+    /// <summary>
+    /// Gamepad (couch) mode only: which couch layout was last shown — "Grid", "Spotlight", or
+    /// "Shelf". Stored by name (like <see cref="Scope"/> and <see cref="SortColumn"/>) so it stays
+    /// readable and tolerates the layout enum being reordered. An unknown or missing name falls back
+    /// to <see cref="GamepadSpotlightView"/> and then to the grid. Independent of
+    /// <see cref="IsGridView"/>, the desktop preference the couch mode does not touch.
+    /// </summary>
+    public string GamepadLayout { get; init; } = "Grid";
 
     /// <summary>Name of the sort column, e.g. "Title". Unknown names fall back to the default.</summary>
     public string SortColumn { get; init; } = "Title";

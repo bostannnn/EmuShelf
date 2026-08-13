@@ -2,6 +2,8 @@ using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
+using EmuShelf.App.Rendering;
+using EmuShelf.Rendering.Shells;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Library;
@@ -121,6 +123,22 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public bool HasScrapedPhysicalMedia => _detailsProjection?.HasPhysicalMedia ?? false;
     public bool HasScrapedPhysicalMediaTexture => _detailsProjection?.HasPhysicalMediaTexture ?? false;
 
+    /// <summary>
+    /// Absolute path to the selected ScreenScraper physical-support texture. For SNES this is the
+    /// flattened label artwork; it is decoded only while the game is near the visible 3D shelf.
+    /// </summary>
+    public string? PhysicalMediaTexturePath { get; private set; }
+
+    public void ApplyPhysicalMediaTexturePath(string? path)
+    {
+        var normalized = string.IsNullOrWhiteSpace(path) ? null : path;
+        if (string.Equals(PhysicalMediaTexturePath, normalized, StringComparison.Ordinal))
+            return;
+
+        PhysicalMediaTexturePath = normalized;
+        OnPropertyChanged(nameof(PhysicalMediaTexturePath));
+    }
+
     // Completeness tracks the artwork/text ScreenScraper reliably offers, so a fully scraped game can
     // actually reach the top of the scale. The sparse secondary kinds (box back/spine, cartridge/disc
     // and its texture) are near-absent for most games — especially arcade — so they are presence-only
@@ -238,6 +256,59 @@ public partial class GameViewModel : ObservableObject, IDisposable
         get => _gamepadCoverHeight;
         private set => SetProperty(ref _gamepadCoverHeight, value);
     }
+
+    /// <summary>Legacy flat-fallback cover size. The GPU scene uses
+    /// <see cref="ShelfMediaProfile"/>'s physical dimensions instead.</summary>
+    public double GamepadShelfCoverHeight => GamepadShelfCoverTargetHeight;
+    public double GamepadShelfCoverWidth => Math.Round(GamepadShelfCoverTargetHeight * CoverAspectRatio);
+
+    /// <summary>The hero cover's height on the couch physical-media shelf, in device-independent px.</summary>
+    internal const double GamepadShelfCoverTargetHeight = 300;
+
+    /// <summary>The authored physical medium for the legacy one-hero/fallback contract, or null.</summary>
+    public MediaShell? ShelfMediaShell => MediaShellMap.ForSystem(SystemId);
+
+    /// <summary>
+    /// Real-world dimensions and scene presentation for this game. Unlike
+    /// <see cref="ShelfMediaShell"/>, this is never null: an unauthored system receives a thin
+    /// cover card so it can travel through the same continuous 3D shelf as authored media.
+    /// </summary>
+    public PhysicalMediaProfile ShelfMediaProfile =>
+        MediaShellMap.ProfileForSystem(SystemId, CoverAspectRatio);
+
+    /// <summary>Per-system accent as a colour, tinting the 3D scene and unprinted faces.</summary>
+    public Color ShelfAccent => Color.Parse(AccentColor);
+
+    /// <summary>
+    /// False once the GPU hero has been ruled out for this session, which sends every game back to
+    /// its flat cover.
+    /// </summary>
+    /// <remarks>
+    /// Set by the library when <c>MediaShelf3DControl</c> reports that it could not bring up a GL
+    /// context — a headless session, a driver that will not give us GLES 3.0, a remote desktop. The
+    /// couch shelf has to stay usable there, so this is a normal outcome rather than an error.
+    /// </remarks>
+    public bool ShelfHeroSupported
+    {
+        get;
+        set
+        {
+            if (field == value)
+            {
+                return;
+            }
+
+            field = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShelfUses3DHero));
+        }
+    } = true;
+
+    /// <summary>True when the shelf should swap this game's flat cover for the rotatable 3D medium:
+    /// it is focused, its system has an authored shell, and the GPU path came up. Cover art is
+    /// optional; without it the renderer shows the shell's unlabelled/tinted panel.</summary>
+    public bool ShelfUses3DHero =>
+        IsFocused && ShelfHeroSupported && ShelfMediaShell is not null;
 
     /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
     /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame
@@ -650,7 +721,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
     // The frame never adopts the loaded bitmap's own ratio: the cover fills the platform's canonical
     // frame (UniformToFill in the tile), which keeps every tile of a system uniform and stops one
     // off-ratio scan from ballooning the shared shelf. So loading a cover only toggles HasCoverImage.
-    partial void OnCoverImageChanged(Bitmap? value) => OnPropertyChanged(nameof(HasCoverImage));
+    partial void OnCoverImageChanged(Bitmap? value)
+    {
+        OnPropertyChanged(nameof(HasCoverImage));
+        OnPropertyChanged(nameof(ShelfUses3DHero));
+    }
+
+    partial void OnIsFocusedChanged(bool value) => OnPropertyChanged(nameof(ShelfUses3DHero));
 
     partial void OnFanartImageChanging(Bitmap? value)
     {

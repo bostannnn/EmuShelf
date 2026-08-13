@@ -17,4 +17,7 @@ public enum GamepadAction
     Search,           // X
     Actions,          // Y
     Menu,             // Start / F10
+    // Native SDL only. Steam Input's keyboard mapping cannot carry an analog axis, so the shelf's
+    // rotation — and this, its reset — exist only on the native controller path.
+    ResetRotation,    // R3
 }

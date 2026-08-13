@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- Silk.NET buffer uploads and texture allocation take raw pointers. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Shaders are authored as .glsl files and injected with a per-backend #version header at
+         runtime (see ShaderSources), so they must travel inside the assembly rather than as loose
+         files a portable install could lose. Same for the medium shells. -->
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Shaders\*.glsl" />
+    <EmbeddedResource Include="Assets\*.glb" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EmuShelf.Rendering.Tests" />
+    <InternalsVisibleTo Include="EmuShelf.Rendering.Preview" />
+    <InternalsVisibleTo Include="EmuShelf.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Silk.NET.OpenGL is bindings only: the GL entry points are resolved from whatever context
+         the host already made current (Avalonia's, or the preview tool's EGL one), so this adds no
+         native payload and no window/GLFW dependency. -->
+    <PackageReference Include="Silk.NET.OpenGL" Version="2.23.0" />
+    <!-- glTF is a spec with enough sharp edges (accessor strides, sparse accessors, node
+         transforms) that parsing it by hand is a bug farm; SharpGLTF is the managed reference
+         reader. Core only — the Toolkit's scene evaluation is not needed. -->
+    <PackageReference Include="SharpGLTF.Core" Version="1.0.6" />
+    <!-- Managed PNG decode for the textures embedded in the .glb files. Pure C#, so it works
+         identically on the three shipped targets with no native dependency to package. -->
+    <PackageReference Include="StbImageSharp" Version="2.30.16" />
+  </ItemGroup>
+</Project>

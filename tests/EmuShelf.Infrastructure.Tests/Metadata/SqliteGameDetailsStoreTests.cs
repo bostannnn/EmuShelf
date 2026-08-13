@@ -108,6 +108,43 @@ public class SqliteGameDetailsStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void GetSelectedMediaPaths_ReturnsOnlySelectedAssetsOfTheRequestedKind()
+    {
+        var selectedGame = AddGame("SelectedTexture.sfc");
+        var unselectedGame = AddGame("UnselectedTexture.sfc");
+        var selectedPath = Path.Combine(
+            AppPaths.DataDirectory,
+            "Media",
+            selectedGame.Id.ToString(),
+            "support-texture.png");
+
+        _details.SaveMedia(ProviderMedia(selectedGame.Id, selectedPath, isSelected: true) with
+        {
+            Kind = GameMediaKind.PhysicalMediaTexture,
+        });
+        _details.SaveMedia(ProviderMedia(
+            selectedGame.Id,
+            Path.Combine(AppPaths.DataDirectory, "Media", selectedGame.Id.ToString(), "support-2D.png"),
+            isSelected: true) with
+        {
+            Kind = GameMediaKind.PhysicalMedia,
+        });
+        _details.SaveMedia(ProviderMedia(
+            unselectedGame.Id,
+            Path.Combine(AppPaths.DataDirectory, "Media", unselectedGame.Id.ToString(), "support-texture.png"),
+            isSelected: false) with
+        {
+            Kind = GameMediaKind.PhysicalMediaTexture,
+        });
+
+        var paths = _details.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+
+        var actual = Assert.Single(paths);
+        Assert.Equal(selectedGame.Id, actual.Key);
+        Assert.Equal(Path.GetFullPath(selectedPath), actual.Value);
+    }
+
+    [Fact]
     public void SelectMedia_RejectsAnAssetFromAnotherKind()
     {
         var game = AddGame("Selection.iso");

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -100,6 +101,13 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _statusDismiss;
     private readonly DispatcherTimer _viewStateSave;
     private readonly DispatcherTimer _platformReloadDebounce;
+    private readonly DispatcherTimer _shelfMotionTimer;
+    private readonly PhysicalShelfMotionModel _shelfMotion = new();
+    private long _shelfMotionTimestamp;
+    private readonly DispatcherTimer _shelfLaunchTimer;
+    private readonly PhysicalShelfLaunchTransitionModel _shelfLaunchTransition = new();
+    private long _shelfLaunchTimestamp;
+    private TaskCompletionSource? _shelfLaunchCompletion;
     private TaskCompletionSource? _platformReloadCompletion;
     private readonly ILibraryViewStateService _libraryViewState;
     private bool _isRestoringViewState;
@@ -153,6 +161,59 @@ public partial class MainViewModel : ViewModelBase
     public ObservableCollection<GamepadPlatformTabViewModel> GamepadPlatforms { get; }
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
 
+    /// <summary>
+    /// True until the couch shelf's shared 3D scene is ruled out, after which every game keeps its
+    /// flat cover. Latches once per session: a GL context that failed to come up will not come up later.
+    /// </summary>
+    private bool _shelfHeroSupported = true;
+
+    /// <summary>Whether the shared OpenGL shelf scene is available for this session.</summary>
+    public bool ShelfSceneSupported => _shelfHeroSupported;
+
+    /// <summary>
+    /// Sends the shelf back to flat covers for the rest of the session.
+    /// </summary>
+    /// <remarks>
+    /// Called by the view when <c>MediaShelf3DControl</c> reports it could not bring up a GL context.
+    /// Games realized later pick this up through <see cref="ApplyShelfHeroSupport"/>, so a scope
+    /// switch after the failure does not quietly re-enable a hero that cannot render.
+    /// </remarks>
+    /// <param name="reason">Why the GPU path is unavailable, for the log. A silent revert to flat
+    /// covers is indistinguishable from the feature never having been built, and on a machine we
+    /// cannot test on this exception — a driver's shader info log, most likely — is the whole
+    /// diagnosis.</param>
+    public void DisableShelfHero(Exception? reason = null)
+    {
+        if (!_shelfHeroSupported)
+        {
+            return;
+        }
+
+        _logger.Warning(
+            "The couch shelf's 3D scene could not start; falling back to flat covers.", reason);
+
+        _shelfHeroSupported = false;
+        OnPropertyChanged(nameof(ShelfSceneSupported));
+        foreach (var game in Games)
+        {
+            game.ShelfHeroSupported = false;
+        }
+    }
+
+    /// <summary>Applies the session's hero support to a freshly built game list.</summary>
+    private void ApplyShelfHeroSupport(IEnumerable<GameViewModel> games)
+    {
+        if (_shelfHeroSupported)
+        {
+            return;
+        }
+
+        foreach (var game in games)
+        {
+            game.ShelfHeroSupported = false;
+        }
+    }
+
     // Row projection of Games for the gamepad grid. The grid is rendered as a virtualized ListBox with
     // one row per line, so only the ~5 visible rows realize (mature couch-UI pattern) — vastly cheaper
     // than laying out every tile, and it avoids the phantom-cell defect of a virtualized UniformGrid.
@@ -191,10 +252,22 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsGridView { get; set; } = true;
 
-    /// <summary>Gamepad (couch) mode only: the spotlight layout (list + fanart hero) when true, the
-    /// cover grid when false. Toggled from the couch toolbar and remembered across launches.</summary>
+    /// <summary>Gamepad (couch) mode only: which couch layout is on screen — the cover grid, the
+    /// spotlight (list + fanart hero), or the physical-media shelf. Chosen from the system-menu picker
+    /// and remembered across launches.</summary>
     [ObservableProperty]
-    public partial bool IsGamepadSpotlightView { get; set; }
+    public partial GamepadLibraryLayout GamepadLayout { get; set; } = GamepadLibraryLayout.Grid;
+
+    /// <summary>The spotlight layout is on screen. Kept as a computed alias over
+    /// <see cref="GamepadLayout"/> so the many spotlight-only checks and XAML bindings are unchanged.</summary>
+    public bool IsGamepadSpotlightView => GamepadLayout == GamepadLibraryLayout.Spotlight;
+
+    /// <summary>The physical-media shelf layout is on screen.</summary>
+    public bool IsGamepadShelfView => GamepadLayout == GamepadLibraryLayout.Shelf;
+
+    /// <summary>The cover grid is the active layout. Drives the focused-game dock, which the grid
+    /// shows and the other two layouts (each carrying their own title/hero) hide.</summary>
+    public bool IsGamepadGridLayout => GamepadLayout == GamepadLibraryLayout.Grid;
 
     /// <summary>In the spotlight hero, whether the Achievements action is armed (so A opens it)
     /// instead of Play, the default. Left/Right move between the two; it resets to Play whenever the
@@ -249,33 +322,50 @@ public partial class MainViewModel : ViewModelBase
             EnsureDetailsProjectionsLoaded();
     }
 
-    partial void OnIsGamepadSpotlightViewChanged(bool value)
+    partial void OnGamepadLayoutChanged(GamepadLibraryLayout value)
     {
         ScheduleLibraryViewStateSave();
+        OnPropertyChanged(nameof(IsGamepadSpotlightView));
+        OnPropertyChanged(nameof(IsGamepadShelfView));
+        OnPropertyChanged(nameof(IsGamepadGridLayout));
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(ShowGamepadShelf));
+        NotifySaveSyncPresentationChanged();
         OnPropertyChanged(nameof(IsGridViewModeSelected));
         OnPropertyChanged(nameof(IsListViewModeSelected));
+        OnPropertyChanged(nameof(IsShelfViewModeSelected));
         IsSpotlightAchievementsFocused = false; // the hero always opens on Play
         OnPropertyChanged(nameof(IsSpotlightPlayFocused));
-        if (value)
+        if (value == GamepadLibraryLayout.Spotlight)
             LoadSpotlightHero(FocusedGame);
         else
             ClearSpotlightHero();
+
+        if (value == GamepadLibraryLayout.Shelf)
+        {
+            SnapShelfToFocusedGame();
+            if (FocusedGame is { } shelfGame)
+                PrefetchCoversAroundFocus(shelfGame);
+        }
+        else
+            _shelfMotionTimer.Stop();
     }
 
-    /// <summary>Flips the couch layout between the cover grid and the spotlight list + hero.</summary>
+    /// <summary>Flips the couch layout between the cover grid and the spotlight list + hero. The
+    /// shelf is reached from the picker, not this toggle, which stays a binary grid⇄spotlight flip.</summary>
     [RelayCommand]
     private void ToggleGamepadView()
     {
         if (IsGamepadMode)
-            IsGamepadSpotlightView = !IsGamepadSpotlightView;
+            GamepadLayout = IsGamepadSpotlightView ? GamepadLibraryLayout.Grid : GamepadLibraryLayout.Spotlight;
     }
 
-    /// <summary>The couch layout picker shown at the top of the system menu. Grid is the active tile
-    /// when the spotlight is off, List when it is on; both re-raise when the layout flips.</summary>
-    public bool IsGridViewModeSelected => !IsGamepadSpotlightView;
-    public bool IsListViewModeSelected => IsGamepadSpotlightView;
+    /// <summary>The couch layout picker shown at the top of the system menu — the three tiles light
+    /// their active one and re-raise when the layout changes.</summary>
+    public bool IsGridViewModeSelected => GamepadLayout == GamepadLibraryLayout.Grid;
+    public bool IsListViewModeSelected => GamepadLayout == GamepadLibraryLayout.Spotlight;
+    public bool IsShelfViewModeSelected => GamepadLayout == GamepadLibraryLayout.Shelf;
 
     /// <summary>Which region of the system menu owns the focus ring: the view-mode row, the sort row, or
     /// the option list below them. Up/Down walk between the regions; Left/Right pick within a row and
@@ -297,20 +387,45 @@ public partial class MainViewModel : ViewModelBase
         UpdateGamepadOverlayOptionFocus();
     }
 
-    /// <summary>Selects the cover-grid couch layout. Bound to the Grid tile and D-pad Left on the row.</summary>
+    /// <summary>The couch layouts in the picker's Left→Right tile order. D-pad Left/Right steps this
+    /// list (clamped); each tile also sets its layout directly on click.</summary>
+    private static readonly GamepadLibraryLayout[] GamepadLayoutOrder =
+        [GamepadLibraryLayout.Grid, GamepadLibraryLayout.Spotlight, GamepadLibraryLayout.Shelf];
+
+    /// <summary>Selects the cover-grid couch layout. Bound to the Grid tile.</summary>
     [RelayCommand]
     private void SelectGridViewMode()
     {
         if (IsGamepadMode)
-            IsGamepadSpotlightView = false;
+            GamepadLayout = GamepadLibraryLayout.Grid;
     }
 
-    /// <summary>Selects the spotlight list couch layout. Bound to the List tile and D-pad Right on the row.</summary>
+    /// <summary>Selects the spotlight list couch layout. Bound to the List tile.</summary>
     [RelayCommand]
     private void SelectListViewMode()
     {
         if (IsGamepadMode)
-            IsGamepadSpotlightView = true;
+            GamepadLayout = GamepadLibraryLayout.Spotlight;
+    }
+
+    /// <summary>Selects the physical-media shelf couch layout. Bound to the Shelf tile.</summary>
+    [RelayCommand]
+    private void SelectShelfViewMode()
+    {
+        if (IsGamepadMode)
+            GamepadLayout = GamepadLibraryLayout.Shelf;
+    }
+
+    /// <summary>Steps the view-mode picker one tile Left (-1) or Right (+1), clamped at the ends.
+    /// Drives the D-pad on the focused view-mode row.</summary>
+    private void MoveGamepadViewModeSelection(int delta)
+    {
+        if (!IsGamepadMode)
+            return;
+        var index = Array.IndexOf(GamepadLayoutOrder, GamepadLayout);
+        if (index < 0)
+            index = 0;
+        GamepadLayout = GamepadLayoutOrder[Math.Clamp(index + delta, 0, GamepadLayoutOrder.Length - 1)];
     }
 
     // ---- Gamepad "Sort by" row (Start menu). Reuses the view-mode card component and drives the same
@@ -581,17 +696,22 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool HasGames { get; set; }
 
-    /// <summary>The couch cover grid is on screen: gamepad mode, games present, spotlight off.</summary>
-    public bool ShowGamepadGrid => IsGamepadMode && HasGames && !IsGamepadSpotlightView;
+    /// <summary>The couch cover grid is on screen: gamepad mode, games present, grid layout.</summary>
+    public bool ShowGamepadGrid => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Grid;
 
     /// <summary>The couch spotlight (list + fanart hero) is on screen: gamepad mode, games present,
-    /// spotlight on.</summary>
-    public bool ShowGamepadSpotlight => IsGamepadMode && HasGames && IsGamepadSpotlightView;
+    /// spotlight layout.</summary>
+    public bool ShowGamepadSpotlight => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Spotlight;
+
+    /// <summary>The couch physical-media shelf is on screen: gamepad mode, games present, shelf layout.</summary>
+    public bool ShowGamepadShelf => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Shelf;
 
     partial void OnHasGamesChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(ShowGamepadShelf));
+        NotifySaveSyncPresentationChanged();
     }
 
     /// <summary>True only when the selected system has no games at all — drives the "add your first game" prompt.</summary>
@@ -608,10 +728,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    // True only while a launch/exit cloud save sync is actually running. The Gamepad shell shows a
-    // large centered "Syncing saves…" panel from this, because the corner status toast alone is too
-    // easy to miss at a couch distance — which is exactly when saves are being pulled before a game
-    // starts or pushed after it exits.
+    // True only while a launch/exit cloud save sync is actually running. Grid/spotlight show the
+    // large centered panel; physical-shelf mode keeps the scene visible and uses its progress toast.
     [ObservableProperty]
     public partial bool IsSyncingSavesForLaunch { get; set; }
 
@@ -883,6 +1001,7 @@ public partial class MainViewModel : ViewModelBase
     // PrefetchCoversAroundFocus). A held d-pad steps ~one row per 110ms, so a few rows of lead lets the
     // off-thread decode stay ahead of the glide and the incoming tile is already painted.
     private const int GamepadCoverPrefetchRows = 3;
+    private const int ShelfNeighbourPrefetchRadius = 3;
 
     // On-disk cover thumbnails are generated at this max width (mirrors GameCoverService.ThumbnailWidth).
     // A cover is decoded to the displayed pixel size, capped here so it is never upscaled past the source.
@@ -944,10 +1063,12 @@ public partial class MainViewModel : ViewModelBase
     public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
-    /// <summary>Drives the Gamepad corner toast. A launch/exit save sync sets the same
-    /// <see cref="StatusText"/> that the large centered panel shows, so while that panel owns the
-    /// screen the corner toast would echo it word for word — suppress it so only one surface speaks.</summary>
-    public bool ShowGamepadStatusToast => HasStatusMessage && !IsSyncingSavesForLaunch;
+    /// <summary>Drives the Gamepad corner toast. Physical-shelf launch sync stays non-modal so the
+    /// cartridge choreography remains visible; the other couch layouts retain their large panel.</summary>
+    public bool ShowGamepadStatusToast =>
+        HasStatusMessage && (!IsSyncingSavesForLaunch || ShowGamepadShelf);
+
+    public bool ShowBlockingLaunchSaveSync => IsSyncingSavesForLaunch && !ShowGamepadShelf;
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
@@ -1131,6 +1252,27 @@ public partial class MainViewModel : ViewModelBase
             _ambientThemeDebounce.Stop();
             ApplyAmbientThemeForPendingGame();
         };
+
+        _shelfMotionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _shelfMotionTimer.Tick += (_, _) =>
+        {
+            var now = Stopwatch.GetTimestamp();
+            var elapsed = _shelfMotionTimestamp == 0
+                ? _shelfMotionTimer.Interval.TotalMilliseconds
+                : Stopwatch.GetElapsedTime(_shelfMotionTimestamp, now).TotalMilliseconds;
+            _shelfMotionTimestamp = now;
+            AdvanceShelfMotion(elapsed);
+        };
+        _shelfLaunchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _shelfLaunchTimer.Tick += (_, _) =>
+        {
+            var now = Stopwatch.GetTimestamp();
+            var elapsed = _shelfLaunchTimestamp == 0
+                ? _shelfLaunchTimer.Interval.TotalMilliseconds
+                : Stopwatch.GetElapsedTime(_shelfLaunchTimestamp, now).TotalMilliseconds;
+            _shelfLaunchTimestamp = now;
+            AdvanceShelfLaunchTransition(elapsed);
+        };
         // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
         AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
 
@@ -1211,8 +1353,16 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             IsGridView = state.IsGridView;
-            // Couch-only preference, independent of the desktop grid/list choice above.
-            IsGamepadSpotlightView = state.GamepadSpotlightView;
+            // Couch-only preference, independent of the desktop grid/list choice above. Prefer the named
+            // layout; fall back to the legacy spotlight bool (so a pre-Shelf settings file still opens
+            // into spotlight), then to the grid.
+            var layout = Enum.TryParse<GamepadLibraryLayout>(state.GamepadLayout, out var parsedLayout)
+                && Enum.IsDefined(typeof(GamepadLibraryLayout), parsedLayout)
+                ? parsedLayout
+                : GamepadLibraryLayout.Grid;
+            if (layout == GamepadLibraryLayout.Grid && state.GamepadSpotlightView)
+                layout = GamepadLibraryLayout.Spotlight;
+            GamepadLayout = layout;
             SortColumn = Enum.TryParse<LibrarySortColumn>(state.SortColumn, out var column)
                 ? column
                 : LibrarySortColumn.Title;
@@ -1261,6 +1411,8 @@ public partial class MainViewModel : ViewModelBase
         // Gamepad mode forces a grid to render its tiles, which is not a statement about what the
         // user wants on the desktop. Keep the stored desktop preference while that mode is active.
         IsGridView = IsGamepadMode ? _libraryViewState.Current.IsGridView : IsGridView,
+        GamepadLayout = GamepadLayout.ToString(),
+        // Kept in sync so an older build (which only reads this bool) still restores grid-vs-spotlight.
         GamepadSpotlightView = IsGamepadSpotlightView,
         SortColumn = SortColumn.ToString(),
         SortDescending = SortDescending,
@@ -1415,7 +1567,13 @@ public partial class MainViewModel : ViewModelBase
     }
 
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
+        NotifySaveSyncPresentationChanged();
+
+    private void NotifySaveSyncPresentationChanged()
+    {
         OnPropertyChanged(nameof(ShowGamepadStatusToast));
+        OnPropertyChanged(nameof(ShowBlockingLaunchSaveSync));
+    }
 
     /// <summary>
     /// The single entry point for the library toast. Severity is set first so the dismiss timer
@@ -1971,6 +2129,148 @@ public partial class MainViewModel : ViewModelBase
     /// handler), so both input paths behave identically. Returns whether the action was consumed,
     /// letting the key handler mark the event handled.
     /// </summary>
+    private readonly MediaRotationModel _shelfHeroRotation = new();
+
+    /// <summary>
+    /// Continuous selection coordinate consumed by the shared shelf scene. It is an integer only
+    /// at rest; during navigation the old and next media occupy intermediate world positions.
+    /// </summary>
+    public double ShelfPosition => _shelfMotion.Position;
+
+    /// <summary>The shelf hero's yaw, in radians, bound straight to the 3D control.</summary>
+    public double ShelfHeroYaw => _shelfHeroRotation.Yaw;
+
+    /// <summary>The shelf hero's pitch, in radians.</summary>
+    public double ShelfHeroPitch => _shelfHeroRotation.Pitch;
+
+    /// <summary>The focused item's launch-only transform, or null during ordinary browsing.</summary>
+    public PhysicalShelfLaunchPose? ShelfLaunchPose =>
+        _shelfLaunchTransition.IsIdle ? null : _shelfLaunchTransition.Pose;
+
+    /// <summary>
+    /// Pose captured from the game that just left focus. The renderer blends it back to the
+    /// neighbour pose while that cartridge physically travels away from the centre.
+    /// </summary>
+    public PhysicalShelfDeparturePose? ShelfDeparturePose { get; private set; }
+
+    /// <summary>
+    /// Advances the shelf hero's pose from one tick of right-stick input.
+    /// </summary>
+    /// <remarks>
+    /// Gated on the hero actually being on screen, so the model neither accumulates rotation the
+    /// player cannot see nor asks for a redraw while the shelf is showing flat covers. Returns
+    /// without notifying when the stick is centred, which is the common case every tick.
+    /// </remarks>
+    public void ApplyRightStickRotation(float rightStickX, float rightStickY, double deltaMilliseconds)
+    {
+        if (!IsGamepadMode || IsGamepadInputSuspended || !ShowGamepadShelf || HasGamepadOverlay)
+            return;
+
+        if (_shelfHeroRotation.Update(rightStickX, rightStickY, deltaMilliseconds))
+            NotifyShelfHeroPose();
+    }
+
+    /// <summary>Returns the hero to face-on. Driven by R3 and by any change of focus.</summary>
+    public void RecentreShelfHero()
+    {
+        if (_shelfHeroRotation.Recentre())
+            NotifyShelfHeroPose();
+    }
+
+    private void NotifyShelfHeroPose()
+    {
+        OnPropertyChanged(nameof(ShelfHeroYaw));
+        OnPropertyChanged(nameof(ShelfHeroPitch));
+    }
+
+    /// <summary>Advances shelf travel; public so headless tests exercise the timer's exact path.</summary>
+    public bool AdvanceShelfMotion(double deltaMilliseconds)
+    {
+        if (!_shelfMotion.Update(deltaMilliseconds))
+        {
+            if (_shelfMotion.IsSettled)
+            {
+                _shelfMotionTimer.Stop();
+                _shelfMotionTimestamp = 0;
+            }
+            return false;
+        }
+
+        OnPropertyChanged(nameof(ShelfPosition));
+        if (_shelfMotion.IsSettled)
+        {
+            _shelfMotionTimer.Stop();
+            _shelfMotionTimestamp = 0;
+        }
+        return true;
+    }
+
+    /// <summary>Advances launch choreography; public so tests exercise the timer's exact path.</summary>
+    public bool AdvanceShelfLaunchTransition(double deltaMilliseconds)
+    {
+        var changed = _shelfLaunchTransition.Update(deltaMilliseconds);
+        if (changed)
+        {
+            OnPropertyChanged(nameof(ShelfLaunchPose));
+        }
+
+        if (_shelfLaunchTransition.IsCommitted || _shelfLaunchTransition.IsIdle)
+        {
+            _shelfLaunchTimer.Stop();
+            _shelfLaunchTimestamp = 0;
+            _shelfLaunchCompletion?.TrySetResult();
+            _shelfLaunchCompletion = null;
+        }
+
+        return changed;
+    }
+
+    private void MoveShelfToFocusedGame(GameViewModel? oldValue, GameViewModel? newValue)
+    {
+        if (newValue is null)
+        {
+            _shelfMotionTimer.Stop();
+            return;
+        }
+
+        var target = Games.IndexOf(newValue);
+        if (target < 0)
+        {
+            return;
+        }
+
+        var previous = oldValue is null ? -1 : Games.IndexOf(oldValue);
+        var snap = !ShowGamepadShelf || previous < 0 || Math.Abs(target - previous) > 4;
+        if (snap)
+        {
+            _shelfMotion.SnapTo(target);
+            _shelfMotionTimer.Stop();
+            _shelfMotionTimestamp = 0;
+            OnPropertyChanged(nameof(ShelfPosition));
+            return;
+        }
+
+        if (_shelfMotion.MoveTo(target))
+        {
+            _shelfMotionTimestamp = Stopwatch.GetTimestamp();
+            _shelfMotionTimer.Start();
+        }
+    }
+
+    private void SnapShelfToFocusedGame()
+    {
+        var index = FocusedGame is null ? -1 : Games.IndexOf(FocusedGame);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _shelfMotion.SnapTo(index);
+        _shelfMotionTimer.Stop();
+        _shelfMotionTimestamp = 0;
+        OnPropertyChanged(nameof(ShelfPosition));
+    }
+
     public bool DispatchGamepadAction(GamepadAction action)
     {
         if (!IsGamepadMode)
@@ -1983,6 +2283,14 @@ public partial class MainViewModel : ViewModelBase
         // Desktop-mode switch.
         if (IsGamepadInputSuspended)
             return true;
+
+        // Recentring is about the hero, not about whatever pane has focus, so it is answered here
+        // rather than in each view's routing. Harmless when the shelf is not showing.
+        if (action == GamepadAction.ResetRotation)
+        {
+            RecentreShelfHero();
+            return true;
+        }
 
         if (IsGamepadSettingsOpen && GamepadSettings is { } settings)
             return settings.Dispatch(action);
@@ -2131,10 +2439,10 @@ public partial class MainViewModel : ViewModelBase
                 MoveGamepadOverlaySelection(1); // step onto the action (right button)
                 return true;
             case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
-                SelectGridViewModeCommand.Execute(null);
+                MoveGamepadViewModeSelection(-1);
                 return true;
             case GamepadAction.NavigateRight when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
-                SelectListViewModeCommand.Execute(null);
+                MoveGamepadViewModeSelection(1);
                 return true;
             case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadSortRowFocused:
                 MoveGamepadSortSelection(-1);
@@ -2187,35 +2495,64 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.Menu:
                 OpenGamepadMenuCommand.Execute(null);
                 return true;
-            // The spotlight is a single-column list: Up/Down step one game. Left/Right instead move the
-            // hero action ring — Left arms the Achievements widget (only when the game has a set),
-            // Right arms Play. The cover grid keeps its 2-D movement (Up/Down span a full row).
+            // Each layout reads the d-pad differently. Spotlight is a single-column list: Up/Down step
+            // one game, Left/Right move the hero action ring (Left arms Achievements when the game has a
+            // set, Right arms Play). The shelf is a single horizontal row: Left/Right step one game and
+            // Up/Down are inert. The cover grid keeps 2-D movement (Up/Down span a full row).
             case GamepadAction.NavigateLeft:
-                if (IsGamepadSpotlightView)
+                switch (GamepadLayout)
                 {
-                    if (FocusedGame?.ShowAchievementMark == true)
-                        IsSpotlightAchievementsFocused = true;
+                    case GamepadLibraryLayout.Spotlight:
+                        if (FocusedGame?.ShowAchievementMark == true)
+                            IsSpotlightAchievementsFocused = true;
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        FocusPreviousGameCommand.Execute(null);
+                        break;
+                    default:
+                        MoveGamepadFocusLeftCommand.Execute(null);
+                        break;
                 }
-                else
-                    MoveGamepadFocusLeftCommand.Execute(null);
                 return true;
             case GamepadAction.NavigateRight:
-                if (IsGamepadSpotlightView)
-                    IsSpotlightAchievementsFocused = false;
-                else
-                    MoveGamepadFocusRightCommand.Execute(null);
+                switch (GamepadLayout)
+                {
+                    case GamepadLibraryLayout.Spotlight:
+                        IsSpotlightAchievementsFocused = false;
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        FocusNextGameCommand.Execute(null);
+                        break;
+                    default:
+                        MoveGamepadFocusRightCommand.Execute(null);
+                        break;
+                }
                 return true;
             case GamepadAction.NavigateUp:
-                if (IsGamepadSpotlightView)
-                    FocusPreviousGameCommand.Execute(null);
-                else
-                    MoveGamepadFocusUpCommand.Execute(null);
+                switch (GamepadLayout)
+                {
+                    case GamepadLibraryLayout.Spotlight:
+                        FocusPreviousGameCommand.Execute(null);
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        break; // a horizontal row has nothing above/below
+                    default:
+                        MoveGamepadFocusUpCommand.Execute(null);
+                        break;
+                }
                 return true;
             case GamepadAction.NavigateDown:
-                if (IsGamepadSpotlightView)
-                    FocusNextGameCommand.Execute(null);
-                else
-                    MoveGamepadFocusDownCommand.Execute(null);
+                switch (GamepadLayout)
+                {
+                    case GamepadLibraryLayout.Spotlight:
+                        FocusNextGameCommand.Execute(null);
+                        break;
+                    case GamepadLibraryLayout.Shelf:
+                        break;
+                    default:
+                        MoveGamepadFocusDownCommand.Execute(null);
+                        break;
+                }
                 return true;
             default:
                 return false;
@@ -2631,6 +2968,14 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnFocusedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
     {
+        ShelfDeparturePose = oldValue is null
+            ? null
+            : new PhysicalShelfDeparturePose(
+                oldValue.Id,
+                (float)_shelfHeroRotation.Yaw,
+                (float)_shelfHeroRotation.Pitch);
+        OnPropertyChanged(nameof(ShelfDeparturePose));
+
         if (oldValue is not null)
         {
             oldValue.IsFocused = false;
@@ -2645,6 +2990,13 @@ public partial class MainViewModel : ViewModelBase
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
             PrefetchCoversAroundFocus(newValue);
         }
+
+        MoveShelfToFocusedGame(oldValue, newValue);
+
+        // A new game arrives face-on. Carrying the previous game's angle over would present the
+        // next cover already turned away, which reads as the shelf being broken rather than as
+        // the pose being preserved.
+        RecentreShelfHero();
 
         // Picking a new game re-arms Play, so A always launches the freshly focused game by default.
         IsSpotlightAchievementsFocused = false;
@@ -2667,6 +3019,19 @@ public partial class MainViewModel : ViewModelBase
         var index = Games.IndexOf(focused);
         if (index < 0)
             return;
+
+        if (ShowGamepadShelf)
+        {
+            var shelfStart = Math.Max(0, index - ShelfNeighbourPrefetchRadius);
+            var shelfEnd = Math.Min(Games.Count - 1, index + ShelfNeighbourPrefetchRadius);
+            for (var shelfIndex = shelfStart; shelfIndex <= shelfEnd; shelfIndex++)
+            {
+                var shelfGame = Games[shelfIndex];
+                if (shelfGame.LoadCoverCommand.CanExecute(shelfGame))
+                    shelfGame.LoadCoverCommand.Execute(shelfGame);
+            }
+            return;
+        }
 
         var columns = Math.Max(1, GamepadColumnCount);
         var rowIndex = index / columns;
@@ -2988,6 +3353,8 @@ public partial class MainViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
+        OnPropertyChanged(nameof(ShowGamepadShelf));
+        NotifySaveSyncPresentationChanged();
 
         if (value)
         {
@@ -3451,6 +3818,7 @@ public partial class MainViewModel : ViewModelBase
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
                 ApplyScrapedTitles(viewModels);
+                ApplyPhysicalMediaTexturePaths(viewModels);
                 if (listActive)
                     ApplyDetailsProjections(viewModels);
                 return viewModels;
@@ -3715,6 +4083,29 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // The 3D shelf needs only the selected support-texture path, not every metadata/media row. One
+    // bulk read keeps gamepad/grid scope construction free of the per-game GetDetails N+1 that the
+    // details projections deliberately avoid. Decoding remains lazy inside the bounded shelf control.
+    private void ApplyPhysicalMediaTexturePaths(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_gameDetails is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var paths = _gameDetails.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+            foreach (var viewModel in viewModels)
+            {
+                viewModel.ApplyPhysicalMediaTexturePath(
+                    paths.TryGetValue(viewModel.Id, out var path) ? path : null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load physical-media texture paths for the shelf: {ex.Message}");
+        }
+    }
+
     /// <summary>Loads the scraped-metadata projection for the current scope on demand — used when the
     /// user switches to the Desktop list view (or returns to it) for a scope that skipped the read in
     /// grid/gamepad mode. No-ops when the list isn't showing or the scope already has its projection.
@@ -3954,6 +4345,7 @@ public partial class MainViewModel : ViewModelBase
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         Games.ReplaceAll(SortGames(filtered));
+        ApplyShelfHeroSupport(Games);
         ApplyVisibleCoverShelf(GridCoverWidth > 0 ? GridCoverWidth : MinCoverWidth);
 
         HasGames = Games.Count > 0;
@@ -4678,6 +5070,50 @@ public partial class MainViewModel : ViewModelBase
                 StatusSeverity.Error);
     }
 
+    private bool ShouldAnimatePhysicalShelfLaunch(GameViewModel game) =>
+        ShowGamepadShelf && ShelfSceneSupported && ReferenceEquals(FocusedGame, game);
+
+    private async Task PlayPhysicalShelfLaunchAsync(
+        GameViewModel game,
+        CancellationToken cancellationToken)
+    {
+        if (!ShouldAnimatePhysicalShelfLaunch(game))
+        {
+            return;
+        }
+
+        _shelfLaunchTransition.Start(
+            game.Id,
+            _shelfHeroRotation.Yaw,
+            _shelfHeroRotation.Pitch);
+        OnPropertyChanged(nameof(ShelfLaunchPose));
+        _shelfLaunchCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _shelfLaunchTimestamp = Stopwatch.GetTimestamp();
+        _shelfLaunchTimer.Start();
+        await _shelfLaunchCompletion.Task.WaitAsync(cancellationToken);
+    }
+
+    private async Task RestorePhysicalShelfAfterLaunchAsync()
+    {
+        if (_shelfLaunchTransition.IsIdle)
+        {
+            return;
+        }
+
+        if (!_shelfLaunchTransition.BeginReturn())
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ShelfLaunchPose));
+        _shelfLaunchCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _shelfLaunchTimestamp = Stopwatch.GetTimestamp();
+        _shelfLaunchTimer.Start();
+        await _shelfLaunchCompletion.Task;
+    }
+
     private async Task LaunchGameCoreAsync(GameViewModel? game)
     {
         if (game is null || IsBusy)
@@ -4730,6 +5166,10 @@ public partial class MainViewModel : ViewModelBase
                             ? $"Save sync incomplete; launching {displayTitle} with the saves currently on disk…"
                             : $"Launching {displayTitle}…",
                         StatusSeverity.Progress);
+                    // Preflight and save sync have both succeeded far enough to launch. Hold the
+                    // process start until the selected physical medium reaches its insertion pose;
+                    // non-shelf layouts take this path as an immediate no-op.
+                    await PlayPhysicalShelfLaunchAsync(game, cancellationToken);
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
@@ -4738,6 +5178,10 @@ public partial class MainViewModel : ViewModelBase
                         cancellationToken);
                     recordedPlay = true;
                 });
+            // The launch service returns only after a tracked emulator exits, or immediately when
+            // process start fails. In either case the visible shelf returns from the held insertion
+            // pose before post-exit status work continues.
+            await RestorePhysicalShelfAfterLaunchAsync();
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
@@ -4765,6 +5209,9 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            // Covers cancellation and unexpected exceptions raised while preflight, sync, animation,
+            // or process tracking is active. The helper is idempotent after the normal return above.
+            await RestorePhysicalShelfAfterLaunchAsync();
             ResumeFrontendUiWork();
             IsBusy = false;
             if (recordedPlay)

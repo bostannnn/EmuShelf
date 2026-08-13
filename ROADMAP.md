@@ -1732,3 +1732,101 @@ xattr is stripped after extract (same as the M39 macOS applier).
 - [ ] Release parsing + asset selection per source and per OS/arch, manifest round-trip,
       managed-vs-user-install overwrite guard, extractor unit tests (zip/7z/tar.xz), and headless
       view-model tests for the status/progress states. Full `dotnet build`/`dotnet test` green on macOS.
+
+## M42 — Physical-media shelf scene (selected next; planned)
+
+Turn the running single-hero prototype into the intended minimal physical-library mode: correctly
+scaled media share one horizontal 3D scene, move continuously as focus changes, carry realistic
+materials/art and contact shadows, and perform a safe insertion transition before launch. The detailed
+design, asset gates and failure semantics live in `docs/couch-physical-media-shelf.md`; implementation
+decisions land in `DECISIONS.md` with each phase.
+
+### Phase 1 — Metric profiles and the smallest multi-item scene
+
+- [x] Add a `PhysicalMediaProfile` contract with real dimensions, canonical orientation, artwork slots,
+      material variant and insertion-animation id. Use one camera and one shelf baseline; never auto-fit
+      each medium independently. Keep case = large, SNES = medium, GBA = small by physical proportion.
+      — Landed 2026-08-13; PS3 keeps its shorter metric profile while sharing temporary case geometry.
+      Hands-on SNES composition review added a restrained 1.10 presentation correction, raised the
+      common shelf/floor by 0.08 world units, and gave cartridges a small profile-owned clearance so
+      the row sits near the content area's optical centre without changing cross-platform proportions.
+- [x] Replace the translated 2D strip plus single hero with one bounded `MediaShelf3DControl` rendering
+      the focused item and two or three neighbours on each side. Unsupported systems render a thin cover
+      card in the same scene. Preserve the current flat shelf as the no-GL fallback. — Landed 2026-08-13;
+      GPU covers/subscriptions are bounded to the seven visible items.
+- [x] Add a pure continuous shelf-motion model (target index, position, velocity, elapsed time and
+      reduced-motion mode). Held input updates the target without stacking animations; rendering stops
+      once motion and user rotation settle. — Landed 2026-08-13 with an exact critically damped step,
+      far-jump snapping, reduced-motion snap policy and an idle-stopping UI timer.
+
+Phase 1 code acceptance: full solution build and tests green (1,666 passed, 1 skipped); shared-camera
+headless acceptance render generated. Windows composition, movement feel and controller framing remain
+the hands-on review gate before Phase 2 begins.
+
+### Phase 2 — One gold-standard SNES vertical slice
+
+- [x] Select a redistribution-safe SNES shell (prefer CC0/CC BY downloadable GLB) and retain source URL,
+      author, exact license and downloaded archive. Reject view-only, Editorial, NC or ND assets and any
+      model whose baked game art cannot be removed or completely replaced. — SomeKevin's CC BY 4.0
+      PAL/Super Famicom shell integrated 2026-08-13 as a deterministic cleaned runtime derivative;
+      the supplied BY-NC scan and paid Store model were rejected.
+- [ ] Pass the asset gate: measured proportions, correct pivot/orientation, closed visible silhouette,
+      bevelled edges, stable normals, usable UVs/tangents, separate body/label materials, and no borrowed
+      packaging visible from any review angle. Record attribution and modifications in notices. — Source,
+      license, 129×87×20mm PAL profile, 180° orientation, PBR maps, placeholder removal, topology repair
+      and attribution landed 2026-08-13. Hardware review rejected a separate label plane because it
+      visibly floated; the replacement body-attached decal has aspect-correct rounded corners,
+      derivative-antialiased edges and its own paper roughness/flat shading without a geometry gap.
+      Remaining boundary/non-manifold audit and real-Windows 1080p close-up review keep this gate open.
+- [ ] Add the production material/lighting path: base colour, normal, metallic/roughness and AO maps,
+      mipmapped/anisotropic label art, direct key plus soft receiving-plane shadow, while retaining the
+      existing IBL reflections. Verify front/back/side/top close-ups at 1080p on real Windows hardware.
+      — Direct GGX key lighting, analytic softbox-style contact shadows on a transparent receiving plane,
+      geometry-cast key self-shadows with 3×3 PCF, per-shell dielectric/roughness calibration, trilinear
+      mipmaps and driver-capped 8× anisotropic filtering landed 2026-08-13 and passed the full-HD
+      headless angle matrix. A couch-distance contrast pass now gives the SNES a 70% studio fill,
+      lets true depth visibility suppress 58% of that fill, and applies thresholded normal-map cavity
+      only to strong relief while excluding the printed label. The studio key now rakes from high-left
+      rather than following the camera axis, and isolated 1024px per-item maps give readable neutral-pose
+      self-shadows without one shelf item shadowing another. The SNES asset contains no authored occlusion
+      texture, so AO-map ingestion and the real-Windows 1080p review keep this gate open.
+
+### Phase 3 — Correct scraped media and remaining launch set
+
+- [x] Project selected ScreenScraper `support-texture` into authored cartridge label slots, decoded
+      off the UI thread for the visible shelf window with a bounded LRU. Missing/invalid art keeps the
+      authored accent label; `support-2D` is a complete flat cartridge render and box art is never used.
+- [ ] Map case front/back/spine/wrap media onto authored case material slots.
+- [ ] Bring GBA and the case family through the same asset gate. Use separate material/dimension variants
+      where the real packaging differs rather than recolouring one inaccurate universal case.
+- [ ] Bound decoded/GPU artwork with a focused-neighbour LRU and shared shell resources. Hold 60 fps at
+      1280x800 and 1920x1080 with a 500-game library on the Windows integrated-GPU acceptance machine.
+      — Shared baseline optimization landed 2026-08-13: 21-entry cover-texture LRU, adaptive scene
+      resolution capped at 2560×1440, isolated PCF self-shadows for every submitted shelf item, cached GL
+      filtering capabilities, one neutral studio bake with navigation-time shader tinting, async cached
+      model decode, allocation-free panel bindings and resize-bucketed render targets that shrink after
+      sustained material under-use. The GL scene exists only while shelf mode is visible; an explicit
+      readiness watchdog preserves the flat fallback even when Avalonia fails before renderer init. The
+      control reuses its seven-item render buffers, cleans up observers on detach and changes cover
+      subscriptions only when the rounded visible range changes. Shared geometry now consumes the
+      profile's material variant for platform-specific body tint, roughness and reflectance. Physical
+      support artwork now uses a focus-prioritized queue with no more than two concurrent decodes;
+      queued/off-screen requests are discarded before they can turn rapid traversal into a library-wide
+      I/O burst or displace visible textures from the LRU.
+      Real integrated-GPU frame pacing remains the acceptance gate.
+
+### Phase 4 — Launch/return choreography and rollout
+
+- [ ] Add a view-model-owned transition: `Idle -> Preflight -> Lift -> Spin/Align -> Insert -> Committed`,
+      with cancel, start-failure return, emulator-exit restoration and repeated-launch suppression. The
+      animation exposes transforms but never starts a process itself; the existing launcher commits it.
+      — Implemented as a pure elapsed-time model on 2026-08-13: after launch preflight and pre-launch
+      save sync, the focused medium lifts/approaches, turns exactly three times, aligns and holds half
+      inserted before releasing process start. Failure, cancellation and tracked exit reverse from the
+      current pose. Executable verification remains pending because the local execution allowance ended.
+- [ ] Give cartridges and disc cases appropriate downward handoff paths. Reduced motion uses a brief
+      translate/fade; optional sounds must be licensed, independently mutable and independently muted.
+      — The shared downward handoff and no-spin reduced-motion model path are present; platform-specific
+      insertion depths, an exposed reduced-motion setting and optional sound remain open.
+- [ ] Keep the mode experimental until SNES, GBA and supported case variants pass real-hardware visual,
+      performance, no-cover, no-GL, cancellation and every launch-failure acceptance path.

@@ -320,6 +320,27 @@
         <Style Selector="Panel.spotlight-action.focused Border.gamepad-focus-tile-ring">
             <Setter Property="Opacity" Value="1" />
         </Style>
+        <!-- Flat no-GL shelf fallback: every cover but the focused one recedes (smaller + dimmed) so the
+             centred selection reads as the one "in your hands". No focus ring — the centre position and
+             the size/opacity lift ARE the selector. Scale + opacity ease so browsing glides. -->
+        <Style Selector="Panel.shelf-media">
+            <!-- Percentages, not bare 0.5 — Avalonia parses "0.5,0.5" as an ABSOLUTE 0.5px origin (the
+                 top-left corner), so the neighbour scale pivoted at the corner and shifted covers left,
+                 making the focused cover's left/right margins unequal. "50%,50%" is the real centre. -->
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+            <Setter Property="RenderTransform" Value="scale(0.66)" />
+            <Setter Property="Opacity" Value="0.5" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.22" Easing="CubicEaseOut" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.22" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Panel.shelf-media.focused">
+            <Setter Property="RenderTransform" Value="scale(1.0)" />
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <!-- The clickable Achievements widget is a bare button wrapping the pill, so it keeps the
              pill's own visuals and never draws its own chrome or focus adorner. -->
         <Style Selector="Button.spotlight-action-button">
@@ -2519,10 +2540,10 @@
                 </Button>
             </Grid>
         </Border>
-        <!-- Save sync is the one launch/exit step a couch player waits on: saves are pulled before the
-             game starts and pushed after it exits. The corner toast is too easy to miss at that
-             distance, so surface a large centered panel over the whole shell while it runs. -->
-        <Border Grid.Row="0" Grid.RowSpan="3" ZIndex="1" IsVisible="{Binding IsSyncingSavesForLaunch}"
+        <!-- Grid/spotlight retain the large save-sync surface. Physical-shelf mode deliberately uses
+             the corner progress toast instead, keeping the selected cartridge and launch choreography
+             visible while saves are pulled before process start or pushed after emulator exit. -->
+        <Border Grid.Row="0" Grid.RowSpan="3" ZIndex="1" IsVisible="{Binding ShowBlockingLaunchSaveSync}"
                 Background="#B0000000" IsHitTestVisible="False">
             <Border Padding="44,34" CornerRadius="18" MaxWidth="560"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -2544,7 +2565,7 @@
         </Border>
         <Border x:Name="GamepadFocusedDock" Grid.Row="2" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0"
-                Padding="36,12" IsVisible="{Binding !IsGamepadSpotlightView}">
+                Padding="36,12" IsVisible="{Binding IsGamepadGridLayout}">
             <Grid x:Name="GamepadDockPrimaryRow" IsVisible="{Binding HasGames}"
                   ColumnDefinitions="*,Auto,Auto" ColumnSpacing="14">
                 <StackPanel MinWidth="0" Margin="0,0,12,0" VerticalAlignment="Center" Spacing="2">
@@ -2900,6 +2921,122 @@
                 </Grid>
         </Panel>
 
+        <!-- ===================== Physical-media shelf (couch) layout =====================
+             The GPU path is one bounded 3D world containing the focused medium and nearby games;
+             ShelfPosition moves that world continuously through a fixed product-photography camera.
+             If GL initialization fails, the old translated flat strip remains a complete fallback.
+             The root is a Border (not a bare Panel) so the spotlight backdrop stays the sole top-level Panel.
+             See docs/couch-physical-media-shelf.md. -->
+        <Border x:Name="GamepadShelf" Grid.Row="1" Grid.RowSpan="2"
+                IsVisible="{Binding ShowGamepadShelf}"
+                ClipToBounds="True"
+                IsHitTestVisible="{Binding !HasGamepadOverlay}">
+            <Panel>
+                <!-- Calm monochrome backdrop, tinted by the focused system's accent so the whole screen
+                     shifts colour as you browse platforms. -->
+                <Border Background="{DynamicResource EmuLibraryBrush}" />
+                <Border Background="{Binding FocusedGame.AccentColor}" Opacity="0.16" />
+
+                <Grid RowDefinitions="*,Auto" Margin="0,28,0,40">
+                    <!-- Coverflow strip viewport. GamepadShelfStrip is translated by the code-behind so
+                         the focused slot lands on centre; the viewport's ClipToBounds hides the off-screen
+                         covers. Slots are a uniform 410px wide (matching MainWindow.ShelfSlotWidth) so the
+                         centring is exact arithmetic, independent of each cover's own aspect.
+                         The strip itself must NOT clip: a Left-aligned child wider than its slot is arranged
+                         to the viewport width, so a self-clip would cut off every cover whose translated
+                         position lands past that width — i.e. the focused cover vanishes once you scroll a
+                         few games in. The viewport Panel is the sole clipper. -->
+                    <!-- Responsive host for the shared scene plus its flat no-GL fallback. The star
+                         row gives physical media the available couch viewport while the title keeps
+                         its own automatic row. -->
+                    <Grid x:Name="GamepadShelfMediaHost" Grid.Row="0" Margin="16,8">
+                    <Panel x:Name="GamepadShelfViewport" ClipToBounds="True"
+                           IsVisible="{Binding !ShelfSceneSupported}"
+                           SizeChanged="OnGamepadShelfViewportSizeChanged">
+                        <ItemsControl x:Name="GamepadShelfStrip" ItemsSource="{Binding Games}"
+                                      HorizontalAlignment="Left" VerticalAlignment="Center"
+                                      ClipToBounds="False">
+                            <ItemsControl.Transitions>
+                                <Transitions>
+                                    <TransformOperationsTransition Property="RenderTransform"
+                                                                   Duration="0:0:0.26" Easing="CubicEaseOut" />
+                                </Transitions>
+                            </ItemsControl.Transitions>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:GameViewModel">
+                                    <!-- Uniform-width slot; the cover is centred inside and scales with
+                                         focus. Width MUST match MainWindow.ShelfSlotWidth (410). -->
+                                    <Panel Classes="shelf-media" Classes.focused="{Binding IsFocused}"
+                                           Width="410" VerticalAlignment="Center" ClipToBounds="False">
+                                        <Border CornerRadius="10" ClipToBounds="True"
+                                                IsVisible="{Binding !ShelfUses3DHero}"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Width="{Binding GamepadShelfCoverWidth}"
+                                                Height="{Binding GamepadShelfCoverHeight}"
+                                                Background="{DynamicResource EmuCoverWellBrush}"
+                                                BoxShadow="0 16 38 0 #8A000000"
+                                                AttachedToVisualTree="OnGameCoverAttached"
+                                                DataContextChanged="OnGameCoverDataContextChanged">
+                                            <Panel>
+                                                <Grid Classes="cover-placeholder" Classes.covered="{Binding HasCoverImage}"
+                                                      RowDefinitions="6,*" Background="{DynamicResource EmuCoverWellBrush}">
+                                                    <Border Grid.Row="0" Background="{Binding AccentColor}" />
+                                                    <Border Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                            Width="96" Height="96" CornerRadius="48"
+                                                            Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                                                        <Image Width="66" Height="66" Source="{Binding PlatformArtwork}"
+                                                               RenderOptions.BitmapInterpolationMode="None" />
+                                                    </Border>
+                                                </Grid>
+                                                <Image Source="{Binding CoverImage}" Classes="cover-image"
+                                                       Classes.loaded="{Binding HasCoverImage}"
+                                                       Stretch="UniformToFill" />
+                                            </Panel>
+                                        </Border>
+                                    </Panel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Panel>
+                    <!-- One scene owns every visible physical medium. ShelfPosition is continuous,
+                         so navigation carries the old and incoming games through the same world
+                         instead of swapping one centred hero over a separately animated 2D strip. -->
+                    <controls:MediaShelf3DHost x:Name="GamepadShelfScene"
+                                               Width="{Binding Bounds.Width, ElementName=GamepadShelfMediaHost}"
+                                               Height="{Binding Bounds.Height, ElementName=GamepadShelfMediaHost}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               IsVisible="{Binding ShelfSceneSupported}"
+                                               IsActive="{Binding ShowGamepadShelf}"
+                                               IsSceneSupported="{Binding ShelfSceneSupported}"
+                                               Items="{Binding Games}"
+                                               FocusedItem="{Binding FocusedGame}"
+                                               ShelfPosition="{Binding ShelfPosition}"
+                                               Yaw="{Binding ShelfHeroYaw}"
+                                               Pitch="{Binding ShelfHeroPitch}"
+                                               DeparturePose="{Binding ShelfDeparturePose}"
+                                               LaunchPose="{Binding ShelfLaunchPose}"
+                                               InitializationFailed="OnGamepadShelfHeroFailed" />
+                    </Grid>
+
+                    <!-- Focused game's platform + title, centred beneath the shelf (the dock is hidden here). -->
+                    <StackPanel Grid.Row="1" Margin="0,22,0,0"
+                                HorizontalAlignment="Center" Spacing="6" IsVisible="{Binding HasGames}">
+                        <TextBlock Text="{Binding FocusedGame.SystemName}" HorizontalAlignment="Center"
+                                   FontSize="{DynamicResource EmuGpCaptionSize}" FontWeight="Bold" LetterSpacing="1.4"
+                                   Foreground="{DynamicResource EmuAccentBrush}" />
+                        <TextBlock Text="{Binding FocusedGame.DisplayTitle}" HorizontalAlignment="Center"
+                                   FontSize="{DynamicResource EmuGpTitleSize}" FontWeight="Bold"
+                                   MaxLines="1" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+            </Panel>
+        </Border>
+
         <!-- One in-window host owns all controller input while open. No Gamepad workflow opens a child window.
              ZIndex 2 keeps the scrim and its overlay above the elevated toast/save-sync layer (ZIndex 1). -->
         <Grid Grid.RowSpan="3" ZIndex="2" Classes="gamepad-scrim" IsHitTestVisible="{Binding HasGamepadOverlay}" Background="#B9000000">
@@ -2971,11 +3108,11 @@
                             </Grid>
                             <Border Classes="gamepad-viewmode-row"
                                     Classes.focused="{Binding IsGamepadViewModeRowFocused}">
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                                <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
                                     <Button Grid.Column="0" Classes="gamepad-viewmode-card"
                                             Classes.selected="{Binding IsGridViewModeSelected}"
                                             Command="{Binding SelectGridViewModeCommand}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                                             <PathIcon Grid.Column="0" Width="18" Height="18"
                                                       Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" />
                                             <TextBlock Grid.Column="1" Text="Grid" VerticalAlignment="Center"
@@ -2992,12 +3129,30 @@
                                     <Button Grid.Column="1" Classes="gamepad-viewmode-card"
                                             Classes.selected="{Binding IsListViewModeSelected}"
                                             Command="{Binding SelectListViewModeCommand}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                                             <PathIcon Grid.Column="0" Width="18" Height="18"
                                                       Data="M2,3 H18 V6 H2 Z M2,8.5 H18 V11.5 H2 Z M2,14 H18 V17 H2 Z" />
                                             <TextBlock Grid.Column="1" Text="List" VerticalAlignment="Center"
                                                        FontSize="15" FontWeight="SemiBold" />
                                             <Border Grid.Column="2" IsVisible="{Binding IsListViewModeSelected}"
+                                                    Width="22" Height="22" CornerRadius="11"
+                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
+                                            </Border>
+                                        </Grid>
+                                    </Button>
+                                    <Button Grid.Column="2" Classes="gamepad-viewmode-card"
+                                            Classes.selected="{Binding IsShelfViewModeSelected}"
+                                            Command="{Binding SelectShelfViewModeCommand}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                            <!-- A cartridge/case silhouette: a rounded body with a label band. -->
+                                            <PathIcon Grid.Column="0" Width="18" Height="18"
+                                                      Data="M5,1 H15 V19 H5 Z M5,5 H15 M7,1 V5 M13,1 V5" />
+                                            <TextBlock Grid.Column="1" Text="Shelf" VerticalAlignment="Center"
+                                                       FontSize="15" FontWeight="SemiBold" />
+                                            <Border Grid.Column="2" IsVisible="{Binding IsShelfViewModeSelected}"
                                                     Width="22" Height="22" CornerRadius="11"
                                                     Background="{DynamicResource EmuAccentBrush}">
                                                 <TextBlock Text="✓" FontSize="13" FontWeight="Bold"

@@ -123,8 +123,8 @@ public enum GameMediaKind
     Wheel,
     Fanart,
     // Appended and persisted by ordinal (see SqliteGameDetailsStore) — never reorder or insert.
-    // ScreenScraper title screen (sstitle), box back/spine, the physical cartridge/disc label and
-    // its texture wrap, and a preview video.
+    // ScreenScraper title screen (sstitle), box back/spine, the rendered physical cartridge/disc,
+    // its flattened support texture, and a preview video.
     TitleScreen,
     BoxBack,
     BoxSpine,
