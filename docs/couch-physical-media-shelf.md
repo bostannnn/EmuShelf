@@ -316,8 +316,9 @@ lighting pipeline to GBA and the case family before E. Do not polish the one-her
   context-owned upload on the GL thread. Start with ordinary draw calls—five to seven objects do not
   justify instancing complexity.
 - The shared renderer uses adaptive supersampling: up to 2× on small outputs, bounded to 2560×1440, and
-  never below native output size. Only the focused item (or outgoing/incoming pair during travel) receives
-  the dynamic 1024px PCF self-shadow pass; neighbours retain direct/IBL lighting and analytic shelf contact.
+  never below native output size. Every submitted shelf item receives its isolated 1024px PCF self-shadow
+  pass, so moving focus cannot visibly flatten a cartridge that remains on screen. Games outside the
+  bounded seven-item scene receive no rendering work.
   Cover textures remain in a 21-entry GPU LRU so reversing direction does not repeat copy/upload/mipmap
   work. Render targets grow in 256px buckets during resize, panel placements are cached with shell
   resources, and profile material variants tune body tint/roughness/reflectance over shared geometry.

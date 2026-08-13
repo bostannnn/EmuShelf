@@ -1797,7 +1797,7 @@ the hands-on review gate before Phase 2 begins.
 - [ ] Bound decoded/GPU artwork with a focused-neighbour LRU and shared shell resources. Hold 60 fps at
       1280x800 and 1920x1080 with a 500-game library on the Windows integrated-GPU acceptance machine.
       — Shared baseline optimization landed 2026-08-13: 21-entry cover-texture LRU, adaptive scene
-      resolution capped at 2560×1440, focused/outgoing-incoming-only dynamic PCF shadows, cached GL
+      resolution capped at 2560×1440, isolated PCF self-shadows for every submitted shelf item, cached GL
       filtering capabilities, one neutral studio bake with navigation-time shader tinting, async cached
       model decode, allocation-free panel bindings and resize-bucketed render targets that shrink after
       sustained material under-use. The GL scene exists only while shelf mode is visible; an explicit

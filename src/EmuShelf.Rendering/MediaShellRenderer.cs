@@ -298,14 +298,13 @@ public sealed class MediaShellRenderer : IDisposable
 
         foreach (var item in _shelfDrawItems)
         {
-            // At rest this is one depth pass; during travel it is at most the outgoing and incoming
-            // pair. Small neighbours retain the direct key and IBL but skip nine PCF samples per
-            // fragment plus a 1024² depth pass that is not perceptible at their shelf size.
-            var hasKeyShadow = item.Item.FocusAmount > 0.001f;
-            var keyViewProjection = hasKeyShadow
-                ? DrawKeyShadow(item.Resources, item.Model)
-                : Matrix4x4.Identity;
-            DrawShelfItem(item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow);
+            // Visibility, not focus, is the quality boundary. Removing the depth pass as an item
+            // left centre made its moulding flatten while it was still plainly on screen. The
+            // scene is already bounded to seven submitted items; games outside that window incur
+            // no pass at all, while every visible medium retains identical material depth.
+            var keyViewProjection = DrawKeyShadow(item.Resources, item.Model);
+            DrawShelfItem(
+                item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow: true);
         }
 
         _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _sceneFramebuffer);

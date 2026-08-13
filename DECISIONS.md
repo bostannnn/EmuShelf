@@ -6433,3 +6433,16 @@ returning colour/depth memory after a move from a large display or maximized win
 limits colour/depth clears to the logical scene rectangle, so spare bucket capacity consumes memory but no
 per-frame clear bandwidth. These lifecycle, motion and allocation policies sit below platform profiles and
 therefore apply to every current and future physical-media model.
+
+## 2026-08-13 — Self-shadow quality follows visibility, not selection focus
+
+The attention-scaled shadow policy from the earlier performance pass is superseded. Hardware review showed
+that a cartridge lost the depth in its moulded lip, recesses and grip rails at the instant focus moved to its
+neighbour, even though the outgoing cartridge remained large and fully visible during and after travel. That
+read as a material/lighting pop rather than a quality optimization.
+
+Every item submitted to the bounded seven-item shelf scene now receives its own isolated 1024px key-depth
+pass and PCF sampling. Games outside that scene window are not submitted and still incur no rendering work.
+If integrated-GPU acceptance later requires a lower shadow tier, it must be an explicit stable quality mode
+or a screen-space visibility decision; focus alone may not change the rendered material of an on-screen
+object. This policy is renderer-wide and applies automatically to every current and future media profile.
