@@ -126,11 +126,11 @@ Console.WriteLine($"  {sheetPath}");
 var shelfProfiles = new[]
 {
     new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical"),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(135f, 85f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-grey", "cartridge-vertical"),
+    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 87f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.10f, FloorClearanceInShelfUnits: 0.014f),
     new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(135f, 85f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-grey", "cartridge-vertical"),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical"),
+    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 87f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.10f, FloorClearanceInShelfUnits: 0.014f),
+    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
 };
 var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.20f);

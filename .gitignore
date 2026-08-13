@@ -31,3 +31,6 @@ rclone.exe
 *_libretro.so
 /arcade/
 /screenshots/
+
+# Raw 3D model source files — processed into src/EmuShelf.Rendering/Assets/*.glb, not shipped
+/models/

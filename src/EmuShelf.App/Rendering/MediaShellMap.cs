@@ -30,10 +30,11 @@ public static class MediaShellMap
     {
         ["snes"] = new(
             MediaShell.SnesCartridge, new(129f, 87f, 20f), PhysicalArtworkSlots.CartridgeSupport,
-            "snes-pal-grey", "cartridge-vertical"),
+            "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.10f,
+            FloorClearanceInShelfUnits: 0.014f),
         ["gba"] = new(
             MediaShell.GbaCartridge, new(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport,
-            "gba-grey", "cartridge-vertical"),
+            "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

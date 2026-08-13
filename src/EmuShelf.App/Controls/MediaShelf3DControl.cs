@@ -31,6 +31,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private const float ItemGap = 0.20f;
     private const float NeighbourYaw = -0.18f;
     private const int CoverTextureCacheCapacity = 21;
+    private const int PhysicalArtworkCacheCapacity = 21;
+    private const int PhysicalArtworkDecodeSize = 1024;
+    private const int MaximumConcurrentPhysicalArtworkDecodes = 2;
 
     public static readonly StyledProperty<IReadOnlyList<GameViewModel>?> ItemsProperty =
         AvaloniaProperty.Register<MediaShelf3DControl, IReadOnlyList<GameViewModel>?>(nameof(Items));
@@ -50,16 +53,24 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     public static readonly StyledProperty<PhysicalShelfDeparturePose?> DeparturePoseProperty =
         AvaloniaProperty.Register<MediaShelf3DControl, PhysicalShelfDeparturePose?>(nameof(DeparturePose));
 
+    public static readonly StyledProperty<PhysicalShelfLaunchPose?> LaunchPoseProperty =
+        AvaloniaProperty.Register<MediaShelf3DControl, PhysicalShelfLaunchPose?>(nameof(LaunchPose));
+
     private readonly List<LayoutEntry> _layout = [];
     private readonly List<MediaShelfRenderItem> _renderItems = new((NeighbourRadius * 2) + 1);
     private readonly Dictionary<long, GameViewModel> _gamesByKey = [];
     private readonly HashSet<GameViewModel> _observedGames = [];
     private readonly Dictionary<long, UploadedCover> _uploadedCovers = [];
     private readonly LinkedList<long> _coverLru = [];
+    private readonly Dictionary<long, DecodedPhysicalArtwork> _decodedPhysicalArtwork = [];
+    private readonly LinkedList<long> _physicalArtworkLru = [];
+    private readonly Dictionary<long, PhysicalArtworkLoad> _physicalArtworkLoads = [];
+    private readonly Queue<PhysicalArtworkLoad> _physicalArtworkQueue = [];
     private readonly Dictionary<long, PhysicalShelfDeparturePose> _departurePoses = [];
     private INotifyCollectionChanged? _observedCollection;
     private int _observedStart = -1;
     private int _observedEnd = -1;
+    private int _activePhysicalArtworkDecodes;
     private int _focusedIndex = -1;
     private int _preparationGeneration;
     private GL? _gl;
@@ -107,6 +118,12 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         set => SetValue(DeparturePoseProperty, value);
     }
 
+    public PhysicalShelfLaunchPose? LaunchPose
+    {
+        get => GetValue(LaunchPoseProperty);
+        set => SetValue(LaunchPoseProperty, value);
+    }
+
     public event EventHandler? InitializationSucceeded;
 
     public event EventHandler? ContextLost;
@@ -141,6 +158,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             || change.Property == YawProperty
             || change.Property == PitchProperty
             || change.Property == DeparturePoseProperty
+            || change.Property == LaunchPoseProperty
             || change.Property == BoundsProperty)
         {
             RequestNextFrameRendering();
@@ -160,6 +178,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     {
         _isAttached = false;
         StopObserving();
+        ClearDecodedPhysicalArtwork();
         _preparationGeneration++;
         base.OnDetachedFromVisualTree(e);
     }
@@ -208,7 +227,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             }
 
             var renderItems = BuildRenderItems();
-            SynchronizeCoverTextures(renderItems);
+            SynchronizeArtworkTextures(renderItems);
             _renderer.RenderShelf(renderItems, (uint)fb, width, height);
         }
         catch (Exception exception)
@@ -263,14 +282,20 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 (float)Yaw,
                 (float)Pitch,
                 hasDeparture ? departure : null);
+            PhysicalShelfLaunchPose? launch = LaunchPose is { } candidate && candidate.GameId == entry.Game.Id
+                ? candidate
+                : null;
             _renderItems.Add(new MediaShelfRenderItem(
                 entry.Game.Id,
                 entry.Game.ShelfMediaProfile,
                 entry.Centre - anchor,
                 focus,
-                pose.Yaw,
-                pose.Pitch,
-                ToLinear(entry.Game.ShelfAccent)));
+                launch?.Yaw ?? pose.Yaw,
+                launch?.Pitch ?? pose.Pitch,
+                ToLinear(entry.Game.ShelfAccent),
+                launch?.VerticalOffset ?? 0f,
+                launch?.DepthOffset ?? 0f,
+                launch?.Scale ?? 1f));
 
             if (!isFocused && hasDeparture && focus <= 0.001f)
             {
@@ -314,7 +339,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         _departurePoses[pose.GameKey] = pose;
     }
 
-    private void SynchronizeCoverTextures(IReadOnlyList<MediaShelfRenderItem> renderItems)
+    private void SynchronizeArtworkTextures(IReadOnlyList<MediaShelfRenderItem> renderItems)
     {
         if (_renderer is null || Items is null)
         {
@@ -324,23 +349,23 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         foreach (var item in renderItems)
         {
             _gamesByKey.TryGetValue(item.Key, out var game);
-            var cover = game?.CoverImage;
+            var artwork = game is null ? null : ResolveArtwork(game);
             if (_uploadedCovers.TryGetValue(item.Key, out var uploaded))
             {
                 TouchCover(uploaded);
-                if (ReferenceEquals(uploaded.Image, cover))
+                if (ReferenceEquals(uploaded.Image, artwork))
                 {
                     continue;
                 }
 
-                _renderer.SetCoverArt(item.Key, cover is Bitmap changed ? ToTextureImage(changed) : null);
-                uploaded.Image = cover;
+                _renderer.SetCoverArt(item.Key, artwork is Bitmap changed ? ToTextureImage(changed) : null);
+                uploaded.Image = artwork;
                 continue;
             }
 
-            _renderer.SetCoverArt(item.Key, cover is Bitmap bitmap ? ToTextureImage(bitmap) : null);
+            _renderer.SetCoverArt(item.Key, artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null);
             var node = _coverLru.AddFirst(item.Key);
-            _uploadedCovers[item.Key] = new UploadedCover(cover, node);
+            _uploadedCovers[item.Key] = new UploadedCover(artwork, node);
         }
 
         while (_uploadedCovers.Count > CoverTextureCacheCapacity && _coverLru.Last is { } oldest)
@@ -349,6 +374,46 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _uploadedCovers.Remove(oldest.Value);
             _coverLru.RemoveLast();
         }
+    }
+
+    private IImage? ResolveArtwork(GameViewModel game)
+    {
+        var profile = game.ShelfMediaProfile;
+        var path = game.PhysicalMediaTexturePath;
+        DecodedPhysicalArtwork? decoded = null;
+        var hasDecodedPhysicalArtwork =
+            !string.IsNullOrWhiteSpace(path) &&
+            _decodedPhysicalArtwork.TryGetValue(game.Id, out decoded) &&
+            string.Equals(decoded.Path, path, StringComparison.Ordinal);
+        var kind = ArtworkKindFor(profile, hasDecodedPhysicalArtwork);
+        if (kind == ShelfArtworkKind.Cover)
+        {
+            return game.CoverImage;
+        }
+
+        if (kind == ShelfArtworkKind.PhysicalMediaTexture && decoded is not null)
+        {
+            TouchPhysicalArtwork(decoded);
+            return decoded.Image;
+        }
+
+        // A cartridge with no selected/decoded support texture deliberately keeps its authored
+        // accent label. Portrait box art is packaging, not a cartridge-label fallback.
+        return null;
+    }
+
+    internal static ShelfArtworkKind ArtworkKindFor(
+        PhysicalMediaProfile profile,
+        bool hasDecodedPhysicalArtwork)
+    {
+        if ((profile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) == 0)
+        {
+            return ShelfArtworkKind.Cover;
+        }
+
+        return hasDecodedPhysicalArtwork
+            ? ShelfArtworkKind.PhysicalMediaTexture
+            : ShelfArtworkKind.None;
     }
 
     private void TouchCover(UploadedCover cover)
@@ -391,6 +456,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         if (Items is not { Count: > 0 })
         {
             _focusedIndex = -1;
+            ClearDecodedPhysicalArtwork();
             return;
         }
 
@@ -405,6 +471,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         }
 
         _focusedIndex = FocusedItem is null ? -1 : IndexOf(Items, FocusedItem);
+        PruneDecodedPhysicalArtwork();
     }
 
     private void ObserveCollection()
@@ -501,9 +568,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         var start = -1;
         var end = -1;
+        var centre = -1;
         if (Items is { Count: > 0 })
         {
-            var centre = Math.Clamp((int)Math.Round(ShelfPosition), 0, Items.Count - 1);
+            centre = Math.Clamp((int)Math.Round(ShelfPosition), 0, Items.Count - 1);
             start = Math.Max(0, centre - NeighbourRadius);
             end = Math.Min(Items.Count - 1, centre + NeighbourRadius);
         }
@@ -559,14 +627,277 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             game.PropertyChanged += OnVisibleGamePropertyChanged;
             _observedGames.Add(game);
         }
+
+        CancelPhysicalArtworkLoadsOutsideVisibleWindow();
+
+        for (var index = start; index <= end; index++)
+        {
+            if (index >= 0)
+            {
+                QueuePhysicalArtworkLoad(Items[index], pumpImmediately: false);
+            }
+        }
+
+        PrioritizePhysicalArtworkQueue(centre);
+        PumpPhysicalArtworkQueue();
     }
 
     private void OnVisibleGamePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (sender is GameViewModel game &&
+            e.PropertyName is nameof(GameViewModel.PhysicalMediaTexturePath))
+        {
+            RemoveDecodedPhysicalArtwork(game.Id);
+            QueuePhysicalArtworkLoad(game);
+            RequestNextFrameRendering();
+            return;
+        }
+
         if (e.PropertyName is nameof(GameViewModel.CoverImage))
         {
             RequestNextFrameRendering();
         }
+    }
+
+    private void QueuePhysicalArtworkLoad(GameViewModel game, bool pumpImmediately = true)
+    {
+        if ((game.ShelfMediaProfile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) == 0 ||
+            game.PhysicalMediaTexturePath is not { Length: > 0 } path)
+        {
+            return;
+        }
+
+        if (_decodedPhysicalArtwork.TryGetValue(game.Id, out var decoded))
+        {
+            if (string.Equals(decoded.Path, path, StringComparison.Ordinal))
+            {
+                TouchPhysicalArtwork(decoded);
+                return;
+            }
+
+            RemoveDecodedPhysicalArtwork(game.Id);
+        }
+
+        if (_physicalArtworkLoads.TryGetValue(game.Id, out var existingLoad))
+        {
+            if (string.Equals(existingLoad.Path, path, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            CancelPhysicalArtworkLoad(existingLoad);
+        }
+
+        var load = new PhysicalArtworkLoad(game.Id, path);
+        _physicalArtworkLoads[game.Id] = load;
+        _physicalArtworkQueue.Enqueue(load);
+        if (pumpImmediately)
+        {
+            PumpPhysicalArtworkQueue();
+        }
+    }
+
+    private void PumpPhysicalArtworkQueue()
+    {
+        while (_activePhysicalArtworkDecodes < MaximumConcurrentPhysicalArtworkDecodes &&
+               _physicalArtworkQueue.TryDequeue(out var load))
+        {
+            if (load.IsCancelled ||
+                !_physicalArtworkLoads.TryGetValue(load.GameId, out var currentLoad) ||
+                !ReferenceEquals(currentLoad, load) ||
+                !IsPhysicalArtworkVisible(load.GameId))
+            {
+                continue;
+            }
+
+            _activePhysicalArtworkDecodes++;
+            _ = DecodePhysicalArtworkAsync(load);
+        }
+    }
+
+    private async Task DecodePhysicalArtworkAsync(PhysicalArtworkLoad load)
+    {
+        Bitmap? bitmap = null;
+        try
+        {
+            bitmap = await Task.Run(() => SafeImageDecoder.DecodeToFit(
+                load.Path, PhysicalArtworkDecodeSize, PhysicalArtworkDecodeSize)).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            // Scraped media can be removed while the app is open, fail header validation, or be
+            // rejected by the platform image codec. The authored blank label is the complete
+            // fallback; a bad optional asset must not disable GL or fault a fire-and-forget task.
+        }
+
+        try
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                _activePhysicalArtworkDecodes--;
+                var isCurrentLoad = _physicalArtworkLoads.TryGetValue(load.GameId, out var currentLoad) &&
+                                    ReferenceEquals(currentLoad, load);
+                if (isCurrentLoad)
+                {
+                    _physicalArtworkLoads.Remove(load.GameId);
+                }
+
+                if (bitmap is null || load.IsCancelled || !isCurrentLoad || !_isAttached ||
+                    !IsPhysicalArtworkVisible(load.GameId) ||
+                    !_gamesByKey.TryGetValue(load.GameId, out var currentGame) ||
+                    !string.Equals(currentGame.PhysicalMediaTexturePath, load.Path, StringComparison.Ordinal))
+                {
+                    bitmap?.Dispose();
+                }
+                else
+                {
+                    AddDecodedPhysicalArtwork(load.GameId, load.Path, bitmap);
+                    RequestNextFrameRendering();
+                }
+
+                PumpPhysicalArtworkQueue();
+            });
+            bitmap = null;
+        }
+        catch (Exception)
+        {
+            // The dispatcher can be shutting down after the visual tree detached. In that case the
+            // decoded bitmap never changed ownership and must be released here.
+            bitmap?.Dispose();
+        }
+    }
+
+    private bool IsPhysicalArtworkVisible(long gameId) =>
+        _observedGames.Any(game => game.Id == gameId);
+
+    private void CancelPhysicalArtworkLoadsOutsideVisibleWindow()
+    {
+        foreach (var load in _physicalArtworkLoads.Values.ToArray())
+        {
+            if (!IsPhysicalArtworkVisible(load.GameId))
+            {
+                CancelPhysicalArtworkLoad(load);
+            }
+        }
+
+        if (_physicalArtworkQueue.Count == 0)
+        {
+            return;
+        }
+
+        var retained = _physicalArtworkQueue.Where(load => !load.IsCancelled).ToArray();
+        _physicalArtworkQueue.Clear();
+        foreach (var load in retained)
+        {
+            _physicalArtworkQueue.Enqueue(load);
+        }
+    }
+
+    private void PrioritizePhysicalArtworkQueue(int centre)
+    {
+        if (_physicalArtworkQueue.Count < 2 || Items is null || centre < 0)
+        {
+            return;
+        }
+
+        var pending = _physicalArtworkQueue
+            .Where(load => !load.IsCancelled)
+            .OrderBy(load => DistanceFromFocusedGame(load.GameId, centre))
+            .ToArray();
+        _physicalArtworkQueue.Clear();
+        foreach (var load in pending)
+        {
+            _physicalArtworkQueue.Enqueue(load);
+        }
+    }
+
+    private int DistanceFromFocusedGame(long gameId, int centre)
+    {
+        if (Items is null)
+        {
+            return int.MaxValue;
+        }
+
+        for (var index = Math.Max(0, centre - NeighbourRadius);
+             index <= Math.Min(Items.Count - 1, centre + NeighbourRadius);
+             index++)
+        {
+            if (Items[index].Id == gameId)
+            {
+                return Math.Abs(index - centre);
+            }
+        }
+
+        return int.MaxValue;
+    }
+
+    private void CancelPhysicalArtworkLoad(PhysicalArtworkLoad load)
+    {
+        load.IsCancelled = true;
+        if (_physicalArtworkLoads.TryGetValue(load.GameId, out var currentLoad) &&
+            ReferenceEquals(currentLoad, load))
+        {
+            _physicalArtworkLoads.Remove(load.GameId);
+        }
+    }
+
+    private void AddDecodedPhysicalArtwork(long gameId, string path, Bitmap bitmap)
+    {
+        RemoveDecodedPhysicalArtwork(gameId);
+        var node = _physicalArtworkLru.AddFirst(gameId);
+        _decodedPhysicalArtwork[gameId] = new DecodedPhysicalArtwork(path, bitmap, node);
+
+        while (_decodedPhysicalArtwork.Count > PhysicalArtworkCacheCapacity &&
+               _physicalArtworkLru.Last is { } oldest)
+        {
+            RemoveDecodedPhysicalArtwork(oldest.Value);
+        }
+    }
+
+    private void TouchPhysicalArtwork(DecodedPhysicalArtwork artwork)
+    {
+        _physicalArtworkLru.Remove(artwork.Node);
+        _physicalArtworkLru.AddFirst(artwork.Node);
+    }
+
+    private void RemoveDecodedPhysicalArtwork(long gameId)
+    {
+        if (!_decodedPhysicalArtwork.Remove(gameId, out var artwork))
+        {
+            return;
+        }
+
+        _physicalArtworkLru.Remove(artwork.Node);
+        artwork.Image.Dispose();
+    }
+
+    private void PruneDecodedPhysicalArtwork()
+    {
+        foreach (var gameId in _decodedPhysicalArtwork.Keys.ToArray())
+        {
+            if (!_gamesByKey.ContainsKey(gameId))
+            {
+                RemoveDecodedPhysicalArtwork(gameId);
+            }
+        }
+    }
+
+    private void ClearDecodedPhysicalArtwork()
+    {
+        foreach (var artwork in _decodedPhysicalArtwork.Values)
+        {
+            artwork.Image.Dispose();
+        }
+
+        _decodedPhysicalArtwork.Clear();
+        _physicalArtworkLru.Clear();
+        foreach (var load in _physicalArtworkLoads.Values)
+        {
+            load.IsCancelled = true;
+        }
+
+        _physicalArtworkLoads.Clear();
+        _physicalArtworkQueue.Clear();
     }
 
     private void Fail(Exception exception)
@@ -634,4 +965,25 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         public LinkedListNode<long> Node { get; } = node;
     }
+
+    private sealed record DecodedPhysicalArtwork(
+        string Path,
+        Bitmap Image,
+        LinkedListNode<long> Node);
+
+    private sealed class PhysicalArtworkLoad(long gameId, string path)
+    {
+        public long GameId { get; } = gameId;
+
+        public string Path { get; } = path;
+
+        public bool IsCancelled { get; set; }
+    }
+}
+
+internal enum ShelfArtworkKind
+{
+    None,
+    Cover,
+    PhysicalMediaTexture,
 }

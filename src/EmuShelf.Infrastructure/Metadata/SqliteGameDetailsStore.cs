@@ -136,6 +136,31 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         return accumulators.ToDictionary(pair => pair.Key, pair => pair.Value.ToProjection());
     }
 
+    public IReadOnlyDictionary<long, string> GetSelectedMediaPaths(GameMediaKind kind)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT GameId, LocalPath
+            FROM GameMediaAssets
+            WHERE Kind = $kind AND IsSelected = 1
+            ORDER BY GameId, Id DESC;
+            """;
+        command.Parameters.AddWithValue("$kind", (int)kind);
+
+        var paths = new Dictionary<long, string>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            // The schema/store enforce one selected asset per game+kind. Keeping the newest row if
+            // an externally edited database violates that invariant makes this projection stable.
+            paths.TryAdd(reader.GetInt64(0), _pathResolver.ToAbsolutePath(reader.GetString(1)));
+        }
+
+        return paths;
+    }
+
     public bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode)
     {
         ValidateMetadata(value, mode);

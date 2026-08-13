@@ -1747,6 +1747,9 @@ decisions land in `DECISIONS.md` with each phase.
       material variant and insertion-animation id. Use one camera and one shelf baseline; never auto-fit
       each medium independently. Keep case = large, SNES = medium, GBA = small by physical proportion.
       — Landed 2026-08-13; PS3 keeps its shorter metric profile while sharing temporary case geometry.
+      Hands-on SNES composition review added a restrained 1.10 presentation correction, raised the
+      common shelf/floor by 0.08 world units, and gave cartridges a small profile-owned clearance so
+      the row sits near the content area's optical centre without changing cross-platform proportions.
 - [x] Replace the translated 2D strip plus single hero with one bounded `MediaShelf3DControl` rendering
       the focused item and two or three neighbours on each side. Unsupported systems render a thin cover
       card in the same scene. Preserve the current flat shelf as the no-GL fallback. — Landed 2026-08-13;
@@ -1790,8 +1793,10 @@ the hands-on review gate before Phase 2 begins.
 
 ### Phase 3 — Correct scraped media and remaining launch set
 
-- [ ] Add lazy ScreenScraper support/box media kinds: cartridge `support-2D`/`support-texture`; case
-      front/back/spine/wrap. An authored empty shell with accent label remains valid when artwork is absent.
+- [x] Project selected ScreenScraper `support-texture` into authored cartridge label slots, decoded
+      off the UI thread for the visible shelf window with a bounded LRU. Missing/invalid art keeps the
+      authored accent label; `support-2D` is a complete flat cartridge render and box art is never used.
+- [ ] Map case front/back/spine/wrap media onto authored case material slots.
 - [ ] Bring GBA and the case family through the same asset gate. Use separate material/dimension variants
       where the real packaging differs rather than recolouring one inaccurate universal case.
 - [ ] Bound decoded/GPU artwork with a focused-neighbour LRU and shared shell resources. Hold 60 fps at
@@ -1804,7 +1809,10 @@ the hands-on review gate before Phase 2 begins.
       readiness watchdog preserves the flat fallback even when Avalonia fails before renderer init. The
       control reuses its seven-item render buffers, cleans up observers on detach and changes cover
       subscriptions only when the rounded visible range changes. Shared geometry now consumes the
-      profile's material variant for platform-specific body tint, roughness and reflectance.
+      profile's material variant for platform-specific body tint, roughness and reflectance. Physical
+      support artwork now uses a focus-prioritized queue with no more than two concurrent decodes;
+      queued/off-screen requests are discarded before they can turn rapid traversal into a library-wide
+      I/O burst or displace visible textures from the LRU.
       Real integrated-GPU frame pacing remains the acceptance gate.
 
 ### Phase 4 — Launch/return choreography and rollout
@@ -1812,7 +1820,13 @@ the hands-on review gate before Phase 2 begins.
 - [ ] Add a view-model-owned transition: `Idle -> Preflight -> Lift -> Spin/Align -> Insert -> Committed`,
       with cancel, start-failure return, emulator-exit restoration and repeated-launch suppression. The
       animation exposes transforms but never starts a process itself; the existing launcher commits it.
+      — Implemented as a pure elapsed-time model on 2026-08-13: after launch preflight and pre-launch
+      save sync, the focused medium lifts/approaches, turns exactly three times, aligns and holds half
+      inserted before releasing process start. Failure, cancellation and tracked exit reverse from the
+      current pose. Executable verification remains pending because the local execution allowance ended.
 - [ ] Give cartridges and disc cases appropriate downward handoff paths. Reduced motion uses a brief
       translate/fade; optional sounds must be licensed, independently mutable and independently muted.
+      — The shared downward handoff and no-spin reduced-motion model path are present; platform-specific
+      insertion depths, an exposed reduced-motion setting and optional sound remain open.
 - [ ] Keep the mode experimental until SNES, GBA and supported case variants pass real-hardware visual,
       performance, no-cover, no-GL, cancellation and every launch-failure acceptance path.

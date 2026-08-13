@@ -11,6 +11,9 @@ namespace EmuShelf.Rendering;
 /// <param name="Yaw">Rotation around the medium's up axis.</param>
 /// <param name="Pitch">Rotation around the medium's right axis.</param>
 /// <param name="Accent">This game's platform accent in linear colour space.</param>
+/// <param name="LaunchVerticalOffset">Launch-only translation above/below the shared floor.</param>
+/// <param name="LaunchDepthOffset">Launch-only translation toward the product camera.</param>
+/// <param name="LaunchScale">Launch-only uniform presentation scale.</param>
 public readonly record struct MediaShelfRenderItem(
     long Key,
     PhysicalMediaProfile Profile,
@@ -18,4 +21,7 @@ public readonly record struct MediaShelfRenderItem(
     float FocusAmount,
     float Yaw,
     float Pitch,
-    Vector3 Accent);
+    Vector3 Accent,
+    float LaunchVerticalOffset = 0f,
+    float LaunchDepthOffset = 0f,
+    float LaunchScale = 1f);

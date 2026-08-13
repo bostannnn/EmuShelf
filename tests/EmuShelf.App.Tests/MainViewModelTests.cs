@@ -2479,13 +2479,33 @@ public class MainViewModelTests : IDisposable
         var launch = vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
         await sync.Started.Task.WaitAsync(TestContext.Current.CancellationToken);
 
-        // The centered "Syncing saves…" panel is shown from this flag while the pre-launch sync runs.
+        // Presentation is layout-specific, but this lifecycle flag remains true for the complete sync.
         Assert.True(vm.IsSyncingSavesForLaunch);
 
         sync.Complete();
         await launch;
 
         Assert.False(vm.IsSyncingSavesForLaunch);
+    }
+
+    [AvaloniaFact]
+    public void PhysicalShelf_SaveSyncUsesTheNonModalStatusToast()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.HasGames = true;
+        vm.GamepadLayout = GamepadLibraryLayout.Shelf;
+        vm.StatusText = "Syncing saves before launch…";
+        vm.StatusSeverity = StatusSeverity.Progress;
+        vm.IsSyncingSavesForLaunch = true;
+
+        Assert.True(vm.ShowGamepadStatusToast);
+        Assert.False(vm.ShowBlockingLaunchSaveSync);
+
+        vm.GamepadLayout = GamepadLibraryLayout.Grid;
+
+        Assert.False(vm.ShowGamepadStatusToast);
+        Assert.True(vm.ShowBlockingLaunchSaveSync);
     }
 
     [AvaloniaFact]

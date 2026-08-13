@@ -38,6 +38,9 @@ public sealed class MediaShelf3DHost : ContentControl
     public static readonly StyledProperty<PhysicalShelfDeparturePose?> DeparturePoseProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, PhysicalShelfDeparturePose?>(nameof(DeparturePose));
 
+    public static readonly StyledProperty<PhysicalShelfLaunchPose?> LaunchPoseProperty =
+        AvaloniaProperty.Register<MediaShelf3DHost, PhysicalShelfLaunchPose?>(nameof(LaunchPose));
+
     private readonly DispatcherTimer _initializationWatchdog;
     private MediaShelf3DControl? _scene;
     private bool _failedForActivation;
@@ -98,6 +101,12 @@ public sealed class MediaShelf3DHost : ContentControl
         set => SetValue(DeparturePoseProperty, value);
     }
 
+    public PhysicalShelfLaunchPose? LaunchPose
+    {
+        get => GetValue(LaunchPoseProperty);
+        set => SetValue(LaunchPoseProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -125,6 +134,8 @@ public sealed class MediaShelf3DHost : ContentControl
             scene.Pitch = Pitch;
         else if (change.Property == DeparturePoseProperty)
             scene.DeparturePose = DeparturePose;
+        else if (change.Property == LaunchPoseProperty)
+            scene.LaunchPose = LaunchPose;
     }
 
     protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -157,6 +168,7 @@ public sealed class MediaShelf3DHost : ContentControl
             Yaw = Yaw,
             Pitch = Pitch,
             DeparturePose = DeparturePose,
+            LaunchPose = LaunchPose,
         };
         scene.InitializationSucceeded += OnSceneInitializationSucceeded;
         scene.InitializationFailed += OnSceneInitializationFailed;

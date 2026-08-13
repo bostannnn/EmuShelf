@@ -2540,10 +2540,10 @@
                 </Button>
             </Grid>
         </Border>
-        <!-- Save sync is the one launch/exit step a couch player waits on: saves are pulled before the
-             game starts and pushed after it exits. The corner toast is too easy to miss at that
-             distance, so surface a large centered panel over the whole shell while it runs. -->
-        <Border Grid.Row="0" Grid.RowSpan="3" ZIndex="1" IsVisible="{Binding IsSyncingSavesForLaunch}"
+        <!-- Grid/spotlight retain the large save-sync surface. Physical-shelf mode deliberately uses
+             the corner progress toast instead, keeping the selected cartridge and launch choreography
+             visible while saves are pulled before process start or pushed after emulator exit. -->
+        <Border Grid.Row="0" Grid.RowSpan="3" ZIndex="1" IsVisible="{Binding ShowBlockingLaunchSaveSync}"
                 Background="#B0000000" IsHitTestVisible="False">
             <Border Padding="44,34" CornerRadius="18" MaxWidth="560"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -3019,6 +3019,7 @@
                                                Yaw="{Binding ShelfHeroYaw}"
                                                Pitch="{Binding ShelfHeroPitch}"
                                                DeparturePose="{Binding ShelfDeparturePose}"
+                                               LaunchPose="{Binding ShelfLaunchPose}"
                                                InitializationFailed="OnGamepadShelfHeroFailed" />
                     </Grid>
 

@@ -104,6 +104,10 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _shelfMotionTimer;
     private readonly PhysicalShelfMotionModel _shelfMotion = new();
     private long _shelfMotionTimestamp;
+    private readonly DispatcherTimer _shelfLaunchTimer;
+    private readonly PhysicalShelfLaunchTransitionModel _shelfLaunchTransition = new();
+    private long _shelfLaunchTimestamp;
+    private TaskCompletionSource? _shelfLaunchCompletion;
     private TaskCompletionSource? _platformReloadCompletion;
     private readonly ILibraryViewStateService _libraryViewState;
     private bool _isRestoringViewState;
@@ -327,6 +331,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
+        NotifySaveSyncPresentationChanged();
         OnPropertyChanged(nameof(IsGridViewModeSelected));
         OnPropertyChanged(nameof(IsListViewModeSelected));
         OnPropertyChanged(nameof(IsShelfViewModeSelected));
@@ -706,6 +711,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
+        NotifySaveSyncPresentationChanged();
     }
 
     /// <summary>True only when the selected system has no games at all — drives the "add your first game" prompt.</summary>
@@ -722,10 +728,8 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    // True only while a launch/exit cloud save sync is actually running. The Gamepad shell shows a
-    // large centered "Syncing saves…" panel from this, because the corner status toast alone is too
-    // easy to miss at a couch distance — which is exactly when saves are being pulled before a game
-    // starts or pushed after it exits.
+    // True only while a launch/exit cloud save sync is actually running. Grid/spotlight show the
+    // large centered panel; physical-shelf mode keeps the scene visible and uses its progress toast.
     [ObservableProperty]
     public partial bool IsSyncingSavesForLaunch { get; set; }
 
@@ -1059,10 +1063,12 @@ public partial class MainViewModel : ViewModelBase
     public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
-    /// <summary>Drives the Gamepad corner toast. A launch/exit save sync sets the same
-    /// <see cref="StatusText"/> that the large centered panel shows, so while that panel owns the
-    /// screen the corner toast would echo it word for word — suppress it so only one surface speaks.</summary>
-    public bool ShowGamepadStatusToast => HasStatusMessage && !IsSyncingSavesForLaunch;
+    /// <summary>Drives the Gamepad corner toast. Physical-shelf launch sync stays non-modal so the
+    /// cartridge choreography remains visible; the other couch layouts retain their large panel.</summary>
+    public bool ShowGamepadStatusToast =>
+        HasStatusMessage && (!IsSyncingSavesForLaunch || ShowGamepadShelf);
+
+    public bool ShowBlockingLaunchSaveSync => IsSyncingSavesForLaunch && !ShowGamepadShelf;
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
@@ -1256,6 +1262,16 @@ public partial class MainViewModel : ViewModelBase
                 : Stopwatch.GetElapsedTime(_shelfMotionTimestamp, now).TotalMilliseconds;
             _shelfMotionTimestamp = now;
             AdvanceShelfMotion(elapsed);
+        };
+        _shelfLaunchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _shelfLaunchTimer.Tick += (_, _) =>
+        {
+            var now = Stopwatch.GetTimestamp();
+            var elapsed = _shelfLaunchTimestamp == 0
+                ? _shelfLaunchTimer.Interval.TotalMilliseconds
+                : Stopwatch.GetElapsedTime(_shelfLaunchTimestamp, now).TotalMilliseconds;
+            _shelfLaunchTimestamp = now;
+            AdvanceShelfLaunchTransition(elapsed);
         };
         // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
         AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
@@ -1551,7 +1567,13 @@ public partial class MainViewModel : ViewModelBase
     }
 
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
+        NotifySaveSyncPresentationChanged();
+
+    private void NotifySaveSyncPresentationChanged()
+    {
         OnPropertyChanged(nameof(ShowGamepadStatusToast));
+        OnPropertyChanged(nameof(ShowBlockingLaunchSaveSync));
+    }
 
     /// <summary>
     /// The single entry point for the library toast. Severity is set first so the dismiss timer
@@ -2121,6 +2143,10 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>The shelf hero's pitch, in radians.</summary>
     public double ShelfHeroPitch => _shelfHeroRotation.Pitch;
 
+    /// <summary>The focused item's launch-only transform, or null during ordinary browsing.</summary>
+    public PhysicalShelfLaunchPose? ShelfLaunchPose =>
+        _shelfLaunchTransition.IsIdle ? null : _shelfLaunchTransition.Pose;
+
     /// <summary>
     /// Pose captured from the game that just left focus. The renderer blends it back to the
     /// neighbour pose while that cartridge physically travels away from the centre.
@@ -2177,6 +2203,26 @@ public partial class MainViewModel : ViewModelBase
             _shelfMotionTimestamp = 0;
         }
         return true;
+    }
+
+    /// <summary>Advances launch choreography; public so tests exercise the timer's exact path.</summary>
+    public bool AdvanceShelfLaunchTransition(double deltaMilliseconds)
+    {
+        var changed = _shelfLaunchTransition.Update(deltaMilliseconds);
+        if (changed)
+        {
+            OnPropertyChanged(nameof(ShelfLaunchPose));
+        }
+
+        if (_shelfLaunchTransition.IsCommitted || _shelfLaunchTransition.IsIdle)
+        {
+            _shelfLaunchTimer.Stop();
+            _shelfLaunchTimestamp = 0;
+            _shelfLaunchCompletion?.TrySetResult();
+            _shelfLaunchCompletion = null;
+        }
+
+        return changed;
     }
 
     private void MoveShelfToFocusedGame(GameViewModel? oldValue, GameViewModel? newValue)
@@ -3308,6 +3354,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
+        NotifySaveSyncPresentationChanged();
 
         if (value)
         {
@@ -3771,6 +3818,7 @@ public partial class MainViewModel : ViewModelBase
                 ApplyAchievementDisplays(viewModels);
                 ApplyTexturePackDisplays(viewModels);
                 ApplyScrapedTitles(viewModels);
+                ApplyPhysicalMediaTexturePaths(viewModels);
                 if (listActive)
                     ApplyDetailsProjections(viewModels);
                 return viewModels;
@@ -4032,6 +4080,29 @@ public partial class MainViewModel : ViewModelBase
         catch (Exception ex)
         {
             _logger.Warning($"Could not load metadata projections for the list columns: {ex.Message}");
+        }
+    }
+
+    // The 3D shelf needs only the selected support-texture path, not every metadata/media row. One
+    // bulk read keeps gamepad/grid scope construction free of the per-game GetDetails N+1 that the
+    // details projections deliberately avoid. Decoding remains lazy inside the bounded shelf control.
+    private void ApplyPhysicalMediaTexturePaths(IReadOnlyList<GameViewModel> viewModels)
+    {
+        if (_gameDetails is null || viewModels.Count == 0)
+            return;
+
+        try
+        {
+            var paths = _gameDetails.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+            foreach (var viewModel in viewModels)
+            {
+                viewModel.ApplyPhysicalMediaTexturePath(
+                    paths.TryGetValue(viewModel.Id, out var path) ? path : null);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load physical-media texture paths for the shelf: {ex.Message}");
         }
     }
 
@@ -4999,6 +5070,50 @@ public partial class MainViewModel : ViewModelBase
                 StatusSeverity.Error);
     }
 
+    private bool ShouldAnimatePhysicalShelfLaunch(GameViewModel game) =>
+        ShowGamepadShelf && ShelfSceneSupported && ReferenceEquals(FocusedGame, game);
+
+    private async Task PlayPhysicalShelfLaunchAsync(
+        GameViewModel game,
+        CancellationToken cancellationToken)
+    {
+        if (!ShouldAnimatePhysicalShelfLaunch(game))
+        {
+            return;
+        }
+
+        _shelfLaunchTransition.Start(
+            game.Id,
+            _shelfHeroRotation.Yaw,
+            _shelfHeroRotation.Pitch);
+        OnPropertyChanged(nameof(ShelfLaunchPose));
+        _shelfLaunchCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _shelfLaunchTimestamp = Stopwatch.GetTimestamp();
+        _shelfLaunchTimer.Start();
+        await _shelfLaunchCompletion.Task.WaitAsync(cancellationToken);
+    }
+
+    private async Task RestorePhysicalShelfAfterLaunchAsync()
+    {
+        if (_shelfLaunchTransition.IsIdle)
+        {
+            return;
+        }
+
+        if (!_shelfLaunchTransition.BeginReturn())
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ShelfLaunchPose));
+        _shelfLaunchCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        _shelfLaunchTimestamp = Stopwatch.GetTimestamp();
+        _shelfLaunchTimer.Start();
+        await _shelfLaunchCompletion.Task;
+    }
+
     private async Task LaunchGameCoreAsync(GameViewModel? game)
     {
         if (game is null || IsBusy)
@@ -5051,6 +5166,10 @@ public partial class MainViewModel : ViewModelBase
                             ? $"Save sync incomplete; launching {displayTitle} with the saves currently on disk…"
                             : $"Launching {displayTitle}…",
                         StatusSeverity.Progress);
+                    // Preflight and save sync have both succeeded far enough to launch. Hold the
+                    // process start until the selected physical medium reaches its insertion pose;
+                    // non-shelf layouts take this path as an immediate no-op.
+                    await PlayPhysicalShelfLaunchAsync(game, cancellationToken);
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
@@ -5059,6 +5178,10 @@ public partial class MainViewModel : ViewModelBase
                         cancellationToken);
                     recordedPlay = true;
                 });
+            // The launch service returns only after a tracked emulator exits, or immediately when
+            // process start fails. In either case the visible shelf returns from the held insertion
+            // pose before post-exit status work continues.
+            await RestorePhysicalShelfAfterLaunchAsync();
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
@@ -5086,6 +5209,9 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            // Covers cancellation and unexpected exceptions raised while preflight, sync, animation,
+            // or process tracking is active. The helper is idempotent after the normal return above.
+            await RestorePhysicalShelfAfterLaunchAsync();
             ResumeFrontendUiWork();
             IsBusy = false;
             if (recordedPlay)

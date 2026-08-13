@@ -118,6 +118,23 @@ public class MediaShellTests
         Assert.True(game.ShelfUses3DHero);
     }
 
+    [Fact]
+    public void CartridgeArtwork_UsesSupportTextureOrAuthoredBlank_NeverBoxArt()
+    {
+        var cartridge = MediaShellMap.ProfileForSystem("snes", 1.43);
+        var coverCard = MediaShellMap.ProfileForSystem("playstation", 1.0);
+
+        Assert.Equal(
+            ShelfArtworkKind.PhysicalMediaTexture,
+            MediaShelf3DControl.ArtworkKindFor(cartridge, hasDecodedPhysicalArtwork: true));
+        Assert.Equal(
+            ShelfArtworkKind.None,
+            MediaShelf3DControl.ArtworkKindFor(cartridge, hasDecodedPhysicalArtwork: false));
+        Assert.Equal(
+            ShelfArtworkKind.Cover,
+            MediaShelf3DControl.ArtworkKindFor(coverCard, hasDecodedPhysicalArtwork: false));
+    }
+
     [Theory]
     [InlineData("snes", MediaShell.SnesCartridge)]
     [InlineData("gba", MediaShell.GbaCartridge)]
@@ -153,6 +170,9 @@ public class MediaShellTests
         Assert.True(snes.HeightInShelfUnits < keepCase.HeightInShelfUnits);
         Assert.True(gba.HeightInShelfUnits < snes.HeightInShelfUnits);
         Assert.True(snes.WidthInShelfUnits > gba.WidthInShelfUnits);
+        Assert.Equal(1.10f, snes.PresentationScale, 3);
+        Assert.True(snes.FloorClearanceInShelfUnits > gba.FloorClearanceInShelfUnits);
+        Assert.Equal(0f, keepCase.FloorClearanceInShelfUnits, 3);
         Assert.Equal(PhysicalArtworkSlots.CartridgeSupport, snes.ArtworkSlots);
         Assert.Equal(
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

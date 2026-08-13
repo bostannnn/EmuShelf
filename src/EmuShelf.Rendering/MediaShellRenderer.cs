@@ -43,6 +43,13 @@ public sealed class MediaShellRenderer : IDisposable
     // clips a cartridge's rim against the render surface.
     private const float FramingMargin = 1.30f;
 
+    // Composition constants for the shared physical world. The floor stays just below the common
+    // baseline; profile clearance then lifts small cartridges enough to open their cast shadow
+    // without changing the measured size ratios or making cases hover.
+    private const float ShelfBaselineY = -0.50f;
+    private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
+    private const float FocusLift = 0.035f;
+
     // Each visible item receives its own self-shadow pass. 1024px resolves cartridge-scale moulding
     // more finely than the former 2048px map stretched across the whole seven-item row, avoids one
     // tall case blacking out a neighbour, and keeps the aggregate clear/sample cost reasonable.
@@ -364,11 +371,14 @@ public sealed class MediaShellRenderer : IDisposable
         var scale = new Vector3(
             profile.WidthInShelfUnits / MathF.Max(asset.Size.X, 1e-5f),
             profile.HeightInShelfUnits / MathF.Max(asset.Size.Y, 1e-5f),
-            profile.DepthInShelfUnits / MathF.Max(asset.Size.Z, 1e-5f));
+            profile.DepthInShelfUnits / MathF.Max(asset.Size.Z, 1e-5f)) * item.LaunchScale;
 
-        const float baseline = -0.58f;
-        var centreY = baseline + (profile.HeightInShelfUnits * 0.5f) + (focus * 0.035f);
-        var centreZ = focus * 0.08f;
+        var centreY = ShelfBaselineY
+            + profile.FloorClearanceInShelfUnits
+            + (profile.HeightInShelfUnits * 0.5f)
+            + (focus * FocusLift)
+            + item.LaunchVerticalOffset;
+        var centreZ = (focus * 0.08f) + item.LaunchDepthOffset;
         return Matrix4x4.CreateScale(scale)
             * profile.CanonicalOrientation
             * Matrix4x4.CreateRotationX(item.Pitch)
@@ -606,13 +616,21 @@ public sealed class MediaShellRenderer : IDisposable
             var radiusX = (halfWidth * cos) + (halfDepth * sin);
             var radiusZ = (halfDepth * cos) + (halfWidth * sin);
             var focus = Math.Clamp(item.FocusAmount, 0f, 1f);
+            var lift = profile.FloorClearanceInShelfUnits + (focus * FocusLift) + item.LaunchVerticalOffset;
+            var positiveLift = Math.Clamp(lift, 0f, 0.14f);
+            var shadowExpansion = 1f + (positiveLift * 2f);
+            var insertionVisibility = Math.Clamp(1f + (item.LaunchVerticalOffset * 3f), 0f, 1f);
             _shadowFootprints.Add(new ShadowFootprint(
-                new Vector2(item.CentreX, focus * 0.035f),
-                new Vector2(MathF.Max(radiusX, 0.05f), MathF.Max(radiusZ, 0.045f)),
-                1f - (focus * 0.14f)));
+                new Vector2(item.CentreX, (focus * FocusLift) + item.LaunchDepthOffset),
+                new Vector2(
+                    MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale,
+                    MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale),
+                (1f - (focus * 0.14f))
+                * (1f - (positiveLift * 1.5f))
+                * insertionVisibility));
         }
 
-        DrawShadows(_shadowFootprints, viewProjection, planeY: -0.588f);
+        DrawShadows(_shadowFootprints, viewProjection, planeY: ShelfPlaneY);
     }
 
     private void DrawShadows(

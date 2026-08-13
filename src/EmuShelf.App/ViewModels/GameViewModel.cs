@@ -123,6 +123,22 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public bool HasScrapedPhysicalMedia => _detailsProjection?.HasPhysicalMedia ?? false;
     public bool HasScrapedPhysicalMediaTexture => _detailsProjection?.HasPhysicalMediaTexture ?? false;
 
+    /// <summary>
+    /// Absolute path to the selected ScreenScraper physical-support texture. For SNES this is the
+    /// flattened label artwork; it is decoded only while the game is near the visible 3D shelf.
+    /// </summary>
+    public string? PhysicalMediaTexturePath { get; private set; }
+
+    public void ApplyPhysicalMediaTexturePath(string? path)
+    {
+        var normalized = string.IsNullOrWhiteSpace(path) ? null : path;
+        if (string.Equals(PhysicalMediaTexturePath, normalized, StringComparison.Ordinal))
+            return;
+
+        PhysicalMediaTexturePath = normalized;
+        OnPropertyChanged(nameof(PhysicalMediaTexturePath));
+    }
+
     // Completeness tracks the artwork/text ScreenScraper reliably offers, so a fully scraped game can
     // actually reach the top of the scale. The sparse secondary kinds (box back/spine, cartridge/disc
     // and its texture) are near-absent for most games — especially arcade — so they are presence-only

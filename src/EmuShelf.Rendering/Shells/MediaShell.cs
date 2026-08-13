@@ -149,7 +149,8 @@ public sealed record PhysicalMediaProfile(
     PhysicalArtworkSlots ArtworkSlots,
     string MaterialVariant,
     string InsertionAnimationId,
-    float PresentationScale = 1f)
+    float PresentationScale = 1f,
+    float FloorClearanceInShelfUnits = 0f)
 {
     public const float ReferenceHeightMillimetres = 190f;
 

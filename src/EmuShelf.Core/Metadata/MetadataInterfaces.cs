@@ -114,6 +114,13 @@ public interface IGameDetailsStore
     IReadOnlyDictionary<long, GameDetailsProjection> GetAllDetailsProjections() =>
         new Dictionary<long, GameDetailsProjection>();
 
+    /// <summary>
+    /// Selected local asset paths for one media kind, keyed by game id. This is a bulk shelf/list
+    /// projection: callers must not issue one <see cref="GetDetails"/> query per visible game.
+    /// </summary>
+    IReadOnlyDictionary<long, string> GetSelectedMediaPaths(GameMediaKind kind) =>
+        new Dictionary<long, string>();
+
     bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode);
 
     GameMediaAsset SaveMedia(GameMediaAsset media);

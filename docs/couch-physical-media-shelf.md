@@ -153,21 +153,22 @@ original translated flat-cover strip for the session.
 
 The medium's faces are textured, in priority order, from ScreenScraper media the app can
 already fetch through its existing pipeline. ScreenScraper serves **two families** — the
-box, and the "support" (the physical cartridge/disc) — each with per-face 2D art *and* a
-single "texture" wrap image intended to be mapped onto a 3D mesh (the same media
-EmulationStation-DE / Batocera use for their 3D boxes). Confirmed present on a real SNES
-entry (Super Mario World, gameid 2144, plateforme 4): `box-2D`, `box-2D-back`,
-`box-2D-side`, `box-texture`, `support-2D`, `support-texture`.
+box, and the "support" (the physical cartridge/disc). The names do not imply interchangeable
+images: inspection of downloaded SNES assets showed `support-2D` is a complete pre-rendered
+cartridge image, while `support-texture` is the flattened printable label texture suitable for
+the authored model's label recess. Confirmed kinds on a real SNES entry include `box-2D`,
+`box-2D-back`, `box-2D-side`, `box-texture`, `support-2D`, and `support-texture`.
 
 Per archetype, texture in this order and stop at the first hit:
 
 - **PS2 keep case:** `box-texture` (UV-wrap the whole case) → `box-2D` + `box-2D-back` +
   `box-2D-side` mapped per face, any missing face filled with the accent tint → `box-2D`
   front only + accent tint → flat placeholder.
-- **SNES cartridge:** `support-texture` (UV-wrap the cart) → `support-2D` on the front
-  label recess + molded-plastic (accent/grey) body → flat placeholder. (`box-2D` here is
-  the *cardboard box*, not the cart, so it is **not** used for the cartridge archetype —
-  it would only apply to a future "boxed" SNES variant.)
+- **SNES cartridge:** selected `support-texture` on the authored front-label slot → the authored
+  accent-colour blank label when absent, invalid, or still loading. `support-2D` remains available
+  as a complete flat physical-media preview; it is not projected into the label recess. `box-2D`
+  is the *cardboard box* and is likewise never cropped onto the cartridge—it would only apply to a
+  future "boxed" SNES variant.
 
 Coverage varies sharply by title — the top titles have everything, obscure ones often only
 `box-2D` — so the accent-tinted parametric shell (§2) is the guaranteed base layer and the
@@ -176,16 +177,11 @@ media set in one call, so the extra faces cost image downloads (bandwidth + disk
 `Covers/`), **not** extra API quota. Fetch the non-front faces **lazily** — only for the
 focused game while the shelf mode is in use — rather than bloating every scrape.
 
-**Plumbing** (mirrors the existing 4-kind path exactly): add
-`BoxBack, BoxSpine, BoxTexture, MediaLabel, MediaTexture` to
-[`GameMediaKind`](../src/EmuShelf.Core/Metadata/GameScrapingModels.cs); add their
-ScreenScraper type strings in
-[`ScreenScraperMetadataMapper.GetTypeRank`](../src/EmuShelf.Infrastructure/Metadata/ScreenScraper/ScreenScraperMetadataMapper.cs);
-add `case`s in
-[`SqliteGameDetailsStore`](../src/EmuShelf.Infrastructure/Metadata/SqliteGameDetailsStore.cs);
-expose the decoded bitmaps on `GameViewModel` alongside `FanartImage`/`WheelImage`. Because
-ScreenScraper is already the app's sanctioned art source (it serves `box-2D` today under
-Creative-Commons redistribution), the new types add no licensing category.
+**Plumbing:** `GameMediaKind.PhysicalMedia` and `PhysicalMediaTexture` map to ScreenScraper's
+`support-2D` and `support-texture` respectively. The store bulk-projects selected texture paths
+into `GameViewModel`; `MediaShelf3DControl` decodes only the focused-neighbour window off the UI
+thread and retains a bounded twenty-one-image LRU. Because ScreenScraper is already the app's
+sanctioned art source, these kinds add no licensing category.
 
 ### 3. Right-stick input → `MediaRotationModel`
 
@@ -237,11 +233,10 @@ bundled Steam Input template already carry the right stick and R3:
         bounded `MediaShelf3DControl` scene. Cover art is located on faces in object space; SNES adds an
         aspect-correct rounded decal mask while temporary shells retain square projection bounds.
         Missing art leaves an empty authored shell; GL failure reveals the complete flat fallback.
-  - [ ] The ScreenScraper box/support media kinds (§2a) and the layered
-        texture→per-face→accent fallback, fetched lazily for the focused game. Until this lands a
-        cartridge's landscape label is filled by cropping the portrait box scan — the box art is
-        the wrong asset for a cartridge, and `support-2D` is the right one — and a case's back and
-        spine take a flat accent tint rather than their real printing.
+  - [ ] Complete the ScreenScraper box/support face pipeline (§2a). Cartridge
+        `support-texture` now loads lazily for the visible shelf window and falls back to the authored
+        blank label; neither the complete `support-2D` render nor portrait box art is projected into
+        the label recess. Case back/spine/wrap mapping remains open.
 - [x] **Windows hardware verification.** The prototype was exercised in the real Avalonia/ANGLE
       host on 2026-08-13. That testing exposed and fixed the matrix-upload, HiDPI viewport,
       orientation, framing and centring defects recorded in `DECISIONS.md`.
@@ -286,8 +281,9 @@ lighting pipeline to GBA and the case family before E. Do not polish the one-her
   are more important to realism than indiscriminately increasing polygon count.
 - Support base-colour, normal, metallic/roughness and ambient-occlusion maps, mipmaps, anisotropic label
   filtering, and material variants (for example black PS2, translucent/clear PS3, and white Wii cases).
-- Implement ScreenScraper's `support-2D`/`support-texture` path for cartridges and box front/back/spine or
-  wrap textures for cases. Never crop portrait box art onto a cartridge label when support art exists.
+- Use ScreenScraper `support-texture` for authored cartridge label/material slots; retain `support-2D`
+  as a complete flat physical-media preview. Implement box front/back/spine or wrap textures for cases.
+  Never crop portrait box art or a complete cartridge render onto a cartridge label.
 - Asset gate: front, back, spine, top and edge close-ups pass at 1080p with no open seams, inverted normals,
   stretched labels, faceted bevels, or borrowed game artwork baked into the shell.
 

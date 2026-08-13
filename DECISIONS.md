@@ -6446,3 +6446,64 @@ pass and PCF sampling. Games outside that scene window are not submitted and sti
 If integrated-GPU acceptance later requires a lower shadow tier, it must be an explicit stable quality mode
 or a screen-space visibility decision; focus alone may not change the rendered material of an on-screen
 object. This policy is renderer-wide and applies automatically to every current and future media profile.
+
+## 2026-08-13 — Cartridge models consume support-texture, not support-2D or box art
+
+ScreenScraper's media names were ambiguous enough that the design originally treated `support-2D` as a
+front-label fallback. Inspection of the downloaded SNES assets established a sharper contract:
+`support-2D` is a complete pre-rendered cartridge image, while `support-texture` is the flattened label
+texture that belongs in the authored model's cartridge-support slot. Projecting either portrait box art
+or the complete support render into that recess produces a visibly cropped, physically incorrect label.
+
+The metadata store therefore exposes selected media paths for one kind through a bulk query, and game
+view models receive the selected `PhysicalMediaTexture` path during normal scope construction. The shelf
+decodes those files off the UI thread only for its focused-neighbour window and retains at most twenty-one
+decoded images, matching the existing GPU artwork bound. Missing, malformed, changed, or not-yet-decoded
+textures leave the model's authored accent-colour blank label intact. This policy is selected by the
+profile's `CartridgeSupport` artwork slot, so future cartridge platforms inherit it without bespoke UI
+logic; `PhysicalMedia` remains stored for a future flat physical-media preview.
+
+## 2026-08-13 — Physical-art cache bounds include pending and active decode work
+
+A twenty-one-entry decoded/GPU LRU bounds retained artwork but does not, by itself, bound work. Starting
+one `Task.Run` for each game entering the seven-item window lets rapid gamepad traversal queue much more
+I/O than the renderer can display; late off-screen completions can then evict useful visible textures.
+
+The shelf now runs at most two physical-art decodes concurrently. Its pending queue is reprioritized by
+distance from the focused game whenever the visible window changes, and queued work outside that window
+is discarded. An already-running decode may finish because the platform bitmap decoder is synchronous,
+but its result is accepted only if the exact request is still current and visible. The bound is shared by
+all cartridge profiles and complements rather than replaces the twenty-one-entry decoded and GPU LRUs.
+
+## 2026-08-13 — Shelf composition uses one raised floor plus small cartridge presentation corrections
+
+Full-window review showed the physically scaled SNES row occupying the lower third of the content area,
+with substantially more empty space above it than between the media and game title. Zooming the shared
+camera would enlarge every platform and reduce controller-rotation headroom for tall keep cases, while an
+SNES-only translation would break the common physical floor.
+
+The shared baseline and transparent receiving plane therefore move upward together by 0.08 shelf units,
+roughly 45–50 pixels at the reviewed full-HD composition. The PAL SNES profile uses the contract's existing
+1.10 presentation correction; its measured dimensions remain the source of width/height/depth ratios. A
+separate profile clearance lifts SNES by 0.014 and GBA by 0.010 shelf units while cases remain grounded.
+Analytic cast shadows expand and soften from this real lift value, so the gap reads as product-display
+lighting rather than a detached object. Focus lift remains additive, and the common camera is unchanged.
+
+## 2026-08-13 — Process start commits at the physical insertion pose
+
+The emulator launch service already owns a callback after configuration/content preflight succeeds and
+immediately before the process can read saves. Physical launch choreography runs inside that callback,
+after pre-launch save sync: invalid launches never animate, saves finish before visual commitment, and the
+process cannot start until the selected medium reaches its held insertion pose.
+
+A pure elapsed-time state model drives `Lift -> Spin -> Align -> Insert -> Committed`; the spin covers
+exactly three full turns. The view model supplies its pose to the existing shelf scene, while the renderer
+only applies translation, rotation and scale. At `Committed`, roughly half the cartridge remains visible
+at the lower viewport edge. Process-start failure, cancellation, unexpected exceptions and tracked emulator
+exit all use `Return`, interpolating from the current pose back to the captured shelf pose. `IsBusy` and the
+existing suspended-input guard prevent repeated launch or navigation during the sequence.
+
+Save sync remains blocking in the launch pipeline but is no longer visually modal in physical-shelf mode:
+the existing corner progress toast replaces the full-screen sync panel so the cartridge stays visible.
+Grid and spotlight retain their centered panel. The model also has a shortened no-spin reduced-motion path;
+exposing that policy as a user setting remains a separate rollout item.
