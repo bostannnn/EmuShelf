@@ -16,14 +16,43 @@ as a real **3D object** with the cover art textured on the front face — a SNES
 a PS2 DVD keep case — that the player **rotates live with the right analog stick** to see
 the spine, back, and edges. Turn it in your hands like picking a box off a shelf.
 
+## Direction after the real-hardware prototype (2026-08-13)
+
+The first running prototype proved that Avalonia can host the Silk.NET renderer, but it also exposed
+the limit of the original "one 3D hero over a 2D strip" design. That design can demonstrate a shell;
+it cannot produce the intended experience of rummaging through physical media. The product target is
+therefore a **single physical-media scene** containing every visible shelf item. Moving focus changes a
+continuous shelf position, so the media travel through space rather than a centred object being swapped.
+
+The scene follows four rules:
+
+1. **Physical scale is data.** Each medium records real dimensions in millimetres plus a small optional
+   presentation correction. The keep case is the reference size; SNES is naturally medium and GBA
+   naturally small. The camera is shared by the scene and never auto-fits each item independently.
+2. **One renderer owns the visible row.** It draws a bounded window around focus (normally two or three
+   games on each side), reusing shell meshes and cached per-game textures. Unsupported media use a thin
+   cover card in the same 3D coordinate system, so mixed-platform rows still move continuously.
+3. **Selection is an animation target, not an immediate replacement.** The view model owns a continuous
+   shelf offset and a focused index. A critically damped animation advances the offset every frame; the
+   renderer derives every item's transform from that one value. D-pad repeat changes the target without
+   restarting or stacking animations.
+4. **Launch is an explicit state machine.** After launch preflight succeeds, the selected medium lifts,
+   spins/aligns, and travels down through a platform-specific insertion path. The emulator starts at the
+   animation's commit point. Failure before commit leaves the shelf untouched; failure at start animates
+   the medium back instead of stranding the interface in a half-launched pose.
+
+This direction is inspired by Socket's tactile, platform-specific physical-media presentation, not by
+its branding, assets, or source. EmuShelf keeps its Avalonia application shell and external-emulator
+architecture; the rendering project grows into a deliberately small scene renderer rather than embedding
+or switching the whole application to a game engine.
+
 ## Scope
 
-**v1 ships three shells: a SNES cartridge, a GBA cartridge, and the DVD keep case** — the last
-serving PS2, PS3, GameCube and Wii, which all shipped in the same 135x190x14mm case. They are the two
-parametric archetypes (a solid cartridge and a thin disc case) and the two most iconic
-shapes; proving both proves the system. **Every other system falls back to its flat cover**
-in this mode — the shelf and rotation still work, the focused item is just a flat card until
-its shell is authored. Arcade always falls back (no boxed retail media exists).
+The prototype supplies three authored geometry families: SNES cartridge, GBA cartridge and a keep
+case. Metric profiles distinguish the 135x190x14mm PS2/GameCube/Wii package from the shorter PS3
+Blu-ray case even while they temporarily share geometry. Every unauthored system renders as a thin
+cover-art card inside the same scene; the whole mode falls back to its original flat cover strip only
+when OpenGL is unavailable. Arcade deliberately remains a cover card (no boxed retail medium exists).
 
 Settled design decisions from the research:
 
@@ -39,9 +68,10 @@ Settled design decisions from the research:
   It re-centres to face-on only when focus moves to another game, or on **R3** (right-stick
   click) as an explicit snap-back. No spring-back on release — that would fight a player who
   rotated deliberately to read the spine.
-- **Only the focused item is 3D.** Every off-centre shelf item is the existing flat cover
-  `Image`. Exactly one live 3D control at a time — trivially cheap, and it slots into the
-  existing layout-toggle machinery.
+- **One bounded scene, not a hero overlay.** `MediaShelf3DControl` owns the focused medium and up to
+  three neighbours on each side. A continuous selection coordinate translates their physically
+  spaced world centres through one fixed camera. The earlier one-hero/2D-strip composition survives
+  only as the no-GL compatibility fallback.
 - **Reduce-motion:** a new setting (the app has none today) that disables idle/parallax
   motion in this mode; rotation stays user-driven.
 
@@ -81,13 +111,21 @@ owns the loaded shells, the baked studio, and the cover texture.
   layer maps a system id to a shell; the renderer never hears about consoles.
 - **Lighting.** A procedural studio — a dim room plus rectangular softboxes — rendered to a
   cubemap, then convolved to a 32px diffuse irradiance cube and a 5-mip GGX-prefiltered specular
-  chain, with Karis' analytic environment BRDF in place of a lookup texture. Baked at load and
-  re-baked when the accent changes (a console switch), never per frame. **The softboxes sit in
+  chain, with Karis' analytic environment BRDF in place of a lookup texture. The neutral studio is
+  baked once per GL context; a lightweight shader uniform tints its dim ambient room when the accent
+  changes, without recolouring the softboxes or interrupting navigation. **The softboxes sit in
   front of the subject, not above it**: a flat vertical face reflects the hemisphere in front of
-  it, so an overhead rig hides every highlight where the shell can never show one.
-- **Artwork.** Projected onto faces in object space, not through the models' UVs — the SNES
-  cartridge's span -93 to 1.7 and the GBA's label is packed rotated into a shared atlas, so neither
-  can carry a decal. An `ArtPanel` is a rectangle on a face in fractions of the shell's half-extent;
+  it, so an overhead rig hides every highlight where the shell can never show one. A direct GGX
+  key supplies local bevel/groove contrast. Each visible medium also contributes a bounded analytic
+  two-lobe shadow (tight contact plus soft offset cast) to a transparent horizontal receiving plane;
+  only the premultiplied shadow is composited, so the themed Avalonia background remains the floor.
+- **Artwork.** Located on faces in object space rather than relying on a downloaded model's label UVs.
+  The production SNES shell uses its UVs for authored body PBR maps, then blends game art into the real
+  label region as a body-attached decal. Its signed-distance mask keeps rounded corners circular on a
+  landscape panel, uses derivative antialiasing at every edge, and blends to independent paper roughness
+  plus a flat label normal without adding geometry or a visible gap. GBA and keep-case panels use the same
+  projection foundation until their asset passes arrive. An `ArtPanel` is a rectangle on a face in
+  fractions of the shell's half-extent;
   `MediaShellCatalog.Place` resolves it against the loaded model's real bounds into an origin and
   two edge vectors, and the fragment shader keeps a fragment only if it lies inside that rectangle
   *and* its object-space normal agrees with the face. Panels carry their own roughness, aspect
@@ -96,18 +134,20 @@ owns the loaded shells, the baked studio, and the cover texture.
 - **Output.** Rendered at 2x and resolved down with `glBlitFramebuffer`, which is both the cheapest
   antialiasing for a large slowly-turning silhouette and correct: the supersampled buffer is
   already premultiplied, which is the space filtering must happen in.
+- **Texture filtering.** Colour/data maps and dynamic labels have trilinear mipmaps. When the driver
+  exposes EXT/ARB anisotropic filtering, EmuShelf uses up to 8× so a cartridge label stays legible
+  through the steep controller-driven poses without making support a platform requirement.
 - **Portability.** Shaders are written to the intersection of GLSL ES 3.00 and desktop GLSL 1.50,
   with only the `#version` header injected per backend, because Avalonia hands us ANGLE (GLES 3.0)
   on Windows and a core profile on macOS. Attribute locations are bound with
   `glBindAttribLocation`, since `layout(location=)` would demand GLSL 330.
 
-**`Media3DControl : OpenGlControlBase`** (`src/EmuShelf.App/Controls`) is the host. Bindable inputs:
-`MediaShell? Shell`, `IImage? Cover`, `Color Accent`, and `double Yaw` / `double Pitch` in radians,
-driven by the rotation model (§3) — exercise them from the keyboard before the right stick exists.
-It binds Silk.NET to Avalonia's context, converts the cover bitmap out of premultiplied BGRA once
-per change, and renders. Exactly one live instance exists, bound to `FocusedGame`; every off-centre
-shelf item stays a flat cover. If the context cannot be brought up it raises `InitializationFailed`
-and the library sends the whole shelf back to flat covers for the session.
+**`MediaShelf3DControl : OpenGlControlBase`** (`src/EmuShelf.App/Controls`) is the live host. Its
+inputs are the game list, focused game, continuous shelf position and focused-item yaw/pitch. It
+keeps only the focused item plus three neighbours per side subscribed and uploaded, converts
+Avalonia bitmaps out of premultiplied BGRA once per change, and submits them to one renderer scene.
+If the context cannot be brought up it raises `InitializationFailed` and the library reveals the
+original translated flat-cover strip for the session.
 
 ### 2a. Face textures from ScreenScraper
 
@@ -189,27 +229,24 @@ bundled Steam Input template already carry the right stick and R3:
       (`GamepadLibraryLayout` enum, `GamepadShelfList`, picker Shelf tile; see `DECISIONS.md`).
       Follow-ups still open: per-system background tint (currently a flat calm surface) and
       centring the focused cover (currently auto-scroll-into-view).
-- [ ] **Phase 2 — the 3D hero.** *Renderer done 2026-08-10; face textures (§2a) still open.*
+- [x] **Phase 2 — the 3D prototype.** *Renderer done 2026-08-10; face textures (§2a) still open.*
   - [x] The renderer and its host, landed as a GPU renderer rather than the Skia control
         originally planned (see `DECISIONS.md`). `EmuShelf.Rendering` draws a shell with
-        metallic-roughness PBR under a procedurally baked studio environment; `Media3DControl :
-        OpenGlControlBase` hosts exactly one live instance, bound to `FocusedGame`. Cover art is
-        projected onto faces in object space. Flat-cover fallback for every other system, for
-        no-cover games, and for a GL context that will not come up. Three shells: SNES cartridge,
-        GBA cartridge, and the keep case shared by PS2/PS3/GameCube/Wii.
+        metallic-roughness PBR under a procedurally baked studio environment. The original
+        `Media3DControl` hosted one focused item; M42 Phase 1 replaces that composition with one
+        bounded `MediaShelf3DControl` scene. Cover art is located on faces in object space; SNES adds an
+        aspect-correct rounded decal mask while temporary shells retain square projection bounds.
+        Missing art leaves an empty authored shell; GL failure reveals the complete flat fallback.
   - [ ] The ScreenScraper box/support media kinds (§2a) and the layered
         texture→per-face→accent fallback, fetched lazily for the focused game. Until this lands a
         cartridge's landscape label is filled by cropping the portrait box scan — the box art is
         the wrong asset for a cartridge, and `support-2D` is the right one — and a case's back and
         spine take a flat accent tint rather than their real printing.
-- [ ] **UNVERIFIED — the hero has never been seen running.** Blocking sign-off on Phases 2 and 3.
-      Everything so far was built against a headless surfaceless-EGL context on llvmpipe, plus the
-      preview tool; no frame has been watched in the actual app on real hardware, and one bug
-      (frozen first frame) already reached a build because of that. See
-      [the handoff's verification plan](couch-physical-media-shelf-handoff.md#verifying-the-hero-on-real-hardware)
-      for what to look at and, for each symptom, the hypothesis to test first.
-- [x] **Phase 3 — Right-stick wiring.** Landed 2026-08-10, but **unverified on hardware** — see the
-      blocking item above. `GamepadReading` gained defaulted `RightStickX/Y` and `GamepadButtons`
+- [x] **Windows hardware verification.** The prototype was exercised in the real Avalonia/ANGLE
+      host on 2026-08-13. That testing exposed and fixed the matrix-upload, HiDPI viewport,
+      orientation, framing and centring defects recorded in `DECISIONS.md`.
+- [x] **Phase 3 — Right-stick wiring.** Landed 2026-08-10 and exercised on Windows hardware.
+      `GamepadReading` gained defaulted `RightStickX/Y` and `GamepadButtons`
       gained `RightStick`; `SdlGamepadReader` reads axes 2/3 and button 8;
       `MediaRotationModel` (pure, 15 unit tests) integrates them into yaw/pitch;
       `MainViewModel.ApplyRightStickRotation` drives the bound pose and is gated to the shelf.
@@ -217,22 +254,113 @@ bundled Steam Input template already carry the right stick and R3:
       **Deviation from §3:** recentre returns to a slight three-quarter pose, not face-on. At yaw 0
       a keep case is a flat rectangle and reads as the flat cover it just replaced — the thickness,
       spine and highlight sweep all vanish. `MediaRotationModel.RestYaw/RestPitch` hold the pose.
-- [ ] **Phase 4 — Polish.** Reduce-motion setting, spine title, shading/shadow tuning,
+- [ ] **Prototype Phase 4 — Polish.** Reduce-motion setting, spine title, shading/shadow tuning,
       more media types (GameCube/Wii disc-case reuse the PS2 archetype; PS1 jewel case;
       handheld carts reuse the SNES archetype).
 
+## Next implementation sequence — physical-media scene
+
+This sequence replaces further one-off camera/layout tuning. Each phase has a visible acceptance gate
+and can be reviewed on real hardware before the next one begins.
+
+Implementation should take a vertical slice through these workstreams: land A plus the smallest D scene
+using the current assets, bring one SNES item to the B/C quality gate, then apply that proven asset and
+lighting pipeline to GBA and the case family before E. Do not polish the one-hero overlay further.
+
+### A. Metric presentation profiles
+
+- Add `PhysicalMediaProfile`: shell, real `Width/Height/DepthMm`, canonical orientation, material
+  variant, artwork slots, insertion-animation id, and an optional presentation scale defaulting to 1.
+- Stop normalizing and auto-fitting every shell to the viewport. Normalize model geometry to its profile's
+  physical dimensions, use one shelf camera, align every medium to a common bottom baseline, and compute
+  horizontal centres from physical projected width plus a constant gap.
+- Initial calibration gate: a keep case reads large, SNES medium, and GBA small in the same screenshot;
+  changing focus does not make the world scale breathe.
+
+### B. Purpose-built asset and material pipeline
+
+- Replace inconsistent showcase/download models with clean, redistribution-safe production assets,
+  preferably authored for EmuShelf from measured references. Keep editable source, attribution, units,
+  pivots, UVs, tangents, named material slots, and LODs beside each exported GLB.
+- Require bevelled silhouette edges and weighted/split normals. Small bevels catch the studio lights and
+  are more important to realism than indiscriminately increasing polygon count.
+- Support base-colour, normal, metallic/roughness and ambient-occlusion maps, mipmaps, anisotropic label
+  filtering, and material variants (for example black PS2, translucent/clear PS3, and white Wii cases).
+- Implement ScreenScraper's `support-2D`/`support-texture` path for cartridges and box front/back/spine or
+  wrap textures for cases. Never crop portrait box art onto a cartridge label when support art exists.
+- Asset gate: front, back, spine, top and edge close-ups pass at 1080p with no open seams, inverted normals,
+  stretched labels, faceted bevels, or borrowed game artwork baked into the shell.
+
+### C. Lighting, contact and image quality
+
+- Keep the existing image-based studio for soft plastic reflections, add a direct key with a filtered
+  geometry depth map for self-shadowing, and retain the transparent receiving shelf plane with analytic
+  soft contact footprints. Every object must visibly contact the same shelf surface even when direct
+  key shadows are unavailable on a future low-end quality tier.
+- Add per-material clear-sleeve treatment for keep cases instead of representing paper and clear plastic
+  as one roughness value. Add subtle plastic grain through normal/roughness maps, not geometric noise.
+- Generate mipmaps for all imported maps, preserve linear/sRGB roles, and add an optional quality tier for
+  supersampling/shadow resolution. Avoid screen-space effects until the material and shadow fundamentals
+  pass review.
+- Lighting gate: silhouettes remain readable on dark themes, labels retain their colour, highlights move
+  smoothly during rotation, and contact shadows do not swim or detach while scrolling.
+
+### D. Continuous multi-item shelf
+
+- Replace the translated Avalonia `ItemsControl` plus hero overlay with one `MediaShelf3DControl`. Feed it
+  immutable render items for the visible window and a continuous `ShelfPosition` measured in shelf units.
+- Add a pure `PhysicalShelfMotionModel` (target index, position, velocity, elapsed time, reduced-motion
+  mode). Render on demand while moving/rotating; stop requesting frames once settled.
+- Cache decoded artwork off the UI thread and GPU textures in a bounded LRU. Reuse one mesh/material set
+  per profile; asynchronously decode immutable model assets before their first draw, while keeping the
+  context-owned upload on the GL thread. Start with ordinary draw calls—five to seven objects do not
+  justify instancing complexity.
+- The shared renderer uses adaptive supersampling: up to 2× on small outputs, bounded to 2560×1440, and
+  never below native output size. Only the focused item (or outgoing/incoming pair during travel) receives
+  the dynamic 1024px PCF self-shadow pass; neighbours retain direct/IBL lighting and analytic shelf contact.
+  Cover textures remain in a 21-entry GPU LRU so reversing direction does not repeat copy/upload/mipmap
+  work. Render targets grow in 256px buckets during resize, panel placements are cached with shell
+  resources, and profile material variants tune body tint/roughness/reflectance over shared geometry.
+  These are renderer/control policies, inherited by every physical-media profile.
+- Interaction gate: one d-pad step visibly carries the old, selected and next media through the same scene;
+  held input remains continuous; a 500-game library has bounded memory; 1280x800 and 1920x1080 hold 60 fps
+  on the Windows integrated-GPU acceptance machine.
+
+### E. Launch and return choreography
+
+- Introduce a view-model-owned `ShelfLaunchTransition` state machine: `Idle -> Preflight -> Lift -> Spin ->
+  Insert -> Committed`, plus `Return` and `Cancelled`. The animation exposes transforms; it never starts a
+  process itself.
+- Let the existing launch coordinator run validation first, await the transition's commit signal, then start
+  the emulator and minimize. On a start failure, restore the medium. On emulator exit, restore the shelf
+  with a short reverse/fade transition while preserving the focused game.
+- Give each profile an insertion path (cartridge vertical, disc/case stylized downward handoff) and allow
+  platform sounds only as optional, licensed assets with a mute/reduce-motion equivalent.
+- Launch gate: repeated A presses cannot double-launch, B can cancel before commit, every failure path
+  restores input and the selected medium, and reduced motion uses a short fade/translate rather than spin.
+
+### F. Rollout
+
+- Ship behind an experimental physical-shelf setting until SNES, GBA and the keep-case family pass the
+  asset, motion, launch-failure and performance gates on Windows plus build/headless checks on macOS.
+- Preserve the current flat shelf as the GL-failure fallback. Add new media profiles one at a time; a system
+  is never mapped to a vaguely similar shell merely to increase the supported count.
+
 ## Fallbacks and guardrails
 
-- **No scraped cover → flat placeholder card, no mesh** (reuse `GameViewModel.Initials`).
-  A generic-textured box looks worse than the flat placeholder and costs more to draw.
+- **No scraped cover → empty physical shell when a real profile exists.** Its label/sleeve panel uses
+  the platform accent until suitable art arrives. Systems with no authored profile keep the flat
+  placeholder card. The absence of artwork must not make a known physical medium disappear.
 - **Arcade → always flat** (no boxed media; matches the existing "title-screen snap, not
   packaging" treatment).
 - **Regional packaging** (e.g. Dreamcast square-vs-portrait, PS1 longbox-vs-jewel): a mesh
   can't use the 2D "let the cover's own aspect ratio decide" dodge, so each system commits
   to **one canonical shell**, documented as a deliberate simplification. Not in v1.
 - **No usable GL context → flat cover.** A driver that will not serve GLES 3.0, a remote session,
-  a headless run: `Media3DControl` raises `InitializationFailed` and the library sends every game
-  back to its flat cover for the session. Couch mode stays functional everywhere.
+  a headless run: `MediaShelf3DHost` waits for explicit renderer readiness and sends every game back
+  to its flat cover when initialization throws or remains silent. The GL child is absent outside
+  shelf mode, so ordinary grid/spotlight use pays no context or model-preparation cost. Couch mode
+  stays functional everywhere.
 
 ## Testing
 
@@ -243,7 +371,7 @@ bundled Steam Input template already carry the right stick and R3:
   `Connected(...)` helper compiling verbatim).
 - View-model: layout persists across launches (extend the existing
   `GamepadSpotlightView_TogglesLayout…` pattern to the 3-way selector).
-- `Media3DControl` is GPU interop (like `SdlGamepadReader`) so it stays
+- `MediaShelf3DControl` is GPU interop (like `SdlGamepadReader`) so it stays
   screenshot/manual-verified rather than unit-tested; keep the geometry/projection math in a
   pure helper where practical so *that* can be tested headless. In practice this became
   `tools/EmuShelf.Rendering.Preview`, which renders every shell at a spread of poses to PNG over a
@@ -266,8 +394,9 @@ bundled Steam Input template already carry the right stick and R3:
 
 Shell **geometry** must carry no OpenEmu code or art (OpenEmu's own Mac app has a similar 3D-box
 view — do not use it for reference). The three shipped shells are independently authored CC BY 4.0
-Sketchfab models, credited in `THIRD-PARTY-NOTICES.md`; the game artwork their authors photographed
-onto them is always painted over at render time, so no third-party packaging is displayed. Front-face texturing reuses the
+Sketchfab models, credited in `THIRD-PARTY-NOTICES.md`; fixed placeholder packaging is removed from
+the runtime asset and game artwork is supplied dynamically, so no third-party game packaging is
+displayed. Front-face texturing reuses the
 same scraped cover already shown flat today, so it introduces no new licensing category.
 
 A `DECISIONS.md` entry lands per phase as it's implemented (per the CLAUDE.md rule), not

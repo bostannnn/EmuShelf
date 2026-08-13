@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -100,6 +101,9 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _statusDismiss;
     private readonly DispatcherTimer _viewStateSave;
     private readonly DispatcherTimer _platformReloadDebounce;
+    private readonly DispatcherTimer _shelfMotionTimer;
+    private readonly PhysicalShelfMotionModel _shelfMotion = new();
+    private long _shelfMotionTimestamp;
     private TaskCompletionSource? _platformReloadCompletion;
     private readonly ILibraryViewStateService _libraryViewState;
     private bool _isRestoringViewState;
@@ -154,16 +158,19 @@ public partial class MainViewModel : ViewModelBase
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
 
     /// <summary>
-    /// True until the couch shelf's 3D hero is ruled out, after which every game keeps its flat
-    /// cover. Latches once per session: a GL context that failed to come up will not come up later.
+    /// True until the couch shelf's shared 3D scene is ruled out, after which every game keeps its
+    /// flat cover. Latches once per session: a GL context that failed to come up will not come up later.
     /// </summary>
     private bool _shelfHeroSupported = true;
+
+    /// <summary>Whether the shared OpenGL shelf scene is available for this session.</summary>
+    public bool ShelfSceneSupported => _shelfHeroSupported;
 
     /// <summary>
     /// Sends the shelf back to flat covers for the rest of the session.
     /// </summary>
     /// <remarks>
-    /// Called by the view when <c>Media3DControl</c> reports it could not bring up a GL context.
+    /// Called by the view when <c>MediaShelf3DControl</c> reports it could not bring up a GL context.
     /// Games realized later pick this up through <see cref="ApplyShelfHeroSupport"/>, so a scope
     /// switch after the failure does not quietly re-enable a hero that cannot render.
     /// </remarks>
@@ -179,9 +186,10 @@ public partial class MainViewModel : ViewModelBase
         }
 
         _logger.Warning(
-            "The couch shelf's 3D hero could not start; falling back to flat covers.", reason);
+            "The couch shelf's 3D scene could not start; falling back to flat covers.", reason);
 
         _shelfHeroSupported = false;
+        OnPropertyChanged(nameof(ShelfSceneSupported));
         foreach (var game in Games)
         {
             game.ShelfHeroSupported = false;
@@ -328,6 +336,15 @@ public partial class MainViewModel : ViewModelBase
             LoadSpotlightHero(FocusedGame);
         else
             ClearSpotlightHero();
+
+        if (value == GamepadLibraryLayout.Shelf)
+        {
+            SnapShelfToFocusedGame();
+            if (FocusedGame is { } shelfGame)
+                PrefetchCoversAroundFocus(shelfGame);
+        }
+        else
+            _shelfMotionTimer.Stop();
     }
 
     /// <summary>Flips the couch layout between the cover grid and the spotlight list + hero. The
@@ -980,6 +997,7 @@ public partial class MainViewModel : ViewModelBase
     // PrefetchCoversAroundFocus). A held d-pad steps ~one row per 110ms, so a few rows of lead lets the
     // off-thread decode stay ahead of the glide and the incoming tile is already painted.
     private const int GamepadCoverPrefetchRows = 3;
+    private const int ShelfNeighbourPrefetchRadius = 3;
 
     // On-disk cover thumbnails are generated at this max width (mirrors GameCoverService.ThumbnailWidth).
     // A cover is decoded to the displayed pixel size, capped here so it is never upscaled past the source.
@@ -1227,6 +1245,17 @@ public partial class MainViewModel : ViewModelBase
         {
             _ambientThemeDebounce.Stop();
             ApplyAmbientThemeForPendingGame();
+        };
+
+        _shelfMotionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _shelfMotionTimer.Tick += (_, _) =>
+        {
+            var now = Stopwatch.GetTimestamp();
+            var elapsed = _shelfMotionTimestamp == 0
+                ? _shelfMotionTimer.Interval.TotalMilliseconds
+                : Stopwatch.GetElapsedTime(_shelfMotionTimestamp, now).TotalMilliseconds;
+            _shelfMotionTimestamp = now;
+            AdvanceShelfMotion(elapsed);
         };
         // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
         AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
@@ -2080,11 +2109,23 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     private readonly MediaRotationModel _shelfHeroRotation = new();
 
+    /// <summary>
+    /// Continuous selection coordinate consumed by the shared shelf scene. It is an integer only
+    /// at rest; during navigation the old and next media occupy intermediate world positions.
+    /// </summary>
+    public double ShelfPosition => _shelfMotion.Position;
+
     /// <summary>The shelf hero's yaw, in radians, bound straight to the 3D control.</summary>
     public double ShelfHeroYaw => _shelfHeroRotation.Yaw;
 
     /// <summary>The shelf hero's pitch, in radians.</summary>
     public double ShelfHeroPitch => _shelfHeroRotation.Pitch;
+
+    /// <summary>
+    /// Pose captured from the game that just left focus. The renderer blends it back to the
+    /// neighbour pose while that cartridge physically travels away from the centre.
+    /// </summary>
+    public PhysicalShelfDeparturePose? ShelfDeparturePose { get; private set; }
 
     /// <summary>
     /// Advances the shelf hero's pose from one tick of right-stick input.
@@ -2114,6 +2155,74 @@ public partial class MainViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(ShelfHeroYaw));
         OnPropertyChanged(nameof(ShelfHeroPitch));
+    }
+
+    /// <summary>Advances shelf travel; public so headless tests exercise the timer's exact path.</summary>
+    public bool AdvanceShelfMotion(double deltaMilliseconds)
+    {
+        if (!_shelfMotion.Update(deltaMilliseconds))
+        {
+            if (_shelfMotion.IsSettled)
+            {
+                _shelfMotionTimer.Stop();
+                _shelfMotionTimestamp = 0;
+            }
+            return false;
+        }
+
+        OnPropertyChanged(nameof(ShelfPosition));
+        if (_shelfMotion.IsSettled)
+        {
+            _shelfMotionTimer.Stop();
+            _shelfMotionTimestamp = 0;
+        }
+        return true;
+    }
+
+    private void MoveShelfToFocusedGame(GameViewModel? oldValue, GameViewModel? newValue)
+    {
+        if (newValue is null)
+        {
+            _shelfMotionTimer.Stop();
+            return;
+        }
+
+        var target = Games.IndexOf(newValue);
+        if (target < 0)
+        {
+            return;
+        }
+
+        var previous = oldValue is null ? -1 : Games.IndexOf(oldValue);
+        var snap = !ShowGamepadShelf || previous < 0 || Math.Abs(target - previous) > 4;
+        if (snap)
+        {
+            _shelfMotion.SnapTo(target);
+            _shelfMotionTimer.Stop();
+            _shelfMotionTimestamp = 0;
+            OnPropertyChanged(nameof(ShelfPosition));
+            return;
+        }
+
+        if (_shelfMotion.MoveTo(target))
+        {
+            _shelfMotionTimestamp = Stopwatch.GetTimestamp();
+            _shelfMotionTimer.Start();
+        }
+    }
+
+    private void SnapShelfToFocusedGame()
+    {
+        var index = FocusedGame is null ? -1 : Games.IndexOf(FocusedGame);
+        if (index < 0)
+        {
+            return;
+        }
+
+        _shelfMotion.SnapTo(index);
+        _shelfMotionTimer.Stop();
+        _shelfMotionTimestamp = 0;
+        OnPropertyChanged(nameof(ShelfPosition));
     }
 
     public bool DispatchGamepadAction(GamepadAction action)
@@ -2813,6 +2922,14 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnFocusedGameChanged(GameViewModel? oldValue, GameViewModel? newValue)
     {
+        ShelfDeparturePose = oldValue is null
+            ? null
+            : new PhysicalShelfDeparturePose(
+                oldValue.Id,
+                (float)_shelfHeroRotation.Yaw,
+                (float)_shelfHeroRotation.Pitch);
+        OnPropertyChanged(nameof(ShelfDeparturePose));
+
         if (oldValue is not null)
         {
             oldValue.IsFocused = false;
@@ -2827,6 +2944,8 @@ public partial class MainViewModel : ViewModelBase
             _focusedGameByScope[FocusScopeKey()] = newValue.Id;
             PrefetchCoversAroundFocus(newValue);
         }
+
+        MoveShelfToFocusedGame(oldValue, newValue);
 
         // A new game arrives face-on. Carrying the previous game's angle over would present the
         // next cover already turned away, which reads as the shelf being broken rather than as
@@ -2854,6 +2973,19 @@ public partial class MainViewModel : ViewModelBase
         var index = Games.IndexOf(focused);
         if (index < 0)
             return;
+
+        if (ShowGamepadShelf)
+        {
+            var shelfStart = Math.Max(0, index - ShelfNeighbourPrefetchRadius);
+            var shelfEnd = Math.Min(Games.Count - 1, index + ShelfNeighbourPrefetchRadius);
+            for (var shelfIndex = shelfStart; shelfIndex <= shelfEnd; shelfIndex++)
+            {
+                var shelfGame = Games[shelfIndex];
+                if (shelfGame.LoadCoverCommand.CanExecute(shelfGame))
+                    shelfGame.LoadCoverCommand.Execute(shelfGame);
+            }
+            return;
+        }
 
         var columns = Math.Max(1, GamepadColumnCount);
         var rowIndex = index / columns;

@@ -4247,14 +4247,37 @@ public class MainViewModelTests : IDisposable
     public void ChangingTheFocusedGame_ReturnsTheHeroToRest()
     {
         var vm = ShelfViewModel();
+        vm.FocusedGame = vm.Games[0];
         vm.ApplyRightStickRotation(1f, 1f, 100d);
         Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        var outgoing = Assert.IsType<GameViewModel>(vm.FocusedGame);
+        var outgoingYaw = (float)vm.ShelfHeroYaw;
+        var outgoingPitch = (float)vm.ShelfHeroPitch;
 
         vm.FocusedGame = vm.Games[2];
 
         // A new cover must arrive face-on rather than inheriting the previous game's angle.
         Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
         Assert.Equal(MediaRotationModel.RestPitch, vm.ShelfHeroPitch);
+        var departure = Assert.IsType<PhysicalShelfDeparturePose>(vm.ShelfDeparturePose);
+        Assert.Equal(outgoing.Id, departure.GameKey);
+        Assert.Equal(outgoingYaw, departure.Yaw);
+        Assert.Equal(outgoingPitch, departure.Pitch);
+    }
+
+    [AvaloniaFact]
+    public void ChangingFocusedGame_MovesTheShelfContinuously()
+    {
+        var vm = ShelfViewModel();
+        vm.FocusedGame = vm.Games[0];
+        Assert.Equal(0d, vm.ShelfPosition);
+
+        vm.FocusedGame = vm.Games[1];
+        var immediatelyAfterFocus = vm.ShelfPosition;
+        vm.AdvanceShelfMotion(16d);
+
+        Assert.Equal(0d, immediatelyAfterFocus);
+        Assert.InRange(vm.ShelfPosition, 0.001d, 0.999d);
     }
 
     [AvaloniaFact]

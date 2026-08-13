@@ -2,41 +2,60 @@ using System.Numerics;
 
 namespace EmuShelf.Rendering.Shells;
 
-/// <summary>The physical media EmuShelf can render as a rotatable 3D hero.</summary>
+/// <summary>The physical media EmuShelf can render in its shared 3D shelf scene.</summary>
 /// <remarks>
-/// One entry per authored shell, not per console: a PS2, GameCube, Wii and PS3 game all shipped in
-/// the same 135x190x14mm keep case, so they share <see cref="DiscKeepCase"/>. Systems with no shell
-/// keep their flat cover — the console-to-medium table lives in the app layer, at
-/// <c>EmuShelf.App.Rendering.MediaShellMap</c>.
+/// One entry per authored geometry family, not per console. Profiles can apply different measured
+/// dimensions and material variants to one temporary geometry family — for example the shorter
+/// PS3 Blu-ray case versus a DVD-height PS2 case. The console-to-medium table lives in the app
+/// layer, at <c>EmuShelf.App.Rendering.MediaShellMap</c>.
 /// </remarks>
 public enum MediaShell
 {
+    /// <summary>A thin cover-art card used when a system has no authored physical medium yet.</summary>
+    CoverCard,
+
     /// <summary>The SNES/Super Famicom ROM cartridge.</summary>
     SnesCartridge,
 
     /// <summary>The Game Boy Advance ROM cartridge.</summary>
     GbaCartridge,
 
-    /// <summary>The 135x190x14mm DVD keep case used by PS2, PS3, GameCube and Wii releases.</summary>
+    /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
     DiscKeepCase,
+}
+
+[Flags]
+public enum PhysicalArtworkSlots
+{
+    None = 0,
+    Front = 1 << 0,
+    Back = 1 << 1,
+    Spine = 1 << 2,
+    CartridgeSupport = 1 << 3,
 }
 
 /// <summary>
 /// Where a game's scraped artwork is pasted onto a shell, as a rectangle on one of its faces.
 /// </summary>
 /// <remarks>
-/// Deliberately expressed against the model's own bounds rather than its UV atlas. Two of the three
-/// shells have UV layouts that cannot carry a decal — the SNES cartridge's are degenerate (they run
-/// from -93 to 1.7) and the GBA's label is packed rotated into a shared atlas — so the shader
-/// projects artwork onto a face in object space instead. That is one code path for every shell, and
-/// it stays correct if a model is ever re-exported with different UVs.
+/// Deliberately expressed against the model's own bounds rather than its UV atlas. The production
+/// SNES body uses its UVs for PBR maps but receives a body-attached decal, while the GBA's label is
+/// packed rotated into a shared atlas. Object-space placement keeps both independent from
+/// atlas layout and stays correct if a model is re-exported with different UVs.
 /// </remarks>
 /// <param name="Face">Which face of the shell the artwork sits on.</param>
 /// <param name="MinU">Left edge, as a fraction of the face's half-width (-1 is the far edge).</param>
 /// <param name="MaxU">Right edge, in the same units.</param>
 /// <param name="MinV">Bottom edge, as a fraction of the shell's half-height.</param>
 /// <param name="MaxV">Top edge, in the same units.</param>
-public readonly record struct ArtPanel(ArtFace Face, float MinU, float MaxU, float MinV, float MaxV)
+/// <param name="CornerRadius">Rounded-corner radius as a fraction of the panel's shorter edge.</param>
+public readonly record struct ArtPanel(
+    ArtFace Face,
+    float MinU,
+    float MaxU,
+    float MinV,
+    float MaxV,
+    float CornerRadius = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(ArtFace face, float inset = 0f) =>
@@ -88,6 +107,15 @@ public enum ArtFace
 /// label, and that difference is most of what distinguishes the two materials on screen.</param>
 /// <param name="ArtFit">How a cover whose shape does not match the panel is fitted.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
+/// <param name="BodyRoughnessScale">Per-shell correction for the source model's body roughness.</param>
+/// <param name="DielectricReflectance">Normal-incidence reflectance for the shell's dielectric
+/// material. Most plastics are close to 0.04; a small correction can stop a scanned model from
+/// reading like glossy toy plastic without changing metallic parts.</param>
+/// <param name="AmbientIntensity">Per-shell strength of the surrounding image-based studio fill.</param>
+/// <param name="ShadowFillOcclusion">How much geometry-cast key visibility also suppresses ambient
+/// fill. Zero is a fully filled product shot; one lets a key shadow remove all ambient light.</param>
+/// <param name="CavityStrength">Strength of the authored normal map's small-scale occlusion cue.</param>
+/// <param name="NormalStrength">Scale applied to tangent-space normal-map X/Y before normalization.</param>
 public sealed record MediaShellDefinition(
     MediaShell Shell,
     string ResourceName,
@@ -97,4 +125,46 @@ public sealed record MediaShellDefinition(
     IReadOnlyList<ArtPanel> ExtraPanels,
     float PanelRoughness,
     ArtFit ArtFit,
-    bool FlattenPanelNormal);
+    bool FlattenPanelNormal,
+    float BodyRoughnessScale = 1f,
+    float DielectricReflectance = 0.04f,
+    float AmbientIntensity = 0.86f,
+    float ShadowFillOcclusion = 0.30f,
+    float CavityStrength = 0.12f,
+    float NormalStrength = 1f);
+
+/// <summary>
+/// A medium's real-world presentation contract for the shared shelf scene.
+/// </summary>
+/// <remarks>
+/// Geometry is still loaded in canonical one-unit-tall space. The scene renderer scales that
+/// canonical asset to these millimetre dimensions against one 190mm reference, so unlike the old
+/// one-hero camera a GBA cartridge cannot grow to the same screen height as a keep case. The
+/// optional correction is deliberately small and defaults to one; it is not a second arbitrary
+/// per-platform cover-size system.
+/// </remarks>
+public sealed record PhysicalMediaProfile(
+    MediaShell Shell,
+    Vector3 DimensionsMillimetres,
+    PhysicalArtworkSlots ArtworkSlots,
+    string MaterialVariant,
+    string InsertionAnimationId,
+    float PresentationScale = 1f)
+{
+    public const float ReferenceHeightMillimetres = 190f;
+
+    /// <summary>
+    /// Optional per-profile correction applied after an asset has entered the shell's canonical
+    /// Y-up/+Z-front space. It stays separate from controller rotation and defaults to identity.
+    /// </summary>
+    public Matrix4x4 CanonicalOrientation { get; init; } = Matrix4x4.Identity;
+
+    public float WidthInShelfUnits =>
+        DimensionsMillimetres.X / ReferenceHeightMillimetres * PresentationScale;
+
+    public float HeightInShelfUnits =>
+        DimensionsMillimetres.Y / ReferenceHeightMillimetres * PresentationScale;
+
+    public float DepthInShelfUnits =>
+        DimensionsMillimetres.Z / ReferenceHeightMillimetres * PresentationScale;
+}

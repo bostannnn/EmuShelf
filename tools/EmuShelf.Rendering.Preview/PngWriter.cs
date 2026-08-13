@@ -11,7 +11,12 @@ internal static class PngWriter
     /// <param name="rgba">Row-major RGBA8, top row first.</param>
     public static void Write(string path, int width, int height, ReadOnlySpan<byte> rgba)
     {
-        using var file = File.Create(path);
+        File.WriteAllBytes(path, Encode(width, height, rgba));
+    }
+
+    public static byte[] Encode(int width, int height, ReadOnlySpan<byte> rgba)
+    {
+        using var file = new MemoryStream();
         file.Write(Signature);
 
         Span<byte> header = stackalloc byte[13];
@@ -42,6 +47,7 @@ internal static class PngWriter
 
         WriteChunk(file, "IDAT", compressed.ToArray());
         WriteChunk(file, "IEND", []);
+        return file.ToArray();
     }
 
     private static void WriteChunk(Stream stream, string type, ReadOnlySpan<byte> data)

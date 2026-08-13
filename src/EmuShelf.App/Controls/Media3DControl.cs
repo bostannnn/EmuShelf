@@ -7,6 +7,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using EmuShelf.Rendering;
 using EmuShelf.Rendering.Gl;
 using EmuShelf.Rendering.Models;
@@ -86,6 +87,11 @@ public sealed class Media3DControl : OpenGlControlBase
         {
             RequestNextFrameRendering();
         }
+
+        if (change.Property == ShellProperty)
+        {
+            PrepareShell();
+        }
     }
 
     /// <summary>Which medium to draw; null draws nothing.</summary>
@@ -125,6 +131,7 @@ public sealed class Media3DControl : OpenGlControlBase
 
     protected override void OnOpenGlInit(GlInterface gl)
     {
+        PrepareShell();
         try
         {
             // Silk.NET resolves its entry points through Avalonia's loader, so both talk to the one
@@ -159,7 +166,11 @@ public sealed class Media3DControl : OpenGlControlBase
         }
 
         // Render at device pixels, not layout units, so the hero is sharp on a HiDPI panel.
-        var scaling = (VisualRoot as TopLevel)?.RenderScaling ?? 1.0;
+        // VisualRoot is not guaranteed to be the TopLevel itself (notably when this control is
+        // hosted through Avalonia's GL composition layer). Falling back to 1.0 on a HiDPI display
+        // makes the viewport occupy only the top-left portion of the device-pixel framebuffer,
+        // which visibly throws an otherwise centred model toward the left edge.
+        var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
         var width = (uint)Math.Max(1, Math.Round(Bounds.Width * scaling));
         var height = (uint)Math.Max(1, Math.Round(Bounds.Height * scaling));
 
@@ -218,6 +229,35 @@ public sealed class Media3DControl : OpenGlControlBase
     {
         _renderer?.SetCoverArt(Cover is Bitmap bitmap ? ToTextureImage(bitmap) : null);
         _uploadedCover = Cover;
+    }
+
+    private void PrepareShell()
+    {
+        if (Shell is not { } shell)
+        {
+            return;
+        }
+
+        _ = AwaitPreparedShellAsync(shell);
+    }
+
+    private async Task AwaitPreparedShellAsync(MediaShell shell)
+    {
+        try
+        {
+            await MediaShellCatalog.PrepareAsync(shell).ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (Shell == shell)
+                {
+                    RequestNextFrameRendering();
+                }
+            });
+        }
+        catch (Exception exception)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => Fail(exception));
+        }
     }
 
     private static Vector3 ToLinear(Color colour) =>

@@ -1,5 +1,10 @@
 using System.Numerics;
+using Avalonia.Headless.XUnit;
+using EmuShelf.App.Controls;
 using EmuShelf.App.Rendering;
+using EmuShelf.App.Services;
+using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Library;
 using EmuShelf.Rendering.Shells;
 
 namespace EmuShelf.App.Tests;
@@ -13,9 +18,110 @@ namespace EmuShelf.App.Tests;
 public class MediaShellTests
 {
     [Theory]
+    [InlineData(1280u, 800u, 2304u, 1440u)]
+    [InlineData(1920u, 1080u, 2560u, 1440u)]
+    [InlineData(3840u, 2160u, 3840u, 2160u)]
+    public void SceneSize_AdaptsSupersamplingToTheOutputResolution(
+        uint width,
+        uint height,
+        uint expectedWidth,
+        uint expectedHeight)
+    {
+        var actual = EmuShelf.Rendering.MediaShellRenderer.SceneSize(width, height);
+
+        Assert.Equal(expectedWidth, actual.Width);
+        Assert.Equal(expectedHeight, actual.Height);
+    }
+
+    [Theory]
+    [InlineData(1u, 256u)]
+    [InlineData(256u, 256u)]
+    [InlineData(257u, 512u)]
+    [InlineData(1440u, 1536u)]
+    public void SceneTargetCapacity_RoundsToStableResizeBuckets(uint value, uint expected) =>
+        Assert.Equal(expected, EmuShelf.Rendering.MediaShellRenderer.RoundUp(value, 256));
+
+    [Theory]
+    [InlineData(3840u, 2560u, true)]
+    [InlineData(2560u, 1536u, true)]
+    [InlineData(2560u, 2048u, false)]
+    [InlineData(2560u, 2560u, false)]
+    public void SceneTargetCapacity_ShrinksOnlyAfterMaterialOverAllocation(
+        uint capacity,
+        uint desired,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            EmuShelf.Rendering.MediaShellRenderer.IsExcessivelyOversized(capacity, desired));
+
+    [Theory]
+    [InlineData(1f, 0.8f, 0.3f)]
+    [InlineData(0.5f, 0.31f, 0.15f)]
+    [InlineData(0f, -0.18f, 0f)]
+    public void OutgoingShelfPose_BlendsFromTheCapturedAngleToTheNeighbour(
+        float focus,
+        float expectedYaw,
+        float expectedPitch)
+    {
+        var actual = MediaShelf3DControl.ResolvePose(
+            focus,
+            isFocused: false,
+            focusedYaw: 0f,
+            focusedPitch: 0f,
+            new PhysicalShelfDeparturePose(1, 0.8f, 0.3f));
+
+        Assert.Equal(expectedYaw, actual.Yaw, 3);
+        Assert.Equal(expectedPitch, actual.Pitch, 3);
+    }
+
+    [Fact]
+    public async Task PrepareAsync_CachesOneImmutableDecodedAsset()
+    {
+        var first = await MediaShellCatalog.PrepareAsync(MediaShell.CoverCard);
+        var second = await MediaShellCatalog.PrepareAsync(MediaShell.CoverCard);
+
+        Assert.Same(first, second);
+        Assert.True(MediaShellCatalog.TryGetPrepared(MediaShell.CoverCard, out var prepared));
+        Assert.Same(first, prepared);
+    }
+
+    [Fact]
+    public void MaterialVariants_DistinguishSharedKeepCaseFinishes()
+    {
+        var ps2 = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("ps2-black");
+        var ps3 = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("ps3-clear");
+        var wii = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("wii-white");
+
+        Assert.NotEqual(ps2.BodyTint, ps3.BodyTint);
+        Assert.NotEqual(ps3.BodyTint, wii.BodyTint);
+        Assert.True(ps3.ReflectanceScale > ps2.ReflectanceScale);
+        Assert.True(ps3.RoughnessScale < ps2.RoughnessScale);
+    }
+
+    [AvaloniaFact]
+    public void ShelfHero_UsesAuthoredShellWithoutCoverArt()
+    {
+        var game = new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = "snes",
+                Path = "Game.sfc",
+                Title = "Game",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            "Super Nintendo", "SNES", "#7A5AF8");
+
+        game.IsFocused = true;
+
+        Assert.False(game.HasCoverImage);
+        Assert.True(game.ShelfUses3DHero);
+    }
+
+    [Theory]
     [InlineData("snes", MediaShell.SnesCartridge)]
     [InlineData("gba", MediaShell.GbaCartridge)]
-    // One shell, four consoles: they all shipped in the same keep case.
+    // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
     [InlineData("gamecube", MediaShell.DiscKeepCase)]
@@ -35,6 +141,44 @@ public class MediaShellTests
     [InlineData("nds")]
     public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
         Assert.Null(MediaShellMap.ForSystem(systemId));
+
+    [Fact]
+    public void MetricProfiles_KeepCaseLargeSnesMediumAndGbaSmall()
+    {
+        var keepCase = MediaShellMap.ProfileForSystem("playstation2", 0.708);
+        var snes = MediaShellMap.ProfileForSystem("snes", 1.43);
+        var gba = MediaShellMap.ProfileForSystem("gba", 1.42);
+
+        Assert.Equal(1f, keepCase.HeightInShelfUnits, 3);
+        Assert.True(snes.HeightInShelfUnits < keepCase.HeightInShelfUnits);
+        Assert.True(gba.HeightInShelfUnits < snes.HeightInShelfUnits);
+        Assert.True(snes.WidthInShelfUnits > gba.WidthInShelfUnits);
+        Assert.Equal(PhysicalArtworkSlots.CartridgeSupport, snes.ArtworkSlots);
+        Assert.Equal(
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
+            keepCase.ArtworkSlots);
+    }
+
+    [Fact]
+    public void MetricProfile_UsesAThinCoverCardForUnauthoredSystems()
+    {
+        var profile = MediaShellMap.ProfileForSystem("playstation", 1.0);
+
+        Assert.Equal(MediaShell.CoverCard, profile.Shell);
+        Assert.Equal(1f, profile.WidthInShelfUnits, 3);
+        Assert.Equal(1f, profile.HeightInShelfUnits, 3);
+        Assert.True(profile.DepthInShelfUnits < 0.03f);
+    }
+
+    [Fact]
+    public void MetricProfile_DistinguishesTheShorterPs3Case()
+    {
+        var ps2 = MediaShellMap.ProfileForSystem("playstation2", 0.708);
+        var ps3 = MediaShellMap.ProfileForSystem("playstation3", 0.708);
+
+        Assert.True(ps3.HeightInShelfUnits < ps2.HeightInShelfUnits);
+        Assert.NotEqual(ps2.MaterialVariant, ps3.MaterialVariant);
+    }
 
     [Theory]
     [InlineData(MediaShell.SnesCartridge)]
@@ -79,6 +223,11 @@ public class MediaShellTests
         Assert.True(
             model.Size.X > model.Size.Y,
             $"A SNES cartridge is wider than tall; got {model.Size.X} x {model.Size.Y}.");
+        Assert.InRange(model.Size.X, 1.64f, 1.69f);
+        Assert.InRange(model.Size.Z, 0.25f, 0.27f);
+        Assert.Equal(33833, model.Meshes.Sum(mesh => mesh.TriangleCount));
+        Assert.Single(model.Materials);
+        Assert.Equal(3, model.Textures.Count);
     }
 
     [Fact]
@@ -92,6 +241,17 @@ public class MediaShellTests
         Assert.True(model.Size.X < model.Size.Y);
         Assert.InRange(model.Size.X, 0.66f, 0.74f);
         Assert.InRange(model.Size.Z, 0.05f, 0.09f);
+    }
+
+    [Fact]
+    public void Load_CreatesTheFallbackCoverCardAsClosedSceneGeometry()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.CoverCard);
+
+        Assert.Single(model.Meshes);
+        Assert.Equal(12, model.Meshes[0].TriangleCount);
+        Assert.Equal(1f, model.Size.Y, 3);
+        Assert.True(model.Size.Z > 0f);
     }
 
     /// <summary>
@@ -173,5 +333,16 @@ public class MediaShellTests
             Assert.InRange(corner.X, model.BoundsMin.X - 0.001f, model.BoundsMax.X + 0.001f);
             Assert.InRange(corner.Y, model.BoundsMin.Y - 0.001f, model.BoundsMax.Y + 0.001f);
         }
+    }
+
+    [Fact]
+    public void SnesCoverPanel_UsesRoundedBodyAttachedDecalEdges()
+    {
+        var snes = MediaShellCatalog.Definition(MediaShell.SnesCartridge).CoverPanel;
+
+        Assert.Equal(ArtFace.Front, snes.Face);
+        Assert.InRange(snes.CornerRadius, 0.05f, 0.10f);
+        Assert.Equal(0f, MediaShellCatalog.Definition(MediaShell.GbaCartridge).CoverPanel.CornerRadius);
+        Assert.Equal(0f, MediaShellCatalog.Definition(MediaShell.DiscKeepCase).CoverPanel.CornerRadius);
     }
 }

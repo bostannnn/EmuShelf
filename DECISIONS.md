@@ -6157,3 +6157,279 @@ at render time by a panel, so no third-party packaging is ever displayed.
 One shell serves four consoles: PS2, PS3, GameCube and Wii all shipped in the same 135x190x14mm keep
 case. PS1 and Dreamcast (jewel cases) and PSP (UMD) are genuinely different shapes and stay on flat
 covers rather than borrowing a case that is not theirs.
+
+## 2026-08-13 — Authored shelf media renders without cover art; GL receives transposed Numerics matrices
+
+An authored physical medium is useful even before ScreenScraper supplies artwork, so the shelf hero
+is gated only on focus, an available shell, and GPU support. A missing `CoverImage` now leaves the
+renderer on its existing no-art path, which paints the label/sleeve panel with the system accent,
+instead of replacing the entire medium with the flat missing-cover placeholder.
+
+The renderer also uploads `System.Numerics` matrices with `transpose=false`. Numerics stores matrices
+for row-vector multiplication while the GLSL shaders multiply column vectors; interpreting the same
+memory as column-major supplies the transpose the shader needs. Passing `true` preserved the wrong
+mathematical layout, reversed the product perspective so the far edge grew, and is not accepted by
+the OpenGL ES path used through ANGLE on Windows.
+
+The live hero surface is responsive rather than a fixed 560x360 island: it consumes the shelf's
+available star row up to 1100x680 while the platform/title occupies a separate automatic row. Small
+windows therefore shrink without losing the title, while a fullscreen couch layout gives the object
+enough physical screen area to read as the focused item. Camera framing keeps a 16% margin because
+correct perspective enlarges the near corner during combined yaw/pitch; the prior 7% margin could
+clip that corner at the control edge.
+
+Follow-up hardware testing removed the capped stretch surface: Avalonia arranged the 1100px-capped
+child at the left of its wider Grid, so the camera was centered inside a render surface that was not
+centered on the shelf. The GL control now takes the media host's exact width and height and is centered
+explicitly; the cover strip keeps the same full-width viewport and fixed 410px slots, so its selected
+slot and all neighbours remain on one horizontal centreline behind the hero. The camera margin is 30%
+after controller testing found combined yaw/pitch poses that still projected a near corner outside 16%.
+
+Only the SNES shell receives an additional 180-degree roll to put its authored top at canonical +Y;
+its projected label bounds are rolled with it. GBA keeps its existing orientation because its contact
+fingers already prove that its long bottom edge is correct, and the disc case was authored upright.
+
+The GL viewport derives its device scale through `TopLevel.GetTopLevel(control)`, rather than casting
+`VisualRoot`. An OpenGL control can be rooted through Avalonia's composition host, so that cast may
+fail and silently select 1.0. On a scaled display the resulting viewport then covers only the
+top-left portion of the actual framebuffer, making a correctly centred model appear far to the left.
+
+## 2026-08-13 — The physical shelf is one metric scene with bounded media and continuous travel
+
+The physical-media mode no longer composes a separately translated 2D cover strip with one 3D hero.
+`MediaShelf3DControl` submits the focused game and three neighbours on each side to one renderer scene;
+the old strip is retained only as the session-wide fallback when OpenGL initialization fails. Games on
+systems without authored media use a procedural, closed, thin cover card in that same scene, rather than
+silently changing back to an Avalonia image or borrowing an inaccurate generic cartridge/case.
+
+`PhysicalMediaProfile` is the presentation contract: measured width/height/depth, canonical correction,
+artwork slots, material variant, insertion-animation id and an optional small presentation correction.
+Geometry is scaled into 190mm-reference shelf units, placed on one baseline and viewed through one fixed
+22-degree product camera. Horizontal centres come from the adjacent profiles' measured widths plus a
+constant gap. Focus may lift an item slightly but never changes its scale, so selecting a GBA cartridge
+cannot make it grow into a keep case. PS2, GameCube and Wii initially use 135x190x14mm profiles; PS3 uses
+the shorter 135x171x14mm Blu-ray profile while the first asset pass still shares keep-case geometry.
+
+Shelf travel is a continuous selection coordinate owned by a pure `PhysicalShelfMotionModel`, not a
+queue of per-key transitions. It uses the exact critically damped solution for elapsed-time ticks,
+preserves velocity when held input retargets it, caps stalled-frame time and stops its 16ms UI timer at
+rest. Scope/far jumps snap instead of flying through the library, and the model's reduced-motion policy
+lands on the same destination immediately. The renderer likewise redraws only on shelf-position, cover,
+accent or user-rotation changes and bounds decoded/GPU cover observation to the seven visible games.
+
+The existing surfaceless-EGL preview now emits `physical-shelf-scene.png`, exercising the exact shared
+camera and multi-item renderer. Its acceptance composition deliberately places a full-height keep case
+between SNES and GBA cartridges and leaves one cartridge art-free, so relative scale, baseline, centring
+and the empty-shell fallback remain reviewable without an app window.
+
+## 2026-08-13 — The first production SNES slice uses a cleaned CC BY PAL shell
+
+SomeKevin's `Super Nintendo Cartridge` is the Phase 2 SNES base: its embedded metadata and live
+Sketchfab listing identify CC BY 4.0, and its rounded moulding, screws, contacts, tangents and
+base-colour/metallic-roughness/normal maps are materially better than the prototype shell. It is the
+PAL/Super Famicom form, so `snes` now carries an explicit 129x87x20mm `snes-pal-grey` profile; a North
+American shell remains a future regional variant. The authored label points toward -Z, making the
+canonical correction a 180-degree Y rotation rather than the prototype's face-up axis conversion.
+
+The downloaded 25.4MB GLB remains untouched under the user-supplied `models/snes/` sourcing area.
+`SnesModelPrep` creates the 3.47MB redistributable derivative deterministically: it neutralizes the
+fixed placeholder label in all three PBR texture channels, reduces the 4096px maps to 1024px, removes
+six collapsed triangles and flips inconsistent triangle winding against the authored normals. Source
+authorship/license metadata is retained and EmuShelf's modifications are added to the GLB metadata and
+`THIRD-PARTY-NOTICES.md`. The supplied Super Mario World scan was rejected because its BY-NC license
+fails redistribution; the linked paid Store model was rejected because raw/extractable redistribution
+is not granted.
+
+Dynamic art is projected over the measured front-label recess while the source UVs continue to drive
+the body PBR maps. Missing art therefore produces an intact cartridge with an accent-coloured blank
+label, never the static 2D missing-cover tile. A separately authored, slightly offset label mesh and
+material, cleanup of the remaining welded boundary/non-manifold topology, direct key/contact shadow
+lighting and real-Windows 1080p close-ups remain the open parts of the Phase 2 quality gate.
+
+## 2026-08-13 — Physical media combines IBL with a direct key and analytic contact shadows
+
+The baked studio environment remains responsible for broad diffuse light and material reflections,
+but it cannot give small front-facing grooves and bevels enough stable local contrast. The shell PBR
+shader therefore adds one world-space studio key using the same GGX distribution, Smith geometry and
+Schlick Fresnel terms as the material model. It is deliberately restrained and warm-neutral; it adds
+shape information without flattening the accent-tinted environment or becoming a moving flashlight.
+
+Grounding uses a transparent horizontal receiving plane and at most seven analytic shadow footprints,
+matching the renderer's already-bounded visible window. Each footprint combines a tight contact lobe
+with a wider offset softbox lobe, is derived from the profile's rotated physical width/depth, and gets
+slightly softer when focus lifts the medium. This avoids a shadow-map framebuffer, depth pass, PCF
+samples and cross-GL shadow-format differences for five-to-seven small shelf objects. The plane emits
+premultiplied black only; Avalonia's themed backdrop remains visually in charge and no opaque floor
+rectangle can appear around the GL control.
+
+All uploaded 2D maps already received trilinear mip chains. Upload now additionally requests up to 8x
+anisotropy when EXT/ARB texture-filter anisotropy is advertised, improving projected labels at steep
+yaw without making the extension mandatory. The exact renderer's front/hero/side/back/top/bottom and
+mixed-shelf matrix is the automated visual artifact; real Windows at 1080p remains the final Phase 2
+hardware gate.
+
+## 2026-08-13 — The SNES label is a separate rounded dielectric surface
+
+SNES artwork is no longer a material override on fragments of the downloaded body mesh. The body is
+drawn first with zero artwork panels, preserving its neutralized base-colour, metallic/roughness and
+normal maps; a generated rounded sticker is then drawn as a second mesh/material pass. Its conventional
+UVs are retained for the future `support-texture` path, while today's shared object-space panel shader
+supplies cropped cover art or the empty accent tint. Paper roughness and a flat normal now belong only
+to the sticker, so the shell's moulded grain cannot punch through or distort it at steep yaw/pitch.
+
+The sticker uses eight segments per corner (36 triangles total), sits 0.0008 canonical units above the
+frontmost face, and follows the shell's existing model transform, metric scaling and controller rotation.
+That is enough separation for the shared 24-bit depth target without reading as a floating card side-on.
+A rejected tuning experiment ray-projected a tessellated sticker onto the source front topology; the
+model contains broad overlapping moulded arcs through the nominal label region, so conforming to it
+visibly cut those arcs out of the artwork. A real adhesive label bridges that authored topology, making
+the deliberately flat second surface both visually correct and substantially simpler.
+
+## 2026-08-13 — Hardware review replaces the separate SNES sticker with an attached decal
+
+The separate rounded label surface from the preceding experiment is superseded. In motion and at a
+three-quarter hardware view, even its sub-millimetre canonical offset exposed a bright edge and read as
+a card hovering over the cartridge; the earlier projected label felt materially more unified. SNES art
+therefore returns to the shell's body fragments, with no extra mesh or depth separation.
+
+The projection path now carries the polish that motivated the experiment. `ArtPanel` records a corner
+radius relative to its shorter physical edge. The fragment shader evaluates an aspect-correct rounded-
+rectangle signed-distance mask, uses `fwidth` for resolution/angle-independent antialiasing, and blends
+base colour, metallic value, paper roughness and flat label normal only across that mask. SNES uses a
+0.075 radius; temporary GBA/case panels retain square bounds. This keeps the label visually attached at
+every rotation while preventing shell grain from punching through its printed area and avoiding jagged
+or stretched corners on the landscape recess.
+
+## 2026-08-13 — The studio key now casts filtered geometry shadows; contact remains analytic
+
+The direct GGX key previously illuminated every front-facing fragment even when cartridge moulding sat
+between it and the light. Normal maps described grooves locally, but could not let the top lip, grip rails,
+screw wells or contact opening shade adjacent plastic, which left the sourced SNES scan looking flatter and
+glossier than its geometry warranted. The renderer now draws the exact visible body transforms into one
+2048px directional depth map before the colour pass. A slope-biased 3×3 PCF lookup attenuates only the
+direct key; image-based studio light remains present inside shadows, matching a softly filled product shot.
+One colour renderbuffer accompanies the sampled depth attachment because that framebuffer shape behaves
+consistently across core OpenGL, macOS GL 3.2 and ANGLE/GLES without divergent draw-buffer setup.
+
+This does not replace the transparent receiving-plane footprints. Those two-lobe analytic shadows still
+provide stable shelf contact for at most seven moving items, while the depth map supplies object-to-self
+visibility. The two jobs therefore stay separate and scrolling cannot expose an opaque floor surface.
+`MediaShellDefinition` also gains restrained per-shell roughness and dielectric-reflectance corrections;
+only the sourced SNES body uses them (1.12× roughness, 3.5% dielectric F0) so its broad highlight reads as
+aged moulded plastic without globally dulling GBA or case materials. The GLB declares no occlusion texture,
+so fake screen-space cavity darkening was deliberately not added; future models can add authored AO through
+the material pipeline. The desktop-GL full-HD seven-angle matrix and mixed metric shelf render pass cleanly;
+real Windows/ANGLE remains the hardware acceptance gate.
+
+## 2026-08-13 — SNES lighting contrast is calibrated at couch distance, not only in close-up
+
+Hardware feedback found the first self-shadow pass technically correct but visually too conservative at
+the cartridge's real shelf size. The SNES variant now receives 70% of the image-based studio fill while the
+direct key is raised to 1.08/1.00/0.92 radiance. Key-depth visibility suppresses up to 58% of ambient fill,
+so the lower recess, top lip, side rails and screw wells remain legible when the cartridge occupies only a
+fraction of a 1080p screen. Ambient specular is attenuated less than diffuse, preserving a broad moving
+plastic reflection rather than turning shadows into dead black paint.
+
+The embedded metallic/roughness map's red channel is uniformly 255 and the GLB declares no occlusion map,
+so it is not repurposed as fictional AO. Cavity instead comes from only strongly tilted texels in the
+authored tangent-space normal map; shallow scan waviness is thresholded out and the SNES normal amplitude
+is reduced to 72%. Projected paper explicitly blends cavity back to one, keeping the label clean and
+visually attached. This is a per-shell material correction: temporary GBA/case assets retain their own
+source response until they pass the same asset gate.
+
+The Windows launch check also reconfirmed that shelf fallback diagnostics use EmuShelf's message-first
+`IAppLogger` contract and already preserve the renderer exception in the portable log. It is deliberately
+not treated as Serilog's exception-first API even though the infrastructure implementation ultimately
+writes through Serilog.
+
+## 2026-08-13 — The shelf uses a high-left raking key and self-only shadow maps
+
+The front-biased studio key made a neutral cartridge easy to expose but nearly shadowless: its direction
+from the surface toward the light was (-0.42, 0.68, 0.60), close enough to the viewing axis that broad
+front faces received almost uniform light. The key now sits high and substantially camera-left at the
+normalized direction of (-0.78, 0.56, 0.29). Its warmer 1.42/1.31/1.18 radiance compensates for the lower
+front-face cosine. This raking position makes the label recess, lower slot, grip rails, screw wells and
+opposite shell edge cast readable shade before the user rotates the cartridge, which is the composition
+the couch shelf spends most of its time showing.
+
+A single row-wide directional map was rejected with this angle because the selected tall case could cast
+a large, physically plausible but compositionally destructive shadow over the next cartridge. Shelf items
+now render one at a time against a 1024px map containing only their own geometry. That is finer effective
+resolution than stretching 2048px across seven media, avoids cross-item occlusion, and keeps the total map
+area bounded. Polygon depth offset plus a geometric-normal receiver bias prevents grazing-angle shadow acne;
+the normal-mapped surface is deliberately excluded from bias calculation because its fine variation caused
+moire-like self-interference on flat cartridge faces. The analytic receiving-plane footprints remain the
+separate mechanism that visually connects every item to the shared shelf.
+
+## 2026-08-13 — Physical-media performance policy is shared and quality-scaled
+
+The SNES visual slice established the renderer baseline, but its initial quality settings scaled poorly:
+fixed 2× supersampling shaded four output pixels for every display pixel, and every one of seven visible
+items regenerated and sampled a 1024px 3×3-PCF self-shadow map during shelf travel. The renderer now chooses
+up to 2× dynamically while capping its off-screen scene at 2560×1440 and never rendering below native. A
+1920×1080 shelf therefore falls from 8.29 million shaded scene pixels to 3.69 million; 4K stays native rather
+than attempting an 8K intermediate.
+
+Dynamic self-shadow quality follows attention. At rest only the focused medium renders/samples PCF; during
+continuous travel the outgoing and incoming pair qualify through their non-zero focus amount. Smaller
+neighbours keep direct GGX light, IBL and analytic receiving-plane contact shadows, avoiding imperceptible
+depth work. In the llvmpipe full-HD mixed-shelf acceptance render this reduced the measured shelf frame from
+439 ms to 308 ms (about 30%); software timings are not a hardware FPS claim, but exercise the same draw path.
+
+The shelf control retains twenty-one uploaded covers—three complete seven-item windows—in an explicit GPU
+LRU. Reversing direction no longer repeats bitmap conversion, texture upload, mip generation and driver
+capability queries at the visibility boundary. Anisotropy support/max is cached once per GL context, while
+the renderer keeps four recent accent-tinted studio environments so platform backtracking avoids another
+GPU convolution bake. Per-frame render lists and shadow footprints are reused, visible-game lookup is by
+stable id, and property subscriptions are recomputed only when the rounded seven-item range changes.
+
+These choices live below platform mapping in `MediaShelf3DControl`, `MediaShellRenderer` and `GlTexture`.
+Every current and future physical-media profile inherits them; only physical dimensions, canonical pose,
+artwork placement and deliberate material corrections remain platform-specific.
+
+## 2026-08-13 — Shelf navigation never performs environment convolution or model decode
+
+The performance review found that the first optimization still left two large first-use jobs inside the GL
+render callback. A new platform accent compiled three temporary IBL programs and convolved a new cubemap,
+while the first draw of a shell read and decoded its embedded GLB before uploading it. Caching helped only
+the second visit, so the first visit could interrupt the very shelf movement the feature is designed to
+show. The renderer now bakes one neutral studio environment per GL context. Platform colour is a cheap PBR
+uniform applied mainly to ambient room light, leaving the neutral softbox reflections intact; `SetAccent`
+therefore only stores a vector. Immutable `ModelAsset` data is decoded through one process-wide asynchronous
+cache before rendering, while context-owned mesh and texture upload remains on the GL thread as required.
+Until preparation completes the renderer simply omits that shell and requests another frame on completion.
+
+`PhysicalMediaProfile.MaterialVariant` is now part of the shipping draw path rather than documentary
+metadata. The temporary shared case geometry can express black PS2/GameCube, glossier blue-clear PS3 and
+white Wii finishes through body tint, roughness and dielectric-reflectance corrections without duplicating
+the mesh. These are restrained baseline variants, not a substitute for authored clear-sleeve geometry or
+platform-specific models in the asset gate.
+
+Interactive resize targets grow in 256px buckets and reuse their allocation while the requested scene fits,
+preventing full colour/depth framebuffer churn on every intermediate window size. Artwork panel placements
+are likewise calculated once when a shell is uploaded instead of allocating and resolving a list for every
+visible item on every frame. Finally, the Avalonia shelf control detaches collection and visible-game event
+handlers when it leaves the visual tree, then restores them on reattachment, so a discarded GL view cannot
+be retained by the library collection.
+
+## 2026-08-13 — The GL shelf is an active-mode resource with an explicit readiness contract
+
+Avalonia can reject or lose the shared OpenGL surface before `MediaShelf3DControl.OnOpenGlInit` runs. An
+exception event raised only by that override therefore cannot guarantee the designed flat-cover fallback.
+`MediaShelf3DHost` now keeps the GL control out of the visual tree unless physical-shelf mode is active and
+supported, and starts a four-second readiness watchdog only after the child is actually attached. Renderer
+success cancels it; renderer exceptions, context loss that never recovers, and silent framework-level
+initialization failure all converge on the same session-latched flat fallback. Grid and spotlight modes no
+longer create a GL surface, decode models, subscribe to the game window or allocate GPU shelf resources.
+
+Focus changes also capture the outgoing game's yaw and pitch before the incoming hero is recentered. The
+shared scene blends that captured pose toward its standard neighbour angle as focus amount falls, preserving
+the physical continuity of a turned cartridge instead of snapping it at the start of travel. The captured
+set is bounded to the seven-item scene window.
+
+Finally, bucketed scene targets are no longer grow-only. A target at least 1.5 times larger than the rounded
+logical request is released after thirty sustained under-use frames, avoiding churn during live resize while
+returning colour/depth memory after a move from a large display or maximized window. Until then a scissor
+limits colour/depth clears to the logical scene rectangle, so spare bucket capacity consumes memory but no
+per-frame clear bandwidth. These lifecycle, motion and allocation policies sit below platform profiles and
+therefore apply to every current and future physical-media model.

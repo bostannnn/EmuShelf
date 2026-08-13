@@ -157,8 +157,9 @@ public sealed class GlProgram : IDisposable
             return;
         }
 
-        // System.Numerics stores row-major and GLSL reads column-major, which is exactly the
-        // transpose GL will do for us, so hand it the memory as-is with transpose=true.
+        // System.Numerics matrices are laid out for row-vector multiplication. GLSL uses column
+        // vectors, so letting GL read this row-major memory as column-major (transpose=false)
+        // supplies the mathematical transpose the shader needs. OpenGL ES also requires false.
         Span<float> values =
         [
             value.M11, value.M12, value.M13, value.M14,
@@ -166,7 +167,7 @@ public sealed class GlProgram : IDisposable
             value.M31, value.M32, value.M33, value.M34,
             value.M41, value.M42, value.M43, value.M44,
         ];
-        _gl.UniformMatrix4(location, 1, true, values);
+        _gl.UniformMatrix4(location, 1, false, values);
     }
 
     /// <summary>Uploads the upper-left 3x3 of <paramref name="value"/> as a mat3.</summary>
@@ -184,7 +185,7 @@ public sealed class GlProgram : IDisposable
             value.M21, value.M22, value.M23,
             value.M31, value.M32, value.M33,
         ];
-        _gl.UniformMatrix3(location, 1, true, values);
+        _gl.UniformMatrix3(location, 1, false, values);
     }
 
     public void Dispose()

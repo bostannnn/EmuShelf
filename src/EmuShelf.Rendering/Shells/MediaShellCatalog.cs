@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using EmuShelf.Rendering.Models;
 
@@ -12,6 +13,8 @@ namespace EmuShelf.Rendering.Shells;
 /// </remarks>
 public static class MediaShellCatalog
 {
+    private static readonly ConcurrentDictionary<MediaShell, Lazy<Task<ModelAsset>>> PreparedAssets = [];
+
     /// <summary>
     /// The GBA cartridge was authored standing upright but facing +X, so it only needs a quarter
     /// turn about Y to bring its label round to +Z.
@@ -27,23 +30,49 @@ public static class MediaShellCatalog
 
     private static readonly Dictionary<MediaShell, MediaShellDefinition> Definitions = new()
     {
-        // Authored face-up with its long axis along X and its 20mm thickness along Y. Rotating -90
-        // degrees about X stands it on its bottom edge and brings the label face round to +Z.
+        [MediaShell.CoverCard] = new MediaShellDefinition(
+            MediaShell.CoverCard,
+            ResourceName: string.Empty,
+            Matrix4x4.Identity,
+            MaxTextureSize: 1,
+            CoverPanel: ArtPanel.Full(ArtFace.Front, inset: 0.015f),
+            ExtraPanels: [],
+            PanelRoughness: 0.48f,
+            ArtFit: ArtFit.Stretch,
+            FlattenPanelNormal: true),
+
+        // SomeKevin's PAL/Super Famicom shell is authored upright with its label toward -Z. A half
+        // turn about Y brings that face to canonical +Z while retaining its correct vertical axis.
         [MediaShell.SnesCartridge] = new MediaShellDefinition(
             MediaShell.SnesCartridge,
             "EmuShelf.Rendering.Assets.snes-cartridge.glb",
-            Matrix4x4.CreateRotationX(-MathF.PI / 2f),
-            MaxTextureSize: 512,
-            // The cartridge's own UVs are unusable (they span -93..1.7), and it ships untextured
-            // grey plastic, so the label is a projected rectangle sized from the real cartridge:
-            // a 78x62mm label on a 134x84mm face, sitting a little above centre.
-            CoverPanel: new ArtPanel(ArtFace.Front, -0.64f, 0.64f, -0.70f, 0.84f),
+            Matrix4x4.CreateRotationY(MathF.PI),
+            MaxTextureSize: 1024,
+            // The source's fixed placeholder label is neutralized in the runtime derivative. Game
+            // art is projected onto the real label area while the surrounding moulding, screws,
+            // contacts and their authored PBR maps remain visible.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.80f, 0.80f, 0.02f, 0.93f, CornerRadius: 0.075f),
             ExtraPanels: [],
-            PanelRoughness: 0.42f,
+            PanelRoughness: 0.38f,
             // A portrait box scan cropped to the landscape label beats the same scan squashed.
             ArtFit: ArtFit.Cover,
-            // The label is a sticker over the cartridge's moulded grooves, not paint on them.
-            FlattenPanelNormal: true),
+            // The decal follows the body surface but hides its moulded shading normal, so it reads
+            // as an applied label without a floating gap.
+            FlattenPanelNormal: true,
+            // The downloaded scan was authored for a brighter viewer and otherwise reads like a
+            // glossy miniature under EmuShelf's close product-lighting camera.
+            BodyRoughnessScale: 1.16f,
+            DielectricReflectance: 0.033f,
+            // A lower studio fill lets the key describe the form at couch distance. Actual depth
+            // visibility and the authored normal map, rather than a screen-space fake, provide the
+            // stronger occlusion in rails, wells and the lower slot.
+            AmbientIntensity: 0.70f,
+            ShadowFillOcclusion: 0.58f,
+            CavityStrength: 0.34f,
+            // The scan's shallow normal variation forms broad swirls under a hard key. Reduce its
+            // amplitude; real mesh bevels and the new depth map carry the cartridge's large form.
+            NormalStrength: 0.72f),
 
         [MediaShell.GbaCartridge] = new MediaShellDefinition(
             MediaShell.GbaCartridge,
@@ -84,9 +113,49 @@ public static class MediaShellCatalog
 
     public static IEnumerable<MediaShell> All => Definitions.Keys;
 
-    /// <summary>Loads a shell's model out of this assembly's embedded resources.</summary>
-    public static ModelAsset Load(MediaShell shell)
+    /// <summary>
+    /// Starts decoding one shell away from the UI/GL thread. The immutable decoded asset is shared
+    /// by every renderer/context; only the context-bound mesh and texture upload remains per renderer.
+    /// </summary>
+    public static Task<ModelAsset> PrepareAsync(MediaShell shell) =>
+        PreparedAssets.GetOrAdd(
+            shell,
+            static key => new Lazy<Task<ModelAsset>>(
+                () => Task.Run(() => LoadUncached(key)),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+
+    /// <summary>Returns an asset only when background decoding has already completed successfully.</summary>
+    public static bool TryGetPrepared(MediaShell shell, out ModelAsset asset)
     {
+        asset = null!;
+        if (!PreparedAssets.TryGetValue(shell, out var lazy) || !lazy.IsValueCreated)
+        {
+            return false;
+        }
+
+        var task = lazy.Value;
+        if (!task.IsCompletedSuccessfully)
+        {
+            return false;
+        }
+
+        asset = task.Result;
+        return true;
+    }
+
+    /// <summary>
+    /// Loads a shell synchronously for tools and tests. Runtime controls call <see cref="PrepareAsync"/>
+    /// first so model parsing and image decode do not land in a navigation frame.
+    /// </summary>
+    public static ModelAsset Load(MediaShell shell) => PrepareAsync(shell).GetAwaiter().GetResult();
+
+    private static ModelAsset LoadUncached(MediaShell shell)
+    {
+        if (shell == MediaShell.CoverCard)
+        {
+            return CreateCoverCard();
+        }
+
         var definition = Definition(shell);
         using var stream = typeof(MediaShellCatalog).Assembly
             .GetManifestResourceStream(definition.ResourceName)
@@ -102,6 +171,93 @@ public static class MediaShellCatalog
     private static IEnumerable<string> ResourceNames() =>
         typeof(MediaShellCatalog).Assembly.GetManifestResourceNames()
             .Where(name => name.EndsWith(".glb", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Creates the unsupported-system fallback as real scene geometry rather than an Avalonia tile.
+    /// Its width is the library's common portrait ratio; a profile can non-uniformly scale it to a
+    /// platform's actual cover ratio while retaining one shared mesh.
+    /// </summary>
+    private static ModelAsset CreateCoverCard()
+    {
+        const float halfWidth = 0.354f;
+        const float halfHeight = 0.5f;
+        const float halfDepth = 0.015f;
+
+        var vertices = new List<float>(24 * MeshGeometry.FloatsPerVertex);
+        var indices = new List<uint>(36);
+
+        void AddFace(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 normal)
+        {
+            var first = (uint)(vertices.Count / MeshGeometry.FloatsPerVertex);
+            AddVertex(a, normal, 0f, 0f);
+            AddVertex(b, normal, 1f, 0f);
+            AddVertex(c, normal, 1f, 1f);
+            AddVertex(d, normal, 0f, 1f);
+            indices.AddRange([first, first + 1, first + 2, first, first + 2, first + 3]);
+        }
+
+        void AddVertex(Vector3 position, Vector3 normal, float u, float v)
+        {
+            vertices.AddRange(
+            [
+                position.X, position.Y, position.Z,
+                normal.X, normal.Y, normal.Z,
+                u, v,
+            ]);
+        }
+
+        // Winding is counter-clockwise as each face is viewed from outside.
+        AddFace(
+            new(-halfWidth, -halfHeight, halfDepth), new(halfWidth, -halfHeight, halfDepth),
+            new(halfWidth, halfHeight, halfDepth), new(-halfWidth, halfHeight, halfDepth),
+            Vector3.UnitZ);
+        AddFace(
+            new(halfWidth, -halfHeight, -halfDepth), new(-halfWidth, -halfHeight, -halfDepth),
+            new(-halfWidth, halfHeight, -halfDepth), new(halfWidth, halfHeight, -halfDepth),
+            -Vector3.UnitZ);
+        AddFace(
+            new(-halfWidth, -halfHeight, -halfDepth), new(-halfWidth, -halfHeight, halfDepth),
+            new(-halfWidth, halfHeight, halfDepth), new(-halfWidth, halfHeight, -halfDepth),
+            -Vector3.UnitX);
+        AddFace(
+            new(halfWidth, -halfHeight, halfDepth), new(halfWidth, -halfHeight, -halfDepth),
+            new(halfWidth, halfHeight, -halfDepth), new(halfWidth, halfHeight, halfDepth),
+            Vector3.UnitX);
+        AddFace(
+            new(-halfWidth, halfHeight, halfDepth), new(halfWidth, halfHeight, halfDepth),
+            new(halfWidth, halfHeight, -halfDepth), new(-halfWidth, halfHeight, -halfDepth),
+            Vector3.UnitY);
+        AddFace(
+            new(-halfWidth, -halfHeight, -halfDepth), new(halfWidth, -halfHeight, -halfDepth),
+            new(halfWidth, -halfHeight, halfDepth), new(-halfWidth, -halfHeight, halfDepth),
+            -Vector3.UnitY);
+
+        return new ModelAsset
+        {
+            Meshes =
+            [
+                new MeshGeometry
+                {
+                    Vertices = vertices.ToArray(),
+                    Indices = indices.ToArray(),
+                    MaterialIndex = 0,
+                },
+            ],
+            Materials =
+            [
+                new ModelMaterial
+                {
+                    Name = "cover-card",
+                    BaseColorFactor = new Vector4(0.18f, 0.18f, 0.20f, 1f),
+                    MetallicFactor = 0f,
+                    RoughnessFactor = 0.62f,
+                },
+            ],
+            Textures = [],
+            BoundsMin = new Vector3(-halfWidth, -halfHeight, -halfDepth),
+            BoundsMax = new Vector3(halfWidth, halfHeight, halfDepth),
+        };
+    }
 
     /// <summary>
     /// Resolves an <see cref="ArtPanel"/> against a loaded model's real bounds, giving the plane the

@@ -19,6 +19,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="EmuShelf.Rendering.Tests" />
     <InternalsVisibleTo Include="EmuShelf.Rendering.Preview" />
+    <InternalsVisibleTo Include="EmuShelf.App.Tests" />
   </ItemGroup>
 
   <ItemGroup>

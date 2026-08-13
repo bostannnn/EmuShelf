@@ -263,8 +263,8 @@ public partial class MainWindow : Window
     // than easing across many screens (which would realize and flash a cover on every intermediate row).
     private const int GamepadMaxEaseRowStep = 2;
 
-    // ---- Physical-media shelf (couch) coverflow centring ----
-    // The shelf lays its games out in fixed-width slots; the strip (GamepadShelfStrip) is translated so
+    // ---- Physical-media shelf flat fallback centring ----
+    // When GL is unavailable, the shelf lays games out in fixed-width slots; GamepadShelfStrip is translated so
     // the focused slot lands on the viewport centre. Slots are uniform, so the target is exact arithmetic
     // (index * slot), independent of each cover's own aspect and of realization — no scroll offset, no
     // realized-container reads. See docs/couch-physical-media-shelf.md.
@@ -316,7 +316,7 @@ public partial class MainWindow : Window
     private void OnGamepadShelfViewportSizeChanged(object? sender, SizeChangedEventArgs e) =>
         CentreShelf(e.NewSize.Width, forceSnap: true);
 
-    // View wiring only: the 3D hero could not bring up a GL context (a driver that will not serve
+    // View wiring only: the shared 3D scene could not bring up a GL context (a driver that will not serve
     // GLES 3.0, a remote session), so tell the library to put every game back on its flat cover.
     // The shelf stays fully usable without the GPU path — that is the designed fallback, not an error.
     private void OnGamepadShelfHeroFailed(object? sender, Exception exception) =>

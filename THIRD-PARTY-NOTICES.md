@@ -152,19 +152,23 @@ the source project's terms and to the rights of their respective publishers.
 
 The couch shelf's 3D hero renders a game's physical medium as a lit object. The three
 shells are third-party models bundled inside `EmuShelf.Rendering` at
-`src/EmuShelf.Rendering/Assets/*.glb`. They are used unmodified in geometry; only their
-embedded textures were downsampled to reduce the binary, and the game artwork the original
-authors photographed onto them is always painted over at render time with the player's own
-scraped cover or a flat tint, so no third-party game packaging is displayed.
+`src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
+documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
+from a model download is intentionally displayed.
 
 All three are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
 
-- **SNES Cartridge** — by [Steven-Bennis](https://sketchfab.com/Steven-Bennis), from
-  [Sketchfab](https://sketchfab.com/3d-models/snes-cartridge-1caba5630eb0435187d6e975d4eed6c5).
-  Bundled as `snes-cartridge.glb`.
+- **Super Nintendo Cartridge (PAL/Super Famicom shell)** — by
+  [SomeKevin](https://sketchfab.com/somekevin), from
+  [Sketchfab](https://sketchfab.com/3d-models/super-nintendo-cartridge-b2076d8a65d648ff99bf51ca9d5fca2a).
+  Bundled as `snes-cartridge.glb`. EmuShelf neutralized the fixed placeholder label in all three
+  PBR texture channels, reduced the 4096px maps to 1024px, removed six collapsed triangles,
+  corrected triangle winding where it disagreed with the authored normals, and applies canonical
+  orientation, metric scaling and per-game label art at runtime. Original authorship and license
+  metadata remain embedded in the GLB.
 - **Gameboy Advance Cartridge** — by [Vxcl](https://sketchfab.com/vxclhd), from
   [Sketchfab](https://sketchfab.com/3d-models/gameboy-advance-cartridge-38c1e6702e5d4f21af1d0930689b1d10).
   Bundled as `gba-cartridge.glb`.

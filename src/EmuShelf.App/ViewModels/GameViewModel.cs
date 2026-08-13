@@ -241,21 +241,26 @@ public partial class GameViewModel : ObservableObject, IDisposable
         private set => SetProperty(ref _gamepadCoverHeight, value);
     }
 
-    /// <summary>The physical-media shelf shows one large hero cover at the centre. Unlike the grid it
-    /// is sized to a fixed height (not the viewport-derived grid width), with the width following the
-    /// platform aspect — so a SNES box reads wide and a portrait case reads tall. Constant per game
-    /// (aspect never changes), so plain computed getters. See docs/couch-physical-media-shelf.md.</summary>
+    /// <summary>Legacy flat-fallback cover size. The GPU scene uses
+    /// <see cref="ShelfMediaProfile"/>'s physical dimensions instead.</summary>
     public double GamepadShelfCoverHeight => GamepadShelfCoverTargetHeight;
     public double GamepadShelfCoverWidth => Math.Round(GamepadShelfCoverTargetHeight * CoverAspectRatio);
 
     /// <summary>The hero cover's height on the couch physical-media shelf, in device-independent px.</summary>
     internal const double GamepadShelfCoverTargetHeight = 300;
 
-    /// <summary>The physical medium this game's system renders as on the shelf's focused hero, or
-    /// null to keep the flat cover. Constant per game.</summary>
+    /// <summary>The authored physical medium for the legacy one-hero/fallback contract, or null.</summary>
     public MediaShell? ShelfMediaShell => MediaShellMap.ForSystem(SystemId);
 
-    /// <summary>Per-system accent as a colour, tinting the 3D hero's studio and its unprinted faces.</summary>
+    /// <summary>
+    /// Real-world dimensions and scene presentation for this game. Unlike
+    /// <see cref="ShelfMediaShell"/>, this is never null: an unauthored system receives a thin
+    /// cover card so it can travel through the same continuous 3D shelf as authored media.
+    /// </summary>
+    public PhysicalMediaProfile ShelfMediaProfile =>
+        MediaShellMap.ProfileForSystem(SystemId, CoverAspectRatio);
+
+    /// <summary>Per-system accent as a colour, tinting the 3D scene and unprinted faces.</summary>
     public Color ShelfAccent => Color.Parse(AccentColor);
 
     /// <summary>
@@ -263,7 +268,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// its flat cover.
     /// </summary>
     /// <remarks>
-    /// Set by the library when <c>Media3DControl</c> reports that it could not bring up a GL
+    /// Set by the library when <c>MediaShelf3DControl</c> reports that it could not bring up a GL
     /// context — a headless session, a driver that will not give us GLES 3.0, a remote desktop. The
     /// couch shelf has to stay usable there, so this is a normal outcome rather than an error.
     /// </remarks>
@@ -284,10 +289,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
     } = true;
 
     /// <summary>True when the shelf should swap this game's flat cover for the rotatable 3D medium:
-    /// it is focused, its system has an authored shell, it has cover art to print on it, and the GPU
-    /// path came up. Drives both the hero's visibility and the hiding of the flat cover behind it.</summary>
+    /// it is focused, its system has an authored shell, and the GPU path came up. Cover art is
+    /// optional; without it the renderer shows the shell's unlabelled/tinted panel.</summary>
     public bool ShelfUses3DHero =>
-        IsFocused && ShelfHeroSupported && ShelfMediaShell is not null && HasCoverImage;
+        IsFocused && ShelfHeroSupported && ShelfMediaShell is not null;
 
     /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
     /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame

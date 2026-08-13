@@ -25,6 +25,13 @@ uniform sampler2D uNormalMap;
 uniform float uHasBaseColorMap;
 uniform float uHasMetallicRoughnessMap;
 uniform float uHasNormalMap;
+uniform float uDielectricReflectance;
+uniform float uAmbientIntensity;
+uniform float uShadowFillOcclusion;
+uniform float uCavityStrength;
+uniform float uNormalStrength;
+uniform vec3 uBodyTint;
+uniform float uBodyTintMix;
 
 // --- artwork panel -------------------------------------------------------------------------
 // Up to three panels (cover, back, spine) projected onto faces in object space. Packed as parallel
@@ -37,6 +44,10 @@ uniform vec3 uPanelVEdge[MAX_PANELS];
 uniform vec3 uPanelNormal[MAX_PANELS];
 uniform vec4 uPanelTint[MAX_PANELS];
 uniform float uPanelHasArt[MAX_PANELS];
+// Physical width/height and corner radius (as a fraction of the shorter edge) let the decal mask
+// stay circular at the corners even when the panel is a wide cartridge label.
+uniform float uPanelAspect[MAX_PANELS];
+uniform float uPanelCornerRadius[MAX_PANELS];
 // Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
 // a landscape cartridge label without being squashed.
 uniform vec2 uPanelArtScale[MAX_PANELS];
@@ -56,6 +67,17 @@ uniform samplerCube uIrradianceMap;
 uniform samplerCube uSpecularMap;
 uniform float uSpecularMaxLod;
 uniform float uExposure;
+// World-space direction from the shaded point toward the large studio key. The environment keeps
+// broad reflections; this direct term gives grooves, screws and bevels readable local contrast.
+uniform vec3 uKeyDirection;
+uniform vec3 uKeyRadiance;
+uniform sampler2D uKeyShadowMap;
+uniform mat4 uKeyLightViewProjection;
+uniform float uHasKeyShadow;
+// The expensive studio cubemap is neutral and shared. Only its dim room contribution picks up the
+// focused platform colour at draw time, leaving the white softbox reflections photographic.
+uniform vec3 uAmbientAccent;
+uniform float uAmbientAccentMix;
 
 const float PI = 3.14159265359;
 
@@ -97,6 +119,61 @@ vec3 envBRDFApprox(vec3 specularColor, float roughness, float NoV)
     return (specularColor * ab.x) + ab.y;
 }
 
+float distributionGGX(float NoH, float roughness)
+{
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float denominator = (NoH * NoH * (a2 - 1.0)) + 1.0;
+    return a2 / max(PI * denominator * denominator, 1e-5);
+}
+
+float geometrySchlickGGX(float NoX, float roughness)
+{
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NoX / max((NoX * (1.0 - k)) + k, 1e-5);
+}
+
+vec3 fresnelSchlick(float HoV, vec3 F0)
+{
+    return F0 + ((1.0 - F0) * pow(1.0 - HoV, 5.0));
+}
+
+// Visibility of the large studio key. A compact 3x3 PCF kernel keeps the shadow soft enough to
+// match the broad light while still resolving the SNES shell's raised rails, lip and screw wells.
+// Only the direct key is attenuated: the surrounding studio remains visible in shadow, as it would
+// in product photography.
+float keyVisibility(float geometricNoL)
+{
+    if (uHasKeyShadow < 0.5)
+    {
+        return 1.0;
+    }
+
+    vec4 lightClip = uKeyLightViewProjection * vec4(vWorldPosition, 1.0);
+    vec3 projected = (lightClip.xyz / max(lightClip.w, 1e-6)) * 0.5 + 0.5;
+    if (projected.x <= 0.0 || projected.x >= 1.0
+        || projected.y <= 0.0 || projected.y >= 1.0
+        || projected.z <= 0.0 || projected.z >= 1.0)
+    {
+        return 1.0;
+    }
+
+    vec2 texel = 1.0 / vec2(textureSize(uKeyShadowMap, 0));
+    float bias = max(0.0022 * (1.0 - geometricNoL), 0.00045);
+    float visibility = 0.0;
+    for (int y = -1; y <= 1; y++)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            float closest = texture(uKeyShadowMap, projected.xy + vec2(x, y) * texel).r;
+            visibility += projected.z - bias <= closest ? 1.0 : 0.0;
+        }
+    }
+
+    return visibility / 9.0;
+}
+
 // Filmic curve (Hill's ACES fit, condensed). Keeps the softbox highlight from clipping to a flat
 // white blob, which is what makes the reflection read as a light source rather than a paint colour.
 vec3 tonemap(vec3 x)
@@ -113,6 +190,7 @@ void main()
 {
     vec3 N = normalize(vNormal);
     vec3 V = normalize(uCameraPosition - vWorldPosition);
+    float cavity = 1.0;
 
     // Sketchfab exports these shells double-sided; flip inward-facing normals so the inside of a
     // case lid is lit rather than black.
@@ -120,12 +198,17 @@ void main()
     {
         N = -N;
     }
+    // Shadow bias follows the broad geometric surface, not high-frequency normal-map grain. Using
+    // the perturbed normal here makes adjacent texels choose different biases and creates moire-like
+    // shadow acne on an otherwise flat cartridge face.
+    vec3 geometricN = N;
 
     vec4 baseColor = uBaseColorFactor;
     if (uHasBaseColorMap > 0.5)
     {
         baseColor *= texture(uBaseColorMap, vTexCoord);
     }
+    baseColor.rgb = mix(baseColor.rgb, uBodyTint, uBodyTintMix);
 
     float metallic = uMetallicFactor;
     float roughness = uRoughnessFactor;
@@ -140,6 +223,13 @@ void main()
     if (uHasNormalMap > 0.5)
     {
         vec3 tangentNormal = (texture(uNormalMap, vTexCoord).xyz * 2.0) - 1.0;
+        tangentNormal = normalize(vec3(tangentNormal.xy * uNormalStrength, tangentNormal.z));
+        // The source normal map already identifies fine wells, seams and moulded grain. Its Z
+        // component measures how far a texel turns away from the broad surface, providing a stable
+        // texture-space cavity cue that survives rotation and avoids screen-space AO halos.
+        float normalRelief = 1.0 - clamp(tangentNormal.z, 0.0, 1.0);
+        // Ignore shallow scan waviness; only deliberate, strongly turned relief earns cavity.
+        cavity = 1.0 - (uCavityStrength * smoothstep(0.065, 0.50, normalRelief));
         N = normalize(cotangentFrame(N, vWorldPosition, vTexCoord) * tangentNormal);
     }
 
@@ -162,7 +252,21 @@ void main()
         // the normal map must not punch holes in the label's edge, and the model's rotation must
         // not move the label onto another face.
         float facing = dot(normalize(vObjectNormal), uPanelNormal[i]);
-        if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0 || facing < 0.5)
+        if (facing < 0.5)
+        {
+            continue;
+        }
+
+        float aspect = max(uPanelAspect[i], 1e-4);
+        float corner = clamp(uPanelCornerRadius[i], 0.0, 0.499);
+        vec2 panelPoint = (vec2(u, v) - 0.5) * vec2(aspect, 1.0);
+        vec2 halfSize = vec2(aspect * 0.5, 0.5);
+        vec2 rounded = abs(panelPoint) - (halfSize - vec2(corner));
+        float edgeDistance = length(max(rounded, vec2(0.0)))
+            + min(max(rounded.x, rounded.y), 0.0) - corner;
+        float antialiasWidth = max(fwidth(edgeDistance), 1e-4);
+        float panelMask = 1.0 - smoothstep(-antialiasWidth, antialiasWidth, edgeDistance);
+        if (panelMask <= 0.0)
         {
             continue;
         }
@@ -180,33 +284,63 @@ void main()
             }
         }
 
-        baseColor.rgb = art.rgb;
-        roughness = uPanelRoughness;
-        metallic = 0.0;
+        baseColor.rgb = mix(baseColor.rgb, art.rgb, panelMask);
+        roughness = mix(roughness, uPanelRoughness, panelMask);
+        metallic = mix(metallic, 0.0, panelMask);
         if (uPanelFlattenNormal > 0.5)
         {
-            N = normalize(uNormalMatrix * uPanelNormal[i]);
+            N = normalize(mix(N, normalize(uNormalMatrix * uPanelNormal[i]), panelMask));
         }
+        // Ink/paper is laid over the body. It should not inherit plastic-grain cavity and become a
+        // dirty-looking recess merely because its colour is projected onto body fragments.
+        cavity = mix(cavity, 1.0, panelMask);
     }
 
     roughness = clamp(roughness, 0.045, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
 
     vec3 albedo = baseColor.rgb;
-    // 4% normal-incidence reflectance is the dielectric standard; metals take their tint from albedo.
-    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+    // Dielectrics normally sit close to 4%; a per-shell correction compensates source scans whose
+    // material was tuned for a different viewer. Metals still take their tint from albedo.
+    vec3 F0 = mix(vec3(uDielectricReflectance), albedo, metallic);
     vec3 diffuseColor = albedo * (1.0 - metallic);
 
     float NoV = clamp(dot(N, V), 1e-4, 1.0);
     vec3 R = reflect(-V, N);
 
-    vec3 irradiance = texture(uIrradianceMap, N).rgb;
+    vec3 ambientTint = mix(
+        vec3(1.0),
+        max(uAmbientAccent, vec3(0.08)),
+        uAmbientAccentMix * 0.18);
+    vec3 irradiance = texture(uIrradianceMap, N).rgb * ambientTint;
     vec3 diffuse = irradiance * diffuseColor;
 
-    vec3 prefiltered = textureLod(uSpecularMap, R, roughness * uSpecularMaxLod).rgb;
+    vec3 prefiltered = textureLod(uSpecularMap, R, roughness * uSpecularMaxLod).rgb
+        * mix(vec3(1.0), ambientTint, 0.22);
     vec3 specular = prefiltered * envBRDFApprox(F0, roughness, NoV);
 
-    vec3 colour = (diffuse + specular) * uExposure;
+    vec3 L = normalize(uKeyDirection);
+    vec3 H = normalize(V + L);
+    float NoL = max(dot(N, L), 0.0);
+    float geometricNoL = max(dot(geometricN, L), 0.0);
+    float NoH = max(dot(N, H), 0.0);
+    float HoV = max(dot(H, V), 0.0);
+    vec3 directF = fresnelSchlick(HoV, F0);
+    float directD = distributionGGX(NoH, roughness);
+    float directG = geometrySchlickGGX(NoV, roughness) * geometrySchlickGGX(NoL, roughness);
+    vec3 directSpecular = (directD * directG * directF) / max(4.0 * NoV * NoL, 1e-4);
+    vec3 directDiffuse = ((vec3(1.0) - directF) * diffuseColor) / PI;
+    float visibility = keyVisibility(geometricNoL);
+    float ambientVisibility = mix(1.0, visibility, uShadowFillOcclusion);
+    diffuse *= uAmbientIntensity * ambientVisibility * cavity;
+    // Reflections remain visible in shade, but no longer glow uniformly across deep moulding.
+    specular *= uAmbientIntensity
+        * mix(1.0, ambientVisibility, 0.42)
+        * mix(1.0, cavity, 0.38);
+    vec3 direct = (directDiffuse + directSpecular) * uKeyRadiance * NoL * visibility
+        * mix(1.0, cavity, 0.22);
+
+    vec3 colour = (diffuse + specular + direct) * uExposure;
 
     colour = tonemap(colour);
     // Manual encode: the target framebuffer is a plain RGBA8 surface the host composites, not an

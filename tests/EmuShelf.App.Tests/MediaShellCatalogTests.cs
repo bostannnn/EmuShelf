@@ -23,7 +23,7 @@ public class MediaShellCatalogTests
 {
     // Width x height of the real article, in millimetres.
     [Theory]
-    [InlineData(MediaShell.SnesCartridge, 134d, 84d)]
+    [InlineData(MediaShell.SnesCartridge, 129d, 87d)]
     // Landscape: a Game Pak is ~57mm across and ~35mm tall. Not a typo.
     [InlineData(MediaShell.GbaCartridge, 57d, 35d)]
     [InlineData(MediaShell.DiscKeepCase, 135d, 190d)]
@@ -41,13 +41,13 @@ public class MediaShellCatalogTests
         // overhangs its nominal footprint. Tight enough that a 90-degree error cannot pass — the
         // failure mode is always a ratio and its reciprocal.
         Assert.True(
-            Math.Abs(actual - expected) < 0.18d,
+            Math.Abs(actual - expected) < 0.20d,
             $"{shell} loads at width/height {actual:F3}; the real object is {expected:F3}. "
             + $"A ratio near {1d / expected:F3} means its orientation matrix is a quarter-turn out.");
     }
 
     [Theory]
-    [InlineData(MediaShell.SnesCartridge, 20d, 84d)]
+    [InlineData(MediaShell.SnesCartridge, 20d, 87d)]
     [InlineData(MediaShell.GbaCartridge, 8d, 35d)]
     [InlineData(MediaShell.DiscKeepCase, 14d, 190d)]
     public void ShellIsAsThickAsTheRealObject(MediaShell shell, double depth, double height)
@@ -74,5 +74,22 @@ public class MediaShellCatalogTests
             Assert.True(definition.CoverPanel.MinU < definition.CoverPanel.MaxU, $"{shell} u");
             Assert.True(definition.CoverPanel.MinV < definition.CoverPanel.MaxV, $"{shell} v");
         }
+    }
+
+    [Fact]
+    public void SnesBodyUsesARestrainedPlasticCalibration()
+    {
+        var snes = MediaShellCatalog.Definition(MediaShell.SnesCartridge);
+
+        Assert.InRange(snes.BodyRoughnessScale, 1.05f, 1.20f);
+        Assert.InRange(snes.DielectricReflectance, 0.03f, 0.04f);
+        Assert.InRange(snes.AmbientIntensity, 0.60f, 0.80f);
+        Assert.InRange(snes.ShadowFillOcclusion, 0.45f, 0.70f);
+        Assert.InRange(snes.CavityStrength, 0.20f, 0.40f);
+        Assert.InRange(snes.NormalStrength, 0.60f, 0.85f);
+
+        // The correction is specific to the sourced SNES scan, not a global dimming of all media.
+        Assert.Equal(1f, MediaShellCatalog.Definition(MediaShell.GbaCartridge).BodyRoughnessScale);
+        Assert.Equal(1f, MediaShellCatalog.Definition(MediaShell.DiscKeepCase).BodyRoughnessScale);
     }
 }

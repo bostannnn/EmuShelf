@@ -1,11 +1,13 @@
 using EmuShelf.Rendering.Models;
 using Silk.NET.OpenGL;
+using System.Runtime.CompilerServices;
 
 namespace EmuShelf.Rendering.Gl;
 
 /// <summary>An owned GL texture object.</summary>
 public sealed class GlTexture : IDisposable
 {
+    private static readonly ConditionalWeakTable<GL, TextureCapabilities> Capabilities = new();
     private readonly GL _gl;
     private uint _handle;
 
@@ -49,11 +51,41 @@ public sealed class GlTexture : IDisposable
         gl.GenerateMipmap(TextureTarget.Texture2D);
         gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.LinearMipmapLinear);
         gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
+        ApplyAnisotropicFiltering(gl);
         gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
         gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
         gl.BindTexture(TextureTarget.Texture2D, 0);
 
         return new GlTexture(gl, handle, TextureTarget.Texture2D);
+    }
+
+    private static unsafe void ApplyAnisotropicFiltering(GL gl)
+    {
+        const int textureMaxAnisotropy = 0x84FE;
+        var capabilities = Capabilities.GetValue(gl, static context => ReadCapabilities(context));
+        if (capabilities.MaximumAnisotropy <= 1f)
+        {
+            return;
+        }
+
+        gl.TexParameter(
+            TextureTarget.Texture2D,
+            (TextureParameterName)textureMaxAnisotropy,
+            capabilities.MaximumAnisotropy);
+    }
+
+    private static unsafe TextureCapabilities ReadCapabilities(GL gl)
+    {
+        const int maxTextureMaxAnisotropy = 0x84FF;
+        if (!gl.IsExtensionPresent("GL_EXT_texture_filter_anisotropic")
+            && !gl.IsExtensionPresent("GL_ARB_texture_filter_anisotropic"))
+        {
+            return new TextureCapabilities(1f);
+        }
+
+        float supported = 1f;
+        gl.GetFloat((GLEnum)maxTextureMaxAnisotropy, &supported);
+        return new TextureCapabilities(MathF.Min(MathF.Max(supported, 1f), 8f));
     }
 
     /// <summary>A 1x1 texture, used as the neutral stand-in for an unbound sampler.</summary>
@@ -115,4 +147,6 @@ public sealed class GlTexture : IDisposable
         _gl.DeleteTexture(_handle);
         _handle = 0;
     }
+
+    private sealed record TextureCapabilities(float MaximumAnisotropy);
 }
