@@ -22,6 +22,17 @@ if (sourceModel is not null)
     return;
 }
 
+// Dumps a candidate model's base-colour atlas, and the same atlas with the front face's UV
+// triangles drawn over it. Sourcing a new shell stalls on one question that measurement cannot
+// answer — which island in the atlas is the printed label — and the overlay answers it by eye in
+// seconds. Runs before any GL setup, so it works on a machine with no usable context.
+var atlasModel = ArgumentValue("--dump-atlas");
+if (atlasModel is not null)
+{
+    AtlasDump.Write(atlasModel, ArgumentValue("--out") ?? "artifacts/atlas");
+    return;
+}
+
 var outputDirectory = ArgumentValue("--out") ?? "artifacts/shell-preview";
 var width = int.Parse(ArgumentValue("--width") ?? "420");
 var height = int.Parse(ArgumentValue("--height") ?? "560");
