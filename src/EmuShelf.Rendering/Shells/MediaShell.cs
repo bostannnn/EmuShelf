@@ -65,10 +65,13 @@ public enum PhysicalArtworkSlots
 /// panel rather than per shell because one shell's panels are not one shape: a keep case's front
 /// really is the same proportions as the box scan, while its spine is a 14mm strip beside a 135mm
 /// sleeve, and stretching a scan onto both cannot be right for both.</param>
-/// <param name="MaxSurfaceDepth">How far behind the face plane the print may follow the surface,
-/// in canonical object units — the shell is one unit tall, so 0.0053 is a millimetre on a 190mm
-/// case. Null leaves the panel bounded only by <see cref="ArtFace"/> facing, which is what a
-/// cartridge label recessed into moulding needs.</param>
+/// <param name="MaxSurfaceDepth">Overrides <see cref="MediaShellDefinition.PanelDepthFraction"/>
+/// for this one panel, in canonical object units — the shell is one unit tall, so 0.0053 is a
+/// millimetre on a 190mm case. Null takes the shell's figure, which is the right default: expressed
+/// against the shell's own thickness it keeps a label off the interior of any cartridge without
+/// being retuned. An override is for the panel that needs a bound far tighter than "not the far
+/// side of the shell" — a keep case's sleeve has to stop at the fillet, roughly a millimetre in,
+/// where the shell's own fraction would allow five.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
@@ -135,6 +138,14 @@ public enum ArtFace
 /// A paper sleeve behind a keep case's clear overlay is far glossier than a cartridge's printed
 /// label, and that difference is most of what distinguishes the two materials on screen.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
+/// <param name="PanelDepthFraction">How far behind a panel's plane a surface may lie and still be
+/// printed, as a fraction of the shell's extent along that panel's normal. A panel is a decal on
+/// the one surface that faces the player, not a projection cast through the whole shell: without
+/// this, every front-facing fragment inside the rectangle is printed, including surfaces deep
+/// inside the body. On the GBA that meant the label ran across the exposed board behind the
+/// cartridge's pin opening, which is visible as soon as the hero is pitched toward the player.
+/// The default clears the deepest authored label recess — the GBA's, at 0.30 — by a wide margin
+/// and still excludes every shell's interior, which starts at 0.50.</param>
 /// <param name="BodyRoughnessScale">Per-shell correction for the source model's body roughness.</param>
 /// <param name="BodyAlbedoScale">Per-shell correction for the source model's body base colour,
 /// applied in linear space before the printed panels are laid over it. Sibling of
@@ -157,6 +168,7 @@ public sealed record MediaShellDefinition(
     IReadOnlyList<ArtPanel> ExtraPanels,
     float PanelRoughness,
     bool FlattenPanelNormal,
+    float PanelDepthFraction = 0.40f,
     float BodyRoughnessScale = 1f,
     float BodyAlbedoScale = 1f,
     float DielectricReflectance = 0.04f,

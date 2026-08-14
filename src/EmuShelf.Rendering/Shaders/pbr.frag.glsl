@@ -55,8 +55,8 @@ uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
 // Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
 uniform float uPanelCutCorner[MAX_PANELS];
-// How far behind the face plane a panel's print may follow the surface, in object units. Negative
-// leaves it unbounded. See the facing test below for why a rectangle and a normal are not enough.
+// How far behind the panel's plane a surface may lie and still be printed, in object-space units.
+// A panel is a decal on the face the player sees, not a projection cast through the shell.
 uniform float uPanelMaxDepth[MAX_PANELS];
 // Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
 // a landscape cartridge label without being squashed.
@@ -269,20 +269,24 @@ void main()
             continue;
         }
 
-        // Facing alone cannot find the edge of a face. A keep case is a cube squashed about ten to
-        // one in Z, so the inverse transpose tips the normals of its whole rounded rim back toward
-        // the face and the rim passes the test above as comfortably as the flat plate does — which
-        // is how the cover art came to wrap onto the spine and most of the way to the back.
-        // Distance behind the face plane is what actually separates printed sleeve from moulding.
-        float depthFade = 1.0;
-        if (uPanelMaxDepth[i] >= 0.0)
+        // Facing the right way is not enough, for two reasons that want the same test. A cartridge's
+        // board and the inside of its back wall face the player through the pin opening and sit
+        // inside the label's rectangle; printed, they run cover art across the contacts. And a keep
+        // case is a cube squashed about ten to one in Z, so the inverse transpose tips the normals
+        // of its whole rounded rim back toward the face — the rim passes the test above as
+        // comfortably as the flat plate does, which is how the sleeve came to wrap onto the spine
+        // and most of the way to the back. Distance behind the panel's own plane separates both.
+        float depth = -dot(local, uPanelNormal[i]);
+        // Feather along the surface's own depth gradient so the cut antialiases the way the
+        // rectangle's edge does rather than stepping along an iso-depth contour. Capped relative to
+        // the allowance: across a depth discontinuity — the lip of a pin opening — the derivative
+        // is enormous, and an uncapped feather would let the surface behind it take a faint print.
+        float depthWidth = clamp(fwidth(depth), 1e-6, max(uPanelMaxDepth[i], 1e-6) * 0.25);
+        float depthFade = 1.0 - smoothstep(
+            uPanelMaxDepth[i] - depthWidth, uPanelMaxDepth[i] + depthWidth, depth);
+        if (depthFade <= 0.0)
         {
-            float depth = dot(uPanelOrigin[i] - vObjectPosition, uPanelNormal[i]);
-            // Feather along the surface's own depth gradient, so the cut is antialiased the way the
-            // rectangle's edge is rather than stepping along an iso-depth contour.
-            float depthWidth = max(fwidth(depth), 1e-6);
-            depthFade = 1.0 - smoothstep(
-                uPanelMaxDepth[i] - depthWidth, uPanelMaxDepth[i] + depthWidth, depth);
+            continue;
         }
 
         float aspect = max(uPanelAspect[i], 1e-4);
