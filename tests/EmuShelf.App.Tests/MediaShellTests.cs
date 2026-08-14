@@ -5,6 +5,7 @@ using EmuShelf.App.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Library;
+using EmuShelf.Rendering.Models;
 using EmuShelf.Rendering.Shells;
 
 namespace EmuShelf.App.Tests;
@@ -904,17 +905,95 @@ public class MediaShellTests
     [Fact]
     public void WrapPanel_IsOnlyProducedForALabelThatFolds()
     {
+        // The two shells whose real label is one sheet printed over the cartridge's top edge.
+        MediaShell[] folding = [MediaShell.MegaDriveCartridge, MediaShell.NesCartridge];
+
         foreach (var shell in MediaShellCatalog.All)
         {
             var panel = MediaShellCatalog.Definition(shell).CoverPanel;
-            if (shell == MediaShell.MegaDriveCartridge)
+            if (folding.Contains(shell))
             {
+                Assert.True(panel.TopWrap > 0f);
+                Assert.NotNull(MediaShellCatalog.TryWrapPanel(panel, MediaShellCatalog.Load(shell)));
                 continue;
             }
 
             Assert.Equal(0f, panel.TopWrap);
             Assert.Null(MediaShellCatalog.TryWrapPanel(panel, MediaShellCatalog.Load(shell)));
         }
+    }
+
+    /// <summary>
+    /// The NES strip must span the fold this model actually has, and stop at the moulding behind it.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the Mega Drive, whose label was measured off the printed sheet, this plate is modelled
+    /// with its fold — so the asset is the authority and both bounds can be checked against it. That
+    /// is worth doing because neither is guessable and both are sub-millimetre, so both survive a
+    /// glance at a render. Under-reaching leaves the blank plate showing along the fold's far edge,
+    /// which is the pale lip this shell had; over-reaching prints the recess floor the label sits in,
+    /// carrying the title strip past where the label ends.
+    ///
+    /// It also pins the crease. The front panel has to claim every fragment of the bend that still
+    /// faces forward, or the two halves of the sheet leave a hairline of plate between them; MaxV was
+    /// 0.58mm short of that and did exactly this.
+    /// </remarks>
+    [Fact]
+    public void NesLabelFold_SpansThePlatesOwnFoldFromTheCrease()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.NesCartridge);
+        var label = MediaShellCatalog.Definition(MediaShell.NesCartridge).CoverPanel;
+
+        var sticker = model.Materials
+            .Select((material, index) => (material, index))
+            .Single(entry => string.Equals(
+                entry.material.Name, "sticker", StringComparison.OrdinalIgnoreCase))
+            .index;
+
+        // How far the fold runs back from the shell's front plane, and the highest point of the bend
+        // that still faces forward — the last thing the front panel is responsible for.
+        var foldReach = 0f;
+        var frontFacingTop = float.MinValue;
+        foreach (var mesh in model.Meshes.Where(mesh => mesh.MaterialIndex == sticker))
+        {
+            for (var i = 0; i < mesh.Vertices.Length; i += MeshGeometry.FloatsPerVertex)
+            {
+                var position = new Vector3(
+                    mesh.Vertices[i], mesh.Vertices[i + 1], mesh.Vertices[i + 2]);
+                var normal = Vector3.Normalize(new Vector3(
+                    mesh.Vertices[i + 3], mesh.Vertices[i + 4], mesh.Vertices[i + 5]));
+
+                if (normal.Z > 0.95f)
+                {
+                    continue;
+                }
+
+                foldReach = MathF.Max(foldReach, model.BoundsMax.Z - position.Z);
+                if (normal.Z >= 0.5f)
+                {
+                    frontFacingTop = MathF.Max(frontFacingTop, position.Y);
+                }
+            }
+        }
+
+        Assert.True(foldReach > 0f, "This plate has no fold; the asset is not the one measured here.");
+
+        // The shader's facing test hands over at 45 degrees, so the front panel must reach the last
+        // fragment above that. Half a millimetre of slack on a 135mm cartridge.
+        var crease = label.MaxV * (model.Size.Y * 0.5f);
+        Assert.InRange(crease, frontFacingTop, frontFacingTop + (0.5f / 135f));
+
+        var strip = MediaShellCatalog.TryWrapPanel(label, model);
+        Assert.NotNull(strip);
+        var reach = MediaShellCatalog.Place(strip!.Value, model).VEdge.Length();
+
+        Assert.True(
+            reach >= foldReach,
+            $"The strip stops {(foldReach - reach) * 135f:F2}mm short of the fold's far edge, "
+                + "which leaves the blank plate showing along the top of the cartridge.");
+        Assert.True(
+            reach <= foldReach + (0.5f / 135f),
+            $"The strip runs {(reach - foldReach) * 135f:F2}mm past the fold onto the moulding.");
     }
 
     /// <summary>

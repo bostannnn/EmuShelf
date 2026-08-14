@@ -123,12 +123,21 @@ public static class MediaShellCatalog
             MaxTextureSize: 1024,
             // Measured from the model's own label mesh — it keeps the label on a separate material
             // named "sticker", so the artwork slot is the plate's real bounds rather than a
-            // rectangle guessed against the moulding. It sits right of centre and reaches the top
-            // edge because the authored plate does; the shader's facing test keeps art off the part
-            // that wraps over the top.
+            // rectangle guessed against the moulding. It sits right of centre.
+            // An NES label folds like a Mega Drive one, and this plate is modelled with the fold:
+            // 57.5 x 90.7mm on the face and a 7.3mm strip over the top, against a published
+            // 55 x 90..91mm plus 7.19mm. MaxV is the crease rather than the shell's own top edge,
+            // which is where the two shells differ — a Mega Drive sheet runs right to the top of
+            // its cartridge, and this one stops 0.4mm short of it. 0.994 is the last of the bend
+            // the front face can still claim: past it the surface has turned more than 45 degrees
+            // and belongs to the folded strip. It was 0.985, and that 0.58mm shortfall was a pale
+            // hairline along the crease.
+            // TopWrap is 0.0796 rather than the sheet's own 7.19/97.5, because the strip is laid
+            // from the shell's front plane and this plate begins 0.3mm behind it. Under-reaching
+            // leaves blank plate at the fold's far edge, which is the whole defect this fixes.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.985f, CornerRadius: 0.03f,
-                ArtFit: ArtFit.Cover),
+                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.994f, CornerRadius: 0.03f,
+                ArtFit: ArtFit.Cover, TopWrap: 0.0796f),
             ExtraPanels: [],
             PanelRoughness: 0.42f,
             FlattenPanelNormal: true,

@@ -7059,3 +7059,39 @@ is the comparison that makes a size error obvious. And the preview tool's `top-e
 `bottom-edge` poses carried each other's names: pitch tips the shell rather than the camera, so a
 positive angle shows the top. A render of a cartridge's underside filed as `top-edge` is a good way
 to conclude that a label folded over the top is not drawing at all.
+
+## 2026-08-14 — The NES label folds too, and its plate is modelled with the fold
+
+Every NES cartridge wore a pale lip along its top edge — at the shelf's own rest pose, and a full
+white band once the player tilted up. Same defect as the Mega Drive's, one shell later, and it is
+fixed with the same `TopWrap` mechanism rather than a second one.
+
+What is different is where the numbers come from. The Mega Drive label was measured off the printed
+sheet because that asset carries no fold; dark_igorek's NES plate **is modelled with its fold**, so
+the asset is the authority. It measures 57.5 x 90.7mm on the face plus a 7.3mm strip over the top,
+against a published 55 x 90..91mm plus 7.19mm — accurate enough that guessing from the paper spec is
+the wrong move, and `NesLabelFold_SpansThePlatesOwnFoldFromTheCrease` checks both bounds against the
+mesh instead.
+
+Two constants that look wrong until you know why:
+
+- **`MaxV` is 0.994, the crease, not 1.0.** A Mega Drive sheet runs hard to the shell's own top
+  edge; this one stops 0.4mm short of it. 0.994 is the last of the bend still facing forward — the
+  shader hands the two halves of the sheet over at 45 degrees, and the front panel has to claim
+  everything above that threshold or a hairline of plate shows between them. It was 0.985, which
+  was 0.58mm short and did exactly that.
+- **`TopWrap` is 0.0796, not the sheet's own 7.19/97.5 = 0.0737.** The strip is laid from the
+  shell's front plane and this plate begins 0.3mm behind it, so the paper ratio under-reaches and
+  leaves blank plate at the fold's far edge. Over-reaching prints the recess floor the label sits
+  in. Both errors are sub-millimetre and both survive a glance at a render, which is the argument
+  for measuring rather than trusting.
+
+Recorded for the next shell: a first attempt at this solved it independently, extending the front
+panel's mask in the shader to smear its top row across the fold. It worked, but it is the weaker
+answer — a derived top panel shows the strip of the sheet that is actually above the crease, and
+sizes the fold by the printed sheet rather than by a model that may be the wrong depth. It was
+dropped in favour of the mechanism already on main. One way to fold a label is enough.
+
+Not taken, and worth knowing about: the panel's corner radius is 2.7mm against a real NES label's
+1.6mm, and `ArtFit.Contain` combined with a fold would put the tint on the strip rather than art,
+because the offset the fold relies on assumes the sheet fills the panel.
