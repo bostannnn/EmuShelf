@@ -296,6 +296,36 @@ public static class MediaShellCatalog
             CavityStrength: 0.42f,
             NormalStrength: 2.40f),
 
+        // xqspx's PS1 case, and the one shell whose source needed geometry surgery rather than
+        // texture work. The download is a jewel case with its disc lying beside it, and the case is
+        // posed for a product shot with the lid standing 9.2 degrees open — 29mm thick against a
+        // real case's 10mm. ModelPrep drops the disc and swings the lid shut, which is why this
+        // loads at 0.062 D/H rather than 0.234. Authored lying flat and facing away, so it needs a
+        // quarter turn up and a half turn round.
+        [MediaShell.JewelCase] = new MediaShellDefinition(
+            MediaShell.JewelCase,
+            "EmuShelf.Rendering.Assets.jewel-case.glb",
+            Matrix4x4.CreateRotationX(-MathF.PI / 2f) * Matrix4x4.CreateRotationY(MathF.PI),
+            MaxTextureSize: 1024,
+            // Measured off the front insert's own quad, the way the Game Boy label was, rather than
+            // eyeballed against a render. It stops short of the hinge side because a jewel case's
+            // printed insert does — that strip is the spine, and it gets its own panel.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.99f, 0.86f, -0.99f, 0.99f, ArtFit: ArtFit.Stretch),
+            ExtraPanels:
+            [
+                ArtPanel.Full(ArtFace.Spine, inset: 0.02f),
+            ],
+            // A jewel case's insert sits under a clear polystyrene lid, so it is the glossiest
+            // printed surface of any shell here — closer to the keep case's 0.13 than to a
+            // cartridge label. No Back panel: this model's back inlay is interior geometry seen
+            // through the tray rather than a face at the shell's -Z bound, so a full-face back
+            // projection would paint the tray's outside instead of the inlay.
+            PanelRoughness: 0.16f,
+            FlattenPanelNormal: false,
+            BodyRoughnessScale: 1.0f,
+            BodyAlbedoScale: 1.0f),
+
         // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
         // the lid), so no reorientation is needed.
         [MediaShell.DiscKeepCase] = new MediaShellDefinition(

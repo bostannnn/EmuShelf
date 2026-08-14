@@ -245,6 +245,9 @@ public class MediaShellTests
     [InlineData("megadrive", MediaShell.MegaDriveCartridge)]
     [InlineData("nds", MediaShell.DsCard)]
     [InlineData("gbc", MediaShell.GbcCartridge)]
+    // One geometry family, two consoles that really did share a case.
+    [InlineData("playstation", MediaShell.JewelCase)]
+    [InlineData("dreamcast", MediaShell.JewelCase)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
@@ -253,12 +256,10 @@ public class MediaShellTests
     public void ForSystem_MapsAConsoleToItsMedium(string systemId, MediaShell expected) =>
         Assert.Equal(expected, MediaShellMap.ForSystem(systemId));
 
-    // PS1 and Dreamcast used jewel cases and PSP used a UMD case — genuinely different shapes, so
-    // they keep flat covers rather than borrowing a case that is not theirs. Arcade has no
-    // packaging at all.
+    // PSP used a UMD case — a genuinely different shape, so it keeps a flat cover rather than
+    // borrowing a case that is not its own. Arcade has no packaging at all. PS1 and Dreamcast were
+    // here until the jewel case was authored, and both now share it.
     [Theory]
-    [InlineData("playstation")]
-    [InlineData("dreamcast")]
     [InlineData("psp")]
     [InlineData("arcade")]
     public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
@@ -335,6 +336,8 @@ public class MediaShellTests
     [InlineData("megadrive")]
     [InlineData("nds")]
     [InlineData("gbc")]
+    [InlineData("playstation")]
+    [InlineData("dreamcast")]
     [InlineData("playstation2")]
     [InlineData("playstation3")]
     [InlineData("gamecube")]
@@ -418,7 +421,7 @@ public class MediaShellTests
     [Fact]
     public void MetricProfile_UsesAThinCoverCardForUnauthoredSystems()
     {
-        var profile = MediaShellMap.ProfileForSystem("playstation", 1.0);
+        var profile = MediaShellMap.ProfileForSystem("psp", 1.0);
 
         Assert.Equal(MediaShell.CoverCard, profile.Shell);
         Assert.Equal(1f, profile.WidthInShelfUnits, 3);
@@ -779,6 +782,63 @@ public class MediaShellTests
                 Assert.True(
                     Sample(u, v) == reference,
                     $"The Game Boy label edge still varies at ({u:F3},{v:F3}); the mask is too small.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The jewel case must load closed, landscape, and carrying only the case.
+    /// </summary>
+    /// <remarks>
+    /// Three separate defects in one source, and all three are silent. The download is a jewel case
+    /// with its disc lying beside it, so without the drop it loads as a case-and-disc diorama whose
+    /// bounds are 60% too wide. The case is posed for a product shot with its lid 9.2 degrees open,
+    /// which measures 29mm thick against a real case's 10mm — and a profile cannot fix that, since
+    /// the scene scales each axis independently and would squash the whole case rather than shut
+    /// the lid. And it is authored lying flat and facing away, so it needs standing up and turning
+    /// round. The depth bound here is the one that matters: it is what fails if the lid ever stops
+    /// being closed.
+    /// </remarks>
+    [Fact]
+    public void Load_ClosesTheJewelCaseAndKeepsOnlyTheCase()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.JewelCase);
+
+        // A CD jewel case is landscape — 142mm across, 125mm tall.
+        Assert.True(
+            model.Size.X > model.Size.Y,
+            $"A jewel case is wider than it is tall; got {model.Size.X} x {model.Size.Y}.");
+        Assert.InRange(model.Size.X, 1.10f, 1.20f);
+        // Closed, this is 0.062. Ajar, as the source ships it, it is 0.234.
+        Assert.True(
+            model.Size.Z < 0.10f,
+            $"The jewel case's lid is not closed: it loads {model.Size.Z} deep per unit of height.");
+    }
+
+    /// <summary>
+    /// The shipped jewel case must carry no trace of the Postal X sleeve it was modelled from.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the cartridges, this shell's entire base colour is a scan of one retail sleeve — front
+    /// cover, spine and inlay — so there is no rectangle to mask and no label material to single
+    /// out. Every base-colour map is flattened whole, which is only affordable because this model
+    /// carries no normal or roughness maps for that to take with it.
+    /// </remarks>
+    [Fact]
+    public void JewelCase_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.JewelCase);
+
+        foreach (var texture in model.Textures)
+        {
+            var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
+            for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
+            {
+                if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
+                {
+                    Assert.Fail(
+                        $"A jewel-case map still varies at byte {offset}; the sleeve was not flattened.");
+                }
             }
         }
     }

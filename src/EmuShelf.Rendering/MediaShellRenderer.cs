@@ -1333,6 +1333,13 @@ public sealed class MediaShellRenderer : IDisposable
             "ds-black" => new(new Vector3(0.045f, 0.045f, 0.052f), 0.12f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
+            // Jewel-case polystyrene rather than the keep cases' polypropylene: harder, glossier
+            // and more reflective, which is most of what tells the two apart on screen. The tint is
+            // a light touch because this shell's own base colour is already neutral — its source
+            // artwork was flattened out entirely, so there is nothing to neutralise, only to shade.
+            "ps1-jewel" => new(new Vector3(0.20f, 0.21f, 0.24f), 0.30f, 0.70f, 1.30f),
+            // Dreamcast cases are the whiter, colder plastic of the two.
+            "dreamcast-jewel" => new(new Vector3(0.72f, 0.75f, 0.80f), 0.34f, 0.72f, 1.24f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
             _ => Default,
         };

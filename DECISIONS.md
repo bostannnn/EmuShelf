@@ -7179,3 +7179,47 @@ as a white blob. Where those colours are constant per primitive the rewrite onto
 is exact. The preview tool also gained `--model-panel` and `--model-as`; the latter closed a real
 trap, in that candidate models were silently shaded with the SNES shell's calibration, so any
 comparison between a candidate and the shell it was meant to replace was measuring the wrong thing.
+
+## 2026-08-15 — One jewel case for PS1 and Dreamcast, and a correction about the file it came from
+
+**First, a correction.** The 2026-08-14 entry above records `postal_x_psx_cd-r_disk.glb` as "a disc,
+not packaging". That is wrong, and the mistake is instructive: the assessment stopped at the
+filename. The file is a complete PS1 jewel case *with* a disc lying beside it, and the case is the
+best-proportioned one available — 1.160 wide per unit of height against a real CD jewel case's
+1.136. The same entry's conclusion, that PS1 had to be generated or sourced afresh, followed from
+that error. Measure what is in a file before recording what it is not.
+
+`MediaShell.JewelCase`, mapped from both `playstation` and `dreamcast`. PAL and US Dreamcast games
+shipped in the same CD case a PS1 game did, so one authored geometry family serves two consoles with
+different profiles and finishes — the arrangement the keep case already has, and the reason
+`MediaShell` is one entry per geometry family rather than per console. This retires two of the four
+remaining cover-card systems from a single asset; only PSP and arcade are left.
+
+**This is the first shell whose source needed geometry surgery rather than texture work,** and the
+two operations are now in `ModelPrep` because neither can be expressed downstream:
+
+- **`--drop-meshes`.** The scene holds the case and its disc. `--single-instance` cannot express
+  "keep the case", only "keep the first", so this selects by name and detaches the rest the same
+  non-destructive way — the node loses its `mesh` reference and the loader skips it.
+- **`--close-lid`.** The case is posed with its lid 9.2 degrees open, which measures 29mm thick
+  against a real case's 10mm. A profile cannot correct this. The scene scales each axis onto the
+  measured dimensions independently, so a profile carrying the true 10mm would not shut the lid — it
+  would squash the whole case to a third of its depth — and a profile carrying the asset's 29mm
+  ships a case visibly ajar with its cover art projected onto a tilted plane. Closing it in the
+  asset is the only honest option, and it brings the shell to 7.6mm.
+
+Two selection rules for that swing each looked sufficient and were not, which is worth recording
+because the failure is invisible until rendered. Selecting the vertices on the lid's own plane
+misses an inner card attached to the lid at a different angle, leaving the case 22.7mm thick.
+Selecting by height above the tray instead catches the tray's own rim, which rises to within a hair
+of the hinge, and throws the tray through the floor. It takes both: named lid meshes, and height
+within them.
+
+Recorded and not fixed: this model carries no normal or metallic/roughness maps, only base colour,
+and that base colour is a scan of one retail sleeve which has to be flattened whole. The case is
+therefore smooth where the DVD keep case has ribs, hinge and seams. It also gets no back panel — its
+inlay is interior geometry seen through the tray rather than a face at the shell's own -Z bound, so
+a full-face back projection would paint the outside of the tray instead of the inlay.
+
+The other supplied PS1 file, `ps1_case_-_deathtrap_dungeon_1998.glb`, was re-checked and the earlier
+assessment of it stands: 36 triangles, three flat billboards carrying photographs. Unusable.

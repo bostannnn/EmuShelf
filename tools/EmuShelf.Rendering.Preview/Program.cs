@@ -41,6 +41,10 @@ if (prepModel is not null)
         ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
         args.Contains("--bake-vertex-colours"),
+        // A downloaded scene often holds more than the shell, and often poses it open for a
+        // product shot. Both are geometry problems a profile cannot fix.
+        ArgumentValue("--drop-meshes"),
+        ArgumentValue("--close-lid"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }
@@ -183,6 +187,7 @@ var shelfProfiles = new[]
     new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
     new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
+    new PhysicalMediaProfile(MediaShell.JewelCase, new Vector3(142f, 122.5f, 7.6f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine, "ps1-jewel", "case-downward"),
 };
 var finishes = shelfProfiles.ToDictionary(
     profile => profile.Shell, profile => profile.MaterialVariant);
@@ -279,6 +284,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.SnesCartridge => "snes-cartridge",
     MediaShell.GbaCartridge => "gba-cartridge",
     MediaShell.GbcCartridge => "gbc-cartridge",
+    MediaShell.JewelCase => "jewel-case",
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),

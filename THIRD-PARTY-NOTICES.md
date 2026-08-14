@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The seven
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The eight
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All seven are licensed
+All eight are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -220,6 +220,16 @@ Credit is given here and the models keep their authorship metadata inside the `.
   metallic/roughness (shared with occlusion) and normal maps, leaving none of that artwork — which
   the author's CC BY licence does not cover — in the build. Maps were reduced to 1024px, and
   canonical orientation, metric scaling and per-game label art are applied at runtime. Original
+  authorship and license metadata remain embedded in the GLB.
+- **Postal X PSX CD-R disk** — by [xqspx](https://sketchfab.com/xqspx), from
+  [Sketchfab](https://sketchfab.com/3d-models/postal-x-psx-cd-r-disk-59475e899e164884aef067aec7f7388c).
+  Bundled as `jewel-case.glb`, and despite its title the usable part is the jewel case rather than
+  the disc: the download is a PS1 case with its disc lying beside it. EmuShelf detaches the disc,
+  swings the case's lid shut — it was modelled 9.2 degrees ajar for a product shot — and flattens
+  every base-colour map, which removes the Postal X sleeve, spine and inlay artwork entirely. That
+  artwork is the publisher's and is not covered by the author's CC BY licence. The model carries no
+  normal or metallic/roughness maps, so nothing else is lost with it. Maps were reduced to 1024px,
+  and canonical orientation, metric scaling and per-game cover art are applied at runtime. Original
   authorship and license metadata remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
