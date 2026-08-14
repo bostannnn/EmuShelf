@@ -139,6 +139,54 @@ public partial class GameViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PhysicalMediaTexturePath));
     }
 
+    /// <summary>Absolute path to the selected ScreenScraper box back, for a keep case's rear face.</summary>
+    public string? BoxBackPath { get; private set; }
+
+    /// <summary>Absolute path to the selected ScreenScraper box spine.</summary>
+    public string? BoxSpinePath { get; private set; }
+
+    public void ApplyBoxBackPath(string? path)
+    {
+        var normalized = string.IsNullOrWhiteSpace(path) ? null : path;
+        if (string.Equals(BoxBackPath, normalized, StringComparison.Ordinal))
+            return;
+
+        BoxBackPath = normalized;
+        OnPropertyChanged(nameof(BoxBackPath));
+    }
+
+    public void ApplyBoxSpinePath(string? path)
+    {
+        var normalized = string.IsNullOrWhiteSpace(path) ? null : path;
+        if (string.Equals(BoxSpinePath, normalized, StringComparison.Ordinal))
+            return;
+
+        BoxSpinePath = normalized;
+        OnPropertyChanged(nameof(BoxSpinePath));
+    }
+
+    /// <summary>
+    /// The file this medium's given face is painted from, or null when that face has no scraped
+    /// art and should fall back to the platform tint.
+    /// </summary>
+    /// <remarks>
+    /// Only faces that come off disk appear here. A keep case's front is deliberately absent: it
+    /// reuses <see cref="CoverImage"/>, which the library has already decoded and cached for the
+    /// grid, rather than decoding the same file a second time for the shelf.
+    /// </remarks>
+    public string? ShelfArtworkPath(ShelfArtworkFace face)
+    {
+        var slots = ShelfMediaProfile.ArtworkSlots;
+        return face switch
+        {
+            ShelfArtworkFace.Front when (slots & PhysicalArtworkSlots.CartridgeSupport) != 0 =>
+                PhysicalMediaTexturePath,
+            ShelfArtworkFace.Back when (slots & PhysicalArtworkSlots.Back) != 0 => BoxBackPath,
+            ShelfArtworkFace.Spine when (slots & PhysicalArtworkSlots.Spine) != 0 => BoxSpinePath,
+            _ => null,
+        };
+    }
+
     // Completeness tracks the artwork/text ScreenScraper reliably offers, so a fully scraped game can
     // actually reach the top of the scale. The sparse secondary kinds (box back/spine, cartridge/disc
     // and its texture) are near-absent for most games — especially arcade — so they are presence-only

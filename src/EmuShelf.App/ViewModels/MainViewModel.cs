@@ -4083,7 +4083,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    // The 3D shelf needs only the selected support-texture path, not every metadata/media row. One
+    // The 3D shelf needs only the selected artwork paths, not every metadata/media row. One
     // bulk read keeps gamepad/grid scope construction free of the per-game GetDetails N+1 that the
     // details projections deliberately avoid. Decoding remains lazy inside the bounded shelf control.
     private void ApplyPhysicalMediaTexturePaths(IReadOnlyList<GameViewModel> viewModels)
@@ -4093,16 +4093,25 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            var paths = _gameDetails.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+            var textures = _gameDetails.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+            // A keep case wears three scraped faces, not one. All three are read in the same bulk
+            // pass, for the same reason the texture always was: per-game reads here would be an
+            // N+1 across the whole scope, and the shelf only decodes the visible window anyway.
+            var backs = _gameDetails.GetSelectedMediaPaths(GameMediaKind.BoxBack);
+            var spines = _gameDetails.GetSelectedMediaPaths(GameMediaKind.BoxSpine);
             foreach (var viewModel in viewModels)
             {
                 viewModel.ApplyPhysicalMediaTexturePath(
-                    paths.TryGetValue(viewModel.Id, out var path) ? path : null);
+                    textures.TryGetValue(viewModel.Id, out var texture) ? texture : null);
+                viewModel.ApplyBoxBackPath(
+                    backs.TryGetValue(viewModel.Id, out var back) ? back : null);
+                viewModel.ApplyBoxSpinePath(
+                    spines.TryGetValue(viewModel.Id, out var spine) ? spine : null);
             }
         }
         catch (Exception ex)
         {
-            _logger.Warning($"Could not load physical-media texture paths for the shelf: {ex.Message}");
+            _logger.Warning($"Could not load physical-media artwork paths for the shelf: {ex.Message}");
         }
     }
 

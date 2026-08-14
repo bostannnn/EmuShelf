@@ -105,10 +105,10 @@ public sealed class MediaShellRenderer : IDisposable
 
     private readonly StudioEnvironment _environment;
     private Vector3 _accent;
-    private readonly Dictionary<long, CoverResource> _coverArt = [];
+    private readonly Dictionary<long, PanelArtSet> _coverArt = [];
     private readonly List<ShelfDrawItem> _shelfDrawItems = new(7);
     private readonly List<ShadowFootprint> _shadowFootprints = new(7);
-    private CoverResource? _activeCover;
+    private PanelArtSet? _activePanelArt;
     private Vector3 _drawAccent;
     private MaterialVariantAppearance _activeMaterialAppearance;
     private uint _sceneFramebuffer;
@@ -235,21 +235,53 @@ public sealed class MediaShellRenderer : IDisposable
     public void SetAccent(Vector3 linearAccent) => _accent = linearAccent;
 
     /// <summary>Replaces the legacy single-object cover; null clears it.</summary>
-    public void SetCoverArt(TextureImage? art) => SetCoverArt(0, art);
+    public void SetCoverArt(TextureImage? art) => SetPanelArt(0, 0, art);
 
-    /// <summary>Uploads or replaces one game's cover in the bounded shelf texture cache.</summary>
-    public void SetCoverArt(long key, TextureImage? art)
+    /// <summary>Uploads or replaces the artwork on a game's front panel.</summary>
+    public void SetCoverArt(long key, TextureImage? art) => SetPanelArt(key, 0, art);
+
+    /// <summary>
+    /// Uploads or replaces the artwork on one of a game's panels — front, back or spine.
+    /// </summary>
+    /// <remarks>
+    /// Faces are set independently because they arrive independently: a keep case's front comes
+    /// from the cover the library already has decoded, while its back and spine are separate
+    /// scraped files that may be absent, arrive late, or never arrive at all. A panel with no
+    /// artwork falls back to the platform tint rather than blocking the others.
+    /// </remarks>
+    public void SetPanelArt(long key, int panelIndex, TextureImage? art)
     {
-        RemoveCoverArt(key);
-        if (art is not null)
+        if (panelIndex is < 0 or >= MaxPanels)
         {
-            _coverArt[key] = new CoverResource(
-                GlTexture.Upload(_gl, art, srgb: true),
-                art.Height == 0 ? 1f : art.Width / (float)art.Height);
+            return;
+        }
+
+        if (!_coverArt.TryGetValue(key, out var set))
+        {
+            if (art is null)
+            {
+                return;
+            }
+
+            set = new PanelArtSet();
+            _coverArt[key] = set;
+        }
+
+        set.Replace(
+            panelIndex,
+            art is null
+                ? null
+                : new CoverResource(
+                    GlTexture.Upload(_gl, art, srgb: true),
+                    art.Height == 0 ? 1f : art.Width / (float)art.Height));
+
+        if (set.IsEmpty)
+        {
+            _coverArt.Remove(key);
         }
     }
 
-    /// <summary>Releases one game that moved outside the shelf's visible window.</summary>
+    /// <summary>Releases every face of one game that moved outside the shelf's visible window.</summary>
     public void RemoveCoverArt(long key)
     {
         if (_coverArt.Remove(key, out var existing))
@@ -293,7 +325,7 @@ public sealed class MediaShellRenderer : IDisposable
         // their normals instead.
         _gl.Disable(EnableCap.CullFace);
 
-        _activeCover = _coverArt.GetValueOrDefault(0);
+        _activePanelArt = _coverArt.GetValueOrDefault(0);
         _drawAccent = _accent;
         _activeMaterialAppearance = MaterialVariantAppearance.Default;
         var aspect = _sceneWidth / (float)_sceneHeight;
@@ -394,7 +426,7 @@ public sealed class MediaShellRenderer : IDisposable
         Matrix4x4.Invert(model, out var inverseModel);
         var normalMatrix = Matrix4x4.Transpose(inverseModel);
 
-        _activeCover = _coverArt.GetValueOrDefault(item.Key);
+        _activePanelArt = _coverArt.GetValueOrDefault(item.Key);
         _drawAccent = item.Accent;
         _activeMaterialAppearance = MaterialVariantAppearance.For(item.Profile.MaterialVariant);
 
@@ -661,7 +693,7 @@ public sealed class MediaShellRenderer : IDisposable
     private void BindNoPanels()
     {
         _program.Set("uPanelCount", 0);
-        for (var index = 0; index < 3; index++)
+        for (var index = 0; index < MaxPanels; index++)
         {
             _whitePixel.Bind((uint)(5 + index));
             _program.Set($"uPanelArt{index}", 5 + index);
@@ -800,19 +832,19 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
 
-            // Only the cover panel carries scraped art today; the back and spine are tinted until
-            // the scraper's box-back and box-spine media are wired up.
-            var hasArt = i == 0 && _activeCover is not null;
-            _program.Set($"uPanelHasArt[{i}]", hasArt ? 1f : 0f);
+            // Each face is independent: a case can wear a scraped front with no back yet, and
+            // the missing one takes the platform tint instead of blanking the others.
+            var art = _activePanelArt?.Get(i);
+            _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
             _program.Set($"uPanelArtScale[{i}]", ArtScale(
-                definition.ArtFit, placement, _activeCover?.Aspect ?? 1f));
-            (hasArt ? _activeCover!.Texture : _whitePixel).Bind((uint)(5 + i));
+                definition.ArtFit, placement, art?.Aspect ?? 1f));
+            (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
         }
 
         // Keep every declared sampler pointing at a complete texture even when the shell uses fewer
         // panels than the shader declares.
-        for (var i = panels.Count; i < 3; i++)
+        for (var i = panels.Count; i < MaxPanels; i++)
         {
             _whitePixel.Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
@@ -1229,6 +1261,38 @@ public sealed class MediaShellRenderer : IDisposable
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
             _ => Default,
         };
+    }
+
+    /// <summary>Panels the fragment shader declares; keep in step with MAX_PANELS in pbr.frag.</summary>
+    internal const int MaxPanels = 3;
+
+    /// <summary>
+    /// One game's uploaded faces. Held as a set rather than three dictionary entries so evicting a
+    /// game that scrolled out of the window cannot leave a stray face behind on the GPU.
+    /// </summary>
+    private sealed class PanelArtSet : IDisposable
+    {
+        private readonly CoverResource?[] _panels = new CoverResource?[MaxPanels];
+
+        public bool IsEmpty => _panels.All(panel => panel is null);
+
+        public CoverResource? Get(int index) =>
+            index >= 0 && index < _panels.Length ? _panels[index] : null;
+
+        public void Replace(int index, CoverResource? resource)
+        {
+            _panels[index]?.Dispose();
+            _panels[index] = resource;
+        }
+
+        public void Dispose()
+        {
+            for (var index = 0; index < _panels.Length; index++)
+            {
+                _panels[index]?.Dispose();
+                _panels[index] = null;
+            }
+        }
     }
 
     private readonly record struct ArtPanelBinding(ArtPanel Panel, ArtPanelPlacement Placement);

@@ -169,14 +169,49 @@ public class MediaShellTests
 
         Assert.Equal(
             ShelfArtworkKind.PhysicalMediaTexture,
-            MediaShelf3DControl.ArtworkKindFor(cartridge, hasDecodedPhysicalArtwork: true));
+            MediaShelf3DControl.ArtworkKindFor(cartridge, ShelfArtworkFace.Front, true));
+        // Never the box: an unscraped cartridge wears the drawn placeholder label instead.
         Assert.Equal(
-            ShelfArtworkKind.None,
-            MediaShelf3DControl.ArtworkKindFor(cartridge, hasDecodedPhysicalArtwork: false));
+            ShelfArtworkKind.PlaceholderLabel,
+            MediaShelf3DControl.ArtworkKindFor(cartridge, ShelfArtworkFace.Front, false));
         Assert.Equal(
             ShelfArtworkKind.Cover,
-            MediaShelf3DControl.ArtworkKindFor(coverCard, hasDecodedPhysicalArtwork: false));
+            MediaShelf3DControl.ArtworkKindFor(coverCard, ShelfArtworkFace.Front, false));
     }
+
+    /// <summary>
+    /// A keep case wears three independently scraped faces, and coverage is uneven — the front is
+    /// nearly always present, the spine rarely. A missing face keeps the platform tint; it must not
+    /// blank the faces that did arrive, and it must never put the front's art on the back.
+    /// </summary>
+    [Fact]
+    public void KeepCaseFaces_AreResolvedIndependently()
+    {
+        var keepCase = MediaShellMap.ProfileForSystem("playstation2", 0.708);
+
+        Assert.Equal(
+            ShelfArtworkKind.Cover,
+            MediaShelf3DControl.ArtworkKindFor(keepCase, ShelfArtworkFace.Front, false));
+        Assert.Equal(
+            ShelfArtworkKind.PhysicalMediaTexture,
+            MediaShelf3DControl.ArtworkKindFor(keepCase, ShelfArtworkFace.Back, true));
+        Assert.Equal(
+            ShelfArtworkKind.None,
+            MediaShelf3DControl.ArtworkKindFor(keepCase, ShelfArtworkFace.Back, false));
+        Assert.Equal(
+            ShelfArtworkKind.PhysicalMediaTexture,
+            MediaShelf3DControl.ArtworkKindFor(keepCase, ShelfArtworkFace.Spine, true));
+    }
+
+    /// <summary>A cartridge has no back or spine slot, so those faces stay bare however much art exists.</summary>
+    [Theory]
+    [InlineData(ShelfArtworkFace.Back)]
+    [InlineData(ShelfArtworkFace.Spine)]
+    public void CartridgeHasNoBackOrSpineFace(ShelfArtworkFace face) =>
+        Assert.Equal(
+            ShelfArtworkKind.None,
+            MediaShelf3DControl.ArtworkKindFor(
+                MediaShellMap.ProfileForSystem("snes", 1.43), face, hasDecodedArtwork: true));
 
     [Theory]
     [InlineData("snes", MediaShell.SnesCartridge)]
