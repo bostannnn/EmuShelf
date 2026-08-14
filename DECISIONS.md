@@ -6806,3 +6806,35 @@ profile takes the asset's ratio rather than the true figure, because a profile t
 its asset distorts the shell instead of resizing it. Correcting this belongs in the asset. Also
 worth expecting: at true scale a DS card is under a fifth of a keep case's height, and will look
 tiny beside one. That is the metric contract working as designed.
+
+## 2026-08-14 — GBA gets a better shell; GBC has no model, and the PS1 case is not a case
+
+**GBA now uses thegraphicsgeek's cartridge**, replacing a shell that had no source file in `models/`
+and so could not be regenerated or corrected — the same reproducibility gap that had blocked SNES.
+The new asset carries 4096px maps against the old one's 512px and is authored upright facing +Z, so
+it needs no reorientation. Its profile is anchored on a real Game Pak's 57.5mm width and otherwise
+takes the asset's ratios, which retires the last exclusion in
+`MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset`. Every authored shell is now checked
+against its own asset.
+
+Masking its Pokémon FireRed label took two passes, and the failure is worth recording because it is
+the mode this technique fails in: the first rectangle was about two hundredths of a UV short on its
+right and bottom edges, which left an L-shaped sliver of the label framing EmuShelf's own artwork.
+It was obvious in a render and invisible in the atlas dump of the *source*. Dumping the atlas of the
+*prepared* asset is what located it exactly, and that is now the check to run after any rect mask.
+
+**The `gbc/` folder does not contain a Game Boy Color cartridge.** It is a GBA cartridge — it moulds
+"GAME BOY ADVANCE SP" across the shell and wears a Game Boy Advance game's label. A GBC shell still
+needs sourcing; a Game Boy cartridge is taller than it is wide, roughly 0.88 against this model's
+1.748, so nothing here can stand in for it.
+
+**The supplied PS1 case cannot be used.** `ps1_case_-_deathtrap_dungeon_1998.glb` is 36 triangles:
+three flat quads carrying photographs of a closed case, an open case and its inlay, arranged side by
+side. It is a billboard mock-up rather than a model, and there is no jewel-case geometry in it at
+any level of effort. The accompanying `postal_x_psx_cd-r_disk.glb` is a disc, not packaging.
+
+The design already commits PS1 to a jewel case, and the honest options are to source a real one or
+to generate it. Generating is attractive here and not a fudge: a jewel case is a box with a hinge
+lip and a sleeve window, `MediaShellCatalog` already builds the cover card procedurally, and a
+generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
+route rather than taken, because it is a shell rather than an asset swap.

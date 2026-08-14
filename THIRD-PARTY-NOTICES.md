@@ -198,9 +198,16 @@ Credit is given here and the models keep their authorship metadata inside the `.
   corrected triangle winding where it disagreed with the authored normals, and applies canonical
   orientation, metric scaling and per-game label art at runtime. Original authorship and license
   metadata remain embedded in the GLB.
-- **Gameboy Advance Cartridge** — by [Vxcl](https://sketchfab.com/vxclhd), from
-  [Sketchfab](https://sketchfab.com/3d-models/gameboy-advance-cartridge-38c1e6702e5d4f21af1d0930689b1d10).
-  Bundled as `gba-cartridge.glb`.
+- **Pokemon Cartridge (Gameboy)** — by
+  [thegraphicsgeek](https://sketchfab.com/thegraphicsgeek), from
+  [Sketchfab](https://sketchfab.com/3d-models/pokemon-cartridge-gameboy-7d79300f91a441d0ba520fdbd268aa5f).
+  Bundled as `gba-cartridge.glb`. Despite its title this is a Game Boy Advance cartridge — it moulds
+  "GAME BOY ADVANCE SP" across the shell — and it replaced an earlier GBA model that had no source
+  file and so could not be regenerated. EmuShelf masks the Pokémon FireRed label in the base-colour,
+  metallic/roughness and normal maps, leaving none of that artwork — which the author's CC BY licence
+  does not cover — in the build. Maps were reduced to 1024px, and canonical orientation, metric
+  scaling and per-game label art are applied at runtime. Original authorship and license metadata
+  remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
   Bundled as `disc-keep-case.glb`.

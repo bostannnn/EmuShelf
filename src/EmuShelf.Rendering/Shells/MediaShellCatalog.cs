@@ -151,15 +151,21 @@ public static class MediaShellCatalog
             ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
+        // thegraphicsgeek's Game Pak, which replaced a smaller-textured shell that had no source
+        // in models/ and so could not be regenerated or corrected. It is authored upright and
+        // already facing +Z, so it needs no reorientation — and it moulds "GAME BOY ADVANCE SP"
+        // across the shell, which is what identifies it as a GBA cartridge rather than the Game Boy
+        // one its folder name suggests.
         [MediaShell.GbaCartridge] = new MediaShellDefinition(
             MediaShell.GbaCartridge,
             "EmuShelf.Rendering.Assets.gba-cartridge.glb",
-            GbaOrientation,
-            MaxTextureSize: 512,
-            // Taken from the model's own label mesh, which is a separate flat quad: its bounds
-            // measured against the whole cartridge's give this rectangle. It sits above centre
-            // because the cartridge's grip ridge eats into the bottom, next to the contacts.
-            CoverPanel: new ArtPanel(ArtFace.Front, -0.715f, 0.715f, -0.765f, 0.505f),
+            Matrix4x4.Identity,
+            MaxTextureSize: 1024,
+            // The label is a clean, isolated island in this atlas, well clear of both the shell and
+            // the exposed board, so the masked rectangle could be drawn generously without risking
+            // the moulding around it.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.645f, 0.655f, -0.425f, 0.475f, CornerRadius: 0.06f),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
             ArtFit: ArtFit.Cover,

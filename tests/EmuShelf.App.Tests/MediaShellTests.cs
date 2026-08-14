@@ -294,13 +294,13 @@ public class MediaShellTests
     /// with 129 x 20mm, which stretched it 12% vertically. PS3 was the second catch: its truthful
     /// Blu-ray height on shared DVD geometry came to a 13.7% stretch, and now renders undistorted.
     ///
-    /// <c>gba</c> remains excluded, and as an exclusion rather than an oversight: 85 x 60mm is not
-    /// a Game Pak's shape either, but correcting it also resizes the cartridge on screen, so it
-    /// belongs with that asset's pass.
+    /// Every authored shell is now checked. GBA was the last exclusion — 85 x 60mm against an asset
+    /// whose own ratio is 1.708, a 20% stretch — and it was fixed when that shell was replaced.
     /// </remarks>
     [Theory]
     [InlineData("snes")]
     [InlineData("nes")]
+    [InlineData("gba")]
     [InlineData("megadrive")]
     [InlineData("nds")]
     [InlineData("playstation2")]
@@ -626,6 +626,52 @@ public class MediaShellTests
         }
     }
 
+    /// <summary>
+    /// The shipped GBA asset must carry no trace of the Pokémon FireRed label it was modelled from.
+    /// </summary>
+    /// <remarks>
+    /// The first mask for this shell was two hundredths of a UV short on its right and bottom edges,
+    /// which left an L-shaped sliver of the label around EmuShelf's own artwork — visible in the
+    /// render, and the reason these checks walk the rectangle's edges rather than its middle.
+    /// </remarks>
+    [Fact]
+    public void GbaLabelArea_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.GbaCartridge);
+        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
+        var texture = model.Textures[material.BaseColorTexture];
+
+        (byte R, byte G, byte B) Sample(float u, float v)
+        {
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        const float u0 = 0.088f, u1 = 0.538f, v0 = 0.376f, v1 = 0.640f;
+        var reference = Sample((u0 + u1) * 0.5f, (v0 + v1) * 0.5f);
+        for (var u = u0; u <= u1; u += 0.01f)
+        {
+            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The GBA label area still varies at ({u:F2},{v:F2}); artwork was not removed.");
+            }
+        }
+
+        for (var v = v0; v <= v1; v += 0.01f)
+        {
+            foreach (var u in new[] { u0, u1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The GBA label edge still varies at ({u:F2},{v:F2}); the mask is too small.");
+            }
+        }
+    }
+
     [Fact]
     public void Load_StandsTheSnesCartridgeOnItsLongEdge()
     {
@@ -753,7 +799,10 @@ public class MediaShellTests
 
         Assert.Equal(ArtFace.Front, snes.Face);
         Assert.InRange(snes.CornerRadius, 0.05f, 0.10f);
-        Assert.Equal(0f, MediaShellCatalog.Definition(MediaShell.GbaCartridge).CoverPanel.CornerRadius);
+        // Cartridge labels are printed stickers with rounded corners; a keep case's sleeve is cut
+        // square to the case, so it is the one shell where a radius would be wrong.
+        Assert.True(
+            MediaShellCatalog.Definition(MediaShell.GbaCartridge).CoverPanel.CornerRadius > 0f);
         Assert.Equal(0f, MediaShellCatalog.Definition(MediaShell.DiscKeepCase).CoverPanel.CornerRadius);
     }
 }
