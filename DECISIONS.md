@@ -6507,3 +6507,334 @@ Save sync remains blocking in the launch pipeline but is no longer visually moda
 the existing corner progress toast replaces the full-screen sync panel so the cartridge stays visible.
 Grid and spotlight retain their centered panel. The model also has a shortened no-spin reduced-motion path;
 exposing that policy as a user setting remains a separate rollout item.
+
+## 2026-08-14 — A metric profile must match its asset's proportions; SNES was 12% too tall
+
+`MediaShellRenderer.ShelfModel` scales each axis of a shell onto its `PhysicalMediaProfile`
+independently. That is deliberate — downloaded geometry is close to, not equal to, the real package
+— but it means a profile that disagrees with its asset never reads as a size error. The model is
+silently deformed instead, and every later judgement about lighting, label placement and framing is
+then made on a deformed object.
+
+The SNES profile recorded 129x87x20mm. The cleaned PAL/Super Famicom asset's own ratios are W/H
+1.6651 and D/H 0.2570, which agree with 129mm and 20mm to within 0.4% and put the height at 77.5mm.
+87mm — the North American shell's height — was therefore stretching the gold-standard cartridge 12%
+vertically: oval screws, non-circular corner radii, and a label mask whose object-space aspect no
+longer matched what was drawn. The profile is now 129x77.5x20mm, and `PresentationScale` moves
+1.10 -> 1.235 so removing the stretch gives the height back to the cartridge rather than to the
+empty space above it; the row is correspondingly ~12% wider.
+
+`MediaShellTests.MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset` now fails any profile whose
+width/height and depth/height ratios drift more than 3% from its loaded asset. Two systems are
+excluded as decisions rather than oversights: GBA (85x60mm is not a Game Pak either, but correcting
+it also roughly halves the cartridge on screen, so it belongs with that asset's pass) and PS3 (its
+shorter Blu-ray profile is knowingly applied to shared DVD-case geometry until a PS3 case is
+authored — that distortion is the reason the geometry is called temporary).
+
+## 2026-08-14 — Shelf focus reads through light, arrival and departure share one blend
+
+Three composition defects found by reading the M42 scene, all fixed together because they are the
+same subject — what one d-pad step actually looks like.
+
+**Contact shadow followed the wrong axis.** The focused medium steps toward the camera, but
+`DrawShelfShadows` passed the vertical `FocusLift` (0.035) as its footprint's world Z while
+`ShelfModel` placed the item at 0.08. The shadow trailed the selected cartridge and swam as focus
+interpolated, which is precisely the failure the design's lighting gate names. Both now share one
+`FocusDepth` constant.
+
+**Arrival snapped while departure eased.** `ResolvePose` returned the focused angle the instant
+selection changed — while the incoming medium was still a full slot from centre — but blended the
+outgoing one back to the neighbour angle over its travel. Every step therefore turned one cartridge
+smoothly and snapped the other through the ~14 degrees between the two rest poses. Both directions
+now use the same focus blend.
+
+**Focus was carried by ~2% of projected size.** Physical scale is data and focus may not change it,
+so the selected medium differed from its neighbours only by a depth step and its angle. A row of
+similar grey cartridges could not be read at couch distance. Neighbours now fall off to 48% of the
+studio exposure, interpolated by the same focus value, so the selected medium stands in the key and
+the others stand out of it. It is a light change, not a material one: colour and reflections are
+untouched, and no scale is involved.
+
+## 2026-08-14 — Launch choreography runs beside pre-launch save sync, not after it
+
+The physical launch animation existed partly to cover the delay before an emulator appears, but it
+ran after `SyncSavesForLaunchAsync` completed, so a slow cloud round-trip was dead time in front of
+the animation rather than hidden behind it. The animation is now started before the sync is awaited
+and both are awaited before the process starts, so the ordering guarantee is unchanged — saves are
+still finished and preflight still passed before any process runs — while the visible cost of the
+sync is absorbed by the cartridge already being in motion. When sync outruns the choreography the
+medium simply holds its committed insertion pose.
+
+Consequence, and the reason this is recorded: the earlier "saves finish before visual commitment"
+property is gone by design. The medium can reach the inserted pose while a sync is still running.
+Two supporting fixes fall out of running them concurrently: a sync failure now observes the pending
+animation task instead of leaving it unobserved, and `RestorePhysicalShelfAfterLaunchAsync`
+completes any pending launch completion source before replacing it, since a return can now begin
+while the outward animation is still waiting on the old one.
+
+## 2026-08-14 — macOS prefers OpenGL over Metal, because a GL control cannot live under Metal
+
+Avalonia 12 defaults `AvaloniaNativePlatformOptions.RenderingMode` to `[Metal, OpenGl, Software]`.
+Under Metal the platform graphics object is an `IMetalDevice`, so `OpenGlControlBase` requests a GL
+context, does not receive one, and returns without initializing and without throwing. The couch
+shelf's `MediaShelf3DControl` therefore never rendered a single frame on macOS. Nothing looked
+broken: `MediaShelf3DHost`'s four-second watchdog fired and the designed flat-cover fallback took
+over, so the mode appeared to work and simply was not the 3D scene. Verified on 2026-08-14 by
+running the same build twice — stock logged
+`TimeoutException: The OpenGL shelf did not initialize`, and with OpenGl preferred the scene came up
+and stayed up.
+
+Consequence worth stating plainly: every judgement made about the physical shelf on macOS before
+this date was made on flat covers, not on the renderer.
+
+Avalonia ships no Metal counterpart to `OpenGlControlBase` — `Avalonia.Metal` exports interop
+interfaces (`IMetalDevice`, `IMetalPlatformSurface` and friends) and no control base — so hosting
+the scene under a Metal compositor is not supported at any price short of a second renderer. The
+alternatives were a Metal/MSL backend (a duplicate of the whole shading path to keep in step), an
+offscreen render presented as a bitmap (a GPU-to-CPU-to-GPU round trip per frame), or accepting that
+a shipped feature never runs on a shipped platform. Preferring OpenGl is one line and the only cheap
+option, and it is Avalonia's own second choice rather than an exotic path.
+
+The cost is real and accepted: the whole macOS app now composites through Apple's deprecated OpenGL,
+capped at 4.1. Metal and Software remain behind it in the list, so a Mac whose GL context fails
+degrades instead of failing to start. Windows (ANGLE) and Linux are unaffected. If general UI
+rendering later proves to suffer on macOS, the escape route is a Metal backend for
+`EmuShelf.Rendering`, not reverting this — reverting returns macOS to flat covers.
+
+## 2026-08-14 — The shelf camera frames the tallest medium on show, not a fixed distance
+
+The camera sat at a fixed distance chosen for a 190mm keep case. A SNES cartridge is 77.5mm, so it
+filled under a third of the viewport height with the rest left empty — worse than it sounds, because
+the camera also aimed at a fixed height rather than at the media, which put more of that emptiness
+above the cartridges than below. On a Steam Deck's short panel it was the dominant impression.
+
+`ShelfCamera` now takes the height of the tallest medium in the library view and solves for the
+distance that makes it fill `ShelfFrameFill` (0.50) of the viewport, aiming at the centre of the
+media band. Deliberately the tallest in the *whole view* rather than the visible window: relative
+physical scale still holds, a keep case beside a cartridge still dwarfs it, and nothing zooms as
+items scroll past. `ItemGap` tightens from 0.20 to 0.14 because at the old spacing a filled frame
+pushed the neighbours entirely off its edges, which turns a shelf back into a single-hero view.
+`ShelfFrameFill` is the knob; raising it fills more and shows less of the neighbours.
+
+This exposed a coupling that was never explicit: the launch choreography's lift and depth had been
+sized against the old fixed distance and now carried the medium out through the top of the frame.
+They are reduced to suit, and `MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame`
+now walks the whole sequence, projects the medium's corners through the real camera at 16:10 and
+16:9, and fails if the top edge leaves the frame. The launch model's own test drops its absolute
+magnitude assertions and keeps the relationships; magnitudes belong with the camera that decides
+them.
+
+## 2026-08-14 — A cartridge with no scraped label wears the missing-artwork placeholder
+
+An unlabelled cartridge previously showed a flat accent-coloured rectangle, which reads as an
+unfinished render rather than as a cartridge nobody has scraped art for. `CartridgeLabelPlaceholder`
+draws the vocabulary the 2D grid already uses for a missing cover — platform medallion, "ARTWORK
+MISSING", system name — onto a label-shaped canvas, so the same absence looks like the same thing in
+both views. Authored at 2.93:1 to match the SNES label panel, so the shell's `ArtFit.Cover` has
+nothing to crop.
+
+It depends only on the platform, never on the game, so it is drawn once per system and cached. It is
+warmed on the UI thread when the shelf's item list changes and only read during a GL frame, because
+creating it touches Avalonia's rendering stack and the GL frame is not guaranteed to be on the UI
+thread. This supersedes the earlier "missing art leaves an accent-coloured blank label" behaviour;
+the guardrail it served — never crop portrait box art onto a cartridge — is unchanged.
+
+## 2026-08-14 — The SNES label rectangle is set by eye, and that is not a shortcut
+
+The decal was authored at -0.80/0.80/0.02/0.93 of the shell's half-extents. Once the missing-artwork
+placeholder gave the label a visible edge, it was obvious it overhung the moulded recess — a flat
+accent tint had no border to compare against the moulding, so the mismatch had shipped unseen.
+
+Two attempts to derive the recess from the asset failed, and the reasons are worth recording so the
+next person does not repeat them. By depth: the shell's front is a single near-flat surface carrying
+almost no vertices, so there is no depth step to detect — a large quad needs four corners. By UV:
+the label's atlas island is shared with geometry elsewhere on the body, and front-facing triangles
+sampling it span the full height and both faces. That second finding also casts doubt on
+`SnesModelPrep.RemoveSourcePlaceholder`, which neutralizes that island in all three PBR maps and may
+therefore be flattening authored detail well beyond the label; the base-colour map measures 89.5%
+uniform, which is consistent with it. Open, not fixed here.
+
+So the rectangle was corrected against rendered frames on real hardware, converging on
+-0.765/0.765/0.01/0.93. The overhang turned out to be almost entirely horizontal; the authored
+vertical extent was nearly right. A temporary `EMUSHELF_LABEL_PANEL` environment override carried
+the iteration so each attempt cost a restart rather than a rebuild, and was removed once the value
+landed.
+
+The durable lesson is the ordering: the placeholder label was what made the fit measurable at all.
+Any future shell's artwork slot should be dialled in against a bordered placeholder rather than a
+tinted one, for the same reason.
+
+## 2026-08-14 — Correction: the SNES placeholder fill does not damage the shell
+
+The previous entry recorded a suspicion that `SnesModelPrep.RemoveSourcePlaceholder` might be
+flattening authored detail well beyond the label, on the evidence that vertices sampling its
+rectangle spanned the whole model and both faces. That suspicion is wrong, and the method that
+produced it was the fault: counting vertices weights a rectangle's shared boundary the same as its
+interior, so triangles from neighbouring UV islands that merely touch the edge dominated the result.
+
+Measured properly, by surface area: the fill covers 12.0% of the shell, and **99.5% of that area is
+front-facing**. It is confined to the front, which is what it was always meant to be.
+
+It also cross-checks the label rectangle dialled in by eye earlier today. The neutralized region is
+35.4% of the front face's area; the tuned `CoverPanel` covers 35.2% of it. Two independent routes —
+the author's UV island and a hand-fitted rectangle judged against a rendered frame — agreeing to
+within 0.2 points is good evidence both are right.
+
+The consequence for the shell's darkness stands unchanged and is now better supported: the flat,
+dark base colour is the source asset's own, not damage from the prep, so `BodyAlbedoScale` is
+correcting the right thing.
+
+The user restored the `models/` sourcing area, and `--prepare-snes` now reproduces the shipped
+`snes-cartridge.glb` byte-for-byte. Reproducibility of the runtime derivative is no longer an open
+risk. `docs/assets/model-sourcing-inventory-2026-08-14.md` records what else was supplied.
+
+## 2026-08-14 — PS3 renders undistorted on shared case geometry, losing its truthful height
+
+Reverses part of the 2026-08-13 metric-scene entry, which gave PS3 its real 135x171x14mm Blu-ray
+profile while it shared the DVD case's mesh. The intent was to keep metric truth even before the
+geometry existed. Measured against the asset, that profile is a 13.7% horizontal stretch — and a
+13.7% stretch does not read as "a shorter case", it reads as a broken one. It was also the second
+thing the new proportion test caught, after SNES.
+
+With one mesh there were only two honest options, and both are wrong somewhere: render at the DVD
+case's proportions and be about 11% too tall, or scale uniformly to Blu-ray height and be 12% too
+narrow. Too tall is the lesser error, because a correctly-shaped case at a slightly wrong size still
+reads as a case, while a squat one reads as a bug. PS3 therefore takes 135x190x14mm and is
+distinguished from PS2 by its `ps3-clear` finish alone.
+
+The real Blu-ray dimensions are not lost, they are deferred: they belong with an authored Blu-ray
+shell, not with a stand-in that has to squash itself to express them. PS3 rejoins
+`MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset`, leaving GBA as the only exclusion.
+
+Left alone deliberately: PS2, GameCube and Wii sit 2.3% off their asset, because the model stands
+about 194mm tall including the lid lip while the profile records the nominal 190mm. That is the
+asset being slightly larger than nominal rather than the data being wrong, it is well inside the
+test's 3% tolerance, and it is not visible. Changing the recorded dimensions to chase it would make
+the data less truthful, not more.
+
+## 2026-08-14 — The preview renders on macOS, and NES is the second authored shell
+
+Two things unblocked each other here.
+
+**The preview tool now has a CGL backend.** It was Mesa-EGL only, so it could not run on macOS at
+all, which meant every question about how a shell actually looks had to go to a human with the app
+open. That is not a small tax: it is why the SNES label rectangle took a round trip per attempt, and
+why the NES orientation looked unanswerable. CGL gives a pixel-format-only OpenGL 3.2 core context
+with no drawable, which is all the renderer needs — it draws into its own framebuffer. Apple has
+deprecated OpenGL, but this is a development tool, and the same argument that put the app on OpenGL
+applies more strongly to something that never ships.
+
+`--model-pitch` and `--model-roll` join `--model-yaw`, because a candidate model authored lying on
+its side cannot be brought into canonical space by yaw alone.
+
+**NES ships as `MediaShell.NesCartridge`.** Its orientation was the interesting part: the model's UV
+winding and its vertex normals disagreed about which way was up, and no amount of reading the data
+settled it. Rendering it at two candidate orientations settled it in a minute — the label reads
+upright only at a quarter turn about Y, which also gives W/H 0.889 against a real cartridge's
+120x135mm, exact to three decimals. The depth is recorded as the asset's 18.3mm rather than the real
+20mm, because taking the ratio from the model is what stops the scene absorbing the difference as a
+stretch.
+
+**`ModelPrep` is the general form of the neutralization SNES needed**, and a much safer one. Where a
+model keeps its label on its own material — NES names it `sticker` — the artwork can be removed by
+flattening that material's three maps, with no rectangle to guess, nothing else sampling the image,
+and no index remapping. The label geometry survives as a blank plate for EmuShelf's own art. The
+normal map is flattened along with the base colour deliberately: leaving it would emboss the removed
+artwork into whatever replaces it. `SnesModelPrep` keeps its rectangle-masking approach because that
+shell's label shares an atlas island with the body.
+
+Known and not fixed: this model's label plate sits right of centre rather than centred as a real NES
+label does. That is the authored geometry, and EmuShelf's panel deliberately matches the plate
+rather than correcting it, so the art lands where the model says the label is.
+
+## 2026-08-14 — Mega Drive is the third authored shell, and needed the harder neutralization
+
+Naser's Sonic 2 cartridge ships as `MediaShell.MegaDriveCartridge`, mapped from `megadrive`.
+
+Its orientation is the one that looks wrong when it is right. At identity the cartridge is upright
+and Sonic is the right way up, but the MEGA DRIVE band sits at the bottom of the label. Rolling it
+180 degrees puts that band where a European label carries it — and turns the artwork upside down.
+The artwork's own orientation is the test that decides, so the shell needs no reorientation at all.
+Its W/H of 1.553 matches a real 135x87mm cartridge to three decimals; the 14.6mm depth is the
+asset's own ratio rather than a real cart's ~16mm, for the reason NES's is.
+
+Unlike NES, this model keeps its label on the same atlas and the same material as its body, so the
+clean route — flattening a dedicated material — was not available. `ModelPrep` therefore grew the
+fallback: masking a rectangle of the atlas, read off `--dump-atlas`. That is deliberately the second
+choice. A wrong rectangle either leaves the publisher's artwork in a public build or erases part of
+the moulding, and neither failure is visible without rendering the result.
+
+Two things the first attempt got wrong, both worth recording because they will recur:
+
+- **The fill colour matters.** A masked rectangle is only perfectly covered by the art panel if the
+  two were derived from each other, and they are not — one is read off an atlas, the other off the
+  geometry. The default paper grey haloed against this black cartridge, so the fill is now
+  configurable and this shell uses its own plastic colour. The mismatch is still there; it is just
+  no longer visible.
+- **The asset is an embedded resource.** Re-preparing the `.glb` on disk changes nothing until the
+  assembly is rebuilt, so a preview run with `--no-build` shows the previous asset. Three renders
+  were read as failures of the prep before that was spotted.
+
+The shell renders with no Sonic artwork on any face, and a test samples well inside the masked
+rectangle and requires it to be flat, so the artwork cannot return unnoticed.
+
+## 2026-08-14 — The DS card ships as one instance of four, and its artwork was hiding in plain sight
+
+`MediaShell.DsCard`, mapped from `nds`, and the hardest of the four supplied models — for reasons
+that all turned out to be different from what the measurements suggested.
+
+**It is not lying on its side.** Raw accessor bounds say the card is flat with its thickness on Y,
+which is what the inventory recorded and what sent the first attempt looking for a pitch rotation.
+The node matrices already stand it up: loaded, it is 0.960 W/H against a real card's 33.4x35mm. The
+lesson generalises — read bounds after node transforms, or do not trust them.
+
+**Only one of the four copies may load.** The file is four cards in a row, placed by node matrices,
+and `GlbLoader` walks every logical node, so a scene-level edit would not have helped. `ModelPrep`
+detaches the duplicates by clearing their `mesh` reference: the loader skips a node without one, so
+nothing is deleted and no mesh, accessor or buffer-view index moves. Index remapping across those
+three arrays is exactly where a prep step goes quietly wrong. The orphaned vertex data stays in the
+buffer, which is a fraction of a file whose bulk is textures.
+
+**Its game artwork is real but unreachable.** The Super Mario 64 label is plainly in the atlas, and
+not one triangle of any of the four copies samples it — the card renders blank on both faces, which
+is why two renders looked like the prep had failed before that was understood. It is masked anyway.
+What the licence turns on is the publisher's artwork being inside the shipped binary, not whether a
+camera can see it, and an unsampled island is one re-export away from becoming a visible one.
+
+Recorded and not fixed: the model is about half a real card's thickness (1.75mm against 3.8mm). The
+profile takes the asset's ratio rather than the true figure, because a profile that disagrees with
+its asset distorts the shell instead of resizing it. Correcting this belongs in the asset. Also
+worth expecting: at true scale a DS card is under a fifth of a keep case's height, and will look
+tiny beside one. That is the metric contract working as designed.
+
+## 2026-08-14 — GBA gets a better shell; GBC has no model, and the PS1 case is not a case
+
+**GBA now uses thegraphicsgeek's cartridge**, replacing a shell that had no source file in `models/`
+and so could not be regenerated or corrected — the same reproducibility gap that had blocked SNES.
+The new asset carries 4096px maps against the old one's 512px and is authored upright facing +Z, so
+it needs no reorientation. Its profile is anchored on a real Game Pak's 57.5mm width and otherwise
+takes the asset's ratios, which retires the last exclusion in
+`MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset`. Every authored shell is now checked
+against its own asset.
+
+Masking its Pokémon FireRed label took two passes, and the failure is worth recording because it is
+the mode this technique fails in: the first rectangle was about two hundredths of a UV short on its
+right and bottom edges, which left an L-shaped sliver of the label framing EmuShelf's own artwork.
+It was obvious in a render and invisible in the atlas dump of the *source*. Dumping the atlas of the
+*prepared* asset is what located it exactly, and that is now the check to run after any rect mask.
+
+**The `gbc/` folder does not contain a Game Boy Color cartridge.** It is a GBA cartridge — it moulds
+"GAME BOY ADVANCE SP" across the shell and wears a Game Boy Advance game's label. A GBC shell still
+needs sourcing; a Game Boy cartridge is taller than it is wide, roughly 0.88 against this model's
+1.748, so nothing here can stand in for it.
+
+**The supplied PS1 case cannot be used.** `ps1_case_-_deathtrap_dungeon_1998.glb` is 36 triangles:
+three flat quads carrying photographs of a closed case, an open case and its inlay, arranged side by
+side. It is a billboard mock-up rather than a model, and there is no jewel-case geometry in it at
+any level of effort. The accompanying `postal_x_psx_cd-r_disk.glb` is a disc, not packaging.
+
+The design already commits PS1 to a jewel case, and the honest options are to source a real one or
+to generate it. Generating is attractive here and not a fudge: a jewel case is a box with a hinge
+lip and a sleeve window, `MediaShellCatalog` already builds the cover card procedurally, and a
+generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
+route rather than taken, because it is a shell rather than an asset swap.

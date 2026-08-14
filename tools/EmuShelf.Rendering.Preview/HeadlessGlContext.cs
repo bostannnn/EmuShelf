@@ -23,7 +23,10 @@ internal static class HeadlessGlContext
     private static IntPtr _openGl;
 
     /// <summary>Creates the context, makes it current, and returns a GL entry-point resolver.</summary>
-    public static Func<string, IntPtr> CreateCurrent()
+    public static Func<string, IntPtr> CreateCurrent() =>
+        OperatingSystem.IsMacOS() ? MacHeadlessGlContext.CreateCurrent() : CreateCurrentEgl();
+
+    private static Func<string, IntPtr> CreateCurrentEgl()
     {
         var getPlatformDisplay = Marshal.GetDelegateForFunctionPointer<GetPlatformDisplayExt>(
             eglGetProcAddress("eglGetPlatformDisplayEXT") is var fn && fn != IntPtr.Zero

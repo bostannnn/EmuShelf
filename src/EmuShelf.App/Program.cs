@@ -32,6 +32,25 @@ sealed class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // macOS only. Avalonia 12 defaults this list to [Metal, OpenGl, Software], and under
+            // Metal the platform graphics is an IMetalDevice — so OpenGlControlBase asks for a GL
+            // context, does not get one, and returns without initializing *or* throwing. The couch
+            // shelf's 3D scene therefore never started a frame on macOS; only its watchdog noticed,
+            // and the flat-cover fallback made that look like a working shelf. Avalonia ships no
+            // Metal equivalent of OpenGlControlBase (Avalonia.Metal exports interop interfaces
+            // only), so preferring OpenGl is what makes the scene possible here at all. Metal and
+            // Software stay behind it, so a Mac whose GL fails degrades rather than breaking, and
+            // no other platform is affected: Windows gets ANGLE, Linux is untouched.
+            // See DECISIONS 2026-08-14.
+            .With(new Avalonia.AvaloniaNativePlatformOptions
+            {
+                RenderingMode =
+                [
+                    Avalonia.AvaloniaNativeRenderingMode.OpenGl,
+                    Avalonia.AvaloniaNativeRenderingMode.Metal,
+                    Avalonia.AvaloniaNativeRenderingMode.Software,
+                ],
+            })
             .WithInterFont()
             .LogToTrace();
 }

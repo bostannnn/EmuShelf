@@ -11,8 +11,11 @@ public class PhysicalShelfLaunchTransitionModelTests
         model.Start(42, yaw: 0.7f, pitch: 0.2f);
 
         AdvanceUntil(model, PhysicalShelfLaunchPhase.Spin);
-        Assert.True(model.Pose.VerticalOffset > 0.2f);
-        Assert.True(model.Pose.DepthOffset > 0.35f);
+        // Relationships, not magnitudes: how far the medium lifts and steps forward is set by what
+        // the shelf camera can frame, and the camera now moves with the tallest medium on show.
+        // MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame owns the magnitudes.
+        Assert.True(model.Pose.VerticalOffset > 0f);
+        Assert.True(model.Pose.DepthOffset > 0f);
         Assert.True(model.Pose.Scale > 1.05f);
 
         AdvanceUntil(model, PhysicalShelfLaunchPhase.Align);

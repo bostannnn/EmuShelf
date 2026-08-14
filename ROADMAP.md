@@ -1773,7 +1773,7 @@ the hands-on review gate before Phase 2 begins.
 - [ ] Pass the asset gate: measured proportions, correct pivot/orientation, closed visible silhouette,
       bevelled edges, stable normals, usable UVs/tangents, separate body/label materials, and no borrowed
       packaging visible from any review angle. Record attribution and modifications in notices. — Source,
-      license, 129×87×20mm PAL profile, 180° orientation, PBR maps, placeholder removal, topology repair
+      license, 129×77.5×20mm PAL profile, 180° orientation, PBR maps, placeholder removal, topology repair
       and attribution landed 2026-08-13. Hardware review rejected a separate label plane because it
       visibly floated; the replacement body-attached decal has aspect-correct rounded corners,
       derivative-antialiased edges and its own paper roughness/flat shading without a geometry gap.

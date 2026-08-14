@@ -32,6 +32,11 @@ uniform float uCavityStrength;
 uniform float uNormalStrength;
 uniform vec3 uBodyTint;
 uniform float uBodyTintMix;
+// Per-shell correction for a source whose authored albedo is darker than the real object's. A SNES
+// shell's plastic is light grey; a scan authored under a brighter viewer can encode it far below
+// that, and no exposure setting can fix a body that is dark before any light reaches it without
+// blowing out the labels and every other shell beside it.
+uniform float uBodyAlbedoScale;
 
 // --- artwork panel -------------------------------------------------------------------------
 // Up to three panels (cover, back, spine) projected onto faces in object space. Packed as parallel
@@ -48,6 +53,8 @@ uniform float uPanelHasArt[MAX_PANELS];
 // stay circular at the corners even when the panel is a wide cartridge label.
 uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
+// Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
+uniform float uPanelCutCorner[MAX_PANELS];
 // Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
 // a landscape cartridge label without being squashed.
 uniform vec2 uPanelArtScale[MAX_PANELS];
@@ -209,6 +216,8 @@ void main()
         baseColor *= texture(uBaseColorMap, vTexCoord);
     }
     baseColor.rgb = mix(baseColor.rgb, uBodyTint, uBodyTintMix);
+    // Body only: the printed panels below overwrite this, so a label keeps its scraped colour.
+    baseColor.rgb = min(baseColor.rgb * uBodyAlbedoScale, vec3(1.0));
 
     float metallic = uMetallicFactor;
     float roughness = uRoughnessFactor;
@@ -264,6 +273,16 @@ void main()
         vec2 rounded = abs(panelPoint) - (halfSize - vec2(corner));
         float edgeDistance = length(max(rounded, vec2(0.0)))
             + min(max(rounded.x, rounded.y), 0.0) - corner;
+        // Remove the bottom-left corner along a diagonal. Combining by max keeps this one signed
+        // distance field, so the same derivative-based antialiasing covers the cut edge too.
+        float cut = clamp(uPanelCutCorner[i], 0.0, 0.9);
+        if (cut > 0.0)
+        {
+            float fromCorner =
+                ((panelPoint.x + halfSize.x) + (panelPoint.y + halfSize.y) - cut) * 0.70710678;
+            edgeDistance = max(edgeDistance, -fromCorner);
+        }
+
         float antialiasWidth = max(fwidth(edgeDistance), 1e-4);
         float panelMask = 1.0 - smoothstep(-antialiasWidth, antialiasWidth, edgeDistance);
         if (panelMask <= 0.0)

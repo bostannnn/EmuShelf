@@ -50,6 +50,44 @@ public sealed class MediaShellRenderer : IDisposable
     private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
     private const float FocusLift = 0.035f;
 
+    /// <summary>
+    /// Fraction of the viewport height the tallest medium in the library view fills.
+    /// </summary>
+    /// <remarks>
+    /// This is the knob for "the cartridges are too small". The camera was previously fixed at a
+    /// distance chosen for a 190mm keep case, so a SNES cartridge — barely 40% of that height —
+    /// occupied under a third of the frame with the rest left empty above and below. That is worst
+    /// on a Steam Deck, where the panel is short to begin with.
+    ///
+    /// It is deliberately framed against the tallest medium in the whole library view rather than
+    /// the visible window, so relative physical scale still holds — a keep case beside a cartridge
+    /// still dwarfs it — while the world does not zoom as items scroll past. Raising this fills the
+    /// frame further and pushes the neighbouring media off its edges; that is the trade.
+    /// </remarks>
+    private const float ShelfFrameFill = 0.50f;
+
+    /// <summary>How far the camera sits above the media band's centre, as a fraction of distance.</summary>
+    private const float ShelfCameraElevation = 0.075f;
+
+    /// <summary>How far the focused medium steps toward the camera.</summary>
+    /// <remarks>
+    /// Shared with the shadow pass on purpose. These were two separate literals, and the shadow
+    /// pass used <see cref="FocusLift"/> — a vertical constant — as its depth, so the focused
+    /// item's contact shadow trailed it and swam while focus interpolated.
+    /// </remarks>
+    private const float FocusDepth = 0.08f;
+
+    /// <summary>
+    /// Fraction of the studio exposure an item away from focus keeps.
+    /// </summary>
+    /// <remarks>
+    /// Physical scale is data and focus must not change it, so size cannot say which medium is
+    /// selected: the focused item is only about 2% larger from its depth step. A row of grey
+    /// cartridges therefore needs a light falloff to read at couch distance, the way the flat
+    /// shelf dimmed its neighbours.
+    /// </remarks>
+    private const float NeighbourExposure = 0.48f;
+
     // Each visible item receives its own self-shadow pass. 1024px resolves cartridge-scale moulding
     // more finely than the former 2048px map stretched across the whole seven-item row, avoids one
     // tall case blacking out a neighbour, and keeps the aggregate clear/sample cost reasonable.
@@ -67,10 +105,10 @@ public sealed class MediaShellRenderer : IDisposable
 
     private readonly StudioEnvironment _environment;
     private Vector3 _accent;
-    private readonly Dictionary<long, CoverResource> _coverArt = [];
+    private readonly Dictionary<long, PanelArtSet> _coverArt = [];
     private readonly List<ShelfDrawItem> _shelfDrawItems = new(7);
     private readonly List<ShadowFootprint> _shadowFootprints = new(7);
-    private CoverResource? _activeCover;
+    private PanelArtSet? _activePanelArt;
     private Vector3 _drawAccent;
     private MaterialVariantAppearance _activeMaterialAppearance;
     private uint _sceneFramebuffer;
@@ -172,6 +210,20 @@ public sealed class MediaShellRenderer : IDisposable
     // former camera-axis key while retaining the same warm-neutral product-light character.
     private static readonly Vector3 KeyRadiance = new(1.42f, 1.31f, 1.18f);
 
+    /// <summary>
+    /// TEMPORARY shading probe. Zero unless <c>EMUSHELF_SHADING_DEBUG</c> names a mode, so a normal
+    /// run cannot reach it. Here to find out why the macOS desktop-GL path renders the SNES shell
+    /// darker than the Windows ANGLE path; delete once that is understood.
+    /// </summary>
+    private static readonly int DebugMode =
+        Environment.GetEnvironmentVariable("EMUSHELF_SHADING_DEBUG") switch
+        {
+            "albedo" => 1,
+            "irradiance" => 2,
+            "key-visibility" => 3,
+            _ => 0,
+        };
+
     /// <summary>Converts an sRGB colour (0..1 per channel) to the linear space the shader works in.</summary>
     public static Vector3 ToLinear(float r, float g, float b) =>
         new(ToLinear(r), ToLinear(g), ToLinear(b));
@@ -183,21 +235,53 @@ public sealed class MediaShellRenderer : IDisposable
     public void SetAccent(Vector3 linearAccent) => _accent = linearAccent;
 
     /// <summary>Replaces the legacy single-object cover; null clears it.</summary>
-    public void SetCoverArt(TextureImage? art) => SetCoverArt(0, art);
+    public void SetCoverArt(TextureImage? art) => SetPanelArt(0, 0, art);
 
-    /// <summary>Uploads or replaces one game's cover in the bounded shelf texture cache.</summary>
-    public void SetCoverArt(long key, TextureImage? art)
+    /// <summary>Uploads or replaces the artwork on a game's front panel.</summary>
+    public void SetCoverArt(long key, TextureImage? art) => SetPanelArt(key, 0, art);
+
+    /// <summary>
+    /// Uploads or replaces the artwork on one of a game's panels — front, back or spine.
+    /// </summary>
+    /// <remarks>
+    /// Faces are set independently because they arrive independently: a keep case's front comes
+    /// from the cover the library already has decoded, while its back and spine are separate
+    /// scraped files that may be absent, arrive late, or never arrive at all. A panel with no
+    /// artwork falls back to the platform tint rather than blocking the others.
+    /// </remarks>
+    public void SetPanelArt(long key, int panelIndex, TextureImage? art)
     {
-        RemoveCoverArt(key);
-        if (art is not null)
+        if (panelIndex is < 0 or >= MaxPanels)
         {
-            _coverArt[key] = new CoverResource(
-                GlTexture.Upload(_gl, art, srgb: true),
-                art.Height == 0 ? 1f : art.Width / (float)art.Height);
+            return;
+        }
+
+        if (!_coverArt.TryGetValue(key, out var set))
+        {
+            if (art is null)
+            {
+                return;
+            }
+
+            set = new PanelArtSet();
+            _coverArt[key] = set;
+        }
+
+        set.Replace(
+            panelIndex,
+            art is null
+                ? null
+                : new CoverResource(
+                    GlTexture.Upload(_gl, art, srgb: true),
+                    art.Height == 0 ? 1f : art.Width / (float)art.Height));
+
+        if (set.IsEmpty)
+        {
+            _coverArt.Remove(key);
         }
     }
 
-    /// <summary>Releases one game that moved outside the shelf's visible window.</summary>
+    /// <summary>Releases every face of one game that moved outside the shelf's visible window.</summary>
     public void RemoveCoverArt(long key)
     {
         if (_coverArt.Remove(key, out var existing))
@@ -241,7 +325,7 @@ public sealed class MediaShellRenderer : IDisposable
         // their normals instead.
         _gl.Disable(EnableCap.CullFace);
 
-        _activeCover = _coverArt.GetValueOrDefault(0);
+        _activePanelArt = _coverArt.GetValueOrDefault(0);
         _drawAccent = _accent;
         _activeMaterialAppearance = MaterialVariantAppearance.Default;
         var aspect = _sceneWidth / (float)_sceneHeight;
@@ -267,8 +351,11 @@ public sealed class MediaShellRenderer : IDisposable
     /// Draws the bounded row of visible games through one fixed camera. Item scale comes from real
     /// dimensions, so focus changes move media through one world instead of reframing each object.
     /// </summary>
+    /// <param name="mediaHeightInShelfUnits">Height of the tallest medium in the whole library
+    /// view, not just the visible window, so the camera does not zoom as items scroll past.</param>
     public void RenderShelf(
         IReadOnlyList<MediaShelfRenderItem> items,
+        float mediaHeightInShelfUnits,
         uint targetFramebuffer,
         uint width,
         uint height)
@@ -290,7 +377,7 @@ public sealed class MediaShellRenderer : IDisposable
         _gl.Disable(EnableCap.CullFace);
 
         var aspect = _sceneWidth / (float)_sceneHeight;
-        var (view, projection, cameraPosition) = ShelfCamera(aspect);
+        var (view, projection, cameraPosition) = ShelfCamera(aspect, mediaHeightInShelfUnits);
         var viewProjection = view * projection;
 
         _shelfDrawItems.Clear();
@@ -339,7 +426,7 @@ public sealed class MediaShellRenderer : IDisposable
         Matrix4x4.Invert(model, out var inverseModel);
         var normalMatrix = Matrix4x4.Transpose(inverseModel);
 
-        _activeCover = _coverArt.GetValueOrDefault(item.Key);
+        _activePanelArt = _coverArt.GetValueOrDefault(item.Key);
         _drawAccent = item.Accent;
         _activeMaterialAppearance = MaterialVariantAppearance.For(item.Profile.MaterialVariant);
 
@@ -348,7 +435,7 @@ public sealed class MediaShellRenderer : IDisposable
         _program.Set("uViewProjection", viewProjection);
         _program.SetMatrix3("uNormalMatrix", normalMatrix);
         _program.Set("uCameraPosition", cameraPosition);
-        _program.Set("uExposure", Exposure);
+        _program.Set("uExposure", Exposure * ExposureForFocus(item.FocusAmount));
         BindDirectLight(resources, keyViewProjection, hasKeyShadow);
 
         _environment.Irradiance.Bind(3);
@@ -360,7 +447,7 @@ public sealed class MediaShellRenderer : IDisposable
         DrawResources(resources);
     }
 
-    private static Matrix4x4 ShelfModel(MediaShelfRenderItem item, ModelAsset asset)
+    internal static Matrix4x4 ShelfModel(MediaShelfRenderItem item, ModelAsset asset)
     {
         var profile = item.Profile;
         var focus = Math.Clamp(item.FocusAmount, 0f, 1f);
@@ -378,7 +465,7 @@ public sealed class MediaShellRenderer : IDisposable
             + (profile.HeightInShelfUnits * 0.5f)
             + (focus * FocusLift)
             + item.LaunchVerticalOffset;
-        var centreZ = (focus * 0.08f) + item.LaunchDepthOffset;
+        var centreZ = (focus * FocusDepth) + item.LaunchDepthOffset;
         return Matrix4x4.CreateScale(scale)
             * profile.CanonicalOrientation
             * Matrix4x4.CreateRotationX(item.Pitch)
@@ -386,16 +473,41 @@ public sealed class MediaShellRenderer : IDisposable
             * Matrix4x4.CreateTranslation(item.CentreX, centreY, centreZ);
     }
 
-    private static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(float aspect)
+    /// <summary>
+    /// The studio exposure one item receives, falling off with its distance from focus.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a light change rather than a material one: the shell keeps its colour and
+    /// reflections, it simply stands further out of the key. Internal so the falloff can be pinned
+    /// by a test without a GPU.
+    /// </remarks>
+    internal static float ExposureForFocus(float focusAmount) =>
+        float.Lerp(NeighbourExposure, 1f, Math.Clamp(focusAmount, 0f, 1f));
+
+    /// <summary>
+    /// One product-photography camera for the whole world, pulled back only as far as the tallest
+    /// medium in the library view requires.
+    /// </summary>
+    /// <remarks>
+    /// The lens stays long and the distance does the framing, so the media keep the near-parallel
+    /// edges product photography wants; only the empty space around them changes. Aiming at the
+    /// centre of the media band rather than a fixed height is what removes the lopsided gap above
+    /// the cartridges — the band, not the world origin, is what the viewer is looking at.
+    /// </remarks>
+    internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
+        float aspect, float mediaHeightInShelfUnits)
     {
-        // One product-photography camera for the whole world. At this distance a 190mm keep case
-        // occupies a little over half the viewport height; smaller media retain their true ratio.
-        // A modest elevation reveals the transparent receiving plane enough for contact shadows
-        // without introducing the wide-angle top-down distortion product photography avoids.
-        var cameraPosition = new Vector3(0f, 0.22f, 4.6f);
-        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, -0.15f, 0f), Vector3.UnitY);
+        var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
         var fovY = FieldOfViewDegrees * MathF.PI / 180f;
-        var projection = Matrix4x4.CreatePerspectiveFieldOfView(fovY, aspect, 0.1f, 12f);
+        var distance = band / ShelfFrameFill * 0.5f / MathF.Tan(fovY * 0.5f);
+
+        var centreY = ShelfBaselineY + (band * 0.5f);
+        var cameraPosition = new Vector3(0f, centreY + (distance * ShelfCameraElevation), distance);
+        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, centreY, 0f), Vector3.UnitY);
+        // Near/far follow the distance now that it is no longer fixed; the old 0.1..12 pair would
+        // clip the shelf's far neighbours once the camera moved in.
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(
+            fovY, aspect, MathF.Max(0.05f, distance * 0.2f), distance + 8f);
         return (view, projection, cameraPosition);
     }
 
@@ -448,6 +560,7 @@ public sealed class MediaShellRenderer : IDisposable
         Matrix4x4 keyViewProjection,
         bool hasKeyShadow)
     {
+        _program.Set("uDebugMode", DebugMode);
         _program.Set("uKeyDirection", KeyDirection);
         _program.Set("uKeyRadiance", KeyRadiance);
         _program.Set("uKeyLightViewProjection", keyViewProjection);
@@ -466,6 +579,7 @@ public sealed class MediaShellRenderer : IDisposable
         _program.Set("uAmbientAccentMix", AccentMix);
         _program.Set("uBodyTint", _activeMaterialAppearance.BodyTint);
         _program.Set("uBodyTintMix", _activeMaterialAppearance.BodyTintMix);
+        _program.Set("uBodyAlbedoScale", resources.Definition.BodyAlbedoScale);
     }
 
     private void DrawResources(ShellResources resources)
@@ -579,7 +693,7 @@ public sealed class MediaShellRenderer : IDisposable
     private void BindNoPanels()
     {
         _program.Set("uPanelCount", 0);
-        for (var index = 0; index < 3; index++)
+        for (var index = 0; index < MaxPanels; index++)
         {
             _whitePixel.Bind((uint)(5 + index));
             _program.Set($"uPanelArt{index}", 5 + index);
@@ -621,7 +735,8 @@ public sealed class MediaShellRenderer : IDisposable
             var shadowExpansion = 1f + (positiveLift * 2f);
             var insertionVisibility = Math.Clamp(1f + (item.LaunchVerticalOffset * 3f), 0f, 1f);
             _shadowFootprints.Add(new ShadowFootprint(
-                new Vector2(item.CentreX, (focus * FocusLift) + item.LaunchDepthOffset),
+                // The plane's second axis is world Z, so this must follow the item's depth step.
+                new Vector2(item.CentreX, (focus * FocusDepth) + item.LaunchDepthOffset),
                 new Vector2(
                     MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale,
                     MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale),
@@ -716,20 +831,21 @@ public sealed class MediaShellRenderer : IDisposable
                 $"uPanelAspect[{i}]",
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
+            _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
 
-            // Only the cover panel carries scraped art today; the back and spine are tinted until
-            // the scraper's box-back and box-spine media are wired up.
-            var hasArt = i == 0 && _activeCover is not null;
-            _program.Set($"uPanelHasArt[{i}]", hasArt ? 1f : 0f);
+            // Each face is independent: a case can wear a scraped front with no back yet, and
+            // the missing one takes the platform tint instead of blanking the others.
+            var art = _activePanelArt?.Get(i);
+            _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
             _program.Set($"uPanelArtScale[{i}]", ArtScale(
-                definition.ArtFit, placement, _activeCover?.Aspect ?? 1f));
-            (hasArt ? _activeCover!.Texture : _whitePixel).Bind((uint)(5 + i));
+                definition.ArtFit, placement, art?.Aspect ?? 1f));
+            (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
         }
 
         // Keep every declared sampler pointing at a complete texture even when the shell uses fewer
         // panels than the shader declares.
-        for (var i = panels.Count; i < 3; i++)
+        for (var i = panels.Count; i < MaxPanels; i++)
         {
             _whitePixel.Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
@@ -1141,11 +1257,57 @@ public sealed class MediaShellRenderer : IDisposable
         public static MaterialVariantAppearance For(string variant) => variant switch
         {
             "ps2-black" => new(new Vector3(0.018f, 0.020f, 0.025f), 0.82f, 1.06f, 1f),
+            // A DS card's shell is black, and this model's is near-white — which only became
+            // obvious once the label stopped covering the whole face and revealed the band along
+            // the bottom that carries the release code.
+            // Mixed far harder than the case finishes: those tint an already-dark model, while this
+            // shell's plastic is near-white, and at 0.86 the surviving fraction of it still read as
+            // mid grey rather than black.
+            "ds-black" => new(new Vector3(0.021f, 0.022f, 0.026f), 0.965f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
             _ => Default,
         };
+    }
+
+    /// <summary>
+    /// Panels the fragment shader declares; keep in step with MAX_PANELS in pbr.frag.
+    /// </summary>
+    /// <remarks>
+    /// Public because a host has to size its own per-face bookkeeping to match, and a second
+    /// literal three on the other side of the assembly boundary is exactly the kind of pair that
+    /// drifts apart unnoticed.
+    /// </remarks>
+    public const int MaxPanels = 3;
+
+    /// <summary>
+    /// One game's uploaded faces. Held as a set rather than three dictionary entries so evicting a
+    /// game that scrolled out of the window cannot leave a stray face behind on the GPU.
+    /// </summary>
+    private sealed class PanelArtSet : IDisposable
+    {
+        private readonly CoverResource?[] _panels = new CoverResource?[MaxPanels];
+
+        public bool IsEmpty => _panels.All(panel => panel is null);
+
+        public CoverResource? Get(int index) =>
+            index >= 0 && index < _panels.Length ? _panels[index] : null;
+
+        public void Replace(int index, CoverResource? resource)
+        {
+            _panels[index]?.Dispose();
+            _panels[index] = resource;
+        }
+
+        public void Dispose()
+        {
+            for (var index = 0; index < _panels.Length; index++)
+            {
+                _panels[index]?.Dispose();
+                _panels[index] = null;
+            }
+        }
     }
 
     private readonly record struct ArtPanelBinding(ArtPanel Panel, ArtPanelPlacement Placement);

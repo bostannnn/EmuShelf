@@ -20,6 +20,15 @@ public enum MediaShell
     /// <summary>The Game Boy Advance ROM cartridge.</summary>
     GbaCartridge,
 
+    /// <summary>The NES/Famicom ROM cartridge.</summary>
+    NesCartridge,
+
+    /// <summary>The Mega Drive/Genesis ROM cartridge.</summary>
+    MegaDriveCartridge,
+
+    /// <summary>The Nintendo DS game card.</summary>
+    DsCard,
+
     /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
     DiscKeepCase,
 }
@@ -49,13 +58,17 @@ public enum PhysicalArtworkSlots
 /// <param name="MinV">Bottom edge, as a fraction of the shell's half-height.</param>
 /// <param name="MaxV">Top edge, in the same units.</param>
 /// <param name="CornerRadius">Rounded-corner radius as a fraction of the panel's shorter edge.</param>
+/// <param name="CutCorner">Diagonal bite taken out of the panel's bottom-left corner, as a fraction
+/// of its shorter edge. A DS label is cut there so it clears the card's thumb notch, and squaring
+/// that corner is one of the details that stops a card reading as a DS card.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
     float MaxU,
     float MinV,
     float MaxV,
-    float CornerRadius = 0f)
+    float CornerRadius = 0f,
+    float CutCorner = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(ArtFace face, float inset = 0f) =>
@@ -108,6 +121,10 @@ public enum ArtFace
 /// <param name="ArtFit">How a cover whose shape does not match the panel is fitted.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
 /// <param name="BodyRoughnessScale">Per-shell correction for the source model's body roughness.</param>
+/// <param name="BodyAlbedoScale">Per-shell correction for the source model's body base colour,
+/// applied in linear space before the printed panels are laid over it. Sibling of
+/// <paramref name="BodyRoughnessScale"/>, and needed for the same reason: a downloaded asset's
+/// material was tuned against its author's viewer, not against EmuShelf's studio.</param>
 /// <param name="DielectricReflectance">Normal-incidence reflectance for the shell's dielectric
 /// material. Most plastics are close to 0.04; a small correction can stop a scanned model from
 /// reading like glossy toy plastic without changing metallic parts.</param>
@@ -127,6 +144,7 @@ public sealed record MediaShellDefinition(
     ArtFit ArtFit,
     bool FlattenPanelNormal,
     float BodyRoughnessScale = 1f,
+    float BodyAlbedoScale = 1f,
     float DielectricReflectance = 0.04f,
     float AmbientIntensity = 0.86f,
     float ShadowFillOcclusion = 0.30f,

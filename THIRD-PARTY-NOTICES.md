@@ -156,10 +156,39 @@ shells are third-party models bundled inside `EmuShelf.Rendering` at
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All three are licensed
+All six are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
+
+- **Nitendo DS Cartridge Super Mario 64** — by
+  [satchii_](https://sketchfab.com/stachiii_), from
+  [Sketchfab](https://sketchfab.com/3d-models/nitendo-ds-cartridge-super-mario-64-2a768cba31054846817bcf2465611e21).
+  Bundled as `ds-card.glb`. The download contains four copies of the card laid out in a row;
+  EmuShelf keeps one. Its Super Mario 64 label sits in the atlas but is sampled by no geometry, so
+  it never rendered — it was masked regardless, since the artwork shipping inside the binary is what
+  the licence turns on rather than whether it is visible. Maps were reduced to 1024px, and canonical
+  orientation, metric scaling and per-game label art are applied at runtime. Original authorship and
+  license metadata remain embedded in the GLB.
+
+- **Sonic 2 Mega Drive Cartridge** — by [Naser](https://sketchfab.com/naser.ali), from
+  [Sketchfab](https://sketchfab.com/3d-models/sonic-2-mega-drive-cartridge-4c453f8527384c718f652a9f04067119).
+  Bundled as `megadrive-cartridge.glb`. This shell keeps its label on the same atlas as its body, so
+  unlike the NES model it could not be cleared by flattening a material: EmuShelf masks the label
+  rectangle in the base-colour, metallic/roughness and normal maps, leaving none of the Sonic 2
+  artwork — which the author's CC BY licence does not cover — in the build. Maps were reduced to
+  1024px, and canonical orientation, metric scaling and per-game label art are applied at runtime.
+  Original authorship and license metadata remain embedded in the GLB.
+
+- **NES || Cartridge || Battletoads** — by
+  [dark_igorek](https://sketchfab.com/dark_igorek), from
+  [Sketchfab](https://sketchfab.com/3d-models/nes-cartridge-battletoads-8aeab01fce084c3abaf3de792dda47a1).
+  Bundled as `nes-cartridge.glb`. The model keeps its game label on a separate material named
+  `sticker`; EmuShelf flattened that material's base-colour, metallic/roughness and normal maps to a
+  blank plate, so none of the Battletoads artwork — which the author's CC BY licence does not cover
+  — remains in the build. Maps were reduced to 1024px, and canonical orientation, metric scaling and
+  per-game label art are applied at runtime. Original authorship and license metadata remain
+  embedded in the GLB.
 
 - **Super Nintendo Cartridge (PAL/Super Famicom shell)** — by
   [SomeKevin](https://sketchfab.com/somekevin), from
@@ -169,9 +198,16 @@ Credit is given here and the models keep their authorship metadata inside the `.
   corrected triangle winding where it disagreed with the authored normals, and applies canonical
   orientation, metric scaling and per-game label art at runtime. Original authorship and license
   metadata remain embedded in the GLB.
-- **Gameboy Advance Cartridge** — by [Vxcl](https://sketchfab.com/vxclhd), from
-  [Sketchfab](https://sketchfab.com/3d-models/gameboy-advance-cartridge-38c1e6702e5d4f21af1d0930689b1d10).
-  Bundled as `gba-cartridge.glb`.
+- **Pokemon Cartridge (Gameboy)** — by
+  [thegraphicsgeek](https://sketchfab.com/thegraphicsgeek), from
+  [Sketchfab](https://sketchfab.com/3d-models/pokemon-cartridge-gameboy-7d79300f91a441d0ba520fdbd268aa5f).
+  Bundled as `gba-cartridge.glb`. Despite its title this is a Game Boy Advance cartridge — it moulds
+  "GAME BOY ADVANCE SP" across the shell — and it replaced an earlier GBA model that had no source
+  file and so could not be regenerated. EmuShelf masks the Pokémon FireRed label in the base-colour,
+  metallic/roughness and normal maps, leaving none of that artwork — which the author's CC BY licence
+  does not cover — in the build. Maps were reduced to 1024px, and canonical orientation, metric
+  scaling and per-game label art are applied at runtime. Original authorship and license metadata
+  remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
   Bundled as `disc-keep-case.glb`.

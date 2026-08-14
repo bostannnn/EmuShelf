@@ -22,6 +22,32 @@ if (sourceModel is not null)
     return;
 }
 
+// Dumps a candidate model's base-colour atlas, and the same atlas with the front face's UV
+// triangles drawn over it. Sourcing a new shell stalls on one question that measurement cannot
+// answer — which island in the atlas is the printed label — and the overlay answers it by eye in
+// seconds. Runs before any GL setup, so it works on a machine with no usable context.
+var prepModel = ArgumentValue("--prepare-model");
+if (prepModel is not null)
+{
+    ModelPrep.Prepare(
+        prepModel,
+        ArgumentValue("--prepare-out")
+            ?? throw new ArgumentException("--prepare-model requires --prepare-out <runtime.glb>."),
+        ArgumentValue("--neutral-material"),
+        ArgumentValue("--neutral-rect"),
+        ArgumentValue("--neutral-fill"),
+        args.Contains("--single-instance"),
+        int.Parse(ArgumentValue("--max-texture") ?? "1024"));
+    return;
+}
+
+var atlasModel = ArgumentValue("--dump-atlas");
+if (atlasModel is not null)
+{
+    AtlasDump.Write(atlasModel, ArgumentValue("--out") ?? "artifacts/atlas");
+    return;
+}
+
 var outputDirectory = ArgumentValue("--out") ?? "artifacts/shell-preview";
 var width = int.Parse(ArgumentValue("--width") ?? "420");
 var height = int.Parse(ArgumentValue("--height") ?? "560");
@@ -63,9 +89,16 @@ Console.WriteLine($"  renderer ready in {stopwatch.ElapsedMilliseconds} ms (incl
 var inspectionModel = ArgumentValue("--model");
 if (inspectionModel is not null)
 {
-    var inspectionYawDegrees = float.Parse(
-        ArgumentValue("--model-yaw") ?? "0", System.Globalization.CultureInfo.InvariantCulture);
-    var inspectionOrientation = Matrix4x4.CreateRotationY(inspectionYawDegrees * MathF.PI / 180f);
+    // Yaw alone cannot bring every downloaded model into canonical space: some are authored lying
+    // on their side, which needs a rotation about more than one axis. Pitch and roll let a candidate
+    // orientation be tried and looked at, rather than deduced from UV winding and guessed at.
+    float Degrees(string name) => float.Parse(
+        ArgumentValue(name) ?? "0", System.Globalization.CultureInfo.InvariantCulture)
+        * MathF.PI / 180f;
+    var inspectionOrientation =
+        Matrix4x4.CreateRotationX(Degrees("--model-pitch"))
+        * Matrix4x4.CreateRotationY(Degrees("--model-yaw"))
+        * Matrix4x4.CreateRotationZ(Degrees("--model-roll"));
     var candidate = GlbLoader.Load(
         File.ReadAllBytes(inspectionModel), inspectionOrientation, maxTextureSize: 1024);
     renderer.SetInspectionShell(
@@ -125,15 +158,19 @@ Console.WriteLine($"  {sheetPath}");
 // deliberately flanked by SNES and GBA cartridges so relative physical scale is visible at a glance.
 var shelfProfiles = new[]
 {
+    // These mirror EmuShelf.App.Rendering.MediaShellMap, which the tool cannot reference — the
+    // renderer deliberately knows nothing about consoles. Keep them in step by hand: this list had
+    // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
+    // proportions the app had already stopped using.
     new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 87f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.10f, FloorClearanceInShelfUnits: 0.014f),
+    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
     new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 87f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.10f, FloorClearanceInShelfUnits: 0.014f),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
+    new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
+    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(135f, 87f, 14.6f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
 };
-var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.20f);
+var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
 var shelfAnchor = shelfCentres[3];
 var shelfItems = new List<MediaShelfRenderItem>(shelfProfiles.Length);
 for (var index = 0; index < shelfProfiles.Length; index++)
@@ -163,7 +200,11 @@ for (var index = 0; index < shelfProfiles.Length; index++)
 
 var shelfTarget = CreateTargetFramebuffer(gl, (uint)shelfWidth, (uint)shelfHeight);
 stopwatch.Restart();
-renderer.RenderShelf(shelfItems, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
+// The acceptance composition deliberately mixes a keep case with cartridges, so the tallest medium
+// in it is what the shared camera frames — exactly as the app frames a whole library view.
+var shelfMediaHeight = shelfProfiles.Max(
+    profile => profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
+renderer.RenderShelf(shelfItems, shelfMediaHeight, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
 gl.Finish();
 var shelfFrame = ReadPixels(gl, shelfTarget, shelfWidth, shelfHeight);
 Composite(shelfFrame, background);

@@ -4083,7 +4083,7 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    // The 3D shelf needs only the selected support-texture path, not every metadata/media row. One
+    // The 3D shelf needs only the selected artwork paths, not every metadata/media row. One
     // bulk read keeps gamepad/grid scope construction free of the per-game GetDetails N+1 that the
     // details projections deliberately avoid. Decoding remains lazy inside the bounded shelf control.
     private void ApplyPhysicalMediaTexturePaths(IReadOnlyList<GameViewModel> viewModels)
@@ -4093,16 +4093,25 @@ public partial class MainViewModel : ViewModelBase
 
         try
         {
-            var paths = _gameDetails.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+            var textures = _gameDetails.GetSelectedMediaPaths(GameMediaKind.PhysicalMediaTexture);
+            // A keep case wears three scraped faces, not one. All three are read in the same bulk
+            // pass, for the same reason the texture always was: per-game reads here would be an
+            // N+1 across the whole scope, and the shelf only decodes the visible window anyway.
+            var backs = _gameDetails.GetSelectedMediaPaths(GameMediaKind.BoxBack);
+            var spines = _gameDetails.GetSelectedMediaPaths(GameMediaKind.BoxSpine);
             foreach (var viewModel in viewModels)
             {
                 viewModel.ApplyPhysicalMediaTexturePath(
-                    paths.TryGetValue(viewModel.Id, out var path) ? path : null);
+                    textures.TryGetValue(viewModel.Id, out var texture) ? texture : null);
+                viewModel.ApplyBoxBackPath(
+                    backs.TryGetValue(viewModel.Id, out var back) ? back : null);
+                viewModel.ApplyBoxSpinePath(
+                    spines.TryGetValue(viewModel.Id, out var spine) ? spine : null);
             }
         }
         catch (Exception ex)
         {
-            _logger.Warning($"Could not load physical-media texture paths for the shelf: {ex.Message}");
+            _logger.Warning($"Could not load physical-media artwork paths for the shelf: {ex.Message}");
         }
     }
 
@@ -5094,6 +5103,20 @@ public partial class MainViewModel : ViewModelBase
         await _shelfLaunchCompletion.Task.WaitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Keeps a launch animation that nobody is waiting for from faulting unobserved.
+    /// </summary>
+    /// <remarks>
+    /// Only reachable when save sync fails while the medium is still moving. Awaiting it there
+    /// would make a failed launch sit through the rest of the choreography before saying so.
+    /// </remarks>
+    private static void ObserveShelfLaunch(Task launch) =>
+        _ = launch.ContinueWith(
+            static completed => _ = completed.Exception,
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+
     private async Task RestorePhysicalShelfAfterLaunchAsync()
     {
         if (_shelfLaunchTransition.IsIdle)
@@ -5107,6 +5130,10 @@ public partial class MainViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(ShelfLaunchPose));
+        // Release anyone still waiting on the outward animation before taking the field over.
+        // Since the animation now runs beside save sync, a sync failure can begin the return while
+        // the launch task is still pending, and replacing the source outright would strand it.
+        _shelfLaunchCompletion?.TrySetResult();
         _shelfLaunchCompletion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         _shelfLaunchTimestamp = Stopwatch.GetTimestamp();
@@ -5156,20 +5183,36 @@ public partial class MainViewModel : ViewModelBase
                 displayTitle,
                 async cancellationToken =>
                 {
-                    beforeSync = await SyncSavesForLaunchAsync(
-                        launchGame,
-                        displayTitle,
-                        afterExit: false,
-                        cancellationToken);
+                    // The medium starts moving *beside* the cloud save sync, not after it. Both
+                    // still have to finish before the emulator starts, so the ordering guarantee is
+                    // unchanged — but a slow cloud round-trip now happens behind the choreography
+                    // instead of in front of it, which is the delay the animation exists to cover.
+                    // Non-shelf layouts take this path as an immediate no-op.
+                    var shelfLaunch = PlayPhysicalShelfLaunchAsync(game, cancellationToken);
+                    try
+                    {
+                        beforeSync = await SyncSavesForLaunchAsync(
+                            launchGame,
+                            displayTitle,
+                            afterExit: false,
+                            cancellationToken);
+                    }
+                    catch
+                    {
+                        // The launch is already failing and the caller's finally restores the
+                        // shelf. Observe the animation so its task cannot fault unobserved, but do
+                        // not wait out the remaining choreography before reporting the failure.
+                        ObserveShelfLaunch(shelfLaunch);
+                        throw;
+                    }
+
                     SetStatus(
                         beforeSync?.Status == CloudSaveSyncStatus.Failed
                             ? $"Save sync incomplete; launching {displayTitle} with the saves currently on disk…"
                             : $"Launching {displayTitle}…",
                         StatusSeverity.Progress);
-                    // Preflight and save sync have both succeeded far enough to launch. Hold the
-                    // process start until the selected physical medium reaches its insertion pose;
-                    // non-shelf layouts take this path as an immediate no-op.
-                    await PlayPhysicalShelfLaunchAsync(game, cancellationToken);
+                    // Hold the process start until the medium reaches its insertion pose.
+                    await shelfLaunch;
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.

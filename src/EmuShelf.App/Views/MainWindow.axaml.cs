@@ -60,6 +60,7 @@ public partial class MainWindow : Window
     private int _gamepadScrollGeneration;
     private double _gamepadScrollTarget;
     private int? _lastRevealedRowIndex;
+    private KeyboardShelfRotation? _keyboardRotation;
 
     public MainWindow()
     {
@@ -68,6 +69,14 @@ public partial class MainWindow : Window
         // Controller input is supplied by Steam Input as keyboard events. Capture it in the
         // tunnel before a focused game tile consumes Enter/Escape for its own button command.
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        // Held-key rotation needs the release as well as the press, and needs to see it before a
+        // focused control can swallow it.
+        AddHandler(KeyUpEvent, OnWindowKeyUp, RoutingStrategies.Tunnel);
+        // Keys stop being held the moment the window stops receiving them; without this a rotation
+        // begun with Shift+Arrow would keep spinning after an Alt-Tab. Deactivated, not LostFocus:
+        // LostFocus is a bubbling routed event, so a child control losing focus reaches the window
+        // too and would drop a rotation the player is still holding.
+        Deactivated += (_, _) => _keyboardRotation?.Stop();
         // ListBox handles pointer input internally. Observe it first so Grid and List always feed
         // the same view-model-owned desktop selection state, including right-click selection.
         AddHandler(PointerPressedEvent, OnWindowPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -997,6 +1006,12 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnWindowKeyUp(object? sender, KeyEventArgs e)
+    {
+        if (_keyboardRotation is { } rotation && rotation.Release(e.Key))
+            e.Handled = true;
+    }
+
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel || e.Source is TextBox)
@@ -1004,6 +1019,22 @@ public partial class MainWindow : Window
 
         if (viewModel.IsGamepadMode)
         {
+            // Rotation is checked first: Shift+Arrow and Shift+Enter would otherwise fall through
+            // to plain navigation and Confirm, which on Enter means launching the game.
+            if (KeyboardShelfRotation.IsRotationKey(e.Key, e.KeyModifiers))
+            {
+                _keyboardRotation ??= new KeyboardShelfRotation(viewModel.ApplyRightStickRotation);
+                e.Handled = _keyboardRotation.Press(e.Key, e.KeyModifiers);
+                return;
+            }
+
+            if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                // The keyboard's R3: return the medium to its resting three-quarter pose.
+                e.Handled = viewModel.DispatchGamepadAction(GamepadAction.ResetRotation);
+                return;
+            }
+
             // Steam Input delivers controller buttons as these keys; map them to the same logical
             // actions native pad input produces and route both through the one view-model dispatcher.
             if (MapKeyToGamepadAction(e) is { } action)
