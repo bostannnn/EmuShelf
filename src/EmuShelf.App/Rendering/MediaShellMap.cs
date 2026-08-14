@@ -64,13 +64,15 @@ public static class MediaShellMap
             MediaShell.MegaDriveCartridge, new(135f, 87f, 14.6f),
             PhysicalArtworkSlots.CartridgeSupport,
             "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
-        // A DS card is 33.4 x 35mm, and genuinely tiny beside a keep case — at true scale it is
-        // under a fifth of one's height. That is the metric contract working, not a bug. The 1.75mm
-        // depth is the asset's ratio; a real card is 3.8mm, so this model is about half as thick as
-        // it should be, and correcting that belongs in the asset rather than in a profile that
-        // would then distort it.
+        // A DS card is 33.4 x 35 x 3.8mm, and genuinely tiny beside a keep case — at true scale it
+        // is under a fifth of one's height. That is the metric contract working, not a bug.
+        // Anchored on the real 35mm height and otherwise taking the blank-template asset's own
+        // ratios, which is the rule every shell follows: a profile that disagrees with its asset
+        // does not read as a size error, it silently distorts the shell. Two known deviations, both
+        // the asset's and neither worth expressing as a stretch — it is 0.996 W/H against a real
+        // card's 0.954, so about 4% squarer, and 2.6mm thick against a real 3.8mm.
         ["nds"] = new(
-            MediaShell.DsCard, new(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport,
+            MediaShell.DsCard, new(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport,
             "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),

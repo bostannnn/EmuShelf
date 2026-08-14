@@ -293,13 +293,18 @@ public sealed class MediaShellRenderer : IDisposable
     /// <summary>Draws <paramref name="shell"/> into <paramref name="targetFramebuffer"/>.</summary>
     /// <param name="yaw">Rotation about the shell's up axis, in radians. 0 faces the viewer.</param>
     /// <param name="pitch">Rotation about the shell's right axis, in radians.</param>
+    /// <param name="materialVariant">Finish to apply, as a profile names it. Empty draws the model's
+    /// own materials. A shell whose finish is doing real work cannot be judged without it, and this
+    /// path silently drew the untinted model for long enough that a DS card kept being reviewed at
+    /// the wrong colour — this is the only view that shows a shell straight-on.</param>
     public void Render(
         MediaShell shell,
         uint targetFramebuffer,
         uint width,
         uint height,
         float yaw,
-        float pitch)
+        float pitch,
+        string materialVariant = "")
     {
         if (width == 0 || height == 0)
         {
@@ -327,7 +332,7 @@ public sealed class MediaShellRenderer : IDisposable
 
         _activePanelArt = _coverArt.GetValueOrDefault(0);
         _drawAccent = _accent;
-        _activeMaterialAppearance = MaterialVariantAppearance.Default;
+        _activeMaterialAppearance = MaterialVariantAppearance.For(materialVariant);
         var aspect = _sceneWidth / (float)_sceneHeight;
         var (view, projection, _) = Camera(resources.Asset, aspect);
         var model = Matrix4x4.CreateRotationX(pitch) * Matrix4x4.CreateRotationY(yaw);
@@ -1257,13 +1262,13 @@ public sealed class MediaShellRenderer : IDisposable
         public static MaterialVariantAppearance For(string variant) => variant switch
         {
             "ps2-black" => new(new Vector3(0.018f, 0.020f, 0.025f), 0.82f, 1.06f, 1f),
-            // A DS card's shell is black, and this model's is near-white — which only became
-            // obvious once the label stopped covering the whole face and revealed the band along
-            // the bottom that carries the release code.
-            // Mixed far harder than the case finishes: those tint an already-dark model, while this
-            // shell's plastic is near-white, and at 0.86 the surviving fraction of it still read as
-            // mid grey rather than black.
-            "ds-black" => new(new Vector3(0.021f, 0.022f, 0.026f), 0.965f, 1.02f, 1f),
+            // A light neutralising touch, like the case finishes. This was briefly a 0.965 mix
+            // toward near-black, which is worth recording as a shape of mistake rather than a
+            // number: it was compensating for a defect in the asset — a paper-grey mask haloing
+            // around the label — and repainting the whole body hid the halo by flattening the
+            // moulding with it. Brightness belongs to the shell's BodyAlbedoScale, which scales the
+            // authored colour instead of replacing it.
+            "ds-black" => new(new Vector3(0.045f, 0.045f, 0.052f), 0.12f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
