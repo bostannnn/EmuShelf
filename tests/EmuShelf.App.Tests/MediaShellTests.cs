@@ -533,14 +533,28 @@ public class MediaShellTests
             return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
         }
 
+        // The rectangle the prep was asked to clear, sampled to its very edges. Sampling the safe
+        // middle is what let an eroded mask ship: it left a ring of the original artwork exactly
+        // where this now looks.
+        const float u0 = 0.11f, u1 = 0.71f, v0 = 0.59f, v1 = 0.97f;
         var reference = Sample(0.40f, 0.78f);
-        for (var u = 0.15f; u <= 0.67f; u += 0.02f)
+        for (var u = u0; u <= u1; u += 0.01f)
         {
-            for (var v = 0.62f; v <= 0.94f; v += 0.02f)
+            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
             {
                 Assert.True(
                     Sample(u, v) == reference,
                     $"The Mega Drive label area still varies at ({u:F2},{v:F2}); artwork was not removed.");
+            }
+        }
+
+        for (var v = v0; v <= v1; v += 0.01f)
+        {
+            foreach (var u in new[] { u0, u1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The Mega Drive label edge still varies at ({u:F2},{v:F2}); the mask is too small.");
             }
         }
     }
@@ -588,14 +602,26 @@ public class MediaShellTests
             return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
         }
 
+        // As with the Mega Drive shell, this walks the requested rectangle out to its edges.
+        const float u0 = 0.06f, u1 = 0.48f, v0 = 0.03f, v1 = 0.48f;
         var reference = Sample(0.25f, 0.25f);
-        for (var u = 0.10f; u <= 0.44f; u += 0.02f)
+        for (var u = u0; u <= u1; u += 0.01f)
         {
-            for (var v = 0.07f; v <= 0.44f; v += 0.02f)
+            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
             {
                 Assert.True(
                     Sample(u, v) == reference,
                     $"The DS label island still varies at ({u:F2},{v:F2}); artwork was not removed.");
+            }
+        }
+
+        for (var v = v0; v <= v1; v += 0.01f)
+        {
+            foreach (var u in new[] { u0, u1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The DS label edge still varies at ({u:F2},{v:F2}); the mask is too small.");
             }
         }
     }

@@ -248,18 +248,26 @@ internal static class ModelPrep
     /// The rectangle is the fallback, not the preference: it has to be read off a dump by eye and a
     /// wrong one either leaves the artwork in the build or erases moulding. Prefer
     /// <see cref="ResolveNeutralImages"/> wherever a model keeps its label on its own material.
-    /// The edges are eroded by a texel so mip generation cannot smear the fill into neighbouring
-    /// islands, which is a real effect at the sizes these atlases are reduced to.
+    ///
+    /// The fill is grown a few texels beyond the requested rectangle rather than eroded inside it.
+    /// The first version eroded, reasoning that mip generation would otherwise smear the fill into
+    /// neighbouring islands — true, but it left a ring of the publisher's original artwork around
+    /// every masked label, at source resolution, in a shipped binary. Removing the artwork is the
+    /// whole purpose; a few texels of the moulding around a label is an acceptable price, and the
+    /// caller is expected to draw the rectangle tight for that reason.
     /// </remarks>
     private static void FlattenRect(
         TextureImage image,
         (byte R, byte G, byte B, byte A) fill,
         (float U0, float V0, float U1, float V1) rect)
     {
-        var x0 = Math.Clamp((int)MathF.Ceiling(rect.U0 * image.Width) + 1, 0, image.Width);
-        var x1 = Math.Clamp((int)MathF.Floor(rect.U1 * image.Width) - 1, 0, image.Width);
-        var y0 = Math.Clamp((int)MathF.Ceiling(rect.V0 * image.Height) + 1, 0, image.Height);
-        var y1 = Math.Clamp((int)MathF.Floor(rect.V1 * image.Height) - 1, 0, image.Height);
+        // Three texels at the source resolution, which survives the halving down to the runtime
+        // size with room to spare, so the requested rectangle is covered to its very edge.
+        const int bleed = 3;
+        var x0 = Math.Clamp((int)MathF.Floor(rect.U0 * image.Width) - bleed, 0, image.Width);
+        var x1 = Math.Clamp((int)MathF.Ceiling(rect.U1 * image.Width) + bleed, 0, image.Width);
+        var y0 = Math.Clamp((int)MathF.Floor(rect.V0 * image.Height) - bleed, 0, image.Height);
+        var y1 = Math.Clamp((int)MathF.Ceiling(rect.V1 * image.Height) + bleed, 0, image.Height);
 
         for (var y = y0; y < y1; y++)
         {

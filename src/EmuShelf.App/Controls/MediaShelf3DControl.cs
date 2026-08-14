@@ -33,7 +33,18 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     // entirely outside a filled frame, which turns a shelf back into a single-hero view.
     private const float ItemGap = 0.14f;
     private const float NeighbourYaw = -0.18f;
-    private const int CoverTextureCacheCapacity = 21;
+    /// <summary>
+    /// Uploaded face textures kept on the GPU, across all games.
+    /// </summary>
+    /// <remarks>
+    /// Counted in textures rather than games because a keep case uploads three — front, back and
+    /// spine — where a cartridge uploads one. The old game-based limit of 21 silently became a
+    /// ceiling of 63 textures the moment faces went independent, which at a 1024px decode is a
+    /// quarter of a gigabyte of GPU memory for something the design documents as a 21-entry cache.
+    /// The budget still comfortably exceeds the visible window, which is what keeps reversing
+    /// direction from repeating upload and mipmap work.
+    /// </remarks>
+    private const int CoverTextureBudget = 24;
     private const int PhysicalArtworkCacheCapacity = 21;
     private const int PhysicalArtworkDecodeSize = 1024;
     private const int MaximumConcurrentPhysicalArtworkDecodes = 2;
@@ -389,10 +400,16 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             }
         }
 
-        while (_uploadedCovers.Count > CoverTextureCacheCapacity && _coverLru.Last is { } oldest)
+        // Evict whole games, but measure the budget in textures: one game can be holding three.
+        var uploadedTextures = _uploadedCovers.Values.Sum(cover => cover.UploadedFaceCount);
+        while (uploadedTextures > CoverTextureBudget && _coverLru.Last is { } oldest)
         {
+            if (_uploadedCovers.Remove(oldest.Value, out var evicted))
+            {
+                uploadedTextures -= evicted.UploadedFaceCount;
+            }
+
             _renderer.RemoveCoverArt(oldest.Value);
-            _uploadedCovers.Remove(oldest.Value);
             _coverLru.RemoveLast();
         }
     }
@@ -1072,7 +1089,14 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private sealed class UploadedCover(LinkedListNode<long> node)
     {
         /// <summary>What is currently on the GPU for each face, so unchanged faces are not re-uploaded.</summary>
-        public IImage?[] Faces { get; } = new IImage?[3];
+        /// <remarks>
+        /// Sized from the renderer's own panel count rather than a second literal three, so the two
+        /// cannot drift apart across the assembly boundary.
+        /// </remarks>
+        public IImage?[] Faces { get; } = new IImage?[MediaShellRenderer.MaxPanels];
+
+        /// <summary>How many of this game's faces are actually uploaded, for the texture budget.</summary>
+        public int UploadedFaceCount => Faces.Count(face => face is not null);
 
         public LinkedListNode<long> Node { get; } = node;
     }

@@ -1263,8 +1263,15 @@ public sealed class MediaShellRenderer : IDisposable
         };
     }
 
-    /// <summary>Panels the fragment shader declares; keep in step with MAX_PANELS in pbr.frag.</summary>
-    internal const int MaxPanels = 3;
+    /// <summary>
+    /// Panels the fragment shader declares; keep in step with MAX_PANELS in pbr.frag.
+    /// </summary>
+    /// <remarks>
+    /// Public because a host has to size its own per-face bookkeeping to match, and a second
+    /// literal three on the other side of the assembly boundary is exactly the kind of pair that
+    /// drifts apart unnoticed.
+    /// </remarks>
+    public const int MaxPanels = 3;
 
     /// <summary>
     /// One game's uploaded faces. Held as a set rather than three dictionary entries so evicting a

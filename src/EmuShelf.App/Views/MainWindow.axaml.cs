@@ -73,8 +73,10 @@ public partial class MainWindow : Window
         // focused control can swallow it.
         AddHandler(KeyUpEvent, OnWindowKeyUp, RoutingStrategies.Tunnel);
         // Keys stop being held the moment the window stops receiving them; without this a rotation
-        // begun with Shift+Arrow would keep spinning after an Alt-Tab.
-        LostFocus += (_, _) => _keyboardRotation?.Stop();
+        // begun with Shift+Arrow would keep spinning after an Alt-Tab. Deactivated, not LostFocus:
+        // LostFocus is a bubbling routed event, so a child control losing focus reaches the window
+        // too and would drop a rotation the player is still holding.
+        Deactivated += (_, _) => _keyboardRotation?.Stop();
         // ListBox handles pointer input internally. Observe it first so Grid and List always feed
         // the same view-model-owned desktop selection state, including right-click selection.
         AddHandler(PointerPressedEvent, OnWindowPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);

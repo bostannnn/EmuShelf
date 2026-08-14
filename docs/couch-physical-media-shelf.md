@@ -180,7 +180,7 @@ focused game while the shelf mode is in use — rather than bloating every scrap
 **Plumbing:** `GameMediaKind.PhysicalMedia` and `PhysicalMediaTexture` map to ScreenScraper's
 `support-2D` and `support-texture` respectively. The store bulk-projects selected texture paths
 into `GameViewModel`; `MediaShelf3DControl` decodes only the focused-neighbour window off the UI
-thread and retains a bounded twenty-one-image LRU. Because ScreenScraper is already the app's
+thread and retains a bounded LRU of decoded images. Because ScreenScraper is already the app's
 sanctioned art source, these kinds add no licensing category.
 
 ### 3. Right-stick input → `MediaRotationModel`
@@ -315,8 +315,9 @@ lighting pipeline to GBA and the case family before E. Do not polish the one-her
   never below native output size. Every submitted shelf item receives its isolated 1024px PCF self-shadow
   pass, so moving focus cannot visibly flatten a cartridge that remains on screen. Games outside the
   bounded seven-item scene receive no rendering work.
-  Cover textures remain in a 21-entry GPU LRU so reversing direction does not repeat copy/upload/mipmap
-  work. Render targets grow in 256px buckets during resize, panel placements are cached with shell
+  Uploaded face textures are held to a fixed budget counted in textures rather than games — a keep
+  case uploads three where a cartridge uploads one — so reversing direction does not repeat
+  copy/upload/mipmap work without letting a scraped row multiply GPU memory by three. Render targets grow in 256px buckets during resize, panel placements are cached with shell
   resources, and profile material variants tune body tint/roughness/reflectance over shared geometry.
   These are renderer/control policies, inherited by every physical-media profile.
 - Interaction gate: one d-pad step visibly carries the old, selected and next media through the same scene;
