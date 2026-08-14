@@ -257,6 +257,69 @@ public class MediaShellTests
         Assert.Equal(asset.Size.Z / asset.Size.Y, profileDepthRatio, 0.03f * profileDepthRatio);
     }
 
+    /// <summary>
+    /// The launch lift must stay inside the frame the shelf camera actually shows.
+    /// </summary>
+    /// <remarks>
+    /// These two were tuned independently and silently disagreed: the camera now pulls back only as
+    /// far as the tallest medium requires, so the headroom above a cartridge is a fraction of what
+    /// it was under the old fixed distance, and a lift sized for that distance carried the medium
+    /// out through the top of the frame on its way up. Checked at 16:10 as well as 16:9 because the
+    /// Steam Deck's shorter panel is the tighter of the two.
+    /// </remarks>
+    [Theory]
+    [InlineData(1280f / 800f)]
+    [InlineData(1920f / 1080f)]
+    public void LaunchChoreography_StaysInsideTheShelfCameraFrame(float aspect)
+    {
+        var profile = MediaShellMap.ProfileForSystem("snes", 1.43);
+        var asset = MediaShellCatalog.Load(profile.Shell);
+        var band = profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits;
+        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(aspect, band);
+        var viewProjection = view * projection;
+
+        var transition = new PhysicalShelfLaunchTransitionModel();
+        transition.Start(1, MediaRotationModel.RestYaw, MediaRotationModel.RestPitch);
+
+        var highest = float.NegativeInfinity;
+        for (var step = 0; step < 400 && !transition.IsCommitted; step++)
+        {
+            transition.Update(16d);
+            var pose = transition.Pose;
+            var model = EmuShelf.Rendering.MediaShellRenderer.ShelfModel(
+                new EmuShelf.Rendering.MediaShelfRenderItem(
+                    1, profile, 0f, 1f, pose.Yaw, pose.Pitch, Vector3.One,
+                    pose.VerticalOffset, pose.DepthOffset, pose.Scale),
+                asset);
+
+            foreach (var corner in Corners(asset.BoundsMin, asset.BoundsMax))
+            {
+                var world = Vector3.Transform(corner, model);
+                var clip = Vector4.Transform(new Vector4(world, 1f), viewProjection);
+                highest = MathF.Max(highest, clip.Y / clip.W);
+            }
+        }
+
+        // Only the top edge: the medium is supposed to leave through the bottom on insertion.
+        Assert.True(
+            highest <= 1f,
+            $"The medium reached {highest:F3} of the frame's half-height; above 1.0 it is clipped.");
+    }
+
+    private static IEnumerable<Vector3> Corners(Vector3 min, Vector3 max)
+    {
+        foreach (var x in new[] { min.X, max.X })
+        {
+            foreach (var y in new[] { min.Y, max.Y })
+            {
+                foreach (var z in new[] { min.Z, max.Z })
+                {
+                    yield return new Vector3(x, y, z);
+                }
+            }
+        }
+    }
+
     [Fact]
     public void MetricProfile_UsesAThinCoverCardForUnauthoredSystems()
     {

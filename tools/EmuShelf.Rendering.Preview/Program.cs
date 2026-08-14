@@ -163,7 +163,11 @@ for (var index = 0; index < shelfProfiles.Length; index++)
 
 var shelfTarget = CreateTargetFramebuffer(gl, (uint)shelfWidth, (uint)shelfHeight);
 stopwatch.Restart();
-renderer.RenderShelf(shelfItems, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
+// The acceptance composition deliberately mixes a keep case with cartridges, so the tallest medium
+// in it is what the shared camera frames — exactly as the app frames a whole library view.
+var shelfMediaHeight = shelfProfiles.Max(
+    profile => profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
+renderer.RenderShelf(shelfItems, shelfMediaHeight, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
 gl.Finish();
 var shelfFrame = ReadPixels(gl, shelfTarget, shelfWidth, shelfHeight);
 Composite(shelfFrame, background);

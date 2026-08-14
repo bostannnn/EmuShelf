@@ -50,6 +50,25 @@ public sealed class MediaShellRenderer : IDisposable
     private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
     private const float FocusLift = 0.035f;
 
+    /// <summary>
+    /// Fraction of the viewport height the tallest medium in the library view fills.
+    /// </summary>
+    /// <remarks>
+    /// This is the knob for "the cartridges are too small". The camera was previously fixed at a
+    /// distance chosen for a 190mm keep case, so a SNES cartridge — barely 40% of that height —
+    /// occupied under a third of the frame with the rest left empty above and below. That is worst
+    /// on a Steam Deck, where the panel is short to begin with.
+    ///
+    /// It is deliberately framed against the tallest medium in the whole library view rather than
+    /// the visible window, so relative physical scale still holds — a keep case beside a cartridge
+    /// still dwarfs it — while the world does not zoom as items scroll past. Raising this fills the
+    /// frame further and pushes the neighbouring media off its edges; that is the trade.
+    /// </remarks>
+    private const float ShelfFrameFill = 0.50f;
+
+    /// <summary>How far the camera sits above the media band's centre, as a fraction of distance.</summary>
+    private const float ShelfCameraElevation = 0.075f;
+
     /// <summary>How far the focused medium steps toward the camera.</summary>
     /// <remarks>
     /// Shared with the shadow pass on purpose. These were two separate literals, and the shadow
@@ -300,8 +319,11 @@ public sealed class MediaShellRenderer : IDisposable
     /// Draws the bounded row of visible games through one fixed camera. Item scale comes from real
     /// dimensions, so focus changes move media through one world instead of reframing each object.
     /// </summary>
+    /// <param name="mediaHeightInShelfUnits">Height of the tallest medium in the whole library
+    /// view, not just the visible window, so the camera does not zoom as items scroll past.</param>
     public void RenderShelf(
         IReadOnlyList<MediaShelfRenderItem> items,
+        float mediaHeightInShelfUnits,
         uint targetFramebuffer,
         uint width,
         uint height)
@@ -323,7 +345,7 @@ public sealed class MediaShellRenderer : IDisposable
         _gl.Disable(EnableCap.CullFace);
 
         var aspect = _sceneWidth / (float)_sceneHeight;
-        var (view, projection, cameraPosition) = ShelfCamera(aspect);
+        var (view, projection, cameraPosition) = ShelfCamera(aspect, mediaHeightInShelfUnits);
         var viewProjection = view * projection;
 
         _shelfDrawItems.Clear();
@@ -393,7 +415,7 @@ public sealed class MediaShellRenderer : IDisposable
         DrawResources(resources);
     }
 
-    private static Matrix4x4 ShelfModel(MediaShelfRenderItem item, ModelAsset asset)
+    internal static Matrix4x4 ShelfModel(MediaShelfRenderItem item, ModelAsset asset)
     {
         var profile = item.Profile;
         var focus = Math.Clamp(item.FocusAmount, 0f, 1f);
@@ -430,16 +452,30 @@ public sealed class MediaShellRenderer : IDisposable
     internal static float ExposureForFocus(float focusAmount) =>
         float.Lerp(NeighbourExposure, 1f, Math.Clamp(focusAmount, 0f, 1f));
 
-    private static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(float aspect)
+    /// <summary>
+    /// One product-photography camera for the whole world, pulled back only as far as the tallest
+    /// medium in the library view requires.
+    /// </summary>
+    /// <remarks>
+    /// The lens stays long and the distance does the framing, so the media keep the near-parallel
+    /// edges product photography wants; only the empty space around them changes. Aiming at the
+    /// centre of the media band rather than a fixed height is what removes the lopsided gap above
+    /// the cartridges — the band, not the world origin, is what the viewer is looking at.
+    /// </remarks>
+    internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
+        float aspect, float mediaHeightInShelfUnits)
     {
-        // One product-photography camera for the whole world. At this distance a 190mm keep case
-        // occupies a little over half the viewport height; smaller media retain their true ratio.
-        // A modest elevation reveals the transparent receiving plane enough for contact shadows
-        // without introducing the wide-angle top-down distortion product photography avoids.
-        var cameraPosition = new Vector3(0f, 0.22f, 4.6f);
-        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, -0.15f, 0f), Vector3.UnitY);
+        var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
         var fovY = FieldOfViewDegrees * MathF.PI / 180f;
-        var projection = Matrix4x4.CreatePerspectiveFieldOfView(fovY, aspect, 0.1f, 12f);
+        var distance = band / ShelfFrameFill * 0.5f / MathF.Tan(fovY * 0.5f);
+
+        var centreY = ShelfBaselineY + (band * 0.5f);
+        var cameraPosition = new Vector3(0f, centreY + (distance * ShelfCameraElevation), distance);
+        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, centreY, 0f), Vector3.UnitY);
+        // Near/far follow the distance now that it is no longer fixed; the old 0.1..12 pair would
+        // clip the shelf's far neighbours once the camera moved in.
+        var projection = Matrix4x4.CreatePerspectiveFieldOfView(
+            fovY, aspect, MathF.Max(0.05f, distance * 0.2f), distance + 8f);
         return (view, projection, cameraPosition);
     }
 

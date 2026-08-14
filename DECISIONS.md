@@ -6600,3 +6600,41 @@ capped at 4.1. Metal and Software remain behind it in the list, so a Mac whose G
 degrades instead of failing to start. Windows (ANGLE) and Linux are unaffected. If general UI
 rendering later proves to suffer on macOS, the escape route is a Metal backend for
 `EmuShelf.Rendering`, not reverting this — reverting returns macOS to flat covers.
+
+## 2026-08-14 — The shelf camera frames the tallest medium on show, not a fixed distance
+
+The camera sat at a fixed distance chosen for a 190mm keep case. A SNES cartridge is 77.5mm, so it
+filled under a third of the viewport height with the rest left empty — worse than it sounds, because
+the camera also aimed at a fixed height rather than at the media, which put more of that emptiness
+above the cartridges than below. On a Steam Deck's short panel it was the dominant impression.
+
+`ShelfCamera` now takes the height of the tallest medium in the library view and solves for the
+distance that makes it fill `ShelfFrameFill` (0.50) of the viewport, aiming at the centre of the
+media band. Deliberately the tallest in the *whole view* rather than the visible window: relative
+physical scale still holds, a keep case beside a cartridge still dwarfs it, and nothing zooms as
+items scroll past. `ItemGap` tightens from 0.20 to 0.14 because at the old spacing a filled frame
+pushed the neighbours entirely off its edges, which turns a shelf back into a single-hero view.
+`ShelfFrameFill` is the knob; raising it fills more and shows less of the neighbours.
+
+This exposed a coupling that was never explicit: the launch choreography's lift and depth had been
+sized against the old fixed distance and now carried the medium out through the top of the frame.
+They are reduced to suit, and `MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame`
+now walks the whole sequence, projects the medium's corners through the real camera at 16:10 and
+16:9, and fails if the top edge leaves the frame. The launch model's own test drops its absolute
+magnitude assertions and keeps the relationships; magnitudes belong with the camera that decides
+them.
+
+## 2026-08-14 — A cartridge with no scraped label wears the missing-artwork placeholder
+
+An unlabelled cartridge previously showed a flat accent-coloured rectangle, which reads as an
+unfinished render rather than as a cartridge nobody has scraped art for. `CartridgeLabelPlaceholder`
+draws the vocabulary the 2D grid already uses for a missing cover — platform medallion, "ARTWORK
+MISSING", system name — onto a label-shaped canvas, so the same absence looks like the same thing in
+both views. Authored at 2.93:1 to match the SNES label panel, so the shell's `ArtFit.Cover` has
+nothing to crop.
+
+It depends only on the platform, never on the game, so it is drawn once per system and cached. It is
+warmed on the UI thread when the shelf's item list changes and only read during a GL frame, because
+creating it touches Avalonia's rendering stack and the GL frame is not guaranteed to be on the UI
+thread. This supersedes the earlier "missing art leaves an accent-coloured blank label" behaviour;
+the guardrail it served — never crop portrait box art onto a cartridge — is unchanged.

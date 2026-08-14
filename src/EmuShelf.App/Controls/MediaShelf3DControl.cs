@@ -11,6 +11,7 @@ using Avalonia.OpenGL.Controls;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using EmuShelf.App.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Rendering;
@@ -28,7 +29,9 @@ namespace EmuShelf.App.Controls;
 public sealed class MediaShelf3DControl : OpenGlControlBase
 {
     private const int NeighbourRadius = 3;
-    private const float ItemGap = 0.20f;
+    // Tightened alongside the camera's closer framing: at the old gap the neighbouring media fell
+    // entirely outside a filled frame, which turns a shelf back into a single-hero view.
+    private const float ItemGap = 0.14f;
     private const float NeighbourYaw = -0.18f;
     private const int CoverTextureCacheCapacity = 21;
     private const int PhysicalArtworkCacheCapacity = 21;
@@ -72,6 +75,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private int _observedEnd = -1;
     private int _activePhysicalArtworkDecodes;
     private int _focusedIndex = -1;
+    private float _sceneMediaHeight = 1f;
     private int _preparationGeneration;
     private GL? _gl;
     private MediaShellRenderer? _renderer;
@@ -228,7 +232,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
             var renderItems = BuildRenderItems();
             SynchronizeArtworkTextures(renderItems);
-            _renderer.RenderShelf(renderItems, (uint)fb, width, height);
+            _renderer.RenderShelf(renderItems, _sceneMediaHeight, (uint)fb, width, height);
         }
         catch (Exception exception)
         {
@@ -409,9 +413,31 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return decoded.Image;
         }
 
-        // A cartridge with no selected/decoded support texture deliberately keeps its authored
-        // accent label. Portrait box art is packaging, not a cartridge-label fallback.
-        return null;
+        // A cartridge with no selected/decoded support texture wears the blank-label placeholder:
+        // platform medallion and "artwork missing", the same vocabulary the 2D grid uses. Portrait
+        // box art is packaging and is still never cropped onto a cartridge label.
+        return CartridgeLabelPlaceholder.TryGet(game.SystemId);
+    }
+
+    /// <summary>
+    /// Draws the blank labels for the systems on this shelf, on the UI thread, so the GL frame can
+    /// take them straight from the cache.
+    /// </summary>
+    private void WarmLabelPlaceholders()
+    {
+        if (Items is null)
+        {
+            return;
+        }
+
+        foreach (var game in Items)
+        {
+            if ((game.ShelfMediaProfile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) != 0)
+            {
+                CartridgeLabelPlaceholder.Warm(
+                    game.SystemId, game.SystemName, game.ShelfAccent, game.PlatformArtwork);
+            }
+        }
     }
 
     internal static ShelfArtworkKind ArtworkKindFor(
@@ -473,14 +499,23 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         }
 
         var cursor = 0f;
+        var tallest = 0f;
         foreach (var game in Items)
         {
-            var width = game.ShelfMediaProfile.WidthInShelfUnits;
+            var profile = game.ShelfMediaProfile;
+            var width = profile.WidthInShelfUnits;
             var centre = cursor + (width * 0.5f);
             _layout.Add(new LayoutEntry(game, centre));
             _gamesByKey[game.Id] = game;
             cursor += width + ItemGap;
+            // The camera frames the tallest medium in the whole view, not the visible window, so
+            // scrolling a mixed row past a keep case cannot make the world zoom.
+            tallest = MathF.Max(
+                tallest, profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
         }
+
+        _sceneMediaHeight = tallest;
+        WarmLabelPlaceholders();
 
         _focusedIndex = FocusedItem is null ? -1 : IndexOf(Items, FocusedItem);
         PruneDecodedPhysicalArtwork();

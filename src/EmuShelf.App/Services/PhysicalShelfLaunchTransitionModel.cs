@@ -38,8 +38,13 @@ public sealed class PhysicalShelfLaunchTransitionModel
     internal const double InsertDurationMilliseconds = 620d;
     internal const double ReturnDurationMilliseconds = 480d;
 
-    private const float HeroLift = 0.24f;
-    private const float HeroDepth = 0.42f;
+    // Sized against the shelf camera's framing, not against the world. The camera now pulls back
+    // only as far as the tallest medium needs, so the headroom above a cartridge is a fraction of
+    // what it was; a lift tuned for the old fixed distance pushed the medium out of the top of the
+    // frame on the way up. Insertion still travels far enough to leave the frame entirely.
+    private const float HeroLift = 0.10f;
+    private const float HeroDepth = 0.16f;
+    private const float AlignDepth = 0.145f;
     private const float HeroScale = 1.10f;
     private const float InsertedVerticalOffset = -0.86f;
     private const float InsertedDepthOffset = 0.08f;
@@ -183,7 +188,7 @@ public sealed class PhysicalShelfLaunchTransitionModel
                 FullTurns * MathF.Tau,
                 eased),
             Pitch = Lerp(MediaRotationModel.RestPitch, InsertionPitch, eased),
-            DepthOffset = Lerp(HeroDepth, 0.38f, eased),
+            DepthOffset = Lerp(HeroDepth, AlignDepth, eased),
             Scale = Lerp(HeroScale, 1.08f, eased),
         };
         if (t >= 1f)
@@ -206,7 +211,7 @@ public sealed class PhysicalShelfLaunchTransitionModel
             Yaw = InsertionYaw,
             Pitch = InsertionPitch,
             VerticalOffset = Lerp(HeroLift, InsertedVerticalOffset, eased),
-            DepthOffset = Lerp(_reducedMotion ? HeroDepth : 0.38f, InsertedDepthOffset, eased),
+            DepthOffset = Lerp(_reducedMotion ? HeroDepth : AlignDepth, InsertedDepthOffset, eased),
             Scale = Lerp(_reducedMotion ? HeroScale : 1.08f, 1f, eased),
         };
         if (t >= 1f)
