@@ -61,6 +61,17 @@ public enum PhysicalArtworkSlots
 /// <param name="CutCorner">Diagonal bite taken out of the panel's bottom-left corner, as a fraction
 /// of its shorter edge. A DS label is cut there so it clears the card's thumb notch, and squaring
 /// that corner is one of the details that stops a card reading as a DS card.</param>
+/// <param name="ArtFit">How artwork whose shape does not match this panel is fitted to it. Per
+/// panel rather than per shell because one shell's panels are not one shape: a keep case's front
+/// really is the same proportions as the box scan, while its spine is a 14mm strip beside a 135mm
+/// sleeve, and stretching a scan onto both cannot be right for both.</param>
+/// <param name="MaxSurfaceDepth">Overrides <see cref="MediaShellDefinition.PanelDepthFraction"/>
+/// for this one panel, in canonical object units — the shell is one unit tall, so 0.0053 is a
+/// millimetre on a 190mm case. Null takes the shell's figure, which is the right default: expressed
+/// against the shell's own thickness it keeps a label off the interior of any cartridge without
+/// being retuned. An override is for the panel that needs a bound far tighter than "not the far
+/// side of the shell" — a keep case's sleeve has to stop at the fillet, roughly a millimetre in,
+/// where the shell's own fraction would allow five.</param>
 /// <param name="TopWrap">Fraction of the printed sheet's height that folds over the shell's top
 /// face rather than lying on this panel's own face. A Mega Drive label is one 75 x 68mm sticker
 /// whose top 7.7mm wraps over the cartridge's top edge — that strip is the title you read on a
@@ -75,14 +86,22 @@ public readonly record struct ArtPanel(
     float MaxV,
     float CornerRadius = 0f,
     float CutCorner = 0f,
+    ArtFit ArtFit = ArtFit.Stretch,
+    float? MaxSurfaceDepth = null,
     float TopWrap = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
-    public static ArtPanel Full(ArtFace face, float inset = 0f) =>
-        new(face, -1f + inset, 1f - inset, -1f + inset, 1f - inset);
+    public static ArtPanel Full(
+        ArtFace face,
+        float inset = 0f,
+        ArtFit fit = ArtFit.Stretch,
+        float? maxSurfaceDepth = null) =>
+        new(
+            face, -1f + inset, 1f - inset, -1f + inset, 1f - inset,
+            ArtFit: fit, MaxSurfaceDepth: maxSurfaceDepth);
 }
 
-/// <summary>How artwork whose shape does not match a panel's is fitted to it.</summary>
+/// <summary>How artwork whose shape does not match an <see cref="ArtPanel"/>'s is fitted to it.</summary>
 /// <remarks>
 /// This matters because a keep case's sleeve really is the same shape as the box scan the scraper
 /// returns, while a cartridge label is landscape and the scan is portrait. Stretching the latter
@@ -128,7 +147,6 @@ public enum ArtFace
 /// <param name="PanelRoughness">Roughness the printed panels take, overriding the shell's own map.
 /// A paper sleeve behind a keep case's clear overlay is far glossier than a cartridge's printed
 /// label, and that difference is most of what distinguishes the two materials on screen.</param>
-/// <param name="ArtFit">How a cover whose shape does not match the panel is fitted.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
 /// <param name="PanelDepthFraction">How far behind a panel's plane a surface may lie and still be
 /// printed, as a fraction of the shell's extent along that panel's normal. A panel is a decal on
@@ -159,7 +177,6 @@ public sealed record MediaShellDefinition(
     ArtPanel CoverPanel,
     IReadOnlyList<ArtPanel> ExtraPanels,
     float PanelRoughness,
-    ArtFit ArtFit,
     bool FlattenPanelNormal,
     float PanelDepthFraction = 0.40f,
     float BodyRoughnessScale = 1f,

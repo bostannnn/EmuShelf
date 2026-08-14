@@ -213,7 +213,13 @@ Credit is given here and the models keep their authorship metadata inside the `.
   remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
-  Bundled as `disc-keep-case.glb`.
+  Bundled as `disc-keep-case.glb`. The download's base-colour map is a scan of a retail Mortal
+  Kombat: Armageddon sleeve — front, back and spine — which the author's CC BY licence does not
+  cover. EmuShelf flattens that map to the case's own moulded plastic colour, leaving none of that
+  artwork in the build. Only the base colour is flattened: this model's normal and metallic/roughness
+  maps carry the case's ribs, hinge, seams and scuffs rather than an embossing of the sleeve, and
+  they ship byte-identical to the author's. Canonical orientation, metric scaling and per-game sleeve
+  art are applied at runtime. Original authorship and license metadata remain embedded in the GLB.
 
 These models are not affiliated with or endorsed by Nintendo, Sony, or any console
 manufacturer, and no console manufacturer's branding is used as EmuShelf's own.

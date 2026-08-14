@@ -878,6 +878,13 @@ public class MediaShellTests
         Assert.Equal(label.MinU, strip.Value.MinU, 3);
         Assert.Equal(label.MaxU, strip.Value.MaxU, 3);
 
+        // Anything describing how the sheet is printed has to survive the crease. A strip built
+        // fresh would take ArtFit.Stretch while the face takes Cover, and the two halves of one
+        // label would then be cropping the same scan differently.
+        Assert.Equal(label.ArtFit, strip.Value.ArtFit);
+        Assert.Equal(label.MaxSurfaceDepth, strip.Value.MaxSurfaceDepth);
+        Assert.Equal(0f, strip.Value.TopWrap);
+
         var front = MediaShellCatalog.Place(label, model);
         var placement = MediaShellCatalog.Place(strip.Value, model);
 

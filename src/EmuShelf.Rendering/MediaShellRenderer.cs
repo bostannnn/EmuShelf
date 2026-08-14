@@ -837,12 +837,15 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
             _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
-            // The allowance is authored against the shell's thickness on this axis, so one figure
-            // covers a 6mm cartridge and a 14mm keep case without being retuned per shell.
+            // The shell's allowance is authored against its thickness on this axis, so one figure
+            // covers a 6mm cartridge and a 14mm keep case without being retuned per shell. A panel
+            // that has been measured against its own face overrides it outright, in the same
+            // object-space units.
             _program.Set(
                 $"uPanelMaxDepth[{i}]",
-                definition.PanelDepthFraction
-                * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
+                panel.Panel.MaxSurfaceDepth
+                ?? definition.PanelDepthFraction
+                    * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.
@@ -852,7 +855,7 @@ public sealed class MediaShellRenderer : IDisposable
             // Fit the artwork to the whole printed sheet first, then hand this panel its slice of
             // it. For every flat panel the slice is the whole sheet and this is the old centred
             // sub-rectangle; for a folded label it is what keeps the crease continuous.
-            var crop = ArtCrop(definition.ArtFit, panel.SheetAspect, art?.Aspect ?? 1f);
+            var crop = ArtCrop(panel.Panel.ArtFit, panel.SheetAspect, art?.Aspect ?? 1f);
             _program.Set(
                 $"uPanelArtScale[{i}]", new Vector2(crop.X, crop.Y * panel.ArtSpanScale));
             _program.Set(
