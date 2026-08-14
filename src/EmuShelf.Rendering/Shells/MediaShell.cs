@@ -58,13 +58,17 @@ public enum PhysicalArtworkSlots
 /// <param name="MinV">Bottom edge, as a fraction of the shell's half-height.</param>
 /// <param name="MaxV">Top edge, in the same units.</param>
 /// <param name="CornerRadius">Rounded-corner radius as a fraction of the panel's shorter edge.</param>
+/// <param name="CutCorner">Diagonal bite taken out of the panel's bottom-left corner, as a fraction
+/// of its shorter edge. A DS label is cut there so it clears the card's thumb notch, and squaring
+/// that corner is one of the details that stops a card reading as a DS card.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
     float MaxU,
     float MinV,
     float MaxV,
-    float CornerRadius = 0f)
+    float CornerRadius = 0f,
+    float CutCorner = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(ArtFace face, float inset = 0f) =>

@@ -831,6 +831,7 @@ public sealed class MediaShellRenderer : IDisposable
                 $"uPanelAspect[{i}]",
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
+            _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.
@@ -1259,7 +1260,10 @@ public sealed class MediaShellRenderer : IDisposable
             // A DS card's shell is black, and this model's is near-white — which only became
             // obvious once the label stopped covering the whole face and revealed the band along
             // the bottom that carries the release code.
-            "ds-black" => new(new Vector3(0.021f, 0.022f, 0.026f), 0.86f, 1.02f, 1f),
+            // Mixed far harder than the case finishes: those tint an already-dark model, while this
+            // shell's plastic is near-white, and at 0.86 the surviving fraction of it still read as
+            // mid grey rather than black.
+            "ds-black" => new(new Vector3(0.021f, 0.022f, 0.026f), 0.965f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),

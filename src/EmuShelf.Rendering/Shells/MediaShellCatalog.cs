@@ -151,7 +151,8 @@ public static class MediaShellCatalog
             // notch. Filling the face, which is what a symmetric inset does, loses that band and is
             // most of why the card did not read as a DS card.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.81f, 0.81f, -0.68f, 0.86f, CornerRadius: 0.05f),
+                ArtFace.Front, -0.81f, 0.81f, -0.68f, 0.86f,
+                CornerRadius: 0.05f, CutCorner: 0.20f),
             ExtraPanels: [],
             PanelRoughness: 0.44f,
             ArtFit: ArtFit.Cover,
