@@ -99,10 +99,20 @@ public static class MediaShellCatalog
             // Measured from the model's own label mesh — it keeps the label on a separate material
             // named "sticker", so the artwork slot is the plate's real bounds rather than a
             // rectangle guessed against the moulding. It sits right of centre and reaches the top
-            // edge because the authored plate does; the shader's facing test keeps art off the part
-            // that wraps over the top.
+            // edge because the authored plate does.
+            // The plate does not stop there: dark_igorek modelled the fold a real NES label makes
+            // over the top of the shell, and it measures out at 57.5 x 90.7mm on the front with a
+            // 7.3mm fold — against a published 55 x 90..91mm plus a 7.19mm fold. Nothing reaches
+            // that fold by projection, so before TopWrap it kept the blank plate's paper grey and
+            // read as a pale lip along the top of every cartridge.
+            // 0.865 of the half-depth is where the fold's own far edge sits, measured from the front
+            // plane rather than from the fold's length — the two differ, because the plate starts
+            // slightly behind the shell's front-most moulding. Past it the label ends and the
+            // recess floor it sits in is exposed, so raising this paints plastic; NesLabelWrap
+            // covers both directions.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.985f, CornerRadius: 0.03f),
+                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.985f,
+                CornerRadius: 0.03f, TopWrap: 0.865f),
             ExtraPanels: [],
             PanelRoughness: 0.42f,
             ArtFit: ArtFit.Cover,
@@ -394,13 +404,15 @@ public static class MediaShellCatalog
         var (vMin, vMax) = Span(panel.MinV, panel.MaxV, vAxis, centre, half);
 
         // The face sits at the model's far edge along the normal.
-        var planeOffset = Vector3.Dot(centre, normal) + MathF.Abs(Vector3.Dot(half, normal));
+        var halfAlongNormal = MathF.Abs(Vector3.Dot(half, normal));
+        var planeOffset = Vector3.Dot(centre, normal) + halfAlongNormal;
 
         return new ArtPanelPlacement(
             Origin: (uAxis * uMin) + (vAxis * vMin) + (normal * planeOffset),
             UEdge: uAxis * (uMax - uMin),
             VEdge: vAxis * (vMax - vMin),
-            Normal: normal);
+            Normal: normal,
+            WrapDepth: panel.TopWrap * halfAlongNormal);
     }
 
     private static (float Min, float Max) Span(
@@ -426,8 +438,12 @@ public static class MediaShellCatalog
 /// <c>Origin + u*UEdge + v*VEdge</c> for u and v in 0..1, on the face pointing along
 /// <see cref="Normal"/>.
 /// </summary>
+/// <param name="WrapDepth">How far past the face's plane, along <see cref="Normal"/>, the print
+/// carries on over the top edge. Object-space distance, so the shader can bound the fold without
+/// knowing the model's size. Zero for a label that stops at the face.</param>
 public readonly record struct ArtPanelPlacement(
     Vector3 Origin,
     Vector3 UEdge,
     Vector3 VEdge,
-    Vector3 Normal);
+    Vector3 Normal,
+    float WrapDepth = 0f);

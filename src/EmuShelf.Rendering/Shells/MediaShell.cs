@@ -61,6 +61,11 @@ public enum PhysicalArtworkSlots
 /// <param name="CutCorner">Diagonal bite taken out of the panel's bottom-left corner, as a fraction
 /// of its shorter edge. A DS label is cut there so it clears the card's thumb notch, and squaring
 /// that corner is one of the details that stops a card reading as a DS card.</param>
+/// <param name="TopWrap">How far the print carries on over the shell's top edge, as a fraction of
+/// the half-extent along the face's normal. An NES label is one sheet folded over the top of the
+/// cartridge — the strip that carries the title when carts are shelved — and the model reproduces
+/// that fold as geometry the face's own projection cannot reach. Zero, the default, means a label
+/// that stops at the face, which is every other shell.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
@@ -68,7 +73,8 @@ public readonly record struct ArtPanel(
     float MinV,
     float MaxV,
     float CornerRadius = 0f,
-    float CutCorner = 0f)
+    float CutCorner = 0f,
+    float TopWrap = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(ArtFace face, float inset = 0f) =>

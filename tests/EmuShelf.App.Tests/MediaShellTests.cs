@@ -5,6 +5,7 @@ using EmuShelf.App.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Library;
+using EmuShelf.Rendering.Models;
 using EmuShelf.Rendering.Shells;
 
 namespace EmuShelf.App.Tests;
@@ -489,6 +490,66 @@ public class MediaShellTests
                     $"The NES label plate still varies at byte {offset}; its source artwork was not flattened.");
             }
         }
+    }
+
+    /// <summary>
+    /// The NES cover panel's wrap must span the label's fold and stop at the moulding behind it.
+    /// </summary>
+    /// <remarks>
+    /// A real NES label is one sheet folded over the top of the cartridge, and dark_igorek modelled
+    /// that fold: 7.3mm of plate that leaves the front face and runs back over the shell. No
+    /// projection onto the front reaches it, so it kept the blank plate's paper grey and read as a
+    /// pale lip along the top of every cartridge — visible at the shelf's own rest pitch, and a full
+    /// white band as soon as the player tilted up.
+    ///
+    /// The constant that fixes it is bounded on both sides and neither bound is guessable, which is
+    /// why it is measured here rather than trusted: too short leaves a paper line along the fold's
+    /// far edge, and too long paints the recess floor the label sits in, carrying the print past
+    /// where the label actually ends. Both are sub-millimetre, so both survive a glance at a render.
+    /// </remarks>
+    [Fact]
+    public void NesLabelWrap_SpansTheFoldWithoutReachingTheMouldingBehindIt()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.NesCartridge);
+        var placement = MediaShellCatalog.Place(
+            MediaShellCatalog.Definition(MediaShell.NesCartridge).CoverPanel, model);
+
+        // Distance behind the panel's plane, the same quantity the shader bounds the wrap by.
+        float Behind(Vector3 position) =>
+            -Vector3.Dot(position - placement.Origin, placement.Normal);
+
+        var stickerMaterial = model.Materials
+            .Select((material, index) => (material, index))
+            .Single(entry => string.Equals(
+                entry.material.Name, "sticker", StringComparison.OrdinalIgnoreCase))
+            .index;
+
+        var fold = 0f;
+        foreach (var mesh in model.Meshes.Where(mesh => mesh.MaterialIndex == stickerMaterial))
+        {
+            for (var i = 0; i < mesh.Vertices.Length; i += MeshGeometry.FloatsPerVertex)
+            {
+                var normal = new Vector3(
+                    mesh.Vertices[i + 3], mesh.Vertices[i + 4], mesh.Vertices[i + 5]);
+                // The flat front plate is what the panel already covers; the rest is the fold.
+                if (Vector3.Normalize(normal).Z <= 0.95f)
+                {
+                    fold = MathF.Max(
+                        fold,
+                        Behind(new Vector3(mesh.Vertices[i], mesh.Vertices[i + 1], mesh.Vertices[i + 2])));
+                }
+            }
+        }
+
+        Assert.True(fold > 0f, "The NES label plate has no fold; the asset is not the one measured here.");
+        Assert.True(
+            placement.WrapDepth >= fold,
+            $"The wrap stops {(fold - placement.WrapDepth) * 135f:F2}mm short of the fold's far edge, "
+                + "which leaves the blank plate showing along the top of the cartridge.");
+        // Half a millimetre on a 135mm cartridge. Past the fold there is only the recess floor.
+        Assert.True(
+            placement.WrapDepth <= fold + (0.5f / 135f),
+            $"The wrap runs {(placement.WrapDepth - fold) * 135f:F2}mm past the fold onto the moulding.");
     }
 
     /// <summary>

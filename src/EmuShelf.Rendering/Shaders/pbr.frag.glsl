@@ -55,6 +55,10 @@ uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
 // Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
 uniform float uPanelCutCorner[MAX_PANELS];
+// How far behind the panel's plane the print carries on over the shell's top edge, in object-space
+// units. An NES label is a single sheet folded over the top of the cartridge, and that fold is
+// modelled geometry the face's own projection cannot reach. Zero for every label that stops flat.
+uniform float uPanelWrapDepth[MAX_PANELS];
 // Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
 // a landscape cartridge label without being squashed.
 uniform vec2 uPanelArtScale[MAX_PANELS];
@@ -261,15 +265,36 @@ void main()
         // the normal map must not punch holes in the label's edge, and the model's rotation must
         // not move the label onto another face.
         float facing = dot(normalize(vObjectNormal), uPanelNormal[i]);
-        if (facing < 0.5)
+
+        // The fold: geometry above the panel's top edge that has turned away from the face and run
+        // back over the shell, within the authored depth of the wrap. It is bounded by depth rather
+        // than by how far the normal has turned, because the fold is a curve — a facing threshold
+        // strict enough to exclude the moulding also leaves a pale hairline along the fold line.
+        float vLength = max(length(vEdge), 1e-8);
+        float wrapV = uPanelWrapDepth[i] / vLength;
+        float behind = -dot(local, uPanelNormal[i]);
+        bool onWrap = wrapV > 0.0 && v > 1.0 && behind <= uPanelWrapDepth[i];
+        if (facing < 0.5 && !onWrap)
         {
             continue;
         }
 
+        // Unrolled, the printed sheet is one rounded rectangle creased at v = 1 rather than two
+        // shapes meeting there, so the mask must not fall off at the crease — doing that left a
+        // half-masked row of plate along the fold on every cartridge. Rounding then lands on the
+        // sheet's four real corners: the bottom of the front and the far end of the fold.
+        float vMask = onWrap ? 1.0 + (behind / vLength) : v;
+        // The print still stops at the crease, and the fold carries its top row — what a folded
+        // sheet shows. Scraped art has nothing else to offer: no provider publishes a separate
+        // cartridge-top image. Off the wrap v is left alone, so a panel's top edge samples exactly
+        // as it did, including the antialiased row past it, where an out-of-range v is what makes
+        // the art fall back to the tint.
+        float vArt = onWrap ? 1.0 : v;
+
         float aspect = max(uPanelAspect[i], 1e-4);
         float corner = clamp(uPanelCornerRadius[i], 0.0, 0.499);
-        vec2 panelPoint = (vec2(u, v) - 0.5) * vec2(aspect, 1.0);
-        vec2 halfSize = vec2(aspect * 0.5, 0.5);
+        vec2 panelPoint = vec2((u - 0.5) * aspect, vMask - 0.5 - (wrapV * 0.5));
+        vec2 halfSize = vec2(aspect * 0.5, 0.5 + (wrapV * 0.5));
         vec2 rounded = abs(panelPoint) - (halfSize - vec2(corner));
         float edgeDistance = length(max(rounded, vec2(0.0)))
             + min(max(rounded.x, rounded.y), 0.0) - corner;
@@ -294,7 +319,7 @@ void main()
         if (uPanelHasArt[i] > 0.5)
         {
             // v runs bottom-up in object space and top-down in image space.
-            vec2 uv = vec2(u, 1.0 - v);
+            vec2 uv = vec2(u, 1.0 - vArt);
             uv = ((uv - 0.5) * uPanelArtScale[i]) + 0.5;
             if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
             {
@@ -306,7 +331,9 @@ void main()
         baseColor.rgb = mix(baseColor.rgb, art.rgb, panelMask);
         roughness = mix(roughness, uPanelRoughness, panelMask);
         metallic = mix(metallic, 0.0, panelMask);
-        if (uPanelFlattenNormal > 0.5)
+        // The fold keeps its own normal: it genuinely points up and over the shell, and flattening
+        // it to the front face would light a horizontal strip as though it faced the camera.
+        if (uPanelFlattenNormal > 0.5 && !onWrap)
         {
             N = normalize(mix(N, normalize(uNormalMatrix * uPanelNormal[i]), panelMask));
         }

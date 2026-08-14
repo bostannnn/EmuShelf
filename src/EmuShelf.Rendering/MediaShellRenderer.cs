@@ -832,6 +832,7 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
             _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
+            _program.Set($"uPanelWrapDepth[{i}]", placement.WrapDepth);
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.

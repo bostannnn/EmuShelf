@@ -6838,3 +6838,46 @@ to generate it. Generating is attractive here and not a fudge: a jewel case is a
 lip and a sleeve window, `MediaShellCatalog` already builds the cover card procedurally, and a
 generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
 route rather than taken, because it is a shell rather than an asset swap.
+
+## 2026-08-14 — An NES label folds over the top of the cartridge, and the print folds with it
+
+Every NES cartridge wore a pale lip along its top edge, on the shelf's own rest pose and as a full
+white band the moment the player tilted up. The shell was not at fault. dark_igorek's model
+reproduces a real NES label, which is **one printed sheet folded over the top of the shell** — the
+strip that carries the title when carts are shelved — and it measures out at 57.5 x 90.7mm on the
+front with a 7.3mm fold, against a published 55 x 90..91mm plus a 7.19mm fold. It is the only
+authored shell whose label leaves the front face.
+
+`ArtPanel` could only describe a rectangle on one face, so nothing reached the fold, and it kept the
+paper grey the prep flattened the Battletoads plate to. The facing test in `pbr.frag.glsl` was
+documented as keeping art off the wrap; it did, and that was the thing left unfinished rather than
+the fix.
+
+**The fold now carries the top row of the front print**, via a `TopWrap` depth on the panel. That is
+what a folded sheet actually shows — the label's top band continuing over the edge — and it needs no
+new asset. The alternative, scraping a separate cartridge-top image, was rejected: no provider
+publishes one (a real fold carries the game title, so the honest equivalent is a transparent logo
+asset), and it would mean a second scrape, cache and failure mode for a 7mm strip.
+
+Three details that are not obvious from the description:
+
+- **The wrap is bounded by depth, not by how far the surface normal has turned.** The fold is a
+  curve, and any facing threshold strict enough to exclude the moulding leaves a paper hairline
+  along the crease.
+- **The bound is measured from the panel's plane, not from the fold's length.** Those differ — the
+  plate starts slightly behind the shell's front-most moulding — and taking the fold's own 7.3mm
+  left the last 0.6mm of it blank. `NesLabelWrap_SpansTheFoldWithoutReachingTheMouldingBehindIt`
+  measures both bounds off the asset, because too short leaves a paper line and too long paints the
+  recess floor the label sits in, and both are sub-millimetre and survive a glance at a render.
+- **The mask treats the sheet as unrolled, and only the artwork stops at the crease.** Two attempts
+  failed the same way before this one landed. Masking the fold separately from the face leaves
+  `v = 1` as a mask boundary in the middle of continuous print, and the antialiased row there showed
+  as a half-masked line of plate along the whole crease — subtle enough to be mistaken for a
+  specular highlight on the bend, which is exactly what happened. Squaring the panel's top corners
+  fixed the wedges that a rounded top left at each end of the fold, but not that line. Unrolling
+  does both: one rounded rectangle, creased at `v = 1`, so nothing falls off at the crease and the
+  rounding lands on the sheet's four real corners — the bottom of the front and the far end of the
+  fold. The print still stops at the crease; only the mask carries on.
+
+The fold also keeps its own shading normal rather than being flattened to the face, since it
+genuinely points up and over the shell.
