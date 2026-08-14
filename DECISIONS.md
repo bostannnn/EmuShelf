@@ -6638,3 +6638,28 @@ warmed on the UI thread when the shelf's item list changes and only read during 
 creating it touches Avalonia's rendering stack and the GL frame is not guaranteed to be on the UI
 thread. This supersedes the earlier "missing art leaves an accent-coloured blank label" behaviour;
 the guardrail it served — never crop portrait box art onto a cartridge — is unchanged.
+
+## 2026-08-14 — The SNES label rectangle is set by eye, and that is not a shortcut
+
+The decal was authored at -0.80/0.80/0.02/0.93 of the shell's half-extents. Once the missing-artwork
+placeholder gave the label a visible edge, it was obvious it overhung the moulded recess — a flat
+accent tint had no border to compare against the moulding, so the mismatch had shipped unseen.
+
+Two attempts to derive the recess from the asset failed, and the reasons are worth recording so the
+next person does not repeat them. By depth: the shell's front is a single near-flat surface carrying
+almost no vertices, so there is no depth step to detect — a large quad needs four corners. By UV:
+the label's atlas island is shared with geometry elsewhere on the body, and front-facing triangles
+sampling it span the full height and both faces. That second finding also casts doubt on
+`SnesModelPrep.RemoveSourcePlaceholder`, which neutralizes that island in all three PBR maps and may
+therefore be flattening authored detail well beyond the label; the base-colour map measures 89.5%
+uniform, which is consistent with it. Open, not fixed here.
+
+So the rectangle was corrected against rendered frames on real hardware, converging on
+-0.765/0.765/0.01/0.93. The overhang turned out to be almost entirely horizontal; the authored
+vertical extent was nearly right. A temporary `EMUSHELF_LABEL_PANEL` environment override carried
+the iteration so each attempt cost a restart rather than a rebuild, and was removed once the value
+landed.
+
+The durable lesson is the ordering: the placeholder label was what made the fit measurable at all.
+Any future shell's artwork slot should be dialled in against a bordered placeholder rather than a
+tinted one, for the same reason.

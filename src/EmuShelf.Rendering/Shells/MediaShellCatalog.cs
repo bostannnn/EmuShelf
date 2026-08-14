@@ -51,8 +51,14 @@ public static class MediaShellCatalog
             // The source's fixed placeholder label is neutralized in the runtime derivative. Game
             // art is projected onto the real label area while the surrounding moulding, screws,
             // contacts and their authored PBR maps remain visible.
+            // Set against a rendered frame, because the recess cannot be derived from the asset:
+            // the shell's front is one near-flat surface with almost no vertices, and its label UV
+            // island is shared with geometry elsewhere on the body. The placeholder label was what
+            // made the fit legible at all — a flat accent tint has no edge to compare against the
+            // moulding. The overhang was almost entirely horizontal, so the authored vertical
+            // extent is nearly intact while the width comes in from 0.80. Confirmed on hardware.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.80f, 0.80f, 0.02f, 0.93f, CornerRadius: 0.075f),
+                ArtFace.Front, -0.765f, 0.765f, 0.01f, 0.93f, CornerRadius: 0.075f),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
             // A portrait box scan cropped to the landscape label beats the same scan squashed.
