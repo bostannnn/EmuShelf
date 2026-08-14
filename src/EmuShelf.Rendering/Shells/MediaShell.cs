@@ -72,6 +72,12 @@ public enum PhysicalArtworkSlots
 /// being retuned. An override is for the panel that needs a bound far tighter than "not the far
 /// side of the shell" — a keep case's sleeve has to stop at the fillet, roughly a millimetre in,
 /// where the shell's own fraction would allow five.</param>
+/// <param name="TopWrap">Fraction of the printed sheet's height that folds over the shell's top
+/// face rather than lying on this panel's own face. A Mega Drive label is one 75 x 68mm sticker
+/// whose top 7.7mm wraps over the cartridge's top edge — that strip is the title you read on a
+/// shelved cartridge, and it is why <see cref="MaxV"/> for such a label is the shell's own top edge
+/// rather than a margin below it. The renderer derives the folded strip's own panel from this, so
+/// the two stay one continuous print. Zero leaves the panel flat, which is every other shell.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
@@ -81,7 +87,8 @@ public readonly record struct ArtPanel(
     float CornerRadius = 0f,
     float CutCorner = 0f,
     ArtFit ArtFit = ArtFit.Stretch,
-    float? MaxSurfaceDepth = null)
+    float? MaxSurfaceDepth = null,
+    float TopWrap = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(
@@ -123,6 +130,9 @@ public enum ArtFace
 
     /// <summary>-X, the spine of a keep case.</summary>
     Spine,
+
+    /// <summary>+Y, the edge a cartridge label folds over. Its second axis runs front to back.</summary>
+    Top,
 }
 
 /// <summary>Everything the renderer needs to turn one .glb into a framed, art-bearing hero.</summary>

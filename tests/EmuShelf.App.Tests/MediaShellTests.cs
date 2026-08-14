@@ -283,6 +283,35 @@ public class MediaShellTests
     }
 
     /// <summary>
+    /// The cartridges stand beside each other in the size order the real things do.
+    /// </summary>
+    /// <remarks>
+    /// The gap the proportion test cannot see. A Mega Drive profile recorded 135 x 87mm for a
+    /// 109 x 70mm cartridge; both have the same 1.553 ratio, so the shell was never distorted and
+    /// nothing failed — it just stood a quarter too big, taller on the shelf than the SNES
+    /// cartridge it is comfortably shorter than in life. Ratios check shape; only a measurement
+    /// checks size, and on a shelf that shows several media at once size is the whole point.
+    /// </remarks>
+    [Fact]
+    public void MetricProfiles_OrderTheCartridgesAsTheRealOnesStand()
+    {
+        var nes = MediaShellMap.ProfileForSystem("nes", 0.72);
+        var snes = MediaShellMap.ProfileForSystem("snes", 1.43);
+        var megaDrive = MediaShellMap.ProfileForSystem("megadrive", 1.43);
+        var gba = MediaShellMap.ProfileForSystem("gba", 1.42);
+
+        Assert.Equal(109f, megaDrive.DimensionsMillimetres.X, 1f);
+        Assert.Equal(70f, megaDrive.DimensionsMillimetres.Y, 1f);
+
+        // A cartridge that is 70mm tall cannot out-rank a 135mm NES or a 77.5mm SNES cartridge,
+        // and it is still comfortably bigger than a Game Pak.
+        Assert.True(megaDrive.HeightInShelfUnits < nes.HeightInShelfUnits);
+        Assert.True(megaDrive.HeightInShelfUnits < snes.HeightInShelfUnits);
+        Assert.True(megaDrive.HeightInShelfUnits > gba.HeightInShelfUnits);
+        Assert.True(megaDrive.WidthInShelfUnits < snes.WidthInShelfUnits);
+    }
+
+    /// <summary>
     /// A profile's measured dimensions must agree with the proportions of the asset it describes.
     /// </summary>
     /// <remarks>
@@ -799,6 +828,162 @@ public class MediaShellTests
             Assert.InRange(corner.X, model.BoundsMin.X - 0.001f, model.BoundsMax.X + 0.001f);
             Assert.InRange(corner.Y, model.BoundsMin.Y - 0.001f, model.BoundsMax.Y + 0.001f);
         }
+    }
+
+    /// <summary>
+    /// The Mega Drive label is placed from the printed sticker's own measurements.
+    /// </summary>
+    /// <remarks>
+    /// A Mega Drive label is a 75 x 68mm sheet on a 109 x 70mm cartridge whose top 7.7mm folds over
+    /// the top edge. Those figures fix the panel completely, and the first rectangle disagreed with
+    /// every one of them: a seventh too wide, and stopping short of the top edge the sheet actually
+    /// runs over. Ranges rather than equalities, because the shell's rounded sides mean its
+    /// bounding box is slightly wider than the flat face the label is stuck to.
+    /// </remarks>
+    [Fact]
+    public void MegaDriveCoverPanel_MatchesARealCartridgeLabel()
+    {
+        var label = MediaShellCatalog.Definition(MediaShell.MegaDriveCartridge).CoverPanel;
+
+        Assert.Equal(ArtFace.Front, label.Face);
+        Assert.Equal(-label.MaxU, label.MinU, 3);
+        // 75mm of a 109mm cartridge, which is what leaves the bare plastic shoulders either side.
+        Assert.Equal(75f / 109f, label.MaxU, 0.03f);
+        // The sheet runs over the top edge, so the panel ends there rather than at a margin below.
+        Assert.Equal(1f, label.MaxV, 3);
+        // 60.3mm of front label down a 70mm face, leaving the moulded band along the bottom.
+        Assert.Equal(-1f + (2f * (1f - (60.3f / 70f))), label.MinV, 0.03f);
+        Assert.Equal(7.7f / 68f, label.TopWrap, 0.02f);
+    }
+
+    /// <summary>
+    /// The folded strip continues the front label across the top edge, at the same printed scale.
+    /// </summary>
+    /// <remarks>
+    /// Two things make this a fold rather than a second sticker. It starts exactly at the front
+    /// edge, so no plastic shows in the crease; and its length comes from the front panel's height
+    /// and the fold fraction rather than from the model's depth, because this asset is about 12mm
+    /// deep where a real cartridge is 17mm and a strip sized against it would print the title
+    /// smaller than the label it belongs to.
+    /// </remarks>
+    [Fact]
+    public void WrapPanel_ContinuesTheLabelOverTheTopEdgeAtTheSamePrintedScale()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var label = MediaShellCatalog.Definition(MediaShell.MegaDriveCartridge).CoverPanel;
+
+        var strip = MediaShellCatalog.TryWrapPanel(label, model);
+        Assert.NotNull(strip);
+        Assert.Equal(ArtFace.Top, strip!.Value.Face);
+        Assert.Equal(label.MinU, strip.Value.MinU, 3);
+        Assert.Equal(label.MaxU, strip.Value.MaxU, 3);
+
+        // Anything describing how the sheet is printed has to survive the crease. A strip built
+        // fresh would take ArtFit.Stretch while the face takes Cover, and the two halves of one
+        // label would then be cropping the same scan differently.
+        Assert.Equal(label.ArtFit, strip.Value.ArtFit);
+        Assert.Equal(label.MaxSurfaceDepth, strip.Value.MaxSurfaceDepth);
+        Assert.Equal(0f, strip.Value.TopWrap);
+
+        var front = MediaShellCatalog.Place(label, model);
+        var placement = MediaShellCatalog.Place(strip.Value, model);
+
+        // On the top face, running backwards from the front edge, and the same width as the label.
+        Assert.Equal(Vector3.UnitY, placement.Normal);
+        Assert.Equal(model.BoundsMax.Y, placement.Origin.Y, 3);
+        Assert.Equal(model.BoundsMax.Z, placement.Origin.Z, 3);
+        Assert.Equal(-1f, Vector3.Normalize(placement.VEdge).Z, 3);
+        Assert.Equal(front.UEdge.Length(), placement.UEdge.Length(), 3);
+        Assert.True(placement.VEdge.Length() <= model.Size.Z + 0.001f);
+
+        // One sheet: the strip is to the face what 7.7mm is to 60.3mm of a real label.
+        var expected = front.VEdge.Length() * label.TopWrap / (1f - label.TopWrap);
+        Assert.Equal(expected, placement.VEdge.Length(), 0.001f);
+    }
+
+    [Fact]
+    public void WrapPanel_IsOnlyProducedForALabelThatFolds()
+    {
+        foreach (var shell in MediaShellCatalog.All)
+        {
+            var panel = MediaShellCatalog.Definition(shell).CoverPanel;
+            if (shell == MediaShell.MegaDriveCartridge)
+            {
+                continue;
+            }
+
+            Assert.Equal(0f, panel.TopWrap);
+            Assert.Null(MediaShellCatalog.TryWrapPanel(panel, MediaShellCatalog.Load(shell)));
+        }
+    }
+
+    /// <summary>
+    /// Every shell fits the panel budget the fragment shader declares.
+    /// </summary>
+    /// <remarks>
+    /// A folding label costs a panel of its own, so the budget is no longer just the authored
+    /// panels. The renderer resolves this when it uploads a shell, which is on the GL thread inside
+    /// a frame — a definition that overran would surface as a broken render rather than as anything
+    /// anyone could read. Counted here so it fails at the desk instead.
+    /// </remarks>
+    [Fact]
+    public void EveryShell_FitsTheShaderPanelBudget()
+    {
+        foreach (var shell in MediaShellCatalog.All)
+        {
+            var definition = MediaShellCatalog.Definition(shell);
+            var model = MediaShellCatalog.Load(shell);
+            var folds = MediaShellCatalog.TryWrapPanel(definition.CoverPanel, model) is not null;
+
+            var panels = 1 + definition.ExtraPanels.Count + (folds ? 1 : 0);
+            Assert.True(
+                panels <= EmuShelf.Rendering.MediaShellRenderer.MaxPanels,
+                $"{shell} needs {panels} panels against a budget of "
+                + $"{EmuShelf.Rendering.MediaShellRenderer.MaxPanels}.");
+        }
+    }
+
+    /// <summary>
+    /// A fold is only meaningful on the front face, and asking for one elsewhere is not silent.
+    /// </summary>
+    /// <remarks>
+    /// The strip runs backwards from the shell's front edge. A fold requested on the back or the
+    /// spine would be laid down against the wrong edge and would take the front label's share of
+    /// the printed sheet with it — a wrong picture rather than a missing one, which is the kind
+    /// that ships.
+    /// </remarks>
+    [Theory]
+    [InlineData(ArtFace.Back)]
+    [InlineData(ArtFace.Spine)]
+    [InlineData(ArtFace.Top)]
+    public void WrapPanel_RefusesToFoldAnythingButAFrontLabel(ArtFace face)
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var panel = new ArtPanel(face, -0.5f, 0.5f, -0.5f, 1f, TopWrap: 0.1f);
+
+        Assert.Throws<ArgumentException>(() => MediaShellCatalog.TryWrapPanel(panel, model));
+    }
+
+    /// <summary>
+    /// A folding label's artwork is fitted to the whole sheet, not to the part of it left on show.
+    /// </summary>
+    /// <remarks>
+    /// Cropping a portrait box scan to the front panel and then folding a tenth of that away would
+    /// crop the picture twice, losing the top of the art the fold was supposed to carry.
+    /// </remarks>
+    [Fact]
+    public void SheetAspect_DescribesTheWholeLabelIncludingTheFold()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var label = MediaShellCatalog.Definition(MediaShell.MegaDriveCartridge).CoverPanel;
+        var front = MediaShellCatalog.Place(label, model);
+
+        var sheet = MediaShellCatalog.TrySheetAspect(label, model);
+        Assert.NotNull(sheet);
+
+        var faceOnly = front.UEdge.Length() / front.VEdge.Length();
+        Assert.True(sheet!.Value < faceOnly, "A sheet that folds is taller than the face it covers.");
+        Assert.Equal(faceOnly * (1f - label.TopWrap), sheet.Value, 0.001f);
     }
 
     [Fact]

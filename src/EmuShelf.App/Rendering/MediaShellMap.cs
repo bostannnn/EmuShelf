@@ -56,14 +56,17 @@ public static class MediaShellMap
         ["nes"] = new(
             MediaShell.NesCartridge, new(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport,
             "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
-        // 135 x 87mm is a Mega Drive cartridge, and the asset's own W/H of 1.553 agrees with it to
-        // three decimals. The depth is the asset's 14.6mm rather than a real cart's ~16mm, taken
-        // from the model's ratio for the same reason as NES: a profile that disagrees with its
-        // asset does not read as a size error, it silently distorts the shell.
+        // 109 x 70mm, not the 135 x 87mm first recorded here. Both carry the asset's W/H of 1.553,
+        // which is why the error survived the proportion test and why the shell was never
+        // distorted — it was simply a quarter too big, standing taller than a SNES cartridge that
+        // really is a head taller than it. Ratio agreement checks shape, not size; only a
+        // measurement does that. The depth is the asset's 11.8mm rather than a real cart's ~17mm,
+        // taken from the model's ratio for the same reason as NES: a profile that disagrees with
+        // its asset does not read as a size error, it silently distorts the shell.
         ["megadrive"] = new(
-            MediaShell.MegaDriveCartridge, new(135f, 87f, 14.6f),
+            MediaShell.MegaDriveCartridge, new(109f, 70f, 11.8f),
             PhysicalArtworkSlots.CartridgeSupport,
-            "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
+            "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
         // A DS card is 33.4 x 35 x 3.8mm, and genuinely tiny beside a keep case — at true scale it
         // is under a fifth of one's height. That is the metric contract working, not a bug.
         // Anchored on the real 35mm height and otherwise taking the blank-template asset's own
