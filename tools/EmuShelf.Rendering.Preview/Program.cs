@@ -36,6 +36,9 @@ if (prepModel is not null)
         ArgumentValue("--neutral-material"),
         ArgumentValue("--neutral-rect"),
         ArgumentValue("--neutral-fill"),
+        // "base" leaves the model's own normal and metallic/roughness maps alone, for a shell whose
+        // surface detail is the object's moulding rather than an embossing of the removed artwork.
+        ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
         args.Contains("--bake-vertex-colours"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
@@ -65,8 +68,12 @@ Directory.CreateDirectory(outputDirectory);
     ("turned", -1.05f, -0.06f),
     ("spine", -1.48f, 0f),
     ("back", MathF.PI, 0f),
-    ("top-edge", -0.3f, -0.85f),
-    ("bottom-edge", -0.3f, 0.85f),
+    // Pitch tips the shell, not the camera: a positive angle rolls its top towards the viewer, so
+    // that is the pose that shows the top edge. These two carried each other's names, and a render
+    // of a cartridge's underside filed as "top-edge" is a good way to conclude a label that folds
+    // over the top is not drawing at all.
+    ("top-edge", -0.3f, 0.85f),
+    ("bottom-edge", -0.3f, -0.85f),
 ];
 
 Console.WriteLine("Creating a surfaceless EGL context...");
@@ -155,6 +162,31 @@ foreach (var candidate in MediaShellCatalog.All)
         $"  {Slug(candidate),-16} W/H {size.X / size.Y:F3}  D/H {size.Z / size.Y:F3}");
 }
 
+// Declared before the per-shell sheet because that sheet needs each shell's finish. Without it the
+// turntable draws the model's own plastic, so a shell whose profile is doing part of the colouring
+// gets reviewed at the wrong colour — and the turntable is the only straight-on view there is.
+var shelfProfiles = new[]
+{
+    // These mirror EmuShelf.App.Rendering.MediaShellMap, which the tool cannot reference — the
+    // renderer deliberately knows nothing about consoles. Keep them in step by hand: this list had
+    // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
+    // proportions the app had already stopped using.
+    new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
+    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
+    // Inside the frame for the same reason as the Mega Drive below. Appended last it fell off the
+    // right-hand edge of the acceptance shot, which was already observed once while reviewing it.
+    new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge of
+    // the acceptance shot, which is how it kept a profile a quarter too big for a whole milestone.
+    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
+    new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
+};
+var finishes = shelfProfiles.ToDictionary(
+    profile => profile.Shell, profile => profile.MaterialVariant);
+
 var sheetColumns = poses.Length;
 var shells = MediaShellCatalog.All.ToArray();
 var sheet = new byte[width * sheetColumns * height * shells.Length * 4];
@@ -166,7 +198,9 @@ for (var row = 0; row < shells.Length; row++)
     {
         var (name, yaw, pitch) = poses[column];
         stopwatch.Restart();
-        renderer.Render(shell, target, (uint)width, (uint)height, yaw, pitch);
+        renderer.Render(
+            shell, target, (uint)width, (uint)height, yaw, pitch,
+            finishes.GetValueOrDefault(shell, string.Empty));
         gl.Finish();
         var frame = ReadPixels(gl, target, width, height);
         Composite(frame, background);
@@ -186,29 +220,20 @@ Console.WriteLine($"  {sheetPath}");
 // Phase 1 acceptance image: unlike the per-shell turntable above, this exercises the app's shared
 // camera, measured profiles, common baseline and multi-item draw path. The selected keep case is
 // deliberately flanked by SNES and GBA cartridges so relative physical scale is visible at a glance.
-var shelfProfiles = new[]
-{
-    // These mirror EmuShelf.App.Rendering.MediaShellMap, which the tool cannot reference — the
-    // renderer deliberately knows nothing about consoles. Keep them in step by hand: this list had
-    // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
-    // proportions the app had already stopped using.
-    new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
-    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
-    new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
-    new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
-    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(135f, 87f, 14.6f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
-    new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-};
 var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
-var shelfAnchor = shelfCentres[3];
+// Named, not positional, for the reason the art-free slot below already is: inserting the Game Boy
+// cartridge shifted every index after SNES, and a positional anchor would have silently re-centred
+// the acceptance shot on a different medium.
+var shelfFocus = Array.FindIndex(shelfProfiles, profile => profile.Shell == MediaShell.SnesCartridge);
+var shelfAnchor = shelfCentres[shelfFocus];
 var shelfItems = new List<MediaShelfRenderItem>(shelfProfiles.Length);
 for (var index = 0; index < shelfProfiles.Length; index++)
 {
     var key = 100L + index;
     // Leave one cartridge art-free to keep the authored empty-shell fallback in every review.
-    if (index != 4 && !args.Contains("--no-cover"))
+    // Named rather than numbered: this was a positional index, and reordering the list to bring the
+    // Mega Drive into frame silently moved the art-free slot onto the very shell being reviewed.
+    if (shelfProfiles[index].Shell != MediaShell.GbaCartridge && !args.Contains("--no-cover"))
     {
         renderer.SetCoverArt(key, TestCover.Create());
     }
@@ -223,9 +248,9 @@ for (var index = 0; index < shelfProfiles.Length; index++)
         key,
         shelfProfiles[index],
         shelfCentres[index] - shelfAnchor,
-        index == 3 ? 1f : 0f,
-        index == 3 ? -0.28f : -0.18f,
-        index == 3 ? -0.06f : 0f,
+        index == shelfFocus ? 1f : 0f,
+        index == shelfFocus ? -0.28f : -0.18f,
+        index == shelfFocus ? -0.06f : 0f,
         itemAccent));
 }
 
