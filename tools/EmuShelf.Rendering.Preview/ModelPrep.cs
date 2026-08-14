@@ -34,6 +34,7 @@ internal static class ModelPrep
         string? neutralMaterial,
         string? neutralRect,
         string? neutralFill,
+        bool singleInstance,
         int maxTextureSize)
     {
         var rect = ParseRect(neutralRect);
@@ -55,6 +56,11 @@ internal static class ModelPrep
         var json = Encoding.UTF8.GetString(source, 20, jsonLength).TrimEnd('\0', ' ');
         var root = JsonNode.Parse(json)?.AsObject() ?? throw new InvalidDataException("Empty GLB JSON.");
         var binStart = 20 + jsonLength + 8;
+
+        if (singleInstance)
+        {
+            KeepOneInstance(root);
+        }
 
         var views = root["bufferViews"]!.AsArray();
         var images = root["images"]!.AsArray();
@@ -144,6 +150,43 @@ internal static class ModelPrep
             var imageIndex = textures[textureIndex.Value]?["source"]?.GetValue<int>();
             if (imageIndex is not null) result[imageIndex.Value] = fill;
         }
+    }
+
+    /// <summary>
+    /// Leaves only the first mesh-bearing node drawable, for a file that ships several copies of the
+    /// same object.
+    /// </summary>
+    /// <remarks>
+    /// The DS download is four identical cards laid out in a row by node matrices, so loading it
+    /// as-is draws four cartridges. The duplicates lose their <c>mesh</c> reference rather than
+    /// being deleted: the loader walks every logical node and skips those without one, so this
+    /// needs no index remapping anywhere — and index remapping across meshes, accessors and buffer
+    /// views is precisely where a prep step goes quietly wrong. The orphaned vertex data stays in
+    /// the buffer; it is a fraction of a file whose bulk is textures, and nothing references it.
+    /// </remarks>
+    private static void KeepOneInstance(JsonObject root)
+    {
+        var kept = false;
+        var dropped = 0;
+        foreach (var node in root["nodes"]?.AsArray() ?? [])
+        {
+            var entry = node!.AsObject();
+            if (!entry.ContainsKey("mesh"))
+            {
+                continue;
+            }
+
+            if (!kept)
+            {
+                kept = true;
+                continue;
+            }
+
+            entry.Remove("mesh");
+            dropped++;
+        }
+
+        Console.WriteLine($"  kept one instance, detached {dropped} duplicate node(s)");
     }
 
     private static (float U0, float V0, float U1, float V1)? ParseRect(string? value)

@@ -129,6 +129,25 @@ public static class MediaShellCatalog
             ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
+        // satchii_'s DS card, reduced to one instance: the download is four cards laid out in a
+        // row by node matrices, and loading it whole draws four cartridges. Its node transforms
+        // already stand the card upright — the raw accessor bounds suggest otherwise and that
+        // misread cost a wrong rotation — so it needs only a half turn to bring the label side
+        // round from -Z, where the contact pins are not.
+        [MediaShell.DsCard] = new MediaShellDefinition(
+            MediaShell.DsCard,
+            "EmuShelf.Rendering.Assets.ds-card.glb",
+            Matrix4x4.CreateRotationY(MathF.PI),
+            MaxTextureSize: 1024,
+            // A DS label covers nearly the whole face. Unusually for these shells the geometry
+            // carries no label of its own: the source's Super Mario 64 artwork sits in the atlas but
+            // no triangle samples it, so the card renders blank and the panel has a clean surface.
+            CoverPanel: ArtPanel.Full(ArtFace.Front, inset: 0.06f) with { CornerRadius = 0.06f },
+            ExtraPanels: [],
+            PanelRoughness: 0.44f,
+            ArtFit: ArtFit.Cover,
+            FlattenPanelNormal: true),
+
         [MediaShell.GbaCartridge] = new MediaShellDefinition(
             MediaShell.GbaCartridge,
             "EmuShelf.Rendering.Assets.gba-cartridge.glb",

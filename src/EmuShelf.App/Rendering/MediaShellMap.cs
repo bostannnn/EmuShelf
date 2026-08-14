@@ -19,6 +19,7 @@ public static class MediaShellMap
         ["gba"] = MediaShell.GbaCartridge,
         ["nes"] = MediaShell.NesCartridge,
         ["megadrive"] = MediaShell.MegaDriveCartridge,
+        ["nds"] = MediaShell.DsCard,
 
         // One temporary geometry family, four distinct profiles. PS1 (jewel case), Dreamcast
         // (jewel case) and PSP (UMD case) remain cover cards until those shells are authored.
@@ -64,6 +65,14 @@ public static class MediaShellMap
             MediaShell.MegaDriveCartridge, new(135f, 87f, 14.6f),
             PhysicalArtworkSlots.CartridgeSupport,
             "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
+        // A DS card is 33.4 x 35mm, and genuinely tiny beside a keep case — at true scale it is
+        // under a fifth of one's height. That is the metric contract working, not a bug. The 1.75mm
+        // depth is the asset's ratio; a real card is 3.8mm, so this model is about half as thick as
+        // it should be, and correcting that belongs in the asset rather than in a profile that
+        // would then distort it.
+        ["nds"] = new(
+            MediaShell.DsCard, new(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport,
+            "ds-white", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

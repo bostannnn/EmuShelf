@@ -36,6 +36,7 @@ if (prepModel is not null)
         ArgumentValue("--neutral-material"),
         ArgumentValue("--neutral-rect"),
         ArgumentValue("--neutral-fill"),
+        args.Contains("--single-instance"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }

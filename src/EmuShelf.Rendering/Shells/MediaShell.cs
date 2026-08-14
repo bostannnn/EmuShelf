@@ -26,6 +26,9 @@ public enum MediaShell
     /// <summary>The Mega Drive/Genesis ROM cartridge.</summary>
     MegaDriveCartridge,
 
+    /// <summary>The Nintendo DS game card.</summary>
+    DsCard,
+
     /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
     DiscKeepCase,
 }

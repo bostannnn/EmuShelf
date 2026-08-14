@@ -6777,3 +6777,32 @@ Two things the first attempt got wrong, both worth recording because they will r
 
 The shell renders with no Sonic artwork on any face, and a test samples well inside the masked
 rectangle and requires it to be flat, so the artwork cannot return unnoticed.
+
+## 2026-08-14 — The DS card ships as one instance of four, and its artwork was hiding in plain sight
+
+`MediaShell.DsCard`, mapped from `nds`, and the hardest of the four supplied models — for reasons
+that all turned out to be different from what the measurements suggested.
+
+**It is not lying on its side.** Raw accessor bounds say the card is flat with its thickness on Y,
+which is what the inventory recorded and what sent the first attempt looking for a pitch rotation.
+The node matrices already stand it up: loaded, it is 0.960 W/H against a real card's 33.4x35mm. The
+lesson generalises — read bounds after node transforms, or do not trust them.
+
+**Only one of the four copies may load.** The file is four cards in a row, placed by node matrices,
+and `GlbLoader` walks every logical node, so a scene-level edit would not have helped. `ModelPrep`
+detaches the duplicates by clearing their `mesh` reference: the loader skips a node without one, so
+nothing is deleted and no mesh, accessor or buffer-view index moves. Index remapping across those
+three arrays is exactly where a prep step goes quietly wrong. The orphaned vertex data stays in the
+buffer, which is a fraction of a file whose bulk is textures.
+
+**Its game artwork is real but unreachable.** The Super Mario 64 label is plainly in the atlas, and
+not one triangle of any of the four copies samples it — the card renders blank on both faces, which
+is why two renders looked like the prep had failed before that was understood. It is masked anyway.
+What the licence turns on is the publisher's artwork being inside the shipped binary, not whether a
+camera can see it, and an unsampled island is one re-export away from becoming a visible one.
+
+Recorded and not fixed: the model is about half a real card's thickness (1.75mm against 3.8mm). The
+profile takes the asset's ratio rather than the true figure, because a profile that disagrees with
+its asset distorts the shell instead of resizing it. Correcting this belongs in the asset. Also
+worth expecting: at true scale a DS card is under a fifth of a keep case's height, and will look
+tiny beside one. That is the metric contract working as designed.

@@ -218,6 +218,7 @@ public class MediaShellTests
     [InlineData("gba", MediaShell.GbaCartridge)]
     [InlineData("nes", MediaShell.NesCartridge)]
     [InlineData("megadrive", MediaShell.MegaDriveCartridge)]
+    [InlineData("nds", MediaShell.DsCard)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
@@ -234,7 +235,6 @@ public class MediaShellTests
     [InlineData("dreamcast")]
     [InlineData("psp")]
     [InlineData("arcade")]
-    [InlineData("nds")]
     public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
         Assert.Null(MediaShellMap.ForSystem(systemId));
 
@@ -278,6 +278,7 @@ public class MediaShellTests
     [InlineData("snes")]
     [InlineData("nes")]
     [InlineData("megadrive")]
+    [InlineData("nds")]
     [InlineData("playstation2")]
     [InlineData("playstation3")]
     [InlineData("gamecube")]
@@ -516,6 +517,61 @@ public class MediaShellTests
                 Assert.True(
                     Sample(u, v) == reference,
                     $"The Mega Drive label area still varies at ({u:F2},{v:F2}); artwork was not removed.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The DS download is four cards in one file; only one may reach the scene.
+    /// </summary>
+    /// <remarks>
+    /// Regression test for the dedupe. Loading the source whole draws four cartridges side by side,
+    /// and the duplicates are detached by clearing their node's mesh reference rather than deleting
+    /// anything, so this also guards against a prep that silently stops detaching them.
+    /// </remarks>
+    [Fact]
+    public void Load_KeepsASingleDsCard()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.DsCard);
+
+        Assert.Single(model.Meshes);
+        // 33.4 x 35mm: very slightly taller than wide.
+        Assert.InRange(model.Size.X, 0.94f, 0.98f);
+        Assert.True(model.Size.Z < 0.08f, $"A DS card is thin; got {model.Size.Z}.");
+    }
+
+    /// <summary>
+    /// The shipped DS asset must carry no trace of the Super Mario 64 artwork it was modelled from.
+    /// </summary>
+    /// <remarks>
+    /// This one is subtler than the other shells: no triangle in any of the four copies samples that
+    /// island, so the artwork never rendered and the card looked clean. It was still sitting in the
+    /// texture that ships inside the binary, which is what the licence actually turns on, so it is
+    /// masked anyway.
+    /// </remarks>
+    [Fact]
+    public void DsLabelIsland_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.DsCard);
+        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
+        var texture = model.Textures[material.BaseColorTexture];
+
+        (byte R, byte G, byte B) Sample(float u, float v)
+        {
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        var reference = Sample(0.25f, 0.25f);
+        for (var u = 0.10f; u <= 0.44f; u += 0.02f)
+        {
+            for (var v = 0.07f; v <= 0.44f; v += 0.02f)
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The DS label island still varies at ({u:F2},{v:F2}); artwork was not removed.");
             }
         }
     }
