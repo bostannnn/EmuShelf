@@ -231,17 +231,17 @@ public class MediaShellTests
     /// look like a size mistake — the model is silently distorted instead, and every downstream
     /// judgement about lighting, label placement and framing is then made on a deformed cartridge.
     /// The SNES profile recorded an 87mm height for a shell whose own width and depth ratios agree
-    /// with 129 x 20mm, which stretched it 12% vertically.
+    /// with 129 x 20mm, which stretched it 12% vertically. PS3 was the second catch: its truthful
+    /// Blu-ray height on shared DVD geometry came to a 13.7% stretch, and now renders undistorted.
     ///
-    /// Two systems are knowingly excluded, and both are exclusions rather than oversights.
-    /// <c>gba</c>: 85 x 60mm is not a Game Pak's shape either, but correcting it also resizes the
-    /// cartridge on screen, so it belongs with that asset's pass. <c>playstation3</c>: its shorter
-    /// Blu-ray profile is deliberately applied to shared DVD-case geometry until a PS3 case is
-    /// authored, so it is distorted on purpose and is the reason that geometry is called temporary.
+    /// <c>gba</c> remains excluded, and as an exclusion rather than an oversight: 85 x 60mm is not
+    /// a Game Pak's shape either, but correcting it also resizes the cartridge on screen, so it
+    /// belongs with that asset's pass.
     /// </remarks>
     [Theory]
     [InlineData("snes")]
     [InlineData("playstation2")]
+    [InlineData("playstation3")]
     [InlineData("gamecube")]
     [InlineData("wii")]
     public void MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset(string systemId)
@@ -332,12 +332,14 @@ public class MediaShellTests
     }
 
     [Fact]
-    public void MetricProfile_DistinguishesTheShorterPs3Case()
+    public void MetricProfile_DistinguishesPs3ByFinishNotByADistortedHeight()
     {
         var ps2 = MediaShellMap.ProfileForSystem("playstation2", 0.708);
         var ps3 = MediaShellMap.ProfileForSystem("playstation3", 0.708);
 
-        Assert.True(ps3.HeightInShelfUnits < ps2.HeightInShelfUnits);
+        // PS3's real Blu-ray case is shorter, but expressing that on shared DVD geometry distorted
+        // it; the difference now lives in the finish until a Blu-ray shell is authored.
+        Assert.Equal(ps2.HeightInShelfUnits, ps3.HeightInShelfUnits, 3);
         Assert.NotEqual(ps2.MaterialVariant, ps3.MaterialVariant);
     }
 

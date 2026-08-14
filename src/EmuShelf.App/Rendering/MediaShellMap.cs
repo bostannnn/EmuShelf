@@ -51,10 +51,15 @@ public static class MediaShellMap
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "ps2-black", "case-downward"),
-        // PS3 used the shorter Blu-ray case rather than the DVD-height PS2/Wii package. It can
-        // share temporary geometry while metric scale and the material variant remain truthful.
+        // A PS3 game really does ship in the shorter 135x171x12mm Blu-ray case, and this profile
+        // used to say so. The trouble is that it says so while sharing the DVD case's geometry, and
+        // the scene scales each axis independently: measured against the asset that is a 13.7%
+        // horizontal stretch, which does not read as "a shorter case" — it reads as a broken one.
+        // Of the two honest options with one mesh, too tall beats the wrong shape, so PS3 renders
+        // undistorted at the shared case's proportions until a Blu-ray shell is authored. The real
+        // dimensions belong with that shell, not with a squashed stand-in. See DECISIONS 2026-08-14.
         ["playstation3"] = new(
-            MediaShell.DiscKeepCase, new(135f, 171f, 14f),
+            MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "ps3-clear", "case-downward"),
         ["gamecube"] = new(

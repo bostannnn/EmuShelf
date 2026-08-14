@@ -6687,3 +6687,27 @@ correcting the right thing.
 The user restored the `models/` sourcing area, and `--prepare-snes` now reproduces the shipped
 `snes-cartridge.glb` byte-for-byte. Reproducibility of the runtime derivative is no longer an open
 risk. `docs/assets/model-sourcing-inventory-2026-08-14.md` records what else was supplied.
+
+## 2026-08-14 — PS3 renders undistorted on shared case geometry, losing its truthful height
+
+Reverses part of the 2026-08-13 metric-scene entry, which gave PS3 its real 135x171x14mm Blu-ray
+profile while it shared the DVD case's mesh. The intent was to keep metric truth even before the
+geometry existed. Measured against the asset, that profile is a 13.7% horizontal stretch — and a
+13.7% stretch does not read as "a shorter case", it reads as a broken one. It was also the second
+thing the new proportion test caught, after SNES.
+
+With one mesh there were only two honest options, and both are wrong somewhere: render at the DVD
+case's proportions and be about 11% too tall, or scale uniformly to Blu-ray height and be 12% too
+narrow. Too tall is the lesser error, because a correctly-shaped case at a slightly wrong size still
+reads as a case, while a squat one reads as a bug. PS3 therefore takes 135x190x14mm and is
+distinguished from PS2 by its `ps3-clear` finish alone.
+
+The real Blu-ray dimensions are not lost, they are deferred: they belong with an authored Blu-ray
+shell, not with a stand-in that has to squash itself to express them. PS3 rejoins
+`MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset`, leaving GBA as the only exclusion.
+
+Left alone deliberately: PS2, GameCube and Wii sit 2.3% off their asset, because the model stands
+about 194mm tall including the lid lip while the profile records the nominal 190mm. That is the
+asset being slightly larger than nominal rather than the data being wrong, it is well inside the
+test's 3% tolerance, and it is not visible. Changing the recorded dimensions to chase it would make
+the data less truthful, not more.
