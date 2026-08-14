@@ -6746,3 +6746,34 @@ shell's label shares an atlas island with the body.
 Known and not fixed: this model's label plate sits right of centre rather than centred as a real NES
 label does. That is the authored geometry, and EmuShelf's panel deliberately matches the plate
 rather than correcting it, so the art lands where the model says the label is.
+
+## 2026-08-14 — Mega Drive is the third authored shell, and needed the harder neutralization
+
+Naser's Sonic 2 cartridge ships as `MediaShell.MegaDriveCartridge`, mapped from `megadrive`.
+
+Its orientation is the one that looks wrong when it is right. At identity the cartridge is upright
+and Sonic is the right way up, but the MEGA DRIVE band sits at the bottom of the label. Rolling it
+180 degrees puts that band where a European label carries it — and turns the artwork upside down.
+The artwork's own orientation is the test that decides, so the shell needs no reorientation at all.
+Its W/H of 1.553 matches a real 135x87mm cartridge to three decimals; the 14.6mm depth is the
+asset's own ratio rather than a real cart's ~16mm, for the reason NES's is.
+
+Unlike NES, this model keeps its label on the same atlas and the same material as its body, so the
+clean route — flattening a dedicated material — was not available. `ModelPrep` therefore grew the
+fallback: masking a rectangle of the atlas, read off `--dump-atlas`. That is deliberately the second
+choice. A wrong rectangle either leaves the publisher's artwork in a public build or erases part of
+the moulding, and neither failure is visible without rendering the result.
+
+Two things the first attempt got wrong, both worth recording because they will recur:
+
+- **The fill colour matters.** A masked rectangle is only perfectly covered by the art panel if the
+  two were derived from each other, and they are not — one is read off an atlas, the other off the
+  geometry. The default paper grey haloed against this black cartridge, so the fill is now
+  configurable and this shell uses its own plastic colour. The mismatch is still there; it is just
+  no longer visible.
+- **The asset is an embedded resource.** Re-preparing the `.glb` on disk changes nothing until the
+  assembly is rebuilt, so a preview run with `--no-build` shows the previous asset. Three renders
+  were read as failures of the prep before that was spotted.
+
+The shell renders with no Sonic artwork on any face, and a test samples well inside the masked
+rectangle and requires it to be flat, so the artwork cannot return unnoticed.

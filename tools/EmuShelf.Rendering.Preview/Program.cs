@@ -33,8 +33,9 @@ if (prepModel is not null)
         prepModel,
         ArgumentValue("--prepare-out")
             ?? throw new ArgumentException("--prepare-model requires --prepare-out <runtime.glb>."),
-        ArgumentValue("--neutral-material")
-            ?? throw new ArgumentException("--prepare-model requires --neutral-material <name>."),
+        ArgumentValue("--neutral-material"),
+        ArgumentValue("--neutral-rect"),
+        ArgumentValue("--neutral-fill"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }

@@ -110,6 +110,25 @@ public static class MediaShellCatalog
             BodyRoughnessScale: 1.0f,
             BodyAlbedoScale: 1.0f),
 
+        // Naser's Mega Drive shell is authored upright with its label already toward +Z, so it is
+        // the one shell needing no reorientation. Rolling it 180 degrees puts the MEGA DRIVE band
+        // at the top where a European label carries it, but turns Sonic upside down — the artwork's
+        // own orientation is the test that settles it, and identity is what keeps that upright.
+        [MediaShell.MegaDriveCartridge] = new MediaShellDefinition(
+            MediaShell.MegaDriveCartridge,
+            "EmuShelf.Rendering.Assets.megadrive-cartridge.glb",
+            Matrix4x4.Identity,
+            MaxTextureSize: 1024,
+            // This shell has one material and one atlas, so unlike NES its label could not be
+            // removed by flattening a material — it needed the rectangle treatment, read off the
+            // atlas dump. The label covers nearly the whole face, which is why this panel is close
+            // to a full-face inset rather than the small recess a SNES cartridge has.
+            CoverPanel: new ArtPanel(ArtFace.Front, -0.88f, 0.88f, -0.86f, 0.86f, CornerRadius: 0.02f),
+            ExtraPanels: [],
+            PanelRoughness: 0.40f,
+            ArtFit: ArtFit.Cover,
+            FlattenPanelNormal: true),
+
         [MediaShell.GbaCartridge] = new MediaShellDefinition(
             MediaShell.GbaCartridge,
             "EmuShelf.Rendering.Assets.gba-cartridge.glb",

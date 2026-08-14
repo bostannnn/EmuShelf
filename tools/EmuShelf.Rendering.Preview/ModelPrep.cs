@@ -29,8 +29,20 @@ internal static class ModelPrep
     private const uint BinChunk = 0x004E4942;
 
     public static void Prepare(
-        string inputPath, string outputPath, string neutralMaterial, int maxTextureSize)
+        string inputPath,
+        string outputPath,
+        string? neutralMaterial,
+        string? neutralRect,
+        string? neutralFill,
+        int maxTextureSize)
     {
+        var rect = ParseRect(neutralRect);
+        // A masked rectangle is only ever perfectly covered by the art panel if the two were
+        // derived from each other, and they are not — the rectangle is read off an atlas and the
+        // panel off the geometry. Any mismatch shows as a ring, so the fill defaults to a paper
+        // grey for a real label and can be set to the shell's own plastic where it would otherwise
+        // halo against a dark cartridge.
+        var baseFill = ParseFill(neutralFill) ?? (214, 212, 206, (byte)255);
         var source = File.ReadAllBytes(inputPath);
         if (source.Length < 28
             || BinaryPrimitives.ReadUInt32LittleEndian(source) != GlbMagic
@@ -48,11 +60,13 @@ internal static class ModelPrep
         var images = root["images"]!.AsArray();
         var textures = root["textures"]?.AsArray();
 
-        var neutralImages = ResolveNeutralImages(root, textures, neutralMaterial);
+        var neutralImages = neutralMaterial is null
+            ? ResolveAllMaterialImages(root, textures, baseFill)
+            : ResolveNeutralImages(root, textures, neutralMaterial);
         if (neutralImages.Count == 0)
         {
             throw new InvalidDataException(
-                $"No material named '{neutralMaterial}' with a base-colour texture; nothing would be neutralized.");
+                $"Nothing to neutralize: no material named '{neutralMaterial}' with a base-colour texture.");
         }
 
         var replacements = new Dictionary<int, byte[]>();
@@ -76,7 +90,14 @@ internal static class ModelPrep
 
             if (neutralImages.TryGetValue(imageIndex, out var fill))
             {
-                Flatten(texture, fill);
+                if (rect is { } island)
+                {
+                    FlattenRect(texture, fill, island);
+                }
+                else
+                {
+                    Flatten(texture, fill);
+                }
             }
 
             var runtime = GlbLoader.Downsample(texture, maxTextureSize);
@@ -125,6 +146,91 @@ internal static class ModelPrep
         }
     }
 
+    private static (float U0, float V0, float U1, float V1)? ParseRect(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var parts = value.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length != 4) throw new ArgumentException("--neutral-rect wants u0,v0,u1,v1.");
+        var numbers = parts
+            .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        return (numbers[0], numbers[1], numbers[2], numbers[3]);
+    }
+
+    /// <summary>The colour a masked region takes, as RRGGBB.</summary>
+    private static (byte, byte, byte, byte)? ParseFill(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var hex = value.TrimStart('#');
+        return (
+            Convert.ToByte(hex.Substring(0, 2), 16),
+            Convert.ToByte(hex.Substring(2, 2), 16),
+            Convert.ToByte(hex.Substring(4, 2), 16),
+            (byte)255);
+    }
+
+    /// <summary>Every material's maps, for a model that keeps its label on a shared atlas.</summary>
+    private static Dictionary<int, (byte R, byte G, byte B, byte A)> ResolveAllMaterialImages(
+        JsonObject root, JsonArray? textures, (byte, byte, byte, byte) baseFill)
+    {
+        var result = new Dictionary<int, (byte, byte, byte, byte)>();
+        foreach (var material in root["materials"]?.AsArray() ?? [])
+        {
+            var node = material!.AsObject();
+            var pbr = node["pbrMetallicRoughness"]?.AsObject();
+            Add(pbr?["baseColorTexture"], baseFill);
+            Add(pbr?["metallicRoughnessTexture"], (255, 128, 0, 255));
+            Add(node["normalTexture"], (128, 128, 255, 255));
+        }
+
+        return result;
+
+        void Add(JsonNode? reference, (byte, byte, byte, byte) fill)
+        {
+            var textureIndex = reference?["index"]?.GetValue<int>();
+            if (textureIndex is null || textures is null) return;
+            var imageIndex = textures[textureIndex.Value]?["source"]?.GetValue<int>();
+            if (imageIndex is not null) result[imageIndex.Value] = fill;
+        }
+    }
+
+    /// <summary>
+    /// Flattens one rectangle of the atlas, for a shell whose label shares a map with its body.
+    /// </summary>
+    /// <remarks>
+    /// The rectangle is the fallback, not the preference: it has to be read off a dump by eye and a
+    /// wrong one either leaves the artwork in the build or erases moulding. Prefer
+    /// <see cref="ResolveNeutralImages"/> wherever a model keeps its label on its own material.
+    /// The edges are eroded by a texel so mip generation cannot smear the fill into neighbouring
+    /// islands, which is a real effect at the sizes these atlases are reduced to.
+    /// </remarks>
+    private static void FlattenRect(
+        TextureImage image,
+        (byte R, byte G, byte B, byte A) fill,
+        (float U0, float V0, float U1, float V1) rect)
+    {
+        var x0 = Math.Clamp((int)MathF.Ceiling(rect.U0 * image.Width) + 1, 0, image.Width);
+        var x1 = Math.Clamp((int)MathF.Floor(rect.U1 * image.Width) - 1, 0, image.Width);
+        var y0 = Math.Clamp((int)MathF.Ceiling(rect.V0 * image.Height) + 1, 0, image.Height);
+        var y1 = Math.Clamp((int)MathF.Floor(rect.V1 * image.Height) - 1, 0, image.Height);
+
+        for (var y = y0; y < y1; y++)
+        {
+            for (var x = x0; x < x1; x++)
+            {
+                var offset = ((y * image.Width) + x) * 4;
+                image.Rgba[offset] = fill.R;
+                image.Rgba[offset + 1] = fill.G;
+                image.Rgba[offset + 2] = fill.B;
+                image.Rgba[offset + 3] = fill.A;
+            }
+        }
+    }
+
     private static void Flatten(TextureImage image, (byte R, byte G, byte B, byte A) fill)
     {
         for (var offset = 0; offset < image.Rgba.Length; offset += 4)
@@ -138,7 +244,7 @@ internal static class ModelPrep
 
     private static void WriteGlb(
         JsonObject root, JsonArray views, byte[] source, int binStart,
-        Dictionary<int, byte[]> replacements, string outputPath, string inputPath, string neutralMaterial)
+        Dictionary<int, byte[]> replacements, string outputPath, string inputPath, string? neutralMaterial)
     {
         using var rebuilt = new MemoryStream();
         for (var index = 0; index < views.Count; index++)
@@ -162,7 +268,9 @@ internal static class ModelPrep
         asset["extras"] = extras;
         extras["modifiedBy"] = "EmuShelf contributors";
         extras["modifications"] =
-            $"The '{neutralMaterial}' material's artwork is flattened to a blank label; "
+            (neutralMaterial is null
+                ? "The label region of the shared atlas is flattened to a blank label; "
+                : $"The '{neutralMaterial}' material's artwork is flattened to a blank label; ")
             + "maps reduced for the portable runtime; canonical orientation, metric scaling and the "
             + "game label are applied by EmuShelf.";
 

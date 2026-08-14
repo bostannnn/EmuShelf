@@ -18,6 +18,7 @@ public static class MediaShellMap
         ["snes"] = MediaShell.SnesCartridge,
         ["gba"] = MediaShell.GbaCartridge,
         ["nes"] = MediaShell.NesCartridge,
+        ["megadrive"] = MediaShell.MegaDriveCartridge,
 
         // One temporary geometry family, four distinct profiles. PS1 (jewel case), Dreamcast
         // (jewel case) and PSP (UMD case) remain cover cards until those shells are authored.
@@ -55,6 +56,14 @@ public static class MediaShellMap
         ["nes"] = new(
             MediaShell.NesCartridge, new(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport,
             "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
+        // 135 x 87mm is a Mega Drive cartridge, and the asset's own W/H of 1.553 agrees with it to
+        // three decimals. The depth is the asset's 14.6mm rather than a real cart's ~16mm, taken
+        // from the model's ratio for the same reason as NES: a profile that disagrees with its
+        // asset does not read as a size error, it silently distorts the shell.
+        ["megadrive"] = new(
+            MediaShell.MegaDriveCartridge, new(135f, 87f, 14.6f),
+            PhysicalArtworkSlots.CartridgeSupport,
+            "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

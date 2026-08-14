@@ -217,6 +217,7 @@ public class MediaShellTests
     [InlineData("snes", MediaShell.SnesCartridge)]
     [InlineData("gba", MediaShell.GbaCartridge)]
     [InlineData("nes", MediaShell.NesCartridge)]
+    [InlineData("megadrive", MediaShell.MegaDriveCartridge)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
@@ -276,6 +277,7 @@ public class MediaShellTests
     [Theory]
     [InlineData("snes")]
     [InlineData("nes")]
+    [InlineData("megadrive")]
     [InlineData("playstation2")]
     [InlineData("playstation3")]
     [InlineData("gamecube")]
@@ -460,6 +462,60 @@ public class MediaShellTests
             {
                 Assert.Fail(
                     $"The NES label plate still varies at byte {offset}; its source artwork was not flattened.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A Mega Drive cartridge is landscape, and this asset needs no reorientation at all.
+    /// </summary>
+    /// <remarks>
+    /// Rolling it 180 degrees puts the MEGA DRIVE band at the top, where a European label carries
+    /// it, which looks like the correction — but it turns Sonic upside down. The artwork's own
+    /// orientation is the test, and identity is what keeps it upright.
+    /// </remarks>
+    [Fact]
+    public void Load_LeavesTheMegaDriveCartridgeUpright()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+
+        Assert.True(model.Size.X > model.Size.Y);
+        Assert.InRange(model.Size.X, 1.53f, 1.58f);
+        Assert.InRange(model.Size.Z, 0.15f, 0.19f);
+    }
+
+    /// <summary>
+    /// The shipped Mega Drive asset must carry no trace of the Sonic 2 artwork it was modelled from.
+    /// </summary>
+    /// <remarks>
+    /// This shell has one material and one atlas, so its label could not be removed the way NES's
+    /// was — it needed a rectangle, which is the fallback precisely because a wrong one either
+    /// leaves the artwork in the build or erases moulding. The assertion samples well inside that
+    /// rectangle, away from the eroded edge, and requires it to be flat.
+    /// </remarks>
+    [Fact]
+    public void MegaDriveLabelArea_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
+        var texture = model.Textures[material.BaseColorTexture];
+
+        (byte R, byte G, byte B) Sample(float u, float v)
+        {
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        var reference = Sample(0.40f, 0.78f);
+        for (var u = 0.15f; u <= 0.67f; u += 0.02f)
+        {
+            for (var v = 0.62f; v <= 0.94f; v += 0.02f)
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The Mega Drive label area still varies at ({u:F2},{v:F2}); artwork was not removed.");
             }
         }
     }

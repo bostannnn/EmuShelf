@@ -23,6 +23,9 @@ public enum MediaShell
     /// <summary>The NES/Famicom ROM cartridge.</summary>
     NesCartridge,
 
+    /// <summary>The Mega Drive/Genesis ROM cartridge.</summary>
+    MegaDriveCartridge,
+
     /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
     DiscKeepCase,
 }

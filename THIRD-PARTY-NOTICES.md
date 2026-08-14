@@ -156,10 +156,19 @@ shells are third-party models bundled inside `EmuShelf.Rendering` at
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All four are licensed
+All five are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
+
+- **Sonic 2 Mega Drive Cartridge** — by [Naser](https://sketchfab.com/naser.ali), from
+  [Sketchfab](https://sketchfab.com/3d-models/sonic-2-mega-drive-cartridge-4c453f8527384c718f652a9f04067119).
+  Bundled as `megadrive-cartridge.glb`. This shell keeps its label on the same atlas as its body, so
+  unlike the NES model it could not be cleared by flattening a material: EmuShelf masks the label
+  rectangle in the base-colour, metallic/roughness and normal maps, leaving none of the Sonic 2
+  artwork — which the author's CC BY licence does not cover — in the build. Maps were reduced to
+  1024px, and canonical orientation, metric scaling and per-game label art are applied at runtime.
+  Original authorship and license metadata remain embedded in the GLB.
 
 - **NES || Cartridge || Battletoads** — by
   [dark_igorek](https://sketchfab.com/dark_igorek), from
