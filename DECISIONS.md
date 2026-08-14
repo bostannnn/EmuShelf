@@ -6663,3 +6663,27 @@ landed.
 The durable lesson is the ordering: the placeholder label was what made the fit measurable at all.
 Any future shell's artwork slot should be dialled in against a bordered placeholder rather than a
 tinted one, for the same reason.
+
+## 2026-08-14 — Correction: the SNES placeholder fill does not damage the shell
+
+The previous entry recorded a suspicion that `SnesModelPrep.RemoveSourcePlaceholder` might be
+flattening authored detail well beyond the label, on the evidence that vertices sampling its
+rectangle spanned the whole model and both faces. That suspicion is wrong, and the method that
+produced it was the fault: counting vertices weights a rectangle's shared boundary the same as its
+interior, so triangles from neighbouring UV islands that merely touch the edge dominated the result.
+
+Measured properly, by surface area: the fill covers 12.0% of the shell, and **99.5% of that area is
+front-facing**. It is confined to the front, which is what it was always meant to be.
+
+It also cross-checks the label rectangle dialled in by eye earlier today. The neutralized region is
+35.4% of the front face's area; the tuned `CoverPanel` covers 35.2% of it. Two independent routes —
+the author's UV island and a hand-fitted rectangle judged against a rendered frame — agreeing to
+within 0.2 points is good evidence both are right.
+
+The consequence for the shell's darkness stands unchanged and is now better supported: the flat,
+dark base colour is the source asset's own, not damage from the prep, so `BodyAlbedoScale` is
+correcting the right thing.
+
+The user restored the `models/` sourcing area, and `--prepare-snes` now reproduces the shipped
+`snes-cartridge.glb` byte-for-byte. Reproducibility of the runtime derivative is no longer an open
+risk. `docs/assets/model-sourcing-inventory-2026-08-14.md` records what else was supplied.
