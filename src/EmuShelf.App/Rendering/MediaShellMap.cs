@@ -17,6 +17,7 @@ public static class MediaShellMap
     {
         ["snes"] = MediaShell.SnesCartridge,
         ["gba"] = MediaShell.GbaCartridge,
+        ["nes"] = MediaShell.NesCartridge,
 
         // One temporary geometry family, four distinct profiles. PS1 (jewel case), Dreamcast
         // (jewel case) and PSP (UMD case) remain cover cards until those shells are authored.
@@ -47,6 +48,13 @@ public static class MediaShellMap
         ["gba"] = new(
             MediaShell.GbaCartridge, new(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport,
             "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+        // A NES cartridge is portrait — 120mm across, 135mm tall — which is why it dwarfs a SNES
+        // cart on the shelf. The depth is the asset's 18.3mm rather than the real 20mm: taking the
+        // ratio from the model is what keeps the scene from absorbing the difference as a stretch,
+        // which is exactly how the SNES shell shipped 12% wrong.
+        ["nes"] = new(
+            MediaShell.NesCartridge, new(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport,
+            "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

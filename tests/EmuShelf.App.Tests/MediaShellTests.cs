@@ -216,6 +216,7 @@ public class MediaShellTests
     [Theory]
     [InlineData("snes", MediaShell.SnesCartridge)]
     [InlineData("gba", MediaShell.GbaCartridge)]
+    [InlineData("nes", MediaShell.NesCartridge)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
@@ -232,7 +233,6 @@ public class MediaShellTests
     [InlineData("dreamcast")]
     [InlineData("psp")]
     [InlineData("arcade")]
-    [InlineData("nes")]
     [InlineData("nds")]
     public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
         Assert.Null(MediaShellMap.ForSystem(systemId));
@@ -275,6 +275,7 @@ public class MediaShellTests
     /// </remarks>
     [Theory]
     [InlineData("snes")]
+    [InlineData("nes")]
     [InlineData("playstation2")]
     [InlineData("playstation3")]
     [InlineData("gamecube")]
@@ -411,6 +412,56 @@ public class MediaShellTests
             $"A GBA cartridge is wider than tall; got {model.Size.X} x {model.Size.Y}.");
         // And it is a cartridge, not a slab: far thinner than it is wide.
         Assert.True(model.Size.Z < model.Size.X / 4f);
+    }
+
+    /// <summary>
+    /// A NES cartridge is portrait — 120mm across, 135mm tall — and its label reads upright.
+    /// </summary>
+    /// <remarks>
+    /// Regression test for the orientation, which is the part of sourcing a shell that cannot be
+    /// reasoned out: this model's UV winding and its vertex normals disagreed about which way was
+    /// up, and only rendering it settled the question. A quarter turn the wrong way lays the
+    /// cartridge on its side with the label reading bottom-to-top.
+    /// </remarks>
+    [Fact]
+    public void Load_StandsTheNesCartridgePortrait()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.NesCartridge);
+
+        Assert.True(
+            model.Size.Y > model.Size.X,
+            $"A NES cartridge is taller than it is wide; got {model.Size.X} x {model.Size.Y}.");
+        Assert.InRange(model.Size.X, 0.87f, 0.91f);
+        Assert.InRange(model.Size.Z, 0.12f, 0.15f);
+        // Two materials: the shell, and the label plate whose artwork the prep flattens.
+        Assert.Equal(2, model.Materials.Count);
+    }
+
+    /// <summary>
+    /// The shipped NES asset must carry no trace of the game artwork its source was modelled from.
+    /// </summary>
+    /// <remarks>
+    /// The author's CC BY licence covers the model, not Rare's Battletoads cover, so the label had
+    /// to go before the derivative could be committed. It lived on its own material, so the check
+    /// is simply that the material's maps are now flat.
+    /// </remarks>
+    [Fact]
+    public void NesLabelPlate_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.NesCartridge);
+        var sticker = model.Materials.Single(
+            material => string.Equals(material.Name, "sticker", StringComparison.OrdinalIgnoreCase));
+        var texture = model.Textures[sticker.BaseColorTexture];
+
+        var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
+        for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
+        {
+            if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
+            {
+                Assert.Fail(
+                    $"The NES label plate still varies at byte {offset}; its source artwork was not flattened.");
+            }
+        }
     }
 
     [Fact]

@@ -26,6 +26,19 @@ if (sourceModel is not null)
 // triangles drawn over it. Sourcing a new shell stalls on one question that measurement cannot
 // answer — which island in the atlas is the printed label — and the overlay answers it by eye in
 // seconds. Runs before any GL setup, so it works on a machine with no usable context.
+var prepModel = ArgumentValue("--prepare-model");
+if (prepModel is not null)
+{
+    ModelPrep.Prepare(
+        prepModel,
+        ArgumentValue("--prepare-out")
+            ?? throw new ArgumentException("--prepare-model requires --prepare-out <runtime.glb>."),
+        ArgumentValue("--neutral-material")
+            ?? throw new ArgumentException("--prepare-model requires --neutral-material <name>."),
+        int.Parse(ArgumentValue("--max-texture") ?? "1024"));
+    return;
+}
+
 var atlasModel = ArgumentValue("--dump-atlas");
 if (atlasModel is not null)
 {
@@ -74,9 +87,16 @@ Console.WriteLine($"  renderer ready in {stopwatch.ElapsedMilliseconds} ms (incl
 var inspectionModel = ArgumentValue("--model");
 if (inspectionModel is not null)
 {
-    var inspectionYawDegrees = float.Parse(
-        ArgumentValue("--model-yaw") ?? "0", System.Globalization.CultureInfo.InvariantCulture);
-    var inspectionOrientation = Matrix4x4.CreateRotationY(inspectionYawDegrees * MathF.PI / 180f);
+    // Yaw alone cannot bring every downloaded model into canonical space: some are authored lying
+    // on their side, which needs a rotation about more than one axis. Pitch and roll let a candidate
+    // orientation be tried and looked at, rather than deduced from UV winding and guessed at.
+    float Degrees(string name) => float.Parse(
+        ArgumentValue(name) ?? "0", System.Globalization.CultureInfo.InvariantCulture)
+        * MathF.PI / 180f;
+    var inspectionOrientation =
+        Matrix4x4.CreateRotationX(Degrees("--model-pitch"))
+        * Matrix4x4.CreateRotationY(Degrees("--model-yaw"))
+        * Matrix4x4.CreateRotationZ(Degrees("--model-roll"));
     var candidate = GlbLoader.Load(
         File.ReadAllBytes(inspectionModel), inspectionOrientation, maxTextureSize: 1024);
     renderer.SetInspectionShell(

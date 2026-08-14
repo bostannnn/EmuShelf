@@ -156,10 +156,20 @@ shells are third-party models bundled inside `EmuShelf.Rendering` at
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All three are licensed
+All four are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
+
+- **NES || Cartridge || Battletoads** — by
+  [dark_igorek](https://sketchfab.com/dark_igorek), from
+  [Sketchfab](https://sketchfab.com/3d-models/nes-cartridge-battletoads-8aeab01fce084c3abaf3de792dda47a1).
+  Bundled as `nes-cartridge.glb`. The model keeps its game label on a separate material named
+  `sticker`; EmuShelf flattened that material's base-colour, metallic/roughness and normal maps to a
+  blank plate, so none of the Battletoads artwork — which the author's CC BY licence does not cover
+  — remains in the build. Maps were reduced to 1024px, and canonical orientation, metric scaling and
+  per-game label art are applied at runtime. Original authorship and license metadata remain
+  embedded in the GLB.
 
 - **Super Nintendo Cartridge (PAL/Super Famicom shell)** — by
   [SomeKevin](https://sketchfab.com/somekevin), from

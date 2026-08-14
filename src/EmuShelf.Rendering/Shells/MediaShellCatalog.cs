@@ -87,6 +87,29 @@ public static class MediaShellCatalog
             // amplitude; real mesh bevels and the new depth map carry the cartridge's large form.
             NormalStrength: 0.72f),
 
+        // dark_igorek's NES shell is authored lying on its side with the front toward +X, so a
+        // quarter turn about Y stands it up: width comes from Z, height from Y, depth from X. The
+        // orientation was settled by rendering it rather than by reading UV winding, which
+        // disagreed with the vertex normals about which way was up.
+        [MediaShell.NesCartridge] = new MediaShellDefinition(
+            MediaShell.NesCartridge,
+            "EmuShelf.Rendering.Assets.nes-cartridge.glb",
+            Matrix4x4.CreateRotationY(-MathF.PI / 2f),
+            MaxTextureSize: 1024,
+            // Measured from the model's own label mesh — it keeps the label on a separate material
+            // named "sticker", so the artwork slot is the plate's real bounds rather than a
+            // rectangle guessed against the moulding. It sits right of centre and reaches the top
+            // edge because the authored plate does; the shader's facing test keeps art off the part
+            // that wraps over the top.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.985f, CornerRadius: 0.03f),
+            ExtraPanels: [],
+            PanelRoughness: 0.42f,
+            ArtFit: ArtFit.Cover,
+            FlattenPanelNormal: true,
+            BodyRoughnessScale: 1.0f,
+            BodyAlbedoScale: 1.0f),
+
         [MediaShell.GbaCartridge] = new MediaShellDefinition(
             MediaShell.GbaCartridge,
             "EmuShelf.Rendering.Assets.gba-cartridge.glb",

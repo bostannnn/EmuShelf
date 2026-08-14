@@ -6711,3 +6711,38 @@ about 194mm tall including the lid lip while the profile records the nominal 190
 asset being slightly larger than nominal rather than the data being wrong, it is well inside the
 test's 3% tolerance, and it is not visible. Changing the recorded dimensions to chase it would make
 the data less truthful, not more.
+
+## 2026-08-14 — The preview renders on macOS, and NES is the second authored shell
+
+Two things unblocked each other here.
+
+**The preview tool now has a CGL backend.** It was Mesa-EGL only, so it could not run on macOS at
+all, which meant every question about how a shell actually looks had to go to a human with the app
+open. That is not a small tax: it is why the SNES label rectangle took a round trip per attempt, and
+why the NES orientation looked unanswerable. CGL gives a pixel-format-only OpenGL 3.2 core context
+with no drawable, which is all the renderer needs — it draws into its own framebuffer. Apple has
+deprecated OpenGL, but this is a development tool, and the same argument that put the app on OpenGL
+applies more strongly to something that never ships.
+
+`--model-pitch` and `--model-roll` join `--model-yaw`, because a candidate model authored lying on
+its side cannot be brought into canonical space by yaw alone.
+
+**NES ships as `MediaShell.NesCartridge`.** Its orientation was the interesting part: the model's UV
+winding and its vertex normals disagreed about which way was up, and no amount of reading the data
+settled it. Rendering it at two candidate orientations settled it in a minute — the label reads
+upright only at a quarter turn about Y, which also gives W/H 0.889 against a real cartridge's
+120x135mm, exact to three decimals. The depth is recorded as the asset's 18.3mm rather than the real
+20mm, because taking the ratio from the model is what stops the scene absorbing the difference as a
+stretch.
+
+**`ModelPrep` is the general form of the neutralization SNES needed**, and a much safer one. Where a
+model keeps its label on its own material — NES names it `sticker` — the artwork can be removed by
+flattening that material's three maps, with no rectangle to guess, nothing else sampling the image,
+and no index remapping. The label geometry survives as a blank plate for EmuShelf's own art. The
+normal map is flattened along with the base colour deliberately: leaving it would emboss the removed
+artwork into whatever replaces it. `SnesModelPrep` keeps its rectangle-masking approach because that
+shell's label shares an atlas island with the body.
+
+Known and not fixed: this model's label plate sits right of centre rather than centred as a real NES
+label does. That is the authored geometry, and EmuShelf's panel deliberately matches the plate
+rather than correcting it, so the art lands where the model says the label is.

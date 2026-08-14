@@ -20,6 +20,9 @@ public enum MediaShell
     /// <summary>The Game Boy Advance ROM cartridge.</summary>
     GbaCartridge,
 
+    /// <summary>The NES/Famicom ROM cartridge.</summary>
+    NesCartridge,
+
     /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
     DiscKeepCase,
 }
