@@ -125,6 +125,26 @@ foreach (var candidate in MediaShellCatalog.All)
         $"  {Slug(candidate),-16} W/H {size.X / size.Y:F3}  D/H {size.Z / size.Y:F3}");
 }
 
+// Declared before the per-shell sheet because that sheet needs each shell's finish. Without it the
+// turntable draws the model's own plastic, so a shell whose profile is doing part of the colouring
+// gets reviewed at the wrong colour — and the turntable is the only straight-on view there is.
+var shelfProfiles = new[]
+{
+    // These mirror EmuShelf.App.Rendering.MediaShellMap, which the tool cannot reference — the
+    // renderer deliberately knows nothing about consoles. Keep them in step by hand: this list had
+    // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
+    // proportions the app had already stopped using.
+    new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
+    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
+    new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
+    new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
+    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(135f, 87f, 14.6f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
+};
+var finishes = shelfProfiles.ToDictionary(
+    profile => profile.Shell, profile => profile.MaterialVariant);
+
 var sheetColumns = poses.Length;
 var shells = MediaShellCatalog.All.ToArray();
 var sheet = new byte[width * sheetColumns * height * shells.Length * 4];
@@ -136,7 +156,9 @@ for (var row = 0; row < shells.Length; row++)
     {
         var (name, yaw, pitch) = poses[column];
         stopwatch.Restart();
-        renderer.Render(shell, target, (uint)width, (uint)height, yaw, pitch);
+        renderer.Render(
+            shell, target, (uint)width, (uint)height, yaw, pitch,
+            finishes.GetValueOrDefault(shell, string.Empty));
         gl.Finish();
         var frame = ReadPixels(gl, target, width, height);
         Composite(frame, background);
@@ -156,20 +178,6 @@ Console.WriteLine($"  {sheetPath}");
 // Phase 1 acceptance image: unlike the per-shell turntable above, this exercises the app's shared
 // camera, measured profiles, common baseline and multi-item draw path. The selected keep case is
 // deliberately flanked by SNES and GBA cartridges so relative physical scale is visible at a glance.
-var shelfProfiles = new[]
-{
-    // These mirror EmuShelf.App.Rendering.MediaShellMap, which the tool cannot reference — the
-    // renderer deliberately knows nothing about consoles. Keep them in step by hand: this list had
-    // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
-    // proportions the app had already stopped using.
-    new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
-    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
-    new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
-    new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
-    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(135f, 87f, 14.6f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
-};
 var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
 var shelfAnchor = shelfCentres[3];
 var shelfItems = new List<MediaShelfRenderItem>(shelfProfiles.Length);
