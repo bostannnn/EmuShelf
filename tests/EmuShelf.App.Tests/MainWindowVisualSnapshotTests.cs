@@ -159,6 +159,31 @@ public class MainWindowVisualSnapshotTests
     private static Border AchievementTileFor(Window window, object dataContext) =>
         Assert.Single(RealizedAchievementTiles(window), tile => ReferenceEquals(tile.DataContext, dataContext));
 
+    // A line that ran out of room reports HasCollapsed — the text engine swapped its tail for the
+    // ellipsis run. Nothing the user is meant to read should come back collapsed.
+    private static void AssertTextRendersInFull(TextBlock text)
+    {
+        Assert.True(text.Bounds.Height > 0);
+        Assert.All(text.TextLayout.TextLines, line => Assert.False(line.HasCollapsed));
+    }
+
+    // The achievements preview owes the focused row its full title and description, and has to stay
+    // inside the column it shares with the badge grid while doing so.
+    private static void AssertAchievementDetailFits(Window window, string title, string description)
+    {
+        var card = window.GetVisualDescendants()
+            .OfType<Border>()
+            .Single(control => control.Classes.Contains("gamepad-achievement-detail"));
+        var texts = card.GetVisualDescendants().OfType<TextBlock>().ToArray();
+        AssertTextRendersInFull(Assert.Single(texts, text => text.Text == title));
+        AssertTextRendersInFull(Assert.Single(texts, text => text.Text == description));
+        var grid = window.FindControl<ListBox>("GamepadAchievementRowList");
+        Assert.NotNull(grid);
+        Assert.True(
+            card.Bounds.Height <= grid.Bounds.Height,
+            $"Detail card ({card.Bounds.Height}) overflows the {grid.Bounds.Height}px column beside it.");
+    }
+
     // Regression guard for the phantom-cell defect: the top-left item must sit at the minimum X and Y
     // of every realized tile — never pushed out of the top-left corner by a reserved empty cell.
     private static void AssertAchievementTopLeftCellIsOccupied(Window window, object topLeftDataContext)
@@ -1312,11 +1337,36 @@ public class MainWindowVisualSnapshotTests
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-disc-selection-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 440);
             AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
+            // The focused (first) row carries a realistically long title/description: the preview pane
+            // has to show both in full, which is what forced them onto the card's full width. Row two
+            // goes past RetroAchievements' own field caps (64-char title, 255-char description) — the
+            // widest text the service can ever hand the pane.
+            const string longAchievementTitle = "The Legendary Super Saiyan Awakens at Last";
+            const string longAchievementDescription =
+                "Win your first match without using a continue, without losing a single round, " +
+                "and with at least thirty seconds left on the clock.";
+            const string maxAchievementTitle =
+                "The Legendary Super Saiyan Awakens at Last and Saves the World!!";
+            const string maxAchievementDescription =
+                "Defeat every boss on the hardest difficulty without using a continue, " +
+                "without losing a single round, and with at least thirty seconds left on " +
+                "the clock, then finish the final stage with a perfect no-damage run and " +
+                "no checkpoint reloads whatsoever, ever at all.";
             var achievementRows = Enumerable.Range(1, 24)
                 .Select(index => new RetroAchievementsAchievement(
                     index,
-                    index == 1 ? "First victory" : $"Achievement {index}",
-                    index == 1 ? "Win your first match without using a continue." : $"Complete challenge {index}.",
+                    index switch
+                    {
+                        1 => longAchievementTitle,
+                        2 => maxAchievementTitle,
+                        _ => $"Achievement {index}",
+                    },
+                    index switch
+                    {
+                        1 => longAchievementDescription,
+                        2 => maxAchievementDescription,
+                        _ => $"Complete challenge {index}.",
+                    },
                     5 + index % 4 * 5,
                     $"badge-{index}",
                     index,
@@ -1355,13 +1405,53 @@ public class MainWindowVisualSnapshotTests
                 .ToArray();
             Assert.Equal(3, achievementTabs.Length);
             Assert.All(achievementTabs, tab => Assert.Equal(42, tab.Bounds.Height, 1));
+            // The filter pills fix their own height, so the presenter has slack to distribute: the
+            // label has to sit on the pill's centre line, not on its top padding. Checking the label's
+            // box alone is not enough — a stretched presenter hands it the whole content box (whose
+            // centre trivially matches the pill's) and draws the glyphs along its top edge. So assert
+            // the box hugs the text it renders first, then that the box is centred.
+            Assert.All(achievementTabs, tab =>
+            {
+                var label = Assert.Single(tab.GetVisualDescendants().OfType<TextBlock>());
+                Assert.Equal(label.TextLayout.Height, label.Bounds.Height, 1);
+                var origin = label.TranslatePoint(default, tab);
+                Assert.NotNull(origin);
+                Assert.Equal(tab.Bounds.Width / 2, origin.Value.X + label.Bounds.Width / 2, 1);
+                Assert.Equal(tab.Bounds.Height / 2, origin.Value.Y + label.Bounds.Height / 2, 1);
+            });
             var achievementTiles = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Where(control => control.Classes.Contains("gamepad-achievement"))
                 .ToArray();
             Assert.True(achievementTiles.Length >= 18);
             Assert.All(achievementTiles, tile => Assert.Equal(tile.Bounds.Width, tile.Bounds.Height, 1));
-            Assert.Equal("First victory", viewModel.FocusedGamepadAchievement.Title);
+            Assert.Equal(longAchievementTitle, viewModel.FocusedGamepadAchievement.Title);
+            // The preview pane owes the focused achievement its full title and description — both used
+            // to be ellipsized in the narrow strip beside the badge — and it hugs that content instead
+            // of stretching down the whole column, which left a card-sized well of dead space.
+            AssertAchievementDetailFits(window, longAchievementTitle, longAchievementDescription);
+            var detailCard = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Single(control => control.Classes.Contains("gamepad-achievement-detail"));
+            var achievementList = window.FindControl<ListBox>("GamepadAchievementRowList");
+            Assert.NotNull(achievementList);
+            Assert.True(
+                detailCard.Bounds.Height < achievementList.Bounds.Height - 100,
+                $"Detail card ({detailCard.Bounds.Height}) should hug its content, well short of the " +
+                $"{achievementList.Bounds.Height}px grid column beside it.");
+
+            // The widest text the service can serve has to survive the shortest viewport as well —
+            // 720p is where the overlay's height budget is tightest.
+            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[1];
+            await PumpAsync();
+            AssertAchievementDetailFits(window, maxAchievementTitle, maxAchievementDescription);
+            window.Height = 720;
+            await PumpAsync();
+            AssertAchievementDetailFits(window, maxAchievementTitle, maxAchievementDescription);
+            window.Height = 800;
+            await PumpAsync();
+            viewModel.FocusedGamepadAchievement = viewModel.GamepadAchievementDetails.VisibleAchievements[0];
+            await PumpAsync();
             // Gamepad mode is controller-only: the surface is non-hit-testable, so a real left click on
             // a different achievement tile lands on nothing — focus stays put and the controller-input
             // modality is never dropped. (Controller navigation still moves focus; only the mouse is off.)

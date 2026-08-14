@@ -860,6 +860,11 @@
             <Setter Property="CornerRadius" Value="21" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <!-- These pills set an explicit Height, so the presenter has slack to distribute. The
+                 inherited alignment is Stretch, which leaves the label sitting on the top padding
+                 instead of on the pill's centre line. -->
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -3260,10 +3265,18 @@
 
                             <Grid Grid.Row="1" ColumnDefinitions="330,*" ColumnSpacing="24"
                                   IsVisible="{Binding GamepadAchievementDetails.HasVisibleAchievements}">
-                                <Border Classes="gamepad-achievement-detail">
+                                <!-- The preview hugs its content (Top, not the column's full height):
+                                     stretching it left a card-sized well of dead space under the
+                                     text, since the detail is only ever a few short lines. -->
+                                <Border Classes="gamepad-achievement-detail" VerticalAlignment="Top">
                                     <Grid>
                                         <StackPanel IsVisible="{Binding HasFocusedGamepadAchievement}"
-                                                    Spacing="10">
+                                                    Spacing="14">
+                                            <!-- Badge + the achievement's stats side by side; the three
+                                                 stacked lines are sized to land within the badge's 96px.
+                                                 Title and description then get the card's FULL width on
+                                                 their own rows below, instead of the ~180px strip beside
+                                                 the badge that ellipsized both. -->
                                             <Grid ColumnDefinitions="96,*" ColumnSpacing="14">
                                                 <Border Width="96" Height="96" CornerRadius="15"
                                                         HorizontalAlignment="Left"
@@ -3279,33 +3292,43 @@
                                                                Stretch="UniformToFill" />
                                                     </Grid>
                                                 </Border>
-                                                <StackPanel Grid.Column="1" Spacing="5"
+                                                <StackPanel Grid.Column="1" Spacing="7"
+                                                            HorizontalAlignment="Left"
                                                             VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.Title}"
-                                                               FontSize="21" FontWeight="Bold"
-                                                               TextWrapping="Wrap" MaxLines="2"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.Description}"
-                                                               FontSize="14" TextWrapping="Wrap" MaxLines="3"
-                                                               TextTrimming="CharacterEllipsis"
+                                                    <Border Padding="10,4" CornerRadius="12"
+                                                            HorizontalAlignment="Left"
+                                                            Background="{DynamicResource EmuFormatPillBrush}">
+                                                        <TextBlock Text="{Binding FocusedGamepadAchievement.PointsText}"
+                                                                   FontSize="13" FontWeight="SemiBold" />
+                                                    </Border>
+                                                    <Border Padding="10,4" CornerRadius="12"
+                                                            HorizontalAlignment="Left"
+                                                            Background="{DynamicResource EmuFormatPillBrush}">
+                                                        <TextBlock Text="{Binding FocusedGamepadAchievement.UnlockStateText}"
+                                                                   FontSize="13" FontWeight="SemiBold" />
+                                                    </Border>
+                                                    <!-- Wraps rather than trims: the month name is
+                                                         culture-dependent, so this line has no width
+                                                         it can be guaranteed to fit on. -->
+                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.EarnedText}"
+                                                               FontSize="13" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </StackPanel>
                                             </Grid>
-                                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <Border Padding="10,5" CornerRadius="12"
-                                                        Background="{DynamicResource EmuFormatPillBrush}">
-                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.PointsText}"
-                                                               FontWeight="SemiBold" />
-                                                </Border>
-                                                <Border Padding="10,5" CornerRadius="12"
-                                                        Background="{DynamicResource EmuFormatPillBrush}">
-                                                    <TextBlock Text="{Binding FocusedGamepadAchievement.UnlockStateText}"
-                                                               FontWeight="SemiBold" />
-                                                </Border>
+                                            <StackPanel Spacing="6">
+                                                <!-- Line budgets cover the field limits RetroAchievements
+                                                     itself enforces (64-char title, 255-char description)
+                                                     at this width, so the trim only ever fires on text the
+                                                     service could not have served. -->
+                                                <TextBlock Text="{Binding FocusedGamepadAchievement.Title}"
+                                                           FontSize="21" FontWeight="Bold"
+                                                           TextWrapping="Wrap" MaxLines="3"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding FocusedGamepadAchievement.Description}"
+                                                           FontSize="14" TextWrapping="Wrap" MaxLines="8"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             </StackPanel>
-                                            <TextBlock Text="{Binding FocusedGamepadAchievement.EarnedText}"
-                                                       FontSize="13"
-                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         </StackPanel>
                                     </Grid>
                                 </Border>
