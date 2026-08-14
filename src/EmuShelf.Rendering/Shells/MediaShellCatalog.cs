@@ -139,31 +139,42 @@ public static class MediaShellCatalog
             ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
-        // satchii_'s DS card, reduced to one instance: the download is four cards laid out in a
-        // row by node matrices, and loading it whole draws four cartridges. Its node transforms
-        // already stand the card upright — the raw accessor bounds suggest otherwise and that
-        // misread cost a wrong rotation — so it needs only a half turn to bring the label side
-        // round from -Z, where the contact pins are not.
+        // A blank DS card template, which replaced satchii_'s four-card model. This one is authored
+        // as a cartridge to put artwork on rather than as a copy of one particular game: the label
+        // is its own quad on its own material and texture, and the shell moulds the NINTENDO DS band
+        // above it, so EmuShelf's artwork lands where a real label's artwork does instead of over
+        // the whole face. It is authored lying flat with the label facing +Y, so a quarter turn
+        // about X stands it up and brings that face round to +Z.
         [MediaShell.DsCard] = new MediaShellDefinition(
             MediaShell.DsCard,
             "EmuShelf.Rendering.Assets.ds-card.glb",
-            Matrix4x4.CreateRotationY(MathF.PI),
+            Matrix4x4.CreateRotationX(MathF.PI / 2f),
             MaxTextureSize: 1024,
-            // A DS label covers nearly the whole face. Unusually for these shells the geometry
-            // carries no label of its own: the source's Super Mario 64 artwork sits in the atlas but
-            // no triangle samples it, so the card renders blank and the panel has a clean surface.
-            // Measured off photographs of real cards rather than guessed from the model: the label
-            // is a rectangle with narrow margins at the sides and top, stopping well short of the
-            // bottom to leave the black plastic band that carries the release code and the thumb
-            // notch. Filling the face, which is what a symmetric inset does, loses that band and is
-            // most of why the card did not read as a DS card.
+            // The artwork area is the shell's moulded recess, which this model carries a dedicated
+            // quad for on the "presetNdsiCartridgeFront4" material. Measured off a straight-on
+            // render of the prepared asset rather than off that quad's bounds: the quad's world-space
+            // AABB is larger than the face it presents, so reading the bounds alone put the panel
+            // 0.08 past the recess on the right and 0.12 below it, which painted artwork onto the
+            // moulding. What is rendered is what can be checked.
+            // The top stops just under the moulded NINTENDO DS band, which is separate geometry — a
+            // panel taken to the recess's own top edge paints over the bottom of the branding.
+            // The chamfer is real: a DS label is cut diagonally at the bottom left, and this shell
+            // moulds the cut into the recess while the quad stays rectangular, so the panel still
+            // has to describe it. Traced off two photographs, one blank card and one retail cart, it
+            // runs 0.080 of the full label height both times — and this panel is the label minus the
+            // branding band, 0.825 of it, so the same chamfer is 0.097 here.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.81f, 0.81f, -0.68f, 0.86f,
-                CornerRadius: 0.05f, CutCorner: 0.20f),
+                ArtFace.Front, -0.805f, 0.805f, -0.712f, 0.605f,
+                CornerRadius: 0.04f, CutCorner: 0.097f),
             ExtraPanels: [],
             PanelRoughness: 0.44f,
             ArtFit: ArtFit.Cover,
-            FlattenPanelNormal: true),
+            FlattenPanelNormal: true,
+            // This asset's plastic is sRGB ~57 (linear 0.041) against a real DS card's charcoal of
+            // nearer sRGB 75, so it needs a fraction of the correction the previous model did — that
+            // one was authored at sRGB ~31 and needed 3.2 to reach the same place. Tuned against a
+            // straight-on render: the shell frame averages sRGB 89 to the photograph's 90.
+            BodyAlbedoScale: 1.95f),
 
         // thegraphicsgeek's Game Pak, which replaced a smaller-textured shell that had no source
         // in models/ and so could not be regenerated or corrected. It is authored upright and
