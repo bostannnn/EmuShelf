@@ -145,7 +145,11 @@ public static class MediaShellCatalog
             // A DS label covers nearly the whole face. Unusually for these shells the geometry
             // carries no label of its own: the source's Super Mario 64 artwork sits in the atlas but
             // no triangle samples it, so the card renders blank and the panel has a clean surface.
-            CoverPanel: ArtPanel.Full(ArtFace.Front, inset: 0.06f) with { CornerRadius = 0.06f },
+            // A near-full-face panel ran past the card's own rounded corners, so the geometry clipped
+            // it and the label read as skewed. This keeps a plastic border visible all round, with a
+            // little more below, which is where a real card's label stops short.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.85f, 0.85f, -0.82f, 0.88f, CornerRadius: 0.08f),
             ExtraPanels: [],
             PanelRoughness: 0.44f,
             ArtFit: ArtFit.Cover,
@@ -164,8 +168,11 @@ public static class MediaShellCatalog
             // The label is a clean, isolated island in this atlas, well clear of both the shell and
             // the exposed board, so the masked rectangle could be drawn generously without risking
             // the moulding around it.
+            // Measured off a straight-on render against the moulded well, which is asymmetric: the
+            // cartridge's top lip eats into it, so the label sits lower than centre. The first pass
+            // was inset well inside the recess on every side and read as a label applied by eye.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.645f, 0.655f, -0.425f, 0.475f, CornerRadius: 0.06f),
+                ArtFace.Front, -0.70f, 0.70f, -0.70f, 0.57f, CornerRadius: 0.06f),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
             ArtFit: ArtFit.Cover,
