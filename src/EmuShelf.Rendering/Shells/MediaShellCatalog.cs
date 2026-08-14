@@ -145,11 +145,13 @@ public static class MediaShellCatalog
             // A DS label covers nearly the whole face. Unusually for these shells the geometry
             // carries no label of its own: the source's Super Mario 64 artwork sits in the atlas but
             // no triangle samples it, so the card renders blank and the panel has a clean surface.
-            // A near-full-face panel ran past the card's own rounded corners, so the geometry clipped
-            // it and the label read as skewed. This keeps a plastic border visible all round, with a
-            // little more below, which is where a real card's label stops short.
+            // Measured off photographs of real cards rather than guessed from the model: the label
+            // is a rectangle with narrow margins at the sides and top, stopping well short of the
+            // bottom to leave the black plastic band that carries the release code and the thumb
+            // notch. Filling the face, which is what a symmetric inset does, loses that band and is
+            // most of why the card did not read as a DS card.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.85f, 0.85f, -0.82f, 0.88f, CornerRadius: 0.08f),
+                ArtFace.Front, -0.81f, 0.81f, -0.68f, 0.86f, CornerRadius: 0.05f),
             ExtraPanels: [],
             PanelRoughness: 0.44f,
             ArtFit: ArtFit.Cover,
@@ -172,7 +174,7 @@ public static class MediaShellCatalog
             // cartridge's top lip eats into it, so the label sits lower than centre. The first pass
             // was inset well inside the recess on every side and read as a label applied by eye.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.70f, 0.70f, -0.70f, 0.57f, CornerRadius: 0.06f),
+                ArtFace.Front, -0.70f, 0.70f, -0.78f, 0.50f, CornerRadius: 0.06f),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
             ArtFit: ArtFit.Cover,

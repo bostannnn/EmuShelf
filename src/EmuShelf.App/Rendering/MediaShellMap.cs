@@ -71,7 +71,7 @@ public static class MediaShellMap
         // would then distort it.
         ["nds"] = new(
             MediaShell.DsCard, new(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport,
-            "ds-white", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+            "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

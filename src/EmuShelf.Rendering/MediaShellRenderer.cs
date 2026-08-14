@@ -1256,6 +1256,10 @@ public sealed class MediaShellRenderer : IDisposable
         public static MaterialVariantAppearance For(string variant) => variant switch
         {
             "ps2-black" => new(new Vector3(0.018f, 0.020f, 0.025f), 0.82f, 1.06f, 1f),
+            // A DS card's shell is black, and this model's is near-white — which only became
+            // obvious once the label stopped covering the whole face and revealed the band along
+            // the bottom that carries the release code.
+            "ds-black" => new(new Vector3(0.021f, 0.022f, 0.026f), 0.86f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
