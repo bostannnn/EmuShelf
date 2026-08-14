@@ -63,6 +63,13 @@ public static class MediaShellCatalog
             // The downloaded scan was authored for a brighter viewer and otherwise reads like a
             // glossy miniature under EmuShelf's close product-lighting camera.
             BodyRoughnessScale: 1.16f,
+            // Measured, not guessed: 89.5% of this asset's base-colour map sits at sRGB ~107, i.e.
+            // linear 0.144. A PAL SNES shell is light grey, nearer sRGB 165 (linear ~0.36). The
+            // cartridge was therefore dark before a single light touched it, which is why it read
+            // as charcoal under a studio calibrated to keep its plastic grey. 2.4 lands it at about
+            // sRGB 160. Turn this knob, not the exposure — exposure would take the labels, the
+            // keep cases and the cover cards with it.
+            BodyAlbedoScale: 2.4f,
             DielectricReflectance: 0.033f,
             // A lower studio fill lets the key describe the form at couch distance. Actual depth
             // visibility and the authored normal map, rather than a screen-space fake, provide the

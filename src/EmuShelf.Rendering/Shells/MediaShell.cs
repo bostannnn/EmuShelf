@@ -108,6 +108,10 @@ public enum ArtFace
 /// <param name="ArtFit">How a cover whose shape does not match the panel is fitted.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
 /// <param name="BodyRoughnessScale">Per-shell correction for the source model's body roughness.</param>
+/// <param name="BodyAlbedoScale">Per-shell correction for the source model's body base colour,
+/// applied in linear space before the printed panels are laid over it. Sibling of
+/// <paramref name="BodyRoughnessScale"/>, and needed for the same reason: a downloaded asset's
+/// material was tuned against its author's viewer, not against EmuShelf's studio.</param>
 /// <param name="DielectricReflectance">Normal-incidence reflectance for the shell's dielectric
 /// material. Most plastics are close to 0.04; a small correction can stop a scanned model from
 /// reading like glossy toy plastic without changing metallic parts.</param>
@@ -127,6 +131,7 @@ public sealed record MediaShellDefinition(
     ArtFit ArtFit,
     bool FlattenPanelNormal,
     float BodyRoughnessScale = 1f,
+    float BodyAlbedoScale = 1f,
     float DielectricReflectance = 0.04f,
     float AmbientIntensity = 0.86f,
     float ShadowFillOcclusion = 0.30f,

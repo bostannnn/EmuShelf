@@ -306,6 +306,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         return _renderItems;
     }
 
+    /// <summary>
+    /// The angle one shelf item is turned to, blended by how close it is to the centre.
+    /// </summary>
+    /// <remarks>
+    /// Arrival and departure use the same blend on purpose. The focused item used to take the
+    /// focused angle the instant selection changed, while the outgoing one eased back to the
+    /// neighbour angle — so every step turned one cartridge smoothly and snapped the other through
+    /// the ~14 degrees between the two rest poses, before it had travelled anywhere.
+    /// </remarks>
     internal static (float Yaw, float Pitch) ResolvePose(
         float focus,
         bool isFocused,
@@ -313,9 +322,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         float focusedPitch,
         PhysicalShelfDeparturePose? departure)
     {
+        var amount = Math.Clamp(focus, 0f, 1f);
+
         if (isFocused)
         {
-            return (focusedYaw, focusedPitch);
+            return (
+                float.Lerp(NeighbourYaw, focusedYaw, amount),
+                focusedPitch * amount);
         }
 
         if (departure is not { } outgoing)
@@ -323,7 +336,6 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return (NeighbourYaw, 0f);
         }
 
-        var amount = Math.Clamp(focus, 0f, 1f);
         return (
             float.Lerp(NeighbourYaw, outgoing.Yaw, amount),
             outgoing.Pitch * amount);

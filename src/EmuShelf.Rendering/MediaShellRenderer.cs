@@ -50,6 +50,25 @@ public sealed class MediaShellRenderer : IDisposable
     private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
     private const float FocusLift = 0.035f;
 
+    /// <summary>How far the focused medium steps toward the camera.</summary>
+    /// <remarks>
+    /// Shared with the shadow pass on purpose. These were two separate literals, and the shadow
+    /// pass used <see cref="FocusLift"/> — a vertical constant — as its depth, so the focused
+    /// item's contact shadow trailed it and swam while focus interpolated.
+    /// </remarks>
+    private const float FocusDepth = 0.08f;
+
+    /// <summary>
+    /// Fraction of the studio exposure an item away from focus keeps.
+    /// </summary>
+    /// <remarks>
+    /// Physical scale is data and focus must not change it, so size cannot say which medium is
+    /// selected: the focused item is only about 2% larger from its depth step. A row of grey
+    /// cartridges therefore needs a light falloff to read at couch distance, the way the flat
+    /// shelf dimmed its neighbours.
+    /// </remarks>
+    private const float NeighbourExposure = 0.48f;
+
     // Each visible item receives its own self-shadow pass. 1024px resolves cartridge-scale moulding
     // more finely than the former 2048px map stretched across the whole seven-item row, avoids one
     // tall case blacking out a neighbour, and keeps the aggregate clear/sample cost reasonable.
@@ -171,6 +190,20 @@ public sealed class MediaShellRenderer : IDisposable
     // The grazing angle contributes less NoL to a front face, so it needs more radiance than the
     // former camera-axis key while retaining the same warm-neutral product-light character.
     private static readonly Vector3 KeyRadiance = new(1.42f, 1.31f, 1.18f);
+
+    /// <summary>
+    /// TEMPORARY shading probe. Zero unless <c>EMUSHELF_SHADING_DEBUG</c> names a mode, so a normal
+    /// run cannot reach it. Here to find out why the macOS desktop-GL path renders the SNES shell
+    /// darker than the Windows ANGLE path; delete once that is understood.
+    /// </summary>
+    private static readonly int DebugMode =
+        Environment.GetEnvironmentVariable("EMUSHELF_SHADING_DEBUG") switch
+        {
+            "albedo" => 1,
+            "irradiance" => 2,
+            "key-visibility" => 3,
+            _ => 0,
+        };
 
     /// <summary>Converts an sRGB colour (0..1 per channel) to the linear space the shader works in.</summary>
     public static Vector3 ToLinear(float r, float g, float b) =>
@@ -348,7 +381,7 @@ public sealed class MediaShellRenderer : IDisposable
         _program.Set("uViewProjection", viewProjection);
         _program.SetMatrix3("uNormalMatrix", normalMatrix);
         _program.Set("uCameraPosition", cameraPosition);
-        _program.Set("uExposure", Exposure);
+        _program.Set("uExposure", Exposure * ExposureForFocus(item.FocusAmount));
         BindDirectLight(resources, keyViewProjection, hasKeyShadow);
 
         _environment.Irradiance.Bind(3);
@@ -378,13 +411,24 @@ public sealed class MediaShellRenderer : IDisposable
             + (profile.HeightInShelfUnits * 0.5f)
             + (focus * FocusLift)
             + item.LaunchVerticalOffset;
-        var centreZ = (focus * 0.08f) + item.LaunchDepthOffset;
+        var centreZ = (focus * FocusDepth) + item.LaunchDepthOffset;
         return Matrix4x4.CreateScale(scale)
             * profile.CanonicalOrientation
             * Matrix4x4.CreateRotationX(item.Pitch)
             * Matrix4x4.CreateRotationY(item.Yaw)
             * Matrix4x4.CreateTranslation(item.CentreX, centreY, centreZ);
     }
+
+    /// <summary>
+    /// The studio exposure one item receives, falling off with its distance from focus.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a light change rather than a material one: the shell keeps its colour and
+    /// reflections, it simply stands further out of the key. Internal so the falloff can be pinned
+    /// by a test without a GPU.
+    /// </remarks>
+    internal static float ExposureForFocus(float focusAmount) =>
+        float.Lerp(NeighbourExposure, 1f, Math.Clamp(focusAmount, 0f, 1f));
 
     private static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(float aspect)
     {
@@ -448,6 +492,7 @@ public sealed class MediaShellRenderer : IDisposable
         Matrix4x4 keyViewProjection,
         bool hasKeyShadow)
     {
+        _program.Set("uDebugMode", DebugMode);
         _program.Set("uKeyDirection", KeyDirection);
         _program.Set("uKeyRadiance", KeyRadiance);
         _program.Set("uKeyLightViewProjection", keyViewProjection);
@@ -466,6 +511,7 @@ public sealed class MediaShellRenderer : IDisposable
         _program.Set("uAmbientAccentMix", AccentMix);
         _program.Set("uBodyTint", _activeMaterialAppearance.BodyTint);
         _program.Set("uBodyTintMix", _activeMaterialAppearance.BodyTintMix);
+        _program.Set("uBodyAlbedoScale", resources.Definition.BodyAlbedoScale);
     }
 
     private void DrawResources(ShellResources resources)
@@ -621,7 +667,8 @@ public sealed class MediaShellRenderer : IDisposable
             var shadowExpansion = 1f + (positiveLift * 2f);
             var insertionVisibility = Math.Clamp(1f + (item.LaunchVerticalOffset * 3f), 0f, 1f);
             _shadowFootprints.Add(new ShadowFootprint(
-                new Vector2(item.CentreX, (focus * FocusLift) + item.LaunchDepthOffset),
+                // The plane's second axis is world Z, so this must follow the item's depth step.
+                new Vector2(item.CentreX, (focus * FocusDepth) + item.LaunchDepthOffset),
                 new Vector2(
                     MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale,
                     MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale),

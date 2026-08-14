@@ -74,6 +74,49 @@ public class MediaShellTests
         Assert.Equal(expectedPitch, actual.Pitch, 3);
     }
 
+    /// <summary>
+    /// Regression test. The arriving medium used to take the focused angle the instant selection
+    /// changed — while it was still a slot away — so one d-pad step turned the outgoing cartridge
+    /// smoothly and snapped the incoming one through the gap between the two rest poses.
+    /// </summary>
+    [Theory]
+    [InlineData(0f, -0.18f, 0f)]
+    [InlineData(0.5f, -0.3f, -0.05f)]
+    [InlineData(1f, -0.42f, -0.1f)]
+    public void IncomingShelfPose_ArrivesAtTheFocusedAngleAsItReachesCentre(
+        float focus,
+        float expectedYaw,
+        float expectedPitch)
+    {
+        var actual = MediaShelf3DControl.ResolvePose(
+            focus,
+            isFocused: true,
+            MediaRotationModel.RestYaw,
+            MediaRotationModel.RestPitch,
+            departure: null);
+
+        Assert.Equal(expectedYaw, actual.Yaw, 3);
+        Assert.Equal(expectedPitch, actual.Pitch, 3);
+    }
+
+    /// <summary>
+    /// Focus may not change an item's scale, so the only thing separating the selected medium from
+    /// its neighbours is how much of the studio key it stands in.
+    /// </summary>
+    [Fact]
+    public void ShelfExposure_FallsOffAwayFromFocus()
+    {
+        var focused = EmuShelf.Rendering.MediaShellRenderer.ExposureForFocus(1f);
+        var halfway = EmuShelf.Rendering.MediaShellRenderer.ExposureForFocus(0.5f);
+        var neighbour = EmuShelf.Rendering.MediaShellRenderer.ExposureForFocus(0f);
+
+        Assert.Equal(1f, focused, 3);
+        Assert.True(neighbour < halfway && halfway < focused);
+        // Enough separation to read at couch distance without losing the neighbours' artwork.
+        Assert.InRange(neighbour, 0.35f, 0.65f);
+        Assert.Equal(neighbour, EmuShelf.Rendering.MediaShellRenderer.ExposureForFocus(-2f), 3);
+    }
+
     [Fact]
     public async Task PrepareAsync_CachesOneImmutableDecodedAsset()
     {
@@ -170,13 +213,48 @@ public class MediaShellTests
         Assert.True(snes.HeightInShelfUnits < keepCase.HeightInShelfUnits);
         Assert.True(gba.HeightInShelfUnits < snes.HeightInShelfUnits);
         Assert.True(snes.WidthInShelfUnits > gba.WidthInShelfUnits);
-        Assert.Equal(1.10f, snes.PresentationScale, 3);
+        Assert.Equal(1.235f, snes.PresentationScale, 3);
         Assert.True(snes.FloorClearanceInShelfUnits > gba.FloorClearanceInShelfUnits);
         Assert.Equal(0f, keepCase.FloorClearanceInShelfUnits, 3);
         Assert.Equal(PhysicalArtworkSlots.CartridgeSupport, snes.ArtworkSlots);
         Assert.Equal(
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             keepCase.ArtworkSlots);
+    }
+
+    /// <summary>
+    /// A profile's measured dimensions must agree with the proportions of the asset it describes.
+    /// </summary>
+    /// <remarks>
+    /// Regression test, and the reason this defect could hide. The scene scales each axis of a
+    /// shell onto its profile independently, so a profile that disagrees with its asset does not
+    /// look like a size mistake — the model is silently distorted instead, and every downstream
+    /// judgement about lighting, label placement and framing is then made on a deformed cartridge.
+    /// The SNES profile recorded an 87mm height for a shell whose own width and depth ratios agree
+    /// with 129 x 20mm, which stretched it 12% vertically.
+    ///
+    /// Two systems are knowingly excluded, and both are exclusions rather than oversights.
+    /// <c>gba</c>: 85 x 60mm is not a Game Pak's shape either, but correcting it also resizes the
+    /// cartridge on screen, so it belongs with that asset's pass. <c>playstation3</c>: its shorter
+    /// Blu-ray profile is deliberately applied to shared DVD-case geometry until a PS3 case is
+    /// authored, so it is distorted on purpose and is the reason that geometry is called temporary.
+    /// </remarks>
+    [Theory]
+    [InlineData("snes")]
+    [InlineData("playstation2")]
+    [InlineData("gamecube")]
+    [InlineData("wii")]
+    public void MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset(string systemId)
+    {
+        var profile = MediaShellMap.ProfileForSystem(systemId, 0.708);
+        var asset = MediaShellCatalog.Load(profile.Shell);
+
+        var profileWidthRatio = profile.DimensionsMillimetres.X / profile.DimensionsMillimetres.Y;
+        var profileDepthRatio = profile.DimensionsMillimetres.Z / profile.DimensionsMillimetres.Y;
+
+        // 3% covers the keep case, whose lid lip makes it stand slightly taller than nominal.
+        Assert.Equal(asset.Size.X / asset.Size.Y, profileWidthRatio, 0.03f * profileWidthRatio);
+        Assert.Equal(asset.Size.Z / asset.Size.Y, profileDepthRatio, 0.03f * profileDepthRatio);
     }
 
     [Fact]

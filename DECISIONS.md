@@ -6507,3 +6507,96 @@ Save sync remains blocking in the launch pipeline but is no longer visually moda
 the existing corner progress toast replaces the full-screen sync panel so the cartridge stays visible.
 Grid and spotlight retain their centered panel. The model also has a shortened no-spin reduced-motion path;
 exposing that policy as a user setting remains a separate rollout item.
+
+## 2026-08-14 — A metric profile must match its asset's proportions; SNES was 12% too tall
+
+`MediaShellRenderer.ShelfModel` scales each axis of a shell onto its `PhysicalMediaProfile`
+independently. That is deliberate — downloaded geometry is close to, not equal to, the real package
+— but it means a profile that disagrees with its asset never reads as a size error. The model is
+silently deformed instead, and every later judgement about lighting, label placement and framing is
+then made on a deformed object.
+
+The SNES profile recorded 129x87x20mm. The cleaned PAL/Super Famicom asset's own ratios are W/H
+1.6651 and D/H 0.2570, which agree with 129mm and 20mm to within 0.4% and put the height at 77.5mm.
+87mm — the North American shell's height — was therefore stretching the gold-standard cartridge 12%
+vertically: oval screws, non-circular corner radii, and a label mask whose object-space aspect no
+longer matched what was drawn. The profile is now 129x77.5x20mm, and `PresentationScale` moves
+1.10 -> 1.235 so removing the stretch gives the height back to the cartridge rather than to the
+empty space above it; the row is correspondingly ~12% wider.
+
+`MediaShellTests.MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset` now fails any profile whose
+width/height and depth/height ratios drift more than 3% from its loaded asset. Two systems are
+excluded as decisions rather than oversights: GBA (85x60mm is not a Game Pak either, but correcting
+it also roughly halves the cartridge on screen, so it belongs with that asset's pass) and PS3 (its
+shorter Blu-ray profile is knowingly applied to shared DVD-case geometry until a PS3 case is
+authored — that distortion is the reason the geometry is called temporary).
+
+## 2026-08-14 — Shelf focus reads through light, arrival and departure share one blend
+
+Three composition defects found by reading the M42 scene, all fixed together because they are the
+same subject — what one d-pad step actually looks like.
+
+**Contact shadow followed the wrong axis.** The focused medium steps toward the camera, but
+`DrawShelfShadows` passed the vertical `FocusLift` (0.035) as its footprint's world Z while
+`ShelfModel` placed the item at 0.08. The shadow trailed the selected cartridge and swam as focus
+interpolated, which is precisely the failure the design's lighting gate names. Both now share one
+`FocusDepth` constant.
+
+**Arrival snapped while departure eased.** `ResolvePose` returned the focused angle the instant
+selection changed — while the incoming medium was still a full slot from centre — but blended the
+outgoing one back to the neighbour angle over its travel. Every step therefore turned one cartridge
+smoothly and snapped the other through the ~14 degrees between the two rest poses. Both directions
+now use the same focus blend.
+
+**Focus was carried by ~2% of projected size.** Physical scale is data and focus may not change it,
+so the selected medium differed from its neighbours only by a depth step and its angle. A row of
+similar grey cartridges could not be read at couch distance. Neighbours now fall off to 48% of the
+studio exposure, interpolated by the same focus value, so the selected medium stands in the key and
+the others stand out of it. It is a light change, not a material one: colour and reflections are
+untouched, and no scale is involved.
+
+## 2026-08-14 — Launch choreography runs beside pre-launch save sync, not after it
+
+The physical launch animation existed partly to cover the delay before an emulator appears, but it
+ran after `SyncSavesForLaunchAsync` completed, so a slow cloud round-trip was dead time in front of
+the animation rather than hidden behind it. The animation is now started before the sync is awaited
+and both are awaited before the process starts, so the ordering guarantee is unchanged — saves are
+still finished and preflight still passed before any process runs — while the visible cost of the
+sync is absorbed by the cartridge already being in motion. When sync outruns the choreography the
+medium simply holds its committed insertion pose.
+
+Consequence, and the reason this is recorded: the earlier "saves finish before visual commitment"
+property is gone by design. The medium can reach the inserted pose while a sync is still running.
+Two supporting fixes fall out of running them concurrently: a sync failure now observes the pending
+animation task instead of leaving it unobserved, and `RestorePhysicalShelfAfterLaunchAsync`
+completes any pending launch completion source before replacing it, since a return can now begin
+while the outward animation is still waiting on the old one.
+
+## 2026-08-14 — macOS prefers OpenGL over Metal, because a GL control cannot live under Metal
+
+Avalonia 12 defaults `AvaloniaNativePlatformOptions.RenderingMode` to `[Metal, OpenGl, Software]`.
+Under Metal the platform graphics object is an `IMetalDevice`, so `OpenGlControlBase` requests a GL
+context, does not receive one, and returns without initializing and without throwing. The couch
+shelf's `MediaShelf3DControl` therefore never rendered a single frame on macOS. Nothing looked
+broken: `MediaShelf3DHost`'s four-second watchdog fired and the designed flat-cover fallback took
+over, so the mode appeared to work and simply was not the 3D scene. Verified on 2026-08-14 by
+running the same build twice — stock logged
+`TimeoutException: The OpenGL shelf did not initialize`, and with OpenGl preferred the scene came up
+and stayed up.
+
+Consequence worth stating plainly: every judgement made about the physical shelf on macOS before
+this date was made on flat covers, not on the renderer.
+
+Avalonia ships no Metal counterpart to `OpenGlControlBase` — `Avalonia.Metal` exports interop
+interfaces (`IMetalDevice`, `IMetalPlatformSurface` and friends) and no control base — so hosting
+the scene under a Metal compositor is not supported at any price short of a second renderer. The
+alternatives were a Metal/MSL backend (a duplicate of the whole shading path to keep in step), an
+offscreen render presented as a bitmap (a GPU-to-CPU-to-GPU round trip per frame), or accepting that
+a shipped feature never runs on a shipped platform. Preferring OpenGl is one line and the only cheap
+option, and it is Avalonia's own second choice rather than an exotic path.
+
+The cost is real and accepted: the whole macOS app now composites through Apple's deprecated OpenGL,
+capped at 4.1. Metal and Software remain behind it in the list, so a Mac whose GL context fails
+degrades instead of failing to start. Windows (ANGLE) and Linux are unaffected. If general UI
+rendering later proves to suffer on macOS, the escape route is a Metal backend for
+`EmuShelf.Rendering`, not reverting this — reverting returns macOS to flat covers.

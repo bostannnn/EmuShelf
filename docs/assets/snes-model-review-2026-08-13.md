@@ -25,7 +25,9 @@ needs a 180° canonical Y rotation.
 
 Integration decisions and cleanup:
 
-1. The shell is explicitly the PAL/Super Famicom form, using a 129×87×20mm presentation profile.
+1. The shell is explicitly the PAL/Super Famicom form, using a 129×77.5×20mm presentation profile.
+   (Corrected 2026-08-14 from the 129×87×20mm first recorded here; see `DECISIONS.md`. The model's
+   own W/H of 1.665 and D/H of 0.257 agree with 129mm and 20mm, which is what identified the height.)
    North American SNES geometry remains a future regional variant rather than stretching this shell.
 2. `SnesModelPrep` deterministically neutralizes the fixed placeholder-label UV island in base-colour,
    metallic/roughness and normal maps. Dynamic game art is a body-attached object-space decal over the
@@ -35,7 +37,7 @@ Integration decisions and cleanup:
    authored vertex normals. The 201 welded boundary edges and 10 welded non-manifold edges remain an
    explicit gate for a future editable-source cleanup; all visible review angles are currently closed.
 4. Canonical Y-up/+Z-front orientation is a 180° Y rotation. The renderer centres and normalizes the
-   asset, then the 129×87×20mm profile restores its physical scale in the shared scene.
+   asset, then the 129×77.5×20mm profile restores its physical scale in the shared scene.
 5. The authored tangents and base-colour, metallic/roughness and normal maps are retained. The three
    4096² maps are reduced to 1024² for the portable runtime, reducing the GLB from 25.4MB to 3.47MB.
 6. SomeKevin, the source URL, CC BY 4.0 and every modification are recorded in

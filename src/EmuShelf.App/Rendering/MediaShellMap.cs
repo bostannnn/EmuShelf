@@ -28,10 +28,22 @@ public static class MediaShellMap
 
     private static readonly Dictionary<string, PhysicalMediaProfile> ProfilesBySystemId = new(StringComparer.Ordinal)
     {
+        // 77.5mm, not the 87mm first recorded here. The scene scales each axis of a shell
+        // independently onto its profile, so a profile that disagrees with its asset's real
+        // proportions does not read as a size error — it silently distorts the model. This shell's
+        // own width/depth ratios agree with 129mm and 20mm to within 0.4%, which is what identifies
+        // the height as the wrong figure: 87mm was stretching the PAL cartridge 12% vertically.
+        // The presentation correction absorbs the height that removing the stretch gives back, so
+        // the reviewed composition keeps its vertical framing. Guarded by
+        // MediaShellTests.MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset.
         ["snes"] = new(
-            MediaShell.SnesCartridge, new(129f, 87f, 20f), PhysicalArtworkSlots.CartridgeSupport,
-            "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.10f,
+            MediaShell.SnesCartridge, new(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport,
+            "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f,
             FloorClearanceInShelfUnits: 0.014f),
+        // Known to have the same defect: a Game Pak is ~57.5 x 35 x 6mm and this asset's own ratio
+        // is 1.71, so 85 x 60 stretches it about 20% vertically. Correcting it truthfully also
+        // roughly halves the cartridge on screen, which is a composition decision rather than a
+        // data fix, so it is deliberately left for the GBA asset pass rather than changed blind.
         ["gba"] = new(
             MediaShell.GbaCartridge, new(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport,
             "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),

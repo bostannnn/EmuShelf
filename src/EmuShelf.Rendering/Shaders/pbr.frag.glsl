@@ -32,6 +32,11 @@ uniform float uCavityStrength;
 uniform float uNormalStrength;
 uniform vec3 uBodyTint;
 uniform float uBodyTintMix;
+// Per-shell correction for a source whose authored albedo is darker than the real object's. A SNES
+// shell's plastic is light grey; a scan authored under a brighter viewer can encode it far below
+// that, and no exposure setting can fix a body that is dark before any light reaches it without
+// blowing out the labels and every other shell beside it.
+uniform float uBodyAlbedoScale;
 
 // --- artwork panel -------------------------------------------------------------------------
 // Up to three panels (cover, back, spine) projected onto faces in object space. Packed as parallel
@@ -209,6 +214,8 @@ void main()
         baseColor *= texture(uBaseColorMap, vTexCoord);
     }
     baseColor.rgb = mix(baseColor.rgb, uBodyTint, uBodyTintMix);
+    // Body only: the printed panels below overwrite this, so a label keeps its scraped colour.
+    baseColor.rgb = min(baseColor.rgb * uBodyAlbedoScale, vec3(1.0));
 
     float metallic = uMetallicFactor;
     float roughness = uRoughnessFactor;
