@@ -117,6 +117,30 @@ public class MediaShellTests
         Assert.Equal(neighbour, EmuShelf.Rendering.MediaShellRenderer.ExposureForFocus(-2f), 3);
     }
 
+    /// <summary>
+    /// A shell's panel proportions are unknown until its asset has decoded.
+    /// </summary>
+    /// <remarks>
+    /// Regression test for a first-frame defect. The blank label is drawn to fit the panel, so it
+    /// cannot be drawn before this returns a value — and the shelf originally warmed labels only
+    /// when its game list changed, which happens before decoding finishes. The result was a
+    /// cartridge wearing a bare accent tint until the player changed platform, which rebuilt the
+    /// layout late enough to succeed. Anything depending on this must also retry once preparation
+    /// completes.
+    /// </remarks>
+    [Fact]
+    public async Task TryGetPanelAspect_IsOnlyAvailableAfterTheAssetIsPrepared()
+    {
+        Assert.True(MediaShellCatalog.TryGetPanelAspect(MediaShell.CoverCard) is null or > 0f);
+
+        await MediaShellCatalog.PrepareAsync(MediaShell.SnesCartridge);
+        var aspect = MediaShellCatalog.TryGetPanelAspect(MediaShell.SnesCartridge);
+
+        Assert.NotNull(aspect);
+        // The SNES label is a wide landscape strip; anything near square means the panel is wrong.
+        Assert.InRange(aspect!.Value, 2.5f, 3.3f);
+    }
+
     [Fact]
     public async Task PrepareAsync_CachesOneImmutableDecodedAsset()
     {

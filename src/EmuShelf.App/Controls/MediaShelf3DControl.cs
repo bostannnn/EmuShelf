@@ -612,6 +612,12 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             {
                 if (generation == _preparationGeneration)
                 {
+                    // The blank label can only be drawn at the shell's panel proportions, and those
+                    // are unknown until the asset has decoded — which is after the list arrives. Warm
+                    // again here or the first frames of a session show the bare accent tint, and the
+                    // label only appears once something else happens to rebuild the layout. That was
+                    // visible as a cartridge whose placeholder arrived only after changing platform.
+                    WarmLabelPlaceholders();
                     RequestNextFrameRendering();
                 }
             });
