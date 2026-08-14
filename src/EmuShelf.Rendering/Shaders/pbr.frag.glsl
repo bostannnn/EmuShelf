@@ -55,6 +55,9 @@ uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
 // Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
 uniform float uPanelCutCorner[MAX_PANELS];
+// How far behind the panel's plane a surface may lie and still be printed, in object-space units.
+// A panel is a decal on the face the player sees, not a projection cast through the shell.
+uniform float uPanelMaxDepth[MAX_PANELS];
 // Sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to a
 // landscape cartridge label without being squashed. Offset is separate from scale rather than
 // implied to be centred, because the two panels of a folded label take adjacent slices of one
@@ -265,6 +268,15 @@ void main()
         // not move the label onto another face.
         float facing = dot(normalize(vObjectNormal), uPanelNormal[i]);
         if (facing < 0.5)
+        {
+            continue;
+        }
+
+        // Facing the right way is not enough: a cartridge's board and the inside of its back wall
+        // face the player too, through the pin opening, and sit inside the label's rectangle. Only
+        // surfaces near the panel's own plane are printed, so the label stays a sticker on the
+        // shell instead of running across the contacts behind it.
+        if (-dot(local, uPanelNormal[i]) > uPanelMaxDepth[i])
         {
             continue;
         }

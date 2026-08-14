@@ -197,7 +197,13 @@ public static class MediaShellCatalog
             ExtraPanels: [],
             PanelRoughness: 0.38f,
             ArtFit: ArtFit.Cover,
-            FlattenPanelNormal: true),
+            FlattenPanelNormal: true,
+            // This is the shell that made the depth allowance necessary. Its board and the inside
+            // of its back wall face the player through the pin opening, 0.75 of the cartridge's
+            // depth behind the label, and inside the label rectangle: printed, they put a band of
+            // cover art straight across the contacts. Its own label recess is the deepest of any
+            // shell at 0.30, so the default allowance is what fits it and nothing further in.
+            PanelDepthFraction: 0.40f),
 
         // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
         // the lid), so no reorientation is needed.

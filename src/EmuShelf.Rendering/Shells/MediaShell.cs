@@ -130,6 +130,14 @@ public enum ArtFace
 /// label, and that difference is most of what distinguishes the two materials on screen.</param>
 /// <param name="ArtFit">How a cover whose shape does not match the panel is fitted.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
+/// <param name="PanelDepthFraction">How far behind a panel's plane a surface may lie and still be
+/// printed, as a fraction of the shell's extent along that panel's normal. A panel is a decal on
+/// the one surface that faces the player, not a projection cast through the whole shell: without
+/// this, every front-facing fragment inside the rectangle is printed, including surfaces deep
+/// inside the body. On the GBA that meant the label ran across the exposed board behind the
+/// cartridge's pin opening, which is visible as soon as the hero is pitched toward the player.
+/// The default clears the deepest authored label recess — the GBA's, at 0.30 — by a wide margin
+/// and still excludes every shell's interior, which starts at 0.50.</param>
 /// <param name="BodyRoughnessScale">Per-shell correction for the source model's body roughness.</param>
 /// <param name="BodyAlbedoScale">Per-shell correction for the source model's body base colour,
 /// applied in linear space before the printed panels are laid over it. Sibling of
@@ -153,6 +161,7 @@ public sealed record MediaShellDefinition(
     float PanelRoughness,
     ArtFit ArtFit,
     bool FlattenPanelNormal,
+    float PanelDepthFraction = 0.40f,
     float BodyRoughnessScale = 1f,
     float BodyAlbedoScale = 1f,
     float DielectricReflectance = 0.04f,
