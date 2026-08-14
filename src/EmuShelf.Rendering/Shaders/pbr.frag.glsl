@@ -55,13 +55,15 @@ uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
 // Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
 uniform float uPanelCutCorner[MAX_PANELS];
-// How far behind the panel's plane the print carries on over the shell's top edge, in object-space
-// units. An NES label is a single sheet folded over the top of the cartridge, and that fold is
-// modelled geometry the face's own projection cannot reach. Zero for every label that stops flat.
-uniform float uPanelWrapDepth[MAX_PANELS];
-// Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
-// a landscape cartridge label without being squashed.
+// How far behind the panel's plane a surface may lie and still be printed, in object-space units.
+// A panel is a decal on the face the player sees, not a projection cast through the shell.
+uniform float uPanelMaxDepth[MAX_PANELS];
+// Sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to a
+// landscape cartridge label without being squashed. Offset is separate from scale rather than
+// implied to be centred, because the two panels of a folded label take adjacent slices of one
+// sheet: the face gets everything below the crease and the top edge gets the strip above it.
 uniform vec2 uPanelArtScale[MAX_PANELS];
+uniform vec2 uPanelArtOffset[MAX_PANELS];
 uniform sampler2D uPanelArt0;
 uniform sampler2D uPanelArt1;
 uniform sampler2D uPanelArt2;
@@ -265,36 +267,35 @@ void main()
         // the normal map must not punch holes in the label's edge, and the model's rotation must
         // not move the label onto another face.
         float facing = dot(normalize(vObjectNormal), uPanelNormal[i]);
-
-        // The fold: geometry above the panel's top edge that has turned away from the face and run
-        // back over the shell, within the authored depth of the wrap. It is bounded by depth rather
-        // than by how far the normal has turned, because the fold is a curve — a facing threshold
-        // strict enough to exclude the moulding also leaves a pale hairline along the fold line.
-        float vLength = max(length(vEdge), 1e-8);
-        float wrapV = uPanelWrapDepth[i] / vLength;
-        float behind = -dot(local, uPanelNormal[i]);
-        bool onWrap = wrapV > 0.0 && v > 1.0 && behind <= uPanelWrapDepth[i];
-        if (facing < 0.5 && !onWrap)
+        if (facing < 0.5)
         {
             continue;
         }
 
-        // Unrolled, the printed sheet is one rounded rectangle creased at v = 1 rather than two
-        // shapes meeting there, so the mask must not fall off at the crease — doing that left a
-        // half-masked row of plate along the fold on every cartridge. Rounding then lands on the
-        // sheet's four real corners: the bottom of the front and the far end of the fold.
-        float vMask = onWrap ? 1.0 + (behind / vLength) : v;
-        // The print still stops at the crease, and the fold carries its top row — what a folded
-        // sheet shows. Scraped art has nothing else to offer: no provider publishes a separate
-        // cartridge-top image. Off the wrap v is left alone, so a panel's top edge samples exactly
-        // as it did, including the antialiased row past it, where an out-of-range v is what makes
-        // the art fall back to the tint.
-        float vArt = onWrap ? 1.0 : v;
+        // Facing the right way is not enough, for two reasons that want the same test. A cartridge's
+        // board and the inside of its back wall face the player through the pin opening and sit
+        // inside the label's rectangle; printed, they run cover art across the contacts. And a keep
+        // case is a cube squashed about ten to one in Z, so the inverse transpose tips the normals
+        // of its whole rounded rim back toward the face — the rim passes the test above as
+        // comfortably as the flat plate does, which is how the sleeve came to wrap onto the spine
+        // and most of the way to the back. Distance behind the panel's own plane separates both.
+        float depth = -dot(local, uPanelNormal[i]);
+        // Feather along the surface's own depth gradient so the cut antialiases the way the
+        // rectangle's edge does rather than stepping along an iso-depth contour. Capped relative to
+        // the allowance: across a depth discontinuity — the lip of a pin opening — the derivative
+        // is enormous, and an uncapped feather would let the surface behind it take a faint print.
+        float depthWidth = clamp(fwidth(depth), 1e-6, max(uPanelMaxDepth[i], 1e-6) * 0.25);
+        float depthFade = 1.0 - smoothstep(
+            uPanelMaxDepth[i] - depthWidth, uPanelMaxDepth[i] + depthWidth, depth);
+        if (depthFade <= 0.0)
+        {
+            continue;
+        }
 
         float aspect = max(uPanelAspect[i], 1e-4);
         float corner = clamp(uPanelCornerRadius[i], 0.0, 0.499);
-        vec2 panelPoint = vec2((u - 0.5) * aspect, vMask - 0.5 - (wrapV * 0.5));
-        vec2 halfSize = vec2(aspect * 0.5, 0.5 + (wrapV * 0.5));
+        vec2 panelPoint = (vec2(u, v) - 0.5) * vec2(aspect, 1.0);
+        vec2 halfSize = vec2(aspect * 0.5, 0.5);
         vec2 rounded = abs(panelPoint) - (halfSize - vec2(corner));
         float edgeDistance = length(max(rounded, vec2(0.0)))
             + min(max(rounded.x, rounded.y), 0.0) - corner;
@@ -309,7 +310,8 @@ void main()
         }
 
         float antialiasWidth = max(fwidth(edgeDistance), 1e-4);
-        float panelMask = 1.0 - smoothstep(-antialiasWidth, antialiasWidth, edgeDistance);
+        float panelMask =
+            (1.0 - smoothstep(-antialiasWidth, antialiasWidth, edgeDistance)) * depthFade;
         if (panelMask <= 0.0)
         {
             continue;
@@ -319,8 +321,8 @@ void main()
         if (uPanelHasArt[i] > 0.5)
         {
             // v runs bottom-up in object space and top-down in image space.
-            vec2 uv = vec2(u, 1.0 - vArt);
-            uv = ((uv - 0.5) * uPanelArtScale[i]) + 0.5;
+            vec2 uv = vec2(u, 1.0 - v);
+            uv = (uv * uPanelArtScale[i]) + uPanelArtOffset[i];
             if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
             {
                 vec4 sampled = samplePanelArt(i, uv);
@@ -331,9 +333,7 @@ void main()
         baseColor.rgb = mix(baseColor.rgb, art.rgb, panelMask);
         roughness = mix(roughness, uPanelRoughness, panelMask);
         metallic = mix(metallic, 0.0, panelMask);
-        // The fold keeps its own normal: it genuinely points up and over the shell, and flattening
-        // it to the front face would light a horizontal strip as though it faced the camera.
-        if (uPanelFlattenNormal > 0.5 && !onWrap)
+        if (uPanelFlattenNormal > 0.5)
         {
             N = normalize(mix(N, normalize(uNormalMatrix * uPanelNormal[i]), panelMask));
         }

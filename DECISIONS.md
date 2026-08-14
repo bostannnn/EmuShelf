@@ -6839,45 +6839,259 @@ lip and a sleeve window, `MediaShellCatalog` already builds the cover card proce
 generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
 route rather than taken, because it is a shell rather than an asset swap.
 
-## 2026-08-14 — An NES label folds over the top of the cartridge, and the print folds with it
+## 2026-08-14 — Printed panels are decals on one surface, not projections through the shell
 
-Every NES cartridge wore a pale lip along its top edge, on the shelf's own rest pose and as a full
-white band the moment the player tilted up. The shell was not at fault. dark_igorek's model
-reproduces a real NES label, which is **one printed sheet folded over the top of the shell** — the
-strip that carries the title when carts are shelved — and it measures out at 57.5 x 90.7mm on the
-front with a 7.3mm fold, against a published 55 x 90..91mm plus a 7.19mm fold. It is the only
-authored shell whose label leaves the front face.
+Artwork panels were painted onto every front-facing fragment inside their rectangle, at any depth.
+On the GBA that put a band of cover art across the exposed board behind the contact pins: the board
+and the inside of the back wall face the player through the pin opening, sit inside the label's
+rectangle, and carry more area there than the label itself. It is invisible at the resting pose and
+plain as soon as the hero is pitched toward the player, which is how it shipped.
 
-`ArtPanel` could only describe a rectangle on one face, so nothing reached the fold, and it kept the
-paper grey the prep flattened the Battletoads plate to. The facing test in `pbr.frag.glsl` was
-documented as keeping art off the wrap; it did, and that was the thing left unfinished rather than
-the fix.
+`MediaShellDefinition.PanelDepthFraction` now bounds how far behind a panel's plane a surface can
+lie and still be printed, as a fraction of the shell's extent along that panel's normal — one
+figure that means the same thing on a 6mm cartridge and a 14mm keep case. The default of 0.40 was
+measured, not guessed: across the six authored shells the deepest label surface is the GBA's own
+recess at 0.30, and the shallowest interior geometry inside any cover rectangle is at 0.50. The
+keep case picks up a small correction from the same rule, its sleeve no longer printing into the
+hinge channel.
 
-**The fold now carries the top row of the front print**, via a `TopWrap` depth on the panel. That is
-what a folded sheet actually shows — the label's top band continuing over the edge — and it needs no
-new asset. The alternative, scraping a separate cartridge-top image, was rejected: no provider
-publishes one (a real fold carries the game title, so the honest equivalent is a transparent logo
-asset), and it would mean a second scrape, cache and failure mode for a 7mm strip.
+Depth in object space rather than a depth-buffer or occlusion test, because the question is which
+*surface* the label is stuck to, not what happens to be in front of it from the current camera —
+the answer must not change as the hero turns.
 
-Three details that are not obvious from the description:
+`MediaShellCatalogTests` guards the constant against the geometry from both sides: the GBA's
+interior must still fall inside the rectangle and stay excluded, and every shell must still print
+at least 80% of its cover panel. Neither test can reach the shader, so the fragment-side rule
+itself is verified by the preview tool's before/after renders at the hero's pitch limit.
+## 2026-08-14 — The DS card's black shell was a workaround for a paper-grey mask
 
-- **The wrap is bounded by depth, not by how far the surface normal has turned.** The fold is a
-  curve, and any facing threshold strict enough to exclude the moulding leaves a paper hairline
-  along the crease.
-- **The bound is measured from the panel's plane, not from the fold's length.** Those differ — the
-  plate starts slightly behind the shell's front-most moulding — and taking the fold's own 7.3mm
-  left the last 0.6mm of it blank. `NesLabelWrap_SpansTheFoldWithoutReachingTheMouldingBehindIt`
-  measures both bounds off the asset, because too short leaves a paper line and too long paints the
-  recess floor the label sits in, and both are sub-millimetre and survive a glance at a render.
-- **The mask treats the sheet as unrolled, and only the artwork stops at the crease.** Two attempts
-  failed the same way before this one landed. Masking the fold separately from the face leaves
-  `v = 1` as a mask boundary in the middle of continuous print, and the antialiased row there showed
-  as a half-masked line of plate along the whole crease — subtle enough to be mistaken for a
-  specular highlight on the bend, which is exactly what happened. Squaring the panel's top corners
-  fixed the wedges that a rounded top left at each end of the fold, but not that line. Unrolling
-  does both: one rounded rectangle, creased at `v = 1`, so nothing falls off at the crease and the
-  rounding lands on the sheet's four real corners — the bottom of the front and the far end of the
-  fold. The print still stops at the crease; only the mask carries on.
+Three things were wrong with the card from the front, and two of them come from the same root.
 
-The fold also keeps its own shading normal rather than being flattened to the face, since it
-genuinely points up and over the shell.
+**The mask fill.** The label island was masked with `ModelPrep`'s default paper grey (sRGB 220)
+against a shell whose plastic is sRGB ~31. The Mega Drive entry above records making the fill
+configurable for exactly this reason and using that shell's own colour; the DS asset was prepared
+before that and kept the default. Wherever the masked rectangle and the artwork panel disagreed —
+which they always do, being derived from different things — a near-white ring haloed the label.
+
+**The finish that hid it.** `ds-black` was mixed at 0.965 toward near-black, on a comment asserting
+"this shell's plastic is near-white". Measured off the atlas, that is false: 77% of it sits at sRGB
+20–60 and only the masked island was near-white. So the value was read off the defect rather than
+the shell. It did hide the halo, by replacing the base colour outright — and with it the moulding,
+the seam and the recess step. The card rendered as a flat slab, darker than a real DS card, and its
+outline was indistinguishable from the shelf background.
+
+Corrected at the root: the asset is re-prepared with a fill matching its own plastic, and the finish
+returns to the light neutralising touch the case finishes use. Brightness is now a per-shell
+`BodyAlbedoScale` of 3.2, which is the same correction SNES needed and for the same reason — the
+authored plastic is far darker than the real object, and scaling the authored colour preserves the
+moulding that replacing it destroys. Sampled against a straight-on photograph, the shell frame lands
+at sRGB 85–103 against the photograph's 78–98, from 50–81 before.
+
+**The corner cut is real but was drawn at two and a half times its size.** A DS label is chamfered
+at the bottom left; it was authored by eye at 0.20 of the panel, which bit a wedge out of the
+artwork. Traced off two photographs — a blank card and a retail cart — the chamfer measures 27px on
+a 337px-tall label and 55px on a 720px one: 0.080 both times.
+
+The label rectangle itself was not changed. It was suspected of being too small and measured
+otherwise: 0.810 of the shell's width and 0.758 of its height in the render, against 0.811 and 0.768
+in the photograph. It read as small because the chamfer was eating a corner of it and because the
+surrounding plastic had no visible edge.
+
+**Reproducibility.** Nothing recorded how each shell was prepared, so the mask rectangle had to be
+reverse-engineered from the shipped atlas — and the first reconstruction was a texel tight, which
+the artwork test caught. The DS command is therefore recorded here, and the same should be done for
+any shell prepared this way:
+
+```
+dotnet run --project tools/EmuShelf.Rendering.Preview -c Release -- \
+  --prepare-model models/ds/nitendo_ds_cartridge_super_mario_64.glb \
+  --prepare-out src/EmuShelf.Rendering/Assets/ds-card.glb \
+  --neutral-rect 0.0605,0.0298,0.4795,0.4795 --neutral-fill 2B292E \
+  --single-instance --max-texture 1024
+```
+
+`MediaShellRenderer.Render` also takes a material variant now. The per-shell turntable drew the
+model's own plastic while the shelf composition applied the finish, so the one view that shows a
+shell straight-on was showing the wrong colour — which is how a black DS card kept being reviewed
+as a white one.
+
+## 2026-08-14 — The DS card takes a blank template shell rather than a copy of one game
+
+satchii_'s model was the wrong kind of asset for this job, and the corrections above were fighting
+that rather than fixing it. littlengvfx's "Nintendo Ds cartridge (preset)" is authored as a
+cartridge to put artwork *on*: the label is its own quad on its own material and texture, and the
+shell moulds the NINTENDO DS band above it and the recess with its chamfer around it.
+
+Three things follow from that, all improvements:
+
+- **The artwork lands where a real label's artwork lands.** The panel is the moulded recess, so the
+  branding band stays plastic instead of being painted over. On the old shell the panel had to cover
+  the band too, because there was no band.
+- **The placeholder image is cleared by flattening a material**, which is NES's route: no rectangle
+  read off an atlas by eye, nothing else sampling the image, and the plate surviving for EmuShelf's
+  own art. The rectangle route is what shipped a paper-grey halo and then a near-black finish to
+  hide it.
+- **The plastic needs far less correcting.** This asset is authored at sRGB ~57 against the old
+  one's ~31, so `BodyAlbedoScale` drops from 3.2 to 1.95 and the moulding survives more of it.
+
+Two deviations recorded rather than corrected, both the asset's and neither worth expressing as a
+stretch: it is 0.996 W/H where a real 33.4x35mm card is 0.954, so about 4% squarer, and 2.6mm thick
+against a real 3.8mm. The profile anchors on the real 35mm height and takes the asset's ratios
+otherwise, which is the rule every shell follows.
+
+**The label quad's bounding box is not the label.** Setting the panel from that AABB put it 0.08
+past the recess on the right and 0.12 below it, and the projection painted artwork onto the
+moulding — the quad presents a smaller face than its world-space AABB spans. Measured off a
+straight-on render of the prepared asset instead, which is the only view where the moulding and the
+panel edge are both visible. A test now pins the panel inside the branding band and the card edges.
+
+`ModelPrep`'s `--neutral-fill` was silently ignored on the `--neutral-material` route, which
+hard-coded the same paper grey that caused the DS halo in the first place. It now applies to both.
+
+The prep command, which supersedes the one recorded in the entry above — that one prepares a model
+no longer shipped:
+
+```
+dotnet run --project tools/EmuShelf.Rendering.Preview -c Release -- \
+  --prepare-model models/ds/nintendo_ds_cartridge_preset.glb \
+  --prepare-out src/EmuShelf.Rendering/Assets/ds-card.glb \
+  --neutral-material presetNdsiCartridgeFront4 --neutral-fill 141414 \
+  --max-texture 1024
+```
+
+No `--single-instance`: unlike the model it replaced, this file holds one card. The fill is the
+recess's own near-black rather than a plastic grey, because here it is never a halo — the plate is
+the panel's own geometry, so the only place it shows is the hairline outside the panel's rounded
+corners and chamfer, where a dark line reads as the recess it is.
+## 2026-08-14 — A panel's depth bound gets a measured per-panel override; ArtFit moves onto the panel
+
+Landed alongside the GBA depth allowance above and reconciled with it, because the two changes
+found the same missing concept from opposite ends. That one asks *how far in is definitely the
+inside of the shell* and answers it per shell, as `PanelDepthFraction`, against the shell's own
+thickness — which is why one figure covers a 6mm cartridge and a 14mm keep case. This one needs a
+bound an order of magnitude tighter on one face, so `ArtPanel.MaxSurfaceDepth` overrides it per
+panel in object units, and the keep case's sleeve sets one millimetre. Both are wanted: the shell's
+figure keeps print off any interior, the panel's keeps it off the rim.
+
+**The keep case's sleeve was painting its whole rounded rim** — onto the spine and most of the way
+to the back. The facing guard could not catch it, and the reason is specific to how this shell was
+authored: the source geometry is a cube scaled 13.5 x 19.0 x 1.4, so the inverse transpose that
+carries its normals into canonical space tips every rim normal back toward the face. Measured on the
+mesh, the shallowest thing the front panel was painting sat at 0.61 against a guard that rejects
+below 0.5, and 13.9% of the painted front area was behind the front plane, as deep as 9.7mm on a
+13.7mm case. A tighter facing threshold was rejected — 0.97 would have worked for this one shell and
+would have fought every cartridge label sunk into moulding. The shell-level fraction cannot do it
+either: 0.40 of this case's thickness allows 5.5mm, and the entire rim sits inside that.
+
+The millimetre is measured, not chosen by eye: the front plate is flat or gently domed out to 0.94
+of its half-width where it has fallen 0.53mm behind the plane, and the rim then turns away hard,
+1.23mm at 0.965 and 2.04mm at 0.991. A millimetre keeps the whole plate including the clear cover's
+intentional bulge, and stops at the fillet.
+
+**The cut is feathered rather than a hard reject**, along the surface's own depth gradient, so it
+antialiases like the rectangle's edge instead of stepping along an iso-depth contour — a keep case's
+fillet is smooth, and a hard cut across it is visible as a jagged line. The feather width is capped
+at a quarter of the allowance, which matters for the case the GBA fix cares about: across a depth
+discontinuity like the lip of a pin opening the derivative is enormous, and an uncapped feather
+would let the board behind it take a faint print.
+
+**`ArtFit` moved from the shell to the panel.** It was one value applied to a shell's front, back
+and spine alike, which is only defensible while every panel is the same shape. A keep case's front
+really is the proportions of the box scan, and its spine is a 14mm strip beside a 135mm sleeve; one
+fit cannot be right for both. It now sits on `ArtPanel` beside `CornerRadius` and `CutCorner`, which
+had already established that altitude.
+
+**Bounding the panels exposed a licence problem the panels had been hiding.** The keep case's
+base-colour map is a scan of a whole retail Mortal Kombat: Armageddon sleeve, and the artwork panels
+were the only thing covering it — bare body went from 10.1% to 13.8% of the shell, and the newly
+exposed band is the rim right around the sleeve, where that scan's own spine sits. The map is now
+flattened to #2E2E2E, which is the median colour the body region already sampled, so the four
+material variants stay tuned to what they were tuned against. Only the base colour is flattened.
+`ModelPrep` gained `--neutral-maps base` for this: its default of flattening all three maps is right
+where a label is embossed into the normal map beside it, and wrong here, where the normal and
+metallic/roughness maps are the case's own ribs, hinge and scuffs. Both ship byte-identical.
+
+The general point is worth keeping: an artwork panel that covers a model's baked artwork is hiding
+it, not removing it, and any change that shrinks a panel can uncover somebody's copyright. The
+`--no-cover` preview mode checks the shell with no scraped art; it does not check the shell with the
+panels bounded, because until now nothing bounded them.
+
+## 2026-08-14 — A Mega Drive label folds over the top edge, and the profile was a quarter too big
+
+Two defects in the same shell, found by comparing it against real cartridges rather than against
+the model it was cut from.
+
+**The label is one sheet that wraps the top edge.** A Mega Drive label is a 75 x 68mm sticker on a
+109 x 70mm cartridge, of which the top 7.7mm folds over onto the top face — that folded strip is
+the title you read on a shelved cartridge, and Sega Retro describes the labels as layered over the
+top and front for exactly this reason. The shipped panel was a flat rectangle a seventh too wide
+(0.86 of the half-width against 0.688) that stopped short of the top edge, so the cartridge wore a
+sticker centred by eye where the real one is placed to a millimetre.
+
+The fold is now a real capability rather than a Mega Drive special case: `ArtPanel.TopWrap` names
+the fraction of the printed sheet that folds, and the renderer expands such a panel into two — the
+face and a derived strip on a new `ArtFace.Top`, sharing one texture. Three details are what make
+it read as a fold rather than a second sticker:
+
+- **The artwork is fitted to the whole sheet, then sliced.** Cropping to the front panel first and
+  folding a tenth of that away would crop a portrait box scan twice, losing the top of the picture
+  the fold is supposed to carry. `uPanelArtScale` therefore gained a sibling `uPanelArtOffset`; a
+  panel's sub-rectangle is no longer assumed to be centred. For every flat panel the two together
+  reproduce the old centred crop exactly, to within a last-bit float difference.
+- **The strip's length comes from the print, not from the model.** This asset is about 12mm deep
+  where a real cartridge is 17mm, so a strip sized as a fraction of its depth would print the title
+  smaller than the label it continues. It is sized from the front panel's height and the fold
+  fraction instead, and clamped to the depth.
+- **It starts at the front edge.** The shader's facing test admits normals within 60 degrees, so
+  the front panel and the strip both cover the roll-over between them and no plastic shows in the
+  crease.
+
+**The profile said 135 x 87mm for a 109 x 70mm cartridge.** Both figures carry the asset's W/H of
+1.553, which is why `MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset` passed and why the
+shell was never distorted — it was simply a quarter too big, standing taller on the shelf than a
+SNES cartridge it is comfortably shorter than in life. Ratio agreement checks shape; only a
+measurement checks size, and that is now its own test. Depth stays the asset's 11.8mm rather than a
+real cart's ~17mm, as for NES and DS.
+
+Two things helped it hide, and both are fixed. The acceptance shelf shot listed this shell last, so
+it rendered off the right-hand edge of the frame — it now stands beside the SNES cartridge, which
+is the comparison that makes a size error obvious. And the preview tool's `top-edge` and
+`bottom-edge` poses carried each other's names: pitch tips the shell rather than the camera, so a
+positive angle shows the top. A render of a cartridge's underside filed as `top-edge` is a good way
+to conclude that a label folded over the top is not drawing at all.
+
+## 2026-08-14 — The NES label folds too, and its plate is modelled with the fold
+
+Every NES cartridge wore a pale lip along its top edge — at the shelf's own rest pose, and a full
+white band once the player tilted up. Same defect as the Mega Drive's, one shell later, and it is
+fixed with the same `TopWrap` mechanism rather than a second one.
+
+What is different is where the numbers come from. The Mega Drive label was measured off the printed
+sheet because that asset carries no fold; dark_igorek's NES plate **is modelled with its fold**, so
+the asset is the authority. It measures 57.5 x 90.7mm on the face plus a 7.3mm strip over the top,
+against a published 55 x 90..91mm plus 7.19mm — accurate enough that guessing from the paper spec is
+the wrong move, and `NesLabelFold_SpansThePlatesOwnFoldFromTheCrease` checks both bounds against the
+mesh instead.
+
+Two constants that look wrong until you know why:
+
+- **`MaxV` is 0.994, the crease, not 1.0.** A Mega Drive sheet runs hard to the shell's own top
+  edge; this one stops 0.4mm short of it. 0.994 is the last of the bend still facing forward — the
+  shader hands the two halves of the sheet over at 45 degrees, and the front panel has to claim
+  everything above that threshold or a hairline of plate shows between them. It was 0.985, which
+  was 0.58mm short and did exactly that.
+- **`TopWrap` is 0.0796, not the sheet's own 7.19/97.5 = 0.0737.** The strip is laid from the
+  shell's front plane and this plate begins 0.3mm behind it, so the paper ratio under-reaches and
+  leaves blank plate at the fold's far edge. Over-reaching prints the recess floor the label sits
+  in. Both errors are sub-millimetre and both survive a glance at a render, which is the argument
+  for measuring rather than trusting.
+
+Recorded for the next shell: a first attempt at this solved it independently, extending the front
+panel's mask in the shader to smear its top row across the fold. It worked, but it is the weaker
+answer — a derived top panel shows the strip of the sheet that is actually above the crease, and
+sizes the fold by the printed sheet rather than by a model that may be the wrong depth. It was
+dropped in favour of the mechanism already on main. One way to fold a label is enough.
+
+Not taken, and worth knowing about: the panel's corner radius is 2.7mm against a real NES label's
+1.6mm, and `ArtFit.Contain` combined with a fold would put the tint on the strip rather than art,
+because the offset the fold relies on assumes the sheet fills the panel.

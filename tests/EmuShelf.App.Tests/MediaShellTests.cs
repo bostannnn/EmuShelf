@@ -284,6 +284,35 @@ public class MediaShellTests
     }
 
     /// <summary>
+    /// The cartridges stand beside each other in the size order the real things do.
+    /// </summary>
+    /// <remarks>
+    /// The gap the proportion test cannot see. A Mega Drive profile recorded 135 x 87mm for a
+    /// 109 x 70mm cartridge; both have the same 1.553 ratio, so the shell was never distorted and
+    /// nothing failed — it just stood a quarter too big, taller on the shelf than the SNES
+    /// cartridge it is comfortably shorter than in life. Ratios check shape; only a measurement
+    /// checks size, and on a shelf that shows several media at once size is the whole point.
+    /// </remarks>
+    [Fact]
+    public void MetricProfiles_OrderTheCartridgesAsTheRealOnesStand()
+    {
+        var nes = MediaShellMap.ProfileForSystem("nes", 0.72);
+        var snes = MediaShellMap.ProfileForSystem("snes", 1.43);
+        var megaDrive = MediaShellMap.ProfileForSystem("megadrive", 1.43);
+        var gba = MediaShellMap.ProfileForSystem("gba", 1.42);
+
+        Assert.Equal(109f, megaDrive.DimensionsMillimetres.X, 1f);
+        Assert.Equal(70f, megaDrive.DimensionsMillimetres.Y, 1f);
+
+        // A cartridge that is 70mm tall cannot out-rank a 135mm NES or a 77.5mm SNES cartridge,
+        // and it is still comfortably bigger than a Game Pak.
+        Assert.True(megaDrive.HeightInShelfUnits < nes.HeightInShelfUnits);
+        Assert.True(megaDrive.HeightInShelfUnits < snes.HeightInShelfUnits);
+        Assert.True(megaDrive.HeightInShelfUnits > gba.HeightInShelfUnits);
+        Assert.True(megaDrive.WidthInShelfUnits < snes.WidthInShelfUnits);
+    }
+
+    /// <summary>
     /// A profile's measured dimensions must agree with the proportions of the asset it describes.
     /// </summary>
     /// <remarks>
@@ -493,66 +522,6 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// The NES cover panel's wrap must span the label's fold and stop at the moulding behind it.
-    /// </summary>
-    /// <remarks>
-    /// A real NES label is one sheet folded over the top of the cartridge, and dark_igorek modelled
-    /// that fold: 7.3mm of plate that leaves the front face and runs back over the shell. No
-    /// projection onto the front reaches it, so it kept the blank plate's paper grey and read as a
-    /// pale lip along the top of every cartridge — visible at the shelf's own rest pitch, and a full
-    /// white band as soon as the player tilted up.
-    ///
-    /// The constant that fixes it is bounded on both sides and neither bound is guessable, which is
-    /// why it is measured here rather than trusted: too short leaves a paper line along the fold's
-    /// far edge, and too long paints the recess floor the label sits in, carrying the print past
-    /// where the label actually ends. Both are sub-millimetre, so both survive a glance at a render.
-    /// </remarks>
-    [Fact]
-    public void NesLabelWrap_SpansTheFoldWithoutReachingTheMouldingBehindIt()
-    {
-        var model = MediaShellCatalog.Load(MediaShell.NesCartridge);
-        var placement = MediaShellCatalog.Place(
-            MediaShellCatalog.Definition(MediaShell.NesCartridge).CoverPanel, model);
-
-        // Distance behind the panel's plane, the same quantity the shader bounds the wrap by.
-        float Behind(Vector3 position) =>
-            -Vector3.Dot(position - placement.Origin, placement.Normal);
-
-        var stickerMaterial = model.Materials
-            .Select((material, index) => (material, index))
-            .Single(entry => string.Equals(
-                entry.material.Name, "sticker", StringComparison.OrdinalIgnoreCase))
-            .index;
-
-        var fold = 0f;
-        foreach (var mesh in model.Meshes.Where(mesh => mesh.MaterialIndex == stickerMaterial))
-        {
-            for (var i = 0; i < mesh.Vertices.Length; i += MeshGeometry.FloatsPerVertex)
-            {
-                var normal = new Vector3(
-                    mesh.Vertices[i + 3], mesh.Vertices[i + 4], mesh.Vertices[i + 5]);
-                // The flat front plate is what the panel already covers; the rest is the fold.
-                if (Vector3.Normalize(normal).Z <= 0.95f)
-                {
-                    fold = MathF.Max(
-                        fold,
-                        Behind(new Vector3(mesh.Vertices[i], mesh.Vertices[i + 1], mesh.Vertices[i + 2])));
-                }
-            }
-        }
-
-        Assert.True(fold > 0f, "The NES label plate has no fold; the asset is not the one measured here.");
-        Assert.True(
-            placement.WrapDepth >= fold,
-            $"The wrap stops {(fold - placement.WrapDepth) * 135f:F2}mm short of the fold's far edge, "
-                + "which leaves the blank plate showing along the top of the cartridge.");
-        // Half a millimetre on a 135mm cartridge. Past the fold there is only the recess floor.
-        Assert.True(
-            placement.WrapDepth <= fold + (0.5f / 135f),
-            $"The wrap runs {(placement.WrapDepth - fold) * 135f:F2}mm past the fold onto the moulding.");
-    }
-
-    /// <summary>
     /// A Mega Drive cartridge is landscape, and this asset needs no reorientation at all.
     /// </summary>
     /// <remarks>
@@ -621,70 +590,79 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// The DS download is four cards in one file; only one may reach the scene.
+    /// The DS card loads upright, roughly square, and thin.
     /// </summary>
     /// <remarks>
-    /// Regression test for the dedupe. Loading the source whole draws four cartridges side by side,
-    /// and the duplicates are detached by clearing their node's mesh reference rather than deleting
-    /// anything, so this also guards against a prep that silently stops detaching them.
+    /// The blank template that replaced satchii_'s model is authored lying flat with its label
+    /// toward +Y, so it needs a quarter turn about X rather than the half turn about Y the previous
+    /// asset took. A shell that loads on its side still fills a plausible-looking bounding box, so
+    /// this pins the axes rather than trusting the render.
     /// </remarks>
     [Fact]
-    public void Load_KeepsASingleDsCard()
+    public void Load_StandsTheDsCardUpright()
     {
         var model = MediaShellCatalog.Load(MediaShell.DsCard);
 
-        Assert.Single(model.Meshes);
-        // 33.4 x 35mm: very slightly taller than wide.
-        Assert.InRange(model.Size.X, 0.94f, 0.98f);
-        Assert.True(model.Size.Z < 0.08f, $"A DS card is thin; got {model.Size.Z}.");
+        // Near square: this asset is 0.996 W/H where a real 33.4 x 35mm card is 0.954.
+        Assert.InRange(model.Size.X / model.Size.Y, 0.97f, 1.02f);
+        Assert.True(
+            model.Size.Z < 0.12f * model.Size.Y,
+            $"A DS card is thin; got depth {model.Size.Z} against height {model.Size.Y}.");
     }
 
     /// <summary>
-    /// The shipped DS asset must carry no trace of the Super Mario 64 artwork it was modelled from.
+    /// The shipped DS asset must carry no trace of the artwork its source was authored with.
     /// </summary>
     /// <remarks>
-    /// This one is subtler than the other shells: no triangle in any of the four copies samples that
-    /// island, so the artwork never rendered and the card looked clean. It was still sitting in the
-    /// texture that ships inside the binary, which is what the licence actually turns on, so it is
-    /// masked anyway.
+    /// This template keeps its label on a dedicated plate, material and texture, so it takes the
+    /// same clean route NES does: flatten the material's maps and there is no rectangle to get
+    /// wrong. That is a real improvement on the model it replaced, whose label shared an atlas with
+    /// the body and had to be masked by a hand-read rectangle — the fallback that shipped a
+    /// paper-grey halo and then a near-black finish to hide it.
     /// </remarks>
     [Fact]
-    public void DsLabelIsland_CarriesNoSourceArtwork()
+    public void DsLabelPlate_CarriesNoSourceArtwork()
     {
         var model = MediaShellCatalog.Load(MediaShell.DsCard);
-        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
-        var texture = model.Textures[material.BaseColorTexture];
+        var plate = model.Materials.Single(
+            material => string.Equals(
+                material.Name, "presetNdsiCartridgeFront4", StringComparison.OrdinalIgnoreCase));
+        var texture = model.Textures[plate.BaseColorTexture];
 
-        (byte R, byte G, byte B) Sample(float u, float v)
+        var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
+        for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
         {
-            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
-            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
-            var offset = ((y * texture.Width) + x) * 4;
-            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
-        }
-
-        // As with the Mega Drive shell, this walks the requested rectangle out to its edges.
-        const float u0 = 0.06f, u1 = 0.48f, v0 = 0.03f, v1 = 0.48f;
-        var reference = Sample(0.25f, 0.25f);
-        for (var u = u0; u <= u1; u += 0.01f)
-        {
-            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
+            if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
             {
-                Assert.True(
-                    Sample(u, v) == reference,
-                    $"The DS label island still varies at ({u:F2},{v:F2}); artwork was not removed.");
+                Assert.Fail(
+                    $"The DS label plate still varies at byte {offset}; its artwork was not flattened.");
             }
         }
+    }
 
-        for (var v = v0; v <= v1; v += 0.01f)
-        {
-            foreach (var u in new[] { u0, u1 })
-            {
-                Assert.True(
-                    Sample(u, v) == reference,
-                    $"The DS label edge still varies at ({u:F2},{v:F2}); the mask is too small.");
-            }
-        }
+    /// <summary>
+    /// The DS artwork panel has to stay inside the shell's moulded recess.
+    /// </summary>
+    /// <remarks>
+    /// The panel was first set from the label quad's world-space bounding box, which is larger than
+    /// the face that quad presents — that put it 0.08 past the recess on the right and 0.12 below
+    /// it, and the projection painted artwork onto the moulding. The recess was then measured off a
+    /// render. This pins the panel inside the branding band above it and the card's edges around it,
+    /// so a future re-fit cannot silently spill again.
+    /// </remarks>
+    [Fact]
+    public void DsCoverPanel_StaysInsideTheRecess()
+    {
+        var panel = MediaShellCatalog.Definition(MediaShell.DsCard).CoverPanel;
+
+        // The moulded NINTENDO DS band starts around 0.59 of the half-height.
+        Assert.InRange(panel.MaxV, 0.55f, 0.61f);
+        Assert.InRange(panel.MinV, -0.75f, -0.68f);
+        Assert.InRange(panel.MaxU, 0.78f, 0.82f);
+        Assert.InRange(panel.MinU, -0.82f, -0.78f);
+        // A DS label is chamfered at the bottom left; squaring it stops the card reading as a DS
+        // card, and oversizing it bites a wedge out of the artwork.
+        Assert.InRange(panel.CutCorner, 0.06f, 0.13f);
     }
 
     /// <summary>
@@ -851,6 +829,240 @@ public class MediaShellTests
             Assert.InRange(corner.X, model.BoundsMin.X - 0.001f, model.BoundsMax.X + 0.001f);
             Assert.InRange(corner.Y, model.BoundsMin.Y - 0.001f, model.BoundsMax.Y + 0.001f);
         }
+    }
+
+    /// <summary>
+    /// The Mega Drive label is placed from the printed sticker's own measurements.
+    /// </summary>
+    /// <remarks>
+    /// A Mega Drive label is a 75 x 68mm sheet on a 109 x 70mm cartridge whose top 7.7mm folds over
+    /// the top edge. Those figures fix the panel completely, and the first rectangle disagreed with
+    /// every one of them: a seventh too wide, and stopping short of the top edge the sheet actually
+    /// runs over. Ranges rather than equalities, because the shell's rounded sides mean its
+    /// bounding box is slightly wider than the flat face the label is stuck to.
+    /// </remarks>
+    [Fact]
+    public void MegaDriveCoverPanel_MatchesARealCartridgeLabel()
+    {
+        var label = MediaShellCatalog.Definition(MediaShell.MegaDriveCartridge).CoverPanel;
+
+        Assert.Equal(ArtFace.Front, label.Face);
+        Assert.Equal(-label.MaxU, label.MinU, 3);
+        // 75mm of a 109mm cartridge, which is what leaves the bare plastic shoulders either side.
+        Assert.Equal(75f / 109f, label.MaxU, 0.03f);
+        // The sheet runs over the top edge, so the panel ends there rather than at a margin below.
+        Assert.Equal(1f, label.MaxV, 3);
+        // 60.3mm of front label down a 70mm face, leaving the moulded band along the bottom.
+        Assert.Equal(-1f + (2f * (1f - (60.3f / 70f))), label.MinV, 0.03f);
+        Assert.Equal(7.7f / 68f, label.TopWrap, 0.02f);
+    }
+
+    /// <summary>
+    /// The folded strip continues the front label across the top edge, at the same printed scale.
+    /// </summary>
+    /// <remarks>
+    /// Two things make this a fold rather than a second sticker. It starts exactly at the front
+    /// edge, so no plastic shows in the crease; and its length comes from the front panel's height
+    /// and the fold fraction rather than from the model's depth, because this asset is about 12mm
+    /// deep where a real cartridge is 17mm and a strip sized against it would print the title
+    /// smaller than the label it belongs to.
+    /// </remarks>
+    [Fact]
+    public void WrapPanel_ContinuesTheLabelOverTheTopEdgeAtTheSamePrintedScale()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var label = MediaShellCatalog.Definition(MediaShell.MegaDriveCartridge).CoverPanel;
+
+        var strip = MediaShellCatalog.TryWrapPanel(label, model);
+        Assert.NotNull(strip);
+        Assert.Equal(ArtFace.Top, strip!.Value.Face);
+        Assert.Equal(label.MinU, strip.Value.MinU, 3);
+        Assert.Equal(label.MaxU, strip.Value.MaxU, 3);
+
+        // Anything describing how the sheet is printed has to survive the crease. A strip built
+        // fresh would take ArtFit.Stretch while the face takes Cover, and the two halves of one
+        // label would then be cropping the same scan differently.
+        Assert.Equal(label.ArtFit, strip.Value.ArtFit);
+        Assert.Equal(label.MaxSurfaceDepth, strip.Value.MaxSurfaceDepth);
+        Assert.Equal(0f, strip.Value.TopWrap);
+
+        var front = MediaShellCatalog.Place(label, model);
+        var placement = MediaShellCatalog.Place(strip.Value, model);
+
+        // On the top face, running backwards from the front edge, and the same width as the label.
+        Assert.Equal(Vector3.UnitY, placement.Normal);
+        Assert.Equal(model.BoundsMax.Y, placement.Origin.Y, 3);
+        Assert.Equal(model.BoundsMax.Z, placement.Origin.Z, 3);
+        Assert.Equal(-1f, Vector3.Normalize(placement.VEdge).Z, 3);
+        Assert.Equal(front.UEdge.Length(), placement.UEdge.Length(), 3);
+        Assert.True(placement.VEdge.Length() <= model.Size.Z + 0.001f);
+
+        // One sheet: the strip is to the face what 7.7mm is to 60.3mm of a real label.
+        var expected = front.VEdge.Length() * label.TopWrap / (1f - label.TopWrap);
+        Assert.Equal(expected, placement.VEdge.Length(), 0.001f);
+    }
+
+    [Fact]
+    public void WrapPanel_IsOnlyProducedForALabelThatFolds()
+    {
+        // The two shells whose real label is one sheet printed over the cartridge's top edge.
+        MediaShell[] folding = [MediaShell.MegaDriveCartridge, MediaShell.NesCartridge];
+
+        foreach (var shell in MediaShellCatalog.All)
+        {
+            var panel = MediaShellCatalog.Definition(shell).CoverPanel;
+            if (folding.Contains(shell))
+            {
+                Assert.True(panel.TopWrap > 0f);
+                Assert.NotNull(MediaShellCatalog.TryWrapPanel(panel, MediaShellCatalog.Load(shell)));
+                continue;
+            }
+
+            Assert.Equal(0f, panel.TopWrap);
+            Assert.Null(MediaShellCatalog.TryWrapPanel(panel, MediaShellCatalog.Load(shell)));
+        }
+    }
+
+    /// <summary>
+    /// The NES strip must span the fold this model actually has, and stop at the moulding behind it.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the Mega Drive, whose label was measured off the printed sheet, this plate is modelled
+    /// with its fold — so the asset is the authority and both bounds can be checked against it. That
+    /// is worth doing because neither is guessable and both are sub-millimetre, so both survive a
+    /// glance at a render. Under-reaching leaves the blank plate showing along the fold's far edge,
+    /// which is the pale lip this shell had; over-reaching prints the recess floor the label sits in,
+    /// carrying the title strip past where the label ends.
+    ///
+    /// It also pins the crease. The front panel has to claim every fragment of the bend that still
+    /// faces forward, or the two halves of the sheet leave a hairline of plate between them; MaxV was
+    /// 0.58mm short of that and did exactly this.
+    /// </remarks>
+    [Fact]
+    public void NesLabelFold_SpansThePlatesOwnFoldFromTheCrease()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.NesCartridge);
+        var label = MediaShellCatalog.Definition(MediaShell.NesCartridge).CoverPanel;
+
+        var sticker = model.Materials
+            .Select((material, index) => (material, index))
+            .Single(entry => string.Equals(
+                entry.material.Name, "sticker", StringComparison.OrdinalIgnoreCase))
+            .index;
+
+        // How far the fold runs back from the shell's front plane, and the highest point of the bend
+        // that still faces forward — the last thing the front panel is responsible for.
+        var foldReach = 0f;
+        var frontFacingTop = float.MinValue;
+        foreach (var mesh in model.Meshes.Where(mesh => mesh.MaterialIndex == sticker))
+        {
+            for (var i = 0; i < mesh.Vertices.Length; i += MeshGeometry.FloatsPerVertex)
+            {
+                var position = new Vector3(
+                    mesh.Vertices[i], mesh.Vertices[i + 1], mesh.Vertices[i + 2]);
+                var normal = Vector3.Normalize(new Vector3(
+                    mesh.Vertices[i + 3], mesh.Vertices[i + 4], mesh.Vertices[i + 5]));
+
+                if (normal.Z > 0.95f)
+                {
+                    continue;
+                }
+
+                foldReach = MathF.Max(foldReach, model.BoundsMax.Z - position.Z);
+                if (normal.Z >= 0.5f)
+                {
+                    frontFacingTop = MathF.Max(frontFacingTop, position.Y);
+                }
+            }
+        }
+
+        Assert.True(foldReach > 0f, "This plate has no fold; the asset is not the one measured here.");
+
+        // The shader's facing test hands over at 45 degrees, so the front panel must reach the last
+        // fragment above that. Half a millimetre of slack on a 135mm cartridge.
+        var crease = label.MaxV * (model.Size.Y * 0.5f);
+        Assert.InRange(crease, frontFacingTop, frontFacingTop + (0.5f / 135f));
+
+        var strip = MediaShellCatalog.TryWrapPanel(label, model);
+        Assert.NotNull(strip);
+        var reach = MediaShellCatalog.Place(strip!.Value, model).VEdge.Length();
+
+        Assert.True(
+            reach >= foldReach,
+            $"The strip stops {(foldReach - reach) * 135f:F2}mm short of the fold's far edge, "
+                + "which leaves the blank plate showing along the top of the cartridge.");
+        Assert.True(
+            reach <= foldReach + (0.5f / 135f),
+            $"The strip runs {(reach - foldReach) * 135f:F2}mm past the fold onto the moulding.");
+    }
+
+    /// <summary>
+    /// Every shell fits the panel budget the fragment shader declares.
+    /// </summary>
+    /// <remarks>
+    /// A folding label costs a panel of its own, so the budget is no longer just the authored
+    /// panels. The renderer resolves this when it uploads a shell, which is on the GL thread inside
+    /// a frame — a definition that overran would surface as a broken render rather than as anything
+    /// anyone could read. Counted here so it fails at the desk instead.
+    /// </remarks>
+    [Fact]
+    public void EveryShell_FitsTheShaderPanelBudget()
+    {
+        foreach (var shell in MediaShellCatalog.All)
+        {
+            var definition = MediaShellCatalog.Definition(shell);
+            var model = MediaShellCatalog.Load(shell);
+            var folds = MediaShellCatalog.TryWrapPanel(definition.CoverPanel, model) is not null;
+
+            var panels = 1 + definition.ExtraPanels.Count + (folds ? 1 : 0);
+            Assert.True(
+                panels <= EmuShelf.Rendering.MediaShellRenderer.MaxPanels,
+                $"{shell} needs {panels} panels against a budget of "
+                + $"{EmuShelf.Rendering.MediaShellRenderer.MaxPanels}.");
+        }
+    }
+
+    /// <summary>
+    /// A fold is only meaningful on the front face, and asking for one elsewhere is not silent.
+    /// </summary>
+    /// <remarks>
+    /// The strip runs backwards from the shell's front edge. A fold requested on the back or the
+    /// spine would be laid down against the wrong edge and would take the front label's share of
+    /// the printed sheet with it — a wrong picture rather than a missing one, which is the kind
+    /// that ships.
+    /// </remarks>
+    [Theory]
+    [InlineData(ArtFace.Back)]
+    [InlineData(ArtFace.Spine)]
+    [InlineData(ArtFace.Top)]
+    public void WrapPanel_RefusesToFoldAnythingButAFrontLabel(ArtFace face)
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var panel = new ArtPanel(face, -0.5f, 0.5f, -0.5f, 1f, TopWrap: 0.1f);
+
+        Assert.Throws<ArgumentException>(() => MediaShellCatalog.TryWrapPanel(panel, model));
+    }
+
+    /// <summary>
+    /// A folding label's artwork is fitted to the whole sheet, not to the part of it left on show.
+    /// </summary>
+    /// <remarks>
+    /// Cropping a portrait box scan to the front panel and then folding a tenth of that away would
+    /// crop the picture twice, losing the top of the art the fold was supposed to carry.
+    /// </remarks>
+    [Fact]
+    public void SheetAspect_DescribesTheWholeLabelIncludingTheFold()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.MegaDriveCartridge);
+        var label = MediaShellCatalog.Definition(MediaShell.MegaDriveCartridge).CoverPanel;
+        var front = MediaShellCatalog.Place(label, model);
+
+        var sheet = MediaShellCatalog.TrySheetAspect(label, model);
+        Assert.NotNull(sheet);
+
+        var faceOnly = front.UEdge.Length() / front.VEdge.Length();
+        Assert.True(sheet!.Value < faceOnly, "A sheet that folds is taller than the face it covers.");
+        Assert.Equal(faceOnly * (1f - label.TopWrap), sheet.Value, 0.001f);
     }
 
     [Fact]

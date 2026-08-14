@@ -293,13 +293,18 @@ public sealed class MediaShellRenderer : IDisposable
     /// <summary>Draws <paramref name="shell"/> into <paramref name="targetFramebuffer"/>.</summary>
     /// <param name="yaw">Rotation about the shell's up axis, in radians. 0 faces the viewer.</param>
     /// <param name="pitch">Rotation about the shell's right axis, in radians.</param>
+    /// <param name="materialVariant">Finish to apply, as a profile names it. Empty draws the model's
+    /// own materials. A shell whose finish is doing real work cannot be judged without it, and this
+    /// path silently drew the untinted model for long enough that a DS card kept being reviewed at
+    /// the wrong colour — this is the only view that shows a shell straight-on.</param>
     public void Render(
         MediaShell shell,
         uint targetFramebuffer,
         uint width,
         uint height,
         float yaw,
-        float pitch)
+        float pitch,
+        string materialVariant = "")
     {
         if (width == 0 || height == 0)
         {
@@ -327,7 +332,7 @@ public sealed class MediaShellRenderer : IDisposable
 
         _activePanelArt = _coverArt.GetValueOrDefault(0);
         _drawAccent = _accent;
-        _activeMaterialAppearance = MaterialVariantAppearance.Default;
+        _activeMaterialAppearance = MaterialVariantAppearance.For(materialVariant);
         var aspect = _sceneWidth / (float)_sceneHeight;
         var (view, projection, _) = Camera(resources.Asset, aspect);
         var model = Matrix4x4.CreateRotationX(pitch) * Matrix4x4.CreateRotationY(yaw);
@@ -832,14 +837,32 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
             _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
-            _program.Set($"uPanelWrapDepth[{i}]", placement.WrapDepth);
+            // The shell's allowance is authored against its thickness on this axis, so one figure
+            // covers a 6mm cartridge and a 14mm keep case without being retuned per shell. A panel
+            // that has been measured against its own face overrides it outright, in the same
+            // object-space units.
+            _program.Set(
+                $"uPanelMaxDepth[{i}]",
+                panel.Panel.MaxSurfaceDepth
+                ?? definition.PanelDepthFraction
+                    * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.
-            var art = _activePanelArt?.Get(i);
+            var art = _activePanelArt?.Get(panel.ArtIndex);
             _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
-            _program.Set($"uPanelArtScale[{i}]", ArtScale(
-                definition.ArtFit, placement, art?.Aspect ?? 1f));
+
+            // Fit the artwork to the whole printed sheet first, then hand this panel its slice of
+            // it. For every flat panel the slice is the whole sheet and this is the old centred
+            // sub-rectangle; for a folded label it is what keeps the crease continuous.
+            var crop = ArtCrop(panel.Panel.ArtFit, panel.SheetAspect, art?.Aspect ?? 1f);
+            _program.Set(
+                $"uPanelArtScale[{i}]", new Vector2(crop.X, crop.Y * panel.ArtSpanScale));
+            _program.Set(
+                $"uPanelArtOffset[{i}]",
+                new Vector2(
+                    (1f - crop.X) * 0.5f,
+                    ((1f - crop.Y) * 0.5f) + (crop.Y * panel.ArtSpanOffset)));
             (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
         }
@@ -854,21 +877,20 @@ public sealed class MediaShellRenderer : IDisposable
     }
 
     /// <summary>
-    /// The centred sub-rectangle of the artwork a panel samples, chosen so the art keeps its shape.
+    /// The centred sub-rectangle of the artwork a printed sheet uses, keeping the art's shape.
     /// </summary>
     /// <remarks>
     /// The sub-rectangle's aspect in artwork pixels is <c>(scale.X / scale.Y) * artAspect</c>, and
     /// setting that equal to the panel's aspect is what removes the distortion; Cover then grows it
     /// until it fills the panel, Contain shrinks it until it fits inside.
     /// </remarks>
-    private static Vector2 ArtScale(ArtFit fit, ArtPanelPlacement placement, float artAspect)
+    private static Vector2 ArtCrop(ArtFit fit, float panelAspect, float artAspect)
     {
         if (fit == ArtFit.Stretch || artAspect <= 0f)
         {
             return Vector2.One;
         }
 
-        var panelAspect = placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f);
         var ratio = panelAspect / artAspect;
 
         return fit == ArtFit.Cover
@@ -991,12 +1013,39 @@ public sealed class MediaShellRenderer : IDisposable
             .ToList();
         var meshes = asset.Meshes.Select(mesh => GlMesh.Upload(_gl, mesh)).ToList();
 
-        var panels = new ArtPanelBinding[1 + definition.ExtraPanels.Count];
-        panels[0] = new ArtPanelBinding(definition.CoverPanel, MediaShellCatalog.Place(definition.CoverPanel, asset));
+        var cover = definition.CoverPanel;
+        var sheetAspect = MediaShellCatalog.TrySheetAspect(cover, asset) ?? 1f;
+        var panels = new List<ArtPanelBinding>(1 + definition.ExtraPanels.Count)
+        {
+            // Artwork v runs top-down, so a label that folds gives its strip the top of the sheet
+            // and the face everything from the crease down.
+            new(cover, MediaShellCatalog.Place(cover, asset), 0, sheetAspect,
+                1f - cover.TopWrap, cover.TopWrap),
+        };
+
+        // The fold is drawn as a second panel because the shader projects one plane at a time, and
+        // it draws the same face's texture so the two halves of the sheet stay one print.
+        if (MediaShellCatalog.TryWrapPanel(cover, asset) is { } strip)
+        {
+            panels.Add(new ArtPanelBinding(
+                strip, MediaShellCatalog.Place(strip, asset), 0, sheetAspect, cover.TopWrap));
+        }
+
         for (var index = 0; index < definition.ExtraPanels.Count; index++)
         {
             var panel = definition.ExtraPanels[index];
-            panels[index + 1] = new ArtPanelBinding(panel, MediaShellCatalog.Place(panel, asset));
+            panels.Add(new ArtPanelBinding(
+                panel,
+                MediaShellCatalog.Place(panel, asset),
+                index + 1,
+                MediaShellCatalog.TrySheetAspect(panel, asset) ?? 1f));
+        }
+
+        if (panels.Count > MaxPanels)
+        {
+            throw new InvalidOperationException(
+                $"Shell {definition.Shell} resolves to {panels.Count} panels, and the shader "
+                + $"declares {MaxPanels}. A folding label costs a panel of its own.");
         }
 
         var resources = new ShellResources(definition, asset, meshes, textures, panels);
@@ -1258,13 +1307,13 @@ public sealed class MediaShellRenderer : IDisposable
         public static MaterialVariantAppearance For(string variant) => variant switch
         {
             "ps2-black" => new(new Vector3(0.018f, 0.020f, 0.025f), 0.82f, 1.06f, 1f),
-            // A DS card's shell is black, and this model's is near-white — which only became
-            // obvious once the label stopped covering the whole face and revealed the band along
-            // the bottom that carries the release code.
-            // Mixed far harder than the case finishes: those tint an already-dark model, while this
-            // shell's plastic is near-white, and at 0.86 the surviving fraction of it still read as
-            // mid grey rather than black.
-            "ds-black" => new(new Vector3(0.021f, 0.022f, 0.026f), 0.965f, 1.02f, 1f),
+            // A light neutralising touch, like the case finishes. This was briefly a 0.965 mix
+            // toward near-black, which is worth recording as a shape of mistake rather than a
+            // number: it was compensating for a defect in the asset — a paper-grey mask haloing
+            // around the label — and repainting the whole body hid the halo by flattening the
+            // moulding with it. Brightness belongs to the shell's BodyAlbedoScale, which scales the
+            // authored colour instead of replacing it.
+            "ds-black" => new(new Vector3(0.045f, 0.045f, 0.052f), 0.12f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
@@ -1311,7 +1360,20 @@ public sealed class MediaShellRenderer : IDisposable
         }
     }
 
-    private readonly record struct ArtPanelBinding(ArtPanel Panel, ArtPanelPlacement Placement);
+    /// <summary>One panel resolved against a loaded shell, ready to become shader uniforms.</summary>
+    /// <param name="ArtIndex">Which of the game's uploaded faces this panel draws. Normally its own
+    /// position, but the strip of a folded label shares the front face's texture.</param>
+    /// <param name="SheetAspect">Width over height of the whole printed sheet this panel belongs
+    /// to, which is what the artwork is fitted to before either panel takes its slice.</param>
+    /// <param name="ArtSpanScale">Height of this panel's slice of that sheet, in artwork v.</param>
+    /// <param name="ArtSpanOffset">Where the slice starts, in the same top-down v.</param>
+    private readonly record struct ArtPanelBinding(
+        ArtPanel Panel,
+        ArtPanelPlacement Placement,
+        int ArtIndex,
+        float SheetAspect,
+        float ArtSpanScale = 1f,
+        float ArtSpanOffset = 0f);
 
     private readonly record struct ShelfDrawItem(
         MediaShelfRenderItem Item,
