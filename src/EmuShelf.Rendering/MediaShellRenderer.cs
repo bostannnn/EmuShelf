@@ -837,6 +837,12 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
             _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
+            // The allowance is authored against the shell's thickness on this axis, so one figure
+            // covers a 6mm cartridge and a 14mm keep case without being retuned per shell.
+            _program.Set(
+                $"uPanelMaxDepth[{i}]",
+                definition.PanelDepthFraction
+                * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.

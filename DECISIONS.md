@@ -6839,6 +6839,30 @@ lip and a sleeve window, `MediaShellCatalog` already builds the cover card proce
 generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
 route rather than taken, because it is a shell rather than an asset swap.
 
+## 2026-08-14 — Printed panels are decals on one surface, not projections through the shell
+
+Artwork panels were painted onto every front-facing fragment inside their rectangle, at any depth.
+On the GBA that put a band of cover art across the exposed board behind the contact pins: the board
+and the inside of the back wall face the player through the pin opening, sit inside the label's
+rectangle, and carry more area there than the label itself. It is invisible at the resting pose and
+plain as soon as the hero is pitched toward the player, which is how it shipped.
+
+`MediaShellDefinition.PanelDepthFraction` now bounds how far behind a panel's plane a surface can
+lie and still be printed, as a fraction of the shell's extent along that panel's normal — one
+figure that means the same thing on a 6mm cartridge and a 14mm keep case. The default of 0.40 was
+measured, not guessed: across the six authored shells the deepest label surface is the GBA's own
+recess at 0.30, and the shallowest interior geometry inside any cover rectangle is at 0.50. The
+keep case picks up a small correction from the same rule, its sleeve no longer printing into the
+hinge channel.
+
+Depth in object space rather than a depth-buffer or occlusion test, because the question is which
+*surface* the label is stuck to, not what happens to be in front of it from the current camera —
+the answer must not change as the hero turns.
+
+`MediaShellCatalogTests` guards the constant against the geometry from both sides: the GBA's
+interior must still fall inside the rectangle and stay excluded, and every shell must still print
+at least 80% of its cover panel. Neither test can reach the shader, so the fragment-side rule
+itself is verified by the preview tool's before/after renders at the hero's pitch limit.
 ## 2026-08-14 — The DS card's black shell was a workaround for a paper-grey mask
 
 Three things were wrong with the card from the front, and two of them come from the same root.
