@@ -7179,3 +7179,21 @@ as a white blob. Where those colours are constant per primitive the rewrite onto
 is exact. The preview tool also gained `--model-panel` and `--model-as`; the latter closed a real
 trap, in that candidate models were silently shaded with the SNES shell's calibration, so any
 comparison between a candidate and the shell it was meant to replace was measuring the wrong thing.
+
+## 2026-08-15 — "Match colours to game artwork" also gates the shelf's platform wash
+
+The couch shelf painted a full-screen wash of the focused game's platform accent
+(`FocusedGame.AccentColor` at 0.16 over `EmuLibraryBrush`) unconditionally, so turning off "Match
+colours to game artwork" stopped the artwork palette but left the whole screen still recolouring as
+the highlight crossed platforms. Two independent colour systems behind one visible switch reads as
+the switch being broken, which is how it was reported.
+
+The wash now follows the setting: on, it keeps the platform accent and the screen shifts as you
+browse; off, it rests on the chosen theme's `EmuAccentBrush`, so the shelf keeps its depth while
+nothing recolours with focus. Implemented as two `IsVisible`-gated Borders rather than a converter,
+so each source stays a plain binding.
+
+The 3D scene's **per-item** accent is deliberately left alone. That uniform tints each shell's own
+ambient fill and its unprinted faces (see the 2026-08-13 entry) — it is the physical medium's colour
+identity, not interface chrome, and neutralizing it would light a GBC cartridge and a PS2 case
+identically. The setting governs what the interface does, not what the objects on the shelf are.
