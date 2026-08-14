@@ -17,6 +17,7 @@ public static class MediaShellMap
     {
         ["snes"] = MediaShell.SnesCartridge,
         ["gba"] = MediaShell.GbaCartridge,
+        ["gbc"] = MediaShell.GbcCartridge,
         ["nes"] = MediaShell.NesCartridge,
         ["megadrive"] = MediaShell.MegaDriveCartridge,
         ["nds"] = MediaShell.DsCard,
@@ -49,6 +50,14 @@ public static class MediaShellMap
         ["gba"] = new(
             MediaShell.GbaCartridge, new(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport,
             "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+        // Anchored on a real Game Boy cartridge's 57mm width, the same way GBA is, with the height
+        // and depth following the asset's own ratios rather than the cited 65 x 8mm. The width
+        // ratio is only 0.9% from the real one, so this is a small correction — but taking it means
+        // the shell renders at exactly its authored shape, and the 8.99mm depth is honestly the
+        // model's rather than a real cart's 8mm.
+        ["gbc"] = new(
+            MediaShell.GbcCartridge, new(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport,
+            "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
         // A NES cartridge is portrait — 120mm across, 135mm tall — which is why it dwarfs a SNES
         // cart on the shelf. The depth is the asset's 18.3mm rather than the real 20mm: taking the
         // ratio from the model is what keeps the scene from absorbing the difference as a stretch,

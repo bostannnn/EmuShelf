@@ -40,6 +40,7 @@ if (prepModel is not null)
         // surface detail is the object's moulding rather than an embossing of the removed artwork.
         ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
+        args.Contains("--bake-vertex-colours"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }
@@ -108,8 +109,37 @@ if (inspectionModel is not null)
         * Matrix4x4.CreateRotationZ(Degrees("--model-roll"));
     var candidate = GlbLoader.Load(
         File.ReadAllBytes(inspectionModel), inspectionOrientation, maxTextureSize: 1024);
+    // A candidate's own measured panel, as MinU,MaxU,MinV,MaxV — the numbers that would go into its
+    // catalog entry, tried on it before that entry exists.
+    ArtPanel? candidatePanel = null;
+    if (ArgumentValue("--model-panel") is { } panelArgument)
+    {
+        var edges = panelArgument
+            .Split(',', StringSplitOptions.TrimEntries)
+            .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        if (edges.Length is not (4 or 5))
+        {
+            throw new ArgumentException("--model-panel wants minU,maxU,minV,maxV[,cornerRadius].");
+        }
+
+        candidatePanel = new ArtPanel(
+            ArtFace.Front, edges[0], edges[1], edges[2], edges[3],
+            CornerRadius: edges.Length == 5 ? edges[4] : 0f);
+    }
+
+    // Which shell's slot the candidate occupies, and therefore whose material calibration it is
+    // shaded with. This defaulted silently to SNES, which quietly invalidates any comparison
+    // between a candidate and the shell it is meant to replace: a mesh change gets judged under
+    // another cartridge's normal strength, ambient fill and albedo scale.
+    var inspectionSlot = ArgumentValue("--model-as") is { } slot
+        ? Enum.Parse<MediaShell>(slot, ignoreCase: true)
+        : MediaShell.SnesCartridge;
+
     renderer.SetInspectionShell(
-        MediaShell.SnesCartridge, candidate, suppressArtworkPanels: args.Contains("--model-raw"));
+        inspectionSlot, candidate,
+        suppressArtworkPanels: args.Contains("--model-raw"),
+        coverPanel: candidatePanel);
     Console.WriteLine(
         $"  inspection model: {inspectionModel} — {candidate.Meshes.Sum(mesh => mesh.TriangleCount):N0} triangles, "
         + $"{candidate.Materials.Count} materials, {candidate.Textures.Count} textures, "
@@ -145,6 +175,9 @@ var shelfProfiles = new[]
     new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
     new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
+    // Inside the frame for the same reason as the Mega Drive below. Appended last it fell off the
+    // right-hand edge of the acceptance shot, which was already observed once while reviewing it.
+    new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge of
     // the acceptance shot, which is how it kept a profile a quarter too big for a whole milestone.
     new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
@@ -188,7 +221,11 @@ Console.WriteLine($"  {sheetPath}");
 // camera, measured profiles, common baseline and multi-item draw path. The selected keep case is
 // deliberately flanked by SNES and GBA cartridges so relative physical scale is visible at a glance.
 var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
-var shelfAnchor = shelfCentres[3];
+// Named, not positional, for the reason the art-free slot below already is: inserting the Game Boy
+// cartridge shifted every index after SNES, and a positional anchor would have silently re-centred
+// the acceptance shot on a different medium.
+var shelfFocus = Array.FindIndex(shelfProfiles, profile => profile.Shell == MediaShell.SnesCartridge);
+var shelfAnchor = shelfCentres[shelfFocus];
 var shelfItems = new List<MediaShelfRenderItem>(shelfProfiles.Length);
 for (var index = 0; index < shelfProfiles.Length; index++)
 {
@@ -211,9 +248,9 @@ for (var index = 0; index < shelfProfiles.Length; index++)
         key,
         shelfProfiles[index],
         shelfCentres[index] - shelfAnchor,
-        index == 3 ? 1f : 0f,
-        index == 3 ? -0.28f : -0.18f,
-        index == 3 ? -0.06f : 0f,
+        index == shelfFocus ? 1f : 0f,
+        index == shelfFocus ? -0.28f : -0.18f,
+        index == shelfFocus ? -0.06f : 0f,
         itemAccent));
 }
 
@@ -241,6 +278,7 @@ static string Slug(MediaShell shell) => shell switch
 {
     MediaShell.SnesCartridge => "snes-cartridge",
     MediaShell.GbaCartridge => "gba-cartridge",
+    MediaShell.GbcCartridge => "gbc-cartridge",
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),

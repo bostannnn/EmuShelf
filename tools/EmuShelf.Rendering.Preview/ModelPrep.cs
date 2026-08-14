@@ -53,6 +53,7 @@ internal static class ModelPrep
         string? neutralFill,
         string? neutralMaps,
         bool singleInstance,
+        bool bakeVertexColours,
         int maxTextureSize)
     {
         var rect = ParseRect(neutralRect);
@@ -79,6 +80,11 @@ internal static class ModelPrep
         if (singleInstance)
         {
             KeepOneInstance(root);
+        }
+
+        if (bakeVertexColours)
+        {
+            BakeConstantVertexColours(root, source, binStart);
         }
 
         var views = root["bufferViews"]!.AsArray();
@@ -235,6 +241,153 @@ internal static class ModelPrep
         }
 
         Console.WriteLine($"  kept one instance, detached {dropped} duplicate node(s)");
+    }
+
+    /// <summary>
+    /// Moves a primitive's constant <c>COLOR_0</c> onto its material's base-colour factor.
+    /// </summary>
+    /// <remarks>
+    /// Some exporters — OpenSceneGraph's, which is what Sketchfab used for older uploads — carry a
+    /// model's entire colour scheme in per-vertex attributes and leave every material an untinted
+    /// white dielectric. <see cref="MeshGeometry.FloatsPerVertex"/> is position, normal and UV only,
+    /// so <c>GlbLoader</c> drops <c>COLOR_0</c> and such a model loads as a white blob with its
+    /// geometry intact. Widening the vertex layout and the shaders to carry a colour channel is the
+    /// general fix; this is the cheap one, and where the colours are constant per primitive it is
+    /// not an approximation but an exact rewrite of the same information into a form the renderer
+    /// already reads.
+    ///
+    /// Constancy is verified rather than sampled, and a material whose primitives disagree is an
+    /// error: silently taking the first would tint parts of a shell wrongly with no way to see it
+    /// short of a render.
+    /// </remarks>
+    private static void BakeConstantVertexColours(JsonObject root, byte[] source, int binStart)
+    {
+        var accessors = root["accessors"]?.AsArray() ?? [];
+        var views = root["bufferViews"]?.AsArray() ?? [];
+        var materials = root["materials"]?.AsArray() ?? [];
+        var baked = new Dictionary<int, float[]>();
+
+        foreach (var mesh in root["meshes"]?.AsArray() ?? [])
+        {
+            foreach (var primitive in mesh!["primitives"]!.AsArray())
+            {
+                var node = primitive!.AsObject();
+                var colourIndex = node["attributes"]?["COLOR_0"]?.GetValue<int>();
+                var materialIndex = node["material"]?.GetValue<int>();
+                if (colourIndex is null || materialIndex is null)
+                {
+                    continue;
+                }
+
+                var colour = ConstantColour(accessors, views, source, binStart, colourIndex.Value);
+                if (baked.TryGetValue(materialIndex.Value, out var existing))
+                {
+                    if (!existing.SequenceEqual(colour))
+                    {
+                        throw new InvalidDataException(
+                            $"Material {materialIndex} is shared by primitives with different constant "
+                            + "vertex colours, so it cannot carry one base-colour factor.");
+                    }
+
+                    continue;
+                }
+
+                baked[materialIndex.Value] = colour;
+            }
+        }
+
+        foreach (var (index, colour) in baked)
+        {
+            var material = materials[index]!.AsObject();
+            var pbr = material["pbrMetallicRoughness"]?.AsObject();
+            if (pbr is null)
+            {
+                pbr = [];
+                material["pbrMetallicRoughness"] = pbr;
+            }
+
+            // Respect a factor the author already set; glTF multiplies the two, so this keeps the
+            // rewrite equivalent rather than merely plausible.
+            var existing = pbr["baseColorFactor"]?.AsArray();
+            var scaled = new JsonArray();
+            for (var channel = 0; channel < 4; channel++)
+            {
+                var author = existing is not null && channel < existing.Count
+                    ? existing[channel]!.GetValue<float>()
+                    : 1f;
+                scaled.Add(colour[channel] * author);
+            }
+
+            pbr["baseColorFactor"] = scaled;
+        }
+
+        Console.WriteLine($"  baked constant vertex colours onto {baked.Count} material(s)");
+    }
+
+    /// <summary>The colour every vertex of an accessor shares, or an error if they differ.</summary>
+    private static float[] ConstantColour(
+        JsonArray accessors, JsonArray views, byte[] source, int binStart, int accessorIndex)
+    {
+        var accessor = accessors[accessorIndex]!.AsObject();
+        var view = views[accessor["bufferView"]!.GetValue<int>()]!.AsObject();
+        var componentType = accessor["componentType"]!.GetValue<int>();
+        var type = accessor["type"]!.GetValue<string>();
+        var components = type switch
+        {
+            "VEC3" => 3,
+            "VEC4" => 4,
+            _ => throw new InvalidDataException($"COLOR_0 accessor {accessorIndex} is {type}."),
+        };
+
+        // glTF allows colours as float, or as normalized unsigned bytes/shorts.
+        var (componentBytes, scale) = componentType switch
+        {
+            5121 => (1, 1f / byte.MaxValue),
+            5123 => (2, 1f / ushort.MaxValue),
+            5126 => (4, 1f),
+            _ => throw new InvalidDataException(
+                $"COLOR_0 accessor {accessorIndex} uses component type {componentType}."),
+        };
+
+        var packed = componentBytes * components;
+        var stride = view["byteStride"]?.GetValue<int>() ?? packed;
+        var start = binStart + (view["byteOffset"]?.GetValue<int>() ?? 0)
+            + (accessor["byteOffset"]?.GetValue<int>() ?? 0);
+        var count = accessor["count"]!.GetValue<int>();
+
+        var first = ReadColour(source, start, componentType, components, scale);
+        for (var vertex = 1; vertex < count; vertex++)
+        {
+            var candidate = ReadColour(
+                source, start + (vertex * stride), componentType, components, scale);
+            if (!candidate.SequenceEqual(first))
+            {
+                throw new InvalidDataException(
+                    $"COLOR_0 accessor {accessorIndex} varies at vertex {vertex}; it cannot be baked "
+                    + "into a material factor. This model needs a vertex-colour channel in the "
+                    + "renderer instead.");
+            }
+        }
+
+        return first;
+    }
+
+    private static float[] ReadColour(
+        byte[] source, int offset, int componentType, int components, float scale)
+    {
+        var colour = new float[] { 1f, 1f, 1f, 1f };
+        for (var channel = 0; channel < components; channel++)
+        {
+            colour[channel] = componentType switch
+            {
+                5121 => source[offset + channel] * scale,
+                5123 => BinaryPrimitives.ReadUInt16LittleEndian(
+                    source.AsSpan(offset + (channel * 2))) * scale,
+                _ => BitConverter.ToSingle(source, offset + (channel * 4)),
+            };
+        }
+
+        return colour;
     }
 
     private static (float U0, float V0, float U1, float V1)? ParseRect(string? value)

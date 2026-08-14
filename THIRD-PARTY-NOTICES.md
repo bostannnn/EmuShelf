@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The three
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The seven
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All six are licensed
+All seven are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -211,6 +211,16 @@ Credit is given here and the models keep their authorship metadata inside the `.
   does not cover — in the build. Maps were reduced to 1024px, and canonical orientation, metric
   scaling and per-game label art are applied at runtime. Original authorship and license metadata
   remain embedded in the GLB.
+- **Gameboy Cartridge lowpoly** — by [Bob](https://sketchfab.com/MeBob), from
+  [Sketchfab](https://sketchfab.com/3d-models/gameboy-cartridge-lowpoly-8b9728eab16c4056ac2636ae7f0f038f).
+  Bundled as `gbc-cartridge.glb`. This is a grey DMG (Game Boy) cartridge; Game Boy and Game Boy
+  Color share one 57 x 65 x 8mm shell, and EmuShelf maps it to the `gbc` system that covers the
+  whole Game Boy line. Its label — a European Super Mario Land 2 sticker — sits on the same atlas as
+  the body, so as with the Mega Drive shell EmuShelf masks that rectangle in the base-colour,
+  metallic/roughness (shared with occlusion) and normal maps, leaving none of that artwork — which
+  the author's CC BY licence does not cover — in the build. Maps were reduced to 1024px, and
+  canonical orientation, metric scaling and per-game label art are applied at runtime. Original
+  authorship and license metadata remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
   Bundled as `disc-keep-case.glb`. The download's base-colour map is a scan of a retail Mortal

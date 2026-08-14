@@ -244,6 +244,7 @@ public class MediaShellTests
     [InlineData("nes", MediaShell.NesCartridge)]
     [InlineData("megadrive", MediaShell.MegaDriveCartridge)]
     [InlineData("nds", MediaShell.DsCard)]
+    [InlineData("gbc", MediaShell.GbcCartridge)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
@@ -333,6 +334,7 @@ public class MediaShellTests
     [InlineData("gba")]
     [InlineData("megadrive")]
     [InlineData("nds")]
+    [InlineData("gbc")]
     [InlineData("playstation2")]
     [InlineData("playstation3")]
     [InlineData("gamecube")]
@@ -707,6 +709,76 @@ public class MediaShellTests
                 Assert.True(
                     Sample(u, v) == reference,
                     $"The GBA label edge still varies at ({u:F2},{v:F2}); the mask is too small.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A Game Boy cartridge is portrait — 57mm across, 65mm tall — and needs no reorientation.
+    /// </summary>
+    /// <remarks>
+    /// This is the check that the shell in <c>models/gbc</c> is the Game Boy cartridge it is now
+    /// meant to be. The folder previously held a GBA Game Pak, whose 1.748 width/height is the
+    /// reciprocal neighbourhood of this one's 0.885 — so a swap back would show up here rather than
+    /// as a cartridge that merely looks a bit wide.
+    /// </remarks>
+    [Fact]
+    public void Load_StandsTheGameBoyCartridgePortrait()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.GbcCartridge);
+
+        Assert.True(
+            model.Size.Y > model.Size.X,
+            $"A Game Boy cartridge is taller than it is wide; got {model.Size.X} x {model.Size.Y}.");
+        Assert.InRange(model.Size.X, 0.86f, 0.91f);
+        Assert.InRange(model.Size.Z, 0.12f, 0.16f);
+    }
+
+    /// <summary>
+    /// The shipped Game Boy asset must carry no trace of the Super Mario Land 2 label it was
+    /// modelled from.
+    /// </summary>
+    /// <remarks>
+    /// One material and one shared atlas, like the Mega Drive shell, so the label went by masking a
+    /// rectangle — the fallback technique, and the one that fails silently. The rectangle here was
+    /// measured rather than eyeballed: the label is the only saturated island on an otherwise flat
+    /// grey atlas, so its bounds came out of a sweep for pixels differing from the plastic. This
+    /// walks that rectangle's edges, which is where a mask that is fractionally too small shows.
+    /// </remarks>
+    [Fact]
+    public void GbcLabelArea_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.GbcCartridge);
+        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
+        var texture = model.Textures[material.BaseColorTexture];
+
+        (byte R, byte G, byte B) Sample(float u, float v)
+        {
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        const float u0 = 0.510f, u1 = 0.848f, v0 = 0.169f, v1 = 0.4885f;
+        var reference = Sample((u0 + u1) * 0.5f, (v0 + v1) * 0.5f);
+        for (var u = u0; u <= u1; u += 0.01f)
+        {
+            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The Game Boy label area still varies at ({u:F3},{v:F3}); artwork was not removed.");
+            }
+        }
+
+        for (var v = v0; v <= v1; v += 0.01f)
+        {
+            foreach (var u in new[] { u0, u1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The Game Boy label edge still varies at ({u:F3},{v:F3}); the mask is too small.");
             }
         }
     }
