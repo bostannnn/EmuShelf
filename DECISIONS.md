@@ -6863,3 +6863,103 @@ the answer must not change as the hero turns.
 interior must still fall inside the rectangle and stay excluded, and every shell must still print
 at least 80% of its cover panel. Neither test can reach the shader, so the fragment-side rule
 itself is verified by the preview tool's before/after renders at the hero's pitch limit.
+## 2026-08-14 — The DS card's black shell was a workaround for a paper-grey mask
+
+Three things were wrong with the card from the front, and two of them come from the same root.
+
+**The mask fill.** The label island was masked with `ModelPrep`'s default paper grey (sRGB 220)
+against a shell whose plastic is sRGB ~31. The Mega Drive entry above records making the fill
+configurable for exactly this reason and using that shell's own colour; the DS asset was prepared
+before that and kept the default. Wherever the masked rectangle and the artwork panel disagreed —
+which they always do, being derived from different things — a near-white ring haloed the label.
+
+**The finish that hid it.** `ds-black` was mixed at 0.965 toward near-black, on a comment asserting
+"this shell's plastic is near-white". Measured off the atlas, that is false: 77% of it sits at sRGB
+20–60 and only the masked island was near-white. So the value was read off the defect rather than
+the shell. It did hide the halo, by replacing the base colour outright — and with it the moulding,
+the seam and the recess step. The card rendered as a flat slab, darker than a real DS card, and its
+outline was indistinguishable from the shelf background.
+
+Corrected at the root: the asset is re-prepared with a fill matching its own plastic, and the finish
+returns to the light neutralising touch the case finishes use. Brightness is now a per-shell
+`BodyAlbedoScale` of 3.2, which is the same correction SNES needed and for the same reason — the
+authored plastic is far darker than the real object, and scaling the authored colour preserves the
+moulding that replacing it destroys. Sampled against a straight-on photograph, the shell frame lands
+at sRGB 85–103 against the photograph's 78–98, from 50–81 before.
+
+**The corner cut is real but was drawn at two and a half times its size.** A DS label is chamfered
+at the bottom left; it was authored by eye at 0.20 of the panel, which bit a wedge out of the
+artwork. Traced off two photographs — a blank card and a retail cart — the chamfer measures 27px on
+a 337px-tall label and 55px on a 720px one: 0.080 both times.
+
+The label rectangle itself was not changed. It was suspected of being too small and measured
+otherwise: 0.810 of the shell's width and 0.758 of its height in the render, against 0.811 and 0.768
+in the photograph. It read as small because the chamfer was eating a corner of it and because the
+surrounding plastic had no visible edge.
+
+**Reproducibility.** Nothing recorded how each shell was prepared, so the mask rectangle had to be
+reverse-engineered from the shipped atlas — and the first reconstruction was a texel tight, which
+the artwork test caught. The DS command is therefore recorded here, and the same should be done for
+any shell prepared this way:
+
+```
+dotnet run --project tools/EmuShelf.Rendering.Preview -c Release -- \
+  --prepare-model models/ds/nitendo_ds_cartridge_super_mario_64.glb \
+  --prepare-out src/EmuShelf.Rendering/Assets/ds-card.glb \
+  --neutral-rect 0.0605,0.0298,0.4795,0.4795 --neutral-fill 2B292E \
+  --single-instance --max-texture 1024
+```
+
+`MediaShellRenderer.Render` also takes a material variant now. The per-shell turntable drew the
+model's own plastic while the shelf composition applied the finish, so the one view that shows a
+shell straight-on was showing the wrong colour — which is how a black DS card kept being reviewed
+as a white one.
+
+## 2026-08-14 — The DS card takes a blank template shell rather than a copy of one game
+
+satchii_'s model was the wrong kind of asset for this job, and the corrections above were fighting
+that rather than fixing it. littlengvfx's "Nintendo Ds cartridge (preset)" is authored as a
+cartridge to put artwork *on*: the label is its own quad on its own material and texture, and the
+shell moulds the NINTENDO DS band above it and the recess with its chamfer around it.
+
+Three things follow from that, all improvements:
+
+- **The artwork lands where a real label's artwork lands.** The panel is the moulded recess, so the
+  branding band stays plastic instead of being painted over. On the old shell the panel had to cover
+  the band too, because there was no band.
+- **The placeholder image is cleared by flattening a material**, which is NES's route: no rectangle
+  read off an atlas by eye, nothing else sampling the image, and the plate surviving for EmuShelf's
+  own art. The rectangle route is what shipped a paper-grey halo and then a near-black finish to
+  hide it.
+- **The plastic needs far less correcting.** This asset is authored at sRGB ~57 against the old
+  one's ~31, so `BodyAlbedoScale` drops from 3.2 to 1.95 and the moulding survives more of it.
+
+Two deviations recorded rather than corrected, both the asset's and neither worth expressing as a
+stretch: it is 0.996 W/H where a real 33.4x35mm card is 0.954, so about 4% squarer, and 2.6mm thick
+against a real 3.8mm. The profile anchors on the real 35mm height and takes the asset's ratios
+otherwise, which is the rule every shell follows.
+
+**The label quad's bounding box is not the label.** Setting the panel from that AABB put it 0.08
+past the recess on the right and 0.12 below it, and the projection painted artwork onto the
+moulding — the quad presents a smaller face than its world-space AABB spans. Measured off a
+straight-on render of the prepared asset instead, which is the only view where the moulding and the
+panel edge are both visible. A test now pins the panel inside the branding band and the card edges.
+
+`ModelPrep`'s `--neutral-fill` was silently ignored on the `--neutral-material` route, which
+hard-coded the same paper grey that caused the DS halo in the first place. It now applies to both.
+
+The prep command, which supersedes the one recorded in the entry above — that one prepares a model
+no longer shipped:
+
+```
+dotnet run --project tools/EmuShelf.Rendering.Preview -c Release -- \
+  --prepare-model models/ds/nintendo_ds_cartridge_preset.glb \
+  --prepare-out src/EmuShelf.Rendering/Assets/ds-card.glb \
+  --neutral-material presetNdsiCartridgeFront4 --neutral-fill 141414 \
+  --max-texture 1024
+```
+
+No `--single-instance`: unlike the model it replaced, this file holds one card. The fill is the
+recess's own near-black rather than a plastic grey, because here it is never a halo — the plate is
+the panel's own geometry, so the only place it shows is the hairline outside the panel's rounded
+corners and chamfer, where a dark line reads as the recess it is.

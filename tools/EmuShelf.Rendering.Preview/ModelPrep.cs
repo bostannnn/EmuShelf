@@ -68,7 +68,7 @@ internal static class ModelPrep
 
         var neutralImages = neutralMaterial is null
             ? ResolveAllMaterialImages(root, textures, baseFill)
-            : ResolveNeutralImages(root, textures, neutralMaterial);
+            : ResolveNeutralImages(root, textures, neutralMaterial, baseFill);
         if (neutralImages.Count == 0)
         {
             throw new InvalidDataException(
@@ -124,7 +124,7 @@ internal static class ModelPrep
     /// emboss the removed artwork into EmuShelf's own.
     /// </remarks>
     private static Dictionary<int, (byte R, byte G, byte B, byte A)> ResolveNeutralImages(
-        JsonObject root, JsonArray? textures, string materialName)
+        JsonObject root, JsonArray? textures, string materialName, (byte, byte, byte, byte) baseFill)
     {
         var result = new Dictionary<int, (byte, byte, byte, byte)>();
         foreach (var material in root["materials"]?.AsArray() ?? [])
@@ -136,7 +136,7 @@ internal static class ModelPrep
             }
 
             var pbr = node["pbrMetallicRoughness"]?.AsObject();
-            Add(pbr?["baseColorTexture"], (214, 212, 206, 255));
+            Add(pbr?["baseColorTexture"], baseFill);
             Add(pbr?["metallicRoughnessTexture"], (255, 128, 0, 255));
             Add(node["normalTexture"], (128, 128, 255, 255));
         }

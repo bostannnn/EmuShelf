@@ -560,70 +560,79 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// The DS download is four cards in one file; only one may reach the scene.
+    /// The DS card loads upright, roughly square, and thin.
     /// </summary>
     /// <remarks>
-    /// Regression test for the dedupe. Loading the source whole draws four cartridges side by side,
-    /// and the duplicates are detached by clearing their node's mesh reference rather than deleting
-    /// anything, so this also guards against a prep that silently stops detaching them.
+    /// The blank template that replaced satchii_'s model is authored lying flat with its label
+    /// toward +Y, so it needs a quarter turn about X rather than the half turn about Y the previous
+    /// asset took. A shell that loads on its side still fills a plausible-looking bounding box, so
+    /// this pins the axes rather than trusting the render.
     /// </remarks>
     [Fact]
-    public void Load_KeepsASingleDsCard()
+    public void Load_StandsTheDsCardUpright()
     {
         var model = MediaShellCatalog.Load(MediaShell.DsCard);
 
-        Assert.Single(model.Meshes);
-        // 33.4 x 35mm: very slightly taller than wide.
-        Assert.InRange(model.Size.X, 0.94f, 0.98f);
-        Assert.True(model.Size.Z < 0.08f, $"A DS card is thin; got {model.Size.Z}.");
+        // Near square: this asset is 0.996 W/H where a real 33.4 x 35mm card is 0.954.
+        Assert.InRange(model.Size.X / model.Size.Y, 0.97f, 1.02f);
+        Assert.True(
+            model.Size.Z < 0.12f * model.Size.Y,
+            $"A DS card is thin; got depth {model.Size.Z} against height {model.Size.Y}.");
     }
 
     /// <summary>
-    /// The shipped DS asset must carry no trace of the Super Mario 64 artwork it was modelled from.
+    /// The shipped DS asset must carry no trace of the artwork its source was authored with.
     /// </summary>
     /// <remarks>
-    /// This one is subtler than the other shells: no triangle in any of the four copies samples that
-    /// island, so the artwork never rendered and the card looked clean. It was still sitting in the
-    /// texture that ships inside the binary, which is what the licence actually turns on, so it is
-    /// masked anyway.
+    /// This template keeps its label on a dedicated plate, material and texture, so it takes the
+    /// same clean route NES does: flatten the material's maps and there is no rectangle to get
+    /// wrong. That is a real improvement on the model it replaced, whose label shared an atlas with
+    /// the body and had to be masked by a hand-read rectangle — the fallback that shipped a
+    /// paper-grey halo and then a near-black finish to hide it.
     /// </remarks>
     [Fact]
-    public void DsLabelIsland_CarriesNoSourceArtwork()
+    public void DsLabelPlate_CarriesNoSourceArtwork()
     {
         var model = MediaShellCatalog.Load(MediaShell.DsCard);
-        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
-        var texture = model.Textures[material.BaseColorTexture];
+        var plate = model.Materials.Single(
+            material => string.Equals(
+                material.Name, "presetNdsiCartridgeFront4", StringComparison.OrdinalIgnoreCase));
+        var texture = model.Textures[plate.BaseColorTexture];
 
-        (byte R, byte G, byte B) Sample(float u, float v)
+        var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
+        for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
         {
-            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
-            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
-            var offset = ((y * texture.Width) + x) * 4;
-            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
-        }
-
-        // As with the Mega Drive shell, this walks the requested rectangle out to its edges.
-        const float u0 = 0.06f, u1 = 0.48f, v0 = 0.03f, v1 = 0.48f;
-        var reference = Sample(0.25f, 0.25f);
-        for (var u = u0; u <= u1; u += 0.01f)
-        {
-            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
+            if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
             {
-                Assert.True(
-                    Sample(u, v) == reference,
-                    $"The DS label island still varies at ({u:F2},{v:F2}); artwork was not removed.");
+                Assert.Fail(
+                    $"The DS label plate still varies at byte {offset}; its artwork was not flattened.");
             }
         }
+    }
 
-        for (var v = v0; v <= v1; v += 0.01f)
-        {
-            foreach (var u in new[] { u0, u1 })
-            {
-                Assert.True(
-                    Sample(u, v) == reference,
-                    $"The DS label edge still varies at ({u:F2},{v:F2}); the mask is too small.");
-            }
-        }
+    /// <summary>
+    /// The DS artwork panel has to stay inside the shell's moulded recess.
+    /// </summary>
+    /// <remarks>
+    /// The panel was first set from the label quad's world-space bounding box, which is larger than
+    /// the face that quad presents — that put it 0.08 past the recess on the right and 0.12 below
+    /// it, and the projection painted artwork onto the moulding. The recess was then measured off a
+    /// render. This pins the panel inside the branding band above it and the card's edges around it,
+    /// so a future re-fit cannot silently spill again.
+    /// </remarks>
+    [Fact]
+    public void DsCoverPanel_StaysInsideTheRecess()
+    {
+        var panel = MediaShellCatalog.Definition(MediaShell.DsCard).CoverPanel;
+
+        // The moulded NINTENDO DS band starts around 0.59 of the half-height.
+        Assert.InRange(panel.MaxV, 0.55f, 0.61f);
+        Assert.InRange(panel.MinV, -0.75f, -0.68f);
+        Assert.InRange(panel.MaxU, 0.78f, 0.82f);
+        Assert.InRange(panel.MinU, -0.82f, -0.78f);
+        // A DS label is chamfered at the bottom left; squaring it stops the card reading as a DS
+        // card, and oversizing it bites a wedge out of the artwork.
+        Assert.InRange(panel.CutCorner, 0.06f, 0.13f);
     }
 
     /// <summary>
