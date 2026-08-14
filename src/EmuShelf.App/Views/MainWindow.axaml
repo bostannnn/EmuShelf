@@ -3319,13 +3319,17 @@
                                                 <!-- Line budgets cover the field limits RetroAchievements
                                                      itself enforces (64-char title, 255-char description)
                                                      at this width, so the trim only ever fires on text the
-                                                     service could not have served. -->
+                                                     service could not have served. They are set against
+                                                     the WIDEST shipped font stack, not the local one: the
+                                                     same 64-char title wraps to three lines on macOS and
+                                                     four on the Linux runner, so budgets sized to what
+                                                     macOS needs would clip elsewhere. -->
                                                 <TextBlock Text="{Binding FocusedGamepadAchievement.Title}"
                                                            FontSize="21" FontWeight="Bold"
-                                                           TextWrapping="Wrap" MaxLines="3"
+                                                           TextWrapping="Wrap" MaxLines="5"
                                                            TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Text="{Binding FocusedGamepadAchievement.Description}"
-                                                           FontSize="14" TextWrapping="Wrap" MaxLines="8"
+                                                           FontSize="14" TextWrapping="Wrap" MaxLines="10"
                                                            TextTrimming="CharacterEllipsis"
                                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             </StackPanel>
