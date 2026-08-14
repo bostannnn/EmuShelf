@@ -832,13 +832,16 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
             _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
+            // Negative is the shader's "unbounded", which is what a panel with no depth limit —
+            // a cartridge label sunk into moulding — needs.
+            _program.Set($"uPanelMaxDepth[{i}]", panel.Panel.MaxSurfaceDepth ?? -1f);
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.
             var art = _activePanelArt?.Get(i);
             _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
             _program.Set($"uPanelArtScale[{i}]", ArtScale(
-                definition.ArtFit, placement, art?.Aspect ?? 1f));
+                panel.Panel.ArtFit, placement, art?.Aspect ?? 1f));
             (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
         }

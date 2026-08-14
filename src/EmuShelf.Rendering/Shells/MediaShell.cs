@@ -61,6 +61,14 @@ public enum PhysicalArtworkSlots
 /// <param name="CutCorner">Diagonal bite taken out of the panel's bottom-left corner, as a fraction
 /// of its shorter edge. A DS label is cut there so it clears the card's thumb notch, and squaring
 /// that corner is one of the details that stops a card reading as a DS card.</param>
+/// <param name="ArtFit">How artwork whose shape does not match this panel is fitted to it. Per
+/// panel rather than per shell because one shell's panels are not one shape: a keep case's front
+/// really is the same proportions as the box scan, while its spine is a 14mm strip beside a 135mm
+/// sleeve, and stretching a scan onto both cannot be right for both.</param>
+/// <param name="MaxSurfaceDepth">How far behind the face plane the print may follow the surface,
+/// in canonical object units — the shell is one unit tall, so 0.0053 is a millimetre on a 190mm
+/// case. Null leaves the panel bounded only by <see cref="ArtFace"/> facing, which is what a
+/// cartridge label recessed into moulding needs.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
@@ -68,14 +76,22 @@ public readonly record struct ArtPanel(
     float MinV,
     float MaxV,
     float CornerRadius = 0f,
-    float CutCorner = 0f)
+    float CutCorner = 0f,
+    ArtFit ArtFit = ArtFit.Stretch,
+    float? MaxSurfaceDepth = null)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
-    public static ArtPanel Full(ArtFace face, float inset = 0f) =>
-        new(face, -1f + inset, 1f - inset, -1f + inset, 1f - inset);
+    public static ArtPanel Full(
+        ArtFace face,
+        float inset = 0f,
+        ArtFit fit = ArtFit.Stretch,
+        float? maxSurfaceDepth = null) =>
+        new(
+            face, -1f + inset, 1f - inset, -1f + inset, 1f - inset,
+            ArtFit: fit, MaxSurfaceDepth: maxSurfaceDepth);
 }
 
-/// <summary>How artwork whose shape does not match a panel's is fitted to it.</summary>
+/// <summary>How artwork whose shape does not match an <see cref="ArtPanel"/>'s is fitted to it.</summary>
 /// <remarks>
 /// This matters because a keep case's sleeve really is the same shape as the box scan the scraper
 /// returns, while a cartridge label is landscape and the scan is portrait. Stretching the latter
@@ -118,7 +134,6 @@ public enum ArtFace
 /// <param name="PanelRoughness">Roughness the printed panels take, overriding the shell's own map.
 /// A paper sleeve behind a keep case's clear overlay is far glossier than a cartridge's printed
 /// label, and that difference is most of what distinguishes the two materials on screen.</param>
-/// <param name="ArtFit">How a cover whose shape does not match the panel is fitted.</param>
 /// <param name="FlattenPanelNormal">True where printed art should hide the moulding under it.</param>
 /// <param name="BodyRoughnessScale">Per-shell correction for the source model's body roughness.</param>
 /// <param name="BodyAlbedoScale">Per-shell correction for the source model's body base colour,
@@ -141,7 +156,6 @@ public sealed record MediaShellDefinition(
     ArtPanel CoverPanel,
     IReadOnlyList<ArtPanel> ExtraPanels,
     float PanelRoughness,
-    ArtFit ArtFit,
     bool FlattenPanelNormal,
     float BodyRoughnessScale = 1f,
     float BodyAlbedoScale = 1f,

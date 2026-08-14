@@ -28,6 +28,25 @@ public static class MediaShellCatalog
     /// </remarks>
     private static readonly Matrix4x4 GbaOrientation = Matrix4x4.CreateRotationY(-MathF.PI / 2f);
 
+    /// <summary>
+    /// How far the keep case's printed sleeve may follow the shell away from a face, in canonical
+    /// object units. One millimetre on a case that stands 190mm tall.
+    /// </summary>
+    /// <remarks>
+    /// This is the knob for "the cover art is bleeding round the edge". Measured off the mesh: the
+    /// front plate is flat or gently domed out to 0.94 of its half-width, where it has fallen 0.53mm
+    /// behind the front plane, and the rim then turns away hard — 1.23mm at 0.965 and 2.04mm at
+    /// 0.991. A millimetre keeps the whole plate, including the clear cover's intentional bulge, and
+    /// stops at the fillet.
+    ///
+    /// It has to be a depth rather than a tighter facing threshold. The source geometry is a cube
+    /// scaled 13.5 x 19.0 x 1.4, so the inverse transpose that carries its normals into canonical
+    /// space flattens every rim normal toward the face: the shallowest thing the front panel was
+    /// painting sat at 0.61 against a guard that rejects below 0.5, and 14% of the painted area was
+    /// behind the front plane — as deep as 9.7mm on a 13.7mm case, which is nearly the back.
+    /// </remarks>
+    private const float KeepCaseSleeveDepth = 1f / 190f;
+
     private static readonly Dictionary<MediaShell, MediaShellDefinition> Definitions = new()
     {
         [MediaShell.CoverCard] = new MediaShellDefinition(
@@ -35,10 +54,10 @@ public static class MediaShellCatalog
             ResourceName: string.Empty,
             Matrix4x4.Identity,
             MaxTextureSize: 1,
-            CoverPanel: ArtPanel.Full(ArtFace.Front, inset: 0.015f),
+            // The card is generated at the cover's own aspect, so a stretch is the identity here.
+            CoverPanel: ArtPanel.Full(ArtFace.Front, inset: 0.015f, fit: ArtFit.Stretch),
             ExtraPanels: [],
             PanelRoughness: 0.48f,
-            ArtFit: ArtFit.Stretch,
             FlattenPanelNormal: true),
 
         // SomeKevin's PAL/Super Famicom shell is authored upright with its label toward -Z. A half
@@ -57,12 +76,12 @@ public static class MediaShellCatalog
             // made the fit legible at all — a flat accent tint has no edge to compare against the
             // moulding. The overhang was almost entirely horizontal, so the authored vertical
             // extent is nearly intact while the width comes in from 0.80. Confirmed on hardware.
+            // A portrait box scan cropped to the landscape label beats the same scan squashed.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.765f, 0.765f, 0.01f, 0.93f, CornerRadius: 0.075f),
+                ArtFace.Front, -0.765f, 0.765f, 0.01f, 0.93f, CornerRadius: 0.075f,
+                ArtFit: ArtFit.Cover),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
-            // A portrait box scan cropped to the landscape label beats the same scan squashed.
-            ArtFit: ArtFit.Cover,
             // The decal follows the body surface but hides its moulded shading normal, so it reads
             // as an applied label without a floating gap.
             FlattenPanelNormal: true,
@@ -102,10 +121,10 @@ public static class MediaShellCatalog
             // edge because the authored plate does; the shader's facing test keeps art off the part
             // that wraps over the top.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.985f, CornerRadius: 0.03f),
+                ArtFace.Front, -0.21f, 0.735f, -0.35f, 0.985f, CornerRadius: 0.03f,
+                ArtFit: ArtFit.Cover),
             ExtraPanels: [],
             PanelRoughness: 0.42f,
-            ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true,
             BodyRoughnessScale: 1.0f,
             BodyAlbedoScale: 1.0f),
@@ -126,10 +145,11 @@ public static class MediaShellCatalog
             // Sits high on the face with bare plastic below it, which is where a Mega Drive label
             // actually is — the first pass centred it and left an even margin all round, which read
             // as a sticker applied by eye. The top edge comes close to the shell's own.
-            CoverPanel: new ArtPanel(ArtFace.Front, -0.86f, 0.86f, -0.62f, 0.92f, CornerRadius: 0.02f),
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.86f, 0.86f, -0.62f, 0.92f, CornerRadius: 0.02f,
+                ArtFit: ArtFit.Cover),
             ExtraPanels: [],
             PanelRoughness: 0.40f,
-            ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
         // satchii_'s DS card, reduced to one instance: the download is four cards laid out in a
@@ -152,10 +172,9 @@ public static class MediaShellCatalog
             // most of why the card did not read as a DS card.
             CoverPanel: new ArtPanel(
                 ArtFace.Front, -0.81f, 0.81f, -0.68f, 0.86f,
-                CornerRadius: 0.05f, CutCorner: 0.20f),
+                CornerRadius: 0.05f, CutCorner: 0.20f, ArtFit: ArtFit.Cover),
             ExtraPanels: [],
             PanelRoughness: 0.44f,
-            ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
         // thegraphicsgeek's Game Pak, which replaced a smaller-textured shell that had no source
@@ -175,10 +194,10 @@ public static class MediaShellCatalog
             // cartridge's top lip eats into it, so the label sits lower than centre. The first pass
             // was inset well inside the recess on every side and read as a label applied by eye.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.70f, 0.70f, -0.78f, 0.50f, CornerRadius: 0.06f),
+                ArtFace.Front, -0.70f, 0.70f, -0.78f, 0.50f, CornerRadius: 0.06f,
+                ArtFit: ArtFit.Cover),
             ExtraPanels: [],
             PanelRoughness: 0.38f,
-            ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
         // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
@@ -188,16 +207,25 @@ public static class MediaShellCatalog
             "EmuShelf.Rendering.Assets.disc-keep-case.glb",
             Matrix4x4.Identity,
             MaxTextureSize: 1024,
-            // The printed sleeve runs almost edge to edge under the clear overlay.
-            CoverPanel: ArtPanel.Full(ArtFace.Front, inset: 0.02f),
+            // The printed sleeve runs almost edge to edge under the clear overlay. The rectangle
+            // alone cannot say where it stops, though: it is measured against the bounding box,
+            // and 2% in from that is still on the rounded rim. KeepCaseSleeveDepth does the rest.
+            // The sleeve and the box scan are the same shape by definition, so front and back
+            // stretch. The spine is a 14mm strip and only shares that fit because nothing scrapes
+            // spine art yet — it wears the platform tint, which has no shape to distort.
+            CoverPanel: ArtPanel.Full(
+                ArtFace.Front, inset: 0.02f,
+                fit: ArtFit.Stretch, maxSurfaceDepth: KeepCaseSleeveDepth),
             ExtraPanels:
             [
-                ArtPanel.Full(ArtFace.Back, inset: 0.02f),
-                ArtPanel.Full(ArtFace.Spine, inset: 0.02f),
+                ArtPanel.Full(
+                    ArtFace.Back, inset: 0.02f,
+                    fit: ArtFit.Stretch, maxSurfaceDepth: KeepCaseSleeveDepth),
+                ArtPanel.Full(
+                    ArtFace.Spine, inset: 0.02f,
+                    fit: ArtFit.Stretch, maxSurfaceDepth: KeepCaseSleeveDepth),
             ],
             PanelRoughness: 0.13f,
-            // The sleeve and the box scan are the same shape by definition.
-            ArtFit: ArtFit.Stretch,
             // The clear cover's curve is what sells it as a case; keep the geometry's own normal.
             FlattenPanelNormal: false),
     };

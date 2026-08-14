@@ -36,6 +36,9 @@ if (prepModel is not null)
         ArgumentValue("--neutral-material"),
         ArgumentValue("--neutral-rect"),
         ArgumentValue("--neutral-fill"),
+        // "base" leaves the model's own normal and metallic/roughness maps alone, for a shell whose
+        // surface detail is the object's moulding rather than an embossing of the removed artwork.
+        ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;

@@ -6838,3 +6838,44 @@ to generate it. Generating is attractive here and not a fudge: a jewel case is a
 lip and a sleeve window, `MediaShellCatalog` already builds the cover card procedurally, and a
 generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
 route rather than taken, because it is a shell rather than an asset swap.
+
+## 2026-08-14 — Printed panels are bounded by depth, not by facing; ArtFit moves onto the panel
+
+**A panel now stops at a measured distance behind its face.** `ArtPanel.MaxSurfaceDepth` bounds how
+far a printed panel may follow the shell away from the face plane, and the keep case sets it to one
+millimetre. This replaces nothing — the facing test still runs — but it is what actually finds the
+edge of a face, and the reason is specific to how this shell was authored. The source geometry is a
+cube scaled 13.5 x 19.0 x 1.4, so the inverse transpose that carries its normals into canonical
+space tips the normals of the whole rounded rim back toward the face. Measured on the mesh, the
+shallowest thing the front panel was painting sat at 0.61 against a guard that rejects below 0.5:
+the guard could not fire, and 13.9% of the painted front area was behind the front plane, as deep as
+9.7mm on a 13.7mm case. That is what put cover art on the spine and most of the way to the back, and
+it is why a tighter facing threshold was rejected — 0.97 would have worked for this one shell and
+would have fought every cartridge label sunk into moulding.
+
+The millimetre is measured, not chosen by eye: the front plate is flat or gently domed out to 0.94
+of its half-width where it has fallen 0.53mm behind the plane, and the rim then turns away hard,
+1.23mm at 0.965 and 2.04mm at 0.991. A millimetre keeps the whole plate including the clear cover's
+intentional bulge, and stops at the fillet. The cut is feathered along the surface's own depth
+gradient so it antialiases like the rectangle's edge instead of stepping along an iso-depth contour.
+
+**`ArtFit` moved from the shell to the panel.** It was one value applied to a shell's front, back and
+spine alike, which is only defensible while every panel is the same shape. A keep case's front
+really is the proportions of the box scan, and its spine is a 14mm strip beside a 135mm sleeve;
+one fit cannot be right for both. It now sits on `ArtPanel` beside `CornerRadius` and `CutCorner`,
+which had already established that altitude.
+
+**Bounding the panels exposed a licence problem the panels had been hiding.** The keep case's
+base-colour map is a scan of a whole retail Mortal Kombat: Armageddon sleeve, and the artwork panels
+were the only thing covering it — bare body went from 10.1% to 13.8% of the shell, and the newly
+exposed band is the rim right around the sleeve, where that scan's own spine sits. The map is now
+flattened to #2E2E2E, which is the median colour the body region already sampled, so the four
+material variants stay tuned to what they were tuned against. Only the base colour is flattened.
+`ModelPrep` gained `--neutral-maps base` for this: its default of flattening all three maps is right
+where a label is embossed into the normal map beside it, and wrong here, where the normal and
+metallic/roughness maps are the case's own ribs, hinge and scuffs. Both ship byte-identical.
+
+The general point is worth keeping: an artwork panel that covers a model's baked artwork is hiding
+it, not removing it, and any change that shrinks a panel can uncover somebody's copyright. The
+`--no-cover` preview mode checks the shell with no scraped art; it does not check the shell with the
+panels bounded, because until now nothing bounded them.

@@ -55,6 +55,9 @@ uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
 // Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
 uniform float uPanelCutCorner[MAX_PANELS];
+// How far behind the face plane a panel's print may follow the surface, in object units. Negative
+// leaves it unbounded. See the facing test below for why a rectangle and a normal are not enough.
+uniform float uPanelMaxDepth[MAX_PANELS];
 // Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
 // a landscape cartridge label without being squashed.
 uniform vec2 uPanelArtScale[MAX_PANELS];
@@ -266,6 +269,22 @@ void main()
             continue;
         }
 
+        // Facing alone cannot find the edge of a face. A keep case is a cube squashed about ten to
+        // one in Z, so the inverse transpose tips the normals of its whole rounded rim back toward
+        // the face and the rim passes the test above as comfortably as the flat plate does — which
+        // is how the cover art came to wrap onto the spine and most of the way to the back.
+        // Distance behind the face plane is what actually separates printed sleeve from moulding.
+        float depthFade = 1.0;
+        if (uPanelMaxDepth[i] >= 0.0)
+        {
+            float depth = dot(uPanelOrigin[i] - vObjectPosition, uPanelNormal[i]);
+            // Feather along the surface's own depth gradient, so the cut is antialiased the way the
+            // rectangle's edge is rather than stepping along an iso-depth contour.
+            float depthWidth = max(fwidth(depth), 1e-6);
+            depthFade = 1.0 - smoothstep(
+                uPanelMaxDepth[i] - depthWidth, uPanelMaxDepth[i] + depthWidth, depth);
+        }
+
         float aspect = max(uPanelAspect[i], 1e-4);
         float corner = clamp(uPanelCornerRadius[i], 0.0, 0.499);
         vec2 panelPoint = (vec2(u, v) - 0.5) * vec2(aspect, 1.0);
@@ -284,7 +303,8 @@ void main()
         }
 
         float antialiasWidth = max(fwidth(edgeDistance), 1e-4);
-        float panelMask = 1.0 - smoothstep(-antialiasWidth, antialiasWidth, edgeDistance);
+        float panelMask =
+            (1.0 - smoothstep(-antialiasWidth, antialiasWidth, edgeDistance)) * depthFade;
         if (panelMask <= 0.0)
         {
             continue;
