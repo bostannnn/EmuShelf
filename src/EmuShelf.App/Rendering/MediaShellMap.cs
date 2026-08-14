@@ -43,12 +43,13 @@ public static class MediaShellMap
             MediaShell.SnesCartridge, new(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport,
             "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f,
             FloorClearanceInShelfUnits: 0.014f),
-        // Known to have the same defect: a Game Pak is ~57.5 x 35 x 6mm and this asset's own ratio
-        // is 1.71, so 85 x 60 stretches it about 20% vertically. Correcting it truthfully also
-        // roughly halves the cartridge on screen, which is a composition decision rather than a
-        // data fix, so it is deliberately left for the GBA asset pass rather than changed blind.
+        // 85 x 60mm was stretching this cartridge about 20%: the asset's own W/H is 1.708 while
+        // that profile claims 1.417. The figures below keep the asset's ratios exactly, anchored on
+        // a real Game Pak's 57.5mm width, so the shape is right even though the height lands at
+        // 33.7mm rather than the cited 35mm. Correcting it also shrinks the cartridge on screen,
+        // which is the truthful outcome: a Game Pak really is tiny beside a SNES cartridge.
         ["gba"] = new(
-            MediaShell.GbaCartridge, new(85f, 60f, 6f), PhysicalArtworkSlots.CartridgeSupport,
+            MediaShell.GbaCartridge, new(57.5f, 33.66f, 6.97f), PhysicalArtworkSlots.CartridgeSupport,
             "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
         // A NES cartridge is portrait — 120mm across, 135mm tall — which is why it dwarfs a SNES
         // cart on the shelf. The depth is the asset's 18.3mm rather than the real 20mm: taking the

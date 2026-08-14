@@ -446,10 +446,18 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         foreach (var game in Items)
         {
-            if ((game.ShelfMediaProfile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) != 0)
+            if ((game.ShelfMediaProfile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) == 0)
+            {
+                continue;
+            }
+
+            // Needs the shell's own label proportions, which are only known once its asset has
+            // finished decoding. Warming is retried on every list change and every prepared-shell
+            // callback, so a label missed here is drawn moments later rather than lost.
+            if (MediaShellCatalog.TryGetPanelAspect(game.ShelfMediaProfile.Shell) is { } aspect)
             {
                 CartridgeLabelPlaceholder.Warm(
-                    game.SystemId, game.SystemName, game.ShelfAccent, game.PlatformArtwork);
+                    game.SystemId, game.SystemName, game.ShelfAccent, game.PlatformArtwork, aspect);
             }
         }
     }

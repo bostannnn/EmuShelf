@@ -123,7 +123,10 @@ public static class MediaShellCatalog
             // removed by flattening a material — it needed the rectangle treatment, read off the
             // atlas dump. The label covers nearly the whole face, which is why this panel is close
             // to a full-face inset rather than the small recess a SNES cartridge has.
-            CoverPanel: new ArtPanel(ArtFace.Front, -0.88f, 0.88f, -0.86f, 0.86f, CornerRadius: 0.02f),
+            // Sits high on the face with bare plastic below it, which is where a Mega Drive label
+            // actually is — the first pass centred it and left an even margin all round, which read
+            // as a sticker applied by eye. The top edge comes close to the shell's own.
+            CoverPanel: new ArtPanel(ArtFace.Front, -0.86f, 0.86f, -0.62f, 0.92f, CornerRadius: 0.02f),
             ExtraPanels: [],
             PanelRoughness: 0.40f,
             ArtFit: ArtFit.Cover,
@@ -184,6 +187,26 @@ public static class MediaShellCatalog
     };
 
     public static MediaShellDefinition Definition(MediaShell shell) => Definitions[shell];
+
+    /// <summary>
+    /// Width over height of a shell's cover panel, once its asset is loaded, or null before then.
+    /// </summary>
+    /// <remarks>
+    /// Anything drawn to fill that panel has to be drawn at this shape. A placeholder authored at
+    /// one shell's proportions and pasted onto another is cropped by <see cref="ArtFit.Cover"/>,
+    /// which is how a portrait NES label ended up showing "TWORK MI".
+    /// </remarks>
+    public static float? TryGetPanelAspect(MediaShell shell)
+    {
+        if (!TryGetPrepared(shell, out var asset))
+        {
+            return null;
+        }
+
+        var placement = Place(Definition(shell).CoverPanel, asset);
+        var height = placement.VEdge.Length();
+        return height <= 1e-6f ? null : placement.UEdge.Length() / height;
+    }
 
     public static IEnumerable<MediaShell> All => Definitions.Keys;
 
