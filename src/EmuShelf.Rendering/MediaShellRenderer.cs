@@ -837,19 +837,22 @@ public sealed class MediaShellRenderer : IDisposable
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
             _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
             _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
-            // The allowance is authored against the shell's thickness on this axis, so one figure
-            // covers a 6mm cartridge and a 14mm keep case without being retuned per shell.
+            // The shell's allowance is authored against its thickness on this axis, so one figure
+            // covers a 6mm cartridge and a 14mm keep case without being retuned per shell. A panel
+            // that has been measured against its own face overrides it outright, in the same
+            // object-space units.
             _program.Set(
                 $"uPanelMaxDepth[{i}]",
-                definition.PanelDepthFraction
-                * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
+                panel.Panel.MaxSurfaceDepth
+                ?? definition.PanelDepthFraction
+                    * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
             // the missing one takes the platform tint instead of blanking the others.
             var art = _activePanelArt?.Get(i);
             _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
             _program.Set($"uPanelArtScale[{i}]", ArtScale(
-                definition.ArtFit, placement, art?.Aspect ?? 1f));
+                panel.Panel.ArtFit, placement, art?.Aspect ?? 1f));
             (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
         }

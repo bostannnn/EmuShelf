@@ -6963,3 +6963,56 @@ No `--single-instance`: unlike the model it replaced, this file holds one card. 
 recess's own near-black rather than a plastic grey, because here it is never a halo — the plate is
 the panel's own geometry, so the only place it shows is the hairline outside the panel's rounded
 corners and chamfer, where a dark line reads as the recess it is.
+## 2026-08-14 — A panel's depth bound gets a measured per-panel override; ArtFit moves onto the panel
+
+Landed alongside the GBA depth allowance above and reconciled with it, because the two changes
+found the same missing concept from opposite ends. That one asks *how far in is definitely the
+inside of the shell* and answers it per shell, as `PanelDepthFraction`, against the shell's own
+thickness — which is why one figure covers a 6mm cartridge and a 14mm keep case. This one needs a
+bound an order of magnitude tighter on one face, so `ArtPanel.MaxSurfaceDepth` overrides it per
+panel in object units, and the keep case's sleeve sets one millimetre. Both are wanted: the shell's
+figure keeps print off any interior, the panel's keeps it off the rim.
+
+**The keep case's sleeve was painting its whole rounded rim** — onto the spine and most of the way
+to the back. The facing guard could not catch it, and the reason is specific to how this shell was
+authored: the source geometry is a cube scaled 13.5 x 19.0 x 1.4, so the inverse transpose that
+carries its normals into canonical space tips every rim normal back toward the face. Measured on the
+mesh, the shallowest thing the front panel was painting sat at 0.61 against a guard that rejects
+below 0.5, and 13.9% of the painted front area was behind the front plane, as deep as 9.7mm on a
+13.7mm case. A tighter facing threshold was rejected — 0.97 would have worked for this one shell and
+would have fought every cartridge label sunk into moulding. The shell-level fraction cannot do it
+either: 0.40 of this case's thickness allows 5.5mm, and the entire rim sits inside that.
+
+The millimetre is measured, not chosen by eye: the front plate is flat or gently domed out to 0.94
+of its half-width where it has fallen 0.53mm behind the plane, and the rim then turns away hard,
+1.23mm at 0.965 and 2.04mm at 0.991. A millimetre keeps the whole plate including the clear cover's
+intentional bulge, and stops at the fillet.
+
+**The cut is feathered rather than a hard reject**, along the surface's own depth gradient, so it
+antialiases like the rectangle's edge instead of stepping along an iso-depth contour — a keep case's
+fillet is smooth, and a hard cut across it is visible as a jagged line. The feather width is capped
+at a quarter of the allowance, which matters for the case the GBA fix cares about: across a depth
+discontinuity like the lip of a pin opening the derivative is enormous, and an uncapped feather
+would let the board behind it take a faint print.
+
+**`ArtFit` moved from the shell to the panel.** It was one value applied to a shell's front, back
+and spine alike, which is only defensible while every panel is the same shape. A keep case's front
+really is the proportions of the box scan, and its spine is a 14mm strip beside a 135mm sleeve; one
+fit cannot be right for both. It now sits on `ArtPanel` beside `CornerRadius` and `CutCorner`, which
+had already established that altitude.
+
+**Bounding the panels exposed a licence problem the panels had been hiding.** The keep case's
+base-colour map is a scan of a whole retail Mortal Kombat: Armageddon sleeve, and the artwork panels
+were the only thing covering it — bare body went from 10.1% to 13.8% of the shell, and the newly
+exposed band is the rim right around the sleeve, where that scan's own spine sits. The map is now
+flattened to #2E2E2E, which is the median colour the body region already sampled, so the four
+material variants stay tuned to what they were tuned against. Only the base colour is flattened.
+`ModelPrep` gained `--neutral-maps base` for this: its default of flattening all three maps is right
+where a label is embossed into the normal map beside it, and wrong here, where the normal and
+metallic/roughness maps are the case's own ribs, hinge and scuffs. Both ship byte-identical.
+
+The general point is worth keeping: an artwork panel that covers a model's baked artwork is hiding
+it, not removing it, and any change that shrinks a panel can uncover somebody's copyright. The
+`--no-cover` preview mode checks the shell with no scraped art; it does not check the shell with the
+panels bounded, because until now nothing bounded them.
+
