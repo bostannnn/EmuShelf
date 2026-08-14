@@ -135,6 +135,19 @@ public sealed class AppBootstrapper
                     profile => profile.IdentifierExtractor,
                     StringComparer.OrdinalIgnoreCase));
         }
+        else
+        {
+            // Without this the absence is completely silent: no client is built, every scrape entry
+            // point quietly disables itself, and nothing anywhere says why. That is indistinguishable
+            // from a broken scraper, and it has cost real debugging time.
+            Logger.Warning(
+                "ScreenScraper is unavailable: no developer credentials were found. They are baked in "
+                + $"at build time from {ScreenScraperDeveloperCredentialSource.DeveloperIdVariable}, "
+                + $"{ScreenScraperDeveloperCredentialSource.DeveloperPasswordVariable} and "
+                + $"{ScreenScraperDeveloperCredentialSource.SoftwareNameVariable}, and the same "
+                + "variables override the baked values at run time. Scraping stays disabled until one "
+                + "of those two routes supplies all three.");
+        }
         var retroAchievementsStore = new SqliteRetroAchievementsStore(database, PathResolver);
         RetroAchievementsStore = retroAchievementsStore;
         RetroAchievementsReadStore = retroAchievementsStore;
