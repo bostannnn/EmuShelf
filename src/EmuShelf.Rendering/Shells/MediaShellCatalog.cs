@@ -181,6 +181,57 @@ public static class MediaShellCatalog
             ArtFit: ArtFit.Cover,
             FlattenPanelNormal: true),
 
+        // Bob's Game Boy cartridge, authored upright and already facing +Z, so like the GBA shell it
+        // needs no reorientation. It is a DMG cartridge rather than a Game Boy Color one — grey
+        // plastic, and it wears a Super Mario Land 2 label — but the two share one 57 x 65 x 8mm
+        // shell, and "gbc" is the only system id EmuShelf gives the whole Game Boy line.
+        [MediaShell.GbcCartridge] = new MediaShellDefinition(
+            MediaShell.GbcCartridge,
+            "EmuShelf.Rendering.Assets.gbc-cartridge.glb",
+            Matrix4x4.Identity,
+            MaxTextureSize: 1024,
+            // Not eyeballed against a render, unlike the shells before it: the masked label's UV
+            // rectangle was projected back through the front face's triangles into object space, so
+            // this panel is the removed sticker's own footprint. That is available here and was not
+            // for SNES or GBA because this model's label is a flat, isolated island on a face whose
+            // UVs are an undistorted plan of it. It lands where a Game Boy label does — nearly the
+            // full width, sitting low enough to leave the moulded ridges above it clear.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.765f, 0.749f, -0.746f, 0.433f, CornerRadius: 0.045f),
+            ExtraPanels: [],
+            // A Game Boy label is printed paper under no overlay, so it stays matte — nearer the
+            // DS card's 0.44 than the SNES decal's 0.38.
+            PanelRoughness: 0.50f,
+            ArtFit: ArtFit.Cover,
+            FlattenPanelNormal: true,
+            // The asset's roughness map medians 0.392, which renders as showroom-fresh injection
+            // moulding under this studio's key. Real cartridge ABS sits nearer 0.55-0.70, and 1.7
+            // lands the median at 0.67.
+            BodyRoughnessScale: 1.70f,
+            // Measured off a render, the same way the SNES figure was: the body arrived at sRGB
+            // ~117 where a real DMG shell is 150-165. 1.8 was right until the ambient came down
+            // below; 2.05 restores it to ~143. Read this one together with AmbientIntensity —
+            // moving either alone moves the apparent plastic colour.
+            BodyAlbedoScale: 2.05f,
+            DielectricReflectance: 0.028f,
+            // This shell is only 510 triangles, so unlike the other cartridges almost none of its
+            // detail is in the mesh — the moulded "Nintendo GAME BOY" band, the grip ridges and the
+            // label recess all live in a 1024px normal map, which carries real high-frequency grain
+            // (6.8/255 against a base-colour map that is flat to within 0.4). Leaving the normal and
+            // cavity terms at their defaults is what made it read as a featureless grey slab: the
+            // geometry has nothing to catch the key with, so the map has to do the work the mesh
+            // does elsewhere. This is the opposite correction to the SNES shell, whose scan had too
+            // much normal noise and needed 0.72.
+            //
+            // The low fill is the other half of the same fix. Roughness alone barely touched the
+            // plastic look, because what read as gloss was an even ambient sheen across a perfectly
+            // smooth surface rather than a specular highlight — dropping the fill and letting the
+            // key and cavity describe the moulding is what actually removed it.
+            AmbientIntensity: 0.60f,
+            ShadowFillOcclusion: 0.66f,
+            CavityStrength: 0.42f,
+            NormalStrength: 2.40f),
+
         // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
         // the lid), so no reorientation is needed.
         [MediaShell.DiscKeepCase] = new MediaShellDefinition(

@@ -26,6 +26,9 @@ public class MediaShellCatalogTests
     [InlineData(MediaShell.SnesCartridge, 129d, 87d)]
     // Landscape: a Game Pak is ~57mm across and ~35mm tall. Not a typo.
     [InlineData(MediaShell.GbaCartridge, 57d, 35d)]
+    // Portrait, and the same 57 x 65mm shell for Game Boy and Game Boy Color alike — the near
+    // reciprocal of the Game Pak above, which is what a swapped source file would look like.
+    [InlineData(MediaShell.GbcCartridge, 57d, 65d)]
     [InlineData(MediaShell.DiscKeepCase, 135d, 190d)]
     public void ShellStandsUpAtTheRealObjectsProportions(MediaShell shell, double width, double height)
     {
@@ -49,6 +52,7 @@ public class MediaShellCatalogTests
     [Theory]
     [InlineData(MediaShell.SnesCartridge, 20d, 87d)]
     [InlineData(MediaShell.GbaCartridge, 8d, 35d)]
+    [InlineData(MediaShell.GbcCartridge, 8d, 65d)]
     [InlineData(MediaShell.DiscKeepCase, 14d, 190d)]
     public void ShellIsAsThickAsTheRealObject(MediaShell shell, double depth, double height)
     {

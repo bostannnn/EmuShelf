@@ -37,6 +37,7 @@ if (prepModel is not null)
         ArgumentValue("--neutral-rect"),
         ArgumentValue("--neutral-fill"),
         args.Contains("--single-instance"),
+        args.Contains("--bake-vertex-colours"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }
@@ -101,8 +102,37 @@ if (inspectionModel is not null)
         * Matrix4x4.CreateRotationZ(Degrees("--model-roll"));
     var candidate = GlbLoader.Load(
         File.ReadAllBytes(inspectionModel), inspectionOrientation, maxTextureSize: 1024);
+    // A candidate's own measured panel, as MinU,MaxU,MinV,MaxV — the numbers that would go into its
+    // catalog entry, tried on it before that entry exists.
+    ArtPanel? candidatePanel = null;
+    if (ArgumentValue("--model-panel") is { } panelArgument)
+    {
+        var edges = panelArgument
+            .Split(',', StringSplitOptions.TrimEntries)
+            .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        if (edges.Length is not (4 or 5))
+        {
+            throw new ArgumentException("--model-panel wants minU,maxU,minV,maxV[,cornerRadius].");
+        }
+
+        candidatePanel = new ArtPanel(
+            ArtFace.Front, edges[0], edges[1], edges[2], edges[3],
+            CornerRadius: edges.Length == 5 ? edges[4] : 0f);
+    }
+
+    // Which shell's slot the candidate occupies, and therefore whose material calibration it is
+    // shaded with. This defaulted silently to SNES, which quietly invalidates any comparison
+    // between a candidate and the shell it is meant to replace: a mesh change gets judged under
+    // another cartridge's normal strength, ambient fill and albedo scale.
+    var inspectionSlot = ArgumentValue("--model-as") is { } slot
+        ? Enum.Parse<MediaShell>(slot, ignoreCase: true)
+        : MediaShell.SnesCartridge;
+
     renderer.SetInspectionShell(
-        MediaShell.SnesCartridge, candidate, suppressArtworkPanels: args.Contains("--model-raw"));
+        inspectionSlot, candidate,
+        suppressArtworkPanels: args.Contains("--model-raw"),
+        coverPanel: candidatePanel);
     Console.WriteLine(
         $"  inspection model: {inspectionModel} — {candidate.Meshes.Sum(mesh => mesh.TriangleCount):N0} triangles, "
         + $"{candidate.Materials.Count} materials, {candidate.Textures.Count} textures, "
@@ -169,6 +199,7 @@ var shelfProfiles = new[]
     new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
     new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
     new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(135f, 87f, 14.6f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
+    new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
 };
 var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
 var shelfAnchor = shelfCentres[3];
@@ -222,6 +253,7 @@ static string Slug(MediaShell shell) => shell switch
 {
     MediaShell.SnesCartridge => "snes-cartridge",
     MediaShell.GbaCartridge => "gba-cartridge",
+    MediaShell.GbcCartridge => "gbc-cartridge",
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),

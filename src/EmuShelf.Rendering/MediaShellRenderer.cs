@@ -964,14 +964,31 @@ public sealed class MediaShellRenderer : IDisposable
     /// only to the preview assembly so candidate files can pass through the exact shipping shader
     /// without becoming application assets before their license and geometry clear review.
     /// </summary>
-    internal void SetInspectionShell(MediaShell shell, ModelAsset asset, bool suppressArtworkPanels = false)
+    /// <summary>
+    /// Substitutes a candidate model for an authored shell, for the preview tool.
+    /// </summary>
+    /// <param name="coverPanel">Where artwork lands on the candidate. Without this the candidate
+    /// borrows the panel of whichever shell it stands in for, which is only ever right by accident —
+    /// and a candidate cannot be judged on the one thing that matters most, whether its label sits
+    /// where the real cartridge's does, until its own measured panel can be tried on it.</param>
+    internal void SetInspectionShell(
+        MediaShell shell,
+        ModelAsset asset,
+        bool suppressArtworkPanels = false,
+        ArtPanel? coverPanel = null)
     {
         if (_shells.Remove(shell, out var existing))
         {
             existing.Dispose();
         }
 
-        _shells[shell] = UploadResources(MediaShellCatalog.Definition(shell), asset);
+        var definition = MediaShellCatalog.Definition(shell);
+        if (coverPanel is { } panel)
+        {
+            definition = definition with { CoverPanel = panel };
+        }
+
+        _shells[shell] = UploadResources(definition, asset);
         if (suppressArtworkPanels)
         {
             _inspectionShellsWithoutPanels.Add(shell);

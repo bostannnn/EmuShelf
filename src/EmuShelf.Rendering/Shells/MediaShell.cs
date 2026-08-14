@@ -20,6 +20,9 @@ public enum MediaShell
     /// <summary>The Game Boy Advance ROM cartridge.</summary>
     GbaCartridge,
 
+    /// <summary>The Game Boy/Game Boy Color ROM cartridge.</summary>
+    GbcCartridge,
+
     /// <summary>The NES/Famicom ROM cartridge.</summary>
     NesCartridge,
 

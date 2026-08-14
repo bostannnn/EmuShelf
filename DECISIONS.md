@@ -6838,3 +6838,88 @@ to generate it. Generating is attractive here and not a fudge: a jewel case is a
 lip and a sleeve window, `MediaShellCatalog` already builds the cover card procedurally, and a
 generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
 route rather than taken, because it is a shell rather than an asset swap.
+
+## 2026-08-14 — The Game Boy shell arrives, and its label panel is measured rather than eyeballed
+
+`MediaShell.GbcCartridge`, mapped from `gbc`, using Bob's CC BY "Gameboy Cartridge lowpoly" now
+sitting in `models/gbc/`. This replaces what that folder held when the previous entry was written —
+a GBA Game Pak wearing a GBA label — and closes the gap that entry recorded. The new model measures
+0.885 wide per unit of height, against the ~0.88 a Game Boy cartridge should be, so it passes the
+test that identified the old one as wrong.
+
+**It is a DMG cartridge, not a Game Boy Color one.** Grey plastic, a Super Mario Land 2 sticker, and
+no clear shell or bevelled corner. Taken anyway, because Game Boy and Game Boy Color ship the same
+57 x 65 x 8mm cartridge and `gbc` is the only system id EmuShelf gives the whole Game Boy line —
+`.gb` and `.gbc` both import to it, and both launch through the same RetroArch core. A GBC-specific
+shell would be a cosmetic upgrade, not a correctness fix, and is worth recording as available work
+rather than pretending the shell is something it is not.
+
+**The cover panel came out of the geometry rather than out of a render**, which is a first for these
+shells and worth generalising. Every previous panel was drawn against a straight-on render and
+corrected by eye — SNES twice, GBA twice, and both times because a panel inset "sensibly" inside a
+recess reads as a label applied by hand. Here the label's UV rectangle was already known exactly,
+because masking it is what removes the artwork, so projecting that rectangle back through the front
+face's triangles into object space gives the removed sticker's own footprint. Three conditions make
+this work, and all three should be checked before reaching for it again: the label is a flat island,
+the front face's UVs are an undistorted plan of it, and the mask rectangle was measured rather than
+guessed. It was measured — the label is the only saturated region on an otherwise flat 105-grey
+atlas, so a sweep for pixels differing from the plastic bounds it to the texel.
+
+The mask fill is that same plastic grey rather than the default paper grey, for the reason the Mega
+Drive entry records: the panel and the mask are derived from different things, so any mismatch shows
+as a ring, and a ring of body plastic is invisible where a ring of paper is not.
+
+The profile anchors on a real cartridge's 57mm width and takes height and depth from the asset's own
+ratios — 57 x 64.42 x 8.99mm — exactly as GBA does. The width ratio is only 0.9% from the real
+57 x 65mm, so this is a small correction, but taking it keeps the shell at its authored shape
+instead of stretching it, and the depth is honestly the model's rather than a real cart's 8mm.
+
+## 2026-08-15 — Calibrating the Game Boy shell, and what the lines on its moulded band are
+
+The shell shipped correct and looked wrong, which took three passes to unpick. All three are the
+same underlying fact: **this asset is 510 triangles, so almost none of its detail is in the mesh.**
+The moulded "Nintendo GAME BOY" band, the grip ridges and the label recess all live in a 1024px
+normal map. Every material default in `MediaShellDefinition` is tuned for shells that carry their
+detail as geometry, and on this one they render a featureless grey slab.
+
+- **Normal and cavity had to go up, not down.** `NormalStrength` 2.4 and `CavityStrength` 0.42,
+  against the SNES shell's 0.72/0.34. That is the opposite correction, for the opposite reason: the
+  SNES scan has too much normal noise, this one has a map doing the mesh's job.
+- **The gloss was not specular, and roughness was the wrong first guess.** A wide roughness sweep
+  moved the body from sRGB 132 to 125 and looked almost identical. The base-colour map is flat to
+  within 0.4/255 across the whole shell, so what read as gloss was an even ambient sheen lying on a
+  perfectly uniform surface. Dropping `AmbientIntensity` 0.74 → 0.60 is what removed it. Roughness
+  still needed fixing as a smaller term — the map medians 0.392, showroom-fresh injection moulding,
+  and ×1.7 puts it at 0.67 where real cartridge ABS sits.
+- **Ambient and albedo are coupled.** Lowering the fill darkened the plastic to sRGB 134, so
+  `BodyAlbedoScale` went 1.8 → 2.05 to bring it back to ~143. Turning either alone moves the
+  apparent plastic colour; they have to be read together.
+
+**The horizontal lines across the moulded band are geometry, and are accepted.** Rendering with the
+normal map switched off removes the lettering and leaves the lines untouched, which is what proves
+it: the oval is a raised dome covered by 37 triangles, and each facet catches the key differently.
+Subdividing to 8,160 triangles changed the measured band energy from 2.139 to 2.128 — nothing — and
+that is the lesson worth keeping. Midpoint subdivision keeps every facet planar; it refines how
+normals interpolate and cannot remove corrugation that is in the shape. Fixing it means smoothing
+geometry, which is not worth risking the crisp rim for a defect visible only on the focused hero.
+Raising the fill hides the facets but flattens the lettering with them — one key lights both.
+
+**Two sourcing lessons, from a candidate that could not be used.** A second Game Boy model appeared
+in `models/gbc` mid-work and was clearly the better sculpt. It was not usable, and the checks that
+established that should be the first ones run on any future candidate:
+
+- **No `asset.extras` is a red flag, not a formality.** Every legitimately downloaded model here
+  carries author, source URL and CC BY 4.0 there. This one had none, was generated by
+  OpenSceneGraph rather than Sketchfab's exporter, and arrived beside the viewer's `background.jpeg`
+  — the signature of a viewer stream rather than a download. Sketchfab's public API confirmed it:
+  `"license": null` and `isDownloadable: false`.
+- **Check the licence before the pipeline, not after.** Two working days of prep went into that
+  model — vertex-colour baking, decimation from 2.09M triangles, a normal rebuild — before the
+  licence was checked. The API call that settled it takes seconds.
+
+`ModelPrep --bake-vertex-colours` survives from that work and is worth keeping: OpenSceneGraph
+exports carry their whole colour scheme in `COLOR_0`, which `GlbLoader` drops, so such a model loads
+as a white blob. Where those colours are constant per primitive the rewrite onto `baseColorFactor`
+is exact. The preview tool also gained `--model-panel` and `--model-as`; the latter closed a real
+trap, in that candidate models were silently shaded with the SNES shell's calibration, so any
+comparison between a candidate and the shell it was meant to replace was measuring the wrong thing.
