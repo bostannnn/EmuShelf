@@ -61,6 +61,12 @@ public enum PhysicalArtworkSlots
 /// <param name="CutCorner">Diagonal bite taken out of the panel's bottom-left corner, as a fraction
 /// of its shorter edge. A DS label is cut there so it clears the card's thumb notch, and squaring
 /// that corner is one of the details that stops a card reading as a DS card.</param>
+/// <param name="TopWrap">Fraction of the printed sheet's height that folds over the shell's top
+/// face rather than lying on this panel's own face. A Mega Drive label is one 75 x 68mm sticker
+/// whose top 7.7mm wraps over the cartridge's top edge — that strip is the title you read on a
+/// shelved cartridge, and it is why <see cref="MaxV"/> for such a label is the shell's own top edge
+/// rather than a margin below it. The renderer derives the folded strip's own panel from this, so
+/// the two stay one continuous print. Zero leaves the panel flat, which is every other shell.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
@@ -68,7 +74,8 @@ public readonly record struct ArtPanel(
     float MinV,
     float MaxV,
     float CornerRadius = 0f,
-    float CutCorner = 0f)
+    float CutCorner = 0f,
+    float TopWrap = 0f)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(ArtFace face, float inset = 0f) =>
@@ -104,6 +111,9 @@ public enum ArtFace
 
     /// <summary>-X, the spine of a keep case.</summary>
     Spine,
+
+    /// <summary>+Y, the edge a cartridge label folds over. Its second axis runs front to back.</summary>
+    Top,
 }
 
 /// <summary>Everything the renderer needs to turn one .glb into a framed, art-bearing hero.</summary>

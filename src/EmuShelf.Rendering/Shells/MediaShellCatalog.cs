@@ -121,12 +121,19 @@ public static class MediaShellCatalog
             MaxTextureSize: 1024,
             // This shell has one material and one atlas, so unlike NES its label could not be
             // removed by flattening a material — it needed the rectangle treatment, read off the
-            // atlas dump. The label covers nearly the whole face, which is why this panel is close
-            // to a full-face inset rather than the small recess a SNES cartridge has.
-            // Sits high on the face with bare plastic below it, which is where a Mega Drive label
-            // actually is — the first pass centred it and left an even margin all round, which read
-            // as a sticker applied by eye. The top edge comes close to the shell's own.
-            CoverPanel: new ArtPanel(ArtFace.Front, -0.86f, 0.86f, -0.62f, 0.92f, CornerRadius: 0.02f),
+            // atlas dump. What the panel is allowed to be is therefore capped by that mask: it can
+            // be smaller, which leaves flat plastic-coloured fill showing as plastic, but it cannot
+            // be larger without exposing Sonic 2.
+            // Measured from the printed label rather than from the model: a Mega Drive label is a
+            // 75 x 68mm sheet on a 109 x 70mm cartridge, of which the top 7.7mm folds over the top
+            // edge. That fixes all four numbers — 75/109 of the width, hard against the shell's own
+            // top edge because the sheet runs over it, and 60.3 of 70mm down the face, leaving the
+            // bare band at the bottom that the moulded grid sits in. The earlier rectangle was a
+            // seventh too wide and stopped short at both ends, which read as a sticker applied by
+            // eye on a cartridge whose real label is placed to a millimetre.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.688f, 0.688f, -0.723f, 1f,
+                CornerRadius: 0.02f, TopWrap: 0.113f),
             ExtraPanels: [],
             PanelRoughness: 0.40f,
             ArtFit: ArtFit.Cover,
@@ -205,22 +212,30 @@ public static class MediaShellCatalog
     public static MediaShellDefinition Definition(MediaShell shell) => Definitions[shell];
 
     /// <summary>
-    /// Width over height of a shell's cover panel, once its asset is loaded, or null before then.
+    /// Width over height of a shell's printed cover sheet, once its asset is loaded, or null
+    /// before then.
     /// </summary>
     /// <remarks>
     /// Anything drawn to fill that panel has to be drawn at this shape. A placeholder authored at
     /// one shell's proportions and pasted onto another is cropped by <see cref="ArtFit.Cover"/>,
     /// which is how a portrait NES label ended up showing "TWORK MI".
     /// </remarks>
-    public static float? TryGetPanelAspect(MediaShell shell)
-    {
-        if (!TryGetPrepared(shell, out var asset))
-        {
-            return null;
-        }
+    public static float? TryGetPanelAspect(MediaShell shell) =>
+        TryGetPrepared(shell, out var asset)
+            ? TrySheetAspect(Definition(shell).CoverPanel, asset)
+            : null;
 
-        var placement = Place(Definition(shell).CoverPanel, asset);
-        var height = placement.VEdge.Length();
+    /// <summary>
+    /// Width over height of the whole printed sheet a panel carries, folded strip included.
+    /// </summary>
+    /// <remarks>
+    /// A folding label is fitted to the sheet, not to the face: cropping the artwork to the front
+    /// panel alone and then folding part of it away would lose the top of the picture twice over.
+    /// </remarks>
+    public static float? TrySheetAspect(ArtPanel panel, ModelAsset model)
+    {
+        var placement = Place(panel, model);
+        var height = placement.VEdge.Length() / MathF.Max(1f - panel.TopWrap, 1e-3f);
         return height <= 1e-6f ? null : placement.UEdge.Length() / height;
     }
 
@@ -386,7 +401,9 @@ public static class MediaShellCatalog
         // front of that face would call right: right = forward x up, with forward being -normal.
         // Getting this from the face rather than hard-coding an axis per case is what keeps the
         // back of a case from coming out mirrored.
-        var vAxis = Vector3.UnitY;
+        // A top face has no up, so its second axis runs away from the viewer instead: v = 0 at the
+        // front edge, which is where a folded label's strip continues from.
+        var vAxis = panel.Face == ArtFace.Top ? -Vector3.UnitZ : Vector3.UnitY;
         var uAxis = Vector3.Cross(-normal, vAxis);
 
         // Extents measured along the panel's own axes, so the same expression serves all faces.
@@ -403,6 +420,46 @@ public static class MediaShellCatalog
             Normal: normal);
     }
 
+    /// <summary>
+    /// The strip a folded label lays across the shell's top face, or null where it does not fold.
+    /// </summary>
+    /// <remarks>
+    /// Derived rather than authored, because the fold has to satisfy two things at once. It starts
+    /// exactly at the front edge, so the print crosses the corner without a seam; and its length
+    /// comes from the front panel's height and the fold fraction — the printed sheet's own scale —
+    /// rather than from a fraction of this model's depth. That distinction matters here: the Mega
+    /// Drive asset is about 12mm deep where a real cartridge is 17mm, so a fold sized against the
+    /// model would print the title strip smaller than the label it belongs to. Clamped to the
+    /// shell's depth so a large fraction cannot run the strip off the back edge.
+    /// </remarks>
+    public static ArtPanel? TryWrapPanel(ArtPanel panel, ModelAsset model)
+    {
+        if (panel.TopWrap <= 0f)
+        {
+            return null;
+        }
+
+        // Loud rather than silent: the strip runs backwards from the front edge, so a fold asked
+        // for on any other face would be laid down in the wrong place and would quietly eat the
+        // front label's share of the sheet as well.
+        if (panel.Face != ArtFace.Front || panel.TopWrap >= 1f)
+        {
+            throw new ArgumentException(
+                $"A label can only fold from the front face and by less than all of itself; "
+                + $"this one folds {panel.TopWrap:P0} of a {panel.Face} panel.",
+                nameof(panel));
+        }
+
+        var frontHeight = Place(panel, model).VEdge.Length();
+        var foldLength = frontHeight * panel.TopWrap / (1f - panel.TopWrap);
+        var depth = MathF.Max(model.Size.Z, 1e-6f);
+        var fraction = MathF.Min(foldLength / depth, 1f);
+
+        // v = -1 is the top face's front edge; see Place. Corners stay square: the label's own
+        // rounded ones are on the front panel, and the fold line itself is a straight crease.
+        return new ArtPanel(ArtFace.Top, panel.MinU, panel.MaxU, -1f, -1f + (2f * fraction));
+    }
+
     private static (float Min, float Max) Span(
         float min, float max, Vector3 axis, Vector3 centre, Vector3 half)
     {
@@ -417,6 +474,7 @@ public static class MediaShellCatalog
         ArtFace.Back => -Vector3.UnitZ,
         // A keep case's printed spine is on the hinge side, which canonical space puts at -X.
         ArtFace.Spine => -Vector3.UnitX,
+        ArtFace.Top => Vector3.UnitY,
         _ => throw new ArgumentOutOfRangeException(nameof(face), face, "Unknown art face."),
     };
 }

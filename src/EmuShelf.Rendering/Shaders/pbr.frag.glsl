@@ -55,9 +55,12 @@ uniform float uPanelAspect[MAX_PANELS];
 uniform float uPanelCornerRadius[MAX_PANELS];
 // Diagonal bite out of the panel's bottom-left corner, in the same units as the radius.
 uniform float uPanelCutCorner[MAX_PANELS];
-// Centred sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to
-// a landscape cartridge label without being squashed.
+// Sub-rectangle of the artwork this panel samples, so a portrait box scan can be fitted to a
+// landscape cartridge label without being squashed. Offset is separate from scale rather than
+// implied to be centred, because the two panels of a folded label take adjacent slices of one
+// sheet: the face gets everything below the crease and the top edge gets the strip above it.
 uniform vec2 uPanelArtScale[MAX_PANELS];
+uniform vec2 uPanelArtOffset[MAX_PANELS];
 uniform sampler2D uPanelArt0;
 uniform sampler2D uPanelArt1;
 uniform sampler2D uPanelArt2;
@@ -295,7 +298,7 @@ void main()
         {
             // v runs bottom-up in object space and top-down in image space.
             vec2 uv = vec2(u, 1.0 - v);
-            uv = ((uv - 0.5) * uPanelArtScale[i]) + 0.5;
+            uv = (uv * uPanelArtScale[i]) + uPanelArtOffset[i];
             if (uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0)
             {
                 vec4 sampled = samplePanelArt(i, uv);

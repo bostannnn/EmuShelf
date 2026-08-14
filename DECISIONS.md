@@ -6838,3 +6838,47 @@ to generate it. Generating is attractive here and not a fudge: a jewel case is a
 lip and a sleeve window, `MediaShellCatalog` already builds the cover card procedurally, and a
 generated shell carries no third-party artwork and no licence to check. Recorded as the recommended
 route rather than taken, because it is a shell rather than an asset swap.
+
+## 2026-08-14 — A Mega Drive label folds over the top edge, and the profile was a quarter too big
+
+Two defects in the same shell, found by comparing it against real cartridges rather than against
+the model it was cut from.
+
+**The label is one sheet that wraps the top edge.** A Mega Drive label is a 75 x 68mm sticker on a
+109 x 70mm cartridge, of which the top 7.7mm folds over onto the top face — that folded strip is
+the title you read on a shelved cartridge, and Sega Retro describes the labels as layered over the
+top and front for exactly this reason. The shipped panel was a flat rectangle a seventh too wide
+(0.86 of the half-width against 0.688) that stopped short of the top edge, so the cartridge wore a
+sticker centred by eye where the real one is placed to a millimetre.
+
+The fold is now a real capability rather than a Mega Drive special case: `ArtPanel.TopWrap` names
+the fraction of the printed sheet that folds, and the renderer expands such a panel into two — the
+face and a derived strip on a new `ArtFace.Top`, sharing one texture. Three details are what make
+it read as a fold rather than a second sticker:
+
+- **The artwork is fitted to the whole sheet, then sliced.** Cropping to the front panel first and
+  folding a tenth of that away would crop a portrait box scan twice, losing the top of the picture
+  the fold is supposed to carry. `uPanelArtScale` therefore gained a sibling `uPanelArtOffset`; a
+  panel's sub-rectangle is no longer assumed to be centred. For every flat panel the two together
+  reproduce the old centred crop exactly, to within a last-bit float difference.
+- **The strip's length comes from the print, not from the model.** This asset is about 12mm deep
+  where a real cartridge is 17mm, so a strip sized as a fraction of its depth would print the title
+  smaller than the label it continues. It is sized from the front panel's height and the fold
+  fraction instead, and clamped to the depth.
+- **It starts at the front edge.** The shader's facing test admits normals within 60 degrees, so
+  the front panel and the strip both cover the roll-over between them and no plastic shows in the
+  crease.
+
+**The profile said 135 x 87mm for a 109 x 70mm cartridge.** Both figures carry the asset's W/H of
+1.553, which is why `MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset` passed and why the
+shell was never distorted — it was simply a quarter too big, standing taller on the shelf than a
+SNES cartridge it is comfortably shorter than in life. Ratio agreement checks shape; only a
+measurement checks size, and that is now its own test. Depth stays the asset's 11.8mm rather than a
+real cart's ~17mm, as for NES and DS.
+
+Two things helped it hide, and both are fixed. The acceptance shelf shot listed this shell last, so
+it rendered off the right-hand edge of the frame — it now stands beside the SNES cartridge, which
+is the comparison that makes a size error obvious. And the preview tool's `top-edge` and
+`bottom-edge` poses carried each other's names: pitch tips the shell rather than the camera, so a
+positive angle shows the top. A render of a cartridge's underside filed as `top-edge` is a good way
+to conclude that a label folded over the top is not drawing at all.

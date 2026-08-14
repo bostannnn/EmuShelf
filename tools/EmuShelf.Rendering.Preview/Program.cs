@@ -64,8 +64,12 @@ Directory.CreateDirectory(outputDirectory);
     ("turned", -1.05f, -0.06f),
     ("spine", -1.48f, 0f),
     ("back", MathF.PI, 0f),
-    ("top-edge", -0.3f, -0.85f),
-    ("bottom-edge", -0.3f, 0.85f),
+    // Pitch tips the shell, not the camera: a positive angle rolls its top towards the viewer, so
+    // that is the pose that shows the top edge. These two carried each other's names, and a render
+    // of a cartridge's underside filed as "top-edge" is a good way to conclude a label that folds
+    // over the top is not drawing at all.
+    ("top-edge", -0.3f, 0.85f),
+    ("bottom-edge", -0.3f, -0.85f),
 ];
 
 Console.WriteLine("Creating a surfaceless EGL context...");
@@ -166,9 +170,11 @@ var shelfProfiles = new[]
     new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(33.4f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
     new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
+    // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge of
+    // the acceptance shot, which is how it kept a profile a quarter too big for a whole milestone.
+    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
     new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
-    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(135f, 87f, 14.6f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.013f),
 };
 var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
 var shelfAnchor = shelfCentres[3];
