@@ -295,6 +295,8 @@ public class MediaShellTests
     // One geometry family, two consoles that really did share a case.
     [InlineData("playstation", MediaShell.JewelCase)]
     [InlineData("dreamcast", MediaShell.JewelCase)]
+    // The one system whose "medium" is a machine: an arcade game never shipped to a player at all.
+    [InlineData("arcade", MediaShell.ArcadeCabinet)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
@@ -304,14 +306,15 @@ public class MediaShellTests
     public void ForSystem_MapsAConsoleToItsMedium(string systemId, MediaShell expected) =>
         Assert.Equal(expected, MediaShellMap.ForSystem(systemId));
 
-    // What is left. Arcade has no packaging at all, and a 3DS card has no authored shell yet. PS1
-    // and Dreamcast were here until the jewel case was authored and both now share it; PSP was here
+    // What is left, and it is now one system: a 3DS card has no authored shell yet. PS1 and
+    // Dreamcast were here until the jewel case was authored and both now share it; PSP was here
     // until it took the keep case, which is the one entry in this file that borrows a case that is
     // not its own — see MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted for the
-    // trade that made that worth doing rather than staying on a flat cover.
+    // trade that made that worth doing rather than staying on a flat cover. Arcade was here on the
+    // grounds that it has no packaging at all, which is true and turned out not to matter: the
+    // machine is the medium.
     [Theory]
     [InlineData("3ds")]
-    [InlineData("arcade")]
     public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
         Assert.Null(MediaShellMap.ForSystem(systemId));
 
@@ -388,6 +391,7 @@ public class MediaShellTests
     [InlineData("gbc")]
     [InlineData("playstation")]
     [InlineData("dreamcast")]
+    [InlineData("arcade")]
     [InlineData("playstation2")]
     [InlineData("playstation3")]
     [InlineData("gamecube")]
@@ -644,6 +648,10 @@ public class MediaShellTests
     [InlineData(MediaShell.SnesCartridge)]
     [InlineData(MediaShell.GbaCartridge)]
     [InlineData(MediaShell.DiscKeepCase)]
+    // The trimmed shell has to be normalised against what is left of it, not what was authored:
+    // measuring the cut cabinet against the whole machine's height would leave it half a unit tall
+    // and hovering above the shelf floor.
+    [InlineData(MediaShell.ArcadeCabinet)]
     public void Load_NormalisesEveryShellToOneUnitTallAndCentred(MediaShell shell)
     {
         var model = MediaShellCatalog.Load(shell);
@@ -1142,6 +1150,244 @@ public class MediaShellTests
             samples.Count > 100,
             $"The jewel case's hinge and outer plastic are flat ({samples.Count} distinct colours); "
             + "the mask has eaten the detail the shell was chosen for.");
+    }
+
+    /// <summary>
+    /// The arcade cabinet arrives as the top half of a machine, cut off under its control panel.
+    /// </summary>
+    /// <remarks>
+    /// Two things are being checked, and only together do they mean the cut landed in the right
+    /// place. The proportions say how much came off: the authored cabinet is 0.355 wide per unit of
+    /// height, and halving its height doubles that to 0.711. And the material census says what
+    /// survived — a cut a little too high takes the joysticks and buttons with it, which is the
+    /// failure that still leaves a plausible-looking object.
+    ///
+    /// The clip is a real clip, not a triangle filter: the vertices left sitting exactly on the cut
+    /// plane are the ones it created, and dropping straddling triangles instead would leave a torn
+    /// edge and none of them.
+    /// </remarks>
+    [Fact]
+    public void Load_CutsTheArcadeCabinetOffUnderItsControlPanel()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.ArcadeCabinet);
+
+        Assert.Equal(0.711f, model.Size.X / model.Size.Y, 0.02f);
+        Assert.Equal(1.110f, model.Size.Z / model.Size.Y, 0.03f);
+
+        // Everything that says "arcade machine" has to be above the cut.
+        foreach (var part in new[] { "banner", "speakers", "screen", "game_panel", "butt_a", "butt_b" })
+        {
+            var material = model.Materials
+                .Select((candidate, index) => (candidate, index))
+                .Where(entry => string.Equals(
+                    entry.candidate.Name, part, StringComparison.OrdinalIgnoreCase))
+                .Select(entry => entry.index)
+                .DefaultIfEmpty(-1)
+                .First();
+            Assert.True(material >= 0, $"The cabinet lost its '{part}' material entirely.");
+            Assert.True(
+                model.Meshes.Any(mesh => mesh.MaterialIndex == material && mesh.TriangleCount > 0),
+                $"The cut removed every triangle of the cabinet's '{part}'.");
+        }
+
+        var onTheCut = model.Meshes
+            .SelectMany(mesh => Enumerable
+                .Range(0, mesh.Vertices.Length / MeshGeometry.FloatsPerVertex)
+                .Select(vertex => mesh.Vertices[(vertex * MeshGeometry.FloatsPerVertex) + 1]))
+            .Count(y => MathF.Abs(y - model.BoundsMin.Y) < 1e-4f);
+        Assert.True(
+            onTheCut > 24,
+            $"Only {onTheCut} vertices lie on the cut plane; straddling triangles are being dropped "
+            + "rather than clipped, which leaves the cabinet with a ragged base.");
+    }
+
+    /// <summary>
+    /// A cabinet's artwork goes on its screen, and nowhere else on the machine.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole reason a panel can name a material. The screen is two fifths of the
+    /// cabinet's height, sunk a quarter of its depth behind the bezel, with a marquee above it and
+    /// a control panel below — so a rectangle measured against the cabinet, however carefully, is a
+    /// rectangle over all three of those as well. Naming the material both scopes the print to the
+    /// glass and
+    /// measures the rectangle against the glass, which is why the numbers in the catalogue are
+    /// ±0.99 rather than four figures nobody could check.
+    /// </remarks>
+    [Fact]
+    public void ArcadeArtwork_LandsOnTheScreenAndNowhereElse()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.ArcadeCabinet);
+        var panel = MediaShellCatalog.Definition(MediaShell.ArcadeCabinet).CoverPanel;
+
+        Assert.Equal("screen", panel.Material);
+
+        var (screenMin, screenMax) = MediaShellCatalog.MaterialBounds(model, "screen");
+        var placement = MediaShellCatalog.Place(panel, model);
+
+        // Against the screen, not the cabinet: the print covers nearly all of the glass, and the
+        // glass is 80% of the cabinet's width but only two fifths of its height.
+        Assert.Equal(screenMax.X - screenMin.X, placement.UEdge.Length(), 0.02f);
+        Assert.True(
+            placement.VEdge.Length() < model.Size.Y * 0.5f,
+            "The screen print is half the height of the cabinet; the panel is being measured "
+            + "against the whole model rather than the screen's own mesh.");
+
+        // A cabinet screen is 4:3, which is also the shape of the title screen the arcade scraper
+        // projects to the cover. It reads slightly wider than 1.333 because the tube leans back and
+        // the panel is measured on the vertical, which is the same foreshortening the player sees.
+        Assert.InRange(placement.UEdge.Length() / placement.VEdge.Length(), 1.33f, 1.45f);
+
+        // The print sits on the glass, which is well inside the machine's own front face.
+        Assert.True(
+            screenMax.Z < model.BoundsMax.Z - (model.Size.Z * 0.2f),
+            "The screen is no longer recessed inside the cabinet; the model changed.");
+    }
+
+    /// <summary>
+    /// The cut leaves a floor, not a hole.
+    /// </summary>
+    /// <remarks>
+    /// Shipped open once, on the reasoning that the cut face is the face the cabinet stands on. It
+    /// is not: the medium turns as it launches, and an open shell reads as a cardboard mock-up the
+    /// moment its underside comes round. The cap is the convex hull of the cut, so it is allowed to
+    /// be larger than the true outline but never smaller than most of the footprint — a cap that
+    /// silently degenerated to a sliver would still satisfy "a mesh exists".
+    /// </remarks>
+    [Fact]
+    public void ArcadeCabinet_IsClosedWhereItWasCut()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.ArcadeCabinet);
+
+        var cap = model.Meshes.SingleOrDefault(mesh => Enumerable
+            .Range(0, mesh.Vertices.Length / MeshGeometry.FloatsPerVertex)
+            .All(vertex =>
+                MathF.Abs(mesh.Vertices[(vertex * MeshGeometry.FloatsPerVertex) + 1] - model.BoundsMin.Y)
+                    < 1e-4f
+                && mesh.Vertices[(vertex * MeshGeometry.FloatsPerVertex) + 4] < -0.9f));
+        Assert.NotNull(cap);
+
+        var area = 0f;
+        for (var index = 0; index + 2 < cap.Indices.Length; index += 3)
+        {
+            var a = VertexAt(cap, cap.Indices[index]);
+            var b = VertexAt(cap, cap.Indices[index + 1]);
+            var c = VertexAt(cap, cap.Indices[index + 2]);
+            area += Vector3.Cross(b - a, c - a).Length() * 0.5f;
+        }
+
+        var footprint = model.Size.X * model.Size.Z;
+        Assert.True(
+            area > footprint * 0.5f,
+            $"The base covers {area:F3} of the cabinet's {footprint:F3} footprint; the cut is "
+            + "mostly open again.");
+
+        // It wears the machine's own material rather than an invented one — and specifically the
+        // cabinet body, which is what the cut is mostly made of. The material is chosen by which
+        // one contributed most of the cut vertices, so a different trim height could in principle
+        // hand the underside to the control panel's wood or the marquee's black.
+        var material = model.Materials[cap.MaterialIndex];
+        Assert.Equal("body_main", material.Name);
+
+        // And the one texel it samples has to be the cabinet's plastic. A constant UV is only a
+        // good idea while it lands somewhere representative; if it drifted onto a bright part of
+        // the atlas the machine would stand on a glowing white base.
+        var texture = model.Textures[material.BaseColorTexture];
+        var u = Math.Clamp((int)(cap.Vertices[6] * texture.Width), 0, texture.Width - 1);
+        var v = Math.Clamp((int)(cap.Vertices[7] * texture.Height), 0, texture.Height - 1);
+        var texel = ((v * texture.Width) + u) * 4;
+        Assert.True(
+            texture.Rgba[texel] < 140 && texture.Rgba[texel + 1] < 140 && texture.Rgba[texel + 2] < 140,
+            $"The base samples ({texture.Rgba[texel]}, {texture.Rgba[texel + 1]}, "
+            + $"{texture.Rgba[texel + 2]}), which is not this cabinet's dark plastic.");
+    }
+
+    private static Vector3 VertexAt(MeshGeometry mesh, uint index)
+    {
+        var offset = (int)index * MeshGeometry.FloatsPerVertex;
+        return new Vector3(
+            mesh.Vertices[offset], mesh.Vertices[offset + 1], mesh.Vertices[offset + 2]);
+    }
+
+    /// <summary>
+    /// A shelf row reserves what a medium sweeps when turned, not the width of its face.
+    /// </summary>
+    /// <remarks>
+    /// Every medium on this shelf is turned — 0.18 radians at rest, and three full revolutions when
+    /// the focused one launches. For packaging the difference is nothing, which is why the row
+    /// reserved face width for a year without a complaint; the arcade cabinet is deeper than it is
+    /// wide, and at face width its neighbours stood inside it.
+    /// </remarks>
+    [Fact]
+    public void TurningWidth_CoversEveryAngleAMediumCanBeTurnedTo()
+    {
+        foreach (var systemId in new[] { "arcade", "playstation2", "snes", "nes", "gbc", "nds" })
+        {
+            var profile = MediaShellMap.ProfileForSystem(systemId, 0.708);
+            for (var angle = 0f; angle < MathF.Tau; angle += 0.05f)
+            {
+                var swept = (profile.WidthInShelfUnits * MathF.Abs(MathF.Cos(angle)))
+                    + (profile.DepthInShelfUnits * MathF.Abs(MathF.Sin(angle)));
+                Assert.True(
+                    swept <= profile.TurningWidthInShelfUnits + 1e-4f,
+                    $"{systemId} sweeps {swept:F3} at {angle:F2} rad but the row reserves only "
+                    + $"{profile.TurningWidthInShelfUnits:F3}.");
+            }
+        }
+
+        // Both halves of the rule matter. The cabinet must reserve materially more than its face,
+        // and packaging must not — inflating the whole shelf's spacing to fix one medium would
+        // scatter every other row.
+        var cabinet = MediaShellMap.ProfileForSystem("arcade", 1.333);
+        var keepCase = MediaShellMap.ProfileForSystem("playstation2", 0.708);
+        Assert.True(cabinet.TurningWidthInShelfUnits > cabinet.WidthInShelfUnits * 1.5f);
+        Assert.Equal(
+            keepCase.WidthInShelfUnits, keepCase.TurningWidthInShelfUnits,
+            keepCase.WidthInShelfUnits * 0.01f);
+    }
+
+    /// <summary>
+    /// The floor the shadows are painted on has to be bigger than the shadows.
+    /// </summary>
+    /// <remarks>
+    /// Regression test, and an unusually cheap one for a defect that reached a user. The receiving
+    /// plane's depth was a fixed 1.1 while its width followed the row — fine for packaging, and far
+    /// too small for an arcade cabinet whose footprint is 1.4 deep, so its shadow's soft lobe ran
+    /// off every side of the surface it was drawn on. What was left was the plane itself: a grey
+    /// rectangle with four hard edges under the machine. It is invisible on the dark shelf every
+    /// review render used, and obvious the moment the light theme is behind it.
+    /// </remarks>
+    [Fact]
+    public void ShadowPlane_IsLargerThanTheShadowsItCarries()
+    {
+        var cabinet = MediaShellMap.ProfileForSystem("arcade", 1.333);
+        var keepCase = MediaShellMap.ProfileForSystem("playstation2", 0.708);
+
+        foreach (var profile in new[] { cabinet, keepCase })
+        {
+            var radius = new Vector2(
+                profile.WidthInShelfUnits * 0.5f, profile.DepthInShelfUnits * 0.5f);
+            var (centre, extent) = EmuShelf.Rendering.MediaShellRenderer.ShadowPlane(
+                [new EmuShelf.Rendering.MediaShellRenderer.ShadowFootprint(Vector2.Zero, radius, 1f)]);
+
+            // Two radii of clear surface on every side, which is where the cast lobe has faded out.
+            Assert.True(
+                extent.X >= radius.X * 2f && extent.Y >= radius.Y * 2f,
+                $"A {profile.Shell} shadow of radius {radius} is drawn on a plane of half-extent "
+                + $"{extent}; its falloff is being cut off by the plane's own edge.");
+            Assert.True(
+                MathF.Abs(centre.X) <= extent.X && MathF.Abs(centre.Y) <= extent.Y,
+                $"The {profile.Shell} stands at {centre} on a plane of half-extent {extent}.");
+        }
+    }
+
+    [Fact]
+    public void MaterialBounds_RefusesAMaterialTheShellDoesNotHave()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.ArcadeCabinet);
+
+        var error = Assert.Throws<ArgumentException>(
+            () => MediaShellCatalog.MaterialBounds(model, "marquee"));
+        Assert.Contains("banner", error.Message);
     }
 
     [Fact]

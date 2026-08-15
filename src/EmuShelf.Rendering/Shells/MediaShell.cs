@@ -37,6 +37,15 @@ public enum MediaShell
 
     /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
     DiscKeepCase,
+
+    /// <summary>
+    /// An arcade cabinet, cut off below its control panel so it stands as a bartop machine.
+    /// </summary>
+    /// <remarks>
+    /// The odd one out of the shells: arcade games have no physical medium a player ever held, so
+    /// the machine itself is the medium, and its artwork slot is the screen rather than a label.
+    /// </remarks>
+    ArcadeCabinet,
 }
 
 [Flags]
@@ -84,6 +93,14 @@ public enum PhysicalArtworkSlots
 /// shelved cartridge, and it is why <see cref="MaxV"/> for such a label is the shell's own top edge
 /// rather than a margin below it. The renderer derives the folded strip's own panel from this, so
 /// the two stay one continuous print. Zero leaves the panel flat, which is every other shell.</param>
+/// <param name="Material">Name of the one material this panel prints on, or null for the whole
+/// shell. It does two things at once, which is why it is a single knob. Only meshes wearing that
+/// material take the print, so nothing around the panel can be caught by it; and the rectangle's
+/// -1..1 is measured against that material's own geometry rather than the shell's bounding box, so
+/// the numbers are read off the part being printed. An arcade cabinet needs both: its screen is a
+/// hand's width inside a machine that is mostly cabinet, and a rectangle over the whole front —
+/// however tightly drawn — is a rectangle over the bezel, the marquee and the control panel too.
+/// A named material that the shell does not carry is an error rather than a silent no-op.</param>
 public readonly record struct ArtPanel(
     ArtFace Face,
     float MinU,
@@ -94,7 +111,8 @@ public readonly record struct ArtPanel(
     float CutCorner = 0f,
     ArtFit ArtFit = ArtFit.Stretch,
     float? MaxSurfaceDepth = null,
-    float TopWrap = 0f)
+    float TopWrap = 0f,
+    string? Material = null)
 {
     /// <summary>A panel covering the whole of a face, inset by <paramref name="inset"/>.</summary>
     public static ArtPanel Full(
@@ -182,6 +200,11 @@ public enum ArtFace
 /// Zero on every shell with no lacquer, which costs one comparison.</param>
 /// <param name="ClearcoatRoughness">Roughness of that coat. Moulded polystyrene is not optically
 /// flat, so this is not zero.</param>
+/// <param name="TrimBelowHeightFraction">Fraction of the authored model's height, from its own
+/// bottom, cut away at load. Zero for every real medium — you do not saw the bottom off a
+/// cartridge. The arcade cabinet is not a medium but a machine, and at its real 1.8m it would make
+/// every cartridge beside it a speck; cut under the control panel it is a bartop machine that still
+/// carries everything that says "arcade".</param>
 public sealed record MediaShellDefinition(
     MediaShell Shell,
     string ResourceName,
@@ -200,7 +223,8 @@ public sealed record MediaShellDefinition(
     float CavityStrength = 0.12f,
     float NormalStrength = 1f,
     float ClearcoatFactor = 0f,
-    float ClearcoatRoughness = 0.04f);
+    float ClearcoatRoughness = 0.04f,
+    float TrimBelowHeightFraction = 0f);
 
 /// <summary>
 /// A medium's real-world presentation contract for the shared shelf scene.
@@ -237,4 +261,23 @@ public sealed record PhysicalMediaProfile(
 
     public float DepthInShelfUnits =>
         DimensionsMillimetres.Z / ReferenceHeightMillimetres * PresentationScale;
+
+    /// <summary>
+    /// The widest this medium can become while turning about its up axis — its turning circle,
+    /// which is what a shelf row has to reserve for it rather than its face width.
+    /// </summary>
+    /// <remarks>
+    /// A rotated rectangle spans <c>width·|cos θ| + depth·|sin θ|</c>, whose maximum over all
+    /// angles is the diagonal. For every medium made of packaging this is its width to within a
+    /// percent — a keep case is 14mm deep against 135mm wide — which is why the row could reserve
+    /// face width for a year without anyone noticing.
+    ///
+    /// An arcade cabinet is deeper than it is wide, so face width reserves barely half of what it
+    /// occupies: at rest, turned the 0.18 radians every unfocused medium holds, neighbouring
+    /// cabinets already overlapped, and the focused one swept straight through both of them as it
+    /// turned to launch. Reserving the turning circle costs a keep case four thousandths of a unit
+    /// and is the whole fix for the cabinet.
+    /// </remarks>
+    public float TurningWidthInShelfUnits =>
+        MathF.Sqrt((WidthInShelfUnits * WidthInShelfUnits) + (DepthInShelfUnits * DepthInShelfUnits));
 }

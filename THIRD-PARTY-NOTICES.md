@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The eight
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The nine
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All eight are licensed
+All nine are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -234,6 +234,15 @@ Credit is given here and the models keep their authorship metadata inside the `.
   case. EmuShelf projects the game's own cover art over the front insert at runtime. The disc was
   dropped along with its texture, the lid shut from the 25-degree product-shot pose it ships in, and
   maps reduced to 1024px. Original authorship and license metadata remain embedded in the GLB.
+- **Arcade Game Machine 001** — by [sanyabeast](https://sketchfab.com/sanchibbo), from
+  [Sketchfab](https://sketchfab.com/3d-models/arcade-game-machine-001-94124b539e714bd29d7889c3cb4c5325).
+  Bundled as `arcade-cabinet.glb`. The one bundled model with no publisher artwork to remove: its
+  screen picture and its "RETRO ADVENTURE" marquee are the author's own invention rather than a real
+  game's, so the CC BY licence that covers the mesh covers them, and all thirty-eight of its maps
+  ship exactly as authored apart from being reduced from 2048px to 512px for the runtime. EmuShelf
+  applies canonical orientation and metric scaling at runtime, cuts the cabinet off below its
+  control panel so it stands as a bartop machine, and projects the game's scraped title screen onto
+  the screen material. Original authorship and license metadata remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
   Bundled as `disc-keep-case.glb`. The download's base-colour map is a scan of a retail Mortal

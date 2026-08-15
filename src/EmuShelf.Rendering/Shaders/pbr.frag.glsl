@@ -56,6 +56,11 @@ uniform vec3 uPanelVEdge[MAX_PANELS];
 uniform vec3 uPanelNormal[MAX_PANELS];
 uniform vec4 uPanelTint[MAX_PANELS];
 uniform float uPanelHasArt[MAX_PANELS];
+// Whether this panel prints on the material currently being drawn. One is the usual answer and the
+// one every cartridge and case gives; a panel scoped to a single material — the arcade cabinet's
+// screen — is switched off for the rest of the machine so its bezel, marquee and control panel
+// cannot be caught by a rectangle drawn across the front of the object.
+uniform float uPanelEnabled[MAX_PANELS];
 // Physical width/height and corner radius (as a fraction of the shorter edge) let the decal mask
 // stay circular at the corners even when the panel is a wide cartridge label.
 uniform float uPanelAspect[MAX_PANELS];
@@ -262,6 +267,11 @@ void main()
         if (i >= uPanelCount)
         {
             break;
+        }
+
+        if (uPanelEnabled[i] < 0.5)
+        {
+            continue;
         }
 
         vec3 local = vObjectPosition - uPanelOrigin[i];

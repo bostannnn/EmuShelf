@@ -105,10 +105,14 @@ else has made current, plus a framebuffer id to draw into. That signature is the
 renderer serves the app and the headless preview tool, so what ships is what was looked at. It
 owns the loaded shells, the baked studio, and the cover texture.
 
-- **Shells.** `MediaShell { SnesCartridge, GbaCartridge, DiscKeepCase }`, each a `.glb` embedded in
-  the assembly with a `MediaShellDefinition` giving its orientation into canonical space (Y up, +Z
-  front, one unit tall, centred), its panels, and its material knobs. `MediaShellMap` in the app
-  layer maps a system id to a shell; the renderer never hears about consoles.
+- **Shells.** `MediaShell` — eight of them as of 2026-08-15: the SNES, NES, Mega Drive, Game Boy and
+  Game Boy Advance cartridges, the DS card, the shared disc keep case, and the arcade cabinet, plus
+  a flat cover card for systems with no authored medium. Each is a `.glb` embedded in the assembly
+  with a `MediaShellDefinition` giving its orientation into canonical space (Y up, +Z front, one
+  unit tall, centred), its panels, and its material knobs. `MediaShellMap` in the app layer maps a
+  system id to a shell; the renderer never hears about consoles. This list was three when the
+  document was written and will date again: the enum is the authority, and `THIRD-PARTY-NOTICES.md`
+  is the roster of what each shell is and where it came from.
 - **Lighting.** A procedural studio — a dim room plus rectangular softboxes — rendered to a
   cubemap, then convolved to a 32px diffuse irradiance cube and a 5-mip GGX-prefiltered specular
   chain, with Karis' analytic environment BRDF in place of a lookup texture. The neutral studio is

@@ -7572,3 +7572,119 @@ UnauthoredSystems` had been retargeted from PS1 to PSP when PS1 got a shell, and
 here; it now asks about 3DS, with a note that the failure mode of retargeting it badly is a test
 that passes without checking anything. `PreviewShelf`'s cover-card stand-in moved off PS1 for the
 same reason. Only 3DS and Arcade are left with no authored shell.
+## 2026-08-15 — Arcade renders the machine, cut off under its control panel
+
+Arcade is the one system whose "physical medium" nobody ever held, so the shell is the cabinet
+itself: sanyabeast's CC BY "Arcade Game Machine 001", bundled as `arcade-cabinet.glb`. Three
+cabinets were downloaded and this is the one whose parts are separate materials — `screen`,
+`banner`, `game_panel`, `butt_a`..`d` — which is what makes everything below possible.
+
+**The cut is a presentation decision, and it is the reason arcade could ship at all.** A full
+upright cabinet is 1.8 metres of mostly plywood. The shelf camera frames the tallest medium in the
+library view, so one arcade game standing at true scale beside a 190mm keep case shrinks every
+cartridge in the row to a chip — which is exactly how the first renders looked. Trimming at half the
+authored height leaves marquee, speakers, screen, joysticks and buttons: everything that says
+"arcade machine", and nothing that says "furniture".
+
+- **Trimmed at load, not baked into the .glb.** The height is a constant that can only be settled by
+  looking at a render, and re-prepping a 62MB source on every attempt is not a loop anybody runs.
+  `MediaShellDefinition.TrimBelowHeightFraction` → `GlbLoader`, before normalisation, so the cut
+  cabinet is what gets scaled to one unit tall. The removed triangles are a rounding error in a file
+  whose bulk is textures.
+- **Straddling triangles are clipped, not dropped.** Sutherland-Hodgman against the one half-space.
+  Dropping them leaves a torn edge; the test counts vertices sitting exactly on the cut plane, which
+  is what tells the two apart.
+- **The open bottom is accepted.** The cut face is the face it stands on, and the shader already
+  flips inward normals, so a glimpse of the inside is lit rather than black.
+
+**Its profile is the only one in `MediaShellMap` that is not a measurement.** The cut shell is the
+head of an upright — about 660 x 930 x 1030mm in life, still five keep cases tall. It is recorded
+instead as the bartop machine it now looks like, 480mm tall, taking the asset's own width and depth
+ratios from there so nothing is distorted. That is a deliberate departure from the rule every other
+profile follows, and it earns its place: the alternative is honest arithmetic that makes the rest of
+the library unreadable. It stays plainly the biggest object on the shelf at two and a half keep
+cases. The ratios are the chopped upright's, not a real bartop's — deeper than it is wide.
+
+**Artwork goes on the screen, which needed panels to be scopeable to a material.** `ArtPanel.Material`
+does two things at once and both were necessary. It restricts the print to meshes wearing that
+material, because the screen sits behind a bezel with a marquee above and a control panel below, and
+a rectangle over the front of the cabinet is a rectangle over all three. And it measures the
+rectangle against that material's own geometry, so the catalogue entry reads ±0.99 — the glass,
+nearly all of it — instead of four figures against the whole machine that nobody could check. The
+shader gained `uPanelEnabled[]`, set per mesh, and only for shells that have a scoped panel.
+
+The art itself needed nothing: `ScreenScraperMetadataMapper.CoverKindFor` has projected the title
+screen to arcade's cover since the scraper shipped, because arcade box art barely exists. The
+cabinet's screen therefore shows the title screen, and `PhysicalArtworkSlots.Front` — not
+`CartridgeSupport` — is what routes the cover there rather than the blank-label placeholder.
+
+**No neutralisation, for the first time.** The screen picture and the "RETRO ADVENTURE" marquee are
+the modeller's own invention rather than a real game's, so the CC BY licence covers them and the
+maps ship as authored. `ModelPrep` gained `--neutral-maps none` for it: the pass is still needed,
+because twelve materials at three maps of 2048px each is 62MB of source. At 512px the derivative is
+6.5MB — 512 rather than the cartridges' 1024 because this shell has thirty-six maps where they have
+three, and it draws a few hundred pixels tall.
+
+The marquee stays as the author drew it. It is legal, and it reads as an arcade machine — but it
+says the same fictional title on every cabinet in the library. Painting the game's scraped wheel
+logo there instead is the obvious next move, and it needs a second art slot plumbed through the
+shelf rather than anything new in the renderer.
+
+## 2026-08-15 — Shelf spacing reserves a medium's turning circle, and the cut cabinet gets a floor
+
+Both came out of the first hands-on run of the arcade shell, and both are the same shape of mistake:
+a rule that was exactly right for flat packaging and quietly wrong for a deep object.
+
+**Spacing.** `MediaShelf3DControl.RebuildLayout` laid the row out by each medium's *face width*.
+Everything on this shelf is turned — 0.18 radians at rest, three full revolutions when the focused
+one launches — and a rotated rectangle spans `width·|cos θ| + depth·|sin θ|`, so face width is only
+the truth for something with no depth. A keep case is 14mm deep against 135mm wide and the error is
+four thousandths of a unit, which is why nobody saw it for a year. An arcade cabinet is deeper than
+it is wide: at rest its neighbours already stood inside it, and the focused one swept straight
+through both as it turned to launch.
+
+The row now reserves `PhysicalMediaProfile.TurningWidthInShelfUnits`, the diagonal — the maximum of
+that expression over all angles. One rule, no per-shell tuning, no change worth measuring for any
+existing medium. It leaves slack even at the worst moment, because a neighbour never spins: a
+focused cabinet at the launch's 1.10 hero scale needs 1.83 units of half-extent against a resting
+neighbour's 1.13, and the row gives 3.46. The price is a sparser arcade row — about a cabinet's
+width of air between machines — which is the honest cost of a medium that can turn.
+
+**The floor.** The trim shipped as an open shell, reasoning that the cut face is the face the
+cabinet stands on. It is not, the moment the medium turns to launch, and a machine you can see
+straight through is not a machine. `GlbLoader.CreateCutCap` lays the convex hull of the cut
+vertices across the opening as one fan, in the material that contributed most of the cut, at a
+single texel taken from that material's own cut vertices.
+
+Three deliberate simplifications, all safe for a surface that can only be seen from underneath the
+object: the hull rather than the true outline (where it overshoots, it overshoots into space already
+hidden behind the cabinet's own side); one cap for all meshes rather than one per wall loop (a
+chained outline fails on the first mesh the plane cuts into two pieces, a hull cannot); and a
+constant UV rather than a projection (the underside has no authored UV layout to be right about, and
+one texel of the body's plastic reads as the same material without inventing moulding). Winding is
+chosen per triangle from the sign of its own cross product, because the shader flips normals on back
+faces and a fan wound the other way would light the floor as though it faced the ceiling.
+
+The preview tool gained `--shelf-of <shell>` for this: the acceptance shot is a mixed row, which is
+what shows relative scale, but the app shows one platform at a time — and how a medium spaces
+against *itself* is exactly what a mixed row cannot show.
+
+## 2026-08-15 — The shadow-receiving plane is sized from the shadows, not from a constant
+
+Reported as "the shadow is just a rectangle" under the arcade cabinet, and it was: the rectangle was
+the receiving plane. Its width followed the row but its depth was a fixed 1.1 half-extent — a
+surface 2.2 units deep, chosen when every medium on the shelf was packaging under 0.1 deep. A
+cabinet's footprint is 1.4 deep, so its shadow's soft lobe ran off all four sides of the plane and
+what reached the screen was the plane's own outline with four hard edges.
+
+The plane now takes its centre and extent from the footprints it carries, 2.6 radii on every side,
+with the old figures as floors so a row of packaging keeps exactly the surface it had. 2.6 rather
+than the 2.2 the width used because the cast lobe is stretched 2.1x along Z against 1.35x across X —
+the key rakes from the side, so depth is the axis that needs the room.
+
+Two things worth keeping from how this was found. It was invisible in every review render ever taken
+of this feature, because the preview tool composites over EmuShelf's dark shelf and an
+over-darkened transparent plane on a dark backdrop looks like a shadow; against the light theme it
+is a grey slab. `--background` was already there — use it. And the fix is now pinned by a test
+rather than a render: `MediaShellRenderer.ShadowPlane` is internal so the arithmetic can be checked
+without a GPU or a theme.
