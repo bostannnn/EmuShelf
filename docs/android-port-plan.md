@@ -199,14 +199,37 @@ each project's official release channel. **This settles the handoff question and
 corrected framing: there is no single strategy, and the original plan's "Strategy 1 is the expected
 answer" is refuted.**
 
-| Emulator | Package | targetSdk | All-files capable? | Accepts as intent data | Verdict |
+All-files capability was verified by **granting it**, not by reading the manifest —
+`appops set <pkg> MANAGE_EXTERNAL_STORAGE allow` sticks only where the permission is declared.
+
+| Emulator | Package | targetSdk | All-files grant | Intent shape | Result |
 |---|---|---|---|---|---|
-| ARMSX2 (PS2) | `com.armsx2` | 37 | **Yes** — declares `MANAGE_EXTERNAL_STORAGE` | `content` + `file` | Plain paths viable |
-| Azahar (3DS) | `org.azahar_emu.azahar` | 35 | **Yes** | **`content` only**, `application/octet-stream` | Reads paths, but handoff must be a content URI |
-| PPSSPP (PSP) | `org.ppsspp.ppsspp` | 36 | **No** — only legacy `READ/WRITE_EXTERNAL_STORAGE`, which are no-ops under scoped storage | `content` + `file` | **SAF-only. `file://` can never work** |
-| aPS3e (PS3) | `aenu.aps3e` | 36 | **No** | custom `APS3E` action + `VIEW`, no scheme declared | SAF-only, extras-driven |
-| RetroArch | `com.retroarch.aarch64` | **28** | Legacy external storage (pre-scoped) | *no* `VIEW` filter at all | **Plain paths only**, explicit component + extras |
-| DuckStation (PS1) | — | — | — | — | **No APK published anywhere outside Play** |
+| RetroArch | `com.retroarch.aarch64` | **28** | legacy, pre-scoped | `-e ROM <path> -e LIBRETRO <core>` | **Plain path works. `.cue` and `.m3u` both resolved** |
+| PPSSPP (PSP) | `org.ppsspp.ppsspp` | 36 | **refused** | `VIEW`, data URI | Path fails; **content URI works** |
+| ARMSX2 (PS2) | `com.armsx2` | 37 | **allow** | `VIEW`, `content`+`file` | Untestable — wizard gates on BIOS |
+| Azahar (3DS) | `org.azahar_emu.azahar` | 35 | **allow** | `VIEW`, `content` only | Untestable — first-run wizard |
+| aPS3e (PS3) | `aenu.aps3e` | 36 | **refused** | `APS3E` action, `iso_uri` extra | Untestable — first-run wizard |
+| Dolphin (GC/Wii) | `org.dolphinemu.dolphinemu` | 36 | **refused** | `MAIN` + `AutoStartFile` extra | Extra accepted; **rejects a FileProvider URI — wants a SAF tree URI** |
+| DuckStation (PS1) | — | — | — | — | **No APK published outside Play** |
+
+**EmuShelf needs all-files access to *serve* files, not just to scan them.** The content-URI route
+goes through EmuShelf's own `FileProvider`, which opens the file with EmuShelf's identity. Measured:
+with no storage permission the spike's provider returned `EACCES` and PPSSPP reported
+`Boot failed: File is empty`; after `MANAGE_EXTERNAL_STORAGE` was granted **to the spike**, the same
+intent produced `Boot failed: Not a PSP game` and PPSSPP held the file open. Same file, same intent —
+only the frontend's permission changed.
+
+**Three of the five standalone emulators discard a launch intent until their own first-run wizard is
+done.** ARMSX2 ("Select your BIOS" — `Next` does nothing without a BIOS folder), Azahar ("Welcome!
+… Get started"), aPS3e ("Welcome to aPS3e!"). Granting storage first does not help; the wizard is a
+hard gate. RetroArch and PPSSPP accept a launch immediately. So the per-emulator setup checklist is
+mandatory, and it must be *verified*, not assumed.
+
+**The 3D shelf draws.** `OpenGlControlBase` initialised on Avalonia 12.1.0's Android backend with
+`AndroidPlatformOptions.RenderingMode` pinned to `Egl`: `GL_VERSION = OpenGL ES 3.0`,
+`GLSL = OpenGL ES GLSL ES 3.00` — the exact dialect `ShaderLibrary` emits — and a first frame
+rendered to the screen. Pin the rendering mode explicitly, as on macOS; do not rely on the default
+list, whose `Software` fallback is what makes this failure silent.
 
 Five things this establishes:
 
@@ -245,8 +268,16 @@ in the set and therefore the least fragile.
 Incidental: the AVD reports `OpenGL ES 3.0` through `Android Emulator OpenGL ES Translator
 (Apple M4)`, so a GLES3 context is available for the shelf probe.
 
-**Still to measure:** the same ladders through a content URI for the SAF-only emulators (needs the
-FileProvider spike app), the GL probe against Avalonia's Android backend, and a second API level. The corpus is on the AVD at `/sdcard/EmuShelfTest/` — synthetic `.bin`/`.cue`/`.m3u`
+**Still to measure, and why each is blocked or not:**
+
+1. **The SAF-tree route for Dolphin.** GameCube and Wii are core systems and Dolphin rejects a
+   FileProvider URI. It needs a document URI derived from a folder tree the user granted — which is
+   what ES-DE's `%ROMSAF%` is. Requires driving `ACTION_OPEN_DOCUMENT_TREE` once. Not blocked, just
+   not done.
+2. **A second API level.** Only API 33 tested so far.
+3. **A real `.chd`, and EmuShelf's own disc readers** against Android storage.
+4. **PS2, 3DS, PS3 end-to-end** — blocked on BIOS and system files, which only the owner can supply,
+   on the Thor. The corpus is on the AVD at `/sdcard/EmuShelfTest/` — synthetic `.bin`/`.cue`/`.m3u`
 files, no game content required, since the discriminator is *read succeeded / read failed*, not
 whether a game boots.
 
