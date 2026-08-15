@@ -86,7 +86,6 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         AvaloniaProperty.Register<MediaShelf3DControl, Visual?>(nameof(ChromeSource));
 
     private readonly List<LayoutEntry> _layout = [];
-    private readonly List<MediaShelfRenderItem> _renderItems = new((NeighbourRadius * 2) + 1);
     private readonly Dictionary<long, GameViewModel> _gamesByKey = [];
     private readonly HashSet<GameViewModel> _observedGames = [];
     private readonly Dictionary<long, UploadedCover> _uploadedCovers = [];
@@ -112,6 +111,63 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private bool _failed;
     private bool _isAttached;
     private Color _uploadedAccent;
+
+    /// <summary>
+    /// The frozen description of the next frame, built on the UI thread and read by the render
+    /// thread.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole reason the shelf survives fast navigation. <see cref="OnOpenGlRender"/>
+    /// runs on Avalonia's render thread while every list this control keeps — the layout, the games
+    /// by key, the decoded artwork and its LRU — is rebuilt on the UI thread as the platform cycles.
+    /// Reading those live from the render frame meant a scope switch that landed mid-frame threw a
+    /// collection-modified exception out of the draw, and the blanket handler below read any such
+    /// exception as "this GPU cannot do it" and dropped the shelf to flat covers for the session.
+    /// Publishing an immutable snapshot the render thread never has to reach back into removes the
+    /// shared state entirely; the field is a reference swap, which is atomic, and marked volatile so
+    /// the render thread sees the newest one.
+    /// </remarks>
+    private volatile FrameSnapshot? _frameSnapshot;
+
+    /// <summary>
+    /// The last resolved face artwork, reused across publishes that changed only the position.
+    /// </summary>
+    /// <remarks>
+    /// A glide republishes the frame every 16ms as the motion timer eases the position, but the
+    /// artwork a face wears changes far more rarely — a decode completing, a scope switch, a cover
+    /// arriving. Re-resolving it and allocating a fresh map on every tick was pure churn, and worse,
+    /// walked the decoded-artwork LRU each time. This map is rebuilt only when the visible keys or
+    /// <see cref="_artworkGeneration"/> move; a position-only publish hands the render thread the
+    /// exact same immutable map it had last frame. It is never mutated after it is put in a snapshot,
+    /// so a rebuild allocates a new one and leaves any in-flight frame's copy untouched.
+    /// </remarks>
+    private Dictionary<long, IImage?[]>? _artworkCache;
+    private long[] _artworkCacheKeys = [];
+    private int _artworkCacheGeneration = -1;
+
+    /// <summary>
+    /// Bumped whenever something that changes a face's artwork happens, to invalidate
+    /// <see cref="_artworkCache"/> without inspecting what actually moved.
+    /// </summary>
+    private int _artworkGeneration;
+
+    /// <summary>
+    /// How many draws in a row have thrown, so a genuine failure still gives up while a one-off does
+    /// not.
+    /// </summary>
+    private int _consecutiveRenderFailures;
+
+    /// <summary>
+    /// The run of failed draws that turns a transient render error into the flat-cover fallback.
+    /// </summary>
+    /// <remarks>
+    /// A render exception used to be fatal on the first occurrence, which is wrong for anything
+    /// transient — a one-frame race against a bitmap being disposed, a momentary driver hiccup. Now
+    /// the renderer is kept and the frame retried; only a fault that repeats every frame this many
+    /// times, i.e. an actually-broken context, is treated as unsupported. The count resets on the
+    /// first clean frame, so occasional blips never accumulate to the threshold.
+    /// </remarks>
+    private const int MaxConsecutiveRenderFailures = 8;
 
     public event EventHandler<Exception>? InitializationFailed;
 
@@ -245,7 +301,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             || change.Property == LaunchPoseProperty
             || change.Property == BoundsProperty)
         {
-            RequestNextFrameRendering();
+            PublishFrame();
         }
 
         if (change.Property == CrtProperty)
@@ -253,7 +309,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             // Switching the effect on or off has to start or stop the capture timer, not just change
             // what the shader does with its output.
             StartChromeCapture();
-            RequestNextFrameRendering();
+            PublishFrame();
         }
     }
 
@@ -266,6 +322,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         PrepareShells();
         ObserveWindowState();
         StartChromeCapture();
+        PublishFrame();
     }
 
     /// <summary>
@@ -376,30 +433,46 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return;
         }
 
+        // Everything the frame draws is read from the immutable snapshot the UI thread last
+        // published, never from this control's live lists — see <see cref="_frameSnapshot"/>. A null
+        // snapshot means nothing has been published yet; an empty one is normal on the grid and
+        // spotlight, where there is no physical media, only the captured UI to warp.
+        var frame = _frameSnapshot;
+
+        // The tube's configuration, its backdrop and the display scaling all ride in on the snapshot
+        // too, resolved on the UI thread — the backdrop's theme-brush lookup and the scaling's
+        // top-level walk both traverse the visual tree, which the render thread must not do. Only
+        // Bounds is still read live, because it has to match the framebuffer Avalonia sized for this
+        // exact frame. The live-property fallback is reached only before the first publish, which the
+        // attach handler makes vanishingly narrow.
+        var crt = frame?.Crt ?? Crt;
+
         // An empty item list is normal, not a reason to skip the frame: the tube runs over every
         // couch layout, and on the grid and spotlight there is no physical media to draw — only the
         // captured UI to warp. Returning early here left those layouts with a stale surface.
-        if (Items is not { Count: > 0 } && !Crt.IsActive)
+        if ((frame is null || frame.Items.Count == 0) && !crt.IsActive)
         {
             return;
         }
 
-        var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+        var scaling = frame?.RenderScaling ?? 1.0;
         var width = (uint)Math.Max(1, Math.Round(Bounds.Width * scaling));
         var height = (uint)Math.Max(1, Math.Round(Bounds.Height * scaling));
 
         try
         {
-            var accent = FocusedItem?.ShelfAccent ?? Colors.Gray;
+            var accent = frame?.FocusedAccent ?? Colors.Gray;
             if (accent != _uploadedAccent)
             {
                 _renderer.SetAccent(ToLinear(accent));
                 _uploadedAccent = accent;
             }
 
-            _renderer.Crt = Crt.IsActive ? Crt with { Backdrop = ResolveBackdrop(accent) } : Crt;
+            _renderer.Crt = crt.IsActive && frame is not null
+                ? crt with { Backdrop = frame.Backdrop }
+                : crt;
             _renderer.CrtElapsedSeconds = (float)_crtClock.Elapsed.TotalSeconds;
-            if (Crt.IsActive)
+            if (crt.IsActive)
             {
                 UploadChrome(_renderer);
             }
@@ -412,11 +485,23 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 _renderer.ClearCrtChrome();
             }
 
-            var renderItems = BuildRenderItems();
-            SynchronizeArtworkTextures(renderItems);
+            if (frame is not null)
+            {
+                SynchronizeArtworkTextures(frame);
+            }
+
             // main's camera now frames both axes, so the row's width travels with its height.
             _renderer.RenderShelf(
-                renderItems, _sceneMediaHeight, _sceneMediaWidth, (uint)fb, width, height);
+                frame?.Items ?? [],
+                frame?.SceneMediaHeight ?? 1f,
+                frame?.SceneMediaWidth ?? 1f,
+                (uint)fb,
+                width,
+                height);
+
+            // A clean frame clears the transient-failure count that keeps a one-off from ever
+            // reaching the give-up threshold.
+            _consecutiveRenderFailures = 0;
 
             // A tube whose roll, hum and jitter are moving has to be redrawn even when nothing in
             // the library changed, so the scene cannot go back to drawing only on demand. This is
@@ -424,16 +509,28 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             // frame rate for as long as couch mode is open, which on a handheld is a battery
             // decision as much as a visual one. Turning the animation knobs off returns the scene to
             // its old on-demand behaviour rather than merely freezing a still tube.
-            if (Crt.IsAnimated)
+            if (crt.IsAnimated)
             {
                 RequestNextFrameRendering();
             }
         }
         catch (Exception exception)
         {
-            _renderer.Dispose();
-            _renderer = null;
-            Fail(exception);
+            // A render exception is no longer treated as an unsupported GPU on sight. The snapshot
+            // above already removed the cross-thread races that used to throw here, so a stray
+            // exception is far more likely to be transient — a bitmap disposed a frame before its
+            // upload, a momentary driver fault — and dropping the whole shelf to flat covers for the
+            // session over one of those is the bug this pairs with. Keep the renderer and try the
+            // next frame; only a fault that repeats every frame is taken as a real failure.
+            if (++_consecutiveRenderFailures >= MaxConsecutiveRenderFailures)
+            {
+                _renderer.Dispose();
+                _renderer = null;
+                Fail(exception);
+                return;
+            }
+
+            RequestNextFrameRendering();
         }
     }
 
@@ -454,6 +551,86 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         ContextLost?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Freezes the current library state into the description the render thread draws from.
+    /// </summary>
+    /// <remarks>
+    /// Runs on the UI thread — every caller is a property change, a collection change, or a decode
+    /// that completed back on it — which is exactly what makes reading <see cref="_layout"/>,
+    /// <see cref="_gamesByKey"/> and the artwork caches here safe when it was not in the frame. The
+    /// window it resolves is small (at most the neighbour radius each side of focus), so rebuilding
+    /// it per selection step or per animated position is cheap; the render thread then never reaches
+    /// back into any of those lists.
+    /// </remarks>
+    private void PublishFrame()
+    {
+        var items = BuildRenderItems();
+        var accent = FocusedItem?.ShelfAccent ?? Colors.Gray;
+        var crt = Crt;
+        _frameSnapshot = new FrameSnapshot(
+            items,
+            _sceneMediaHeight,
+            _sceneMediaWidth,
+            accent,
+            ResolveArtworkMap(items),
+            crt,
+            // Only the tube consumes the backdrop, and resolving it means a theme-brush lookup up the
+            // visual tree; a shelf with the effect off has no use for it.
+            crt.IsActive ? ResolveBackdrop(accent) : default,
+            TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0);
+        RequestNextFrameRendering();
+    }
+
+    /// <summary>
+    /// Returns the resolved face artwork for the visible items, rebuilding it only when it moved.
+    /// </summary>
+    /// <remarks>
+    /// The cache is reused across a glide's position-only publishes and rebuilt from scratch — into
+    /// a fresh map, so any published copy stays immutable — the moment the visible keys change or
+    /// <see cref="_artworkGeneration"/> is bumped by a decode, an eviction, a cover, or a warmed
+    /// placeholder.
+    /// </remarks>
+    private IReadOnlyDictionary<long, IImage?[]> ResolveArtworkMap(IReadOnlyList<MediaShelfRenderItem> items)
+    {
+        var keys = new long[items.Count];
+        for (var index = 0; index < items.Count; index++)
+        {
+            keys[index] = items[index].Key;
+        }
+
+        if (_artworkCache is not null &&
+            _artworkCacheGeneration == _artworkGeneration &&
+            _artworkCacheKeys.AsSpan().SequenceEqual(keys))
+        {
+            return _artworkCache;
+        }
+
+        var artwork = new Dictionary<long, IImage?[]>(items.Count);
+        foreach (var item in items)
+        {
+            if (artwork.ContainsKey(item.Key) || !_gamesByKey.TryGetValue(item.Key, out var game))
+            {
+                continue;
+            }
+
+            var faces = new IImage?[MediaShellRenderer.MaxArtworkFaces];
+            foreach (var face in Faces)
+            {
+                faces[(int)face] = ResolveArtwork(game, face);
+            }
+
+            artwork[item.Key] = faces;
+        }
+
+        _artworkCache = artwork;
+        _artworkCacheKeys = keys;
+        _artworkCacheGeneration = _artworkGeneration;
+        return artwork;
+    }
+
+    /// <summary>Marks the resolved-artwork cache stale, so the next publish rebuilds it.</summary>
+    private void InvalidateArtwork() => _artworkGeneration++;
+
     private IReadOnlyList<MediaShelfRenderItem> BuildRenderItems()
     {
         if (_layout.Count == 0)
@@ -466,7 +643,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         var centreIndex = (int)Math.Round(position);
         var start = Math.Max(0, centreIndex - NeighbourRadius);
         var end = Math.Min(_layout.Count - 1, centreIndex + NeighbourRadius);
-        _renderItems.Clear();
+        var renderItems = new List<MediaShelfRenderItem>((NeighbourRadius * 2) + 1);
 
         for (var index = start; index <= end; index++)
         {
@@ -484,7 +661,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             PhysicalShelfLaunchPose? launch = LaunchPose is { } candidate && candidate.GameId == entry.Game.Id
                 ? candidate
                 : null;
-            _renderItems.Add(new MediaShelfRenderItem(
+            renderItems.Add(new MediaShelfRenderItem(
                 entry.Game.Id,
                 entry.Game.ShelfMediaProfile,
                 entry.Centre - anchor,
@@ -503,7 +680,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             }
         }
 
-        return _renderItems;
+        return renderItems;
     }
 
     /// <summary>
@@ -571,16 +748,25 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         _departurePoses[pose.GameKey] = pose;
     }
 
-    private void SynchronizeArtworkTextures(IReadOnlyList<MediaShelfRenderItem> renderItems)
+    /// <summary>
+    /// Brings the GPU's per-face textures in line with the artwork the snapshot resolved.
+    /// </summary>
+    /// <remarks>
+    /// Runs on the render thread, and deliberately reads only the frozen snapshot and the upload
+    /// bookkeeping that is this thread's alone (<see cref="_uploadedCovers"/>,
+    /// <see cref="_coverLru"/>). The artwork itself was resolved on the UI thread in
+    /// <see cref="PublishFrame"/>, so nothing here reaches into the decoded-artwork caches the UI
+    /// thread is free to rebuild underneath it.
+    /// </remarks>
+    private void SynchronizeArtworkTextures(FrameSnapshot frame)
     {
-        if (_renderer is null || Items is null)
+        if (_renderer is null)
         {
             return;
         }
 
-        foreach (var item in renderItems)
+        foreach (var item in frame.Items)
         {
-            _gamesByKey.TryGetValue(item.Key, out var game);
             if (!_uploadedCovers.TryGetValue(item.Key, out var uploaded))
             {
                 uploaded = new UploadedCover(_coverLru.AddFirst(item.Key));
@@ -591,9 +777,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 TouchCover(uploaded);
             }
 
+            frame.Artwork.TryGetValue(item.Key, out var faces);
             foreach (var face in Faces)
             {
-                var artwork = game is null ? null : ResolveArtwork(game, face);
+                var artwork = faces?[(int)face];
                 if (ReferenceEquals(uploaded.Faces[(int)face], artwork))
                 {
                     continue;
@@ -813,6 +1000,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         _focusedIndex = FocusedItem is null ? -1 : IndexOf(Items, FocusedItem);
         PruneDecodedPhysicalArtwork();
+        // A structural rebuild can warm a placeholder or reorder the row without touching the decoded
+        // caches, and it can produce the same visible keys as before (a refilter that lands on the
+        // same window), so the artwork cache cannot be trusted to notice on its own.
+        InvalidateArtwork();
     }
 
     private void ObserveCollection()
@@ -834,7 +1025,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         RebuildLayout();
         UpdateVisibleSubscriptions(force: true);
         PrepareShells();
-        RequestNextFrameRendering();
+        PublishFrame();
     }
 
     private void PrepareShells()
@@ -877,7 +1068,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     // label only appears once something else happens to rebuild the layout. That was
                     // visible as a cartridge whose placeholder arrived only after changing platform.
                     WarmLabelPlaceholders();
-                    RequestNextFrameRendering();
+                    // A placeholder that was null when last resolved now draws, so the cached
+                    // artwork for the unchanged visible keys has to be rebuilt.
+                    InvalidateArtwork();
+                    PublishFrame();
                 }
             });
         }
@@ -1000,13 +1194,16 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         {
             RemoveDecodedPhysicalArtwork(new ArtworkKey(game.Id, face));
             QueuePhysicalArtworkLoad(game);
-            RequestNextFrameRendering();
+            PublishFrame();
             return;
         }
 
         if (e.PropertyName is nameof(GameViewModel.CoverImage))
         {
-            RequestNextFrameRendering();
+            // The cover is the front face of any medium without its own support texture, so a cover
+            // arriving changes what a visible face wears.
+            InvalidateArtwork();
+            PublishFrame();
         }
     }
 
@@ -1121,7 +1318,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 else
                 {
                     AddDecodedPhysicalArtwork(load.Key, load.Path, bitmap);
-                    RequestNextFrameRendering();
+                    PublishFrame();
                 }
 
                 PumpPhysicalArtworkQueue();
@@ -1221,6 +1418,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         {
             RemoveDecodedPhysicalArtwork(oldest.Value);
         }
+
+        InvalidateArtwork();
     }
 
     private void TouchPhysicalArtwork(DecodedArtwork artwork)
@@ -1238,6 +1437,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         _physicalArtworkLru.Remove(artwork.Node);
         artwork.Image.Dispose();
+        InvalidateArtwork();
     }
 
     private void PruneDecodedPhysicalArtwork()
@@ -1267,6 +1467,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         _physicalArtworkLoads.Clear();
         _physicalArtworkQueue.Clear();
+        InvalidateArtwork();
     }
 
     private void Fail(Exception exception)
@@ -1327,6 +1528,29 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     }
 
     private sealed record LayoutEntry(GameViewModel Game, float Centre);
+
+    /// <summary>
+    /// One frame's worth of drawing, frozen on the UI thread for the render thread to consume.
+    /// </summary>
+    /// <remarks>
+    /// Every field is either an immutable value or a collection that is built once and never
+    /// mutated after publication, so the render thread can read it with no lock while the UI thread
+    /// goes on rebuilding this control's live lists for the next one. <see cref="Artwork"/> maps a
+    /// game's key to its resolved face images, indexed by <see cref="ShelfArtworkFace"/>, so the
+    /// render thread decides what to upload without touching the decoded-artwork caches.
+    /// <see cref="Crt"/>, <see cref="Backdrop"/> and <see cref="RenderScaling"/> are captured here as
+    /// well because their live reads walked the visual tree — the backdrop resolves a theme brush and
+    /// the scaling reaches the top level — which is the UI thread's alone to do.
+    /// </remarks>
+    private sealed record FrameSnapshot(
+        IReadOnlyList<MediaShelfRenderItem> Items,
+        float SceneMediaHeight,
+        float SceneMediaWidth,
+        Color FocusedAccent,
+        IReadOnlyDictionary<long, IImage?[]> Artwork,
+        CrtPresentation Crt,
+        Vector3 Backdrop,
+        double RenderScaling);
 
     private sealed class UploadedCover(LinkedListNode<long> node)
     {
