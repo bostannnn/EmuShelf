@@ -104,6 +104,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private int _activePhysicalArtworkDecodes;
     private int _focusedIndex = -1;
     private float _sceneMediaHeight = 1f;
+    private float _sceneMediaWidth = 1f;
     private int _preparationGeneration;
     private GL? _gl;
     private MediaShellRenderer? _renderer;
@@ -374,13 +375,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
             var renderItems = BuildRenderItems();
             SynchronizeArtworkTextures(renderItems);
-            _renderer.RenderShelf(renderItems, _sceneMediaHeight, (uint)fb, width, height);
+            // main's camera now frames both axes, so the row's width travels with its height.
+            _renderer.RenderShelf(
+                renderItems, _sceneMediaHeight, _sceneMediaWidth, (uint)fb, width, height);
 
             // A tube whose roll, hum and jitter are moving has to be redrawn even when nothing in
             // the library changed, so the scene cannot go back to drawing only on demand. This is
             // the whole cost of the animated effects — it holds the couch screen at the compositor's
-            // frame rate for as long as shelf mode is open, which on a handheld is a battery
-            // decision as much as a visual one. Turning the animation knobs off returns the shelf to
+            // frame rate for as long as couch mode is open, which on a handheld is a battery
+            // decision as much as a visual one. Turning the animation knobs off returns the scene to
             // its old on-demand behaviour rather than merely freezing a still tube.
             if (Crt.IsAnimated)
             {
@@ -747,6 +750,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         var cursor = 0f;
         var tallest = 0f;
+        var widest = 0f;
         foreach (var game in Items)
         {
             var profile = game.ShelfMediaProfile;
@@ -757,13 +761,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _layout.Add(new LayoutEntry(game, centre));
             _gamesByKey[game.Id] = game;
             cursor += width + ItemGap;
-            // The camera frames the tallest medium in the whole view, not the visible window, so
-            // scrolling a mixed row past a keep case cannot make the world zoom.
+            // The camera frames the tallest and widest media in the whole view, not the visible
+            // window, so scrolling a mixed row past a keep case cannot make the world zoom.
             tallest = MathF.Max(
                 tallest, profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
+            widest = MathF.Max(widest, width);
         }
 
         _sceneMediaHeight = tallest;
+        _sceneMediaWidth = widest;
         WarmLabelPlaceholders();
 
         _focusedIndex = FocusedItem is null ? -1 : IndexOf(Items, FocusedItem);

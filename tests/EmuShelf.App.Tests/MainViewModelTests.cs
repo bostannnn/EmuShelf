@@ -3607,6 +3607,90 @@ public class MainViewModelTests : IDisposable
         public void RecordAttempt(GameMetadataAttempt attempt) => inner.RecordAttempt(attempt);
     }
 
+    /// <summary>
+    /// Closing a game puts the medium back *while* the post-exit save sync runs, not before it.
+    /// </summary>
+    /// <remarks>
+    /// The outward launch already had this shape — the medium starts moving beside the pre-launch
+    /// sync, so a slow cloud round-trip happens behind the choreography instead of in front of it —
+    /// and the closing half was simply never brought along. Awaited in sequence, the player watched
+    /// the shelf reassemble and only then began waiting for the upload, which is the whole cost the
+    /// animation exists to hide, paid twice.
+    ///
+    /// Pinned on what the shelf is doing at the moment the sync is entered rather than on wall-clock
+    /// overlap, which would be a race dressed up as an assertion: under the sequential version the
+    /// return has necessarily finished by then and the pose is gone.
+    /// </remarks>
+    [AvaloniaFact]
+    public async Task ClosingAGame_PutsTheMediumBackWhileThePostExitSaveSyncRuns()
+    {
+        var sync = new ShelfObservingSaveSyncService();
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(
+                new GameLaunchResult(true, "Finished", ProcessExited: true)),
+            gameSaveSync: sync);
+        sync.Observe(() => vm.ShelfLaunchPose);
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll([new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = Ps1.Id,
+                Path = "/Games/Game 1.cue",
+                Title = "Game 1",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name,
+            Ps1.ShortName,
+            Ps1.AccentColor,
+            coverAspectRatio: Ps1.CoverAspectRatio)]);
+        vm.HasGames = true;
+        vm.SelectShelfViewModeCommand.Execute(null);
+        vm.FocusedGame = vm.Games[0];
+        Assert.True(vm.ShowGamepadShelf);
+        Assert.True(vm.ShelfSceneSupported);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games[0]);
+
+        Assert.True(sync.SyncedAfterExit, "The post-exit save sync never ran.");
+        Assert.NotNull(sync.ShelfPoseWhenSyncStarted);
+        // And the shelf is home by the time the launch reports back, so the concurrency does not
+        // leak a half-returned medium into the idle view.
+        Assert.Null(vm.ShelfLaunchPose);
+    }
+
+    /// <summary>Reports what the shelf was doing at the moment each sync was entered.</summary>
+    private sealed class ShelfObservingSaveSyncService : IGameSaveSyncService
+    {
+        private Func<PhysicalShelfLaunchPose?>? _shelfPose;
+        private int _calls;
+
+        public bool SyncedAfterExit { get; private set; }
+
+        public PhysicalShelfLaunchPose? ShelfPoseWhenSyncStarted { get; private set; }
+
+        public void Observe(Func<PhysicalShelfLaunchPose?> shelfPose) => _shelfPose = shelfPose;
+
+        public bool CanSyncSystem(string systemId) => true;
+
+        public Task<CloudSaveSyncOutcome> SyncSystemAsync(
+            string systemId,
+            CancellationToken cancellationToken = default,
+            IReadOnlyCollection<string>? launchStateKeys = null)
+        {
+            // The first call is the pre-launch sync, which already runs beside the outward
+            // choreography and is not what this is measuring.
+            if (Interlocked.Increment(ref _calls) == 2)
+            {
+                SyncedAfterExit = true;
+                ShelfPoseWhenSyncStarted = _shelfPose?.Invoke();
+            }
+
+            return Task.FromResult(
+                new CloudSaveSyncOutcome(CloudSaveSyncStatus.Completed, null, "Synced"));
+        }
+    }
+
     private sealed class RecordingLaunchService(
         GameLaunchResult result,
         Action? onLaunch = null) : IEmulatorLaunchService

@@ -32,6 +32,9 @@ public class MediaShellCatalogTests
     // reciprocal of the Game Pak above, which is what a swapped source file would look like.
     [InlineData(MediaShell.GbcCartridge, 57d, 65d)]
     [InlineData(MediaShell.DiscKeepCase, 135d, 190d)]
+    // The same width as the DVD case above and 18.5mm shorter, which is the entire difference
+    // between the two objects and the reason they cannot be one mesh.
+    [InlineData(MediaShell.BluRayCase, 135d, 171.5d)]
     public void ShellStandsUpAtTheRealObjectsProportions(MediaShell shell, double width, double height)
     {
         var size = MediaShellCatalog.Load(shell).Size;
@@ -56,6 +59,7 @@ public class MediaShellCatalogTests
     [InlineData(MediaShell.GbaCartridge, 8d, 35d)]
     [InlineData(MediaShell.GbcCartridge, 8d, 65d)]
     [InlineData(MediaShell.DiscKeepCase, 14d, 190d)]
+    [InlineData(MediaShell.BluRayCase, 13d, 171.5d)]
     public void ShellIsAsThickAsTheRealObject(MediaShell shell, double depth, double height)
     {
         var size = MediaShellCatalog.Load(shell).Size;
@@ -80,6 +84,66 @@ public class MediaShellCatalogTests
             Assert.True(definition.CoverPanel.MinU < definition.CoverPanel.MaxU, $"{shell} u");
             Assert.True(definition.CoverPanel.MinV < definition.CoverPanel.MaxV, $"{shell} v");
         }
+    }
+
+    /// <summary>
+    /// The Blu-ray case prints on its clear film's own mesh, not on a rectangle over the case.
+    /// </summary>
+    /// <remarks>
+    /// This is the whole reason its three panels can be written as "all of it" with no inset, and
+    /// it is worth pinning because the difference is invisible in a render: a bounding-box panel at
+    /// inset zero would look almost identical head-on and would print 4mm of sleeve onto the
+    /// case's top and bottom mouldings, where a real sleeve stops. The film being its own mesh is
+    /// a property of the asset rather than of the code, so a re-export that welded it into the body
+    /// would silently take the scoping with it — and <see cref="MediaShellCatalog.MaterialBounds"/>
+    /// throws on a material the model does not carry, which is what turns that into a failure here.
+    /// </remarks>
+    [Fact]
+    public void BluRayCasePrintsOnItsSleeveMaterialRatherThanItsBoundingBox()
+    {
+        var definition = MediaShellCatalog.Definition(MediaShell.BluRayCase);
+        var model = MediaShellCatalog.Load(MediaShell.BluRayCase);
+
+        ArtPanel[] panels = [definition.CoverPanel, .. definition.ExtraPanels];
+        Assert.Equal(
+            [ArtFace.Front, ArtFace.Back, ArtFace.Spine],
+            panels.Select(panel => panel.Face));
+        Assert.All(panels, panel => Assert.Equal("cover", panel.Material));
+
+        var (filmMin, filmMax) = MediaShellCatalog.MaterialBounds(model, "cover");
+
+        // The film is inset from the case's top and bottom the way it is on the real object, so a
+        // panel measured against it is shorter than one measured against the shell. If these two
+        // ever come out equal, the scoping has stopped doing anything.
+        Assert.True(
+            filmMax.Y - filmMin.Y < model.Size.Y,
+            "The sleeve material spans the whole shell height; it should stop short of the mouldings.");
+        Assert.Equal(0.954f, (filmMax.Y - filmMin.Y) / model.Size.Y, 0.01f);
+
+        // And it wraps the spine rather than stopping at the front: -X is where a keep case's
+        // printed sleeve folds round, so the film reaches further that way than the body does.
+        Assert.True(filmMin.X <= model.BoundsMin.X + 1e-4f);
+        Assert.True(filmMax.X < model.BoundsMax.X);
+    }
+
+    /// <summary>
+    /// The Blu-ray case ships blank, which is the licence story as much as the visual one.
+    /// </summary>
+    /// <remarks>
+    /// Every other shell here arrived wearing a specific game's packaging and had it flattened out
+    /// in a prep pass before the derivative could be committed; this one had nothing to remove. A
+    /// re-export that arrived with maps would mean somebody had put artwork on it, and the pass in
+    /// <c>ModelPrep</c> would have to be run over it before it could ship — so the count is worth
+    /// asserting rather than assuming.
+    /// </remarks>
+    [Fact]
+    public void BluRayCaseCarriesNoBakedArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.BluRayCase);
+
+        Assert.Empty(model.Textures);
+        Assert.Equal(2, model.Materials.Count);
+        Assert.Contains(model.Materials, material => material.Name == "cover");
     }
 
     [Fact]

@@ -7907,6 +7907,166 @@ than a cartridge's, because a disc has a second face worth showing and a cartrid
 was rewritten rather than deleted: it now pins the difference to exactly the flip's duration, so the
 sequences still cannot drift apart by anything nobody chose, which is what it was really protecting.
 
+## 2026-08-15 — The shelf camera frames both axes, not just height
+
+Reported as "PS2, Wii and GameCube are too small on a Steam Deck in shelf mode", against cartridges
+that had been fixed for exactly that complaint a day earlier. Both were true, and the reason is the
+rule that fixed the cartridges: the camera pulls back only as far as it takes for the tallest medium
+in the library view to fill half the frame's *height*, and says nothing about width.
+
+How big a medium looks is not a question about height. A SNES cartridge is 1.66 times as wide as it
+is tall, so half the frame's height also bought it 20.6% of the shelf viewport by area. A PS2 keep
+case is portrait at 0.71, so the identical rule gave it 8.6%: 42% of the cartridge, for the object
+that is physically twice as tall. Every single-axis measurement said the two were framed the same,
+which is why this survived the review that produced the height rule.
+
+`ShelfCamera` now solves both constraints and takes whichever pushes it further back: the tallest
+medium fills `ShelfFrameFill` of the height, the widest fills `ShelfFrameWidthFill` of the width.
+Width uses the turning circle the row already reserves, since every medium on the shelf is turned.
+A keep case ends up at 10.5% of the frame — about a fifth more area, and half a cartridge's.
+
+Both constants are measured, and each was wrong on the first attempt in a way worth recording.
+
+- **0.368 for width** is what a SNES cartridge already occupied, so cartridges are left where they
+  were rather than grown along with the cases. It was first set to 0.40 from an eyeballed viewport
+  aspect. The scene control is `GamepadShelfMediaHost`, which laying out the real MainWindow
+  headlessly shows to be **1248 x 560 on a 1280 x 800 Deck — aspect 2.23, not the panel's 1.6**; the
+  chrome around it is a fixed 32 x 240px, so every window from 1024 x 640 to 2560 x 1440 lands
+  between 2.11 and 2.48. Calibrating a two-axis rule against the display aspect rather than the
+  control's would have shrunk every cartridge by 28%. Measure the control.
+- **0.55 for height**, up from 0.50, is capped by a launch lift belonging to a medium this change is
+  not about. The lift is an absolute 0.10 units while the frame scales with the medium's own height,
+  so the tightest medium is the *shortest height-led* one, not the tallest — which is where the test
+  had been looking. A PS1 jewel case at 125mm gets two thirds of a keep case's frame and the same
+  lift: walking `LaunchChoreography_StaysInsideTheShelfCameraFrame` up until it breaks puts the
+  jewel case at 0.56–0.57, a UMD case at 0.64–0.66, and a keep case under the disc sequence at
+  0.66–0.70. One camera constant serves all three, so the smallest wins.
+
+That last point cost the change most of its headroom, and it only appeared on merging with the disc
+choreography — whose arrival meant a keep case no longer plays the sequence this test was running on
+it, which forced the test matrix open and put the jewel case in it. 0.62 had looked safe against a
+keep case alone. **A frame ceiling set by an absolute offset is decided by the smallest medium, and
+the smallest medium is the one nobody is looking at.**
+
+Parity with a cartridge needs a fill near 0.77 and is therefore not reachable from this constant at
+all. It needs the launch lift expressed as a fraction of the medium rather than in world units,
+which changes how a cartridge launch feels and is a separate decision.
+
+Relative physical scale between platforms is untouched: the solve is per library view, not per item,
+so a case still dwarfs a cartridge in a mixed row. What does change is which axis carries the
+viewport's shape — a cartridge now holds a constant share of the width and lets its height follow,
+where before it did the reverse. Against the old framing it is identical to a tenth of a percent on
+a Deck, 11% smaller by area on a 2560 x 1440 display and 26% larger in a 1024 x 640 window.
+
+Two more things fall out of it. A narrow viewport no longer clips: the height-only rule put a
+cartridge at 82% of the frame's width at 1:1 and past the edges below that, because nothing in it
+knew the frame had sides. And `ShelfAspectForVisibleWidth`, which the preview tool uses to size its
+shot, is still answered from the height constraint alone — the width constraint can only push the
+camera further back, so the frame it derives is never narrower than promised, only occasionally
+roomier.
+
+## 2026-08-15 — The closing choreography runs beside the post-exit save sync, not in front of it
+
+The outward launch was given this shape when the shelf animation landed: the medium starts moving
+*beside* the pre-launch cloud save sync, so a slow round-trip happens behind the choreography instead
+of in front of it, and both still have to finish before the emulator starts. The closing half was
+never brought along. `RestorePhysicalShelfAfterLaunchAsync` was awaited and *then* the after-exit
+sync ran, so on closing a game the player watched the shelf reassemble and only then began waiting
+for the upload — the whole cost the animation exists to hide, paid twice per session.
+
+Both now start together, and the closing status still waits for both, which is what awaiting them in
+sequence was really buying. A sync that throws observes the animation rather than sitting through the
+rest of it before reporting, mirroring the outward path exactly.
+
+Pinned by asserting what the shelf is doing at the moment the sync is entered rather than by
+measuring overlap on the clock, which would be a race dressed up as an assertion: under the
+sequential version the return has necessarily finished by then and `ShelfLaunchPose` is null. The
+test was confirmed to fail against the old ordering for that reason before being kept.
+
+Nothing about the choreography itself changes here.
+## 2026-08-15 — PS3 gets its own Blu-ray case, ending the shared-mesh compromise
+
+Two earlier entries on this shelf record the same unresolved trade. On 2026-08-13 PS3 was given its
+real 135x171x14mm Blu-ray profile; on 2026-08-14 that was reversed, because the profile was being
+applied to the DVD case's mesh and the scene scales each axis independently, so the truthful height
+came out as a 13.7% horizontal stretch — a case that read as broken rather than as short. Of the two
+honest options with one mesh, too tall beat the wrong shape, and the real dimensions were deferred
+to "an authored Blu-ray shell". This is that shell.
+
+**Sourcing.** Blu-ray cases barely exist on Sketchfab: about thirty-five query phrasings against its
+API, filtered to downloadable, returned DVD-era retail scans and one usable hit. A Blu-ray case is a
+blank box, so nobody models it for its own sake — the popular game cases are all somebody's scan of
+a specific sleeve. The hit is Diablo's "PS5 Dvd cd whatever... Case", CC BY 4.0 like every other
+shell here, and it is a better asset than the search deserved:
+
+- Its root node scales a unit cube by **135 x 171.5 x 13mm**. Not "close to" a Blu-ray case — those
+  are the numbers, so this profile is a transcription rather than a measurement reconciled against a
+  mesh. It is the first shell whose proportion test was going to pass before it was written.
+- **No textures, two untextured materials.** Every other shell arrived wearing a specific game's
+  packaging — Mortal Kombat, Battletoads, Sonic 2, Super Mario 64 DS — and had to have it flattened
+  in a `ModelPrep` pass before the derivative could be committed. This one had nothing to remove,
+  and ships byte-identical to the download.
+- The printed sleeve is **its own mesh**: front sheet, spine wrap, back sheet, and nothing else. So
+  its three art panels are scoped to that material and are simply "all of it", where the DVD case —
+  whose sleeve and body are one mesh — has to draw a rectangle against the whole shell and then
+  bound how deep the print may reach.
+
+A PS5 case is the same object as a PS3 case; the difference is that PS5's plastic is white and PS3's
+is clear, which is a finish rather than geometry, and `ps3-clear` already existed.
+
+**Cost.** The asset's blankness is also the bill. With no maps at all, everything the plastic does
+under the studio light comes from constants: `BodyRoughnessScale` 0.54 against a flat authored 0.824,
+and `BodyAlbedoScale` 0.34 against a flat 0.8 linear base that is nearly white — the author modelled
+a PS5 case, and left alone this read as the wrong console before the blue tint was even applied.
+
+That second figure was set by measuring the render, not by eye, and the reason is worth recording:
+at the hero pose the body is a few pixels of mostly specular, and 0.25 against 0.60 is
+indistinguishable there. The legible views are the edge poses and the shelf row. On the spine pose
+the lit body face lands at sRGB 153 here, against 188 at 0.60 and the PS2 case's black plastic at
+54; the shelf row is where the placement is actually judged, and what it has to show is a clear case
+sitting plainly above the black PS2 and GameCube cases and plainly below the white Wii one. Above
+the Wii it stops reading as clear and starts reading as the PS5 case the mesh was modelled from.
+
+**What this leaves.** PSP is now the only profile in `MediaShellMap` that knowingly disagrees with
+its asset, squeezing the DVD case to a UMD case's shape to keep its sleeve art undistorted. That
+trade and PS3's were always the same trade — two objects sharing one mesh — and it ends for a
+platform when the mesh stops being borrowed. `MetricProfile_DistinguishesPs3ByFinishNotByADistortedHeight`
+was inverted rather than deleted, for the same reason both of the earlier entries above are still
+here: the pair is the record of why sourcing a shell was worth the trouble.
+
+3DS is now the only system left on a flat cover card.
+
+## 2026-08-15 — The preview tool's "spine" pose was showing the opening edge
+
+Found while closing the one gap the Blu-ray case shipped with: its back and spine panels were
+placed but no image had ever landed on them, on any game — the shelf reads those from ScreenScraper's
+`box-2D-back` and `box-2D-side`, and this machine has no credentials and zero rows in
+`GameMediaAssets`. So the panels were correct by construction and unobserved.
+
+Closing it needed the preview tool to supply more than a front cover, which it never has. With
+`TestCover.CreateBack` and `CreateSpine` feeding panels 1 and 2, the back inlay appeared immediately
+and correctly — plates left, blurb right, barcode bottom-right, not mirrored. The spine did not
+appear at all.
+
+It was not the panel. Positive yaw brings canonical -X round to the camera, -X is the hinge side a
+keep case prints its spine on, and the pose named `spine` was at **-1.48** — the opposite edge, the
+opening with its thumb notch. Every case shell's spine has rendered correctly for as long as spines
+have existed and has never been in a review frame. This is precisely the top-edge/bottom-edge
+mix-up already recorded in that array's own comment, one axis over, and it was found the same way:
+by putting something on a surface and going looking for it. The pose is now +1.48, and -1.48 is kept
+as `opening`, which is worth its own frame — it is the one large face of a case no panel prints on.
+
+**A prediction that was wrong, recorded because the reasoning was wrong and not just the answer.**
+Going in, the expectation was that `ArtFit.Stretch` on a spine would be the next defect: a 13mm
+strip wearing art scraped for a 135mm face, and the keep case's own comment waves the fit through
+only because nothing scrapes spine art yet. Rendered against source images from 0.0758 (a true
+spine scan) to 0.75 (a badly padded one), a 10x range, the results are indistinguishable in
+placement. Stretch maps the whole image onto the whole strip whatever shape it arrives in, so a
+spine cannot lose content to it — where `Cover` would crop a title off the end and `Contain` would
+leave tint bars. Stretch is not a compromise on this panel, it is the right fit, and the keep case's
+comment should be read as describing a risk that does not exist rather than one that is deferred.
+
+No shell constant changed. The defect was in the instrument.
 ## 2026-08-15 — CRT presentation is a GL resolve pass, not a window-wide effect
 
 Shelf mode presents through a simulated CRT tube. The pass replaces the resolve blit at the end of
