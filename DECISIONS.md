@@ -8383,3 +8383,25 @@ key on its own. Dropping it from the exclusion list is therefore sufficient and 
 two discs of one revision merge, while a mixed pair stays apart because their keys differ. Demos and
 bonus discs stay excluded — there the name is ambiguous about what a "set" even is, which is a
 different problem from a tag that simply needs to be carried along.
+
+## 2026-08-15 — The couch shelf draws from a UI-thread snapshot, and a render throw is not a death sentence
+
+Cycling platforms quickly with LB/RB while the couch shelf was open made the 3D media and the CRT
+tube vanish for the rest of the session. `OnOpenGlRender` runs on Avalonia's render thread, but it
+read this control's live lists — the layout, the games by key, the decoded artwork and its LRU — all
+of which the UI thread rebuilds as the scope changes. A switch that landed mid-frame mutated a list
+the draw was enumerating and threw a collection-modified exception out of the frame. The blanket
+handler read *any* render exception as an unsupported GPU and called `DisableShelfHero`, which drops
+the library to flat covers for the whole session — taking the tube with it, since one support flag
+gates both.
+
+Two independent changes. First, the render thread no longer touches shared state: the UI thread
+freezes each frame into an immutable `FrameSnapshot` (the visible render items, the scene extents,
+the focused accent, and each visible game's resolved face artwork) and publishes it through one
+volatile reference, which the render thread only ever reads. `PublishFrame` is called from every
+place that used to request a frame after a data change, and the resolved window is small, so
+rebuilding it per selection step or per animated position is cheap. Second, a render exception is
+treated as transient: the renderer is kept and the frame retried, and only a fault that repeats
+`MaxConsecutiveRenderFailures` frames in a row — an actually-broken context — falls back to flat
+covers. The count resets on the first clean frame, so a one-off (including the now-designed-out race,
+or a bitmap disposed a frame before its upload) never accumulates to the threshold.
