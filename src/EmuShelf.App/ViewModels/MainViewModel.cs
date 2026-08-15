@@ -5093,6 +5093,8 @@ public partial class MainViewModel : ViewModelBase
 
         _shelfLaunchTransition.Start(
             game.Id,
+            PhysicalShelfLaunchStyles.ForAnimation(
+                game.ShelfMediaProfile.InsertionAnimationId),
             _shelfHeroRotation.Yaw,
             _shelfHeroRotation.Pitch);
         OnPropertyChanged(nameof(ShelfLaunchPose));

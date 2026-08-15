@@ -333,8 +333,11 @@ public class MediaShellTests
         Assert.True(snes.FloorClearanceInShelfUnits > gba.FloorClearanceInShelfUnits);
         Assert.Equal(0f, keepCase.FloorClearanceInShelfUnits, 3);
         Assert.Equal(PhysicalArtworkSlots.CartridgeSupport, snes.ArtworkSlots);
+        // The case's own three printed faces plus the disc inside it, which is a fourth scraped
+        // face on the same game; DiscProfiles_ClaimTheSupportTextureForTheirDisc owns why.
         Assert.Equal(
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
             keepCase.ArtworkSlots);
     }
 
@@ -435,7 +438,11 @@ public class MediaShellTests
         var viewProjection = view * projection;
 
         var transition = new PhysicalShelfLaunchTransitionModel();
-        transition.Start(1, MediaRotationModel.RestYaw, MediaRotationModel.RestPitch);
+        transition.Start(
+            1,
+            PhysicalShelfLaunchStyle.Cartridge,
+            MediaRotationModel.RestYaw,
+            MediaRotationModel.RestPitch);
 
         var highest = float.NegativeInfinity;
         for (var step = 0; step < 400 && !transition.IsCommitted; step++)
@@ -462,6 +469,77 @@ public class MediaShellTests
             $"The medium reached {highest:F3} of the frame's half-height; above 1.0 it is clipped.");
     }
 
+    /// <summary>
+    /// The disc's launch puts a second body on screen, and it has to obey the same frame.
+    /// </summary>
+    /// <remarks>
+    /// The sibling of the test above, and the one that pins the thing that most wants to go wrong
+    /// here: the disc travels up and forward out of a case that is already at the top of its lift,
+    /// and stepping toward the camera magnifies a rise that was already close to the ceiling. Both
+    /// bodies are checked because the case is still on screen for the first half of the sequence.
+    /// </remarks>
+    [Theory]
+    [InlineData(1280f / 800f)]
+    [InlineData(1920f / 1080f)]
+    public void DiscLaunchChoreography_KeepsBothBodiesInsideTheShelfCameraFrame(float aspect)
+    {
+        var profile = MediaShellMap.ProfileForSystem("wii", 0.708);
+        var caseAsset = MediaShellCatalog.Load(profile.Shell);
+        var discAsset = MediaShellCatalog.Load(MediaShell.GameDisc);
+        var band = profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits;
+        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(aspect, band);
+        var viewProjection = view * projection;
+
+        var transition = new PhysicalShelfLaunchTransitionModel();
+        transition.Start(
+            1, PhysicalShelfLaunchStyle.Disc, MediaRotationModel.RestYaw, MediaRotationModel.RestPitch);
+
+        var highestCase = float.NegativeInfinity;
+        var highestDisc = float.NegativeInfinity;
+        for (var step = 0; step < 400 && !transition.IsCommitted; step++)
+        {
+            transition.Update(16d);
+            var pose = transition.Pose;
+            var item = new EmuShelf.Rendering.MediaShelfRenderItem(
+                1, profile, 0f, 1f, pose.Yaw, pose.Pitch, Vector3.One,
+                pose.VerticalOffset, pose.DepthOffset, pose.Scale,
+                new EmuShelf.Rendering.MediaShelfDiscPose(
+                    pose.Disc!.Value.HorizontalOffset,
+                    pose.Disc!.Value.VerticalOffset,
+                    pose.Disc!.Value.DepthOffset,
+                    pose.Disc!.Value.Spin,
+                    pose.Disc!.Value.Tilt,
+                    pose.Disc!.Value.Scale));
+
+            highestCase = MathF.Max(
+                highestCase,
+                HighestClipY(caseAsset, EmuShelf.Rendering.MediaShellRenderer.ShelfModel(item, caseAsset), viewProjection));
+            highestDisc = MathF.Max(
+                highestDisc,
+                HighestClipY(discAsset, EmuShelf.Rendering.MediaShellRenderer.DiscModel(item, discAsset), viewProjection));
+        }
+
+        Assert.True(
+            highestCase <= 1f,
+            $"The case reached {highestCase:F3} of the frame's half-height; above 1.0 it is clipped.");
+        Assert.True(
+            highestDisc <= 1f,
+            $"The disc reached {highestDisc:F3} of the frame's half-height; above 1.0 it is clipped.");
+    }
+
+    private static float HighestClipY(ModelAsset asset, Matrix4x4 model, Matrix4x4 viewProjection)
+    {
+        var highest = float.NegativeInfinity;
+        foreach (var corner in Corners(asset.BoundsMin, asset.BoundsMax))
+        {
+            var world = Vector3.Transform(corner, model);
+            var clip = Vector4.Transform(new Vector4(world, 1f), viewProjection);
+            highest = MathF.Max(highest, clip.Y / clip.W);
+        }
+
+        return highest;
+    }
+
     private static IEnumerable<Vector3> Corners(Vector3 min, Vector3 max)
     {
         foreach (var x in new[] { min.X, max.X })
@@ -472,6 +550,259 @@ public class MediaShellTests
                 {
                     yield return new Vector3(x, y, z);
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The disc loads flat and round, which is entirely down to its orientation being right.
+    /// </summary>
+    /// <remarks>
+    /// The source bakes an arbitrary rotation into its node chain, and the loader composes that
+    /// into the vertices: without the correcting quaternion the disc arrives 1.83 wide per unit of
+    /// height and nearly as deep — standing on a corner. Proportions are the cheapest way to catch
+    /// that, and the reason this is measured rather than eyeballed is that a tumbled disc still
+    /// renders as a plausible ellipse from the shelf camera.
+    ///
+    /// The hole is the other load-bearing part: a filled circle spinning about its own centre does
+    /// not appear to move at all, so the whole spin-up would read as a still frame.
+    /// </remarks>
+    [Fact]
+    public void GameDisc_LoadsFlatAndRoundAtRealDiscProportions()
+    {
+        var disc = MediaShellCatalog.Load(MediaShell.GameDisc);
+
+        Assert.Equal(1f, disc.Size.X, 3);
+        Assert.Equal(1f, disc.Size.Y, 3);
+        // The source's own thickness, 1.8mm against a real disc's 1.2mm. Taken from the asset for
+        // the reason every other profile is: a figure that disagrees with its mesh does not read as
+        // a size error, it silently distorts the shell.
+        Assert.InRange(disc.Size.Z, 0.010f, 0.020f);
+
+        var radii = Vertices(disc).Select(vertex => new Vector2(vertex.X, vertex.Y).Length()).ToArray();
+        // A 15mm hole on a 120mm disc is 0.0625 of the diameter; this one is within 1.5% of it.
+        Assert.InRange(radii.Min(), 0.055f, 0.070f);
+        Assert.Equal(0.5f, radii.Max(), 3);
+    }
+
+    /// <summary>
+    /// The shipped disc carries no texture of any kind, and that is a licence requirement.
+    /// </summary>
+    /// <remarks>
+    /// The source is a CC-BY compact disc whose maps carry "SONY CD-R 700MB" trade dress — in the
+    /// base colour, and embossed a second time into the metallic/roughness map. Its two faces share
+    /// one atlas with interleaved circular islands, so no rectangle can mask the branding without
+    /// also clipping the data surface. The asset is prepared with every map stripped instead, which
+    /// is why the disc's whole appearance is stated in its shell definition and its label comes from
+    /// the game's own scraped artwork. A texture reappearing here means the prep step was skipped
+    /// and third-party branding is in the build.
+    /// </remarks>
+    [Fact]
+    public void GameDisc_ShipsGeometryOnlyWithNoSourceArtwork()
+    {
+        var disc = MediaShellCatalog.Load(MediaShell.GameDisc);
+
+        Assert.Empty(disc.Textures);
+        foreach (var material in disc.Materials)
+        {
+            Assert.Equal(-1, material.BaseColorTexture);
+            Assert.Equal(-1, material.MetallicRoughnessTexture);
+            Assert.Equal(-1, material.NormalTexture);
+        }
+    }
+
+    /// <summary>
+    /// Every fragment the label lands on has to face the player, or the print appears on the data
+    /// side as well — the panel is projected in object space and cannot tell the two apart itself.
+    /// </summary>
+    [Fact]
+    public void GameDisc_PutsItsLabelOnTheFaceThatFacesThePlayer()
+    {
+        var disc = MediaShellCatalog.Load(MediaShell.GameDisc);
+        var placement = MediaShellCatalog.Place(
+            MediaShellCatalog.Definition(MediaShell.GameDisc).CoverPanel, disc);
+
+        Assert.Equal(Vector3.UnitZ, placement.Normal);
+
+        // The label side's normals point at the player; the data side's point away.
+        var mesh = disc.Meshes[0];
+        var front = 0;
+        var back = 0;
+        for (var offset = 0; offset < mesh.Vertices.Length; offset += MeshGeometry.FloatsPerVertex)
+        {
+            var z = mesh.Vertices[offset + 2];
+            var normalZ = mesh.Vertices[offset + 5];
+            if (z > 0.001f && normalZ > 0.5f)
+            {
+                front++;
+            }
+            else if (z < -0.001f && normalZ < -0.5f)
+            {
+                back++;
+            }
+        }
+
+        Assert.True(front > 0, "The disc has no front-facing label surface at all.");
+        Assert.Equal(front, back);
+    }
+
+    /// <summary>
+    /// The label's depth allowance has to reach the face the label is actually printed on.
+    /// </summary>
+    /// <remarks>
+    /// A panel's plane sits at the model's furthest extent along its normal, and on this disc that
+    /// is the raised stacking ring around the hub rather than the flat face beside it. An allowance
+    /// derived from the disc's thickness rejected every front-facing surface in the panel and the
+    /// label silently stopped drawing — the disc rendered as a bare mirror with no printing at all,
+    /// which looks like a deliberate finish rather than a bug. Both bounds are asserted: it must
+    /// reach the face, and it must stop well short of the data side on the other face.
+    /// </remarks>
+    [Fact]
+    public void GameDisc_LabelAllowanceReachesTheFaceButNotTheDataSide()
+    {
+        var disc = MediaShellCatalog.Load(MediaShell.GameDisc);
+        var definition = MediaShellCatalog.Definition(MediaShell.GameDisc);
+        var placement = MediaShellCatalog.Place(definition.CoverPanel, disc);
+        var allowance = definition.CoverPanel.MaxSurfaceDepth
+            ?? throw new InvalidOperationException("The disc's label needs its own measured depth.");
+
+        var deepest = 0f;
+        var mesh = disc.Meshes[0];
+        for (var offset = 0; offset < mesh.Vertices.Length; offset += MeshGeometry.FloatsPerVertex)
+        {
+            if (mesh.Vertices[offset + 5] <= 0.5f)
+            {
+                continue;
+            }
+
+            var position = new Vector3(
+                mesh.Vertices[offset], mesh.Vertices[offset + 1], mesh.Vertices[offset + 2]);
+            var local = position - placement.Origin;
+            var u = Vector3.Dot(local, placement.UEdge) / placement.UEdge.LengthSquared();
+            var v = Vector3.Dot(local, placement.VEdge) / placement.VEdge.LengthSquared();
+            if (u is < 0f or > 1f || v is < 0f or > 1f)
+            {
+                continue;
+            }
+
+            deepest = MathF.Max(deepest, -Vector3.Dot(local, placement.Normal));
+        }
+
+        Assert.True(
+            allowance > deepest,
+            $"The label reaches {allowance:F4} but its own face lies {deepest:F4} behind the "
+            + "panel plane, so nothing inside the panel is printed at all.");
+        Assert.True(
+            allowance < disc.Size.Z * 0.5f,
+            $"The label reaches {allowance:F4} of a {disc.Size.Z:F4} thick disc, which is far "
+            + "enough through it to print on the data side as well.");
+    }
+
+    /// <summary>
+    /// The disc's label draws the scraped disc artwork, not the box scan the case is wearing.
+    /// </summary>
+    /// <remarks>
+    /// The two shells are on screen together during a launch and belong to the same game, so they
+    /// index the same uploaded set of faces. Slot 0 is the box front — a picture of the packaging,
+    /// which is the one thing a disc's printed face is never a picture of. This pins the disc onto
+    /// its own slot and pins that slot to the face the app uploads it under: they live in different
+    /// assemblies, one as a literal and one as an enum, and nothing but this holds them together.
+    /// </remarks>
+    [Fact]
+    public void GameDisc_DrawsTheScrapedDiscLabelNotTheBoxScan()
+    {
+        var disc = MediaShellCatalog.Definition(MediaShell.GameDisc);
+        var keepCase = MediaShellCatalog.Definition(MediaShell.DiscKeepCase);
+
+        Assert.Equal((int)ShelfArtworkFace.DiscLabel, disc.CoverArtIndex);
+        Assert.Equal((int)ShelfArtworkFace.Front, keepCase.CoverArtIndex);
+        Assert.NotEqual(keepCase.CoverArtIndex, disc.CoverArtIndex);
+
+        // And the set the app uploads into has room for it.
+        Assert.True((int)ShelfArtworkFace.DiscLabel < EmuShelf.Rendering.MediaShellRenderer.MaxArtworkFaces);
+    }
+
+    /// <summary>
+    /// A disc system's scraped support texture is routed to the disc, and a cartridge's to itself.
+    /// </summary>
+    /// <remarks>
+    /// The same ScreenScraper media kind means different things on different media: on a cartridge
+    /// system its support art is the cartridge's own label and belongs on the shell's front, while
+    /// on a disc system it is a picture of the disc inside the box. Before this it was scraped for
+    /// PS2, GameCube and Wii, stored, and then never drawn anywhere — there was no disc to put it on.
+    /// </remarks>
+    [Fact]
+    public void DiscProfiles_ClaimTheSupportTextureForTheirDisc()
+    {
+        foreach (var system in new[] { "playstation2", "playstation3", "gamecube", "wii" })
+        {
+            var profile = MediaShellMap.ProfileForSystem(system, 0.708);
+            Assert.True(
+                (profile.ArtworkSlots & PhysicalArtworkSlots.DiscLabel) != 0,
+                $"{system} has a disc but no slot to print its scraped label on.");
+            // Its case wears the box scan, not the disc art.
+            Assert.True((profile.ArtworkSlots & PhysicalArtworkSlots.Front) != 0);
+            Assert.True((profile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) == 0);
+        }
+
+        var cartridge = MediaShellMap.ProfileForSystem("snes", 1.43);
+        Assert.True((cartridge.ArtworkSlots & PhysicalArtworkSlots.DiscLabel) == 0);
+        Assert.True((cartridge.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) != 0);
+    }
+
+    /// <summary>
+    /// A GameCube game ships on an 80mm mini-disc, and the shared stand-in case cannot show that.
+    /// The disc it gives up can, which is the one place the difference becomes visible.
+    /// </summary>
+    [Fact]
+    public void MetricProfiles_GiveEachDiscSystemItsOwnDiscSize()
+    {
+        var wii = MediaShellMap.ProfileForSystem("wii", 0.708);
+        var gamecube = MediaShellMap.ProfileForSystem("gamecube", 0.708);
+        var snes = MediaShellMap.ProfileForSystem("snes", 1.43);
+
+        Assert.True(wii.HasDisc);
+        Assert.True(gamecube.HasDisc);
+        Assert.False(snes.HasDisc);
+
+        Assert.Equal(120f / 190f, wii.DiscDiameterInShelfUnits, 3);
+        Assert.Equal(80f / 190f, gamecube.DiscDiameterInShelfUnits, 3);
+        // The cases are identical, so the discs are the only thing that can tell them apart.
+        Assert.Equal(wii.HeightInShelfUnits, gamecube.HeightInShelfUnits, 3);
+    }
+
+    /// <summary>
+    /// Only the media that really give up a disc take the disc choreography, and every one of them
+    /// declares a disc for it to lift out.
+    /// </summary>
+    [Fact]
+    public void MetricProfiles_AgreeAboutWhichMediaOpen()
+    {
+        string[] systems =
+            ["snes", "gba", "gbc", "nes", "megadrive", "nds", "playstation2", "playstation3",
+             "gamecube", "wii", "playstation", "dreamcast"];
+
+        foreach (var system in systems)
+        {
+            var profile = MediaShellMap.ProfileForSystem(system, 0.708);
+            var style = PhysicalShelfLaunchStyles.ForAnimation(profile.InsertionAnimationId);
+
+            Assert.Equal(
+                style == PhysicalShelfLaunchStyle.Disc,
+                profile.HasDisc);
+        }
+    }
+
+    private static IEnumerable<Vector3> Vertices(ModelAsset asset)
+    {
+        foreach (var mesh in asset.Meshes)
+        {
+            for (var offset = 0;
+                 offset + 2 < mesh.Vertices.Length;
+                 offset += MeshGeometry.FloatsPerVertex)
+            {
+                yield return new Vector3(
+                    mesh.Vertices[offset], mesh.Vertices[offset + 1], mesh.Vertices[offset + 2]);
             }
         }
     }

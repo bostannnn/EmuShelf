@@ -124,10 +124,18 @@ public static class MediaShellMap
         ["arcade"] = new(
             MediaShell.ArcadeCabinet, new(341f, 480f, 533f), PhysicalArtworkSlots.Front,
             "arcade-cabinet", "cartridge-vertical"),
+        // The four keep-case profiles take "disc-from-case": their launch opens the case and sends the
+        // disc on alone, because nobody has ever turned a DVD case over and pushed it into a
+        // console. PS1, Dreamcast and PSP are disc media too and deliberately stay on the cartridge
+        // motion — they render as flat cover cards until their own shells are authored, and a disc
+        // cannot be pulled out of a card. PS1 and Dreamcast now have real jewel cases and a PSP a
+        // UMD case, so the first two could plausibly join them and the third could not — a UMD is a
+        // disc in a caddy you never take out. Left as they are here rather than decided in passing.
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps2-black", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps2-black", "disc-from-case", DiscDiameterMillimetres: 120f),
         // A PS3 game really does ship in the shorter 135x171x12mm Blu-ray case, and this profile
         // used to say so. The trouble is that it says so while sharing the DVD case's geometry, and
         // the scene scales each axis independently: measured against the asset that is a 13.7%
@@ -137,16 +145,23 @@ public static class MediaShellMap
         // dimensions belong with that shell, not with a squashed stand-in. See DECISIONS 2026-08-14.
         ["playstation3"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps3-clear", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps3-clear", "disc-from-case", DiscDiameterMillimetres: 120f),
+        // 80mm, not 120mm: a GameCube game ships on a mini-DVD, and this is the one place the
+        // difference is visible now that the disc leaves the case. The case is the shared stand-in
+        // and cannot show it; the disc it gives up can, and comes out two thirds the size of a
+        // Wii's from the same mesh.
         ["gamecube"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "gamecube-black", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "gamecube-black", "disc-from-case", DiscDiameterMillimetres: 80f),
         ["wii"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "wii-white", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "wii-white", "disc-from-case", DiscDiameterMillimetres: 120f),
         // A real UMD case, 104 x 178 x 15mm, and the one profile here that knowingly disagrees with
         // its asset: against the shared case's own 0.695 proportions this draws the mesh at 84% of
         // its authored width. That is deliberate, and it is the opposite of the call the PS3 profile

@@ -7688,3 +7688,221 @@ over-darkened transparent plane on a dark backdrop looks like a shadow; against 
 is a grey slab. `--background` was already there — use it. And the fix is now pinned by a test
 rather than a render: `MediaShellRenderer.ShadowPlane` is internal so the arithmetic can be checked
 without a GPU or a theme.
+## 2026-08-15 — Disc games open the case instead of being inserted like a cartridge
+
+The launch choreography was one sequence for every medium: lift, tumble three full turns, then slide
+down out of the frame. Those beats are a cartridge's — you turn a cart over to bring its connector
+round to the slot, and the slide is it entering — and playing them on a 135x190mm keep case reads as
+tumbling a DVD box and pushing it into a console, which is not a thing anybody has done.
+
+`PhysicalMediaProfile.InsertionAnimationId` had been carried since the profiles were written and was
+never read by anything. It now selects between two choreographies via `PhysicalShelfLaunchStyle`:
+
+- **Cartridge** (`cartridge-vertical`, `card-downward`) — unchanged.
+- **Disc** (`disc-from-case`) — the case squares up and lifts, the disc rises out of it and forward
+  toward the camera, the emptied case is set down below the floor, and the disc spins up on its own
+  axis, lies back to horizontal and drops out of frame the way a tray takes it.
+
+Both run to the same 1920ms, so the moment the emulator is asked to start does not depend on what
+the game shipped on. `Committed` and `Return` keep their existing contract.
+
+Three things worth recording about how it is built:
+
+- **The disc is generated, not sourced.** It is an annulus and a shader finish, so authoring it
+  would have added a licence and a megabyte to say what forty lines say — and this repo has already
+  spent two days preparing a model whose licence did not permit it (see 2026-08-13). One mesh at
+  real proportions covers a 120mm DVD and a GameCube's 80mm mini-disc, which is now the one place
+  that difference is visible: the four disc systems share a stand-in case and cannot show it.
+- **The disc comes out upward and forward, not sideways.** Drawing it clear of the case's edge would
+  put it halfway across the neighbouring game — the shelf's item gap is 0.14 against a 0.71-wide
+  case. Depth separates the two bodies inside the item's own space instead.
+- **The rainbow is a hue shift, not a colour.** A disc's diffraction was first applied as a tint
+  multiplied into the specular, and since a metal has no diffuse to dilute it the disc came out a
+  saturated lollipop. Normalizing the term to unit brightness makes it split the reflection without
+  darkening it, which is what a grating actually does. `MediaShellDefinition.Iridescence` keeps it
+  off every moulded shell.
+
+PS1, Dreamcast and PSP are disc media and deliberately stay on the cartridge motion: they render as
+flat cover cards until their own shells exist, and a disc cannot be pulled out of a card. Moving
+them is a one-word edit in `MediaShellMap` when those shells land.
+
+`MediaShellDefinition.TakesScrapedArtwork` is new and is set false for the disc. The rule that a
+portrait box scan is never cropped onto a disc label has to hold on both draw paths — the shelf and
+the preview tool's turntable — and the turntable was in fact projecting the cover onto it until this
+was declared on the shell rather than enforced at one call site.
+
+## 2026-08-15 — The disc is a sourced mesh stripped to its geometry, and it slides out of the case
+
+Two defects in the first cut of the disc launch, both found by watching it rather than by a test.
+
+**The disc appeared instead of emerging.** It was stowed concentric with the case and then moved up
+*and toward the camera* together, so it stepped in front of the case's front plate on the very first
+frame of the reveal and had nothing left to come out of. The fix is that depth is now held at the
+case's own for the whole slide: the disc travels sideways, and the case — which is opaque and
+encloses it — uncovers it edge-first as it clears the right-hand edge. It only comes forward in the
+following phase, once the case is already being set down. `DiscSequence_StaysBehindTheCaseForTheWholeSlide`
+pins the invariant, because the whole effect is one subtraction away from being a pop.
+
+The slide is 0.44 and no further. A case is 0.711 wide and a disc 0.632 across, so clearing it
+completely is 0.671 — which is well into the neighbouring game's place on the shelf.
+
+**The generated annulus was not a disc.** It had no raised hub, no stacking ring and a square rim.
+SEMA Game Studio's CC-BY compact disc is now the shell (`game-disc.glb`), and the procedural mesh is
+gone. Three things about how it ships:
+
+- **Every texture map is stripped, not masked.** The download's maps carry "SONY CD-R 700MB" trade
+  dress in the base colour and, embossed, again in the metallic/roughness map. Unlike the SNES and
+  keep-case shells this cannot be masked: the disc's two faces share one atlas as interleaved
+  circular islands, so every rectangle covering the branding also clips the brushed data surface —
+  measured, not assumed, after an attempt did exactly that. The model was wanted for its shape, so
+  the maps go entirely; its surface is stated in the shell definition instead and its label is the
+  game's own artwork. This also took the asset from 3.4MB to 390KB.
+  `GameDisc_ShipsGeometryOnlyWithNoSourceArtwork` fails if a map ever comes back.
+- **Its orientation is a quaternion, not Euler angles.** The export composes an arbitrary rotation
+  down its node chain which the loader bakes into the vertices; as loaded the disc measured 1.829
+  wide per unit of height, which is a disc standing on a corner. The composed world rotation is
+  knowable and its conjugate is exact, where turning three angle dials is a search with no way to
+  know it has finished.
+- **The label's depth allowance is measured off the mesh.** A panel's plane sits at the model's
+  furthest extent along its normal, and on this disc that is the raised stacking ring rather than the
+  face the label is printed on — the front-facing surfaces inside the panel lie 0.002 to 0.005
+  behind it. An allowance derived from the disc's thickness rejected all of them and the label
+  silently stopped drawing, which reads as a deliberate bare-mirror finish rather than as a bug.
+
+`ModelPrep` gained two steps for this. `--strip-textures` is the new blunt instrument; animation
+removal is unconditional, because every shell here is a rigid prop and this model's spin clip was
+malformed enough (a `byteStride` on animation output, which the schema forbids) to fail the loader
+outright. Image buffer views are emptied to a single byte rather than deleted — deleting renumbers
+every view after them, and merely dropping the `images` array would leave `WriteGlb` faithfully
+copying 3.4MB of unreferenced PNG, trade dress included, into the output.
+
+## 2026-08-15 — The case stays on the shelf, the disc has no label until there is art, and closing reverses
+
+Three corrections from watching the disc launch run, all of them things a test would not have caught
+because each was internally consistent and simply wrong about the object.
+
+**The case no longer drops through the floor.** It was falling to -1.05 on the reasoning that the
+emptied case is finished with and a second body standing in shot would compete with the disc. That
+is a cartridge's logic: a cartridge leaves through the bottom of the frame because it is being put
+into the console, and a case never is. You take the disc out and the case stays exactly where it
+was. It now settles back to its browsing pose while the disc goes on alone.
+
+**An untextured disc draws no label at all.** With no scraped artwork the label panel fell back to
+the platform tint, which put a flat opaque circle over the middle of a mirror — reported as "part of
+it looks like a disc and part looks like a texture", which is exactly right: a matte chip with a hard
+edge against a reflective ring reads as a sticker stuck on, not as printing. `RequiresArtwork` on
+the shell definition now skips a panel that has nothing real to print, so the disc is simply a disc
+until the scraped label lands. The tint fallback stays for a case's unscraped back, where it is a
+coloured stand-in for a picture on a surface that is printed either way.
+
+**Closing the game plays the launch backwards.** The return was a single 480ms lerp from wherever the
+medium had got to. That is right for a launch abandoned part way — a failed start, a cancellation,
+which never got anywhere and would be dwelling on a story that did not happen — but wrong for a game
+that was played and closed, where the honest answer to "where did the disc go" is the one the player
+watched. `BeginReturn` now branches on `IsCommitted`: committed reverses, abandoned still eases.
+
+Reversal cost a small restructure and is the better shape for it. The phase order was spread through
+the handlers as a chain of "which phase comes next" decisions, which is knowable in one direction
+only; it is now one `Sequence` array walked forwards or backwards, and every handler computes its
+pose from `Progress` alone, which returns `1 - t` while reversing. The way back is the way out
+through the same arithmetic rather than a second choreography to keep in step with the first.
+
+## 2026-08-15 — The scraped disc label reaches the disc, and the launch is half again as long
+
+**ScreenScraper's support texture now prints on the disc.** It was already being scraped, stored and
+then thrown away for PS2, PS3, GameCube and Wii: `GameMediaKind.PhysicalMediaTexture` maps to
+`support-texture`, which on a cartridge system is the cartridge's own label and on a disc system is a
+picture of the disc inside the box — and until there was a disc to put it on, `ShelfArtworkPath`
+only offered it to shells with the `CartridgeSupport` slot, so for a case it resolved to nothing.
+
+Routing it needed a fourth artwork face. The disc and the case are two shells belonging to one game
+and both are on screen at once during a launch, so they index the same uploaded set — and slot 0 is
+the box front, which is the one medium a disc's printed face is never a picture of. Hence
+`MaxArtworkFaces` (4, the game's uploaded faces) split from `MaxPanels` (3, the shader's per-draw
+budget), a `DiscLabel` artwork slot, and `MediaShellDefinition.CoverArtIndex` so a shell can say
+which face its cover panel draws. The index is a literal in the rendering assembly and an enum in the
+app, which is exactly the kind of pair that drifts apart unnoticed;
+`GameDisc_DrawsTheScrapedDiscLabelNotTheBoxScan` is what holds them together.
+
+With `RequiresArtwork` already in place the disc stays bare until that artwork exists, so nothing
+regresses for a library that has not been scraped.
+
+**The disc leaves the frame properly.** It stopped at -0.92, which is level with the bottom of the
+frame rather than past it — and the shelf camera is elevated and looking down, so a disc lying flat
+there is still in shot, seen from above, in the one pose where its silhouette is thinnest. It now
+travels to -1.45 and is genuinely gone.
+
+**Everything is 50% slower**, 1920ms to 2880ms, every duration scaled including reduced motion and
+the return. Both sequences still total the same, so `BothSequences_ReachTheHandoverTogether` holds
+and process start remains independent of what the game shipped on.
+
+## 2026-08-15 — A disc's rainbow runs along the radius, not around the disc
+
+Reported from a screenshot as a pastel pinwheel rather than an optical disc. The diffraction term
+had an azimuth component sweeping hue around the face, so every fragment was on a rainbow at once and
+the whole disc glowed. That is not how the object works: a disc's tracks are concentric, so the
+grating runs tangentially and disperses light *along* the radius — which is why a real disc shows a
+couple of bright arcs facing the lamp and is plain mirror ninety degrees away from them.
+
+`discDiffraction` now returns an amount as well as a hue, from how strongly the half-vector separates
+from the eye along the local radial direction. Most of the face is mirror at any moment and the arcs
+sweep round as the disc turns.
+
+Worth recording as a shape of mistake rather than a number: this shipped through a review pass
+because the preview strip renders the disc small, where a uniform swirl reads as a plausible sheen.
+It was only obvious at the size the shelf actually draws it. A finish tuned at thumbnail scale has
+not been reviewed.
+
+## 2026-08-15 — A disc has two different surfaces, and only one of them is a mirror
+
+Reported as "I still don't see missing label and see rainbow backside". The first reading was an
+orientation fault, which it was not — and could not have been, because a disc with no scraped label
+rendered identically from both sides, so there was nothing there to be the wrong way round. That
+identity was the defect. The shell's iridescence and its aluminium material were applied to the whole
+body, so the face the player reads was a mirror throwing rainbows at them.
+
+A real disc is two surfaces on one object: the underside is the reflector, and the side you read is
+lacquered print — pale, matte, with no diffraction of its own. The shader now splits them on the
+object-space normal, so +Z takes a light dielectric and -Z keeps the metal. Because the diffraction
+is already scaled by metalness, zeroing that on the printed face is all it takes to keep the rainbow
+off it. A bare disc is now blank white on top, which is what an unprinted disc looks like.
+
+Two things fall out of it. Orientation became judgeable by eye for the first time — white is the
+label side, dark and iridescent is the data side — where before both faces were the same picture and
+the question could not be answered from a screenshot. And it exposed that
+`GameDisc_PutsItsLabelOnTheFaceThatFacesThePlayer` never checked what its name claims: counting
+front-facing against back-facing surfaces is symmetric on any disc, so it passed regardless. The
+claim that the orientation was "verified structurally" was worth less than it sounded.
+
+## 2026-08-15 — A bare disc says its artwork is missing, and turns over on the way out
+
+**An unscraped disc now wears the "artwork missing" placeholder.** It was drawing nothing at all, on
+the reasoning that a flat tint over a mirror reads as a sticker — true, but the conclusion was wrong:
+a blank disc reads as a *finish*, not as missing art, so the medium that most needs to say something
+was the one saying nothing. A disc's face behaves like a cartridge's, not like a case's back. Both
+are the printed surface of the medium itself and use the same placeholder the grid does; an unscraped
+back or spine genuinely has nothing to say and keeps the platform tint.
+
+The placeholder is warmed at the *disc's* panel proportions rather than the case's. Taking the case's
+would fit a square label to a portrait sleeve's shape and then print the result on a circle.
+
+Worth recording how long this took to hear. It was asked three times — "disk model is bad", "I was
+expecting to see label missing", "there is still no label saying that cover art is missing" — and
+read first as a model problem, then as confirmation that absence was correct, and only then as the
+placeholder being absent. The second reading actively cost work: it produced `RequiresArtwork`, whose
+whole purpose was to make the disc draw nothing.
+
+**The disc turns over once it is out of the case.** A new phase between the slide-out and the
+spin-up: three turns about the up axis, so the data side comes round to the player and back. It has
+to come forward out of the case's depth first — the disc still overlaps the case sideways at that
+point, and a body turning about the up axis sweeps through the depth it occupies, so flipped where it
+stood it would pass through the case it had just left.
+
+Three is deliberate: odd but whole, so the disc finishes facing the way it started and everything
+after it is unchanged. `Flip` is its own field rather than more `Spin`, because spin turns the disc
+in its own plane and can never show the far face.
+
+This breaks the handover parity between the two sequences on purpose — a disc launch is 900ms longer
+than a cartridge's, because a disc has a second face worth showing and a cartridge does not. The test
+was rewritten rather than deleted: it now pins the difference to exactly the flip's duration, so the
+sequences still cannot drift apart by anything nobody chose, which is what it was really protecting.

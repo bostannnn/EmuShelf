@@ -310,7 +310,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 ToLinear(entry.Game.ShelfAccent),
                 launch?.VerticalOffset ?? 0f,
                 launch?.DepthOffset ?? 0f,
-                launch?.Scale ?? 1f));
+                launch?.Scale ?? 1f,
+                ToRenderDiscPose(launch?.Disc)));
 
             if (!isFocused && hasDeparture && focus <= 0.001f)
             {
@@ -320,6 +321,26 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         return _renderItems;
     }
+
+    /// <summary>
+    /// Carries the choreography's disc across into the renderer's own vocabulary.
+    /// </summary>
+    /// <remarks>
+    /// A restatement rather than a shared type, for the same reason the launch offsets beside it
+    /// are: EmuShelf.Rendering knows about media and nothing about the app's services, and the
+    /// alternative to copying six floats here is a reference the wrong way down the stack.
+    /// </remarks>
+    private static MediaShelfDiscPose? ToRenderDiscPose(PhysicalShelfDiscPose? disc) =>
+        disc is { } pose
+            ? new MediaShelfDiscPose(
+                pose.HorizontalOffset,
+                pose.VerticalOffset,
+                pose.DepthOffset,
+                pose.Spin,
+                pose.Tilt,
+                pose.Flip,
+                pose.Scale)
+            : null;
 
     /// <summary>
     /// The angle one shelf item is turned to, blended by how close it is to the centre.
@@ -415,7 +436,12 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     }
 
     private static readonly ShelfArtworkFace[] Faces =
-        [ShelfArtworkFace.Front, ShelfArtworkFace.Back, ShelfArtworkFace.Spine];
+    [
+        ShelfArtworkFace.Front,
+        ShelfArtworkFace.Back,
+        ShelfArtworkFace.Spine,
+        ShelfArtworkFace.DiscLabel,
+    ];
 
     private IImage? ResolveArtwork(GameViewModel game, ShelfArtworkFace face)
     {
@@ -463,15 +489,23 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         foreach (var game in Items)
         {
-            if ((game.ShelfMediaProfile.ArtworkSlots & PhysicalArtworkSlots.CartridgeSupport) == 0)
+            var slots = game.ShelfMediaProfile.ArtworkSlots;
+            if ((slots & (PhysicalArtworkSlots.CartridgeSupport | PhysicalArtworkSlots.DiscLabel)) == 0)
             {
                 continue;
             }
 
+            // The disc's label belongs to the disc, so it is drawn at the disc's proportions rather
+            // than the case's. Taking the case's would letterbox a square label into a portrait
+            // sleeve's shape and then print it on a circle, which is two wrongs and no right.
+            var labelShell = (slots & PhysicalArtworkSlots.DiscLabel) != 0
+                ? MediaShell.GameDisc
+                : game.ShelfMediaProfile.Shell;
+
             // Needs the shell's own label proportions, which are only known once its asset has
             // finished decoding. Warming is retried on every list change and every prepared-shell
             // callback, so a label missed here is drawn moments later rather than lost.
-            if (MediaShellCatalog.TryGetPanelAspect(game.ShelfMediaProfile.Shell) is { } aspect)
+            if (MediaShellCatalog.TryGetPanelAspect(labelShell) is { } aspect)
             {
                 CartridgeLabelPlaceholder.Warm(
                     game.SystemId, game.SystemName, game.ShelfAccent, game.PlatformArtwork, aspect);
@@ -500,12 +534,26 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 : ShelfArtworkKind.PlaceholderLabel;
         }
 
-        var wanted = face == ShelfArtworkFace.Back
-            ? PhysicalArtworkSlots.Back
-            : PhysicalArtworkSlots.Spine;
+        var wanted = face switch
+        {
+            ShelfArtworkFace.Back => PhysicalArtworkSlots.Back,
+            ShelfArtworkFace.DiscLabel => PhysicalArtworkSlots.DiscLabel,
+            _ => PhysicalArtworkSlots.Spine,
+        };
         if ((slots & wanted) == 0)
         {
             return ShelfArtworkKind.None;
+        }
+
+        // A disc's face behaves like a cartridge's, not like a case's back. Both are the printed
+        // surface of the medium itself, so an unscraped one says so with the same blank label the
+        // grid and the cartridges use — where an unscraped back or spine has nothing to say and
+        // keeps the platform tint. A disc left bare reads as a finish rather than as missing art.
+        if (face == ShelfArtworkFace.DiscLabel)
+        {
+            return hasDecodedArtwork
+                ? ShelfArtworkKind.PhysicalMediaTexture
+                : ShelfArtworkKind.PlaceholderLabel;
         }
 
         return hasDecodedArtwork ? ShelfArtworkKind.PhysicalMediaTexture : ShelfArtworkKind.None;
@@ -610,10 +658,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         }
 
         var generation = ++_preparationGeneration;
-        var shells = Items?
-            .Select(game => game.ShelfMediaProfile.Shell)
+        var profiles = Items?.Select(game => game.ShelfMediaProfile).ToArray() ?? [];
+        var shells = profiles
+            .Select(profile => profile.Shell)
+            // The disc is not any game's own shell, so nothing else would ask for it — and the
+            // first frame that needs one is the launch, where a shell still decoding draws nothing
+            // at all. Preparing it with the row costs a generated mesh and no file.
+            .Concat(profiles.Any(profile => profile.HasDisc) ? [MediaShell.GameDisc] : [])
             .Distinct()
-            .ToArray() ?? [];
+            .ToArray();
         if (shells.Length == 0)
         {
             return;
@@ -1095,7 +1148,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         /// Sized from the renderer's own panel count rather than a second literal three, so the two
         /// cannot drift apart across the assembly boundary.
         /// </remarks>
-        public IImage?[] Faces { get; } = new IImage?[MediaShellRenderer.MaxPanels];
+        public IImage?[] Faces { get; } = new IImage?[MediaShellRenderer.MaxArtworkFaces];
 
         /// <summary>How many of this game's faces are actually uploaded, for the texture budget.</summary>
         public int UploadedFaceCount => Faces.Count(face => face is not null);

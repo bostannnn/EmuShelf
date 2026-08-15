@@ -46,6 +46,14 @@ public enum MediaShell
     /// the machine itself is the medium, and its artwork slot is the screen rather than a label.
     /// </remarks>
     ArcadeCabinet,
+    /// The optical disc a keep case holds, drawn only while a disc-based game is launching.
+    /// </summary>
+    /// <remarks>
+    /// Generated rather than sourced. A disc is an annulus and a shader finish, so authoring it as
+    /// geometry would buy nothing and would bring a licence with it; one profile's measured
+    /// diameter then covers both a 120mm DVD and a GameCube's 80mm mini-disc from the same mesh.
+    /// </remarks>
+    GameDisc,
 }
 
 [Flags]
@@ -56,6 +64,9 @@ public enum PhysicalArtworkSlots
     Back = 1 << 1,
     Spine = 1 << 2,
     CartridgeSupport = 1 << 3,
+
+    /// <summary>The printed face of the disc inside the case, not the case itself.</summary>
+    DiscLabel = 1 << 4,
 }
 
 /// <summary>
@@ -205,6 +216,30 @@ public enum ArtFace
 /// cartridge. The arcade cabinet is not a medium but a machine, and at its real 1.8m it would make
 /// every cartridge beside it a speck; cut under the control panel it is a bartop machine that still
 /// carries everything that says "arcade".</param>
+/// <param name="Iridescence">Strength of the diffraction rainbow a pressed disc's track spiral
+/// throws across its highlights. Zero on every moulded shell, which is what keeps the term off the
+/// plastic: it is the one thing that makes a grey annulus read as an optical disc rather than a
+/// washer, and it belongs to the medium rather than to the light.</param>
+/// <param name="TakesScrapedArtwork">Whether this shell's panels may sample the game's scraped
+/// artwork at all. False keeps them on the platform tint however much art the game has: a box scan
+/// is a picture of the packaging, and the one medium it is never a picture of is the disc inside
+/// it. Declared on the shell rather than enforced by the caller because there are two draw paths
+/// into these panels, and the rule has to hold on both.</param>
+/// <param name="CoverArtIndex">Which of the game's uploaded faces this shell's cover panel draws.
+/// Zero for every packaging shell, which is the game's box front. A disc is the exception: it is a
+/// second shell belonging to the same game, so its label cannot share slot 0 with the case's sleeve
+/// and takes a face of its own.</param>
+/// <param name="RequiresArtwork">Whether this shell's panels are skipped entirely when the game has
+/// no artwork for them, instead of falling back to the platform tint. A case's unscraped back wants
+/// the tint — it is a coloured stand-in for a picture, on a surface that is printed either way. A
+/// disc's is not: its face is a mirror, and a flat opaque circle laid over the middle of it reads as
+/// a sticker stuck on rather than as a label, which is exactly how it was reported. Better to be a
+/// disc until there is something real to print on it.</param>
+/// <param name="PanelTintLift">How far a panel with no scraped artwork lifts its platform tint
+/// toward a light printed base, from zero for the raw accent to one for plain white. A case's unscraped
+/// back is a coloured stand-in for a picture and wants the accent as it is; a disc's label is ink on
+/// a silver substrate, and the full-strength accent there is a saturated chip that reads as a
+/// sticker rather than as printing.</param>
 public sealed record MediaShellDefinition(
     MediaShell Shell,
     string ResourceName,
@@ -224,7 +259,12 @@ public sealed record MediaShellDefinition(
     float NormalStrength = 1f,
     float ClearcoatFactor = 0f,
     float ClearcoatRoughness = 0.04f,
-    float TrimBelowHeightFraction = 0f);
+    float TrimBelowHeightFraction = 0f,
+    float Iridescence = 0f,
+    bool TakesScrapedArtwork = true,
+    int CoverArtIndex = 0,
+    bool RequiresArtwork = false,
+    float PanelTintLift = 0f);
 
 /// <summary>
 /// A medium's real-world presentation contract for the shared shelf scene.
@@ -236,6 +276,15 @@ public sealed record MediaShellDefinition(
 /// optional correction is deliberately small and defaults to one; it is not a second arbitrary
 /// per-platform cover-size system.
 /// </remarks>
+/// <param name="InsertionAnimationId">Which launch choreography this medium takes. Read by the app
+/// layer's <c>PhysicalShelfLaunchStyle</c>: a cartridge is turned and pushed into a slot, while a
+/// keep case gives up its disc and is set down. One name per motion rather than a test against the
+/// shell, because the two do not line up — a PS1 jewel case and a PSP UMD share a stand-in cover
+/// card today and want different motions once their own shells exist.</param>
+/// <param name="DiscDiameterMillimetres">Diameter of the optical disc inside this medium, or zero
+/// where there is none. Measured rather than assumed: a GameCube ships an 80mm mini-disc where
+/// every other case here holds a 120mm one, and that difference is plainly visible once the disc
+/// is out of the case.</param>
 public sealed record PhysicalMediaProfile(
     MediaShell Shell,
     Vector3 DimensionsMillimetres,
@@ -243,7 +292,8 @@ public sealed record PhysicalMediaProfile(
     string MaterialVariant,
     string InsertionAnimationId,
     float PresentationScale = 1f,
-    float FloorClearanceInShelfUnits = 0f)
+    float FloorClearanceInShelfUnits = 0f,
+    float DiscDiameterMillimetres = 0f)
 {
     public const float ReferenceHeightMillimetres = 190f;
 
@@ -280,4 +330,9 @@ public sealed record PhysicalMediaProfile(
     /// </remarks>
     public float TurningWidthInShelfUnits =>
         MathF.Sqrt((WidthInShelfUnits * WidthInShelfUnits) + (DepthInShelfUnits * DepthInShelfUnits));
+    /// <summary>Whether this medium has a disc the launch choreography can lift out of it.</summary>
+    public bool HasDisc => DiscDiameterMillimetres > 0f;
+
+    public float DiscDiameterInShelfUnits =>
+        DiscDiameterMillimetres / ReferenceHeightMillimetres * PresentationScale;
 }

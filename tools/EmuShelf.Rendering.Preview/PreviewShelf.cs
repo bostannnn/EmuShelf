@@ -125,8 +125,9 @@ public static class PreviewShelf
             FloorClearanceInShelfUnits: 0.010f)),
         new("playstation2", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps2-black", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps2-black", "disc-from-case", DiscDiameterMillimetres: 120f)),
         // Immediately after the PS2 case on purpose: PSP shares that geometry and the entire claim
         // being reviewed is that it stands shorter and clearer beside it. Split apart in this list
         // the two would be judged separately, which is the one comparison that cannot answer the
@@ -142,16 +143,19 @@ public static class PreviewShelf
         // nothing. Three of the app's eight finishes had never appeared in any acceptance artefact.
         new("playstation3", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps3-clear", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps3-clear", "disc-from-case", DiscDiameterMillimetres: 120f)),
         new("gamecube", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "gamecube-black", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "gamecube-black", "disc-from-case", DiscDiameterMillimetres: 80f)),
         new("wii", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "wii-white", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "wii-white", "disc-from-case", DiscDiameterMillimetres: 120f)),
         new("nes", new PhysicalMediaProfile(
             MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f),
             PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical",
