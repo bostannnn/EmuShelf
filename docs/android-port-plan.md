@@ -40,11 +40,11 @@ GLSL ES 3.00 with the two desktop-only GL calls already guarded.
 EmuShelf on Android is **the Gamepad shell on a handheld, firing intents at Android emulator apps.**
 The desktop targets keep working unchanged.
 
-Say the rest plainly, because the first draft's "not a new product, not a rewrite" was doing work it
-had not earned: on Android this is a **thinner product that shares a domain layer.** It loses the
-whole "EmuShelf configures the emulator for you" family, it loses RetroArch as a launch backend
-(9 of 15 systems route through `-L core content` today), and it gains an emulator-setup burden the
-desktop build does not have. That can still be worth building. It is not the same app.
+One thing to be accurate about, because it changes what to build rather than whether to: on Android
+this is a **thinner build that shares a domain layer.** The "EmuShelf configures the emulator for
+you" family does not survive, RetroArch's desktop `-L core content` route does not survive (9 of 15
+systems use it today), and there is an emulator-setup step the desktop build does not have. Plan for
+those three, rather than discovering them.
 
 ## Decisions the owner must make
 
@@ -253,6 +253,39 @@ whether a game boots.
 **One thing the spike cannot answer here:** ARMSX2 and aPS3e require console BIOS images, and Azahar
 needs 3DS system files. Those are yours to supply on the Thor; the AVD can prove the file handoff but
 not a full boot.
+
+## Prior art: what the shipping Android frontends do
+
+Checked because it is cheaper to read a working launcher's config than to rediscover it. Two are
+worth knowing about.
+
+**Cocoon** (`cocoon-shell.com`, APK-only, but it publishes its 119 per-platform launch configs at
+[inssekt/CocoonFE](https://github.com/inssekt/CocoonFE/tree/main/platforms)). The config format is
+Daijishō-shaped, and its PS1 file confirms the measurements above exactly:
+
+- Every RetroArch entry uses `{file.path}` — plain paths — with the core at
+  `/data/data/com.retroarch.aarch64/cores/<core>_libretro_android.so`. Same route this spike proved.
+- Standalone emulators split by app: DuckStation modern is `{file.uri}`, and there is a separate
+  **"Duckstation (Legacy)"** entry using `{file.path}`. FPse and ePSXe take paths.
+- **`killPackageProcesses: true` on every RetroArch entry**, with a `killPackageProcessesWarning`
+  flag. They force-stop the emulator before launching. Worth stealing — it is a concrete answer to
+  "the emulator is already running" that the exit-signal work in Milestone B otherwise has to invent.
+- The PS1 `acceptedFilenameRegex` is `^(?!(?:\._|\.).*).*(?<!bin)$` — hide `.bin`, list `.cue`/`.m3u`.
+  The same descriptor-vs-payload split EmuShelf's import rules already make.
+- Cocoon takes All Files Access for itself and states plainly that without it *"some emulators may
+  report 'file not found' even when the file is present"* — independent confirmation that this
+  failure is silent and misleading, and that a shipping frontend papers over it rather than solving it.
+- It explicitly supports **dual-screen handhelds including the AYN Thor**, with a single-screen
+  toggle. Relevant to the open second-screen decision.
+
+**NeoStation** ([misobadev/neostation-frontend](https://github.com/misobadev/neostation-frontend),
+full source, Flutter/Dart, ships on Android/Windows/Linux/macOS). One technique worth taking:
+
+- It solves multi-disc by **generating `.m3u` playlists** during a library scan, reusing existing
+  ones rather than duplicating. That is the derived-descriptor approach. The difference for EmuShelf
+  is where the file lands: `Cache/`, never beside the user's games.
+
+Neither publishes anything that changes the plan's architecture. They confirm it.
 
 ## Capability model — replacing the static loss list
 
@@ -529,24 +562,32 @@ Answer these before writing Android code against assumptions:
 
 ## Effort
 
-Person-weeks of focused solo work. Confidence is mine, not the estimate's.
+**Writing the code is not the schedule.** Milestone 0a — toolchain from zero, five emulators
+installed, manifests analysed, the multi-disc question answered — took about an hour. Size the rest
+the same way: in agent sessions, not person-weeks.
 
-| Milestone | Weeks | Confidence | Note |
-|---|---|---|---|
-| 0a — toolchain + AVD spike | 2–3 | Med-high | From zero: no JDK, adb, SDK or Studio on the dev machine |
-| 0b — Thor re-run + pad probe | 0.5–1 | Medium | Day one on the device |
-| A0 — desktop split | 3–4 | Medium | Verified by the existing suite; valuable regardless |
-| A1 — head + skeleton + gamepad import | 4–6 | **Low** | Gamepad import is a feature; GL is unproven |
-| D — storage & permissions | 2–4 | **Low** | Unbounded if strategy 1 fails |
-| B — launching | 3–5 | Medium | 7 emulator definitions, `<queries>`, resolver promotion, exit signal |
-| C — controller + IME | 2–3 | Low-med | Event→poll bridge; no pad ever hand-tested |
-| E — desktop remainder | 2–3 | Med-high | Merge, settings UI, first real Google call |
-| E — Android | 5–7 | **Low** | SAF endpoint is a rewrite; 6 save providers |
-| F — packaging | 2–3 | Medium | Keystore, CI job, verification, docs |
-| Unbudgeted (touch, ROM-onto-device, docs, support matrix) | 2–4 | Low | Not optional |
-| **Total** | **28–43** | | **~6–10 months solo** |
+| Milestone | Sessions | What could stretch it |
+|---|---|---|
+| 0a — toolchain + AVD spike | done | — |
+| A0 — desktop split | 1–2 | 17 snapshot baselines and 19 `avares://` URIs have to come out green |
+| A1 — head + skeleton + gamepad import | 2–3 | Gamepad import is a real feature; GL may not initialise |
+| D — storage & permissions | 1–2 | Grows if the SAF-only emulators need EmuShelf-side SAF readers |
+| B — launching | 1–2 | Mostly per-emulator definitions, and Cocoon's configs are a working reference |
+| C — controller + IME | 1–2 | Pad behaviour is unverifiable until the Thor is here |
+| E — desktop remainder | 1 | Merge the Drive commit, settings UI, one real sign-in |
+| E — Android | 2–3 | SAF save endpoint is the one genuine rewrite |
+| F — packaging | 1 | Keystore and CI job |
 
-The first draft carried no estimate. A1 is the most likely to be underestimated, then E-android.
+**What actually gates the calendar**, none of which goes faster with more code written:
+
+1. **The Thor is not here yet.** 0b, all of C, and every acceptance check wait on delivery.
+2. **BIOS and system files.** ARMSX2, aPS3e and Azahar need them; they are yours to supply and no
+   amount of agent time substitutes.
+3. **Things only judged by hand** — does the shelf look right, does the pad feel right, does a real
+   game boot.
+
+So: the implementable surface is roughly a week of sessions. Everything after A1 that touches the
+device is bounded by the device, not by the work.
 
 ## Test strategy
 
