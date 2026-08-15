@@ -195,6 +195,11 @@ public partial class MainViewModel : ViewModelBase
 
         _shelfHeroSupported = false;
         OnPropertyChanged(nameof(ShelfSceneSupported));
+        // Neither the tube nor the in-place scene can run, so the flat 2D fallback has to take the
+        // backdrop back and the in-place host has to disappear.
+        OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
+        OnPropertyChanged(nameof(ShowInlineShelfScene));
+        OnPropertyChanged(nameof(IsShelfTubeActive));
         foreach (var game in Games)
         {
             game.ShelfHeroSupported = false;
@@ -334,6 +339,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(ShowShelfTube));
         OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowInlineShelfScene));
+        OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
@@ -732,6 +739,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(ShowShelfTube));
         OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowInlineShelfScene));
+        OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
@@ -780,21 +789,39 @@ public partial class MainViewModel : ViewModelBase
         CrtScreenEffect ? CrtPresentation.Default : CrtPresentation.Off;
 
     /// <summary>
-    /// The tube is on screen. Every couch layout, not just the shelf.
+    /// The full-bleed capture tube is on screen. Every couch layout, not just the shelf.
     /// </summary>
     /// <remarks>
     /// The CRT is a property of the television the couch UI is being shown on, not of one layout
     /// inside it — the grid and the spotlight are just as much "a console menu on a TV" as the shelf
     /// is. Desktop mode is deliberately excluded: it is a mouse-driven library window, and a warped,
     /// scanned one would be unusable rather than nostalgic.
+    ///
+    /// This is now purely the CRT switch. The window-covering tube exists to capture the couch UI
+    /// and warp it, which is only wanted when the effect is on; with it off the shelf is drawn by an
+    /// in-place scene (<see cref="ShowInlineShelfScene"/>) that the couch UI lays out around normally,
+    /// so nothing has to be captured or composited and the scene idles when the shelf is still.
     /// </remarks>
+    public bool ShowCouchTube => IsGamepadMode && CrtScreenEffect;
+
+    /// <summary>
+    /// The in-place 3D shelf, drawn only when the effect is off.
+    /// </summary>
     /// <remarks>
-    /// The OR is load-bearing. This control is not only the tube — it is also the only thing that
-    /// draws the physical-media shelf, since the flat 2D strip beside it is a fallback for machines
-    /// with no usable GL and stays hidden whenever the scene works. Gating it purely on the CRT
-    /// setting therefore emptied the shelf completely the moment the effect was switched off.
+    /// With the tube off the shelf cannot be the window-covering, self-compositing scene the tube is:
+    /// there is nothing to paint the rail, title and overlays back over it, so full-bleed it would
+    /// float on top of them. This host instead sits inside the shelf's own slot in the couch layout,
+    /// where Avalonia stacks the rail above it, the title below it and any overlay over it for free —
+    /// no capture, and a redraw only when the shelf itself changes. It renders opaque over its own
+    /// resolved backdrop so it does not depend on the GL surface being alpha-composited, which is the
+    /// assumption the full-bleed path made and the one that differs across platforms.
     /// </remarks>
-    public bool ShowCouchTube => IsGamepadMode && (CrtScreenEffect || IsGamepadShelfView);
+    public bool ShowInlineShelfScene =>
+        IsGamepadMode && IsGamepadShelfView && ShelfSceneSupported && !CrtScreenEffect;
+
+    /// <summary>The presentation the in-place shelf is handed: a flat, opaque compositor — no capture,
+    /// no distortion — so the effect-off shelf is a genuine hard-off rather than a quieter tube.</summary>
+    public CrtPresentation InlineShelfCrt => CrtPresentation.Flat;
 
     /// <summary>
     /// The games the 3D scene draws, or nothing outside the shelf layout.
@@ -802,7 +829,8 @@ public partial class MainViewModel : ViewModelBase
     /// <remarks>
     /// The tube runs over every couch layout, but only the shelf has physical media in it. Handing
     /// the scene an empty list on the grid and spotlight leaves it compositing the captured UI and
-    /// nothing else, instead of drawing a row of cartridges on top of the cover grid.
+    /// nothing else, instead of drawing a row of cartridges on top of the cover grid. The in-place
+    /// scene shares this, and is only ever attached in the shelf layout to begin with.
     /// </remarks>
     public IReadOnlyList<GameViewModel>? ShelfSceneItems => IsGamepadShelfView ? Games : null;
 
@@ -810,21 +838,24 @@ public partial class MainViewModel : ViewModelBase
     /// The tube is both on screen and actually distorting.
     /// </summary>
     /// <remarks>
-    /// Distinct from <see cref="ShowShelfTube"/>, which stays true with the effect switched off: the
-    /// scene control is full-bleed either way, but only an active tube paints the couch backdrop and
-    /// composites the captured UI. With the effect off those responsibilities go back to Avalonia,
-    /// so the couch root has to paint its own background again and the shelf its own accent wash.
+    /// Gates the couch root's transparent background: only when the tube captures that root and
+    /// composites it back over the scene must the root stop painting its own opaque fill, or the
+    /// capture returns a solid sheet with the shelf hidden behind it. The in-place effect-off scene
+    /// does not capture the root, so the root keeps its ordinary background there.
     /// </remarks>
     public bool IsShelfTubeActive =>
         IsGamepadMode && CrtScreenEffect && GamepadLayout == GamepadLibraryLayout.Shelf;
 
-    /// <summary>The shelf paints its own flat backdrop: no GPU scene, or no tube to paint one.</summary>
-    public bool ShowShelfFlatBackdrop => !ShelfSceneSupported || !CrtScreenEffect;
+    /// <summary>The shelf paints its own flat backdrop only when there is no GPU scene at all; both
+    /// the tube and the effect-off in-place scene resolve the couch backdrop themselves and draw
+    /// opaque over it, and the couch root's own library fill covers the bands around the media.</summary>
+    public bool ShowShelfFlatBackdrop => !ShelfSceneSupported;
 
     partial void OnCrtScreenEffectChanged(bool value)
     {
         OnPropertyChanged(nameof(CouchCrt));
         OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowInlineShelfScene));
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         _ = _themeService.SetCrtScreenEffectAsync(value);
@@ -3446,6 +3477,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(ShowShelfTube));
         OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowInlineShelfScene));
+        OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();

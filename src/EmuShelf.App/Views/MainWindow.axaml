@@ -3036,12 +3036,14 @@
                      theme's accent, so moving the highlight recolours nothing. Two Borders rather
                      than one converter-driven brush: each source is a plain binding this way.
 
-                     Only the no-GL fallback paints these. When the scene is up it writes an opaque
-                     image over the whole surface and resolves the same two colours itself, because a
-                     backdrop painted behind the tube could not be curved, scanned or vignetted with
-                     everything else — it would stay flat around a warped picture. The wrapping Panel
-                     carries the condition so each inner Border keeps its own plain binding. -->
-                <Panel IsVisible="{Binding ShowShelfFlatBackdrop}">
+                     Only the no-GL fallback paints these. When a scene is up — the tube, or the
+                     effect-off in-place shelf — it resolves the couch library colour itself and draws
+                     opaque over it, so a backdrop sheet here would only be something to paint out. The
+                     wrapping Panel carries the condition so each inner Border keeps its own plain
+                     binding. Its top margin clears the platform rail (100px): the rail is an opaque
+                     toolbar drawn in the couch root beneath this, and a full-height sheet painted it
+                     out. -->
+                <Panel IsVisible="{Binding ShowShelfFlatBackdrop}" Margin="0,100,0,0">
                     <Border Background="{DynamicResource EmuLibraryBrush}" />
                     <Border x:Name="ShelfPlatformAccentWash"
                             Background="{Binding FocusedGame.AccentColor}" Opacity="0.16"
@@ -3129,6 +3131,29 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </Panel>
+
+                    <!-- The in-place 3D shelf, shown only with the CRT effect off. Unlike the tube at
+                         the window root, this one sits inside the shelf's own slot, so the couch UI
+                         stacks around it for free — the rail above, the title below, any overlay over
+                         it — and nothing has to be captured or composited back. It has no ChromeSource
+                         for exactly that reason, and renders opaque over its own backdrop so it does
+                         not depend on the GL surface being alpha-blended into the window. With the
+                         effect on this stays hidden and the window-covering tube draws the shelf. -->
+                    <controls:MediaShelf3DHost x:Name="GamepadShelfInlineScene"
+                                               IsHitTestVisible="False"
+                                               IsVisible="{Binding ShowInlineShelfScene}"
+                                               IsActive="{Binding ShowInlineShelfScene}"
+                                               IsSceneSupported="{Binding ShelfSceneSupported}"
+                                               Crt="{Binding InlineShelfCrt}"
+                                               TintBackdropWithAccent="False"
+                                               Items="{Binding ShelfSceneItems}"
+                                               FocusedItem="{Binding FocusedGame}"
+                                               ShelfPosition="{Binding ShelfPosition}"
+                                               Yaw="{Binding ShelfHeroYaw}"
+                                               Pitch="{Binding ShelfHeroPitch}"
+                                               DeparturePose="{Binding ShelfDeparturePose}"
+                                               LaunchPose="{Binding ShelfLaunchPose}"
+                                               InitializationFailed="OnGamepadShelfHeroFailed" />
                     </Grid>
 
                     <!-- Focused game's platform + title, centred beneath the shelf (the dock is hidden here). -->
