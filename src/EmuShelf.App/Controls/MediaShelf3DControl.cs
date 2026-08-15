@@ -74,6 +74,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         AvaloniaProperty.Register<MediaShelf3DControl, CrtPresentation>(
             nameof(Crt), CrtPresentation.Off);
 
+    public static readonly StyledProperty<bool> TintBackdropWithAccentProperty =
+        AvaloniaProperty.Register<MediaShelf3DControl, bool>(
+            nameof(TintBackdropWithAccent), true);
+
     /// <summary>
     /// The couch UI to draw inside the tube, rather than on top of it.
     /// </summary>
@@ -165,6 +169,22 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         set => SetValue(CrtProperty, value);
     }
 
+    /// <summary>
+    /// Whether the resolved backdrop carries the focused system's accent wash.
+    /// </summary>
+    /// <remarks>
+    /// True for the window-covering tube, whose backdrop is the whole couch screen and follows the
+    /// artwork. False for the in-place shelf, which is opaque inside its own slot with the couch
+    /// root's plain library fill in the bands around it — a washed backdrop there would print a
+    /// tinted rectangle against that plain fill, and the wash it would use (always the system accent)
+    /// would not even match the theme-accent wash the couch shows when artwork matching is off.
+    /// </remarks>
+    public bool TintBackdropWithAccent
+    {
+        get => GetValue(TintBackdropWithAccentProperty);
+        set => SetValue(TintBackdropWithAccentProperty, value);
+    }
+
     /// <inheritdoc cref="ChromeSourceProperty"/>
     public Visual? ChromeSource
     {
@@ -199,6 +219,12 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             && resource is ISolidColorBrush { } brush
             ? brush.Color
             : Color.FromRgb(22, 23, 27);
+
+        // The in-place shelf wants exactly the couch root's own fill, with no wash to seam against it.
+        if (!TintBackdropWithAccent)
+        {
+            return new Vector3(library.R / 255f, library.G / 255f, library.B / 255f);
+        }
 
         // Matches the wash Borders in MainWindow.axaml: the accent at 0.16 over the library colour.
         const float WashOpacity = 0.16f;
@@ -327,11 +353,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// </remarks>
     private void StartChromeCapture()
     {
-        if (!_isAttached || !Crt.IsActive || _observedWindow?.WindowState == WindowState.Minimized)
+        if (!_isAttached || !Crt.IsActive || ChromeSource is null
+            || _observedWindow?.WindowState == WindowState.Minimized)
         {
             // Switching the effect off has to stop the timer, not merely stop using its output: the
             // capture is a full-window offscreen render on the UI thread, and leaving it ticking is
-            // most of what the setting is meant to reclaim.
+            // most of what the setting is meant to reclaim. A scene with no chrome source — the
+            // in-place shelf, which draws no couch UI into itself — never starts one to begin with.
             _chromeSnapshot?.Dispose();
             _chromeSnapshot = null;
             return;

@@ -124,6 +124,27 @@ public readonly record struct CrtPresentation
         Backdrop = Vector3.Zero,
     };
 
+    /// <summary>
+    /// The tube reduced to a plain compositor: it still draws the scene over its backdrop and the
+    /// couch UI over that, into one opaque image, but with every curve, scanline and instability at
+    /// zero.
+    /// </summary>
+    /// <remarks>
+    /// This is what the couch shelf uses when the CRT effect is switched off. The shelf cannot go
+    /// back to <see cref="Off"/>'s bare resolve blit the way the grid and spotlight can: the scene
+    /// control is full-bleed and the platform rail, focused title and any open overlay lay out
+    /// <em>behind</em> it, so unless the tube composites them back over the cartridges nothing does,
+    /// and the media float on top of the rest of the screen. Intensity is 1 so the pass runs through
+    /// the shader — which at these parameters is an exact composite (see crt.frag) rather than a
+    /// television — while every motion knob stays 0, so <see cref="IsAnimated"/> is false and the
+    /// shelf still redraws only when something changes rather than holding the panel at 60fps.
+    /// </remarks>
+    public static CrtPresentation Flat { get; } = new()
+    {
+        Intensity = 1f,
+        Backdrop = Vector3.Zero,
+    };
+
     /// <summary>The shipped look. These are the values the effect was tuned to by eye.</summary>
     public static CrtPresentation Default { get; } = new()
     {

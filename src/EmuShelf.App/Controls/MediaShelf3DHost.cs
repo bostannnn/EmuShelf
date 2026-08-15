@@ -49,6 +49,10 @@ public sealed class MediaShelf3DHost : ContentControl
         AvaloniaProperty.Register<MediaShelf3DHost, CrtPresentation>(
             nameof(Crt), CrtPresentation.Off);
 
+    public static readonly StyledProperty<bool> TintBackdropWithAccentProperty =
+        AvaloniaProperty.Register<MediaShelf3DHost, bool>(
+            nameof(TintBackdropWithAccent), true);
+
     private readonly DispatcherTimer _initializationWatchdog;
     private MediaShelf3DControl? _scene;
     private bool _failedForActivation;
@@ -129,6 +133,13 @@ public sealed class MediaShelf3DHost : ContentControl
         set => SetValue(CrtProperty, value);
     }
 
+    /// <inheritdoc cref="MediaShelf3DControl.TintBackdropWithAccent"/>
+    public bool TintBackdropWithAccent
+    {
+        get => GetValue(TintBackdropWithAccentProperty);
+        set => SetValue(TintBackdropWithAccentProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -160,6 +171,8 @@ public sealed class MediaShelf3DHost : ContentControl
             scene.LaunchPose = LaunchPose;
         else if (change.Property == CrtProperty)
             scene.Crt = Crt;
+        else if (change.Property == TintBackdropWithAccentProperty)
+            scene.TintBackdropWithAccent = TintBackdropWithAccent;
         else if (change.Property == ChromeSourceProperty)
             scene.ChromeSource = ChromeSource;
     }
@@ -196,6 +209,7 @@ public sealed class MediaShelf3DHost : ContentControl
             DeparturePose = DeparturePose,
             LaunchPose = LaunchPose,
             Crt = Crt,
+            TintBackdropWithAccent = TintBackdropWithAccent,
             ChromeSource = ChromeSource,
         };
         scene.InitializationSucceeded += OnSceneInitializationSucceeded;
