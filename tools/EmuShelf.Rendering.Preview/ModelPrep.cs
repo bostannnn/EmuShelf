@@ -41,6 +41,19 @@ internal static class ModelPrep
     [Flags]
     private enum NeutralMaps
     {
+        /// <summary>
+        /// Flatten nothing; the pass only reduces the maps for the runtime.
+        /// </summary>
+        /// <remarks>
+        /// The arcade cabinet is the first shell that needs this. Its baked screen picture and
+        /// "RETRO ADVENTURE" marquee are the modeller's own invention rather than a publisher's
+        /// artwork, so the CC BY licence that covers the model covers them too — there is nothing
+        /// to remove, and removing it anyway would cost the cabinet its marquee for no reason.
+        /// Still worth a pass: 38 maps at 2048² are 62MB of source that has to reach the runtime
+        /// size before it can be embedded.
+        /// </remarks>
+        None = 0,
+
         BaseColour = 1 << 0,
         Surface = 1 << 1,
         All = BaseColour | Surface,
@@ -127,8 +140,10 @@ internal static class ModelPrep
             ? ResolveAllMaterialImages(root, textures, baseFill, maps, rects.FirstOrDefault())
             : ResolveNeutralImages(root, textures, materials, baseFill, maps, rects);
         // Named materials that do not exist are caught by name in ResolveNeutralImages, which is the
-        // more useful error. This is what is left: they exist and none of them samples a map.
-        if (neutralImages.Count == 0)
+        // more useful error. This is what is left: they exist and none of them samples a map — which
+        // is only an error if flattening was asked for at all. NeutralMaps.None runs the pass for
+        // the map reduction alone.
+        if (neutralImages.Count == 0 && maps != NeutralMaps.None)
         {
             throw new InvalidDataException(
                 $"Nothing to neutralize: {(neutralMaterial is null ? "this model has" : $"'{neutralMaterial}' has")} "
@@ -184,7 +199,12 @@ internal static class ModelPrep
         var scope = maps == NeutralMaps.BaseColour
             ? " out of the base-colour map, leaving the model's own surface maps intact"
             : " to a blank label";
-        WriteGlb(root, views, source, binStart, replacements, outputPath, inputPath, flattened + scope);
+        // A model with nothing to neutralise still passes through for its map reduction, and the
+        // provenance note has to say so rather than claim a flatten that never happened.
+        var modification = maps == NeutralMaps.None
+            ? "The author's own maps are kept as authored"
+            : flattened + scope;
+        WriteGlb(root, views, source, binStart, replacements, outputPath, inputPath, modification);
     }
 
     /// <summary>
@@ -1015,7 +1035,8 @@ internal static class ModelPrep
         {
             null or "" or "all" => NeutralMaps.All,
             "base" => NeutralMaps.BaseColour,
-            _ => throw new ArgumentException("--neutral-maps wants 'all' or 'base'."),
+            "none" => NeutralMaps.None,
+            _ => throw new ArgumentException("--neutral-maps wants 'all', 'base' or 'none'."),
         };
 
     /// <summary>

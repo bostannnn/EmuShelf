@@ -560,7 +560,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         foreach (var game in Items)
         {
             var profile = game.ShelfMediaProfile;
-            var width = profile.WidthInShelfUnits;
+            // The turning circle, not the face width: every medium on this shelf is turned, and a
+            // medium deeper than it is wide occupies far more of the row than its front suggests.
+            var width = profile.TurningWidthInShelfUnits;
             var centre = cursor + (width * 0.5f);
             _layout.Add(new LayoutEntry(game, centre));
             _gamesByKey[game.Id] = game;

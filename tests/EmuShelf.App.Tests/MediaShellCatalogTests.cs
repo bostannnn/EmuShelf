@@ -187,7 +187,20 @@ public class MediaShellCatalogTests
         var placement = MediaShellCatalog.Place(definition.CoverPanel, asset);
         var surfaces = new List<(float Depth, float Area)>();
 
-        foreach (var mesh in asset.Meshes)
+        // A panel scoped to one material is only ever drawn on that material's meshes, so counting
+        // the rest of the machine here would credit the arcade cabinet's bezel and marquee to a
+        // screen print that never reaches them.
+        var scope = definition.CoverPanel.Material is null
+            ? -1
+            : asset.Materials
+                .Select((material, index) => (material, index))
+                .First(entry => string.Equals(
+                    entry.material.Name,
+                    definition.CoverPanel.Material,
+                    StringComparison.OrdinalIgnoreCase))
+                .index;
+
+        foreach (var mesh in asset.Meshes.Where(mesh => scope < 0 || mesh.MaterialIndex == scope))
         {
             for (var index = 0; index + 2 < mesh.Indices.Length; index += 3)
             {

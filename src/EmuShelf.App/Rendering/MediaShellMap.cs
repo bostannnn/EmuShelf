@@ -27,6 +27,10 @@ public static class MediaShellMap
         ["megadrive"] = MediaShell.MegaDriveCartridge,
         ["nds"] = MediaShell.DsCard,
 
+        // Arcade has no physical medium — nobody ever owned the ROM board — so the machine stands
+        // in for it, cut off under its control panel so it is a bartop rather than a wardrobe.
+        ["arcade"] = MediaShell.ArcadeCabinet,
+
         // One temporary geometry family, five distinct profiles. PSP is the odd one: the other four
         // shipped in this exact case, and a UMD case is a different object that borrows it — see its
         // profile below for what that costs and why it is still worth it.
@@ -108,6 +112,18 @@ public static class MediaShellMap
             MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "dreamcast-jewel", "case-downward"),
+        // The only profile that is not a measurement of a real object, and deliberately so. Cut
+        // under its control panel the shell is the head of an upright cabinet, whose real
+        // dimensions are about 660 x 930 x 1030mm — nearly five keep cases tall, and since the
+        // shelf camera frames the tallest medium in the library view, one arcade game would shrink
+        // every cartridge beside it to a chip. So it is sized as the bartop machine it now looks
+        // like, 480mm tall, and takes the asset's own width and depth ratios from there. That keeps
+        // it undistorted and plainly the biggest thing on the shelf — a machine among boxes — at
+        // two and a half keep cases rather than five. The ratios are the chopped upright's, not a
+        // real bartop's: deeper than it is wide, which is exactly what the geometry is.
+        ["arcade"] = new(
+            MediaShell.ArcadeCabinet, new(341f, 480f, 533f), PhysicalArtworkSlots.Front,
+            "arcade-cabinet", "cartridge-vertical"),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

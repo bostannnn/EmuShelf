@@ -25,6 +25,7 @@ SNES review. The keep case is the only one with no game art on it.
 | `nes` | dark_igorek | 1,266 | 3 x 2048 + 3 x 1024 | 1.124 : 1 : 0.135 | Proportions match a real NES cart (1.125) almost exactly. Two material sets. |
 | `gba` | thegraphicsgeek | 5,802 | 3 x 4096 | 1.748 : 1 : 0.200 | Ships as `gba-cartridge`. Was filed under `gbc/` when this inventory was written, and is a GBA cartridge: its mesh is named `GBA_SP_Cartridge`, and a GB/GBC cart is taller than wide (~0.88), not 1.75. Moved to `gba/` when the real Game Boy shell arrived. |
 | `gbc` | Bob (MeBob) | **510** | 3 x 2048 | 0.885 : 1 : 0.140 | Ships as `gbc-cartridge`. The replacement for the GBA cartridge above, and correctly shaped this time (0.885 against a real 57 x 65mm cart's 0.877). A DMG cartridge rather than a Game Boy Color one — grey, no clear shell — which is accepted because the two share a shell and `gbc` covers the whole Game Boy line. Lower-poly than the Mega Drive shell this document warns about, but it does not fail the same way: its chamfered corner, moulded ridges and label recess are real geometry, and it holds up under the studio key. |
+| `arcade` | sanyabeast | 7,070 | **38 x 2048** | 0.355 : 1 : 0.557 | Ships as `arcade-cabinet`, cut to 0.711 : 1 : 1.110 by trimming the lower half at load. Three candidates were downloaded; this is the only one whose parts are separate materials — `screen`, `banner`, `game_panel`, `butt_a`..`d` — which is what lets artwork be scoped to the glass. Nothing to neutralise: the screen picture and the "RETRO ADVENTURE" marquee are the modeller's own. Twelve materials at three maps each is the reason this shell runs at 512px where the cartridges run at 1024. |
 | `genesis` | Naser | **334** | 3 x 2048 | 1.553 : 1 : 0.108 | Far too low-poly for this studio: no bevelled edges to catch the key, so it will read as a flat printed card. Fails the design's asset gate on silhouette. |
 | `ds` | satchii_ | 20,016 | 3 maps | see notes | **Four identical copies** of one card in a single file, laid out in a row by node matrices. Each card is 33.7 x 35.1 x 1.8, i.e. lying flat (thickness on Y, so it needs a canonical rotation) and about half the real relative thickness of a 3.8mm DS card. |
 
@@ -48,3 +49,11 @@ drove the lid through the tray.
 reproduces `gbc-cartridge.glb` byte-for-byte (SHA-256 `c8fb6323…e365`, 3,280,136 bytes). The
 rectangle is the Super Mario Land 2 sticker's UV bounds and the fill is the shell's own plastic
 grey; `--dump-atlas` on the *prepared* file is the check that the mask covered it.
+
+`dotnet run --project tools/EmuShelf.Rendering.Preview -- --prepare-model models/arcade/arcade_game_machine_001.glb --prepare-out src/EmuShelf.Rendering/Assets/arcade-cabinet.glb --neutral-maps none --max-texture 512`
+reproduces `arcade-cabinet.glb` byte-for-byte (SHA-256 `268d97da…9703`, 6,506,072 bytes).
+`--neutral-maps none` is the whole difference from the two above and is deliberate: there is no
+publisher artwork on this model to remove, and flattening its maps anyway would cost it the marquee
+and screen the author drew. The cut below the control panel is *not* in this file — it is
+`TrimBelowHeightFraction` in the catalogue, applied at load, so moving it needs a rebuild rather
+than a re-prep of a 62MB source.

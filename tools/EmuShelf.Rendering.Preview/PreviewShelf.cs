@@ -63,6 +63,14 @@ public static class PreviewShelf
 {
     public static IReadOnlyList<PreviewShelfEntry> Entries { get; } =
     [
+        // First rather than last, unlike every shell before it: it is the widest and tallest thing
+        // in the composition, and appended it pushed the NES cartridge off the right-hand edge —
+        // the same way the Mega Drive and Game Boy shells fell off it in their turn. Leading the
+        // row also keeps it near the cases, which is the pairing worth checking by eye: the metric
+        // contract is the only thing keeping a machine and a box in one scene at honest sizes.
+        new("arcade", new PhysicalMediaProfile(
+            MediaShell.ArcadeCabinet, new Vector3(341f, 480f, 533f),
+            PhysicalArtworkSlots.Front, "arcade-cabinet", "cartridge-vertical")),
         // 3DS stands in for every system with no authored shell. A real system rather than a
         // synthetic card, so the entry has an id to check against, and its 1.129 box art is also
         // the only thing in this list exercising the shared card mesh scaled to a ratio that is not

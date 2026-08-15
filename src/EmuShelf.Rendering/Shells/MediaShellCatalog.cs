@@ -366,6 +366,50 @@ public static class MediaShellCatalog
             ClearcoatFactor: 1.0f,
             ClearcoatRoughness: 0.06f),
 
+        // sanyabeast's cabinet, and the first shell that is a machine rather than a medium: an
+        // arcade game was never something a player took home in a box, so what stands on the shelf
+        // is what stood in the arcade. Authored upright with its front toward +X — the buttons are
+        // the giveaway, sitting at the far positive end of that axis — so it takes the same quarter
+        // turn about Y the NES cartridge does.
+        [MediaShell.ArcadeCabinet] = new MediaShellDefinition(
+            MediaShell.ArcadeCabinet,
+            "EmuShelf.Rendering.Assets.arcade-cabinet.glb",
+            Matrix4x4.CreateRotationY(-MathF.PI / 2f),
+            // 512 rather than the cartridges' 1024, because this shell has twelve materials and
+            // thirty-six maps where they have one and three. The source is 62MB; at 1024 the
+            // derivative is over 20MB for an object the shelf draws at a few hundred pixels.
+            MaxTextureSize: 512,
+            // Scoped to the screen material, and therefore measured against the screen's own mesh
+            // rather than the cabinet: 1.0 is the edge of the glass, and the picture runs to it.
+            // An inset was tried first, on the reasoning that a picture stops short of a tube's
+            // edge — but this mesh is the visible glass only, its surround is the cabinet's own
+            // dark bezel, and the unprinted margin came out as a pale grey mat around the artwork.
+            // 0.99 rather than 1.0 leaves the mask's antialiased edge somewhere to land.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.99f, 0.99f, -0.99f, 0.99f,
+                ArtFit: ArtFit.Cover, Material: "screen"),
+            ExtraPanels: [],
+            // A CRT behind glass, so glossier than any printed label on the other shells.
+            PanelRoughness: 0.18f,
+            // The tube is curved, and that curve catching the studio key is what stops the screen
+            // reading as a sticker on a flat panel.
+            FlattenPanelNormal: false,
+            // Half the authored height, settled by rendering three of them. The control panel's
+            // surface sits at 0.527 and its buttons reach 0.60, so the window is narrow above and
+            // open below: 0.58 saws the joysticks off, and 0.42 keeps a tall empty skirt that reads
+            // as a cabinet with its legs cut rather than as a bartop. 0.50 takes the whole control
+            // panel plus a shallow apron under it.
+            //
+            // The floor laid across the cut is the bound going down, and it is not obvious from
+            // here — see GlbLoader.CreateCutCap. That floor is the convex hull of the cut, which
+            // stays hidden only while the cross-section is roughly convex. It is at 0.50. Lower and
+            // the control panel's skirt parts company with the body, at which point the hull bridges
+            // the two and a ledge of floor shows between them from a low angle. Anything much under
+            // 0.45 needs the cap looked at, not just the silhouette.
+            TrimBelowHeightFraction: 0.50f),
+
+        // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
+        // the lid), so no reorientation is needed.
         [MediaShell.DiscKeepCase] = new MediaShellDefinition(
             MediaShell.DiscKeepCase,
             "EmuShelf.Rendering.Assets.disc-keep-case.glb",
@@ -478,7 +522,11 @@ public static class MediaShellCatalog
 
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
-        return GlbLoader.Load(buffer.ToArray(), definition.Orientation, definition.MaxTextureSize);
+        return GlbLoader.Load(
+            buffer.ToArray(),
+            definition.Orientation,
+            definition.MaxTextureSize,
+            definition.TrimBelowHeightFraction);
     }
 
     private static IEnumerable<string> ResourceNames() =>
@@ -578,8 +626,11 @@ public static class MediaShellCatalog
     /// </summary>
     public static ArtPanelPlacement Place(ArtPanel panel, ModelAsset model)
     {
-        var half = model.Size * 0.5f;
-        var centre = (model.BoundsMin + model.BoundsMax) * 0.5f;
+        var (boundsMin, boundsMax) = panel.Material is null
+            ? (model.BoundsMin, model.BoundsMax)
+            : MaterialBounds(model, panel.Material);
+        var half = (boundsMax - boundsMin) * 0.5f;
+        var centre = (boundsMin + boundsMax) * 0.5f;
 
         var normal = FaceNormal(panel.Face);
         // u runs along the panel's own left-to-right, which is the direction a viewer standing in
@@ -654,6 +705,59 @@ public static class MediaShellCatalog
             CutCorner = 0f,
             TopWrap = 0f,
         };
+    }
+
+    /// <summary>
+    /// The canonical-space bounds of everything wearing one material, which is what a
+    /// material-scoped <see cref="ArtPanel"/> measures its rectangle against.
+    /// </summary>
+    /// <remarks>
+    /// A shell's bounding box is the right frame for a label on the front of a cartridge and the
+    /// wrong one for a screen recessed inside a machine: the arcade cabinet's screen is 0.4 of its
+    /// width and a third of its height, so expressed against the whole cabinet every edge of the
+    /// panel is a number nobody can check. Against the screen's own mesh they are the numbers you
+    /// would measure with a rule — full width is 1.0, and an inset for the bezel is the inset.
+    /// </remarks>
+    public static (Vector3 Min, Vector3 Max) MaterialBounds(ModelAsset model, string material)
+    {
+        var index = -1;
+        for (var candidate = 0; candidate < model.Materials.Count; candidate++)
+        {
+            if (string.Equals(model.Materials[candidate].Name, material, StringComparison.OrdinalIgnoreCase))
+            {
+                index = candidate;
+                break;
+            }
+        }
+
+        if (index < 0)
+        {
+            throw new ArgumentException(
+                $"No material named '{material}' in this model; it has "
+                + $"{string.Join(", ", model.Materials.Select(entry => entry.Name))}.",
+                nameof(material));
+        }
+
+        var min = new Vector3(float.PositiveInfinity);
+        var max = new Vector3(float.NegativeInfinity);
+        foreach (var mesh in model.Meshes.Where(mesh => mesh.MaterialIndex == index))
+        {
+            for (var offset = 0; offset < mesh.Vertices.Length; offset += MeshGeometry.FloatsPerVertex)
+            {
+                var position = new Vector3(
+                    mesh.Vertices[offset], mesh.Vertices[offset + 1], mesh.Vertices[offset + 2]);
+                min = Vector3.Min(min, position);
+                max = Vector3.Max(max, position);
+            }
+        }
+
+        if (min.X > max.X)
+        {
+            throw new ArgumentException(
+                $"The material '{material}' exists but no mesh draws with it.", nameof(material));
+        }
+
+        return (min, max);
     }
 
     private static (float Min, float Max) Span(

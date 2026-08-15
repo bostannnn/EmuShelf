@@ -38,6 +38,8 @@ if (prepModel is not null)
         ArgumentValue("--neutral-fill"),
         // "base" leaves the model's own normal and metallic/roughness maps alone, for a shell whose
         // surface detail is the object's moulding rather than an embossing of the removed artwork.
+        // "none" flattens nothing, for a shell whose baked artwork is the modeller's own invention
+        // and is therefore covered by the same licence as the mesh.
         ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
         args.Contains("--bake-vertex-colours"),
@@ -168,6 +170,18 @@ foreach (var candidate in MediaShellCatalog.All)
 // still matches MediaShellMap. It used to sit inline here, where nothing outside this file could
 // see it, and it drifted twice.
 var shelfEntries = PreviewShelf.Entries;
+
+// A shelf is one platform at a time in the app, so how a medium spaces against *itself* never
+// appears in the mixed row above — and for the arcade cabinet that is the whole question, being
+// deeper than it is wide. Repeats one entry instead.
+if (ArgumentValue("--shelf-of") is { } singleShell)
+{
+    var only = Enum.Parse<MediaShell>(singleShell, ignoreCase: true);
+    shelfEntries = [.. Enumerable.Repeat(
+        shelfEntries.First(entry => entry.Profile.Shell == only),
+        int.Parse(ArgumentValue("--shelf-count") ?? "5"))];
+}
+
 var shelfProfiles = shelfEntries.Select(entry => entry.Profile).ToArray();
 // The shelf entry each shell is drawn with on the turntable sheet — its finish and, through that,
 // the shape of its stand-in cover. Grouped rather than keyed directly because a shell no longer has
@@ -233,7 +247,12 @@ var shelfCentres = PhysicalCentres(shelfProfiles, gap: 0.14f);
 // Named, not positional, for the reason the art-free slot below already is: inserting the Game Boy
 // cartridge shifted every index after SNES, and a positional anchor would have silently re-centred
 // the acceptance shot on a different medium.
+// A --shelf-of row has no SNES cartridge in it; focus its middle instead of indexing with -1.
 var shelfFocus = Array.FindIndex(shelfProfiles, profile => profile.Shell == MediaShell.SnesCartridge);
+if (shelfFocus < 0)
+{
+    shelfFocus = shelfProfiles.Length / 2;
+}
 var shelfAnchor = shelfCentres[shelfFocus];
 var shelfItems = new List<MediaShelfRenderItem>(shelfProfiles.Length);
 for (var index = 0; index < shelfProfiles.Length; index++)
@@ -313,6 +332,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.GbaCartridge => "gba-cartridge",
     MediaShell.GbcCartridge => "gbc-cartridge",
     MediaShell.JewelCase => "jewel-case",
+    MediaShell.ArcadeCabinet => "arcade-cabinet",
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),
@@ -324,7 +344,8 @@ static float[] PhysicalCentres(IReadOnlyList<PhysicalMediaProfile> profiles, flo
     var cursor = 0f;
     for (var index = 0; index < profiles.Count; index++)
     {
-        var width = profiles[index].WidthInShelfUnits;
+        // Mirrors MediaShelf3DControl: the row reserves each medium's turning circle.
+        var width = profiles[index].TurningWidthInShelfUnits;
         centres[index] = cursor + (width * 0.5f);
         cursor += width + gap;
     }

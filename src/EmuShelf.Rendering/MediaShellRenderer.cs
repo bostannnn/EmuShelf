@@ -88,6 +88,23 @@ public sealed class MediaShellRenderer : IDisposable
     /// </remarks>
     private const float NeighbourExposure = 0.48f;
 
+    /// <summary>
+    /// How many footprint radii of clear surface the receiving plane keeps around the media.
+    /// </summary>
+    /// <remarks>
+    /// The plane is invisible except where a shadow darkens it, so it is only ever as large as the
+    /// shadows need — but it has to be at least that large, and its depth was a fixed 1.1 while its
+    /// width followed the row. That is a plane 2.2 units deep, which every piece of packaging fits
+    /// inside many times over and an arcade cabinet, 2.8 deep, does not: its shadow's soft lobe ran
+    /// off all four sides of the surface it was painted on, so what reached the screen was the
+    /// plane's own rectangle with hard straight edges. A slab of grey under a machine, not a shadow.
+    ///
+    /// 2.6 rather than the 2.2 the width used, because the cast lobe is stretched 2.1x along Z
+    /// against 1.35x across X — the light rakes from the side — so the depth is the axis that needs
+    /// the room. Over-covering costs a few transparent fragments and nothing else.
+    /// </remarks>
+    private const float ShadowPlaneCoverage = 2.6f;
+
     // Each visible item receives its own self-shadow pass. 1024px resolves cartridge-scale moulding
     // more finely than the former 2048px map stretched across the whole seven-item row, avoids one
     // tall case blacking out a neighbour, and keeps the aggregate clear/sample cost reasonable.
@@ -618,7 +635,31 @@ public sealed class MediaShellRenderer : IDisposable
         foreach (var mesh in resources.Meshes)
         {
             BindMaterial(resources, mesh.MaterialIndex);
+            BindPanelScope(resources, mesh.MaterialIndex);
             mesh.Draw();
+        }
+    }
+
+    /// <summary>
+    /// Switches off the panels that do not belong to the material about to be drawn.
+    /// </summary>
+    /// <remarks>
+    /// Per draw rather than per shell because scoping is a property of the panel, not the shell:
+    /// the arcade cabinet's screen print has to miss its bezel while every cartridge label still
+    /// prints on whatever the rectangle covers. Three floats a mesh, on shells of a dozen meshes.
+    /// </remarks>
+    private void BindPanelScope(ShellResources resources, int materialIndex)
+    {
+        if (!resources.HasScopedPanels)
+        {
+            return;
+        }
+
+        for (var index = 0; index < resources.Panels.Count; index++)
+        {
+            var scope = resources.Panels[index].MaterialIndex;
+            _program.Set(
+                $"uPanelEnabled[{index}]", scope < 0 || scope == materialIndex ? 1f : 0f);
         }
     }
 
@@ -787,10 +828,7 @@ public sealed class MediaShellRenderer : IDisposable
             return;
         }
 
-        var minX = footprints.Min(footprint => footprint.Centre.X - (footprint.Radius.X * 2.2f));
-        var maxX = footprints.Max(footprint => footprint.Centre.X + (footprint.Radius.X * 2.2f));
-        var planeCentre = new Vector2((minX + maxX) * 0.5f, -0.03f);
-        var planeExtent = new Vector2(MathF.Max((maxX - minX) * 0.5f, 1f), 1.1f);
+        var (planeCentre, planeExtent) = ShadowPlane(footprints);
 
         _shadowProgram.Use();
         _shadowProgram.Set("uViewProjection", viewProjection);
@@ -813,6 +851,31 @@ public sealed class MediaShellRenderer : IDisposable
         _receivingPlane.Draw();
         _gl.DepthMask(true);
         _gl.Disable(EnableCap.Blend);
+    }
+
+    /// <summary>
+    /// The surface the shadows are painted on: centred on the media and large enough to hold every
+    /// footprint's falloff.
+    /// </summary>
+    /// <remarks>
+    /// Internal because this is the part that was wrong and could not be seen. The plane is
+    /// invisible except where a shadow darkens it, so on EmuShelf's dark shelf a plane too small to
+    /// hold the shadow looks like a slightly odd shadow; on the light theme it is a grey slab with
+    /// four hard edges. A test can check the arithmetic on any theme.
+    /// </remarks>
+    internal static (Vector2 Centre, Vector2 Extent) ShadowPlane(
+        IReadOnlyList<ShadowFootprint> footprints)
+    {
+        var minX = footprints.Min(footprint => footprint.Centre.X - (footprint.Radius.X * ShadowPlaneCoverage));
+        var maxX = footprints.Max(footprint => footprint.Centre.X + (footprint.Radius.X * ShadowPlaneCoverage));
+        var minZ = footprints.Min(footprint => footprint.Centre.Y - (footprint.Radius.Y * ShadowPlaneCoverage));
+        var maxZ = footprints.Max(footprint => footprint.Centre.Y + (footprint.Radius.Y * ShadowPlaneCoverage));
+
+        // The floors keep the plane at the size it has always been for a row of packaging, where
+        // the footprints alone would ask for a strip a few centimetres deep.
+        return (
+            new Vector2((minX + maxX) * 0.5f, (minZ + maxZ) * 0.5f),
+            new Vector2(MathF.Max((maxX - minX) * 0.5f, 1f), MathF.Max((maxZ - minZ) * 0.5f, 1.1f)));
     }
 
     private static MeshGeometry CreateReceivingPlane() => new()
@@ -889,6 +952,8 @@ public sealed class MediaShellRenderer : IDisposable
                     ((1f - crop.Y) * 0.5f) + (crop.Y * panel.ArtSpanOffset)));
             (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
             _program.Set($"uPanelArt{i}", 5 + i);
+            // On for the whole shell unless a scoped panel turns it off again per mesh below.
+            _program.Set($"uPanelEnabled[{i}]", 1f);
         }
 
         // Keep every declared sampler pointing at a complete texture even when the shell uses fewer
@@ -1081,7 +1146,7 @@ public sealed class MediaShellRenderer : IDisposable
             // Artwork v runs top-down, so a label that folds gives its strip the top of the sheet
             // and the face everything from the crease down.
             new(cover, MediaShellCatalog.Place(cover, asset), 0, sheetAspect,
-                1f - cover.TopWrap, cover.TopWrap),
+                1f - cover.TopWrap, cover.TopWrap, PanelMaterial(asset, cover)),
         };
 
         // The fold is drawn as a second panel because the shader projects one plane at a time, and
@@ -1089,7 +1154,8 @@ public sealed class MediaShellRenderer : IDisposable
         if (MediaShellCatalog.TryWrapPanel(cover, asset) is { } strip)
         {
             panels.Add(new ArtPanelBinding(
-                strip, MediaShellCatalog.Place(strip, asset), 0, sheetAspect, cover.TopWrap));
+                strip, MediaShellCatalog.Place(strip, asset), 0, sheetAspect, cover.TopWrap,
+                MaterialIndex: PanelMaterial(asset, strip)));
         }
 
         for (var index = 0; index < definition.ExtraPanels.Count; index++)
@@ -1099,7 +1165,8 @@ public sealed class MediaShellRenderer : IDisposable
                 panel,
                 MediaShellCatalog.Place(panel, asset),
                 index + 1,
-                MediaShellCatalog.TrySheetAspect(panel, asset) ?? 1f));
+                MediaShellCatalog.TrySheetAspect(panel, asset) ?? 1f,
+                MaterialIndex: PanelMaterial(asset, panel)));
         }
 
         if (panels.Count > MaxPanels)
@@ -1111,6 +1178,32 @@ public sealed class MediaShellRenderer : IDisposable
 
         var resources = new ShellResources(definition, asset, meshes, textures, panels);
         return resources;
+    }
+
+    /// <summary>The material a panel is scoped to, or -1 where it prints on the whole shell.</summary>
+    /// <remarks>
+    /// Loud when the name is unknown: a scoped panel that quietly matched nothing would draw on
+    /// every mesh, which is the exact failure the scope exists to prevent.
+    /// </remarks>
+    private static int PanelMaterial(ModelAsset asset, ArtPanel panel)
+    {
+        if (panel.Material is null)
+        {
+            return -1;
+        }
+
+        for (var index = 0; index < asset.Materials.Count; index++)
+        {
+            if (string.Equals(
+                asset.Materials[index].Name, panel.Material, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"A panel is scoped to material '{panel.Material}', which this model does not have. "
+            + $"It has {string.Join(", ", asset.Materials.Select(material => material.Name))}.");
     }
 
     // Base-colour maps hold sRGB-encoded colour; normal and metallic-roughness maps hold linear
@@ -1331,6 +1424,10 @@ public sealed class MediaShellRenderer : IDisposable
         IReadOnlyList<GlTexture> Textures,
         IReadOnlyList<ArtPanelBinding> Panels) : IDisposable
     {
+        /// <summary>True when any panel prints on one material only, so the per-mesh scope
+        /// uniforms have to be set. Every shell but the arcade cabinet skips them entirely.</summary>
+        public bool HasScopedPanels { get; } = Panels.Any(panel => panel.MaterialIndex >= 0);
+
         public void Dispose()
         {
             foreach (var mesh in Meshes)
@@ -1447,18 +1544,23 @@ public sealed class MediaShellRenderer : IDisposable
     /// to, which is what the artwork is fitted to before either panel takes its slice.</param>
     /// <param name="ArtSpanScale">Height of this panel's slice of that sheet, in artwork v.</param>
     /// <param name="ArtSpanOffset">Where the slice starts, in the same top-down v.</param>
+    /// <param name="MaterialIndex">The one material this panel prints on, or -1 for all of them.</param>
     private readonly record struct ArtPanelBinding(
         ArtPanel Panel,
         ArtPanelPlacement Placement,
         int ArtIndex,
         float SheetAspect,
         float ArtSpanScale = 1f,
-        float ArtSpanOffset = 0f);
+        float ArtSpanOffset = 0f,
+        int MaterialIndex = -1);
 
     private readonly record struct ShelfDrawItem(
         MediaShelfRenderItem Item,
         ShellResources Resources,
         Matrix4x4 Model);
 
-    private readonly record struct ShadowFootprint(Vector2 Centre, Vector2 Radius, float Opacity);
+    /// <param name="Centre">Where the medium stands on the floor, in world X and Z.</param>
+    /// <param name="Radius">Half its rotated footprint, across and deep.</param>
+    /// <param name="Opacity">Scales the whole blob; a lifted medium casts a lighter one.</param>
+    internal readonly record struct ShadowFootprint(Vector2 Centre, Vector2 Radius, float Opacity);
 }

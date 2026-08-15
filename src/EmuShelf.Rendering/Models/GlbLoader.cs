@@ -22,7 +22,14 @@ public static class GlbLoader
     /// <param name="maxTextureSize">Longest edge any decoded texture is allowed to keep. The
     /// authored models ship 2048² maps whose detail is invisible at the size the hero is drawn;
     /// downsampling here bounds both the upload and the resident GPU memory.</param>
-    public static ModelAsset Load(byte[] glb, Matrix4x4 orientation, int maxTextureSize = 1024)
+    /// <param name="trimBelowHeightFraction">Fraction of the authored model's height, measured up
+    /// from its own bottom, below which geometry is cut away before the model is normalised. Zero,
+    /// which is every shell but one, keeps the whole object.</param>
+    public static ModelAsset Load(
+        byte[] glb,
+        Matrix4x4 orientation,
+        int maxTextureSize = 1024,
+        float trimBelowHeightFraction = 0f)
     {
         ArgumentNullException.ThrowIfNull(glb);
 
@@ -68,6 +75,11 @@ public static class GlbLoader
         if (meshes.Count == 0)
         {
             throw new InvalidDataException("The model contains no triangulated primitives.");
+        }
+
+        if (trimBelowHeightFraction > 0f)
+        {
+            TrimBelow(meshes, min.Y + (trimBelowHeightFraction * (max.Y - min.Y)), ref min, ref max);
         }
 
         Normalise(meshes, ref min, ref max);
@@ -350,6 +362,302 @@ public static class GlbLoader
         }
 
         return new TextureImage { Width = width, Height = height, Rgba = destination };
+    }
+
+    /// <summary>
+    /// Cuts every mesh off at a horizontal plane, keeping only what stands above it.
+    /// </summary>
+    /// <remarks>
+    /// This exists for the arcade cabinet, and it is a presentation decision rather than a repair:
+    /// a full upright cabinet is 1.8 metres of mostly empty plywood, so beside a 190mm keep case it
+    /// is nine times the height and shrinks every other medium in the view to nothing. Cutting it
+    /// under the control panel leaves the part that identifies an arcade machine — marquee,
+    /// speakers, screen, joysticks and buttons — as an object the size of a bartop cabinet.
+    ///
+    /// It is done at load rather than baked into the shipped .glb for the same reason the panel
+    /// rectangles are: the height is a constant somebody has to look at a render to settle, and
+    /// re-cutting a 60MB source every time that moves is not a loop anybody would run. The removed
+    /// triangles cost a few thousand vertices in a file whose bulk is textures.
+    ///
+    /// Triangles straddling the plane are clipped rather than dropped, so the cut is a clean
+    /// straight edge instead of a torn one, and a floor is laid across the opening the cut leaves —
+    /// see <see cref="CreateCutCap"/>. Leaving it open was tried first, on the reasoning that the
+    /// cut face is the face the cabinet stands on: it is not, once the medium turns to launch, and
+    /// a machine you can see straight through is not a machine.
+    /// </remarks>
+    private static void TrimBelow(
+        List<MeshGeometry> meshes, float planeY, ref Vector3 min, ref Vector3 max)
+    {
+        var trimmedMin = new Vector3(float.PositiveInfinity);
+        var trimmedMax = new Vector3(float.NegativeInfinity);
+
+        for (var index = meshes.Count - 1; index >= 0; index--)
+        {
+            var trimmed = TrimMeshBelow(meshes[index], planeY);
+            if (trimmed is null)
+            {
+                meshes.RemoveAt(index);
+                continue;
+            }
+
+            meshes[index] = trimmed;
+            for (var offset = 0; offset < trimmed.Vertices.Length; offset += MeshGeometry.FloatsPerVertex)
+            {
+                var position = new Vector3(
+                    trimmed.Vertices[offset], trimmed.Vertices[offset + 1], trimmed.Vertices[offset + 2]);
+                trimmedMin = Vector3.Min(trimmedMin, position);
+                trimmedMax = Vector3.Max(trimmedMax, position);
+            }
+        }
+
+        if (meshes.Count == 0)
+        {
+            throw new InvalidDataException(
+                $"Trimming below y={planeY} removed every triangle in the model.");
+        }
+
+        if (CreateCutCap(meshes, planeY) is { } cap)
+        {
+            meshes.Add(cap);
+        }
+
+        min = trimmedMin;
+        max = trimmedMax;
+    }
+
+    /// <summary>
+    /// Lays a floor across the opening the cut leaves, in the body's own material.
+    /// </summary>
+    /// <remarks>
+    /// The convex hull of the cut vertices rather than their actual outline, and one fan rather
+    /// than a cap per mesh. Both are deliberate simplifications of a job that is genuinely fiddly —
+    /// chaining clipped segments into loops, deciding which loop is a wall's outside and which its
+    /// inside, triangulating each — and the simplification is safe here because a floor cannot be
+    /// seen except from below the object: any place the hull overshoots the real outline is a place
+    /// already hidden behind the cabinet's own side. What matters is that it is closed, and a hull
+    /// always is, where a chained outline fails on the first mesh that cuts into two pieces.
+    ///
+    /// It wears the material that contributed most of the cut — the cabinet body — at a single
+    /// texel taken from that material's own cut vertices. A constant UV rather than a projection:
+    /// the underside has no authored UV layout to be right about, and one texel of the body's
+    /// plastic reads as the same material without inventing moulding that is not there.
+    /// </remarks>
+    private static MeshGeometry? CreateCutCap(List<MeshGeometry> meshes, float planeY)
+    {
+        const int stride = MeshGeometry.FloatsPerVertex;
+        var points = new List<Vector2>();
+        var uvByMaterial = new Dictionary<int, (Vector2 Sum, int Count)>();
+
+        foreach (var mesh in meshes)
+        {
+            for (var offset = 0; offset < mesh.Vertices.Length; offset += stride)
+            {
+                if (MathF.Abs(mesh.Vertices[offset + 1] - planeY) > 1e-4f)
+                {
+                    continue;
+                }
+
+                points.Add(new Vector2(mesh.Vertices[offset], mesh.Vertices[offset + 2]));
+                var uv = new Vector2(mesh.Vertices[offset + 6], mesh.Vertices[offset + 7]);
+                (Vector2 Sum, int Count) existing =
+                    uvByMaterial.GetValueOrDefault(mesh.MaterialIndex, (Vector2.Zero, 0));
+                uvByMaterial[mesh.MaterialIndex] = (existing.Sum + uv, existing.Count + 1);
+            }
+        }
+
+        var hull = ConvexHull(points);
+        if (hull.Count < 3)
+        {
+            return null;
+        }
+
+        var body = uvByMaterial.OrderByDescending(entry => entry.Value.Count).First();
+        var capUv = body.Value.Sum / body.Value.Count;
+        var centre = Vector2.Zero;
+        foreach (var point in hull)
+        {
+            centre += point;
+        }
+        centre /= hull.Count;
+
+        var vertices = new List<float>((hull.Count + 1) * stride);
+        void Add(Vector2 point)
+        {
+            vertices.AddRange(
+            [
+                point.X, planeY, point.Y,
+                0f, -1f, 0f,
+                capUv.X, capUv.Y,
+            ]);
+        }
+
+        Add(centre);
+        foreach (var point in hull)
+        {
+            Add(point);
+        }
+
+        var indices = new List<uint>(hull.Count * 3);
+        for (var index = 0; index < hull.Count; index++)
+        {
+            var current = (uint)(index + 1);
+            var next = (uint)(((index + 1) % hull.Count) + 1);
+            // Wind so the triangle's geometric normal agrees with the authored -Y: the shader
+            // flips normals on back faces, so a fan wound the other way would light the floor as
+            // though it faced the ceiling.
+            var edge = Vector3.Cross(
+                new Vector3(hull[index].X - centre.X, 0f, hull[index].Y - centre.Y),
+                new Vector3(
+                    hull[(index + 1) % hull.Count].X - centre.X,
+                    0f,
+                    hull[(index + 1) % hull.Count].Y - centre.Y));
+            indices.AddRange(edge.Y > 0f ? [0u, next, current] : [0u, current, next]);
+        }
+
+        return new MeshGeometry
+        {
+            Vertices = vertices.ToArray(),
+            Indices = indices.ToArray(),
+            MaterialIndex = body.Key,
+        };
+    }
+
+    /// <summary>Andrew's monotone chain: the hull of a point set, in order.</summary>
+    /// <remarks>
+    /// Collinear and duplicate points are popped rather than kept, which matters here because a
+    /// clipped cabinet wall contributes dozens of cut vertices along one straight edge.
+    /// </remarks>
+    private static List<Vector2> ConvexHull(List<Vector2> points)
+    {
+        if (points.Count < 3)
+        {
+            return points;
+        }
+
+        var sorted = points
+            .OrderBy(point => point.X)
+            .ThenBy(point => point.Y)
+            .ToList();
+
+        static float Cross(Vector2 origin, Vector2 a, Vector2 b) =>
+            ((a.X - origin.X) * (b.Y - origin.Y)) - ((a.Y - origin.Y) * (b.X - origin.X));
+
+        static List<Vector2> Chain(IEnumerable<Vector2> walk)
+        {
+            var chain = new List<Vector2>();
+            foreach (var point in walk)
+            {
+                while (chain.Count >= 2
+                    && Cross(chain[^2], chain[^1], point) <= 0f)
+                {
+                    chain.RemoveAt(chain.Count - 1);
+                }
+
+                chain.Add(point);
+            }
+
+            // The last point of each chain is the first of the other.
+            chain.RemoveAt(chain.Count - 1);
+            return chain;
+        }
+
+        var hull = Chain(sorted);
+        hull.AddRange(Chain(Enumerable.Reverse(sorted)));
+        return hull;
+    }
+
+    /// <summary>Clips one primitive against <c>y >= planeY</c>, or null if nothing survives.</summary>
+    private static MeshGeometry? TrimMeshBelow(MeshGeometry mesh, float planeY)
+    {
+        const int stride = MeshGeometry.FloatsPerVertex;
+        var source = mesh.Vertices;
+        var vertices = new List<float>(source.Length);
+        var indices = new List<uint>(mesh.Indices.Length);
+        // Vertices already above the plane keep their identity, so an untouched triangle costs no
+        // duplication and the common case stays cheap. Clipped vertices are always new.
+        var remapped = new Dictionary<uint, uint>();
+
+        uint Keep(uint original)
+        {
+            if (remapped.TryGetValue(original, out var existing))
+            {
+                return existing;
+            }
+
+            var offset = (int)original * stride;
+            var index = (uint)(vertices.Count / stride);
+            vertices.AddRange(source.AsSpan(offset, stride));
+            remapped[original] = index;
+            return index;
+        }
+
+        uint Split(uint below, uint above)
+        {
+            var belowOffset = (int)below * stride;
+            var aboveOffset = (int)above * stride;
+            var span = source[aboveOffset + 1] - source[belowOffset + 1];
+            var t = MathF.Abs(span) < 1e-9f ? 0f : (planeY - source[belowOffset + 1]) / span;
+            t = Math.Clamp(t, 0f, 1f);
+
+            var index = (uint)(vertices.Count / stride);
+            for (var component = 0; component < stride; component++)
+            {
+                vertices.Add(float.Lerp(source[belowOffset + component], source[aboveOffset + component], t));
+            }
+
+            // Land the new vertex exactly on the plane rather than within float error of it, so the
+            // cut edge is straight even where the two ends are far apart.
+            vertices[(int)index * stride + 1] = planeY;
+            return index;
+        }
+
+        // Four is the most a triangle can give: two corners above the plane plus the two crossings,
+        // and a boundary can only cross a plane twice.
+        Span<uint> polygon = stackalloc uint[4];
+        for (var triangle = 0; triangle + 2 < mesh.Indices.Length; triangle += 3)
+        {
+            var a = mesh.Indices[triangle];
+            var b = mesh.Indices[triangle + 1];
+            var c = mesh.Indices[triangle + 2];
+            var count = 0;
+
+            // Sutherland-Hodgman against the single half-space, walking the triangle's edges in
+            // order so the clipped polygon keeps the source winding.
+            Span<uint> corners = [a, b, c];
+            for (var edge = 0; edge < 3; edge++)
+            {
+                var current = corners[edge];
+                var next = corners[(edge + 1) % 3];
+                var currentAbove = source[(int)current * stride + 1] >= planeY;
+                var nextAbove = source[(int)next * stride + 1] >= planeY;
+
+                if (currentAbove)
+                {
+                    polygon[count++] = Keep(current);
+                }
+
+                if (currentAbove != nextAbove)
+                {
+                    polygon[count++] = currentAbove ? Split(next, current) : Split(current, next);
+                }
+            }
+
+            for (var fan = 2; fan < count; fan++)
+            {
+                indices.Add(polygon[0]);
+                indices.Add(polygon[fan - 1]);
+                indices.Add(polygon[fan]);
+            }
+        }
+
+        return indices.Count == 0
+            ? null
+            : new MeshGeometry
+            {
+                Vertices = vertices.ToArray(),
+                Indices = indices.ToArray(),
+                MaterialIndex = mesh.MaterialIndex,
+            };
     }
 
     /// <summary>Centres the model on the origin and scales it to exactly one unit tall.</summary>
