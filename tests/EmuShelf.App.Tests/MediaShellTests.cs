@@ -5,7 +5,9 @@ using EmuShelf.App.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Library;
+using EmuShelf.Integrations.Systems;
 using EmuShelf.Rendering.Models;
+using EmuShelf.Rendering.Preview;
 using EmuShelf.Rendering.Shells;
 
 namespace EmuShelf.App.Tests;
@@ -159,11 +161,18 @@ public class MediaShellTests
         var ps2 = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("ps2-black");
         var ps3 = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("ps3-clear");
         var wii = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("wii-white");
+        var psp = EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.For("psp-clear");
 
         Assert.NotEqual(ps2.BodyTint, ps3.BodyTint);
         Assert.NotEqual(ps3.BodyTint, wii.BodyTint);
         Assert.True(ps3.ReflectanceScale > ps2.ReflectanceScale);
         Assert.True(ps3.RoughnessScale < ps2.RoughnessScale);
+
+        // PSP shares the clear-plastic family with PS3 and must not fall through to Default, which
+        // is how an unrecognised variant string fails — silently, as untinted stock plastic.
+        Assert.NotEqual(EmuShelf.Rendering.MediaShellRenderer.MaterialVariantAppearance.Default, psp);
+        Assert.NotEqual(ps3.BodyTint, psp.BodyTint);
+        Assert.True(psp.ReflectanceScale > ps2.ReflectanceScale);
     }
 
     [AvaloniaFact]
@@ -250,16 +259,15 @@ public class MediaShellTests
     [InlineData("playstation3", MediaShell.DiscKeepCase)]
     [InlineData("gamecube", MediaShell.DiscKeepCase)]
     [InlineData("wii", MediaShell.DiscKeepCase)]
+    [InlineData("psp", MediaShell.DiscKeepCase)]
     public void ForSystem_MapsAConsoleToItsMedium(string systemId, MediaShell expected) =>
         Assert.Equal(expected, MediaShellMap.ForSystem(systemId));
 
-    // PS1 and Dreamcast used jewel cases and PSP used a UMD case — genuinely different shapes, so
-    // they keep flat covers rather than borrowing a case that is not theirs. Arcade has no
-    // packaging at all.
+    // PS1 and Dreamcast used jewel cases — a genuinely different shape, so they keep flat covers
+    // rather than borrowing a case that is not theirs. Arcade has no packaging at all.
     [Theory]
     [InlineData("playstation")]
     [InlineData("dreamcast")]
-    [InlineData("psp")]
     [InlineData("arcade")]
     public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
         Assert.Null(MediaShellMap.ForSystem(systemId));
@@ -339,6 +347,10 @@ public class MediaShellTests
     [InlineData("playstation3")]
     [InlineData("gamecube")]
     [InlineData("wii")]
+    // PSP is the one deliberate exclusion, and it is not the old kind. Every exclusion this theory
+    // shed was a profile that disagreed with its asset by accident; PSP disagrees on purpose, to
+    // keep its sleeve art undistorted, and the test below pins the exact disagreement so it cannot
+    // drift. Adding "psp" here is therefore not the fix if this pair ever conflicts — read both.
     public void MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset(string systemId)
     {
         var profile = MediaShellMap.ProfileForSystem(systemId, 0.708);
@@ -436,6 +448,147 @@ public class MediaShellTests
         // it; the difference now lives in the finish until a Blu-ray shell is authored.
         Assert.Equal(ps2.HeightInShelfUnits, ps3.HeightInShelfUnits, 3);
         Assert.NotEqual(ps2.MaterialVariant, ps3.MaterialVariant);
+    }
+
+    /// <summary>
+    /// PSP borrows the disc case's geometry but must not borrow its size.
+    /// </summary>
+    /// <remarks>
+    /// The whole reason a UMD case is worth rendering rather than leaving on a flat cover is that
+    /// it is visibly smaller than the disc cases it shares a shelf with, so a profile that let it
+    /// stand at 190mm would have bought the geometry and thrown away the point. This is the cheap
+    /// half of PSP's contract and the one that would survive any later change of mind about the
+    /// mesh squeeze: whatever the case's width ends up being, it is not a disc case's size.
+    /// </remarks>
+    [Fact]
+    public void MetricProfile_StandsThePspCaseShorterThanADiscCase()
+    {
+        var ps2 = MediaShellMap.ProfileForSystem("playstation2", 0.708);
+        var psp = MediaShellMap.ProfileForSystem("psp", 0.708);
+
+        Assert.Equal(ps2.Shell, psp.Shell);
+        Assert.True(psp.HeightInShelfUnits < ps2.HeightInShelfUnits);
+        Assert.True(psp.WidthInShelfUnits < ps2.WidthInShelfUnits);
+        Assert.NotEqual(ps2.MaterialVariant, psp.MaterialVariant);
+
+        // A real UMD case is 178mm against a DVD case's 190mm, and that 6.3% is the difference the
+        // shelf is being asked to show. Asserted as the ratio rather than the millimetres so the
+        // check survives a later re-measurement of either case.
+        Assert.Equal(178f / 190f, psp.HeightInShelfUnits / ps2.HeightInShelfUnits, 0.001f);
+    }
+
+    /// <summary>
+    /// PSP takes a real UMD case's shape, and pays for it with a known squeeze of the shared mesh.
+    /// </summary>
+    /// <remarks>
+    /// The counterweight to the proportion theory above, and the reason PSP is excluded from it.
+    /// That theory is right for a cartridge, where the moulding is the object. A keep case is a flat
+    /// sleeve filling nearly the whole silhouette with a rim a few pixels wide around it, so the
+    /// question is not "is the mesh undistorted" but "which of the mesh and the artwork should carry
+    /// the error". The keep case's cover panel is ArtFit.Stretch, so the profile's own width/height
+    /// is the shape every scraped cover is pulled to: at 104mm that lands on a PSP box scan almost
+    /// exactly, and at the asset's own 0.695 it would stretch every cover about 20% wider.
+    ///
+    /// Both were rendered before this was chosen. The assertions are the two halves of the trade —
+    /// the art fits, and the mesh distortion is exactly the one accepted, not a new one.
+    /// </remarks>
+    [Fact]
+    public void MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted()
+    {
+        var profile = MediaShellMap.ProfileForSystem("psp", 0.581);
+        var asset = MediaShellCatalog.Load(profile.Shell);
+
+        var panelAspect = profile.DimensionsMillimetres.X / profile.DimensionsMillimetres.Y;
+        var scrapedCoverAspect = (float)KnownSystems.All.Single(system => system.Id == "psp")
+            .CoverAspectRatio;
+
+        // What the squeeze buys. Sourced from KnownSystems rather than repeated as a literal, so
+        // that re-measuring a UMD case in one place cannot leave the two silently disagreeing.
+        Assert.Equal(scrapedCoverAspect, panelAspect, 0.01f * scrapedCoverAspect);
+
+        // All three axes are a real UMD case, which is the whole point: this profile is not a
+        // compromise between the case and the asset, it is the case, and the asset bends to it.
+        Assert.Equal(new Vector3(104f, 178f, 15f), profile.DimensionsMillimetres);
+
+        // What it costs, pinned so an accidental change cannot hide inside the accepted one. The
+        // mesh is drawn at 84% of its authored width. Measured against the asset rather than
+        // against the PS2 profile — those differ, 0.695 to 0.711, and taking the profile's figure
+        // is how this was first written down as an 18% squeeze when the real one is 16%.
+        Assert.Equal(0.841f, panelAspect / (asset.Size.X / asset.Size.Y), 0.005f);
+    }
+
+    /// <summary>
+    /// The headless preview tool renders the profiles the app actually uses.
+    /// </summary>
+    /// <remarks>
+    /// `EmuShelf.Rendering.Preview` hand-copies <see cref="MediaShellMap"/> because it cannot
+    /// reference the app — EmuShelf.App is an Avalonia WinExe with a git-stamping build target, and
+    /// dragging the whole UI into a headless tool to read one static table is the worse trade. This
+    /// project can see both, so it is the only place the copy can be checked.
+    ///
+    /// It needs checking because it has gone stale twice, and both times silently. It kept
+    /// pre-correction GBA and SNES figures for a whole milestone, so the acceptance shot was
+    /// showing proportions the app had already abandoned — the one artefact a reviewer trusts to
+    /// tell them what shipped, quietly showing something else. It was also still naming insertion
+    /// animations (`case-vertical`, `cover-card`) that the app had renamed. A stale preview is
+    /// worse than no preview: it launders a wrong render into an approved one.
+    ///
+    /// Order is deliberately not asserted. It is a review decision — the Mega Drive sits beside the
+    /// SNES cartridge, PSP beside the PS2 case — and pinning it here would turn a framing choice
+    /// into a test failure.
+    /// </remarks>
+    [Fact]
+    public void PreviewShelf_RendersTheSameProfilesTheAppDoes()
+    {
+        Assert.NotEmpty(PreviewShelf.Entries);
+
+        foreach (var entry in PreviewShelf.Entries)
+        {
+            var expected = MediaShellMap.ProfileForSystem(entry.SystemId, entry.CoverAspect);
+            Assert.Equal(expected, entry.Profile);
+        }
+    }
+
+    /// <summary>
+    /// Every system with an authored shell appears in the acceptance shot.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the drift, and the one a value-by-value comparison cannot see: an entry
+    /// that is simply absent. A shell nobody draws is a shell nobody reviews, and this list has
+    /// twice been the reason a medium went unlooked-at — the Mega Drive was off the right-hand edge
+    /// of the frame while carrying a profile a quarter too big, and the Game Boy shell landed in
+    /// the same blind spot when it was appended last.
+    /// </remarks>
+    [Fact]
+    public void PreviewShelf_DrawsEverySystemThatHasAnAuthoredShell()
+    {
+        var authored = MediaShellMap.MappedSystemIds.ToHashSet(StringComparer.Ordinal);
+
+        var drawn = PreviewShelf.Entries
+            .Select(entry => entry.SystemId)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Empty(authored.Except(drawn));
+    }
+
+    /// <summary>
+    /// Every system the shell table names is a system that exists.
+    /// </summary>
+    /// <remarks>
+    /// The hole underneath the two tests above, and the reason they read the keys directly rather
+    /// than filtering <see cref="KnownSystems"/> through <see cref="MediaShellMap.ForSystem"/> as
+    /// they first did. An entry filed under an id no system has is unreachable, not wrong: nothing
+    /// ever calls `ForSystem` with it, so the platform keeps a flat cover and looks precisely like
+    /// one that was never given a shell. Filtering a known-systems list through the map cannot see
+    /// that — the bad key is absent from both sides of the comparison — so a typo here would have
+    /// passed every check in this file while silently removing a medium from the shelf.
+    /// </remarks>
+    [Fact]
+    public void MediaShellMap_OnlyNamesSystemsThatExist()
+    {
+        var known = KnownSystems.All.Select(system => system.Id).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Empty(MediaShellMap.MappedSystemIds.Except(known));
     }
 
     [Theory]

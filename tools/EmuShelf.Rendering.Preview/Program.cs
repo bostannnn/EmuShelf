@@ -55,8 +55,16 @@ if (atlasModel is not null)
 var outputDirectory = ArgumentValue("--out") ?? "artifacts/shell-preview";
 var width = int.Parse(ArgumentValue("--width") ?? "420");
 var height = int.Parse(ArgumentValue("--height") ?? "560");
-var shelfWidth = int.Parse(ArgumentValue("--shelf-width") ?? "1440");
-var shelfHeight = int.Parse(ArgumentValue("--shelf-height") ?? "720");
+// Wide enough that the whole row is inside the frame. The camera pulls back only as far as the
+// tallest medium needs, so how much of the row is visible is set by the output aspect — and at the
+// old 1440x720 the last few media were simply off the right-hand edge. That is not a cosmetic
+// default: this shot is the artefact a reviewer trusts to show what shipped, and a medium outside
+// the frame is a medium nobody looks at. The Mega Drive kept a profile a quarter too big for a
+// whole milestone that way, and the Game Boy shell landed in the same blind spot. Twelve media fit
+// here; PreviewShelf_DrawsEverySystemThatHasAnAuthoredShell keeps the row honest, and this keeps
+// the frame honest about the row.
+var shelfWidth = int.Parse(ArgumentValue("--shelf-width") ?? "6000");
+var shelfHeight = int.Parse(ArgumentValue("--shelf-height") ?? "900");
 var background = ParseColour(ArgumentValue("--background") ?? "1A1C20");
 
 Directory.CreateDirectory(outputDirectory);
@@ -146,13 +154,6 @@ if (inspectionModel is not null)
         + $"W/H {candidate.Size.X / candidate.Size.Y:F3}, D/H {candidate.Size.Z / candidate.Size.Y:F3}");
 }
 
-// --no-cover exercises the real fallback for a game with no scraped art, and is the check that
-// no retail artwork baked into the authored shells can show through.
-if (!args.Contains("--no-cover"))
-{
-    renderer.SetCoverArt(TestCover.Create());
-}
-
 // Canonical proportions, printed so a shell that loads rotated or mis-scaled is caught here
 // rather than by squinting at a render.
 foreach (var candidate in MediaShellCatalog.All)
@@ -165,27 +166,19 @@ foreach (var candidate in MediaShellCatalog.All)
 // Declared before the per-shell sheet because that sheet needs each shell's finish. Without it the
 // turntable draws the model's own plastic, so a shell whose profile is doing part of the colouring
 // gets reviewed at the wrong colour — and the turntable is the only straight-on view there is.
-var shelfProfiles = new[]
-{
-    // These mirror EmuShelf.App.Rendering.MediaShellMap, which the tool cannot reference — the
-    // renderer deliberately knows nothing about consoles. Keep them in step by hand: this list had
-    // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
-    // proportions the app had already stopped using.
-    new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
-    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
-    new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
-    // Inside the frame for the same reason as the Mega Drive below. Appended last it fell off the
-    // right-hand edge of the acceptance shot, which was already observed once while reviewing it.
-    new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge of
-    // the acceptance shot, which is how it kept a profile a quarter too big for a whole milestone.
-    new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
-    new PhysicalMediaProfile(MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps2-black", "case-vertical"),
-    new PhysicalMediaProfile(MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f), PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.012f),
-};
-var finishes = shelfProfiles.ToDictionary(
-    profile => profile.Shell, profile => profile.MaterialVariant);
+// The table itself lives in PreviewShelf so a test in EmuShelf.App.Tests can reach it and assert it
+// still matches MediaShellMap. It used to sit inline here, where nothing outside this file could
+// see it, and it drifted twice.
+var shelfEntries = PreviewShelf.Entries;
+var shelfProfiles = shelfEntries.Select(entry => entry.Profile).ToArray();
+// The shelf entry each shell is drawn with on the turntable sheet — its finish and, through that,
+// the shape of its stand-in cover. Grouped rather than keyed directly because a shell no longer has
+// one entry: PS2 and PSP share the disc case, and ToDictionary threw on the duplicate the moment the
+// second one was added. The sheet is one row per shell, so it takes the first — the disc case's own
+// PS2 black. Finishes that share geometry are compared on the shelf shot, which draws them all.
+var shelfEntryByShell = shelfEntries
+    .GroupBy(entry => entry.Profile.Shell)
+    .ToDictionary(group => group.Key, group => group.First());
 
 var sheetColumns = poses.Length;
 var shells = MediaShellCatalog.All.ToArray();
@@ -194,13 +187,31 @@ var sheet = new byte[width * sheetColumns * height * shells.Length * 4];
 for (var row = 0; row < shells.Length; row++)
 {
     var shell = shells[row];
+    var entry = shelfEntryByShell.GetValueOrDefault(shell);
+
+    // Per shell, not once for the whole sheet. The turntable is the only straight-on view of a
+    // label there is, so it is where a fit is actually judged — and judging a SNES cartridge's
+    // landscape recess against a portrait stand-in tells you nothing about the landscape scan the
+    // scraper will hand it. Same reason the shelf shot below does this; the sheet was simply missed
+    // the first time, and it is the more important of the two.
+    //
+    // This is also the only thing that sets the turntable's cover art. A single 0.707 stand-in used
+    // to be assigned once before this loop, which every iteration then overwrote — dead by the time
+    // the per-shell call arrived, and its comment still claimed it was what the shells were drawn
+    // with. --no-cover skips it here instead: that flag exercises the real fallback for a game with
+    // no scraped art, and is the check that no retail artwork baked into a shell shows through.
+    if (entry is not null && !args.Contains("--no-cover"))
+    {
+        renderer.SetCoverArt(TestCover.Create(entry.CoverAspect));
+    }
+
     for (var column = 0; column < poses.Length; column++)
     {
         var (name, yaw, pitch) = poses[column];
         stopwatch.Restart();
         renderer.Render(
             shell, target, (uint)width, (uint)height, yaw, pitch,
-            finishes.GetValueOrDefault(shell, string.Empty));
+            entry?.Profile.MaterialVariant ?? string.Empty);
         gl.Finish();
         var frame = ReadPixels(gl, target, width, height);
         Composite(frame, background);
@@ -235,7 +246,7 @@ for (var index = 0; index < shelfProfiles.Length; index++)
     // Mega Drive into frame silently moved the art-free slot onto the very shell being reviewed.
     if (shelfProfiles[index].Shell != MediaShell.GbaCartridge && !args.Contains("--no-cover"))
     {
-        renderer.SetCoverArt(key, TestCover.Create());
+        renderer.SetCoverArt(key, TestCover.Create(shelfEntries[index].CoverAspect));
     }
 
     var itemAccent = (index % 3) switch

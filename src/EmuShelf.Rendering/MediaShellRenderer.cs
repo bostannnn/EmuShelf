@@ -1333,6 +1333,18 @@ public sealed class MediaShellRenderer : IDisposable
             "ds-black" => new(new Vector3(0.045f, 0.045f, 0.052f), 0.12f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
+            // Clearer and more neutral than the Blu-ray case above, which is the difference you
+            // actually see between the two in life: a UMD case is uncoloured transparent plastic
+            // over its sleeve, where a PS3 case is tinted blue. Same family of correction — the
+            // gloss and reflectance of a clear shell, not a repaint.
+            //
+            // The reflectance is 1.18 rather than the 1.42 first tried here, and the tint is
+            // near-neutral rather than carrying PS3's blue. On this geometry the difference between
+            // the case finishes is read almost entirely off the spine rim — the front is covered by
+            // the sleeve — and at 1.42 that rim blew out into a cyan strip that read as a light
+            // leak down the edge of the case rather than as clear plastic. Clear plastic is not
+            // brighter than black plastic by half, it is less absorbing and slightly glossier.
+            "psp-clear" => new(new Vector3(0.56f, 0.57f, 0.59f), 0.20f, 0.74f, 1.18f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
             _ => Default,
         };

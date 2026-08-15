@@ -12,6 +12,28 @@ namespace EmuShelf.Rendering.Preview;
 /// </remarks>
 internal static class TestCover
 {
+    /// <summary>
+    /// A stand-in at a given cover shape (width over height). The height follows the aspect rather
+    /// than the width being trimmed, so every stand-in carries the same detail down its long axis.
+    /// </summary>
+    /// <remarks>
+    /// The guard is not ceremony. Without it a zero or negative ratio divides to infinity, and an
+    /// unchecked float-to-int conversion of that is unspecified — in practice int.MinValue, which
+    /// surfaces as an OverflowException from the pixel buffer that names neither the aspect nor the
+    /// table it came from. The ratios are read from KnownSystems, so the value arrives from a table
+    /// this file does not own.
+    /// </remarks>
+    public static TextureImage Create(double aspect)
+    {
+        if (!double.IsFinite(aspect) || aspect <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(aspect), aspect, "A cover aspect must be a finite ratio greater than zero.");
+        }
+
+        return Create(512, (int)Math.Round(512 / aspect));
+    }
+
     public static TextureImage Create(int width = 512, int height = 724)
     {
         var pixels = new byte[width * height * 4];
