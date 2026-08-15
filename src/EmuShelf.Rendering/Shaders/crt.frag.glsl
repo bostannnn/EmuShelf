@@ -51,12 +51,37 @@ uniform float uChromaBleed;
 uniform float uJitter;
 uniform float uFlicker;
 
+// Which fault the tube is having, how hard, and one stable random value it can be varied by.
+//
+// Decided on the CPU, in CrtFaultSchedule, rather than hashed out of uTime here. A schedule derived
+// from fract(sin(...)) inside a fragment shader cannot be inspected, unit tested or predicted from
+// outside — GLSL's sine agrees with a host language's to only a few digits, and the hash multiplies
+// that difference by forty thousand, which is enough to move a fault's onset by half its duration.
+// The first version did it that way and four of the eight faults were signed off on frames in which
+// they were not actually happening.
+uniform float uFaultKind;
+uniform float uFaultAmount;
+uniform float uFaultSeed;
+
 const float kGamma = 2.2;
 const float kTau = 6.2831853;
 
+// Folds its argument down before taking a sine of it.
+//
+// The plain `fract(sin(x * 127.1) * 43758.5)` is fine for small numbers and quietly wrong for the
+// ones this shader feeds it. Both callers key on something that counts up — a line index times a
+// tick, a fault window index — and a few minutes after the tube is switched on those arguments are
+// in the millions. A 32-bit sine of a million-radian angle has almost no mantissa left, so the hash
+// stops varying and the horizontal jitter locks solid, on some drivers and not others.
 float hash11(float x)
 {
-    return fract(sin(x * 127.1) * 43758.5453123);
+    return fract(sin(fract(x * 0.1031) * 43.7585) * 43758.5453123);
+}
+
+float hash21(vec2 v)
+{
+    vec2 folded = fract(v * vec2(0.1031, 0.0973));
+    return fract(sin(dot(folded, vec2(43.7585, 71.3211))) * 43758.5453123);
 }
 
 // Barrel distortion. Each axis is bent by the square of the *other* axis, which is what makes the
@@ -165,6 +190,23 @@ void main()
     bool blendsAgainstFlat = uIntensity < 0.999;
     vec3 untouched = blendsAgainstFlat ? tubeSample(vec4(uv, uv), backdrop) : vec3(0.0);
 
+    // Occasional faults.
+    //
+    // Everything else here is a finish the tube wears all the time. These are the eight things a set
+    // that has been on for twenty years does now and then and then stops doing. Scheduled rather
+    // than continuous, because that distinction is the whole effect — a fault visible at any moment
+    // is a broken television, and one that arrives now and then and clears is a working one with
+    // some miles on it.
+    float fault = uFaultAmount;
+    float tearing = (abs(uFaultKind - 1.0) < 0.5) ? fault : 0.0;
+    float rollKick = (abs(uFaultKind - 2.0) < 0.5) ? fault : 0.0;
+    float degauss = (abs(uFaultKind - 3.0) < 0.5) ? fault : 0.0;
+    float dropout = (abs(uFaultKind - 4.0) < 0.5) ? fault : 0.0;
+    float waving = (abs(uFaultKind - 5.0) < 0.5) ? fault : 0.0;
+    float rainbow = (abs(uFaultKind - 6.0) < 0.5) ? fault : 0.0;
+    float bandTear = (abs(uFaultKind - 7.0) < 0.5) ? fault : 0.0;
+    float surge = (abs(uFaultKind - 8.0) < 0.5) ? fault : 0.0;
+
     vec2 tubeUv = warp(uv, uCurvature);
 
     // Overscan, exactly as a real set did it: zoom until the curved edges fall off the panel rather
@@ -176,16 +218,78 @@ void main()
     vec2 chromeUv = ((tubeUv - 0.5) / (1.0 + (uCurvature * uChromeOverscan))) + 0.5;
     tubeUv = ((tubeUv - 0.5) / (1.0 + (uCurvature * uOverscan))) + 0.5;
 
+    // Vertical hold kicking and re-settling, with the retrace bar it drags behind it. The bar is
+    // what makes a slip read as a slip: a picture that merely slides is a scroll, which looks like a
+    // bug rather than like a television losing lock.
+    float retrace = 0.0;
+    float rollOffset = rollKick * 0.35;
+    if (rollOffset > 0.0)
+    {
+        tubeUv.y = fract(tubeUv.y + rollOffset);
+        chromeUv.y = fract(chromeUv.y + rollOffset);
+        retrace = smoothstep(0.035, 0.0, min(tubeUv.y, 1.0 - tubeUv.y));
+    }
+
     // Horizontal instability, quantised to whole scan lines and to a rate well under the frame
     // rate. Per-pixel noise would be video snow; a tube with a marginal horizontal lock shifts an
-    // entire line at once, and only every few frames.
-    if (uJitter > 0.0)
+    // entire line at once, and only every few frames. A tearing fault is the same mechanism with
+    // the amplitude of a lock that has actually let go rather than one that is merely marginal.
+    float jitter = uJitter + (tearing * 2.5);
+    if (jitter > 0.0)
     {
         float line = floor(tubeUv.y * uVirtualLines);
         float tick = floor(uTime * 24.0);
-        float shift = (hash11(line + (tick * 17.0)) - 0.5) * uJitter * 0.01;
+        // Flagging: the top of the picture bends worst, because it is drawn before the gain control
+        // has settled after the vertical interval. Only worth applying while a fault is running —
+        // the steady-state jitter is far too small for the shape to be visible.
+        float flagging = 1.0 + (tearing * 1.4 * smoothstep(0.55, 1.0, tubeUv.y));
+        float shift = (hash11(line + (tick * 17.0)) - 0.5) * jitter * flagging * 0.01;
         tubeUv.x += shift;
         chromeUv.x += shift;
+    }
+
+    // Interference bending the raster. Unlike the jitter above this is smooth and correlated down
+    // the picture rather than random per line, which is the whole difference between a lock that is
+    // slipping and something beating against the deflection — one sizzles, the other undulates.
+    if (waving > 0.0)
+    {
+        float bend = waving * 0.030
+            * sin((tubeUv.y * 18.0) - (uTime * 5.0))
+            * (0.6 + (0.4 * sin((tubeUv.y * 5.0) + (uTime * 1.7))));
+        tubeUv.x += bend;
+        chromeUv.x += bend;
+    }
+
+    // A tape's head switch: the last few lines of a field are read by a head that has already begun
+    // to leave the track, so a band near the bottom is displaced hard while everything above it is
+    // untouched. The band walks a little between faults so it never looks like a fixed defect.
+    if (bandTear > 0.0)
+    {
+        // Anywhere in the lower two thirds — a head switch lands near the bottom of a field, but
+        // pinning it to one line makes it a fixed defect rather than a fault. Wide enough to cross
+        // whatever the picture is showing: at a twentieth of the screen the band fell in the empty
+        // space above the shelf and could not be seen at all.
+        float centre = 0.10 + (0.5 * uFaultSeed);
+        float inBand = smoothstep(0.07, 0.0, abs(tubeUv.y - centre));
+        float lean = smoothstep(centre + 0.07, centre - 0.07, tubeUv.y);
+        float shove = bandTear * inBand * (0.07 + (0.05 * lean));
+        tubeUv.x += shove;
+        chromeUv.x += shove;
+    }
+
+    // Wrap whatever the faults displaced back into the picture.
+    //
+    // The overscan margin is under two percent, and a band tear shoves the line by twelve — so
+    // without this the displaced strip ran off the side, met the out-of-glass branch below, and came
+    // back as a hard black wedge: a hole punched in the picture rather than a torn line. A real tear
+    // shows whatever the line ran into, and wrapping is both what that looks like and free.
+    //
+    // Guarded so the steady state is untouched. Ordinary jitter is a third of a pixel and never
+    // reaches an edge, and this pass has to stay byte-identical when nothing is going wrong.
+    if ((tearing + waving + bandTear) > 0.0)
+    {
+        tubeUv.x = fract(tubeUv.x);
+        chromeUv.x = fract(chromeUv.x);
     }
 
     // Outside the glass. Only reachable when uOverscan is dialled below a full fit, since overscan
@@ -200,8 +304,15 @@ void main()
         return;
     }
 
+    // A degauss fault rings the convergence: the mask is briefly magnetised, the three beams stop
+    // landing on top of each other, and the error swings back and forth as it decays. Riding it on
+    // the chroma separation reuses the machinery that already splits the channels apart.
+    float bleed = uChromaBleed
+        + (degauss * 16.0 * sin((tubeUv.y * 21.0) + (uTime * 43.0)))
+        + (dropout * 5.0);
+
     vec4 uvs = vec4(tubeUv, chromeUv);
-    vec3 colour = chromaSample(uvs, backdrop, uChromaBleed / uOutputSize.x);
+    vec3 colour = chromaSample(uvs, backdrop, bleed / uOutputSize.x);
 
     // Halation: the glow a bright phosphor throws into its neighbours, sampled as a cheap cross. It
     // runs before the scanlines so the glow spills across the gaps between traces, which is where it
@@ -239,6 +350,55 @@ void main()
     {
         float flutter = (sin(uTime * 47.0) * 0.6) + (sin(uTime * 71.3) * 0.4);
         colour *= 1.0 + (uFlicker * 0.05 * flutter);
+    }
+
+    // A degauss fault rings the beam current along with the convergence, and the retrace bar of a
+    // vertical slip is simply the blanking interval arriving somewhere it is normally never seen.
+    if (degauss > 0.0)
+    {
+        colour *= 1.0 + (degauss * 0.55 * sin((tubeUv.y * 27.0) + (uTime * 31.0)));
+    }
+
+    colour *= 1.0 - (0.92 * retrace);
+
+    // Cross-colour. A composite decoder cannot tell fine luma detail from the colour subcarrier, so
+    // detail near the subcarrier frequency comes back as colour that was never in the picture — the
+    // rainbow that crawls over a striped shirt or a dithered sky. Keyed on luminance so it lands on
+    // the lit parts of the picture and leaves the black alone, and swept along x at roughly the
+    // subcarrier's own rate so it bands rather than tints.
+    if (rainbow > 0.0)
+    {
+        float lit = dot(colour, vec3(0.299, 0.587, 0.114));
+        float phase = (tubeUv.x * uOutputSize.x * 0.85)
+            + (tubeUv.y * 34.0)
+            + (uTime * 7.0);
+        vec3 swing = vec3(cos(phase), cos(phase + 2.0943951), cos(phase + 4.1887902));
+        colour += rainbow * 1.05 * lit * swing;
+    }
+
+    // Beam current surging and settling: the whole picture blooms, washes toward white and comes
+    // back. This is the one fault that reads from the far side of a room, so it is also the one
+    // that has to be brief.
+    if (surge > 0.0)
+    {
+        colour = mix(colour, vec3(dot(colour, vec3(0.333))), surge * 0.5);
+        colour *= 1.0 + (surge * 1.5);
+    }
+
+    // Snow, while the signal is away. Gated on brightness because noise rides the signal: it is loud
+    // in the greys and nearly invisible in the blacks, which is the opposite of what an added grain
+    // layer does. Only ever present during a dropout — a tube fed a good signal is not noisy, and a
+    // permanent grain layer is the fastest way to make one look like a video filter.
+    if (dropout > 0.0)
+    {
+        float grain = hash21(floor(gl_FragCoord.xy / 2.0) + vec2(floor(uTime * 60.0) * 1.7, 0.0));
+        float gate = (0.6 * sqrt(clamp(max(colour.r, max(colour.g, colour.b)), 0.0, 1.0))) + 0.4;
+        colour *= 1.0 - (dropout * 0.95 * gate * (0.5 - grain));
+
+        // Colour goes first. The burst that tells the decoder what phase to expect is the weakest
+        // thing on the line, so a signal on its way out loses its colour a moment before it loses
+        // its picture — which is why a dropout flashes monochrome rather than simply going noisy.
+        colour = mix(colour, vec3(dot(colour, vec3(0.299, 0.587, 0.114))), dropout * 0.8);
     }
 
     // Scanlines and mask are both multiplies below one, so a tube with either turned up is dimmer
