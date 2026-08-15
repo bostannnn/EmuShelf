@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The nine
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The eleven
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All nine are licensed
+All eleven are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -252,6 +252,17 @@ Credit is given here and the models keep their authorship metadata inside the `.
   maps carry the case's ribs, hinge, seams and scuffs rather than an embossing of the sleeve, and
   they ship byte-identical to the author's. Canonical orientation, metric scaling and per-game sleeve
   art are applied at runtime. Original authorship and license metadata remain embedded in the GLB.
+- **PS5 Dvd cd whatever... Case** — by [Diablo](https://sketchfab.com/ChefDiabloDex), from
+  [Sketchfab](https://sketchfab.com/3d-models/ps5-dvd-cd-whatever-case-a12ebbf3917d4a00bee65216a4c4768d).
+  Bundled as `blu-ray-case.glb`, serving PS3. The one bundled shell that needed no packaging removed:
+  it ships with no textures and two untextured materials, because its author modelled an empty case
+  for its user to apply their own cover to. There was accordingly nothing to flatten and nothing to
+  reduce, and the file is committed byte-identical to the download. Despite its title this is the
+  standard Blu-ray keep case — the author's root node scales it to 135 x 171.5 x 13mm, which is the
+  real object — and PS3, PS4 and PS5 games all shipped in it; EmuShelf renders it in the clear
+  plastic of a PS3 case rather than the white of a PS5 one. Canonical orientation, metric scaling,
+  the plastic's calibration and per-game sleeve art are applied at runtime. Original authorship and
+  license metadata remain embedded in the GLB.
 
 - **Compact disc** — by [SEMA Game Studio](https://sketchfab.com/sema.game.studio), from
   [Sketchfab](https://sketchfab.com/3d-models/compact-disc-06254ae4c6c04bc4b1cb5bd9b6c2ea41).
