@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -40,6 +41,7 @@ internal static class ModelPrep
     [Flags]
     private enum NeutralMaps
     {
+        None = 0,
         BaseColour = 1 << 0,
         Surface = 1 << 1,
         All = BaseColour | Surface,
@@ -54,6 +56,8 @@ internal static class ModelPrep
         string? neutralMaps,
         bool singleInstance,
         bool bakeVertexColours,
+        string? dropMeshes,
+        string? closeLid,
         int maxTextureSize)
     {
         var rect = ParseRect(neutralRect);
@@ -87,14 +91,29 @@ internal static class ModelPrep
             BakeConstantVertexColours(root, source, binStart);
         }
 
+        // Geometry edits run before the images are touched, because both read vertex data and the
+        // image pass rewrites buffer views underneath it.
+        if (closeLid is not null)
+        {
+            CloseHingedLid(root, source, binStart, Split(closeLid));
+        }
+
+        if (dropMeshes is not null)
+        {
+            DropMeshes(root, Split(dropMeshes));
+        }
+
         var views = root["bufferViews"]!.AsArray();
         var images = root["images"]!.AsArray();
         var textures = root["textures"]?.AsArray();
 
-        var neutralImages = neutralMaterial is null
+        var keepArtwork = string.Equals(neutralMaps, "none", StringComparison.OrdinalIgnoreCase);
+        var neutralImages = keepArtwork
+            ? []
+            : neutralMaterial is null
             ? ResolveAllMaterialImages(root, textures, baseFill, maps)
             : ResolveNeutralImages(root, textures, neutralMaterial, baseFill, maps);
-        if (neutralImages.Count == 0)
+        if (neutralImages.Count == 0 && !keepArtwork)
         {
             throw new InvalidDataException(
                 $"Nothing to neutralize: no material named '{neutralMaterial}' with a base-colour texture.");
@@ -218,6 +237,377 @@ internal static class ModelPrep
     /// views is precisely where a prep step goes quietly wrong. The orphaned vertex data stays in
     /// the buffer; it is a fraction of a file whose bulk is textures, and nothing references it.
     /// </remarks>
+    /// <summary>A mesh's first primitive, with the world transform its node chain gives it.</summary>
+    private sealed record MeshPlacement(int PositionAccessor, Matrix4x4 Transform);
+
+    /// <summary>
+    /// Resolves every named mesh to its composed node transform.
+    /// </summary>
+    /// <remarks>
+    /// Reading a downloaded model's accessor bounds without walking the node tree first is the
+    /// single most repeated mistake in this area — it is what made the DS card look like it was
+    /// lying on its side when its node matrices already stood it up.
+    /// </remarks>
+    private static Dictionary<string, MeshPlacement> MeshPlacements(JsonObject root)
+    {
+        var nodes = root["nodes"]?.AsArray() ?? [];
+        var meshes = root["meshes"]?.AsArray() ?? [];
+        var found = new Dictionary<string, MeshPlacement>(StringComparer.OrdinalIgnoreCase);
+
+        void Walk(int index, Matrix4x4 parent)
+        {
+            var node = nodes[index]!.AsObject();
+            var local = NodeTransform(node);
+            var world = local * parent;
+            if (node["mesh"]?.GetValue<int>() is { } meshIndex)
+            {
+                var mesh = meshes[meshIndex]!.AsObject();
+                var name = mesh["name"]?.GetValue<string>();
+                var position = mesh["primitives"]?[0]?["attributes"]?["POSITION"]?.GetValue<int>();
+                if (name is not null && position is not null)
+                {
+                    found[name] = new MeshPlacement(position.Value, world);
+                }
+            }
+
+            foreach (var child in node["children"]?.AsArray() ?? [])
+            {
+                Walk(child!.GetValue<int>(), world);
+            }
+        }
+
+        var scene = root["scenes"]?[root["scene"]?.GetValue<int>() ?? 0]?["nodes"]?.AsArray();
+        foreach (var entry in scene ?? [])
+        {
+            Walk(entry!.GetValue<int>(), Matrix4x4.Identity);
+        }
+
+        return found;
+    }
+
+    private static Matrix4x4 NodeTransform(JsonObject node)
+    {
+        if (node["matrix"]?.AsArray() is { } m)
+        {
+            var v = m.Select(entry => entry!.GetValue<float>()).ToArray();
+            return new Matrix4x4(
+                v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7],
+                v[8], v[9], v[10], v[11], v[12], v[13], v[14], v[15]);
+        }
+
+        var result = Matrix4x4.Identity;
+        if (node["scale"]?.AsArray() is { } s)
+        {
+            result *= Matrix4x4.CreateScale(
+                s[0]!.GetValue<float>(), s[1]!.GetValue<float>(), s[2]!.GetValue<float>());
+        }
+
+        if (node["rotation"]?.AsArray() is { } r)
+        {
+            result *= Matrix4x4.CreateFromQuaternion(new Quaternion(
+                r[0]!.GetValue<float>(), r[1]!.GetValue<float>(),
+                r[2]!.GetValue<float>(), r[3]!.GetValue<float>()));
+        }
+
+        if (node["translation"]?.AsArray() is { } t)
+        {
+            result *= Matrix4x4.CreateTranslation(
+                t[0]!.GetValue<float>(), t[1]!.GetValue<float>(), t[2]!.GetValue<float>());
+        }
+
+        return result;
+    }
+
+    /// <summary>The normal of the plane a set of points best fits: its least-spread direction.</summary>
+    private static Vector3 PlaneNormal(IReadOnlyList<Vector3> points, Vector3 centre)
+    {
+        // Inverse power iteration on the covariance, done the cheap way: find the two directions
+        // the points spread along most, and take what is left.
+        var first = PrincipalDirection(points, centre);
+        var residual = points
+            .Select(p => p - centre - (first * Vector3.Dot(p - centre, first)))
+            .ToArray();
+        var second = PrincipalDirection(residual, Vector3.Zero);
+        var normal = Vector3.Cross(first, second);
+        return normal.LengthSquared() < 1e-12f ? Vector3.UnitZ : Vector3.Normalize(normal);
+    }
+
+    /// <summary>The direction a set of points is most spread along, by power iteration.</summary>
+    private static Vector3 PrincipalDirection(IReadOnlyList<Vector3> points, Vector3 centre)
+    {
+        var direction = Vector3.Normalize(points[^1] - points[0]);
+        if (!float.IsFinite(direction.X))
+        {
+            return Vector3.UnitX;
+        }
+
+        for (var pass = 0; pass < 24; pass++)
+        {
+            var next = Vector3.Zero;
+            foreach (var point in points)
+            {
+                var offset = point - centre;
+                next += offset * Vector3.Dot(offset, direction);
+            }
+
+            if (next.LengthSquared() < 1e-20f)
+            {
+                return direction;
+            }
+
+            direction = Vector3.Normalize(next);
+        }
+
+        return direction;
+    }
+
+    private static Matrix4x4 Invert(Matrix4x4 value) =>
+        Matrix4x4.Invert(value, out var inverse)
+            ? inverse
+            : throw new InvalidDataException("A node transform is singular and cannot be inverted.");
+
+    /// <summary>Where an accessor's elements physically live, honouring interleaving.</summary>
+    private static (int Start, int Stride, int Count) PositionLayout(
+        JsonObject root, int binStart, int accessorIndex)
+    {
+        var accessor = root["accessors"]![accessorIndex]!.AsObject();
+        if (accessor["componentType"]!.GetValue<int>() != 5126
+            || accessor["type"]!.GetValue<string>() != "VEC3")
+        {
+            throw new InvalidDataException($"Accessor {accessorIndex} is not a float VEC3 position.");
+        }
+
+        var view = root["bufferViews"]![accessor["bufferView"]!.GetValue<int>()]!.AsObject();
+        const int packed = 3 * sizeof(float);
+        return (
+            binStart + (view["byteOffset"]?.GetValue<int>() ?? 0)
+                + (accessor["byteOffset"]?.GetValue<int>() ?? 0),
+            view["byteStride"]?.GetValue<int>() ?? packed,
+            accessor["count"]!.GetValue<int>());
+    }
+
+    private static Vector3[] ReadPositions(
+        JsonObject root, byte[] source, int binStart, MeshPlacement mesh)
+    {
+        var (start, stride, count) = PositionLayout(root, binStart, mesh.PositionAccessor);
+        var result = new Vector3[count];
+        for (var i = 0; i < count; i++)
+        {
+            var at = start + (i * stride);
+            result[i] = new Vector3(
+                BitConverter.ToSingle(source, at),
+                BitConverter.ToSingle(source, at + sizeof(float)),
+                BitConverter.ToSingle(source, at + (2 * sizeof(float))));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Writes positions back where they came from, leaving every other attribute untouched.
+    /// </summary>
+    /// <remarks>
+    /// In place rather than as a rebuilt buffer, because these views are interleaved and shared
+    /// between position, normal and UV accessors. Rebuilding one would mean rebuilding all three
+    /// and remapping the accessors onto them, which is the class of edit this file already avoids
+    /// everywhere else for the same reason.
+    /// </remarks>
+    private static void WritePositions(
+        JsonObject root, byte[] source, int binStart, MeshPlacement mesh, Vector3[] positions)
+    {
+        var (start, stride, count) = PositionLayout(root, binStart, mesh.PositionAccessor);
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+        for (var i = 0; i < count; i++)
+        {
+            var at = start + (i * stride);
+            BitConverter.TryWriteBytes(source.AsSpan(at), positions[i].X);
+            BitConverter.TryWriteBytes(source.AsSpan(at + sizeof(float)), positions[i].Y);
+            BitConverter.TryWriteBytes(source.AsSpan(at + (2 * sizeof(float))), positions[i].Z);
+            min = Vector3.Min(min, positions[i]);
+            max = Vector3.Max(max, positions[i]);
+        }
+
+        // glTF requires a position accessor's bounds, and readers trust them over the data.
+        var accessor = root["accessors"]![mesh.PositionAccessor]!.AsObject();
+        accessor["min"] = new JsonArray(min.X, min.Y, min.Z);
+        accessor["max"] = new JsonArray(max.X, max.Y, max.Z);
+    }
+
+    private static string[] Split(string value) =>
+        value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>Detaches named meshes, for a file that ships more than the shell in one scene.</summary>
+    /// <remarks>
+    /// Sibling of <see cref="KeepOneInstance"/> and the same non-destructive trick — the node loses
+    /// its <c>mesh</c> reference and <c>GlbLoader</c> skips it — but selected by name rather than by
+    /// ordinal. The PS1 download is a jewel case with its disc lying beside it, and only the case is
+    /// the shell; "keep the first" cannot express that.
+    /// </remarks>
+    private static void DropMeshes(JsonObject root, IReadOnlyCollection<string> names)
+    {
+        var meshes = root["meshes"]?.AsArray() ?? [];
+        var dropped = 0;
+        foreach (var node in root["nodes"]?.AsArray() ?? [])
+        {
+            var entry = node!.AsObject();
+            var index = entry["mesh"]?.GetValue<int>();
+            if (index is null)
+            {
+                continue;
+            }
+
+            var name = meshes[index.Value]?["name"]?.GetValue<string>() ?? string.Empty;
+            if (!names.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            entry.Remove("mesh");
+            dropped++;
+        }
+
+        if (dropped == 0)
+        {
+            throw new InvalidDataException(
+                $"--drop-meshes matched nothing. Wanted: {string.Join(", ", names)}.");
+        }
+
+        Console.WriteLine($"  detached {dropped} mesh node(s): {string.Join(", ", names)}");
+    }
+
+    /// <summary>
+    /// Swings a lid that was modelled ajar back down onto its tray.
+    /// </summary>
+    /// <remarks>
+    /// Downloaded case models are frequently posed for a product shot rather than closed, and this
+    /// one is: the PS1 jewel case's lid stands open 9.2 degrees, which is why it measures 29mm thick
+    /// against a real case's 10mm. That cannot be left to the profile. The scene scales each axis of
+    /// a shell onto its measured dimensions independently, so a profile carrying the true 10mm would
+    /// not close the lid — it would squash the whole case to a third of its depth — and a profile
+    /// carrying the asset's 29mm ships a case visibly ajar with its cover art projected onto a
+    /// tilted plane.
+    ///
+    /// <para>The first argument names the lid, whose lowest edge is the hinge and whose tilt is the
+    /// angle. The remaining names are the meshes that swing with it — the side walls and any inner
+    /// card attached to the lid. Selection within those is by height, so a wall's tray-side edge
+    /// stays put while its lid-side edge comes down, which is what a hinge does. Two rules that
+    /// each looked sufficient and were not: selecting by the lid's own plane misses an inner card
+    /// attached at a different angle, and selecting by height alone catches the tray's own rim,
+    /// which rises to within a hair of the hinge and gets thrown through the floor.</para>
+    /// </remarks>
+    private static void CloseHingedLid(
+        JsonObject root, byte[] source, int binStart, IReadOnlyList<string> names)
+    {
+        if (names.Count == 0)
+        {
+            throw new ArgumentException("--close-lid wants <lidMesh>[,<mesh>...].");
+        }
+
+        var placements = MeshPlacements(root);
+        if (!placements.TryGetValue(names[0], out var lid))
+        {
+            throw new InvalidDataException($"--close-lid: no mesh named '{names[0]}'.");
+        }
+
+        var lidPoints = ReadPositions(root, source, binStart, lid)
+            .Select(p => Vector3.Transform(p, lid.Transform))
+            .ToArray();
+
+        // Which way is "up" off the tray is the model's business, not a convention: the PS1 case
+        // this was written for lies with its thickness on Y, the next one had it on Z. A lid is a
+        // flat panel however far it is swung, so its smallest extent is the axis it lifts along.
+        var spread = lidPoints.Aggregate(
+            (Min: lidPoints[0], Max: lidPoints[0]),
+            (bounds, p) => (Vector3.Min(bounds.Min, p), Vector3.Max(bounds.Max, p)));
+        var extent = spread.Max - spread.Min;
+        var up = extent.X <= extent.Y && extent.X <= extent.Z ? Vector3.UnitX
+            : extent.Y <= extent.Z ? Vector3.UnitY
+            : Vector3.UnitZ;
+
+        float Height(Vector3 point) => Vector3.Dot(point, up);
+        var lowest = lidPoints.Min(Height);
+        var highest = lidPoints.Max(Height);
+        var hinge = lidPoints.Where(p => Height(p) <= lowest + (0.02f * (highest - lowest))).ToArray();
+        if (hinge.Length < 2)
+        {
+            throw new InvalidDataException("--close-lid: the lid has no identifiable hinge edge.");
+        }
+
+        // Derived from the lid's plane rather than from which vertices happen to sit lowest. A lid
+        // is a panel, so the rotation that shuts it is the one taking its normal onto the tray's:
+        // the hinge runs perpendicular to both, and the angle between them is how far it stands
+        // open. Picking a hinge edge out of the vertex cloud instead looked reasonable and failed
+        // twice — once on a diagonal chord, once on a scattered low edge — because a lid with two
+        // hundred vertices has no single lowest edge to find.
+        var centre = lidPoints.Aggregate(Vector3.Zero, (sum, p) => sum + p) / lidPoints.Length;
+        var lidNormal = PlaneNormal(lidPoints, centre);
+        if (Vector3.Dot(lidNormal, up) < 0f)
+        {
+            lidNormal = -lidNormal;
+        }
+
+        var axis = Vector3.Cross(lidNormal, up);
+        if (axis.LengthSquared() < 1e-12f)
+        {
+            Console.WriteLine($"  '{names[0]}' is already shut; nothing to swing.");
+            return;
+        }
+
+        axis = Vector3.Normalize(axis);
+        var angle = MathF.Acos(Math.Clamp(Vector3.Dot(lidNormal, up), -1f, 1f));
+        var pivot = lidPoints.Where(p => Height(p) <= lowest + (0.05f * (highest - lowest)))
+            .Aggregate(Vector3.Zero, (sum, p) => sum + p)
+            / lidPoints.Count(p => Height(p) <= lowest + (0.05f * (highest - lowest)));
+
+        var rotation = Matrix4x4.CreateFromAxisAngle(axis, angle);
+        var alternative = Matrix4x4.CreateFromAxisAngle(axis, -angle);
+        float Flatness(Matrix4x4 candidate)
+        {
+            var swung = lidPoints
+                .Select(p => Height(Vector3.Transform(p - pivot, candidate) + pivot))
+                .ToArray();
+            return swung.Max() - swung.Min();
+        }
+
+        if (Flatness(alternative) < Flatness(rotation))
+        {
+            rotation = alternative;
+        }
+
+        Console.WriteLine(
+            $"  closing '{names[0]}': lid stands {angle * 180f / MathF.PI:F2} deg open about "
+            + $"{(up == Vector3.UnitX ? "X" : up == Vector3.UnitY ? "Y" : "Z")}");
+
+        var moved = 0;
+        foreach (var name in names)
+        {
+            if (!placements.TryGetValue(name, out var mesh))
+            {
+                throw new InvalidDataException($"--close-lid: no mesh named '{name}'.");
+            }
+
+            var inverse = Invert(mesh.Transform);
+            var local = ReadPositions(root, source, binStart, mesh);
+            for (var i = 0; i < local.Length; i++)
+            {
+                var world = Vector3.Transform(local[i], mesh.Transform);
+                if (Height(world) <= lowest - (0.02f * (highest - lowest)))
+                {
+                    continue;
+                }
+
+                var swung = Vector3.Transform(world - pivot, rotation) + pivot;
+                local[i] = Vector3.Transform(swung, inverse);
+                moved++;
+            }
+
+            WritePositions(root, source, binStart, mesh, local);
+        }
+
+        Console.WriteLine($"  swung {moved} lid vertices onto the tray");
+    }
+
     private static void KeepOneInstance(JsonObject root)
     {
         var kept = false;
@@ -440,7 +830,12 @@ internal static class ModelPrep
         {
             null or "" or "all" => NeutralMaps.All,
             "base" => NeutralMaps.BaseColour,
-            _ => throw new ArgumentException("--neutral-maps wants 'all' or 'base'."),
+            // Nothing is flattened. Only for a shell whose own author licensed its artwork to us —
+            // it is the exception, and the reason to reach for it is that a case model often paints
+            // its plastic and its printed insert into one map, so removing the insert takes the
+            // hinge and the moulding with it.
+            "none" => NeutralMaps.None,
+            _ => throw new ArgumentException("--neutral-maps wants 'all', 'base' or 'none'."),
         };
 
     /// <summary>

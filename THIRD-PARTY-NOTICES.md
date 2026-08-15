@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The seven
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The eight
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All seven are licensed
+All eight are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -223,6 +223,18 @@ Credit is given here and the models keep their authorship metadata inside the `.
   the author's CC BY licence does not cover — in the build. Maps were reduced to 1024px, and
   canonical orientation, metric scaling and per-game label art are applied at runtime. Original
   authorship and license metadata remain embedded in the GLB.
+- **Hypnagogia 無限の夢 Boundless Dreams Jewel Case** — by
+  [sodaraptor](https://sketchfab.com/sodaraptor), from
+  [Sketchfab](https://sketchfab.com/3d-models/hypnagogia-boundless-dreams-jewel-case-20e4780167b6441fb364060c79870378).
+  Bundled as `jewel-case.glb`, serving PS1 and Dreamcast. **This is the one shell whose source
+  artwork is kept rather than flattened**, and deliberately: sodaraptor wrote the game and built the
+  case, so the CC BY licence covers both the model and the art on it, and the case moulds its own
+  "DreamStation" branding rather than any console manufacturer's. Keeping it is also what makes the
+  shell usable — the case's plastic, hinge teeth and printed banner live in the same base-colour
+  maps as the insert, so flattening the insert would take them too, which is exactly how three
+  earlier jewel-case candidates failed. EmuShelf projects its own cover art over the insert area at
+  runtime. The disc was dropped, the lid shut from the 25-degree product-shot pose it ships in, and
+  maps reduced to 1024px. Original authorship and license metadata remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
   Bundled as `disc-keep-case.glb`. The download's base-colour map is a scan of a retail Mortal
