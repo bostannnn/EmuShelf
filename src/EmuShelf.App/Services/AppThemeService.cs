@@ -35,12 +35,18 @@ public sealed class AppThemeService : IAppThemeService
 
     public event EventHandler? AmbientFromArtworkChanged;
 
+    /// <summary>Whether the couch shelf is presented through a simulated CRT tube.</summary>
+    public bool CrtScreenEffect { get; private set; }
+
+    public event EventHandler? CrtScreenEffectChanged;
+
     public AppThemeService(ISettingsService settingsService, AppSettings settings)
     {
         _settingsService = settingsService;
         _settings = settings;
         Current = settings.Theme;
         AmbientFromArtwork = settings.AmbientThemeFromArtwork;
+        CrtScreenEffect = settings.CrtScreenEffect;
         ApplyToApplication(Current);
     }
 
@@ -65,6 +71,18 @@ public sealed class AppThemeService : IAppThemeService
             () => _settingsService.Update(latest => latest with { AmbientThemeFromArtwork = enabled }),
             cancellationToken);
         AmbientFromArtworkChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public async Task SetCrtScreenEffectAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (CrtScreenEffect == enabled)
+            return;
+
+        CrtScreenEffect = enabled;
+        _settings = await Task.Run(
+            () => _settingsService.Update(latest => latest with { CrtScreenEffect = enabled }),
+            cancellationToken);
+        CrtScreenEffectChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void ApplyArtworkPalette(ArtworkPalette palette)

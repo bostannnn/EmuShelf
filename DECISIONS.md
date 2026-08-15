@@ -8118,3 +8118,97 @@ The PS1 jewel case has the same defect at smaller scale — 2.06mm unprinted bet
 and a cover panel stopping 4mm short of the opening edge. Left alone deliberately: its front panel
 is already asymmetric to clear a banner, so its numbers want their own measuring session rather than
 this one's constants applied by analogy.
+## 2026-08-15 — CRT presentation is a GL resolve pass, not a window-wide effect
+
+Shelf mode presents through a simulated CRT tube. The pass replaces the resolve blit at the end of
+`MediaShellRenderer.Render`/`RenderShelf` — the scene was already drawn supersampled into an
+offscreen framebuffer and blitted down, so the warp, scanlines, phosphor mask, halation and vignette
+cost one extra fullscreen triangle over a texture that already existed.
+
+The obvious alternative — running the whole couch window through a shader so the platform rail and
+title curve with the shelf — was rejected for now. Avalonia 12 exposes no custom-shader effect
+(`IEffect` has only blur and drop-shadow implementations), so the only route is snapshotting the
+visual tree into a `RenderTargetBitmap` every frame and redrawing it through an `SKRuntimeEffect`.
+That is a full-window offscreen render per frame on hardware that includes a Steam Deck. Notably it
+would *not* break input: `GamepadRoot` is `IsHitTestVisible="False"` and the couch UI is entirely
+controller-driven, so the usual objection — clicks landing where the undistorted control is — does
+not apply here. Cost is the only blocker, which makes this worth revisiting with a measurement
+rather than an argument.
+
+Because the pass now owns the composite, the tube's backdrop is a uniform rather than an Avalonia
+Border: going full-bleed puts the pass underneath the whole couch screen, and a backdrop painted
+behind it could not be curved or vignetted with everything else. The accent wash therefore reaches
+the renderer as a colour instead of a brush.
+
+Every parameter is a setting. A CRT emulation cannot be judged by argument, only by sitting in front
+of it at the distance it will be used from, and the right curvature for a 27" desk monitor is not
+the right one for a television across a room. `Intensity = 0` is defined to reproduce the previous
+image exactly, so the effect can be turned off rather than merely turned down.
+
+Shaders are written rather than ported from RetroArch. Licensing is not the obstacle — EmuShelf is
+GPL-3.0 and the libretro CRT shaders are mostly GPL-2.0-or-later or public domain, so incorporating
+one is permitted with the usual per-file check and a `THIRD-PARTY-NOTICES.md` entry. The mismatch is
+technical: those shaders derive their scanline structure from an emulated framebuffer's native line
+count, and the shelf is a smooth 3D render with no line structure to inherit. `VirtualLines` invents
+one instead. They remain the reference worth reading for mask geometry.
+
+## 2026-08-15 — The couch UI is captured into the tube, not composited over it
+
+Superseding the "revisit with a measurement" note above: the platform rail and focused title are now
+inside the CRT image rather than flat overlays on top of it.
+
+The distinction is the whole feature and it is easy to get wrong twice. Making the GL surface span
+the window does *not* put the rail inside the tube — Avalonia still composites the rail after the
+shader has run, so it sits flat on a curved picture. The rail's pixels have to be an *input* to the
+shader. So a UI-thread timer renders `GamepadRoot` into a `RenderTargetBitmap` at 30Hz, copies it to
+a buffer, and the render thread uploads that as a texture the shader composites into the scene
+*before* the barrel warp.
+
+Consequences worth knowing:
+
+- The scene control lives beside `GamepadRoot` in the window, not inside it, or the capture would be
+  photographing itself.
+- The couch UI still lays out and animates normally underneath; it is simply never what you see,
+  because the opaque tube covers it.
+- The capture must be on the UI thread. Avalonia calls `OnOpenGlRender` on the render thread, and
+  rendering a live visual from there is a data race, not merely unsupported.
+- `GamepadRoot`'s background moved from an inline attribute to a style setter. A local value outranks
+  every style setter in Avalonia, so the shelf-mode override could not otherwise take effect, and the
+  capture came back as an opaque sheet hiding the shelf.
+- The capture is deliberately downscaled to a 1280px edge. Cheaper, and more faithful — a CRT does
+  not resolve UI text crisply.
+
+Overscan is split in two. The scene is zoomed to carry the warped corners off the panel, because its
+opaque backdrop leaves black wedges there; the chrome is not, because it is transparent at the edges
+and contributes no wedges, so zooming it would only push the platform rail off the top of the screen.
+
+The tube's visibility is `ShowShelfTube`, which unlike `ShowGamepadShelf` is not gated on `HasGames`.
+Stepping platforms empties the collection and refills it, and anything gated on games being present
+blinked the entire effect off for a frame — and detached and rebuilt the GL scene on every platform
+step.
+
+## 2026-08-15 — The CRT is a couch-wide presentation, and its setting lives only in couch mode
+
+Refining the two entries above: the tube covers every couch layout, not just the shelf. The CRT is a
+property of the television the couch UI is being shown on, and the grid and the spotlight are as much
+"a console menu on a TV" as the shelf is. `CrtScreenEffect` — renamed from `CrtShelfEffect`, which had
+become misleading — is persisted in `AppSettings` and defaults on.
+
+Desktop mode is deliberately excluded. It is a mouse-driven library window, and a warped, scanned one
+would be unusable rather than nostalgic.
+
+For the same reason the toggle does **not** appear in the desktop Settings window, and neither does
+"Match colours to game artwork", which was already there and already Gamepad-only. A setting whose
+effect is invisible from the window it lives in is worse than no setting: it invites the user to
+change something and watch nothing happen. Both live in the couch Settings overlay under Themes,
+where the result is on screen while it is being changed. The theme gallery stays in both, because a
+theme genuinely applies to both.
+
+Two consequences worth remembering, each of which was a bug first:
+
+- The scene control is not only the tube. It is also the only thing that draws physical media, since
+  the flat 2D strip beside it is a no-GL fallback that stays hidden whenever the scene works. Its
+  visibility therefore cannot be gated on the CRT setting alone, or switching the effect off empties
+  the shelf entirely.
+- Outside the shelf there is nothing for the 3D scene to draw, so it is handed an empty item list.
+  Passing it the library on the grid would draw a row of cartridges over the cover grid.

@@ -3837,6 +3837,17 @@ public class MainViewModelTests : IDisposable
 
         public bool AmbientFromArtwork { get; private set; }
 
+        public bool CrtScreenEffect { get; private set; } = true;
+
+        public event EventHandler? CrtScreenEffectChanged;
+
+        public Task SetCrtScreenEffectAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            CrtScreenEffect = enabled;
+            CrtScreenEffectChanged?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }
+
         public event EventHandler? AmbientFromArtworkChanged;
 
         public Task SetThemeAsync(
