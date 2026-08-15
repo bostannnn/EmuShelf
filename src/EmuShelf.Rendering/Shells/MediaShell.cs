@@ -295,6 +295,10 @@ public sealed record MediaShellDefinition(
 /// one-hero camera a GBA cartridge cannot grow to the same screen height as a keep case. The
 /// optional correction is deliberately small and defaults to one; it is not a second arbitrary
 /// per-platform cover-size system.
+///
+/// The dimensions here stay the measured object throughout. What reaches the scene is those
+/// dimensions through <see cref="SizeCompression"/>, which is the one place any medium's presented
+/// size may differ from its real one.
 /// </remarks>
 /// <param name="InsertionAnimationId">Which launch choreography this medium takes. Read by the app
 /// layer's <c>PhysicalShelfLaunchStyle</c>: a cartridge is turned and pushed into a slot, while a
@@ -318,19 +322,69 @@ public sealed record PhysicalMediaProfile(
     public const float ReferenceHeightMillimetres = 190f;
 
     /// <summary>
+    /// How much of a medium's real size difference from the 190mm reference survives into the
+    /// scene, as the exponent of a power law: one is literal metric scale, zero would stand every
+    /// medium at the reference height.
+    /// </summary>
+    /// <remarks>
+    /// The single rule that decides relative size on the shelf, and it exists because literal metric
+    /// scale — which is what shipped — spans 14.6 to 1 from a 32.9mm Game Pak to the 480mm arcade
+    /// cabinet. One camera has to hold all of them at once on the all-games view, and it frames the
+    /// largest, so a mixed row with one arcade game in it drew a Game Pak at 4.3% of the frame's
+    /// height against the cabinet's 64%: a smear a few pixels tall with no cover art legible on it.
+    /// Truthful, and unusable.
+    ///
+    /// A power law rather than a blend toward the reference because it is scale-free: two media
+    /// keep a fixed ratio to each other however they are compressed — 2:1 in life is 2^k on the
+    /// shelf — so the ordering, and the *feeling* of ordering, is preserved everywhere rather than
+    /// only near the anchor. It is also one constant with an obvious pair of limits, which is what
+    /// makes it a rule rather than a table of fudge factors: nothing here is per-platform.
+    ///
+    /// 0.35 sets the widest ratio in the library — arcade cabinet against Game Pak — at 2.6:1,
+    /// where the real objects are 14.6:1: a 480mm cabinet is drawn at 263mm and a 32.9mm Game Pak
+    /// at 103mm, both against a keep case that is exactly its own 190mm because it is the anchor.
+    /// Every medium keeps its place in the order (a keep case still stands over a cartridge, a NES
+    /// cartridge still over a SNES one), and on the all-games view the row now spans 17% to 45% of
+    /// the frame's height where it spanned 4.3% to 64%. Lower it to flatten the shelf further;
+    /// 1 restores exact metric scale and every proportion test still passes, because this is applied
+    /// uniformly to all three axes — it changes how big a medium is, never what shape it is.
+    ///
+    /// The disc a case gives up takes the same factor as the case, which is what keeps a disc that
+    /// fits inside its box still fitting inside it.
+    /// </remarks>
+    public const float SizeCompression = 0.35f;
+
+    /// <summary>
     /// Optional per-profile correction applied after an asset has entered the shell's canonical
     /// Y-up/+Z-front space. It stays separate from controller rotation and defaults to identity.
     /// </summary>
     public Matrix4x4 CanonicalOrientation { get; init; } = Matrix4x4.Identity;
 
-    public float WidthInShelfUnits =>
-        DimensionsMillimetres.X / ReferenceHeightMillimetres * PresentationScale;
+    /// <summary>The medium's real height as this profile presents it, before compression.</summary>
+    public float PresentedHeightMillimetres => DimensionsMillimetres.Y * PresentationScale;
 
-    public float HeightInShelfUnits =>
-        DimensionsMillimetres.Y / ReferenceHeightMillimetres * PresentationScale;
+    /// <summary>
+    /// The one conversion from this profile's millimetres to the shelf's units, compression
+    /// included.
+    /// </summary>
+    /// <remarks>
+    /// Every dimension goes through this single factor rather than each being compressed on its own,
+    /// and that is the whole reason compressing sizes is safe here. The scene matches a shell's
+    /// three canonical extents to the three numbers below independently, so anything that touches
+    /// them unevenly does not read as a size change — it silently distorts the model, which is the
+    /// failure mode two of these profiles have already shipped. One shared factor cannot.
+    /// </remarks>
+    private float ShelfUnitsPerMillimetre =>
+        MathF.Pow(
+            MathF.Max(PresentedHeightMillimetres, 0.01f) / ReferenceHeightMillimetres,
+            SizeCompression - 1f)
+        * PresentationScale / ReferenceHeightMillimetres;
 
-    public float DepthInShelfUnits =>
-        DimensionsMillimetres.Z / ReferenceHeightMillimetres * PresentationScale;
+    public float WidthInShelfUnits => DimensionsMillimetres.X * ShelfUnitsPerMillimetre;
+
+    public float HeightInShelfUnits => DimensionsMillimetres.Y * ShelfUnitsPerMillimetre;
+
+    public float DepthInShelfUnits => DimensionsMillimetres.Z * ShelfUnitsPerMillimetre;
 
     /// <summary>
     /// The widest this medium can become while turning about its up axis — its turning circle,
@@ -353,6 +407,5 @@ public sealed record PhysicalMediaProfile(
     /// <summary>Whether this medium has a disc the launch choreography can lift out of it.</summary>
     public bool HasDisc => DiscDiameterMillimetres > 0f;
 
-    public float DiscDiameterInShelfUnits =>
-        DiscDiameterMillimetres / ReferenceHeightMillimetres * PresentationScale;
+    public float DiscDiameterInShelfUnits => DiscDiameterMillimetres * ShelfUnitsPerMillimetre;
 }

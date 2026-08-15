@@ -8498,3 +8498,84 @@ deleted now that the answer is known.
 Worth checking whether this is a known Avalonia 12 regression before working around it any further;
 this project has already been bitten once by that major version, when it started choosing Metal and
 silently broke `OpenGlControlBase`.
+## 2026-08-15 — Presented size is compressed by one power law; the camera frames by area
+
+Two reports about the shelf, one root cause each, and both answered by a rule rather than a table.
+
+**The all-games view.** Literal metric scale spans 14.6:1 across the library — a 32.9mm Game Pak to
+a 480mm arcade cabinet — and one camera has to hold all of it at once, framed by whichever medium is
+largest. So a single arcade game in the library drew every Game Pak at 4.3% of the frame's height
+against the cabinet's 64%: a few pixels tall, with no cover art legible on it. Truthful and unusable.
+
+`PhysicalMediaProfile.SizeCompression` is now the one place a medium's presented size may differ from
+its measured one: presented height = 190mm x (real/190mm)^0.35, applied as a single uniform factor to
+all three axes and to the disc a case gives up. The measured millimetres in `MediaShellMap` are
+untouched and remain the truth of each profile. That narrows the span to 2.6:1 — the cabinet is drawn
+at 263mm, a Game Pak at 103mm, a keep case at exactly its own 190mm because it is the anchor — and
+the all-games row now spans 17% to 45% of the frame's height instead of 4.3% to 64%.
+
+A power law rather than a blend toward the reference because it is scale-free: two media keep a fixed
+ratio to each other however hard they are compressed, so ordering survives everywhere rather than
+only near the anchor, and small differences (a UMD case against a DVD case) compress far less than
+large ones. Setting it to 1 restores exact metric scale and every test still passes.
+
+The price, and it is worth stating because it looks like a bug: the factor comes from a medium's own
+height, so two objects that share a width but not a height stop sharing it. A PS3 case is 135mm wide
+like a PS2 case and is now drawn 6.8% wider, being shorter. The alternative is compressing the height
+axis alone, which is the silent distortion this codebase has already shipped twice — the SNES
+cartridge at 12% and PS3 at 13.7% — and a case slightly wider than its neighbour is a far cheaper
+error than a case the wrong shape.
+
+**The per-platform pages.** The camera framed width and height against separate fills and took the
+tighter answer, which sounds conservative and is not: a landscape medium is stopped by the frame's
+sides while keeping most of a height share, so it covers nearly twice the screen a portrait one does.
+Invisible on a mixed row, where they are framed together; unmissable on a per-platform page, where
+the medium is the only thing setting the camera. A page of Game Paks covered 21.9% of the frame
+against a page of keep cases at 10.5%, which is what "the GBA cartridge is too big" was — not a GBA
+problem, but every landscape medium, the Game Pak being the most landscape shape in the library.
+
+The camera now frames one shape-neutral extent — the side of the square with the same silhouette area
+as the medium's band and turning circle — and offers it to both axis limits. Equal silhouette area
+therefore means equal screen area whatever the proportions. `ShelfFrameFill` and `ShelfFrameWidthFill`
+became 0.4649 and 0.311, which are 0.55 and 0.368 restated in those terms for a keep case: it frames
+exactly where it did, at 10.5%, and every platform's page now lands between 9.5% and 10.7%.
+
+Note the two changes are independent and each fixes only its own report. Compression cannot touch a
+per-platform page, because the camera fits whatever the largest medium is and a uniform scale then
+cancels out; area framing cannot touch the all-games row, because there the media are framed against
+each other rather than against the frame.
+
+## 2026-08-15 — One catalogue key can name several releases; the filename settles which
+
+A disc set shares a single product number — every Shenmue disc reports MK-5105950 — so the DAT
+lookup for discs 2 and 3 hit the same key as disc 1 and returned three candidate entries. The
+tie-break was region plus `PreferenceScore`, which scores by title length: "(Disc 1)", "(Disc 2)"
+and "(Disc 3)" are the same length and all say Europe, so the score tied every time and the
+first-seen entry won. All three discs were named, and covered, as disc 1. The same tie-break also
+had a deliberate `(Rev ` penalty, so a Rev 1 dump was always named after the original.
+
+The filename was already being passed in for its region tag; it also carries the disc number and the
+revision, and those are decided first now, each as a narrowing pass over the candidates. An absent
+marker matches an absent marker, so a plain dump still prefers the plain entry, and a pass that
+matches nothing narrows nothing rather than inventing an answer — a DAT that numbers its discs and a
+filename that does not still falls through to the historical region-then-score pick. The parameter is
+`filenameHint` rather than `regionHint`, because region is now one of three things read from it.
+
+Rows already stored under the wrong disc's name look complete to `GetGamesMissingMetadata`, so they
+would never be revisited. `GetGamesWithMismatchedDiscTitles` asks for them by name and the fetch
+re-resolves them. It only claims a row whose title names a *different* disc than its file: a title
+carrying no disc at all may be perfectly correct, because a DAT can hold one entry for a whole set
+(GameTDB does, for both discs of a GameCube game), and re-queuing those would never settle.
+
+## 2026-08-15 — A revision tag belongs in the disc-grouping key, not on an exclusion list
+
+`GameDiscSetBuilder` refused any file whose name contained "Rev <n>", so "Metal Gear Solid (USA)
+(Rev 1) (Disc 1/2)" — an ordinary Redump dump — showed as two tiles with no disc selector. The
+intent was right: a revised disc must not merge with an original one. The implementation threw away
+the whole title to achieve it.
+
+Only the disc marker is stripped when the grouping key is built, so the revision tag survives in the
+key on its own. Dropping it from the exclusion list is therefore sufficient and strictly better:
+two discs of one revision merge, while a mixed pair stays apart because their keys differ. Demos and
+bonus discs stay excluded — there the name is ambiguous about what a "set" even is, which is a
+different problem from a tag that simply needs to be carried along.

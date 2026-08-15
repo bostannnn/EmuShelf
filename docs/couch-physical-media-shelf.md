@@ -26,9 +26,16 @@ continuous shelf position, so the media travel through space rather than a centr
 
 The scene follows four rules:
 
-1. **Physical scale is data.** Each medium records real dimensions in millimetres plus a small optional
-   presentation correction. The keep case is the reference size; SNES is naturally medium and GBA
-   naturally small. The camera is shared by the scene and never auto-fits each item independently.
+1. **Physical scale is data, compressed by one rule.** Each medium records real dimensions in
+   millimetres plus a small optional presentation correction. The keep case is the reference size;
+   SNES is naturally medium and GBA naturally small. Those millimetres reach the scene through
+   `PhysicalMediaProfile.SizeCompression`, a single power law that keeps every medium's order and
+   proportions while narrowing the library's 14.6:1 span of real heights to 2.6:1 — without it the
+   all-games view, which is framed by whichever medium is largest, draws a Game Pak beside an arcade
+   cabinet at a few pixels tall. It is one constant applied uniformly to all three axes of every
+   medium, never a per-platform size table. The camera is shared by the scene, never auto-fits each
+   item independently, and frames a medium by silhouette area rather than by width and height
+   separately, so a landscape cartridge and a portrait case get the same share of the screen.
 2. **One renderer owns the visible row.** It draws a bounded window around focus (normally two or three
    games on each side), reusing shell meshes and cached per-game textures. Unsupported media use a thin
    cover card in the same 3D coordinate system, so mixed-platform rows still move continuously.

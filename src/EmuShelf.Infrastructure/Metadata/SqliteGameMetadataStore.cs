@@ -72,6 +72,42 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
         return games;
     }
 
+    public IReadOnlyList<Game> GetGamesWithMismatchedDiscTitles(string? systemId = null)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        // SQLite has no regular expressions, so the query only narrows to catalogue-titled rows that
+        // could name a disc at all; the numbers themselves are compared below.
+        command.CommandText =
+            $"""
+            SELECT {GameColumns}
+            FROM Games
+            WHERE ($systemId IS NULL OR SystemId = $systemId)
+              AND TitleOrigin = $catalog
+              AND (Path LIKE '%disc%' OR Path LIKE '%disk%' OR Path LIKE '%cd%')
+            ORDER BY Id;
+            """;
+        command.Parameters.AddWithValue("$systemId", (object?)systemId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$catalog", (int)GameTitleOrigin.Catalog);
+
+        var games = new List<Game>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            // Only a title that names a *different* disc is provably wrong. A title with no disc at
+            // all may be right: a DAT can hold one entry for a whole set, as GameTDB does for the
+            // two discs of a GameCube game, and re-queuing those would never settle.
+            var game = ReadGame(reader);
+            if (GameDiscSetBuilder.TryReadDiscNumber(Path.GetFileNameWithoutExtension(game.Path), out var fileDisc) &&
+                GameDiscSetBuilder.TryReadDiscNumber(game.Title, out var titleDisc) &&
+                titleDisc != fileDisc)
+            {
+                games.Add(game);
+            }
+        }
+        return games;
+    }
+
     public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId)
     {
         using var connection = _database.CreateConnection();

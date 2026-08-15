@@ -362,7 +362,7 @@ if (ArgumentValue("--shelf-width") is null)
     var rightEdge = shelfCentres[^1] + (shelfProfiles[^1].WidthInShelfUnits * 0.5f);
     var reach = MathF.Max(shelfAnchor - leftEdge, rightEdge - shelfAnchor);
     var aspect = MediaShellRenderer.ShelfAspectForVisibleWidth(
-        (reach * 2f) + 0.3f, shelfMediaHeight);
+        (reach * 2f) + 0.3f, shelfMediaHeight, shelfMediaWidth);
     shelfWidth = (int)MathF.Ceiling(shelfHeight * aspect);
     Console.WriteLine(
         $"  shelf frame: {shelfWidth}x{shelfHeight} for {shelfEntries.Count} media "

@@ -51,10 +51,23 @@ public sealed class MediaShellRenderer : IDisposable
     private const float FocusLift = 0.035f;
 
     /// <summary>
-    /// Fraction of the viewport height the tallest medium in the library view fills, when height is
+    /// Fraction of the viewport height the framed medium's equal-area square fills, when height is
     /// the axis that runs out first.
     /// </summary>
     /// <remarks>
+    /// Not the medium's own height: see <see cref="FramedExtent"/> for why the two constants here
+    /// measure a square of the same silhouette area rather than the medium's width and height. A
+    /// portrait medium therefore fills more of the frame's height than this number and a landscape
+    /// one less, both by the square root of its aspect — which is exactly the point, because that is
+    /// what makes the *area* the same for all of them. 0.4649 is 0.55 restated in those terms for a
+    /// keep case, which is the medium that was signed off: it frames exactly where it did, at 18.0%
+    /// by 58.0% of the reference viewport, and what moves is every medium of a different shape.
+    ///
+    /// Derived rather than chosen, so it can be re-derived: multiply the old fill by the square root
+    /// of the anchor's aspect. A keep case is 0.7143 wide by 1.0 tall in turning circle and band, so
+    /// 0.55 x sqrt(0.7143) = 0.4649. Re-anchoring on a different medium means redoing that
+    /// arithmetic with its numbers, not nudging this one until a screenshot looks right.
+    ///
     /// This is the knob for "the media are too small". The camera was previously fixed at a
     /// distance chosen for a 190mm keep case, so a SNES cartridge — barely 40% of that height —
     /// occupied under a third of the frame with the rest left empty above and below. That is worst
@@ -70,60 +83,46 @@ public sealed class MediaShellRenderer : IDisposable
     /// PS2 keep case is 0.71 — portrait — so the same rule left it 16% of the width, with the
     /// horizontal space nobody was using growing as the viewport got wider. That is why disc-based
     /// media looked small next to cartridges that had been "fixed": both filled half the height.
-    /// <see cref="ShelfFrameWidthFill"/> is the other half of the rule, and this is the height a
-    /// portrait medium takes once the width limit is what stops the wide ones.
+    /// Two independent fills — one per axis — closed most of that gap but not the last of it, since
+    /// they still let a landscape medium take both its full width share and most of a height share.
+    /// A Game Pak came out at 21.9% of the frame against a keep case's 10.5%, on pages where each is
+    /// the only medium there is. Measuring one shape-neutral extent instead is what finally makes
+    /// the question "how much of the screen is this" have one answer: every platform's own page now
+    /// falls between 9.5% and 10.7%, and the keep case is untouched at 10.5%.
     ///
-    /// 0.55 rather than more because the launch lift sets the ceiling, not taste, and the medium
-    /// that sets it is not the one this change is about. The lift is an absolute 0.10 units while
-    /// the frame scales with the medium's own height, so the *shortest* height-led medium has the
-    /// least room to rise into — a PS1 jewel case at 125mm, whose frame is two thirds of a keep
-    /// case's while its lift is the same. Walking
-    /// MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame up until it breaks puts
-    /// the jewel case's limit between 0.56 and 0.57, against 0.64–0.66 for a UMD case and 0.66–0.70
-    /// for a keep case under the disc sequence. One camera constant serves all three, so the
-    /// smallest wins and 0.55 keeps a little in hand.
-    ///
-    /// The consequence is worth stating plainly: a keep case covers 10.5% of the Steam Deck's shelf
-    /// viewport against a cartridge's 20.6%, having covered 8.6% before. So it grows by about a
-    /// fifth and reaches half the cartridge, not parity — parity needs a fill near 0.77, which no
-    /// medium's choreography can hold. Getting there means making the lift proportional to the
-    /// medium instead of absolute, which is a change to the launch sequences and to how a cartridge
-    /// launch feels, not to this constant.
+    /// The ceiling on it is the launch lift, not taste: the lift is an absolute 0.10 units while the
+    /// frame scales with the medium, so the *smallest* height-led medium has the least room to rise
+    /// into. Walking MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame up until it
+    /// breaks is how the equivalent 0.55 was fixed, and the same walk holds here — with more room in
+    /// hand than before, because compressing the media raised every small one against a lift that
+    /// stayed where it was.
     /// </remarks>
-    private const float ShelfFrameFill = 0.55f;
+    private const float ShelfFrameFill = 0.4649f;
 
     /// <summary>
-    /// Fraction of the viewport width the widest medium in the library view fills, when width is
+    /// Fraction of the viewport width the framed medium's equal-area square fills, when width is
     /// the axis that runs out first.
     /// </summary>
     /// <remarks>
-    /// 0.368 is what a SNES cartridge already took under the height-only rule, so this constant is
-    /// not a new composition for landscape media — it is the existing one, written down on the axis
-    /// that was actually deciding it. Cartridges therefore frame within a tenth of a percent of
-    /// where they framed before, while cases grow, which is the point.
+    /// 0.311 is 0.368 restated for the equal-area square through the same keep case and the same
+    /// arithmetic as <see cref="ShelfFrameFill"/> — 0.368 x sqrt(0.7143) — which keeps this constant
+    /// in the proportion to it that it held before, so which of the two limits binds still changes
+    /// hands at the same viewport shape, an aspect of about 1.5. The shelf's own
+    /// viewport never goes near that: the scene control is <c>GamepadShelfMediaHost</c>, 1248 x 560
+    /// on a 1280 x 800 Steam Deck, and every window size from 1024 x 640 to 2560 x 1440 lands
+    /// between 2.11 and 2.48. So in the shipped layout height leads for every medium, and this is
+    /// the guard on a squarer viewport rather than a second composition.
     ///
-    /// Measured in the shelf's own viewport rather than in the display: the scene control is
-    /// <c>GamepadShelfMediaHost</c>, which is 1248 x 560 on a 1280 x 800 Steam Deck — 2.23, not the
-    /// panel's 1.6. The chrome around it is a fixed 32 x 240px, so every window size from 1024 x 640
-    /// to 2560 x 1440 lands between 2.11 and 2.48, and a cartridge stays width-led across all of
-    /// them (height would take over above 2.78). Calibrating against the panel aspect instead would
-    /// have made every cartridge 28% smaller than the one this change was meant to leave alone.
-    ///
-    /// Because a cartridge is width-led it now holds a constant share of the frame's width and lets
-    /// its height share follow the viewport's shape, where before it did the reverse. The variation
-    /// moved axes rather than disappearing: against the old framing a cartridge is identical to a
-    /// tenth of a percent on a Deck, 11% smaller by area on a 2560 x 1440 display, and 26% larger in
-    /// a 1024 x 640 window.
-    ///
-    /// It also removes a failure the height-only rule had at narrow aspects: a cartridge framed to
-    /// half the height is 82% of the frame's width at 1:1 and overflows below that, so a windowed
-    /// or portrait viewport clipped it against the edges.
+    /// That guard is not hypothetical: framing on height alone put a SNES cartridge at 82% of the
+    /// frame's width at 1:1 and past its edges below that, so any future layout that gave the scene
+    /// a squarer control clipped the medium against the sides. Nothing in the height-only rule knew
+    /// the frame had sides at all.
     ///
     /// The width used is the medium's turning circle, matching what the row reserves — a medium is
     /// always turned, and one deeper than it is wide (an arcade cabinet) presents far more than its
     /// face.
     /// </remarks>
-    private const float ShelfFrameWidthFill = 0.368f;
+    private const float ShelfFrameWidthFill = 0.311f;
 
     /// <summary>How far the camera sits above the media band's centre, as a fraction of distance.</summary>
     private const float ShelfCameraElevation = 0.075f;
@@ -834,8 +833,8 @@ public sealed class MediaShellRenderer : IDisposable
     /// </remarks>
     /// <summary>
     /// The output aspect at which <paramref name="visibleWidthInShelfUnits"/> of shelf is exactly
-    /// as wide as the frame, for a row whose tallest medium is
-    /// <paramref name="mediaHeightInShelfUnits"/>.
+    /// as wide as the frame, for a row whose largest medium is
+    /// <paramref name="mediaHeightInShelfUnits"/> by <paramref name="mediaWidthInShelfUnits"/>.
     /// </summary>
     /// <remarks>
     /// The camera pulls back only as far as the tallest medium needs, so how much of a row is
@@ -855,26 +854,62 @@ public sealed class MediaShellRenderer : IDisposable
     /// cannot end up truncated, which is the failure this exists to prevent.
     /// </remarks>
     public static float ShelfAspectForVisibleWidth(
-        float visibleWidthInShelfUnits, float mediaHeightInShelfUnits)
+        float visibleWidthInShelfUnits,
+        float mediaHeightInShelfUnits,
+        float mediaWidthInShelfUnits)
+    {
+        var extent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
+        return visibleWidthInShelfUnits * ShelfFrameFill / extent;
+    }
+
+    /// <summary>
+    /// The one number the camera frames a medium by: the side of the square with the same silhouette
+    /// area as its band and its turning circle.
+    /// </summary>
+    /// <remarks>
+    /// The rule that decides how big anything looks, and it is deliberately blind to shape. Framing
+    /// width and height against separate fills asks two questions and takes the tighter answer,
+    /// which sounds conservative and is not: a landscape medium is stopped by the frame's sides
+    /// while still keeping most of a height share, so it ends up covering nearly twice the screen a
+    /// portrait medium does. That is invisible on a mixed row, where they are framed together, and
+    /// unmissable on a per-platform page, where each medium is the only thing setting the camera —
+    /// a page of Game Paks covered 21.9% of the frame against a page of keep cases at 10.5%, which
+    /// is what "the GBA cartridge is too big" was.
+    ///
+    /// Taking the geometric mean gives every medium of equal silhouette area the same screen area
+    /// whatever its proportions, so a page of cartridges and a page of cases are composed alike, and
+    /// the medium's own shape decides only which way that area is spent. For a square medium it is
+    /// exactly the old rule, which is what the constants were re-derived against.
+    ///
+    /// The turning circle rather than the face width, on the same grounds the row reserves it: every
+    /// medium on this shelf is turned, and an arcade cabinet is deeper than it is wide.
+    /// </remarks>
+    private static float FramedExtent(
+        float mediaHeightInShelfUnits, float mediaWidthInShelfUnits)
     {
         var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
-        return visibleWidthInShelfUnits * ShelfFrameFill / band;
+        // A caller with no row to measure passes zero, and has to keep a frame rather than collapse
+        // the camera onto the medium: fall back to framing the band on its own.
+        var width = mediaWidthInShelfUnits > 0f ? mediaWidthInShelfUnits : band;
+        return MathF.Sqrt(band * width);
     }
 
     /// <param name="mediaWidthInShelfUnits">Turning width of the widest medium in the library view.
-    /// Zero keeps the height-only framing, for a caller that has no row to measure.</param>
+    /// Zero frames the band as though it were square, for a caller that has no row to measure.</param>
     internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
         float aspect, float mediaHeightInShelfUnits, float mediaWidthInShelfUnits)
     {
         var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
+        var extent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
         var fovY = FieldOfViewDegrees * MathF.PI / 180f;
         var tanY = MathF.Tan(fovY * 0.5f);
 
-        // Both axes, and the one that runs out first wins. Solving height alone framed every medium
-        // by a dimension half of them are not limited by: a landscape cartridge hit the frame's
-        // sides long before its height mattered, and a portrait case never came near them.
-        var heightDistance = band / ShelfFrameFill * 0.5f / tanY;
-        var widthDistance = MathF.Max(mediaWidthInShelfUnits, 0f)
+        // Both axes, and the one that runs out first wins. The same extent is offered to each,
+        // because the shape that decides which axis binds is the frame's and not the medium's: a
+        // wide viewport runs out of height first and a squat one out of width, whatever is standing
+        // in it. No medium is measured against a dimension it happens not to be limited by.
+        var heightDistance = extent / ShelfFrameFill * 0.5f / tanY;
+        var widthDistance = extent
             / ShelfFrameWidthFill * 0.5f / (tanY * MathF.Max(aspect, 0.05f));
         var distance = MathF.Max(heightDistance, widthDistance);
 
