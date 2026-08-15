@@ -2030,6 +2030,157 @@ public class MediaShellTests
         Assert.True(inset.VEdge.Length() < full.VEdge.Length());
     }
 
+    /// <summary>
+    /// The keep case's three sheets meet round its corners instead of leaving bare plastic between
+    /// them, and still stop at the opening edge.
+    /// </summary>
+    /// <remarks>
+    /// Reported as "the DVD boxes have gaps between the images". They did: each panel printed only
+    /// what lay within a millimetre of its own plane, and the rounded corner between the front face
+    /// and the spine is 3.5mm across, so a band of it belonged to neither — 2.6mm of black moulding
+    /// on the spine side and 3.25mm on the back side of a case 13.7mm thick, which reads as two
+    /// pictures with a gap rather than as one sheet folded round.
+    ///
+    /// Stated as a walk round the shell's own cross-section rather than as bounds on the constants,
+    /// because the constants are only ever right relative to this mesh's fillet: the front print has
+    /// to reach at least as far round as the spine's begins. That is one comparison and it is the
+    /// whole defect. The opening edge is asserted too, and pulls the other way — it is the one large
+    /// face of a case that no sleeve wraps, so a fix that simply printed everything would pass the
+    /// first assertion and be just as wrong.
+    /// </remarks>
+    [Fact]
+    public void KeepCaseSleeve_MeetsRoundTheCornersAndStopsAtTheOpening()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.DiscKeepCase);
+        var definition = MediaShellCatalog.Definition(MediaShell.DiscKeepCase);
+        var millimetres = 190f / model.Size.Y;
+
+        var cover = PrintedSpanAtMidHeight(model, definition.CoverPanel);
+        var back = PrintedSpanAtMidHeight(model, definition.ExtraPanels[0]);
+        var spine = PrintedSpanAtMidHeight(model, definition.ExtraPanels[1]);
+
+        // The spine is at -X, so "further round the corner" is a smaller x for the two sheets and a
+        // larger one for the spine itself. Meeting means their spans overlap rather than abut,
+        // which is what leaves the shader's later panel to win a fragment instead of nobody taking it.
+        Assert.True(
+            cover.Min.X <= spine.Max.X,
+            $"The front sleeve stops at x {cover.Min.X * millimetres:F1}mm and the spine's print "
+            + $"only begins at {spine.Max.X * millimetres:F1}mm, leaving "
+            + $"{(cover.Min.X - spine.Max.X) * millimetres:F1}mm of bare case between them.");
+        Assert.True(
+            back.Min.X <= spine.Max.X,
+            $"The back sleeve stops at x {back.Min.X * millimetres:F1}mm and the spine's print "
+            + $"only begins at {spine.Max.X * millimetres:F1}mm, leaving "
+            + $"{(back.Min.X - spine.Max.X) * millimetres:F1}mm of bare case between them.");
+
+        // And each sheet stays on its own half of the case's thickness. This is the assertion that
+        // pulls the other way, and it is why the fix could not simply be a larger allowance: the
+        // opening edge is the one large face of a case no sleeve wraps, and reaching it means coming
+        // round to the middle of the 13.7mm the case is thick. Printing everything would satisfy the
+        // corners above and put cover art over the thumb notch.
+        Assert.True(
+            cover.Min.Z > model.BoundsMax.Z * 0.5f,
+            $"The front sleeve reaches z {cover.Min.Z * millimetres:F1}mm, over half way through a "
+            + $"{model.Size.Z * millimetres:F1}mm case, so it is wrapping onto the opening edge.");
+        Assert.True(
+            back.Max.Z < model.BoundsMin.Z * 0.5f,
+            $"The back sleeve reaches z {back.Max.Z * millimetres:F1}mm, over half way through a "
+            + $"{model.Size.Z * millimetres:F1}mm case, so it is wrapping onto the opening edge.");
+    }
+
+    /// <summary>
+    /// The extent of what one panel actually prints, measured round the shell's cross-section at
+    /// mid-height by the same three tests the fragment shader applies: facing the panel, inside its
+    /// rectangle, and within its depth allowance of the panel's plane.
+    /// </summary>
+    /// <remarks>
+    /// Sampled along the surface rather than at the vertices, because the shader shades fragments
+    /// and this shell's fillet carries only a handful of edge loops: taken at vertices alone the
+    /// back sleeve appears to stop 1.2mm short of the spine's when the surface between those
+    /// vertices is printed the whole way. A test that cannot see what the shader prints would have
+    /// been read as the gap still being there.
+    /// </remarks>
+    private static (Vector3 Min, Vector3 Max) PrintedSpanAtMidHeight(ModelAsset model, ArtPanel panel)
+    {
+        var placement = MediaShellCatalog.Place(panel, model);
+        var allowance = panel.MaxSurfaceDepth
+            ?? MediaShellCatalog.Definition(MediaShell.DiscKeepCase).PanelDepthFraction
+                * MathF.Abs(Vector3.Dot(model.Size, Vector3.Abs(placement.Normal)));
+        var height = (model.BoundsMin.Y + model.BoundsMax.Y) * 0.5f;
+
+        var min = new Vector3(float.PositiveInfinity);
+        var max = new Vector3(float.NegativeInfinity);
+        foreach (var mesh in model.Meshes)
+        {
+            for (var triangle = 0; triangle < mesh.Indices.Length; triangle += 3)
+            {
+                var corners = new (Vector3 Position, Vector3 Normal)[3];
+                for (var corner = 0; corner < 3; corner++)
+                {
+                    var offset = (int)mesh.Indices[triangle + corner] * MeshGeometry.FloatsPerVertex;
+                    corners[corner] = (
+                        new Vector3(
+                            mesh.Vertices[offset], mesh.Vertices[offset + 1], mesh.Vertices[offset + 2]),
+                        new Vector3(
+                            mesh.Vertices[offset + 3], mesh.Vertices[offset + 4], mesh.Vertices[offset + 5]));
+                }
+
+                // Where this triangle crosses the mid-height plane, if it does.
+                var crossings = new List<(Vector3 Position, Vector3 Normal)>(2);
+                for (var edge = 0; edge < 3; edge++)
+                {
+                    var (from, next) = (corners[edge], corners[(edge + 1) % 3]);
+                    if ((from.Position.Y - height) * (next.Position.Y - height) >= 0f)
+                    {
+                        continue;
+                    }
+
+                    var along = (height - from.Position.Y) / (next.Position.Y - from.Position.Y);
+                    crossings.Add((
+                        Vector3.Lerp(from.Position, next.Position, along),
+                        Vector3.Lerp(from.Normal, next.Normal, along)));
+                }
+
+                if (crossings.Count != 2)
+                {
+                    continue;
+                }
+
+                const int samples = 64;
+                for (var sample = 0; sample <= samples; sample++)
+                {
+                    var along = (float)sample / samples;
+                    var position = Vector3.Lerp(crossings[0].Position, crossings[1].Position, along);
+                    var normal = Vector3.Normalize(
+                        Vector3.Lerp(crossings[0].Normal, crossings[1].Normal, along));
+                    if (Vector3.Dot(normal, placement.Normal) < 0.5f)
+                    {
+                        continue;
+                    }
+
+                    var local = position - placement.Origin;
+                    var u = Vector3.Dot(local, placement.UEdge) / placement.UEdge.LengthSquared();
+                    var v = Vector3.Dot(local, placement.VEdge) / placement.VEdge.LengthSquared();
+                    if (u is < 0f or > 1f || v is < 0f or > 1f)
+                    {
+                        continue;
+                    }
+
+                    if (-Vector3.Dot(local, placement.Normal) > allowance)
+                    {
+                        continue;
+                    }
+
+                    min = Vector3.Min(min, position);
+                    max = Vector3.Max(max, position);
+                }
+            }
+        }
+
+        Assert.True(min.X <= max.X, $"The {panel.Face} panel prints on nothing at all.");
+        return (min, max);
+    }
+
     [Fact]
     public void CoverPanel_StaysInsideEveryShell()
     {
