@@ -382,7 +382,9 @@
             <Setter Property="CornerRadius" Value="18" />
             <Setter Property="Padding" Value="14,6" />
             <Setter Property="Margin" Value="4" />
-            <Setter Property="BoxShadow" Value="0 4 12 0 #40000000" />
+            <!-- No BoxShadow. The chip holds its label, and a shadow on a Border that holds content
+                 draws that content offset out of the pill. The translucent fill and the light hairline
+                 already lift it off the fan art; the shadow was barely visible over artwork anyway. -->
         </Style>
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
@@ -793,7 +795,9 @@
              is on the row (Left/Right switch and apply live). -->
         <Style Selector="Button.gamepad-viewmode-card">
             <Setter Property="Height" Value="56" />
-            <Setter Property="Padding" Value="16,10" />
+            <!-- Tight, because three cards share the menu panel's width and each has to fit an icon,
+                 a label and the space the check badge reserves. -->
+            <Setter Property="Padding" Value="12,10" />
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
@@ -807,6 +811,23 @@
             <Setter Property="Background" Value="{DynamicResource EmuAccentMutedBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
+        <!-- The check badge is always laid out and only fades in, so the label has the same width
+             whether or not its card is the selected one.
+
+             It used to be IsVisible-bound, which meant the selected card gave up twenty-two pixels
+             plus a gap that the other two kept — so the selected label, and only the selected label,
+             was squeezed until the badge sat on top of it: "Grid" rendered as "Gri●" and "Shelf" as
+             "Shel✓". It also meant the labels reflowed every time the selection moved. -->
+        <Style Selector="Border.gamepad-viewmode-check">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-viewmode-card.selected Border.gamepad-viewmode-check">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Border.gamepad-viewmode-row">
             <Setter Property="CornerRadius" Value="18" />
             <!-- A transparent 2px outline + padding reserves the space so focusing the row never shifts
@@ -815,11 +836,24 @@
             <Setter Property="BorderThickness" Value="2" />
             <Setter Property="Padding" Value="4" />
         </Style>
+        <!-- The A/Reverse affordance in the "Sort by" header. Reserved always, shown on focus: the
+             row style below promises that focusing a row never shifts the tiles, and an affordance
+             that appears out of nowhere above them breaks exactly that promise. -->
+        <Style Selector="StackPanel.gamepad-sort-reverse-hint">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="StackPanel.gamepad-sort-reverse-hint.focused">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Border.gamepad-viewmode-row.focused">
-            <!-- The accent outline is the guaranteed focus cue — it renders where a shadow on a
-                 background-less border would not; the glow is an enhancement layered on top. -->
+            <!-- The accent outline is the focus cue, and it is now the only one. A BoxShadow on a
+                 Border that has children draws those children offset from where they are laid out —
+                 up and to the left, by roughly the shadow's extent. That is why the cards in this row
+                 flew out of the panel the moment it took focus and nowhere else, why every layout
+                 assertion passed while they did, and why a bitmap the window rendered of itself came
+                 back correct. The outline was always the guaranteed cue; the glow was an enhancement
+                 that cost the row its contents. -->
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
-            <Setter Property="BoxShadow" Value="{DynamicResource EmuFocusGlow}" />
         </Style>
         <Style Selector="Border.gamepad-settings-switch">
             <Setter Property="Width" Value="140" />
@@ -1060,13 +1094,21 @@
         <Style Selector="Border.gamepad-cover-frame">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <!-- The tile's drop shadow, on a Border of its own with nothing inside it.
+             It used to sit on the cover frame, which holds the artwork — and a BoxShadow on a Border
+             with children draws those children offset up and to the left. The cover slid out of its
+             own tile, and only on the unfocused tiles, because the focused style already removed the
+             shadow for an unrelated reason. Casting it from an empty sibling keeps the depth and
+             leaves the artwork where it was put. -->
+        <Style Selector="Border.gamepad-cover-shadow">
             <Setter Property="BoxShadow" Value="0 8 20 0 #40000000" />
         </Style>
         <!-- On focus the solid accent ring is the sole depth cue. The cover drops its shadow entirely
              (even the base 0 8 20 shadow spills past the 6px ring frame) and the ring's own EmuFocusGlow
              is removed at the tile (inline, above), so nothing haloes the ring. Unfocused tiles keep
              their shadow for depth against the library background. -->
-        <Style Selector="Button.gamepad-game.focused Border.gamepad-cover-frame">
+        <Style Selector="Button.gamepad-game.focused Border.gamepad-cover-shadow">
             <Setter Property="BoxShadow" Value="none" />
         </Style>
         <!-- The focused tile lifts with a small scale. It is applied to the whole cover STACK (accent
@@ -1100,16 +1142,21 @@
         <Style Selector="Border.cover-card">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuCoverBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <!-- The desktop tile's shadow, cast by an empty sibling. Identical construct to the
+             couch tile: a BoxShadow on the Border that holds the artwork drew that artwork
+             offset out of its own frame. -->
+        <Style Selector="Border.cover-card-shadow">
             <Setter Property="BoxShadow" Value="0 8 18 0 #38000000" />
         </Style>
-        <Style Selector="StackPanel.game-tile:pointerover Border.cover-card">
+        <Style Selector="StackPanel.game-tile:pointerover Border.cover-card-shadow">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BoxShadow" Value="0 13 30 0 #54000000" />
         </Style>
         <!-- Selection is shown by an overlay ring outside the fixed frame (see the tile),
              not by thickening this border — a thicker border would shrink the content box
              and reflow/rescale the cover on click. -->
-        <Style Selector="StackPanel.game-tile.selected Border.cover-card">
+        <Style Selector="StackPanel.game-tile.selected Border.cover-card-shadow">
             <Setter Property="BoxShadow" Value="0 12 30 0 #66000000" />
         </Style>
         <Style Selector="Grid.game-row.selected">
@@ -1491,6 +1538,11 @@
                                 <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
                                 <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                        VerticalAlignment="Bottom">
+                                    <!-- Shadow caster, empty on purpose: see Border.cover-card-shadow. -->
+                                    <Border Classes="cover-card-shadow" IsHitTestVisible="False"
+                                            Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
+                                            CornerRadius="5"
+                                            Background="{DynamicResource EmuCoverWellBrush}" />
                                     <Border Classes="cover-card"
                                             Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                             CornerRadius="5" Background="{DynamicResource EmuCoverWellBrush}"
@@ -1603,24 +1655,31 @@
 
                                 <Popup IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
                                        Placement="Bottom" IsLightDismissEnabled="True">
-                                    <Border Background="{DynamicResource EmuPopoverBrush}"
-                                            BorderBrush="{DynamicResource EmuBorderBrush}"
-                                            BorderThickness="1" CornerRadius="10" Padding="14"
-                                            BoxShadow="0 10 30 0 #66000000">
-                                        <StackPanel Width="270" Spacing="10">
-                                            <TextBlock Text="Edit title" FontWeight="SemiBold" />
-                                            <TextBox Text="{Binding DraftTitle, Mode=TwoWay}"
-                                                     MaxLength="300" />
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                                        Spacing="7">
-                                                <Button Content="Cancel"
-                                                        Command="{Binding CancelEditTitleCommand}" />
-                                                <Button Content="Save" Classes="accent" IsDefault="True"
-                                                        Command="{Binding SaveTitleCommand}"
-                                                        CommandParameter="{Binding}" />
+                                    <Panel>
+                                        <!-- Shadow cast by an empty sibling: a BoxShadow on a Border
+                                             that holds content draws that content offset out of the
+                                             frame. See DECISIONS 2026-08-15. -->
+                                        <Border CornerRadius="10"
+                                                Background="{DynamicResource EmuPopoverBrush}"
+                                                BoxShadow="0 10 30 0 #66000000" />
+                                        <Border Background="{DynamicResource EmuPopoverBrush}"
+                                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                BorderThickness="1" CornerRadius="10" Padding="14">
+                                            <StackPanel Width="270" Spacing="10">
+                                                <TextBlock Text="Edit title" FontWeight="SemiBold" />
+                                                <TextBox Text="{Binding DraftTitle, Mode=TwoWay}"
+                                                         MaxLength="300" />
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                            Spacing="7">
+                                                    <Button Content="Cancel"
+                                                            Command="{Binding CancelEditTitleCommand}" />
+                                                    <Button Content="Save" Classes="accent" IsDefault="True"
+                                                            Command="{Binding SaveTitleCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
+                                        </Border>
+                                    </Panel>
                                 </Popup>
                             </StackPanel>
                         </DataTemplate>
@@ -2082,23 +2141,30 @@
                                 </ItemsControl>
                                 <Popup IsOpen="{Binding IsEditingTitle, Mode=TwoWay}"
                                        Placement="Bottom" IsLightDismissEnabled="True">
-                                    <Border Background="{DynamicResource EmuPopoverBrush}"
-                                            BorderBrush="{DynamicResource EmuBorderBrush}"
-                                            BorderThickness="1" CornerRadius="10" Padding="14"
-                                            BoxShadow="0 10 30 0 #66000000">
-                                        <StackPanel Width="270" Spacing="10">
-                                            <TextBlock Text="Edit title" FontWeight="SemiBold" />
-                                            <TextBox Text="{Binding DraftTitle, Mode=TwoWay}" MaxLength="300" />
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                                        Spacing="7">
-                                                <Button Content="Cancel"
-                                                        Command="{Binding CancelEditTitleCommand}" />
-                                                <Button Content="Save" Classes="accent" IsDefault="True"
-                                                        Command="{Binding SaveTitleCommand}"
-                                                        CommandParameter="{Binding}" />
+                                    <Panel>
+                                        <!-- Shadow cast by an empty sibling: a BoxShadow on a Border
+                                             that holds content draws that content offset out of the
+                                             frame. See DECISIONS 2026-08-15. -->
+                                        <Border CornerRadius="10"
+                                                Background="{DynamicResource EmuPopoverBrush}"
+                                                BoxShadow="0 10 30 0 #66000000" />
+                                        <Border Background="{DynamicResource EmuPopoverBrush}"
+                                                BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                BorderThickness="1" CornerRadius="10" Padding="14">
+                                            <StackPanel Width="270" Spacing="10">
+                                                <TextBlock Text="Edit title" FontWeight="SemiBold" />
+                                                <TextBox Text="{Binding DraftTitle, Mode=TwoWay}" MaxLength="300" />
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                            Spacing="7">
+                                                    <Button Content="Cancel"
+                                                            Command="{Binding CancelEditTitleCommand}" />
+                                                    <Button Content="Save" Classes="accent" IsDefault="True"
+                                                            Command="{Binding SaveTitleCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
                                             </StackPanel>
-                                        </StackPanel>
-                                    </Border>
+                                        </Border>
+                                    </Panel>
                                 </Popup>
                             </Grid>
                         </DataTemplate>
@@ -2109,14 +2175,19 @@
             <StackPanel IsVisible="{Binding IsLibraryEmpty}"
                         VerticalAlignment="Center" HorizontalAlignment="Center"
                         Spacing="13" MaxWidth="460">
-                <Border Width="106" Height="106" CornerRadius="53"
-                        Background="{DynamicResource EmuPlaceholderMedallionBrush}"
-                        BorderBrush="{DynamicResource EmuCoverBorderBrush}" BorderThickness="1"
-                        BoxShadow="0 8 22 0 #30000000">
-                    <Image Width="76" Height="76"
-                           Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/missing-metadata@2x.png"
-                           RenderOptions.BitmapInterpolationMode="None" />
-                </Border>
+                <Panel Width="106" Height="106">
+                    <!-- Shadow on an empty sibling; see DECISIONS 2026-08-15. -->
+                    <Border Width="106" Height="106" CornerRadius="53"
+                            Background="{DynamicResource EmuPlaceholderMedallionBrush}"
+                            BoxShadow="0 8 22 0 #30000000" />
+                    <Border Width="106" Height="106" CornerRadius="53"
+                            Background="{DynamicResource EmuPlaceholderMedallionBrush}"
+                            BorderBrush="{DynamicResource EmuCoverBorderBrush}" BorderThickness="1">
+                        <Image Width="76" Height="76"
+                               Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/missing-metadata@2x.png"
+                               RenderOptions.BitmapInterpolationMode="None" />
+                    </Border>
+                </Panel>
                 <TextBlock Text="{Binding EmptyLibraryTitle}"
                            FontSize="24" FontWeight="SemiBold" TextAlignment="Center"
                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
@@ -2145,45 +2216,50 @@
 
             <!-- Auto-update notification. A passive banner with pad-focusable actions; in gaming mode
                  the same update is always reachable from Settings → General, so no press is stranded. -->
-            <Border IsVisible="{Binding Updates.IsBannerVisible, FallbackValue=False}"
-                    HorizontalAlignment="Center" VerticalAlignment="Top"
-                    MaxWidth="560" Margin="18" Padding="16,13" ZIndex="30"
-                    CornerRadius="10" Background="{DynamicResource EmuPopoverBrush}"
-                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
-                    BoxShadow="0 10 28 0 #60000000">
-                <StackPanel Spacing="11">
-                    <StackPanel Orientation="Horizontal" Spacing="11">
-                        <PathIcon Width="18" Height="18" VerticalAlignment="Center"
-                                  Foreground="{DynamicResource EmuInfoBrush}"
-                                  Data="M7,2 L11,2 L11,8 L14,8 L9,15 L4,8 L7,8 Z" />
-                        <TextBlock Text="{Binding Updates.Headline}" FontSize="14" FontWeight="SemiBold"
-                                   VerticalAlignment="Center" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                    </StackPanel>
-                    <TextBlock Text="{Binding Updates.StatusText}" FontSize="12" TextWrapping="Wrap"
-                               IsVisible="{Binding Updates.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                    <ProgressBar Height="6" Minimum="0" Maximum="100"
-                                 IsVisible="{Binding Updates.IsBusy}"
-                                 IsIndeterminate="{Binding Updates.IsProgressIndeterminate}"
-                                 Value="{Binding Updates.DownloadPercent}" />
-                    <Panel IsVisible="{Binding Updates.IsIdle}">
-                        <!-- Desktop: the actions are buttons. The controller navigator is a custom
-                             model that doesn't focus arbitrary buttons, so in Gamepad mode the same
-                             update is installed from Settings ▸ General; point the user there. -->
-                        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
-                                    IsVisible="{Binding !IsGamepadMode}">
-                            <Button Content="Skip this version" Command="{Binding Updates.SkipVersionCommand}" />
-                            <Button Content="Later" Command="{Binding Updates.DismissCommand}" />
-                            <Button Content="Update &amp; restart" Classes="accent"
-                                    Command="{Binding Updates.UpdateNowCommand}" />
+            <Panel IsVisible="{Binding Updates.IsBannerVisible, FallbackValue=False}"
+                   HorizontalAlignment="Center" VerticalAlignment="Top"
+                   MaxWidth="560" Margin="18" ZIndex="30">
+                <!-- Shadow cast by an empty sibling: a BoxShadow on a Border that holds content draws
+                     that content offset out of the frame. See DECISIONS 2026-08-15. -->
+                <Border CornerRadius="10" Background="{DynamicResource EmuPopoverBrush}"
+                        BoxShadow="0 10 28 0 #60000000" />
+                <Border Padding="16,13"
+                        CornerRadius="10" Background="{DynamicResource EmuPopoverBrush}"
+                        BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
+                    <StackPanel Spacing="11">
+                        <StackPanel Orientation="Horizontal" Spacing="11">
+                            <PathIcon Width="18" Height="18" VerticalAlignment="Center"
+                                      Foreground="{DynamicResource EmuInfoBrush}"
+                                      Data="M7,2 L11,2 L11,8 L14,8 L9,15 L4,8 L7,8 Z" />
+                            <TextBlock Text="{Binding Updates.Headline}" FontSize="14" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                         </StackPanel>
-                        <TextBlock IsVisible="{Binding IsGamepadMode}" FontSize="12"
-                                   Text="Open Settings ▸ General to install this update."
-                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                    </Panel>
-                </StackPanel>
-            </Border>
+                        <TextBlock Text="{Binding Updates.StatusText}" FontSize="12" TextWrapping="Wrap"
+                                   IsVisible="{Binding Updates.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <ProgressBar Height="6" Minimum="0" Maximum="100"
+                                     IsVisible="{Binding Updates.IsBusy}"
+                                     IsIndeterminate="{Binding Updates.IsProgressIndeterminate}"
+                                     Value="{Binding Updates.DownloadPercent}" />
+                        <Panel IsVisible="{Binding Updates.IsIdle}">
+                            <!-- Desktop: the actions are buttons. The controller navigator is a custom
+                                 model that doesn't focus arbitrary buttons, so in Gamepad mode the same
+                                 update is installed from Settings ▸ General; point the user there. -->
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+                                        IsVisible="{Binding !IsGamepadMode}">
+                                <Button Content="Skip this version" Command="{Binding Updates.SkipVersionCommand}" />
+                                <Button Content="Later" Command="{Binding Updates.DismissCommand}" />
+                                <Button Content="Update &amp; restart" Classes="accent"
+                                        Command="{Binding Updates.UpdateNowCommand}" />
+                            </StackPanel>
+                            <TextBlock IsVisible="{Binding IsGamepadMode}" FontSize="12"
+                                       Text="Open Settings ▸ General to install this update."
+                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                        </Panel>
+                    </StackPanel>
+                </Border>
+            </Panel>
 
             <!-- Operational feedback appears only when there is something useful to say. -->
             <Border Classes="status-toast" Classes.showing="{Binding HasStatusMessage}"
@@ -2193,8 +2269,7 @@
                     HorizontalAlignment="Right" VerticalAlignment="Bottom"
                     MaxWidth="520" Margin="18" Padding="11,8"
                     CornerRadius="9" Background="{DynamicResource EmuPopoverBrush}"
-                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
-                    BoxShadow="0 8 24 0 #50000000">
+                    BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
                     <!-- The app's accent is already red, so a red dot cannot carry "this failed".
                          The shape does it instead: a dot for results and progress, a warning
@@ -2425,6 +2500,9 @@
                                     <!-- Rows virtualize, so a tile attaches only when its row scrolls
                                          into view — loading the cover on attach fetches just the
                                          on-screen covers, and recycled tiles reload via DataContext. -->
+                                    <Border Classes="gamepad-cover-shadow" IsHitTestVisible="False"
+                                            CornerRadius="12"
+                                            Background="{DynamicResource EmuCoverWellBrush}" />
                                     <Border Classes="gamepad-cover-frame" CornerRadius="12" Background="{DynamicResource EmuCoverWellBrush}"
                                             ClipToBounds="True"
                                             AttachedToVisualTree="OnGameCoverAttached"
@@ -3015,13 +3093,19 @@
                                          focus. Width MUST match MainWindow.ShelfSlotWidth (410). -->
                                     <Panel Classes="shelf-media" Classes.focused="{Binding IsFocused}"
                                            Width="410" VerticalAlignment="Center" ClipToBounds="False">
+                                        <Border CornerRadius="10" IsHitTestVisible="False"
+                                                IsVisible="{Binding !ShelfUses3DHero}"
+                                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                Width="{Binding GamepadShelfCoverWidth}"
+                                                Height="{Binding GamepadShelfCoverHeight}"
+                                                Background="{DynamicResource EmuCoverWellBrush}"
+                                                BoxShadow="0 16 38 0 #8A000000" />
                                         <Border CornerRadius="10" ClipToBounds="True"
                                                 IsVisible="{Binding !ShelfUses3DHero}"
                                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                                 Width="{Binding GamepadShelfCoverWidth}"
                                                 Height="{Binding GamepadShelfCoverHeight}"
                                                 Background="{DynamicResource EmuCoverWellBrush}"
-                                                BoxShadow="0 16 38 0 #8A000000"
                                                 AttachedToVisualTree="OnGameCoverAttached"
                                                 DataContextChanged="OnGameCoverDataContextChanged">
                                             <Panel>
@@ -3136,14 +3220,13 @@
                                     <Button Grid.Column="0" Classes="gamepad-viewmode-card"
                                             Classes.selected="{Binding IsGridViewModeSelected}"
                                             Command="{Binding SelectGridViewModeCommand}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                             <PathIcon Grid.Column="0" Width="18" Height="18"
                                                       Data="M2,2 H8 V8 H2 Z M12,2 H18 V8 H12 Z M2,12 H8 V18 H2 Z M12,12 H18 V18 H12 Z" />
                                             <TextBlock Grid.Column="1" Text="Grid" VerticalAlignment="Center"
-                                                       FontSize="15" FontWeight="SemiBold" />
-                                            <Border Grid.Column="2" IsVisible="{Binding IsGridViewModeSelected}"
-                                                    Width="22" Height="22" CornerRadius="11"
-                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                       FontSize="15" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="2" Classes="gamepad-viewmode-check">
                                                 <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
@@ -3153,14 +3236,13 @@
                                     <Button Grid.Column="1" Classes="gamepad-viewmode-card"
                                             Classes.selected="{Binding IsListViewModeSelected}"
                                             Command="{Binding SelectListViewModeCommand}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                             <PathIcon Grid.Column="0" Width="18" Height="18"
                                                       Data="M2,3 H18 V6 H2 Z M2,8.5 H18 V11.5 H2 Z M2,14 H18 V17 H2 Z" />
                                             <TextBlock Grid.Column="1" Text="List" VerticalAlignment="Center"
-                                                       FontSize="15" FontWeight="SemiBold" />
-                                            <Border Grid.Column="2" IsVisible="{Binding IsListViewModeSelected}"
-                                                    Width="22" Height="22" CornerRadius="11"
-                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                       FontSize="15" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="2" Classes="gamepad-viewmode-check">
                                                 <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
@@ -3170,15 +3252,14 @@
                                     <Button Grid.Column="2" Classes="gamepad-viewmode-card"
                                             Classes.selected="{Binding IsShelfViewModeSelected}"
                                             Command="{Binding SelectShelfViewModeCommand}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                             <!-- A cartridge/case silhouette: a rounded body with a label band. -->
                                             <PathIcon Grid.Column="0" Width="18" Height="18"
                                                       Data="M5,1 H15 V19 H5 Z M5,5 H15 M7,1 V5 M13,1 V5" />
                                             <TextBlock Grid.Column="1" Text="Shelf" VerticalAlignment="Center"
-                                                       FontSize="15" FontWeight="SemiBold" />
-                                            <Border Grid.Column="2" IsVisible="{Binding IsShelfViewModeSelected}"
-                                                    Width="22" Height="22" CornerRadius="11"
-                                                    Background="{DynamicResource EmuAccentBrush}">
+                                                       FontSize="15" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <Border Grid.Column="2" Classes="gamepad-viewmode-check">
                                                 <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                                            Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
@@ -3201,11 +3282,20 @@
                                     <TextBlock Text="{Binding GamepadSortDirectionSummary}" FontSize="13"
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <Border Classes="gamepad-key action-a" Margin="10,0,0,0"
-                                            IsVisible="{Binding IsGamepadSortRowFocused}"><TextBlock Text="A" /></Border>
-                                    <TextBlock Text="Reverse" FontSize="13" VerticalAlignment="Center"
-                                               IsVisible="{Binding IsGamepadSortRowFocused}"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <!-- Always laid out, and only faded in. The A pill is taller than
+                                         the text beside it, so making it appear on focus grew this
+                                         header by nine pixels and pushed the sort row and the entire
+                                         options list down with it — the menu moved under the player on
+                                         every d-pad press between rows, and back up on the way out. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="7"
+                                                Classes="gamepad-sort-reverse-hint"
+                                                Classes.focused="{Binding IsGamepadSortRowFocused}">
+                                        <Border Classes="gamepad-key action-a" Margin="10,0,0,0">
+                                            <TextBlock Text="A" />
+                                        </Border>
+                                        <TextBlock Text="Reverse" FontSize="13" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Grid>
                             <!-- Sort row: same gamepad-viewmode-row / -card component as View mode above,
