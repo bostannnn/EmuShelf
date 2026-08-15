@@ -8067,6 +8067,57 @@ leave tint bars. Stretch is not a compromise on this panel, it is the right fit,
 comment should be read as describing a risk that does not exist rather than one that is deferred.
 
 No shell constant changed. The defect was in the instrument.
+
+## 2026-08-15 — The keep case's three sheets now meet round its corners
+
+Reported plainly: "DVD boxes have gaps between images, so it looks weird even when scraped". They
+did, and it was not the scraping. The keep case's sleeve is three flat projections — front, back,
+spine — and each printed only what lay within `KeepCaseSleeveDepth`, a millimetre, of its own plane.
+The rounded corner between the front face and the spine is 3.5mm across. Between where the front
+print gave up and where the spine's began, no panel claimed the surface at all.
+
+Measured round the shell's cross-section at mid-height, in millimetres of arc: the front print
+ended at x -62.5 and the spine's began at -65.0, leaving **2.6mm** of bare black moulding on the
+spine edge and **3.25mm** on the back edge of a case 13.7mm thick. That is the gap. A second, weaker
+contributor was the panels' 0.02 inset, which on a 132mm face is another 1.3mm off each edge —
+harmless while the depth allowance was the binding bound, and the thing holding the print short once
+it was not.
+
+**The allowance is now 2.1mm, and the insets are zero.** 2.01mm is where the fillet has turned far
+enough for the spine panel to take the surface over, so the two now overlap by a couple of tenths
+rather than leaving a hole; the shader's later panel wins there. The perimeter comes out as one
+continuous printed run — cover 131.2mm, spine 11.2, back 130.9 — with the only bare arc the 14.8mm
+opening edge, which is right: that is the one large face of a case no sleeve wraps.
+
+**Why widening this is safe, given the note it replaces.** The old comment argued the allowance had
+to be tight because this mesh's normals cannot be trusted: the source is a cube scaled 13.5 x 19.0 x
+1.4, the inverse transpose tips rim normals back toward the face, and opened out to the shell's own
+0.40 default the front panel painted surfaces 9.7mm deep while passing a facing guard that rejects
+below 0.5. All still true. It does not apply at 2.1mm, and for a reason that does not depend on the
+normals at all: the spine's flat face lies 4.1mm behind the front plane, so an allowance of 2.1mm is
+physically incapable of reaching it. The corner is closed by making the bound exactly wide enough
+and no wider, not by trusting the guard that failed before.
+
+**What pins it.** `KeepCaseSleeve_MeetsRoundTheCornersAndStopsAtTheOpening` walks the same
+cross-section and asserts the front and back spans overlap the spine's, and that neither sheet
+reaches past half the case's thickness. The second assertion pulls against the first on purpose:
+printing everything would close the corners and put cover art over the thumb notch. On the old
+constants it fails with "leaving 2.6mm of bare case between them", which is the reported defect in
+the failure message. It samples along the surface rather than at the vertices — this fillet carries
+few edge loops, and at vertices alone the back sleeve looks 1.2mm short of a join the shader draws
+continuously.
+
+**What this does not fix.** The outer ~1.5mm of the box scan is now stretched round the fillet
+rather than folded over it, which is what a planar projection of a wrapped sheet does; at this size
+it reads correctly. And since nothing scrapes spine art, the front art still runs into the platform
+tint at the corner — a colour change instead of a black gap. The PS3 case has neither problem
+because its film is its own mesh with a modelled fold, and that remains the better answer for this
+shell whenever `disc-keep-case.glb` is next opened.
+
+The PS1 jewel case has the same defect at smaller scale — 2.06mm unprinted between spine and back,
+and a cover panel stopping 4mm short of the opening edge. Left alone deliberately: its front panel
+is already asymmetric to clear a banner, so its numbers want their own measuring session rather than
+this one's constants applied by analogy.
 ## 2026-08-15 — CRT presentation is a GL resolve pass, not a window-wide effect
 
 Shelf mode presents through a simulated CRT tube. The pass replaces the resolve blit at the end of
