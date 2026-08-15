@@ -499,6 +499,30 @@ public sealed class MediaShellRenderer : IDisposable
     /// centre of the media band rather than a fixed height is what removes the lopsided gap above
     /// the cartridges — the band, not the world origin, is what the viewer is looking at.
     /// </remarks>
+    /// <summary>
+    /// The output aspect at which <paramref name="visibleWidthInShelfUnits"/> of shelf is exactly
+    /// as wide as the frame, for a row whose tallest medium is
+    /// <paramref name="mediaHeightInShelfUnits"/>.
+    /// </summary>
+    /// <remarks>
+    /// The camera pulls back only as far as the tallest medium needs, so how much of a row is
+    /// visible is decided entirely by the output aspect — which makes "will every medium be in
+    /// shot" a question no caller can answer by eye until after it has rendered. The headless
+    /// preview tool answers it with this instead of a hardcoded width, having silently truncated
+    /// its acceptance shot three times: once losing the Mega Drive while it carried a profile a
+    /// quarter too big, once losing the Game Boy shell, and again each time a medium was added.
+    ///
+    /// Note the row is not centred in the frame — the shelf is centred on the focused item — so a
+    /// caller wants twice its largest distance from focus to either end of the row, not the row's
+    /// total width.
+    /// </remarks>
+    public static float ShelfAspectForVisibleWidth(
+        float visibleWidthInShelfUnits, float mediaHeightInShelfUnits)
+    {
+        var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
+        return visibleWidthInShelfUnits * ShelfFrameFill / band;
+    }
+
     internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
         float aspect, float mediaHeightInShelfUnits)
     {
@@ -915,6 +939,13 @@ public sealed class MediaShellRenderer : IDisposable
         BindMaterialTexture(resources, material?.BaseColorTexture ?? -1, 0, "uBaseColorMap", "uHasBaseColorMap", _whitePixel);
         BindMaterialTexture(resources, material?.MetallicRoughnessTexture ?? -1, 1, "uMetallicRoughnessMap", "uHasMetallicRoughnessMap", _whitePixel);
         BindMaterialTexture(resources, material?.NormalTexture ?? -1, 2, "uNormalMap", "uHasNormalMap", _flatNormal);
+        // Unit 6: units 3-5 are the environment and the key shadow map, bound once per frame.
+        BindMaterialTexture(resources, material?.OcclusionTexture ?? -1, 6, "uOcclusionMap", "uHasOcclusionMap", _whitePixel);
+
+        // A printed panel is under the coat on a jewel case, so the coat is a property of the shell
+        // rather than of the panel, and stays on while artwork is drawn over the body beneath it.
+        _program.Set("uClearcoatFactor", material?.ClearcoatFactor ?? 0f);
+        _program.Set("uClearcoatRoughness", material?.ClearcoatRoughness ?? 0.04f);
     }
 
     private void BindMaterialTexture(
@@ -1345,6 +1376,13 @@ public sealed class MediaShellRenderer : IDisposable
             // leak down the edge of the case rather than as clear plastic. Clear plastic is not
             // brighter than black plastic by half, it is less absorbing and slightly glossier.
             "psp-clear" => new(new Vector3(0.56f, 0.57f, 0.59f), 0.20f, 0.74f, 1.18f),
+            // Jewel-case polystyrene rather than the keep cases' polypropylene: harder, glossier
+            // and more reflective, which is most of what tells the two apart on screen. The tint is
+            // a light touch because this shell's own base colour is already neutral — its source
+            // artwork was flattened out entirely, so there is nothing to neutralise, only to shade.
+            "ps1-jewel" => new(new Vector3(0.20f, 0.21f, 0.24f), 0.30f, 0.70f, 1.30f),
+            // Dreamcast cases are the whiter, colder plastic of the two.
+            "dreamcast-jewel" => new(new Vector3(0.72f, 0.75f, 0.80f), 0.34f, 0.72f, 1.24f),
             "wii-white" => new(new Vector3(0.86f, 0.88f, 0.92f), 0.78f, 0.92f, 1.08f),
             _ => Default,
         };

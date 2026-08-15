@@ -187,6 +187,9 @@ public static class GlbLoader
         var baseColour = material.FindChannel("BaseColor");
         var metallicRoughness = material.FindChannel("MetallicRoughness");
         var normal = material.FindChannel("Normal");
+        var occlusion = material.FindChannel("Occlusion");
+        var clearcoat = material.FindChannel("ClearCoat");
+        var clearcoatRoughness = material.FindChannel("ClearCoatRoughness");
 
         var resolved = new ModelMaterial
         {
@@ -200,6 +203,10 @@ public static class GlbLoader
                 metallicRoughness, root, textures, textureBySourceImage, maxTextureSize),
             NormalTexture = ResolveTexture(
                 normal, root, textures, textureBySourceImage, maxTextureSize),
+            OcclusionTexture = ResolveTexture(
+                occlusion, root, textures, textureBySourceImage, maxTextureSize),
+            ClearcoatFactor = ReadFactor(clearcoat, "ClearCoatFactor", 0f),
+            ClearcoatRoughness = ReadFactor(clearcoatRoughness, "ClearCoatRoughnessFactor", 0.04f),
         };
 
         materials.Add(resolved);

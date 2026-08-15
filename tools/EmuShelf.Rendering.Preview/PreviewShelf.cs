@@ -64,12 +64,19 @@ public static class PreviewShelf
 {
     public static IReadOnlyList<PreviewShelfEntry> Entries { get; } =
     [
-        // PS1 stands in for every system with no authored shell. It is a real system rather than a
-        // synthetic 0.708 card so the entry has an id to check against, and its square jewel-case
-        // art (1.0) is also the only thing in this list that exercises the shared card mesh being
-        // scaled to a ratio that is not portrait.
-        new("playstation", new PhysicalMediaProfile(
-            MediaShell.CoverCard, new Vector3(190f, 190f, 5f),
+        // 3DS stands in for every system with no authored shell. A real system rather than a
+        // synthetic card, so the entry has an id to check against, and its 1.129 box art is also
+        // the only thing in this list exercising the shared card mesh scaled to a ratio that is not
+        // portrait. The width is 190 x 1.129 — the fallback in MediaShellMap.ProfileForSystem
+        // computes it, so it is derived rather than measured and has to be spelled out to the float
+        // the app will produce.
+        //
+        // This was PS1 until the jewel case was authored, at which point PS1 stopped being an
+        // unauthored system and the entry silently stopped standing for anything. Only two systems
+        // are left with no shell; if 3DS ever gets one, this entry has to move again or the cover
+        // card goes unrendered.
+        new("3ds", new PhysicalMediaProfile(
+            MediaShell.CoverCard, new Vector3(214.51f, 190f, 5f),
             PhysicalArtworkSlots.Front, "cover-card", "card-downward")),
         new("nds", new PhysicalMediaProfile(
             MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f),
@@ -90,6 +97,18 @@ public static class PreviewShelf
             MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f),
             PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical",
             FloorClearanceInShelfUnits: 0.010f)),
+        // Landscape and thin, which is what separates it at a glance from the portrait keep case
+        // further along. In frame rather than appended, for the reason the Mega Drive note records.
+        // Dreamcast follows it for the same reason PSP follows the PS2 case: the two share this
+        // geometry and differ only in finish, and a finish can only be judged against its neighbour.
+        new("playstation", new PhysicalMediaProfile(
+            MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            "ps1-jewel", "case-downward")),
+        new("dreamcast", new PhysicalMediaProfile(
+            MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            "dreamcast-jewel", "case-downward")),
         // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge
         // of the acceptance shot, which is how it kept a profile a quarter too big for a whole
         // milestone.

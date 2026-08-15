@@ -41,6 +41,10 @@ if (prepModel is not null)
         ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
         args.Contains("--bake-vertex-colours"),
+        // A downloaded scene often holds more than the shell, and often poses it open for a
+        // product shot. Both are geometry problems a profile cannot fix.
+        ArgumentValue("--drop-meshes"),
+        ArgumentValue("--close-lid"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }
@@ -55,15 +59,9 @@ if (atlasModel is not null)
 var outputDirectory = ArgumentValue("--out") ?? "artifacts/shell-preview";
 var width = int.Parse(ArgumentValue("--width") ?? "420");
 var height = int.Parse(ArgumentValue("--height") ?? "560");
-// Wide enough that the whole row is inside the frame. The camera pulls back only as far as the
-// tallest medium needs, so how much of the row is visible is set by the output aspect — and at the
-// old 1440x720 the last few media were simply off the right-hand edge. That is not a cosmetic
-// default: this shot is the artefact a reviewer trusts to show what shipped, and a medium outside
-// the frame is a medium nobody looks at. The Mega Drive kept a profile a quarter too big for a
-// whole milestone that way, and the Game Boy shell landed in the same blind spot. Twelve media fit
-// here; PreviewShelf_DrawsEverySystemThatHasAnAuthoredShell keeps the row honest, and this keeps
-// the frame honest about the row.
-var shelfWidth = int.Parse(ArgumentValue("--shelf-width") ?? "6000");
+// Left at zero when unset: the width that actually frames the row is derived once the row exists,
+// further down. Only an explicit --shelf-width is honoured here.
+var shelfWidth = int.Parse(ArgumentValue("--shelf-width") ?? "0");
 var shelfHeight = int.Parse(ArgumentValue("--shelf-height") ?? "900");
 var background = ParseColour(ArgumentValue("--background") ?? "1A1C20");
 
@@ -265,12 +263,36 @@ for (var index = 0; index < shelfProfiles.Length; index++)
         itemAccent));
 }
 
-var shelfTarget = CreateTargetFramebuffer(gl, (uint)shelfWidth, (uint)shelfHeight);
-stopwatch.Restart();
 // The acceptance composition deliberately mixes a keep case with cartridges, so the tallest medium
 // in it is what the shared camera frames — exactly as the app frames a whole library view.
 var shelfMediaHeight = shelfProfiles.Max(
     profile => profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
+
+// Derived, not chosen. A hardcoded width silently truncates the row every time a medium is added,
+// which is not a cosmetic default — the shot is the artefact a reviewer trusts to show what
+// shipped, and a medium outside the frame is a medium nobody looks at. That is how the Mega Drive
+// kept a profile a quarter too big for a whole milestone. It was raised by hand twice while PSP
+// and the case finishes were added, then immediately fell short again when the jewel cases merged
+// in, which is the point at which guessing stopped being worth defending.
+//
+// The row is centred on the focused item rather than in the frame, so what has to fit is twice the
+// larger of the two distances from focus to the ends — not the row's total width. Half a medium's
+// width at each end plus a margin keeps the outermost shells off the frame edge.
+if (ArgumentValue("--shelf-width") is null)
+{
+    var leftEdge = shelfCentres[0] - (shelfProfiles[0].WidthInShelfUnits * 0.5f);
+    var rightEdge = shelfCentres[^1] + (shelfProfiles[^1].WidthInShelfUnits * 0.5f);
+    var reach = MathF.Max(shelfAnchor - leftEdge, rightEdge - shelfAnchor);
+    var aspect = MediaShellRenderer.ShelfAspectForVisibleWidth(
+        (reach * 2f) + 0.3f, shelfMediaHeight);
+    shelfWidth = (int)MathF.Ceiling(shelfHeight * aspect);
+    Console.WriteLine(
+        $"  shelf frame: {shelfWidth}x{shelfHeight} for {shelfEntries.Count} media "
+        + $"(aspect {aspect:F2}; pass --shelf-width to override)");
+}
+
+var shelfTarget = CreateTargetFramebuffer(gl, (uint)shelfWidth, (uint)shelfHeight);
+stopwatch.Restart();
 renderer.RenderShelf(shelfItems, shelfMediaHeight, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
 gl.Finish();
 var shelfFrame = ReadPixels(gl, shelfTarget, shelfWidth, shelfHeight);
@@ -290,6 +312,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.SnesCartridge => "snes-cartridge",
     MediaShell.GbaCartridge => "gba-cartridge",
     MediaShell.GbcCartridge => "gbc-cartridge",
+    MediaShell.JewelCase => "jewel-case",
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),
