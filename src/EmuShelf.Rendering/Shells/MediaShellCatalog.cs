@@ -49,28 +49,43 @@ public static class MediaShellCatalog
 
     /// <summary>
     /// How far the keep case's printed sleeve may follow the shell away from a face, in canonical
-    /// object units. One millimetre on a case that stands 190mm tall.
+    /// object units. Just over two millimetres on a case that stands 190mm tall.
     /// </summary>
     /// <remarks>
-    /// This is the knob for "the cover art is bleeding round the edge". Measured off the mesh: the
-    /// front plate is flat or gently domed out to 0.94 of its half-width, where it has fallen 0.53mm
-    /// behind the front plane, and the rim then turns away hard — 1.23mm at 0.965 and 2.04mm at
-    /// 0.991. A millimetre keeps the whole plate, including the clear cover's intentional bulge, and
-    /// stops at the fillet.
+    /// This is the knob for "the cover art is bleeding round the edge", and it was set at a
+    /// millimetre for as long as that was the only defect anybody had looked for. Measured off the
+    /// mesh: the front plate is flat or gently domed out to 0.94 of its half-width, where it has
+    /// fallen 0.53mm behind the front plane, and the rim then turns away hard — 1.23mm at 0.965 and
+    /// 2.04mm at 0.991. A millimetre keeps the whole plate and stops at the fillet.
     ///
-    /// It has to be a depth rather than a tighter facing threshold. The source geometry is a cube
-    /// scaled 13.5 x 19.0 x 1.4, so the inverse transpose that carries its normals into canonical
-    /// space flattens every rim normal toward the face: the shallowest thing the front panel was
-    /// painting sat at 0.61 against a guard that rejects below 0.5, and 14% of the painted area was
-    /// behind the front plane — as deep as 9.7mm on a 13.7mm case, which is nearly the back.
+    /// Stopping at the fillet is the problem. The other two panels are bounded the same way from
+    /// their own planes, so between where the front print gives up and where the spine's begins
+    /// there was a band of surface that no panel claimed: 2.6mm of bare black moulding round the
+    /// spine edge and 3.25mm round the back one, on a case 13.7mm thick, which reads as a gap
+    /// between two pictures rather than as the corner of one wrapped sheet. Measured round the
+    /// perimeter at mid-height, the front print ended at x -62.5mm and the spine's began at -65.0.
+    ///
+    /// 2.1mm is where the fillet has turned far enough for the spine panel to take it over — 2.01mm
+    /// behind the front plane, at the point whose normal has swung 37 degrees off the face. The two
+    /// panels now overlap by a few tenths of a millimetre instead of leaving a hole, and the later
+    /// one in the list wins there, so the corner is continuous.
+    ///
+    /// It cannot reach past the corner, and that is the point rather than a hope: the spine's own
+    /// flat face lies 4.1mm behind the front plane, so a 2.1mm allowance is physically incapable of
+    /// printing on it. That matters because the facing guard cannot be relied on to stop it. The
+    /// source geometry is a cube scaled 13.5 x 19.0 x 1.4, so the inverse transpose that carries its
+    /// normals into canonical space flattens rim normals toward the face: with the allowance opened
+    /// up to the shell's own default, the front panel painted surfaces as deep as 9.7mm — nearly the
+    /// back — while passing a guard that rejects below 0.5. The depth is the real bound; the corner
+    /// is closed by making it exactly wide enough and no wider.
     ///
     /// And it has to override <see cref="MediaShellDefinition.PanelDepthFraction"/> rather than
     /// retune it. That figure answers a different question — how far in is definitely the inside of
     /// the shell — and at 0.40 of this case's 13.7mm thickness it allows 5.5mm, which the entire
     /// rim sits comfortably within. Both bounds are wanted: the shell's keeps print off any
-    /// interior, this one keeps it off the fillet.
+    /// interior, this one keeps it off the far side of the fillet.
     /// </remarks>
-    private const float KeepCaseSleeveDepth = 1f / 190f;
+    private const float KeepCaseSleeveDepth = 2.1f / 190f;
 
     private static readonly Dictionary<MediaShell, MediaShellDefinition> Definitions = new()
     {
@@ -501,22 +516,26 @@ public static class MediaShellCatalog
             "EmuShelf.Rendering.Assets.disc-keep-case.glb",
             Matrix4x4.Identity,
             MaxTextureSize: 1024,
-            // The printed sleeve runs almost edge to edge under the clear overlay. The rectangle
-            // alone cannot say where it stops, though: it is measured against the bounding box,
-            // and 2% in from that is still on the rounded rim. KeepCaseSleeveDepth does the rest.
+            // The printed sleeve runs edge to edge under the clear overlay, and where it stops is
+            // KeepCaseSleeveDepth's business rather than the rectangle's — the rectangle is measured
+            // against the bounding box, so it cannot tell the flat plate from the rim it curves
+            // into. These carried an inset of 0.02 as a second, weaker bound on the same thing, and
+            // on a 132mm face that is 1.3mm off each edge: with the depth allowance opened out to
+            // the fillet, the inset became the thing holding the print short of the corner, and a
+            // sleeve that stops 1.3mm early is the gap this shell was reported for.
             // The sleeve and the box scan are the same shape by definition, so front and back
             // stretch. The spine is a 14mm strip and only shares that fit because nothing scrapes
             // spine art yet — it wears the platform tint, which has no shape to distort.
             CoverPanel: ArtPanel.Full(
-                ArtFace.Front, inset: 0.02f,
+                ArtFace.Front, inset: 0f,
                 fit: ArtFit.Stretch, maxSurfaceDepth: KeepCaseSleeveDepth),
             ExtraPanels:
             [
                 ArtPanel.Full(
-                    ArtFace.Back, inset: 0.02f,
+                    ArtFace.Back, inset: 0f,
                     fit: ArtFit.Stretch, maxSurfaceDepth: KeepCaseSleeveDepth),
                 ArtPanel.Full(
-                    ArtFace.Spine, inset: 0.02f,
+                    ArtFace.Spine, inset: 0f,
                     fit: ArtFit.Stretch, maxSurfaceDepth: KeepCaseSleeveDepth),
             ],
             PanelRoughness: 0.13f,

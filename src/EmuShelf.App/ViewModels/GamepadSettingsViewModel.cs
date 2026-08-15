@@ -291,9 +291,37 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>True when the ambient toggle — a focus target above the theme grid — owns focus,
-    /// marked by the -1 sentinel of <see cref="FocusedThemeIndex"/>.</summary>
-    public bool IsAmbientToggleFocused => IsThemesSection && FocusedThemeIndex < 0;
+    /// <summary>Whether the couch shelf is presented through a simulated CRT tube.</summary>
+    public bool CrtScreenEffect
+    {
+        get => _settings.CrtScreenEffect;
+        set
+        {
+            if (_settings.CrtScreenEffect == value)
+                return;
+            _settings.CrtScreenEffect = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// True when the ambient toggle owns focus, marked by the -1 sentinel of
+    /// <see cref="FocusedThemeIndex"/>.
+    /// </summary>
+    /// <remarks>
+    /// Two negative sentinels now sit above the grid rather than one, so this is an equality test
+    /// rather than the old "any negative". A stray &lt; 0 here would light both toggles at once.
+    /// </remarks>
+    public bool IsAmbientToggleFocused => IsThemesSection && FocusedThemeIndex == AmbientToggleIndex;
+
+    /// <summary>True when the CRT toggle, the topmost focus target in the Themes view, owns focus.</summary>
+    public bool IsCrtToggleFocused => IsThemesSection && FocusedThemeIndex == CrtToggleIndex;
+
+    /// <summary>Focus sentinels for the two toggles stacked above the theme grid.</summary>
+    private const int AmbientToggleIndex = -1;
+
+    /// <inheritdoc cref="AmbientToggleIndex"/>
+    private const int CrtToggleIndex = -2;
 
     /// <summary>The row list is shown for the four model sections; the gallery replaces it on Themes.</summary>
     public bool IsRowsVisible => IsNormal && !IsThemesSection;
@@ -557,21 +585,29 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                         MoveThemeFocus(1, 0);
                     return true;
                 case GamepadAction.NavigateUp:
-                    // Up from the top grid row (or the toggle) rests on the ambient toggle above it.
-                    if (FocusedThemeIndex < ThemeColumns)
-                        FocusedThemeIndex = -1;
+                    // Up walks the stack above the grid: top grid row -> ambient -> CRT, and stops.
+                    if (FocusedThemeIndex == AmbientToggleIndex)
+                        FocusedThemeIndex = CrtToggleIndex;
+                    else if (FocusedThemeIndex == CrtToggleIndex)
+                        return true;
+                    else if (FocusedThemeIndex < ThemeColumns)
+                        FocusedThemeIndex = AmbientToggleIndex;
                     else
                         MoveThemeFocus(0, -1);
                     return true;
                 case GamepadAction.NavigateDown:
-                    // Down from the toggle drops into the grid at the selected theme.
-                    if (FocusedThemeIndex < 0)
+                    // Down reverses it, dropping off the ambient toggle into the selected theme.
+                    if (FocusedThemeIndex == CrtToggleIndex)
+                        FocusedThemeIndex = AmbientToggleIndex;
+                    else if (FocusedThemeIndex == AmbientToggleIndex)
                         FocusedThemeIndex = Math.Max(0, IndexOfSelectedTheme());
                     else
                         MoveThemeFocus(0, 1);
                     return true;
                 case GamepadAction.Confirm:
-                    if (FocusedThemeIndex < 0)
+                    if (FocusedThemeIndex == CrtToggleIndex)
+                        ToggleCrt();
+                    else if (FocusedThemeIndex == AmbientToggleIndex)
                         ToggleAmbient();
                     else
                         _ = ApplyFocusedThemeAsync();
@@ -974,6 +1010,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
         OnPropertyChanged(nameof(IsAmbientToggleFocused));
+        OnPropertyChanged(nameof(IsCrtToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
     }
@@ -981,6 +1018,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     partial void OnFocusedThemeIndexChanged(int value)
     {
         OnPropertyChanged(nameof(IsAmbientToggleFocused));
+        OnPropertyChanged(nameof(IsCrtToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
     }
@@ -992,8 +1030,19 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         if (!IsThemesSection)
             return;
-        FocusedThemeIndex = -1;
+        FocusedThemeIndex = AmbientToggleIndex;
         AmbientThemeFromArtwork = !AmbientThemeFromArtwork;
+    }
+
+    /// <summary>Toggles the CRT presentation from the Themes view; also lands focus on the toggle so
+    /// a pointer click and a controller press read the same.</summary>
+    [RelayCommand]
+    private void ToggleCrt()
+    {
+        if (!IsThemesSection)
+            return;
+        FocusedThemeIndex = CrtToggleIndex;
+        CrtScreenEffect = !CrtScreenEffect;
     }
 
     partial void OnSelectedSectionChanged(SettingsSection value)

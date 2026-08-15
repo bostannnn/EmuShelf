@@ -30,6 +30,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private readonly IEmulatorConfigurationStore _configurations;
     private readonly IDialogService _dialogs;
     private readonly Func<bool, Task>? _setAmbientThemeFromArtwork;
+    private readonly Func<bool, Task>? _setCrtScreenEffect;
     private bool _suppressAmbientCallback;
     private readonly LibraryMaintenanceActions? _maintenance;
     private readonly IMetadataPreferencesService? _metadataPreferences;
@@ -198,6 +199,10 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// falling back to the chosen theme. Applied live through the host callback.</summary>
     [ObservableProperty]
     public partial bool AmbientThemeFromArtwork { get; set; }
+
+    /// <summary>Whether the couch shelf is presented through a simulated CRT tube.</summary>
+    [ObservableProperty]
+    public partial bool CrtScreenEffect { get; set; }
 
     [ObservableProperty]
     public partial string RetroAchievementsUsername { get; set; } = string.Empty;
@@ -470,7 +475,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         IReadOnlyDictionary<string, SystemEmulatorProfiles>? profiles = null,
         AppUpdateCoordinator? updates = null,
         IReadOnlyDictionary<string, IReadOnlyList<LibraryFolder>>? libraryFolders = null,
-        SteamInputTemplateInstaller? steamTemplateInstaller = null)
+        SteamInputTemplateInstaller? steamTemplateInstaller = null,
+        Func<bool, Task>? setCrtScreenEffect = null,
+        bool crtShelfEffect = true)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -488,6 +495,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _logger = logger ?? NullAppLogger.Instance;
         ThemeChoices = themeChoices ?? [];
         _setAmbientThemeFromArtwork = setAmbientThemeFromArtwork;
+        _setCrtScreenEffect = setCrtScreenEffect;
+        CrtScreenEffect = crtShelfEffect;
         // Seed the toggle without firing the host callback (which would re-apply on open).
         _suppressAmbientCallback = true;
         AmbientThemeFromArtwork = ambientThemeFromArtwork;
@@ -635,6 +644,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                     group => group.Key,
                     group => (IReadOnlyList<LibraryFolder>)group.ToArray(),
                     StringComparer.Ordinal);
+
+    partial void OnCrtScreenEffectChanged(bool value)
+    {
+        _ = _setCrtScreenEffect?.Invoke(value);
+    }
 
     partial void OnAmbientThemeFromArtworkChanged(bool value)
     {

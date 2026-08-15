@@ -369,6 +369,37 @@ if (ArgumentValue("--shelf-width") is null)
         + $"(aspect {aspect:F2}; pass --shelf-width to override)");
 }
 
+// The CRT tube is a presentation pass, not a scene change, so it belongs on the shelf shot and
+// nowhere else: the turntable and launch-strip sheets exist to judge geometry and finish, and a
+// scanned, curved, phosphor-tinted copy of them would be worse at that job, not better.
+if (args.Contains("--crt"))
+{
+    renderer.Crt = CrtPresentation.Default with
+    {
+        Curvature = ArgumentFloat("--crt-curvature", CrtPresentation.Default.Curvature),
+        Overscan = ArgumentFloat("--crt-overscan", CrtPresentation.Default.Overscan),
+        ScanlineDepth = ArgumentFloat("--crt-scanlines", CrtPresentation.Default.ScanlineDepth),
+        MaskStrength = ArgumentFloat("--crt-mask", CrtPresentation.Default.MaskStrength),
+        VirtualLines = ArgumentFloat("--crt-lines", CrtPresentation.Default.VirtualLines),
+        Bloom = ArgumentFloat("--crt-bloom", CrtPresentation.Default.Bloom),
+        Vignette = ArgumentFloat("--crt-vignette", CrtPresentation.Default.Vignette),
+        Intensity = ArgumentFloat("--crt-intensity", CrtPresentation.Default.Intensity),
+        RollSpeed = ArgumentFloat("--crt-roll", CrtPresentation.Default.RollSpeed),
+        HumBar = ArgumentFloat("--crt-hum", CrtPresentation.Default.HumBar),
+        HumSpeed = ArgumentFloat("--crt-hum-speed", CrtPresentation.Default.HumSpeed),
+        ChromaBleed = ArgumentFloat("--crt-chroma", CrtPresentation.Default.ChromaBleed),
+        Jitter = ArgumentFloat("--crt-jitter", CrtPresentation.Default.Jitter),
+        Flicker = ArgumentFloat("--crt-flicker", CrtPresentation.Default.Flicker),
+        // Stands in for the couch backdrop the app passes: its library brush under the accent wash.
+        Backdrop = new System.Numerics.Vector3(0.086f, 0.090f, 0.106f),
+    };
+
+    // Stated, not read off a clock: a shot of an animated tube is only useful for review if the
+    // same command produces the same image.
+    renderer.CrtElapsedSeconds = ArgumentFloat("--crt-time", 0f);
+    Console.WriteLine($"  crt: t={renderer.CrtElapsedSeconds}s {renderer.Crt}");
+}
+
 var shelfTarget = CreateTargetFramebuffer(gl, (uint)shelfWidth, (uint)shelfHeight);
 stopwatch.Restart();
 renderer.RenderShelf(
@@ -447,6 +478,11 @@ string? ArgumentValue(string name)
     var index = Array.IndexOf(args, name);
     return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
 }
+
+float ArgumentFloat(string name, float fallback) =>
+    ArgumentValue(name) is { } value
+        ? float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)
+        : fallback;
 
 static System.Numerics.Quaternion ParseQuaternion(string value)
 {

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Threading;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Rendering;
 
 namespace EmuShelf.App.Controls;
 
@@ -40,6 +41,13 @@ public sealed class MediaShelf3DHost : ContentControl
 
     public static readonly StyledProperty<PhysicalShelfLaunchPose?> LaunchPoseProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, PhysicalShelfLaunchPose?>(nameof(LaunchPose));
+
+    public static readonly StyledProperty<Avalonia.Visual?> ChromeSourceProperty =
+        AvaloniaProperty.Register<MediaShelf3DHost, Avalonia.Visual?>(nameof(ChromeSource));
+
+    public static readonly StyledProperty<CrtPresentation> CrtProperty =
+        AvaloniaProperty.Register<MediaShelf3DHost, CrtPresentation>(
+            nameof(Crt), CrtPresentation.Off);
 
     private readonly DispatcherTimer _initializationWatchdog;
     private MediaShelf3DControl? _scene;
@@ -107,6 +115,20 @@ public sealed class MediaShelf3DHost : ContentControl
         set => SetValue(LaunchPoseProperty, value);
     }
 
+    /// <inheritdoc cref="MediaShelf3DControl.ChromeSourceProperty"/>
+    public Avalonia.Visual? ChromeSource
+    {
+        get => GetValue(ChromeSourceProperty);
+        set => SetValue(ChromeSourceProperty, value);
+    }
+
+    /// <summary>How hard the scene is pushed through a CRT tube on the way to the screen.</summary>
+    public CrtPresentation Crt
+    {
+        get => GetValue(CrtProperty);
+        set => SetValue(CrtProperty, value);
+    }
+
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
@@ -136,6 +158,10 @@ public sealed class MediaShelf3DHost : ContentControl
             scene.DeparturePose = DeparturePose;
         else if (change.Property == LaunchPoseProperty)
             scene.LaunchPose = LaunchPose;
+        else if (change.Property == CrtProperty)
+            scene.Crt = Crt;
+        else if (change.Property == ChromeSourceProperty)
+            scene.ChromeSource = ChromeSource;
     }
 
     protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -169,6 +195,8 @@ public sealed class MediaShelf3DHost : ContentControl
             Pitch = Pitch,
             DeparturePose = DeparturePose,
             LaunchPose = LaunchPose,
+            Crt = Crt,
+            ChromeSource = ChromeSource,
         };
         scene.InitializationSucceeded += OnSceneInitializationSucceeded;
         scene.InitializationFailed += OnSceneInitializationFailed;

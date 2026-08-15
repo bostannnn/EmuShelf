@@ -22,6 +22,15 @@ public interface IAppThemeService
     /// via <see cref="ApplyArtworkPalette"/> / <see cref="ClearArtworkPalette"/>.</summary>
     Task SetAmbientFromArtworkAsync(bool enabled, CancellationToken cancellationToken = default);
 
+    /// <summary>Whether the couch shelf is presented through a simulated CRT tube.</summary>
+    bool CrtScreenEffect { get; }
+
+    /// <summary>Raised after <see cref="CrtScreenEffect"/> changes.</summary>
+    event EventHandler? CrtScreenEffectChanged;
+
+    /// <summary>Persists the CRT presentation preference.</summary>
+    Task SetCrtScreenEffectAsync(bool enabled, CancellationToken cancellationToken = default);
+
     /// <summary>Re-colours the whole UI live from an artwork-derived palette, layered over the chosen
     /// theme. Safe to call repeatedly as focus moves.</summary>
     void ApplyArtworkPalette(ArtworkPalette palette);

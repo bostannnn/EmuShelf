@@ -9,6 +9,17 @@ public sealed record AppSettings
     /// <see cref="Theme"/> becomes the fallback for artwork with no usable colour.</summary>
     public bool AmbientThemeFromArtwork { get; init; }
 
+    /// <summary>
+    /// When true, the couch physical-media shelf is presented through a simulated CRT tube.
+    /// </summary>
+    /// <remarks>
+    /// Defaults on because the shelf's whole premise is physical media on a shelf under a
+    /// television. It is a real cost, though — the effect holds the couch screen at the compositor's
+    /// frame rate and captures the couch UI on a timer — so it has to be switchable, and this is the
+    /// switch rather than a rebuild.
+    /// </remarks>
+    public bool CrtScreenEffect { get; init; } = true;
+
     /// <summary>Persisted library layout. Steam Input maps controller actions to keyboard input.</summary>
     public InterfaceMode InterfaceMode { get; init; } = InterfaceMode.Desktop;
 

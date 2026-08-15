@@ -8141,3 +8141,163 @@ target that cannot silently stop testing anything. `PreviewShelf`'s 3DS entry wa
 only occupant and is now a 3DS card, placed immediately before the DS card so the pair can be
 compared — the same reason PSP sits beside the PS2 case. The fallback card is not dead code; it is
 what the next system EmuShelf adds will land on, and it goes back into that row when one arrives.
+## 2026-08-15 — The keep case's three sheets now meet round its corners
+
+Reported plainly: "DVD boxes have gaps between images, so it looks weird even when scraped". They
+did, and it was not the scraping. The keep case's sleeve is three flat projections — front, back,
+spine — and each printed only what lay within `KeepCaseSleeveDepth`, a millimetre, of its own plane.
+The rounded corner between the front face and the spine is 3.5mm across. Between where the front
+print gave up and where the spine's began, no panel claimed the surface at all.
+
+Measured round the shell's cross-section at mid-height, in millimetres of arc: the front print
+ended at x -62.5 and the spine's began at -65.0, leaving **2.6mm** of bare black moulding on the
+spine edge and **3.25mm** on the back edge of a case 13.7mm thick. That is the gap. A second, weaker
+contributor was the panels' 0.02 inset, which on a 132mm face is another 1.3mm off each edge —
+harmless while the depth allowance was the binding bound, and the thing holding the print short once
+it was not.
+
+**The allowance is now 2.1mm, and the insets are zero.** 2.01mm is where the fillet has turned far
+enough for the spine panel to take the surface over, so the two now overlap by a couple of tenths
+rather than leaving a hole; the shader's later panel wins there. The perimeter comes out as one
+continuous printed run — cover 131.2mm, spine 11.2, back 130.9 — with the only bare arc the 14.8mm
+opening edge, which is right: that is the one large face of a case no sleeve wraps.
+
+**Why widening this is safe, given the note it replaces.** The old comment argued the allowance had
+to be tight because this mesh's normals cannot be trusted: the source is a cube scaled 13.5 x 19.0 x
+1.4, the inverse transpose tips rim normals back toward the face, and opened out to the shell's own
+0.40 default the front panel painted surfaces 9.7mm deep while passing a facing guard that rejects
+below 0.5. All still true. It does not apply at 2.1mm, and for a reason that does not depend on the
+normals at all: the spine's flat face lies 4.1mm behind the front plane, so an allowance of 2.1mm is
+physically incapable of reaching it. The corner is closed by making the bound exactly wide enough
+and no wider, not by trusting the guard that failed before.
+
+**What pins it.** `KeepCaseSleeve_MeetsRoundTheCornersAndStopsAtTheOpening` walks the same
+cross-section and asserts the front and back spans overlap the spine's, and that neither sheet
+reaches past half the case's thickness. The second assertion pulls against the first on purpose:
+printing everything would close the corners and put cover art over the thumb notch. On the old
+constants it fails with "leaving 2.6mm of bare case between them", which is the reported defect in
+the failure message. It samples along the surface rather than at the vertices — this fillet carries
+few edge loops, and at vertices alone the back sleeve looks 1.2mm short of a join the shader draws
+continuously.
+
+**What this does not fix.** The outer ~1.5mm of the box scan is now stretched round the fillet
+rather than folded over it, which is what a planar projection of a wrapped sheet does; at this size
+it reads correctly. And since nothing scrapes spine art, the front art still runs into the platform
+tint at the corner — a colour change instead of a black gap. The PS3 case has neither problem
+because its film is its own mesh with a modelled fold, and that remains the better answer for this
+shell whenever `disc-keep-case.glb` is next opened.
+
+The PS1 jewel case has the same defect at smaller scale — 2.06mm unprinted between spine and back,
+and a cover panel stopping 4mm short of the opening edge. Left alone deliberately: its front panel
+is already asymmetric to clear a banner, so its numbers want their own measuring session rather than
+this one's constants applied by analogy.
+## 2026-08-15 — CRT presentation is a GL resolve pass, not a window-wide effect
+
+Shelf mode presents through a simulated CRT tube. The pass replaces the resolve blit at the end of
+`MediaShellRenderer.Render`/`RenderShelf` — the scene was already drawn supersampled into an
+offscreen framebuffer and blitted down, so the warp, scanlines, phosphor mask, halation and vignette
+cost one extra fullscreen triangle over a texture that already existed.
+
+The obvious alternative — running the whole couch window through a shader so the platform rail and
+title curve with the shelf — was rejected for now. Avalonia 12 exposes no custom-shader effect
+(`IEffect` has only blur and drop-shadow implementations), so the only route is snapshotting the
+visual tree into a `RenderTargetBitmap` every frame and redrawing it through an `SKRuntimeEffect`.
+That is a full-window offscreen render per frame on hardware that includes a Steam Deck. Notably it
+would *not* break input: `GamepadRoot` is `IsHitTestVisible="False"` and the couch UI is entirely
+controller-driven, so the usual objection — clicks landing where the undistorted control is — does
+not apply here. Cost is the only blocker, which makes this worth revisiting with a measurement
+rather than an argument.
+
+Because the pass now owns the composite, the tube's backdrop is a uniform rather than an Avalonia
+Border: going full-bleed puts the pass underneath the whole couch screen, and a backdrop painted
+behind it could not be curved or vignetted with everything else. The accent wash therefore reaches
+the renderer as a colour instead of a brush.
+
+Every parameter is a setting. A CRT emulation cannot be judged by argument, only by sitting in front
+of it at the distance it will be used from, and the right curvature for a 27" desk monitor is not
+the right one for a television across a room. `Intensity = 0` is defined to reproduce the previous
+image exactly, so the effect can be turned off rather than merely turned down.
+
+Shaders are written rather than ported from RetroArch. Licensing is not the obstacle — EmuShelf is
+GPL-3.0 and the libretro CRT shaders are mostly GPL-2.0-or-later or public domain, so incorporating
+one is permitted with the usual per-file check and a `THIRD-PARTY-NOTICES.md` entry. The mismatch is
+technical: those shaders derive their scanline structure from an emulated framebuffer's native line
+count, and the shelf is a smooth 3D render with no line structure to inherit. `VirtualLines` invents
+one instead. They remain the reference worth reading for mask geometry.
+
+## 2026-08-15 — The couch UI is captured into the tube, not composited over it
+
+Superseding the "revisit with a measurement" note above: the platform rail and focused title are now
+inside the CRT image rather than flat overlays on top of it.
+
+The distinction is the whole feature and it is easy to get wrong twice. Making the GL surface span
+the window does *not* put the rail inside the tube — Avalonia still composites the rail after the
+shader has run, so it sits flat on a curved picture. The rail's pixels have to be an *input* to the
+shader. So a UI-thread timer renders `GamepadRoot` into a `RenderTargetBitmap` at 30Hz, copies it to
+a buffer, and the render thread uploads that as a texture the shader composites into the scene
+*before* the barrel warp.
+
+Consequences worth knowing:
+
+- The scene control lives beside `GamepadRoot` in the window, not inside it, or the capture would be
+  photographing itself.
+- The couch UI still lays out and animates normally underneath; it is simply never what you see,
+  because the opaque tube covers it.
+- The capture must be on the UI thread. Avalonia calls `OnOpenGlRender` on the render thread, and
+  rendering a live visual from there is a data race, not merely unsupported.
+- `GamepadRoot`'s background moved from an inline attribute to a style setter. A local value outranks
+  every style setter in Avalonia, so the shelf-mode override could not otherwise take effect, and the
+  capture came back as an opaque sheet hiding the shelf.
+- The capture is deliberately downscaled to a 1280px edge. Cheaper, and more faithful — a CRT does
+  not resolve UI text crisply.
+
+Overscan is split in two. The scene is zoomed to carry the warped corners off the panel, because its
+opaque backdrop leaves black wedges there; the chrome is not, because it is transparent at the edges
+and contributes no wedges, so zooming it would only push the platform rail off the top of the screen.
+
+The tube's visibility is `ShowShelfTube`, which unlike `ShowGamepadShelf` is not gated on `HasGames`.
+Stepping platforms empties the collection and refills it, and anything gated on games being present
+blinked the entire effect off for a frame — and detached and rebuilt the GL scene on every platform
+step.
+
+## 2026-08-15 — The CRT is a couch-wide presentation, and its setting lives only in couch mode
+
+Refining the two entries above: the tube covers every couch layout, not just the shelf. The CRT is a
+property of the television the couch UI is being shown on, and the grid and the spotlight are as much
+"a console menu on a TV" as the shelf is. `CrtScreenEffect` — renamed from `CrtShelfEffect`, which had
+become misleading — is persisted in `AppSettings` and defaults on.
+
+Desktop mode is deliberately excluded. It is a mouse-driven library window, and a warped, scanned one
+would be unusable rather than nostalgic.
+
+For the same reason the toggle does **not** appear in the desktop Settings window, and neither does
+"Match colours to game artwork", which was already there and already Gamepad-only. A setting whose
+effect is invisible from the window it lives in is worse than no setting: it invites the user to
+change something and watch nothing happen. Both live in the couch Settings overlay under Themes,
+where the result is on screen while it is being changed. The theme gallery stays in both, because a
+theme genuinely applies to both.
+
+Two consequences worth remembering, each of which was a bug first:
+
+- The scene control is not only the tube. It is also the only thing that draws physical media, since
+  the flat 2D strip beside it is a no-GL fallback that stays hidden whenever the scene works. Its
+  visibility therefore cannot be gated on the CRT setting alone, or switching the effect off empties
+  the shelf entirely.
+- Outside the shelf there is nothing for the 3D scene to draw, so it is handed an empty item list.
+  Passing it the library on the grid would draw a row of cartridges over the cover grid.
+
+## 2026-08-15 — The CRT ships at fixed defaults; only its on/off switch is a setting
+
+The per-parameter dials — curvature, scanline depth, mask, halation, and the animated instabilities —
+were tuned by eye through a temporary environment-variable shim, which has now been deleted. The
+values it settled on are the constants in `CrtPresentation.Default`, and the only user-facing control
+is the on/off toggle.
+
+Deliberate, not an oversight. Sixteen sliders is a large surface to design, document and support for
+an effect most people will either want or not want, and every one of them is a way to make the couch
+UI look worse. The defaults are the look the feature is for.
+
+They remain individually addressable fields rather than being folded into the shader as literals, so
+exposing any of them later is a UI job rather than a refactor. The shim is gone because dev
+scaffolding that ships is scaffolding that rots: its own comment promised deletion once Settings
+existed, and that promise would have quietly become false the moment it merged.
