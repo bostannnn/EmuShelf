@@ -387,6 +387,21 @@
         <Style Selector="Grid.gamepad-root.overlay-open Border.gamepad-focus-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
+        <!-- The couch backdrop is set here rather than as an attribute on GamepadRoot, because a
+             local value outranks every style setter in Avalonia: with Background written inline, the
+             .tube rule below could never take effect and the capture came back as a solid sheet of
+             library colour with the shelf hidden behind it. -->
+        <Style Selector="Grid.gamepad-root">
+            <Setter Property="Background" Value="{DynamicResource EmuLibraryBrush}" />
+        </Style>
+
+        <!-- Shelf mode draws its own backdrop inside the tube, so the couch root must not paint one:
+             the capture of this tree is composited OVER the 3D scene, and an opaque fill here would
+             hide the shelf behind that flat sheet. -->
+        <Style Selector="Grid.gamepad-root.tube">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
         <Style Selector="Button.gamepad-platform">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -2250,9 +2265,9 @@
          hover, select, drag, or scroll anything (the cursor is also hidden by WindowInterfaceModeService).
          Controller/keyboard input drives focus through the view model, which does not use hit-testing. -->
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
+          Classes.tube="{Binding IsShelfTubeActive}"
           IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,104"
-          TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}"
-          Background="{DynamicResource EmuLibraryBrush}">
+          TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}">
         <Border Grid.Row="0" Padding="42,18,42,12" Background="{DynamicResource EmuToolbarBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="22">
@@ -2932,8 +2947,8 @@
              If GL initialization fails, the old translated flat strip remains a complete fallback.
              The root is a Border (not a bare Panel) so the spotlight backdrop stays the sole top-level Panel.
              See docs/couch-physical-media-shelf.md. -->
-        <Border x:Name="GamepadShelf" Grid.Row="1" Grid.RowSpan="2"
-                IsVisible="{Binding ShowGamepadShelf}"
+        <Border x:Name="GamepadShelf" Grid.Row="0" Grid.RowSpan="3"
+                IsVisible="{Binding ShowShelfTube}"
                 ClipToBounds="True"
                 IsHitTestVisible="{Binding !HasGamepadOverlay}">
             <Panel>
@@ -2941,16 +2956,30 @@
                      system while "Match colours to game artwork" is on, so the whole screen shifts
                      colour as you browse platforms; with the setting off it rests on the chosen
                      theme's accent, so moving the highlight recolours nothing. Two Borders rather
-                     than one converter-driven brush: each source is a plain binding this way. -->
-                <Border Background="{DynamicResource EmuLibraryBrush}" />
-                <Border x:Name="ShelfPlatformAccentWash"
-                        Background="{Binding FocusedGame.AccentColor}" Opacity="0.16"
-                        IsVisible="{Binding AmbientThemeFromArtwork}" />
-                <Border x:Name="ShelfThemeAccentWash"
-                        Background="{DynamicResource EmuAccentBrush}" Opacity="0.16"
-                        IsVisible="{Binding !AmbientThemeFromArtwork}" />
+                     than one converter-driven brush: each source is a plain binding this way.
 
-                <Grid RowDefinitions="*,Auto" Margin="0,28,0,40">
+                     Only the no-GL fallback paints these. When the scene is up it writes an opaque
+                     image over the whole surface and resolves the same two colours itself, because a
+                     backdrop painted behind the tube could not be curved, scanned or vignetted with
+                     everything else — it would stay flat around a warped picture. The wrapping Panel
+                     carries the condition so each inner Border keeps its own plain binding. -->
+                <Panel IsVisible="{Binding ShowShelfFlatBackdrop}">
+                    <Border Background="{DynamicResource EmuLibraryBrush}" />
+                    <Border x:Name="ShelfPlatformAccentWash"
+                            Background="{Binding FocusedGame.AccentColor}" Opacity="0.16"
+                            IsVisible="{Binding AmbientThemeFromArtwork}" />
+                    <Border x:Name="ShelfThemeAccentWash"
+                            Background="{DynamicResource EmuAccentBrush}" Opacity="0.16"
+                            IsVisible="{Binding !AmbientThemeFromArtwork}" />
+                </Panel>
+
+                <!-- Top margin clears the platform rail (100px) so the flat fallback's covers and the
+                     title are not drawn underneath it. The 3D scene is NOT here — it lives beside
+                     GamepadRoot at the window root, because it captures GamepadRoot into the tube and
+                     a scene inside that subtree would be photographing itself. Its camera fills only
+                     half the frame height with media, which leaves the rail's band and this title's
+                     band clear inside the glass. -->
+                <Grid RowDefinitions="*,Auto" Margin="0,128,0,40">
                     <!-- Coverflow strip viewport. GamepadShelfStrip is translated by the code-behind so
                          the focused slot lands on centre; the viewport's ClipToBounds hides the off-screen
                          covers. Slots are a uniform 410px wide (matching MainWindow.ShelfSlotWidth) so the
@@ -3016,24 +3045,6 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </Panel>
-                    <!-- One scene owns every visible physical medium. ShelfPosition is continuous,
-                         so navigation carries the old and incoming games through the same world
-                         instead of swapping one centred hero over a separately animated 2D strip. -->
-                    <controls:MediaShelf3DHost x:Name="GamepadShelfScene"
-                                               Width="{Binding Bounds.Width, ElementName=GamepadShelfMediaHost}"
-                                               Height="{Binding Bounds.Height, ElementName=GamepadShelfMediaHost}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               IsVisible="{Binding ShelfSceneSupported}"
-                                               IsActive="{Binding ShowGamepadShelf}"
-                                               IsSceneSupported="{Binding ShelfSceneSupported}"
-                                               Items="{Binding Games}"
-                                               FocusedItem="{Binding FocusedGame}"
-                                               ShelfPosition="{Binding ShelfPosition}"
-                                               Yaw="{Binding ShelfHeroYaw}"
-                                               Pitch="{Binding ShelfHeroPitch}"
-                                               DeparturePose="{Binding ShelfDeparturePose}"
-                                               LaunchPose="{Binding ShelfLaunchPose}"
-                                               InitializationFailed="OnGamepadShelfHeroFailed" />
                     </Grid>
 
                     <!-- Focused game's platform + title, centred beneath the shelf (the dock is hidden here). -->
@@ -3821,11 +3832,52 @@
                                     </ScrollViewer>
 
                                     <Grid IsVisible="{Binding GamepadSettings.IsThemesVisible}"
-                                          RowDefinitions="Auto,*" RowSpacing="16">
+                                          RowDefinitions="Auto,Auto,*" RowSpacing="16">
                                         <!-- Ambient (cover-art recolour) toggle: a focus target above the
                                              theme grid so the setting is reachable on a controller. Up from
                                              the top grid row lands here; A toggles it. -->
+                                        <!-- CRT toggle: the topmost focus target in the Themes view
+                                             (the -2 sentinel), above the ambient toggle. -->
                                         <Button Grid.Row="0" Classes="gamepad-settings-row"
+                                                Classes.focused="{Binding GamepadSettings.IsCrtToggleFocused}"
+                                                IsVisible="{Binding GamepadSettings.IsThemesVisible}"
+                                                HorizontalAlignment="Stretch"
+                                                Command="{Binding GamepadSettings.ToggleCrtCommand}">
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
+                                                    <TextBlock Text="CRT screen effect" FontSize="17"
+                                                               FontWeight="SemiBold" />
+                                                    <TextBlock Text="Show the shelf through a curved, scanned picture tube. Costs GPU time and keeps the shelf redrawing."
+                                                               FontSize="14" TextWrapping="Wrap" MaxLines="2"
+                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                </StackPanel>
+                                                <Border Grid.Column="1" Classes="gamepad-settings-switch"
+                                                        Classes.on="{Binding GamepadSettings.CrtScreenEffect}"
+                                                        VerticalAlignment="Center">
+                                                    <Grid>
+                                                        <TextBlock Text="OFF" IsVisible="{Binding !GamepadSettings.CrtScreenEffect}"
+                                                                   Margin="0,0,14,0" HorizontalAlignment="Right"
+                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
+                                                        <TextBlock Text="ON" IsVisible="{Binding GamepadSettings.CrtScreenEffect}"
+                                                                   Margin="14,0,0,0" HorizontalAlignment="Left"
+                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
+                                                        <Border Width="40" Height="40" Margin="4"
+                                                                IsVisible="{Binding !GamepadSettings.CrtScreenEffect}"
+                                                                HorizontalAlignment="Left" CornerRadius="20"
+                                                                Background="{DynamicResource EmuTextTertiaryBrush}" />
+                                                        <Border Width="40" Height="40" Margin="4"
+                                                                IsVisible="{Binding GamepadSettings.CrtScreenEffect}"
+                                                                HorizontalAlignment="Right" CornerRadius="20"
+                                                                Background="{DynamicResource EmuAccentBrush}">
+                                                            <TextBlock Text="✓" FontSize="18" HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </Grid>
+                                        </Button>
+                                        <Button Grid.Row="1" Classes="gamepad-settings-row"
                                                 Classes.focused="{Binding GamepadSettings.IsAmbientToggleFocused}"
                                                 IsVisible="{Binding GamepadSettings.IsThemesVisible}"
                                                 HorizontalAlignment="Stretch"
@@ -3864,7 +3916,7 @@
                                                 </Border>
                                             </Grid>
                                         </Button>
-                                        <ScrollViewer Grid.Row="1" x:Name="GamepadThemeScroller"
+                                        <ScrollViewer Grid.Row="2" x:Name="GamepadThemeScroller"
                                                       Classes="gamepad-scroll"
                                                       VerticalScrollBarVisibility="Auto"
                                                       HorizontalScrollBarVisibility="Disabled">
@@ -4685,6 +4737,33 @@
     <!-- Borderless chrome keeps the theme continuous on Windows 10/11. Thin native-role grips
          retain ordinary edge and corner resizing without putting platform behavior in the view
          model or replacing Avalonia's window sizing implementation. -->
+    <!-- ===================== The tube =====================
+         Declared here, beside GamepadRoot rather than inside it, and that placement is the whole
+         mechanism: this control captures GamepadRoot into a texture and composites it into the
+         scene BEFORE the barrel warp, so the platform rail and the focused title are part of the
+         picture the CRT is displaying instead of flat overlays sitting on a curved image. A scene
+         inside that subtree would be capturing itself.
+
+         It is opaque and covers the window, which is what hides the un-warped original: the couch
+         UI still lays out and animates normally underneath, it is simply never the thing you see.
+         Non-hit-testable so the window's resize edges below still work.
+         See docs/couch-physical-media-shelf.md. -->
+    <controls:MediaShelf3DHost x:Name="GamepadShelfScene"
+                               IsHitTestVisible="False"
+                               IsVisible="{Binding ShowCouchTube}"
+                               IsActive="{Binding ShowCouchTube}"
+                               IsSceneSupported="{Binding ShelfSceneSupported}"
+                               Crt="{Binding CouchCrt}"
+                               ChromeSource="{Binding #GamepadRoot}"
+                               Items="{Binding ShelfSceneItems}"
+                               FocusedItem="{Binding FocusedGame}"
+                               ShelfPosition="{Binding ShelfPosition}"
+                               Yaw="{Binding ShelfHeroYaw}"
+                               Pitch="{Binding ShelfHeroPitch}"
+                               DeparturePose="{Binding ShelfDeparturePose}"
+                               LaunchPose="{Binding ShelfLaunchPose}"
+                               InitializationFailed="OnGamepadShelfHeroFailed" />
+
     <Border Width="5" HorizontalAlignment="Left" VerticalAlignment="Stretch"
             Background="Transparent" WindowDecorationProperties.ElementRole="ResizeW" />
     <Border Width="5" HorizontalAlignment="Right" VerticalAlignment="Stretch"

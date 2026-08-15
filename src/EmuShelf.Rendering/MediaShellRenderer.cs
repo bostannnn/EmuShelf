@@ -173,6 +173,7 @@ public sealed class MediaShellRenderer : IDisposable
     private readonly GlProgram _program;
     private readonly GlProgram _shadowProgram;
     private readonly GlProgram _keyShadowProgram;
+    private readonly GlProgram _crtProgram;
     private readonly GlMesh _receivingPlane;
     private readonly GlTexture _whitePixel;
     private readonly GlTexture _flatNormal;
@@ -200,12 +201,108 @@ public sealed class MediaShellRenderer : IDisposable
     private uint _keyShadowFramebuffer;
     private uint _keyShadowDepth;
     private uint _keyShadowColour;
+    private uint _crtVertexArray;
+    private uint _crtChrome;
+    private int _crtChromeWidth;
+    private int _crtChromeHeight;
+
+    /// <summary>
+    /// How the resolve presents the finished scene. Off by default so nothing that already draws
+    /// through this renderer — the shell inspector, the preview tool — inherits a television.
+    /// </summary>
+    public CrtPresentation Crt { get; set; } = CrtPresentation.Off;
+
+    /// <summary>
+    /// Drives the tube's animated instabilities.
+    /// </summary>
+    /// <remarks>
+    /// Supplied by the host rather than read from a clock in here, because the two hosts need
+    /// different ones: the app wants wall time so the roll and hum keep moving, while the preview
+    /// tool wants to state an exact instant so a shot of an animated tube is reproducible.
+    /// </remarks>
+    public float CrtElapsedSeconds { get; set; }
+
+    /// <summary>
+    /// A snapshot of the host's own UI, composited into the tube's image before it is warped.
+    /// </summary>
+    /// <remarks>
+    /// Zero for every caller that has no surrounding chrome — the shell inspector and the preview
+    /// tool draw nothing around the scene, and the renderer must not require them to invent it.
+    /// Expected to be premultiplied BGRA covering exactly the same rectangle as the target, since
+    /// the shader samples it with the untransformed screen UV.
+    /// </remarks>
+    public void SetCrtChrome(ReadOnlySpan<byte> pixels, int width, int height)
+    {
+        if (width <= 0 || height <= 0 || pixels.Length < width * height * 4)
+        {
+            return;
+        }
+
+        if (_crtChrome == 0)
+        {
+            _crtChrome = _gl.GenTexture();
+            _gl.BindTexture(TextureTarget.Texture2D, _crtChrome);
+            _gl.TexParameter(
+                TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
+            _gl.TexParameter(
+                TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
+            // Clamped because the barrel warp samples past the edges at the corners, and a repeat
+            // would wrap the far side of the rail into them.
+            _gl.TexParameter(
+                TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+            _gl.TexParameter(
+                TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+            _crtChromeWidth = 0;
+            _crtChromeHeight = 0;
+        }
+        else
+        {
+            _gl.BindTexture(TextureTarget.Texture2D, _crtChrome);
+        }
+
+        unsafe
+        {
+            fixed (byte* data = pixels)
+            {
+                // Reallocate only when the window size changed; every other update is a subimage
+                // write into storage the driver already has.
+                if (_crtChromeWidth != width || _crtChromeHeight != height)
+                {
+                    _gl.TexImage2D(
+                        TextureTarget.Texture2D, 0, InternalFormat.Rgba8,
+                        (uint)width, (uint)height, 0,
+                        PixelFormat.Rgba, PixelType.UnsignedByte, data);
+                    _crtChromeWidth = width;
+                    _crtChromeHeight = height;
+                }
+                else
+                {
+                    _gl.TexSubImage2D(
+                        TextureTarget.Texture2D, 0, 0, 0, (uint)width, (uint)height,
+                        PixelFormat.Rgba, PixelType.UnsignedByte, data);
+                }
+            }
+        }
+    }
+
+    /// <summary>Drops the captured chrome, so the tube shows the scene alone again.</summary>
+    public void ClearCrtChrome()
+    {
+        if (_crtChrome != 0)
+        {
+            _gl.DeleteTexture(_crtChrome);
+            _crtChrome = 0;
+            _crtChromeWidth = 0;
+            _crtChromeHeight = 0;
+        }
+    }
 
     private MediaShellRenderer(
         GL gl,
         GlProgram program,
         GlProgram shadowProgram,
         GlProgram keyShadowProgram,
+        GlProgram crtProgram,
         GlMesh receivingPlane,
         StudioEnvironment environment,
         Vector3 accent,
@@ -216,6 +313,7 @@ public sealed class MediaShellRenderer : IDisposable
         _program = program;
         _shadowProgram = shadowProgram;
         _keyShadowProgram = keyShadowProgram;
+        _crtProgram = crtProgram;
         _receivingPlane = receivingPlane;
         _environment = environment;
         _accent = accent;
@@ -248,6 +346,11 @@ public sealed class MediaShellRenderer : IDisposable
             ShaderLibrary.Load("key-shadow.vert", dialect, majorVersion, minorVersion),
             ShaderLibrary.Load("key-shadow.frag", dialect, majorVersion, minorVersion),
             "studio key shadow");
+        var crtProgram = GlProgram.Create(
+            gl,
+            ShaderLibrary.Load("fullscreen.vert", dialect, majorVersion, minorVersion),
+            ShaderLibrary.Load("crt.frag", dialect, majorVersion, minorVersion),
+            "crt present");
         var receivingPlane = GlMesh.Upload(gl, CreateReceivingPlane());
 
         // Bake the expensive convolution once. Platform colour is applied as a lightweight shader
@@ -257,7 +360,7 @@ public sealed class MediaShellRenderer : IDisposable
             gl, dialect, majorVersion, minorVersion, Vector3.One, accentMix: 0f, intensity: StudioIntensity);
 
         return new MediaShellRenderer(
-            gl, program, shadowProgram, keyShadowProgram, receivingPlane,
+            gl, program, shadowProgram, keyShadowProgram, crtProgram, receivingPlane,
             environment, accent,
             GlTexture.Solid(gl, 255, 255, 255, 255),
             // (0.5, 0.5, 1) is a flat tangent-space normal.
@@ -418,16 +521,7 @@ public sealed class MediaShellRenderer : IDisposable
         DrawHeroShadow(resources.Asset, yaw, view * projection);
         DrawShell(resources, model, keyViewProjection);
 
-        // Resolve the supersampled scene down onto whatever surface the host handed us.
-        _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _sceneFramebuffer);
-        _gl.BindFramebuffer(FramebufferTarget.DrawFramebuffer, targetFramebuffer);
-        _gl.BlitFramebuffer(
-            0, 0, (int)_sceneWidth, (int)_sceneHeight,
-            0, 0, (int)width, (int)height,
-            (uint)ClearBufferMask.ColorBufferBit,
-            BlitFramebufferFilter.Linear);
-        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
-        _gl.Viewport(0, 0, width, height);
+        Present(targetFramebuffer, width, height);
     }
 
     /// <summary>
@@ -506,15 +600,91 @@ public sealed class MediaShellRenderer : IDisposable
                 disc, viewProjection, cameraPosition, Matrix4x4.Identity, hasKeyShadow: false);
         }
 
-        _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _sceneFramebuffer);
-        _gl.BindFramebuffer(FramebufferTarget.DrawFramebuffer, targetFramebuffer);
-        _gl.BlitFramebuffer(
-            0, 0, (int)_sceneWidth, (int)_sceneHeight,
-            0, 0, (int)width, (int)height,
-            (uint)ClearBufferMask.ColorBufferBit,
-            BlitFramebufferFilter.Linear);
+        Present(targetFramebuffer, width, height);
+    }
+
+    /// <summary>
+    /// Resolves the supersampled scene onto whatever surface the host handed us, either as a plain
+    /// filtered blit or through the CRT tube.
+    /// </summary>
+    private void Present(uint targetFramebuffer, uint width, uint height)
+    {
+        if (!Crt.IsActive)
+        {
+            _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _sceneFramebuffer);
+            _gl.BindFramebuffer(FramebufferTarget.DrawFramebuffer, targetFramebuffer);
+            _gl.BlitFramebuffer(
+                0, 0, (int)_sceneWidth, (int)_sceneHeight,
+                0, 0, (int)width, (int)height,
+                (uint)ClearBufferMask.ColorBufferBit,
+                BlitFramebufferFilter.Linear);
+            _gl.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
+            _gl.Viewport(0, 0, width, height);
+            return;
+        }
+
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
         _gl.Viewport(0, 0, width, height);
+
+        // The tube writes an opaque image over the full surface, including where the scene was
+        // transparent, so there is nothing to blend against and nothing to test depth against.
+        _gl.Disable(EnableCap.DepthTest);
+        _gl.Disable(EnableCap.Blend);
+        _gl.Disable(EnableCap.CullFace);
+
+        if (_crtVertexArray == 0)
+        {
+            // Core profiles refuse to draw with no vertex array bound, even for the attribute-less
+            // fullscreen triangle this pass shares with the cubemap bakes.
+            _crtVertexArray = _gl.GenVertexArray();
+        }
+
+        _gl.BindVertexArray(_crtVertexArray);
+
+        _crtProgram.Use();
+        _crtProgram.Set("uScene", 0);
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _gl.BindTexture(TextureTarget.Texture2D, _sceneColour);
+
+        // The allocation is bucketed, so the frame just drawn occupies a sub-rectangle of it.
+        _crtProgram.Set(
+            "uSceneUvScale",
+            new Vector2(
+                _sceneWidth / (float)Math.Max(_sceneCapacityWidth, 1u),
+                _sceneHeight / (float)Math.Max(_sceneCapacityHeight, 1u)));
+        _crtProgram.Set("uOutputSize", new Vector2(width, height));
+
+        _crtProgram.Set("uChrome", 1);
+        _gl.ActiveTexture(TextureUnit.Texture1);
+        _gl.BindTexture(TextureTarget.Texture2D, _crtChrome);
+        _crtProgram.Set("uChromeAmount", _crtChrome == 0 ? 0f : 1f);
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _crtProgram.Set("uBackdrop", Crt.Backdrop);
+        _crtProgram.Set("uCurvature", Crt.Curvature);
+        _crtProgram.Set("uOverscan", Crt.Overscan);
+        _crtProgram.Set("uChromeOverscan", Crt.ChromeOverscan);
+        _crtProgram.Set("uScanlineDepth", Crt.ScanlineDepth);
+        _crtProgram.Set("uMaskStrength", Crt.MaskStrength);
+        _crtProgram.Set("uMaskPitch", Crt.MaskPitch);
+        _crtProgram.Set("uVirtualLines", Crt.VirtualLines);
+        _crtProgram.Set("uBloom", Crt.Bloom);
+        _crtProgram.Set("uVignette", Crt.Vignette);
+        _crtProgram.Set("uIntensity", Crt.Intensity);
+
+        // Wrapped rather than handed over raw. A float loses enough mantissa after a few hours of
+        // uptime that the slow drifts start stepping instead of sliding, and an hour is a whole
+        // number of cycles for none of the rates below — so the wrap itself is invisible.
+        _crtProgram.Set("uTime", CrtElapsedSeconds % 3600f);
+        _crtProgram.Set("uRollSpeed", Crt.RollSpeed);
+        _crtProgram.Set("uHumBar", Crt.HumBar);
+        _crtProgram.Set("uHumSpeed", Crt.HumSpeed);
+        _crtProgram.Set("uChromaBleed", Crt.ChromaBleed);
+        _crtProgram.Set("uJitter", Crt.Jitter);
+        _crtProgram.Set("uFlicker", Crt.Flicker);
+
+        _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
+
+        _gl.BindVertexArray(0);
     }
 
     private void DrawShelfItem(
@@ -1573,6 +1743,16 @@ public sealed class MediaShellRenderer : IDisposable
         _flatNormal.Dispose();
         _environment.Dispose();
         _receivingPlane.Dispose();
+
+        if (_crtVertexArray != 0)
+        {
+            _gl.DeleteVertexArray(_crtVertexArray);
+            _crtVertexArray = 0;
+        }
+
+        ClearCrtChrome();
+
+        _crtProgram.Dispose();
         _keyShadowProgram.Dispose();
         _shadowProgram.Dispose();
         _program.Dispose();
