@@ -286,6 +286,9 @@ for (var index = 0; index < shelfProfiles.Length; index++)
 // in it is what the shared camera frames — exactly as the app frames a whole library view.
 var shelfMediaHeight = shelfProfiles.Max(
     profile => profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
+// And the widest, on the same terms: the camera solves both axes, so a row of portrait cases is
+// framed by its height while a row of landscape cartridges is framed by its width.
+var shelfMediaWidth = shelfProfiles.Max(profile => profile.TurningWidthInShelfUnits);
 
 // Derived, not chosen. A hardcoded width silently truncates the row every time a medium is added,
 // which is not a cosmetic default — the shot is the artefact a reviewer trusts to show what
@@ -312,7 +315,8 @@ if (ArgumentValue("--shelf-width") is null)
 
 var shelfTarget = CreateTargetFramebuffer(gl, (uint)shelfWidth, (uint)shelfHeight);
 stopwatch.Restart();
-renderer.RenderShelf(shelfItems, shelfMediaHeight, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
+renderer.RenderShelf(
+    shelfItems, shelfMediaHeight, shelfMediaWidth, shelfTarget, (uint)shelfWidth, (uint)shelfHeight);
 gl.Finish();
 var shelfFrame = ReadPixels(gl, shelfTarget, shelfWidth, shelfHeight);
 Composite(shelfFrame, background);

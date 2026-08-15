@@ -7688,3 +7688,49 @@ over-darkened transparent plane on a dark backdrop looks like a shadow; against 
 is a grey slab. `--background` was already there — use it. And the fix is now pinned by a test
 rather than a render: `MediaShellRenderer.ShadowPlane` is internal so the arithmetic can be checked
 without a GPU or a theme.
+
+## 2026-08-15 — The shelf camera frames both axes, not just height
+
+Reported as "PS2, Wii and GameCube are too small on a Steam Deck in shelf mode", against cartridges
+that had been fixed for exactly that complaint a day earlier. Both were true, and the reason is the
+rule that fixed the cartridges: the camera pulls back only as far as it takes for the tallest medium
+in the library view to fill half the frame's *height*, and says nothing about width.
+
+How big a medium looks is not a question about height. A SNES cartridge is 1.66 times as wide as it
+is tall, so half the frame's height also bought it 20.6% of the shelf viewport by area. A PS2 keep
+case is portrait at 0.71, so the identical rule gave it 8.6%: 42% of the cartridge, for the object
+that is physically twice as tall. Every single-axis measurement said the two were framed the same,
+which is why this survived the review that produced the height rule.
+
+`ShelfCamera` now solves both constraints and takes whichever pushes it further back: the tallest
+medium fills `ShelfFrameFill` of the height, the widest fills `ShelfFrameWidthFill` of the width.
+Width uses the turning circle the row already reserves, since every medium on the shelf is turned.
+A keep case ends up at 13.4% of the frame — half again its old area, and 65% of a cartridge's.
+
+Both constants are measured, and both were wrong on the first attempt in a way worth recording.
+
+- **0.368 for width** is what a SNES cartridge already occupied, so cartridges are left where they
+  were rather than grown along with the cases. It was first set to 0.40 from an eyeballed viewport
+  aspect. The scene control is `GamepadShelfMediaHost`, which laying out the real MainWindow
+  headlessly shows to be **1248 x 560 on a 1280 x 800 Deck — aspect 2.23, not the panel's 1.6**; the
+  chrome around it is a fixed 32 x 240px, so every window from 1024 x 640 to 2560 x 1440 lands
+  between 2.11 and 2.48. Calibrating a two-axis rule against the display aspect rather than the
+  control's would have shrunk every cartridge by 28%. Measure the control.
+- **0.62 for height**, up from 0.50, is capped by the launch choreography rather than by taste. 0.72
+  was tried first and `LaunchChoreography_StaysInsideTheShelfCameraFrame` — extended to run for a
+  disc case, not just for SNES — caught the case leaving through the top of the frame on its way to
+  the spin. Walking it up puts the break between 0.64 and 0.66. Parity with a cartridge would need
+  about 0.77, so the remaining gap is the choreography's to give, not the camera's.
+
+Relative physical scale between platforms is untouched: the solve is per library view, not per item,
+so a case still dwarfs a cartridge in a mixed row. What does change is which axis carries the
+viewport's shape — a cartridge now holds a constant share of the width and lets its height follow,
+where before it did the reverse. Against the old framing it is identical to a tenth of a percent on
+a Deck, 11% smaller by area on a 2560 x 1440 display and 26% larger in a 1024 x 640 window.
+
+Two more things fall out of it. A narrow viewport no longer clips: the height-only rule put a
+cartridge at 82% of the frame's width at 1:1 and past the edges below that, because nothing in it
+knew the frame had sides. And `ShelfAspectForVisibleWidth`, which the preview tool uses to size its
+shot, is still answered from the height constraint alone — the width constraint can only push the
+camera further back, so the frame it derives is never narrower than promised, only occasionally
+roomier.

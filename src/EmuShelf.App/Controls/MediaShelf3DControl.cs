@@ -87,6 +87,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private int _activePhysicalArtworkDecodes;
     private int _focusedIndex = -1;
     private float _sceneMediaHeight = 1f;
+    private float _sceneMediaWidth = 1f;
     private int _preparationGeneration;
     private GL? _gl;
     private MediaShellRenderer? _renderer;
@@ -243,7 +244,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
             var renderItems = BuildRenderItems();
             SynchronizeArtworkTextures(renderItems);
-            _renderer.RenderShelf(renderItems, _sceneMediaHeight, (uint)fb, width, height);
+            _renderer.RenderShelf(
+                renderItems, _sceneMediaHeight, _sceneMediaWidth, (uint)fb, width, height);
         }
         catch (Exception exception)
         {
@@ -557,6 +559,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         var cursor = 0f;
         var tallest = 0f;
+        var widest = 0f;
         foreach (var game in Items)
         {
             var profile = game.ShelfMediaProfile;
@@ -567,13 +570,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _layout.Add(new LayoutEntry(game, centre));
             _gamesByKey[game.Id] = game;
             cursor += width + ItemGap;
-            // The camera frames the tallest medium in the whole view, not the visible window, so
-            // scrolling a mixed row past a keep case cannot make the world zoom.
+            // The camera frames the tallest and widest media in the whole view, not the visible
+            // window, so scrolling a mixed row past a keep case cannot make the world zoom.
             tallest = MathF.Max(
                 tallest, profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits);
+            widest = MathF.Max(widest, width);
         }
 
         _sceneMediaHeight = tallest;
+        _sceneMediaWidth = widest;
         WarmLabelPlaceholders();
 
         _focusedIndex = FocusedItem is null ? -1 : IndexOf(Items, FocusedItem);
