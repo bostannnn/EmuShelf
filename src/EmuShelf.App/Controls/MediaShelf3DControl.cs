@@ -98,6 +98,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private readonly Dictionary<long, PhysicalShelfDeparturePose> _departurePoses = [];
     private readonly System.Diagnostics.Stopwatch _crtClock = System.Diagnostics.Stopwatch.StartNew();
     private ChromeSnapshot? _chromeSnapshot;
+    private Window? _observedWindow;
     private INotifyCollectionChanged? _observedCollection;
     private int _observedStart = -1;
     private int _observedEnd = -1;
@@ -263,7 +264,40 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         ObserveCollection();
         UpdateVisibleSubscriptions(force: true);
         PrepareShells();
+        ObserveWindowState();
         StartChromeCapture();
+    }
+
+    /// <summary>
+    /// Watches the window so the capture can stop while nobody can see it.
+    /// </summary>
+    /// <remarks>
+    /// Minimised is the state that matters, and it is how EmuShelf spends a play session: the app
+    /// minimises while an emulator runs (see DECISIONS 2026-07-12). The GPU side already stops on its
+    /// own, because a minimised window stops being rendered and the frame-request loop is driven from
+    /// inside that render. The capture does not — it is a dispatcher timer, and it would go on doing
+    /// a full-window offscreen render 30 times a second while the emulator wants that CPU.
+    ///
+    /// Keyed on window state rather than on launching a game, so it also covers the user simply
+    /// minimising the window, which costs exactly as much and is just as invisible.
+    /// </remarks>
+    private void ObserveWindowState()
+    {
+        if (_observedWindow is not null || TopLevel.GetTopLevel(this) is not Window window)
+        {
+            return;
+        }
+
+        _observedWindow = window;
+        window.PropertyChanged += OnWindowPropertyChanged;
+    }
+
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs change)
+    {
+        if (change.Property == Window.WindowStateProperty)
+        {
+            StartChromeCapture();
+        }
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -274,6 +308,11 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         _preparationGeneration++;
         _chromeSnapshot?.Dispose();
         _chromeSnapshot = null;
+        if (_observedWindow is { } observed)
+        {
+            observed.PropertyChanged -= OnWindowPropertyChanged;
+            _observedWindow = null;
+        }
         base.OnDetachedFromVisualTree(e);
     }
 
@@ -288,7 +327,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// </remarks>
     private void StartChromeCapture()
     {
-        if (!_isAttached || !Crt.IsActive)
+        if (!_isAttached || !Crt.IsActive || _observedWindow?.WindowState == WindowState.Minimized)
         {
             // Switching the effect off has to stop the timer, not merely stop using its output: the
             // capture is a full-window offscreen render on the UI thread, and leaving it ticking is
