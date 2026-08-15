@@ -291,6 +291,8 @@ public class MediaShellTests
     [InlineData("nes", MediaShell.NesCartridge)]
     [InlineData("megadrive", MediaShell.MegaDriveCartridge)]
     [InlineData("nds", MediaShell.DsCard)]
+    // Its own card rather than the DS one: same footprint, different moulding.
+    [InlineData("3ds", MediaShell.Nintendo3dsCard)]
     [InlineData("gbc", MediaShell.GbcCartridge)]
     // One geometry family, two consoles that really did share a case.
     [InlineData("playstation", MediaShell.JewelCase)]
@@ -308,17 +310,30 @@ public class MediaShellTests
     public void ForSystem_MapsAConsoleToItsMedium(string systemId, MediaShell expected) =>
         Assert.Equal(expected, MediaShellMap.ForSystem(systemId));
 
-    // What is left, and it is now one system: a 3DS card has no authored shell yet. PS1 and
-    // Dreamcast were here until the jewel case was authored and both now share it; PSP was here
-    // until it took the keep case, which is the one entry in this file that borrows a case that is
-    // not its own — see MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted for the
-    // trade that made that worth doing rather than staying on a flat cover. Arcade was here on the
-    // grounds that it has no packaging at all, which is true and turned out not to matter: the
-    // machine is the medium.
-    [Theory]
-    [InlineData("3ds")]
-    public void ForSystem_LeavesUnauthoredSystemsOnFlatCovers(string systemId) =>
-        Assert.Null(MediaShellMap.ForSystem(systemId));
+    /// <summary>
+    /// Every shipped system has authored media, and anything else keeps a flat cover.
+    /// </summary>
+    /// <remarks>
+    /// This was a theory listing the systems still waiting for a shell, and it emptied out: PS1 and
+    /// Dreamcast left when the jewel case was authored, PSP when it took the keep case — the one
+    /// profile here that borrows a case not its own, see
+    /// <see cref="MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted"/> — and 3DS when
+    /// it got its own card. Arcade was on the list on the grounds that it has no packaging at all,
+    /// which is true and turned out not to matter: the machine is the medium.
+    ///
+    /// Inverted rather than deleted, because the fallback did not go away with the last unauthored
+    /// system. It is what the next system EmuShelf adds will land on, and the assertion that every
+    /// known system is mapped is the one that will catch that system arriving without a shell.
+    /// </remarks>
+    [Fact]
+    public void ForSystem_MapsEverySystemAndLeavesAnUnknownOneOnAFlatCover()
+    {
+        Assert.All(
+            KnownSystems.All,
+            system => Assert.NotNull(MediaShellMap.ForSystem(system.Id)));
+
+        Assert.Null(MediaShellMap.ForSystem("a-system-emushelf-does-not-have"));
+    }
 
     [Fact]
     public void MetricProfiles_KeepCaseLargeSnesMediumAndGbaSmall()
@@ -393,6 +408,7 @@ public class MediaShellTests
     [InlineData("gba")]
     [InlineData("megadrive")]
     [InlineData("nds")]
+    [InlineData("3ds")]
     [InlineData("gbc")]
     [InlineData("playstation")]
     [InlineData("dreamcast")]
@@ -964,7 +980,7 @@ public class MediaShellTests
     public void MetricProfiles_AgreeAboutWhichMediaOpen()
     {
         string[] systems =
-            ["snes", "gba", "gbc", "nes", "megadrive", "nds", "playstation2", "playstation3",
+            ["snes", "gba", "gbc", "nes", "megadrive", "nds", "3ds", "playstation2", "playstation3",
              "gamecube", "wii", "playstation", "dreamcast"];
 
         foreach (var system in systems)
@@ -993,13 +1009,14 @@ public class MediaShellTests
     }
 
     [Fact]
-    public void MetricProfile_UsesAThinCoverCardForUnauthoredSystems()
+    public void MetricProfile_UsesAThinCoverCardForAnUnmappedSystem()
     {
-        // 3DS, because this test keeps being retargeted as systems graduate: it asked about PS1
-        // until the jewel case was authored, then PSP until this branch gave it the keep case.
-        // The aspect is passed explicitly, so any unauthored id does — what it must not be is an
-        // id that has since acquired a shell, which is a silently passing test, not a failing one.
-        var profile = MediaShellMap.ProfileForSystem("3ds", 1.0);
+        // An id no system has, because this test kept being retargeted as systems graduated — PS1,
+        // then PSP, then 3DS — and there is nothing left to retarget it to: every system in
+        // KnownSystems now has authored media. A real id would make this silently pass the day that
+        // system gets a shell, which is the failure mode this line has already had three times. The
+        // fallback itself is not dead code: it is what the next system EmuShelf adds lands on.
+        var profile = MediaShellMap.ProfileForSystem("a-system-emushelf-does-not-have", 1.0);
 
         Assert.Equal(MediaShell.CoverCard, profile.Shell);
         Assert.Equal(1f, profile.WidthInShelfUnits, 3);
@@ -1465,6 +1482,162 @@ public class MediaShellTests
         Assert.InRange(maskMaxU - panel.MaxU, 0.01f, 0.12f);
         Assert.InRange(panel.MinV - maskMinV, 0.01f, 0.12f);
         Assert.InRange(maskMaxV - panel.MaxV, 0.01f, 0.12f);
+    }
+
+    /// <summary>
+    /// The 3DS card loads upright, roughly square, and thin — and taller than it is wide.
+    /// </summary>
+    /// <remarks>
+    /// This one really is authored lying flat, unlike the DS card whose node matrices already stand
+    /// it up, so it takes a quarter turn about X. Getting that wrong gives a card ten times wider
+    /// than it is tall, which is what the width check would catch; getting the sign wrong gives an
+    /// upside-down one, which it would not — so the tab is checked as well, on the +X half of the
+    /// card and above its middle, where a 3DS card carries the tab that stops it entering a DS.
+    /// </remarks>
+    [Fact]
+    public void Load_StandsThe3dsCardUpright()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.Nintendo3dsCard);
+
+        // Near square: this scan is 0.964 W/H where a real 33 x 35mm card is 0.943.
+        Assert.InRange(model.Size.X / model.Size.Y, 0.94f, 0.99f);
+        Assert.True(
+            model.Size.Z < 0.12f * model.Size.Y,
+            $"A 3DS card is thin; got depth {model.Size.Z} against height {model.Size.Y}.");
+
+        // The tab, and with it which way up the card is. It occupies the top right corner: no
+        // vertex on the +X quarter of the card sits above the middle unless the tab is there, and
+        // an upside-down card puts them all below it.
+        var vertices = Vertices(model).ToArray();
+        var right = vertices.Max(vertex => vertex.X);
+        var tab = vertices.Where(vertex => vertex.X > right * 0.9f).ToArray();
+        Assert.NotEmpty(tab);
+        Assert.True(
+            tab.Max(vertex => vertex.Y) > 0.2f,
+            "The 3DS card's tab is not in its upper half; the card is upside down.");
+    }
+
+    /// <summary>
+    /// The shipped 3DS asset must carry no trace of the Rune Factory 4 card it was scanned from.
+    /// </summary>
+    /// <remarks>
+    /// Two rectangles rather than one, and the second is the interesting one. Like the DS card this
+    /// scan keeps its label on the same atlas as its body, so the label goes by a hand-read
+    /// rectangle — but a scan of a real card also carries that card's product serial moulded into
+    /// its back, which names the title as plainly as the label does and sits in the same atlas. The
+    /// shelf turns a cartridge to launch it, so the back is not a face nobody sees.
+    ///
+    /// Walks each rectangle's edges rather than sampling its middle, because the way a hand-read
+    /// mask fails is a sliver left along one side.
+    /// </remarks>
+    [Fact]
+    public void Nintendo3dsLabelArea_CarriesNoSourceArtwork()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.Nintendo3dsCard);
+        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
+        var texture = model.Textures[material.BaseColorTexture];
+
+        (byte R, byte G, byte B) Sample(float u, float v)
+        {
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        // The prep command's two --neutral-rect islands: the front label, and the serial on the back.
+        (float U0, float V0, float U1, float V1, string What)[] masked =
+        [
+            (0.5464f, 0.0391f, 0.9463f, 0.4658f, "label"),
+            (0.0986f, 0.2666f, 0.3726f, 0.3081f, "back serial"),
+        ];
+
+        foreach (var (u0, v0, u1, v1, what) in masked)
+        {
+            var reference = Sample((u0 + u1) * 0.5f, (v0 + v1) * 0.5f);
+            for (var u = u0; u <= u1; u += 0.005f)
+            {
+                foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
+                {
+                    Assert.True(
+                        Sample(u, v) == reference,
+                        $"The 3DS {what} area still varies at ({u:F3},{v:F3}); artwork was not removed.");
+                }
+            }
+
+            for (var v = v0; v <= v1; v += 0.005f)
+            {
+                foreach (var u in new[] { u0, u1 })
+                {
+                    Assert.True(
+                        Sample(u, v) == reference,
+                        $"The 3DS {what} edge still varies at ({u:F3},{v:F3}); the mask is too small.");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The 3DS artwork panel lands on the label's own footprint, tab allowance included.
+    /// </summary>
+    /// <remarks>
+    /// The panel is not centred on the shell, and that is the property most likely to be "corrected"
+    /// by someone reading the numbers rather than the card: the anti-insertion tab adds about a
+    /// millimetre and a half on the +X side of a 33mm card, so the label's centre sits left of the
+    /// bounding box's. A symmetric panel would print a millimetre of cover art onto the plastic
+    /// frame on the right and leave bare label on the left.
+    /// </remarks>
+    [Fact]
+    public void Nintendo3dsCoverPanel_SitsLeftOfCentreByTheTabsWidth()
+    {
+        var panel = MediaShellCatalog.Definition(MediaShell.Nintendo3dsCard).CoverPanel;
+
+        Assert.InRange(panel.MinU, -0.89f, -0.84f);
+        Assert.InRange(panel.MaxU, 0.74f, 0.79f);
+        Assert.InRange(panel.MinV, -0.87f, -0.82f);
+        Assert.InRange(panel.MaxV, 0.81f, 0.86f);
+
+        // The asymmetry itself, stated as the thing it is rather than left implicit in the bounds:
+        // the panel's centre is left of the shell's by roughly half the tab's width.
+        Assert.True(
+            (panel.MinU + panel.MaxU) * 0.5f < -0.03f,
+            "The 3DS panel is centred on the bounding box, which includes the tab.");
+
+        // A 3DS label is chamfered at its bottom left like a DS one; squaring it loses one of the
+        // two things that say "game card", and oversizing it bites a wedge out of the artwork.
+        Assert.InRange(panel.CutCorner, 0.05f, 0.09f);
+    }
+
+    /// <summary>
+    /// The masked rectangle has to contain the artwork panel on every side.
+    /// </summary>
+    /// <remarks>
+    /// The same contract the DS card has, arrived at from the other direction. There the panel was
+    /// measured off a render and the mask off the atlas, so the two could only be compared after the
+    /// fact; here the front face's UV map is affine over two triangles, so both were carried into
+    /// panel coordinates by the same mapping and the margin is a derived quantity. If the panel ever
+    /// spills past the mask, the Rune Factory 4 print reappears as a ring around EmuShelf's own art.
+    /// </remarks>
+    [Fact]
+    public void Nintendo3dsMaskedRectangle_ContainsTheArtworkPanel()
+    {
+        var panel = MediaShellCatalog.Definition(MediaShell.Nintendo3dsCard).CoverPanel;
+
+        // The label rectangle in panel coordinates, including the three texels of bleed the prep
+        // grows every fill by. Recorded in DECISIONS 2026-08-15 with the command that produced it.
+        const float maskMinU = -0.882f, maskMaxU = 0.783f, maskMinV = -0.861f, maskMaxV = 0.849f;
+
+        Assert.True(panel.MinU > maskMinU, "The 3DS panel reaches left of the masked rectangle.");
+        Assert.True(panel.MaxU < maskMaxU, "The 3DS panel reaches right of the masked rectangle.");
+        Assert.True(panel.MinV > maskMinV, "The 3DS panel reaches below the masked rectangle.");
+        Assert.True(panel.MaxV < maskMaxV, "The 3DS panel reaches above the masked rectangle.");
+
+        // A wide margin is its own failure: the fill only reads as plastic while it is a hairline.
+        // A third of a millimetre on a 33mm card, which is what deriving both from one mapping buys.
+        Assert.InRange(panel.MinU - maskMinU, 0.005f, 0.06f);
+        Assert.InRange(maskMaxU - panel.MaxU, 0.005f, 0.06f);
+        Assert.InRange(panel.MinV - maskMinV, 0.005f, 0.06f);
+        Assert.InRange(maskMaxV - panel.MaxV, 0.005f, 0.06f);
     }
 
     /// <summary>

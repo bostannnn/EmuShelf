@@ -71,20 +71,20 @@ public static class PreviewShelf
         new("arcade", new PhysicalMediaProfile(
             MediaShell.ArcadeCabinet, new Vector3(341f, 480f, 533f),
             PhysicalArtworkSlots.Front, "arcade-cabinet", "cartridge-vertical")),
-        // 3DS stands in for every system with no authored shell. A real system rather than a
-        // synthetic card, so the entry has an id to check against, and its 1.129 box art is also
-        // the only thing in this list exercising the shared card mesh scaled to a ratio that is not
-        // portrait. The width is 190 x 1.129 — the fallback in MediaShellMap.ProfileForSystem
-        // computes it, so it is derived rather than measured and has to be spelled out to the float
-        // the app will produce.
+        // Immediately before the DS card, and for the reason PSP sits beside the PS2 case: these two
+        // cards are one footprint to a millimetre, so the entire claim being reviewed is that the
+        // tab and the finish tell them apart. Split apart in this row they would be judged
+        // separately, which is the one comparison that cannot answer that question.
         //
-        // This was PS1 until the jewel case was authored, at which point PS1 stopped being an
-        // unauthored system and the entry silently stopped standing for anything. Only two systems
-        // are left with no shell; if 3DS ever gets one, this entry has to move again or the cover
-        // card goes unrendered.
+        // This entry was the cover card until 3DS got a shell of its own, and it stood for every
+        // unauthored system — PS1 before that, then PSP. There is no third occupant: every system in
+        // KnownSystems now has authored media, so the fallback card is exercised by
+        // MetricProfile_UsesAThinCoverCardForAnUnmappedSystem rather than by this row. The next
+        // system EmuShelf adds gets it back, and gets it back here.
         new("3ds", new PhysicalMediaProfile(
-            MediaShell.CoverCard, new Vector3(214.51f, 190f, 5f),
-            PhysicalArtworkSlots.Front, "cover-card", "card-downward")),
+            MediaShell.Nintendo3dsCard, new Vector3(33.7f, 35f, 3.2f),
+            PhysicalArtworkSlots.CartridgeSupport, "3ds-white", "cartridge-vertical",
+            FloorClearanceInShelfUnits: 0.008f)),
         new("nds", new PhysicalMediaProfile(
             MediaShell.DsCard, new Vector3(33.6f, 35f, 1.75f),
             PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical",

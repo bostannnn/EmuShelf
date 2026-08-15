@@ -59,10 +59,14 @@ internal static class ModelPrep
         All = BaseColour | Surface,
     }
 
-    /// <summary>One image to flatten: to what colour, and over which part of itself.</summary>
-    /// <param name="Rect">The island to mask, or null to flatten the whole map.</param>
+    /// <summary>One image to flatten: to what colour, and over which parts of itself.</summary>
+    /// <param name="Rects">The islands to mask, or empty to flatten the whole map. More than one
+    /// because a scan's game-identifying marks are not always one island: the 3DS card carries its
+    /// label on the front and the title's own product serial moulded into the back, both in the one
+    /// atlas its single material samples.</param>
     private readonly record struct NeutralImage(
-        (byte R, byte G, byte B, byte A) Fill, (float U0, float V0, float U1, float V1)? Rect);
+        (byte R, byte G, byte B, byte A) Fill,
+        IReadOnlyList<(float U0, float V0, float U1, float V1)> Rects);
 
     public static void Prepare(
         string inputPath,
@@ -80,11 +84,17 @@ internal static class ModelPrep
     {
         var rects = ParseRects(neutralRect);
         var materials = neutralMaterial is null ? null : Split(neutralMaterial);
-        if (rects.Count > 1 && rects.Count != materials?.Length)
+        // Several rectangles mean one of two things, and which one is decided by how many materials
+        // were named. Several materials: one rectangle each, because a jewel case's lid, promo card
+        // and tray inlay are three photographs and the print starts at a different column in each.
+        // One material, or none: every rectangle masks the same atlas, because one material can
+        // carry more than one thing worth removing.
+        if (rects.Count > 1 && materials is { Length: > 1 } && rects.Count != materials.Length)
         {
             throw new ArgumentException(
                 $"--neutral-rect has {rects.Count} rectangles but --neutral-material names "
-                + $"{materials?.Length ?? 0} materials. Give one rectangle, or one per material.");
+                + $"{materials.Length} materials. Give one rectangle, one per material, or name a "
+                + "single material to mask several islands of its atlas.");
         }
 
         var maps = ParseMaps(neutralMaps);
@@ -146,7 +156,7 @@ internal static class ModelPrep
         var orphans = OrphanedImages(root, textures);
 
         var neutralImages = materials is null
-            ? ResolveAllMaterialImages(root, textures, baseFill, maps, rects.FirstOrDefault())
+            ? ResolveAllMaterialImages(root, textures, baseFill, maps, rects)
             : ResolveNeutralImages(root, textures, materials, baseFill, maps, rects);
         // Named materials that do not exist are caught by name in ResolveNeutralImages, which is the
         // more useful error. This is what is left: they exist and none of them samples a map — which
@@ -187,13 +197,16 @@ internal static class ModelPrep
 
             if (neutralImages.TryGetValue(imageIndex, out var neutral))
             {
-                if (neutral.Rect is { } island)
+                if (neutral.Rects.Count == 0)
                 {
-                    FlattenRect(texture, neutral.Fill, island);
+                    Flatten(texture, neutral.Fill);
                 }
                 else
                 {
-                    Flatten(texture, neutral.Fill);
+                    foreach (var island in neutral.Rects)
+                    {
+                        FlattenRect(texture, neutral.Fill, island);
+                    }
                 }
             }
 
@@ -237,12 +250,14 @@ internal static class ModelPrep
         var result = new Dictionary<int, NeutralImage>();
         for (var slot = 0; slot < materialNames.Count; slot++)
         {
-            // One rectangle serves every material, or each material carries its own. A jewel case
-            // needs the second: its lid, its promo card and its tray inlay are three photographs of
-            // the same case, and the print starts at a different column in each.
-            var rect = rects.Count == 0
-                ? null
-                : ((float, float, float, float)?)(rects.Count == 1 ? rects[0] : rects[slot]);
+            // One rectangle serves every material, each material carries its own, or one material
+            // carries all of them. The middle case is the jewel case's — its lid, its promo card and
+            // its tray inlay are three photographs of the same case, and the print starts at a
+            // different column in each. The last is the 3DS card's: one material, one atlas, two
+            // islands to remove.
+            var slotRects = rects.Count <= 1 || materialNames.Count == 1
+                ? rects
+                : [rects[slot]];
             var found = false;
             foreach (var material in root["materials"]?.AsArray() ?? [])
             {
@@ -255,9 +270,9 @@ internal static class ModelPrep
 
                 found = true;
                 var pbr = node["pbrMetallicRoughness"]?.AsObject();
-                AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill, rect);
-                AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255), rect);
-                AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255), rect);
+                AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill, slotRects);
+                AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255), slotRects);
+                AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255), slotRects);
             }
 
             // Loud, because the silent version is the whole failure mode this pass exists to stop:
@@ -285,7 +300,7 @@ internal static class ModelPrep
         NeutralMaps required,
         JsonNode? reference,
         (byte, byte, byte, byte) fill,
-        (float, float, float, float)? rect)
+        IReadOnlyList<(float, float, float, float)> rects)
     {
         if ((maps & required) == 0)
         {
@@ -309,14 +324,14 @@ internal static class ModelPrep
         // first material's artwork in the build and report success, which is the one outcome this
         // whole pass exists to prevent.
         if (result.TryGetValue(imageIndex.Value, out var existing)
-            && (existing.Rect != rect || existing.Fill != fill))
+            && (!existing.Rects.SequenceEqual(rects) || existing.Fill != fill))
         {
             throw new InvalidDataException(
                 $"Image {imageIndex} is shared by materials that ask for different masks. Give them "
                 + "one rectangle and one fill, or the second would silently undo the first.");
         }
 
-        result[imageIndex.Value] = new NeutralImage(fill, rect);
+        result[imageIndex.Value] = new NeutralImage(fill, rects);
     }
 
     /// <summary>A mesh's first primitive, with the world transform its node chain gives it.</summary>
@@ -1037,16 +1052,16 @@ internal static class ModelPrep
         JsonArray? textures,
         (byte, byte, byte, byte) baseFill,
         NeutralMaps maps,
-        (float, float, float, float)? rect)
+        IReadOnlyList<(float, float, float, float)> rects)
     {
         var result = new Dictionary<int, NeutralImage>();
         foreach (var material in root["materials"]?.AsArray() ?? [])
         {
             var node = material!.AsObject();
             var pbr = node["pbrMetallicRoughness"]?.AsObject();
-            AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill, rect);
-            AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255), rect);
-            AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255), rect);
+            AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill, rects);
+            AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255), rects);
+            AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255), rects);
         }
 
         return result;
