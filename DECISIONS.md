@@ -8301,3 +8301,50 @@ They remain individually addressable fields rather than being folded into the sh
 exposing any of them later is a UI job rather than a refactor. The shim is gone because dev
 scaffolding that ships is scaffolding that rots: its own comment promised deletion once Settings
 existed, and that promise would have quietly become false the moment it merged.
+
+## 2026-08-15 — Presented size is compressed by one power law; the camera frames by area
+
+Two reports about the shelf, one root cause each, and both answered by a rule rather than a table.
+
+**The all-games view.** Literal metric scale spans 14.6:1 across the library — a 32.9mm Game Pak to
+a 480mm arcade cabinet — and one camera has to hold all of it at once, framed by whichever medium is
+largest. So a single arcade game in the library drew every Game Pak at 4.3% of the frame's height
+against the cabinet's 64%: a few pixels tall, with no cover art legible on it. Truthful and unusable.
+
+`PhysicalMediaProfile.SizeCompression` is now the one place a medium's presented size may differ from
+its measured one: presented height = 190mm x (real/190mm)^0.35, applied as a single uniform factor to
+all three axes and to the disc a case gives up. The measured millimetres in `MediaShellMap` are
+untouched and remain the truth of each profile. That narrows the span to 2.6:1 — the cabinet is drawn
+at 263mm, a Game Pak at 103mm, a keep case at exactly its own 190mm because it is the anchor — and
+the all-games row now spans 17% to 45% of the frame's height instead of 4.3% to 64%.
+
+A power law rather than a blend toward the reference because it is scale-free: two media keep a fixed
+ratio to each other however hard they are compressed, so ordering survives everywhere rather than
+only near the anchor, and small differences (a UMD case against a DVD case) compress far less than
+large ones. Setting it to 1 restores exact metric scale and every test still passes.
+
+The price, and it is worth stating because it looks like a bug: the factor comes from a medium's own
+height, so two objects that share a width but not a height stop sharing it. A PS3 case is 135mm wide
+like a PS2 case and is now drawn 6.8% wider, being shorter. The alternative is compressing the height
+axis alone, which is the silent distortion this codebase has already shipped twice — the SNES
+cartridge at 12% and PS3 at 13.7% — and a case slightly wider than its neighbour is a far cheaper
+error than a case the wrong shape.
+
+**The per-platform pages.** The camera framed width and height against separate fills and took the
+tighter answer, which sounds conservative and is not: a landscape medium is stopped by the frame's
+sides while keeping most of a height share, so it covers nearly twice the screen a portrait one does.
+Invisible on a mixed row, where they are framed together; unmissable on a per-platform page, where
+the medium is the only thing setting the camera. A page of Game Paks covered 21.9% of the frame
+against a page of keep cases at 10.5%, which is what "the GBA cartridge is too big" was — not a GBA
+problem, but every landscape medium, the Game Pak being the most landscape shape in the library.
+
+The camera now frames one shape-neutral extent — the side of the square with the same silhouette area
+as the medium's band and turning circle — and offers it to both axis limits. Equal silhouette area
+therefore means equal screen area whatever the proportions. `ShelfFrameFill` and `ShelfFrameWidthFill`
+became 0.4649 and 0.311, which are 0.55 and 0.368 restated in those terms for a keep case: it frames
+exactly where it did, at 10.5%, and every platform's page now lands between 9.5% and 10.7%.
+
+Note the two changes are independent and each fixes only its own report. Compression cannot touch a
+per-platform page, because the camera fits whatever the largest medium is and a uniform scale then
+cancels out; area framing cannot touch the all-games row, because there the media are framed against
+each other rather than against the frame.

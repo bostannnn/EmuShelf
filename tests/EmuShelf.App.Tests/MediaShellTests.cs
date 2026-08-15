@@ -388,6 +388,62 @@ public class MediaShellTests
     }
 
     /// <summary>
+    /// Compressing a medium's size must never change its shape, and must be one law rather than a
+    /// table.
+    /// </summary>
+    /// <remarks>
+    /// The safety property the whole of <see cref="PhysicalMediaProfile.SizeCompression"/> rests on.
+    /// The scene matches a shell's three canonical extents to a profile's three dimensions
+    /// independently, so a factor that reached the axes unevenly would not read as a size mistake —
+    /// it would silently distort the model, which is how a SNES cartridge shipped stretched 12% and
+    /// a PS3 case 13.7%. Asserting the millimetre ratios survive into shelf units is what says the
+    /// compression cannot join that list.
+    ///
+    /// The law itself is asserted alongside, over every medium rather than at the anchor, because
+    /// "one rule, no per-platform exceptions" is the claim being made and a single sample cannot
+    /// distinguish it from a lucky table.
+    /// </remarks>
+    [Fact]
+    public void SizeCompression_IsOneLawAppliedUniformlyToEveryAxis()
+    {
+        foreach (var (systemId, profile) in MappedProfiles())
+        {
+            var millimetres = profile.DimensionsMillimetres;
+
+            Assert.Equal(
+                MathF.Pow(
+                    profile.PresentedHeightMillimetres / PhysicalMediaProfile.ReferenceHeightMillimetres,
+                    PhysicalMediaProfile.SizeCompression),
+                profile.HeightInShelfUnits,
+                0.0005f);
+
+            // Shape, on both axes that could have moved independently of height, plus the disc a
+            // case gives up — which has to keep fitting inside the case it comes out of.
+            Assert.Equal(
+                millimetres.X / millimetres.Y,
+                profile.WidthInShelfUnits / profile.HeightInShelfUnits,
+                0.0005f);
+            Assert.Equal(
+                millimetres.Z / millimetres.Y,
+                profile.DepthInShelfUnits / profile.HeightInShelfUnits,
+                0.0005f);
+            Assert.Equal(
+                profile.DiscDiameterMillimetres / millimetres.Y,
+                profile.DiscDiameterInShelfUnits / profile.HeightInShelfUnits,
+                0.0005f);
+
+            // The anchor is the keep case and nothing else may sit on it by accident: a medium is
+            // drawn at its real height only if its real height is the reference.
+            var isReferenceHeight = Math.Abs(
+                profile.PresentedHeightMillimetres
+                    - PhysicalMediaProfile.ReferenceHeightMillimetres) < 0.5f;
+            Assert.True(
+                isReferenceHeight == (Math.Abs(profile.HeightInShelfUnits - 1f) < 0.005f),
+                $"{systemId} disagrees about whether it stands at the reference height.");
+        }
+    }
+
+    /// <summary>
     /// A profile's measured dimensions must agree with the proportions of the asset it describes.
     /// </summary>
     /// <remarks>
@@ -549,14 +605,13 @@ public class MediaShellTests
     /// Area, deliberately, because it is the measure that caught this: every single-axis measure
     /// said the two were framed identically.
     ///
-    /// Both bounds are absolute rather than a ratio, and asserted only at the reference viewport,
-    /// because the ratio is aspect-dependent by design: a cartridge is width-led and a case is
-    /// height-led, so they close and separate as the window changes shape. A single ratio spanning
-    /// the viewport's whole range would have to sit near what the broken framing already scored.
+    /// Two independent fills — one per axis — got this most of the way there but not all of it, and
+    /// the gap that was left is the one this now pins to parity. Taking the tighter of two answers
+    /// still lets a landscape medium keep most of a height share on top of its full width share, so
+    /// it covers more screen than a portrait one asked the same question.
     ///
-    /// The case reaches half the cartridge, not parity. The height fill is capped at 0.56 by the
-    /// PS1 jewel case's launch lift — see <see cref="MediaShellRenderer"/> — and parity needs about
-    /// 0.77, so the rest is the choreography's to give.
+    /// Area, deliberately, because it is the measure that caught this: every single-axis measure
+    /// said the two were framed identically.
     /// </remarks>
     [Fact]
     public void ShelfCamera_FramesADiscCaseComparablyToACartridge()
@@ -573,31 +628,117 @@ public class MediaShellTests
             caseArea >= 0.098f,
             $"A keep case covers only {caseArea:P1} of the shelf viewport.");
         Assert.True(
-            caseArea >= cartridgeArea * 0.47f,
+            caseArea >= cartridgeArea * 0.9f,
             $"A keep case covers {caseArea:P1} of the frame against a cartridge's {cartridgeArea:P1}.");
     }
 
     /// <summary>
-    /// A cartridge keeps the framing the height-only rule gave it, to within a tenth of a percent.
+    /// Every platform's own page composes alike: one medium, one share of the frame.
     /// </summary>
     /// <remarks>
-    /// The complaint this change answers was about disc cases, and cartridges had just been tuned
-    /// and signed off — so growing them too would be an unrequested change, and shrinking them a
-    /// regression. <see cref="MediaShellRenderer"/>'s width fill is calibrated to leave them where
-    /// they were; this is the assertion that says so, and it is what fixes that constant at 0.368.
+    /// The camera frames the largest medium in the view, so on a per-platform page it frames the
+    /// only medium there is — which makes this the whole of how big that platform's games look, and
+    /// makes any shape-dependence in the framing rule a per-platform composition nobody chose. Under
+    /// two independent axis fills it was a large one: a Game Pak covered 21.9% of the frame against a
+    /// keep case's 10.5%, so the GBA page read as a wall of cartridge and the PS2 page as a row of
+    /// small boxes. That was reported as "the GBA cartridge is too big", and it is not a GBA problem
+    /// — it is every landscape medium, and the GBA's is simply the most landscape shape in the
+    /// library.
     ///
-    /// The expected figures are measured silhouettes rather than the nominal fill — the near corner
-    /// of a turned cartridge projects larger than its centre plane, which is why the height reads
-    /// 0.549 under a rule that asked for 0.5. They hold at this viewport only: a cartridge is
-    /// width-led, so its height share follows the window's shape.
+    /// The spread that survives is the part framing cannot answer: this measures the real turned,
+    /// perspective-projected silhouette, while the camera solves for an upright rectangle. A deep
+    /// medium turned 0.18 radians shows more than its face, and its near corner projects larger than
+    /// its centre plane. An arcade cabinet is the extreme of both — it is deeper than it is wide —
+    /// which is why the bound is a fifth rather than a percent. Within that, the rule holds for every
+    /// medium EmuShelf renders, and the mechanism that would break it is exactly the one this
+    /// replaced: framing against a dimension rather than against an area.
     /// </remarks>
     [Fact]
-    public void ShelfCamera_LeavesACartridgeWhereTheHeightOnlyRuleFramedIt()
+    public void ShelfCamera_GivesEveryPlatformsPageTheSameShareOfTheFrame()
     {
-        var coverage = FrameCoverage("snes", 1.43, ShelfViewportAspects.SteamDeck);
+        var coverage = MediaShellMap.MappedSystemIds
+            .ToDictionary(
+                systemId => systemId,
+                systemId =>
+                {
+                    var area = FrameCoverage(
+                        systemId, CoverAspectFor(systemId), ShelfViewportAspects.SteamDeck);
+                    return area.Width * area.Height;
+                });
 
-        Assert.Equal(0.3747f, coverage.Width, 0.002f);
-        Assert.Equal(0.5488f, coverage.Height, 0.002f);
+        var report = string.Join(
+            ", ", coverage.OrderBy(entry => entry.Value).Select(entry => $"{entry.Key} {entry.Value:P1}"));
+
+        Assert.True(
+            coverage.Values.Max() <= coverage.Values.Min() * 1.2f,
+            $"Per-platform pages are framed unevenly: {report}.");
+
+        // The absolute share, so this cannot pass by framing every platform equally badly. A keep
+        // case is the medium that was signed off at 10.5%, and it is what the fill constants were
+        // re-derived to leave where it was.
+        Assert.Equal(0.105f, coverage["playstation2"], 0.006f);
+    }
+
+    /// <summary>
+    /// On the all-games view, where one camera holds every medium at once, the smallest of them is
+    /// still a game you can look at.
+    /// </summary>
+    /// <remarks>
+    /// The case <see cref="PhysicalMediaProfile.SizeCompression"/> exists for, and the one the
+    /// per-platform tests cannot see: a mixed row is framed by its largest medium, so what a Game
+    /// Pak gets is decided entirely by the arcade cabinet standing somewhere else in the library.
+    /// At literal metric scale that came to 4.3% of the frame's height against the cabinet's 64% —
+    /// a smear a few pixels tall with nothing legible on it — because the two real objects are
+    /// 14.6 to 1. It is 17% against 45% now.
+    ///
+    /// Both bounds matter and they pull against each other. Without the floor the shelf is honest
+    /// and unusable; without the ceiling it is legible and flat, and the point of rendering physical
+    /// media at all is that a cartridge is not a keep case. So this asserts the compression did
+    /// something and that it stopped short of levelling everything, which between them are what
+    /// "0.35" means in practice.
+    /// </remarks>
+    [Fact]
+    public void ShelfCamera_KeepsTheSmallestMediumLegibleOnAMixedRow()
+    {
+        var profiles = MappedProfiles();
+
+        // What MediaShelf3DControl.RebuildLayout hands the camera for a whole-library view.
+        var library = (
+            Band: profiles.Values.Max(
+                profile => profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits),
+            Width: profiles.Values.Max(profile => profile.TurningWidthInShelfUnits));
+
+        var heights = profiles.Keys.ToDictionary(
+            systemId => systemId,
+            systemId => FrameCoverage(
+                systemId, CoverAspectFor(systemId), ShelfViewportAspects.SteamDeck, library).Height);
+
+        var report = string.Join(
+            ", ", heights.OrderBy(entry => entry.Value).Select(entry => $"{entry.Key} {entry.Value:P1}"));
+        var smallest = heights.Values.Min();
+        var largest = heights.Values.Max();
+
+        Assert.True(
+            smallest >= 0.14f,
+            $"The smallest medium is {smallest:P1} of the all-games frame: {report}.");
+        Assert.True(
+            largest <= smallest * 3f,
+            $"The all-games row still spans {largest / smallest:F1} to 1: {report}.");
+
+        // Ordering is the half of this that compression must not buy its way out of: the arcade
+        // cabinet is still the biggest thing in the library and a handheld card still the smallest.
+        //
+        // The DS card rather than the Game Pak, which is the shorter object of the two — because
+        // what is measured here is the silhouette of a medium pitched toward the player, so a
+        // cartridge's depth counts toward its height on screen. A Game Pak is 6.6mm against a DS
+        // card's 1.75mm, which is more than the 2mm that separates them upright.
+        Assert.Equal("arcade", heights.MaxBy(entry => entry.Value).Key);
+        Assert.Equal("nds", heights.MinBy(entry => entry.Value).Key);
+        Assert.True(
+            profiles["gba"].HeightInShelfUnits < profiles["snes"].HeightInShelfUnits
+                && profiles["snes"].HeightInShelfUnits < profiles["playstation2"].HeightInShelfUnits
+                && profiles["playstation2"].HeightInShelfUnits < profiles["arcade"].HeightInShelfUnits,
+            "Compression reordered the media by height.");
     }
 
     /// <summary>
@@ -629,18 +770,40 @@ public class MediaShellTests
         }
     }
 
+    /// <summary>The shape of the cover the scraper really returns for a system.</summary>
+    /// <remarks>
+    /// Read from <see cref="KnownSystems"/> rather than passed in, for the tests that sweep the
+    /// whole table: a fallback cover card takes its width from this, so a swept test that made one
+    /// up would be measuring a shape no platform has.
+    /// </remarks>
+    private static double CoverAspectFor(string systemId) =>
+        KnownSystems.All.Single(system => system.Id == systemId).CoverAspectRatio;
+
+    /// <summary>Every system with authored media, against the profile the app renders it with.</summary>
+    private static Dictionary<string, PhysicalMediaProfile> MappedProfiles() =>
+        MediaShellMap.MappedSystemIds.ToDictionary(
+            systemId => systemId,
+            systemId => MediaShellMap.ProfileForSystem(systemId, CoverAspectFor(systemId)));
+
     /// <summary>
     /// The fraction of the frame's width and height a focused medium's silhouette spans, through
     /// the real shelf camera at its resting pose.
     /// </summary>
+    /// <param name="library">The whole view's tallest band and widest turning circle, for a mixed
+    /// row. Null frames this medium alone, which is what a per-platform page does.</param>
     private static (float Width, float Height) FrameCoverage(
-        string systemId, double coverAspect, float aspect)
+        string systemId,
+        double coverAspect,
+        float aspect,
+        (float Band, float Width)? library = null)
     {
         var profile = MediaShellMap.ProfileForSystem(systemId, coverAspect);
         var asset = MediaShellCatalog.Load(profile.Shell);
         var band = profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits;
         var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(
-            aspect, band, profile.TurningWidthInShelfUnits);
+            aspect,
+            library?.Band ?? band,
+            library?.Width ?? profile.TurningWidthInShelfUnits);
         var viewProjection = view * projection;
         var model = EmuShelf.Rendering.MediaShellRenderer.ShelfModel(
             new EmuShelf.Rendering.MediaShelfRenderItem(
@@ -1050,11 +1213,27 @@ public class MediaShellTests
         Assert.NotEqual(ps2.MaterialVariant, ps3.MaterialVariant);
 
         // 171.5 against 190mm, asserted as the ratio so the check survives a re-measurement of
-        // either case — the same way PSP's is.
-        Assert.Equal(171.5f / 190f, ps3.HeightInShelfUnits / ps2.HeightInShelfUnits, 0.001f);
+        // either case — the same way PSP's is. Through SizeCompression on the shelf, which is why
+        // this is not the bare ratio: a real 9.7% difference in height is drawn as 3.5%. The
+        // measured millimetres are asserted below, undamaged, because that is where the truth of
+        // this profile lives; what the scene does with them is one rule applied to every medium.
+        Assert.Equal(
+            MathF.Pow(171.5f / 190f, PhysicalMediaProfile.SizeCompression),
+            ps3.HeightInShelfUnits / ps2.HeightInShelfUnits,
+            0.001f);
+        Assert.Equal(new Vector3(135f, 171.5f, 13f), ps3.DimensionsMillimetres);
         Assert.True(ps3.HeightInShelfUnits < ps2.HeightInShelfUnits);
-        Assert.Equal(ps2.WidthInShelfUnits, ps3.WidthInShelfUnits, 3);
         Assert.True(ps3.DepthInShelfUnits < ps2.DepthInShelfUnits);
+
+        // The two cases are both 135mm across, and on the shelf the shorter one is drawn 6.8%
+        // wider. That is the price of compressing size with one factor per medium and it is worth
+        // writing down rather than hiding: the factor comes from the medium's own height, so two
+        // objects that share a width but not a height stop sharing it once compressed. The
+        // alternative — compressing the height axis alone — is the distortion this whole file
+        // exists to prevent, and it is what shipped a PS3 case stretched 13.7% for a year. A case
+        // slightly wider than its neighbour is a far cheaper error than a case the wrong shape.
+        Assert.Equal(ps2.DimensionsMillimetres.X, ps3.DimensionsMillimetres.X);
+        Assert.Equal(1.068f, ps3.WidthInShelfUnits / ps2.WidthInShelfUnits, 0.002f);
     }
 
     /// <summary>
@@ -1080,8 +1259,15 @@ public class MediaShellTests
 
         // A real UMD case is 178mm against a DVD case's 190mm, and that 6.3% is the difference the
         // shelf is being asked to show. Asserted as the ratio rather than the millimetres so the
-        // check survives a later re-measurement of either case.
-        Assert.Equal(178f / 190f, psp.HeightInShelfUnits / ps2.HeightInShelfUnits, 0.001f);
+        // check survives a later re-measurement of either case, and through SizeCompression because
+        // that is the one rule standing between a measurement and the scene — it draws the 6.3% as
+        // 2.3%. Small differences survive compression better than large ones, which is the property
+        // that makes a power law the right shape for it: this pair is nearly unaffected while the
+        // arcade cabinet, the medium the rule exists for, moves a long way.
+        Assert.Equal(
+            MathF.Pow(178f / 190f, PhysicalMediaProfile.SizeCompression),
+            psp.HeightInShelfUnits / ps2.HeightInShelfUnits,
+            0.001f);
     }
 
     /// <summary>
