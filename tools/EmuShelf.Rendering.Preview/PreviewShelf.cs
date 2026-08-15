@@ -136,16 +136,20 @@ public static class PreviewShelf
             MediaShell.DiscKeepCase, new Vector3(104f, 178f, 15f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "psp-clear", "case-downward")),
-        // The other three disc-case finishes, in a row after PS2 and PSP. They carry identical
-        // metrics to the PS2 case and differ only in material, which is exactly why they belong
-        // here: a finish is the whole reason these platforms are distinguishable at all, and until
-        // this list included them `ps3-clear`, `gamecube-black` and `wii-white` were rendered by
-        // nothing. Three of the app's eight finishes had never appeared in any acceptance artefact.
+        // Third in the disc-case run, and the only one of them that is no longer the same object.
+        // It keeps its place beside PS2 and PSP for the reason PSP has one: the claim being
+        // reviewed is that a PS3 case stands a fifth shorter than a PS2 case, and a shorter case
+        // can only be judged against the taller one. It is also the sole entry drawing the Blu-ray
+        // shell, so this row is the only acceptance artefact that renders that geometry at all.
         new("playstation3", new PhysicalMediaProfile(
-            MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
+            MediaShell.BluRayCase, new Vector3(135f, 171.5f, 13f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
                 | PhysicalArtworkSlots.DiscLabel,
             "ps3-clear", "disc-from-case", DiscDiameterMillimetres: 120f)),
+        // The other two disc-case finishes. They carry identical metrics to the PS2 case and differ
+        // only in material, which is exactly why they belong here: a finish is the whole reason
+        // these platforms are distinguishable at all, and until this list included them
+        // `gamecube-black` and `wii-white` were rendered by nothing.
         new("gamecube", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine

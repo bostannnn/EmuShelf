@@ -75,7 +75,16 @@ Directory.CreateDirectory(outputDirectory);
     ("front", 0f, 0f),
     ("hero", -0.42f, -0.10f),
     ("turned", -1.05f, -0.06f),
-    ("spine", -1.48f, 0f),
+    // Positive yaw brings canonical -X round to the camera, and -X is the hinge side a keep case
+    // prints its spine on. This pose was -1.48 and therefore showed the opposite edge — the
+    // opening, with its thumb notch — under the name "spine", which is why no case's spine panel
+    // had ever been looked at: it renders, it just was not in any of these frames. Exactly the
+    // top-edge/bottom-edge mix-up noted below, one axis over, and found the same way: by putting
+    // art on the panel and not finding it.
+    ("spine", 1.48f, 0f),
+    // The opening edge kept, because it is worth reviewing on its own — it carries the moulded rim
+    // and thumb notch, and it is the one large face of a case that no panel ever prints on.
+    ("opening", -1.48f, 0f),
     ("back", MathF.PI, 0f),
     // Pitch tips the shell, not the camera: a positive angle rolls its top towards the viewer, so
     // that is the pose that shows the top edge. These two carried each other's names, and a render
@@ -221,6 +230,35 @@ for (var row = 0; row < shells.Length; row++)
     if (entry is not null && !args.Contains("--no-cover"))
     {
         renderer.SetCoverArt(TestCover.Create(entry.CoverAspect));
+
+        // The back and spine too, for any medium whose profile claims them. Until this, the sheet
+        // only ever supplied a front cover, so a case's other two panels were reviewed with nothing
+        // on them for as long as they have existed — they wear the platform tint when a scrape is
+        // missing, and a tint is exactly what an unreachable panel also looks like.
+        //
+        // The back inlay is the same shape as the front, which is what the object is. The spine's
+        // shape defaults to the profile's own depth over height — a real spine scan, near enough —
+        // and --spine-aspect overrides it, because the question these panels actually raise is what
+        // ArtFit.Stretch does to a scrape that is not spine-shaped.
+        // Panel 1 and panel 2, which is what the app's ShelfArtworkFace.Back and .Spine resolve to.
+        // Written as literals because that enum lives in EmuShelf.App, which this tool deliberately
+        // cannot reference — the same reason PreviewShelf is a hand-copy with a test holding it
+        // honest. The order is fixed by the shell declaring its extra panels back-then-spine.
+        var slots = entry.Profile.ArtworkSlots;
+        if ((slots & PhysicalArtworkSlots.Back) != 0)
+        {
+            renderer.SetPanelArt(0, 1, TestCover.CreateBack(entry.CoverAspect));
+        }
+
+        if ((slots & PhysicalArtworkSlots.Spine) != 0)
+        {
+            var dimensions = entry.Profile.DimensionsMillimetres;
+            var spineAspect = double.Parse(
+                ArgumentValue("--spine-aspect")
+                    ?? (dimensions.Z / dimensions.Y).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                System.Globalization.CultureInfo.InvariantCulture);
+            renderer.SetPanelArt(0, 2, TestCover.CreateSpine(spineAspect));
+        }
     }
 
     for (var column = 0; column < poses.Length; column++)
@@ -421,6 +459,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.JewelCase => "jewel-case",
     MediaShell.ArcadeCabinet => "arcade-cabinet",
     MediaShell.DiscKeepCase => "disc-keep-case",
+    MediaShell.BluRayCase => "blu-ray-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),
 };

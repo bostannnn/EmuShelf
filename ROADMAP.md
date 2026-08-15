@@ -1801,6 +1801,11 @@ the hands-on review gate before Phase 2 begins.
 - [ ] Map case front/back/spine/wrap media onto authored case material slots.
 - [ ] Bring GBA and the case family through the same asset gate. Use separate material/dimension variants
       where the real packaging differs rather than recolouring one inaccurate universal case.
+      — PS3 left the universal case 2026-08-15: Diablo's CC BY Blu-ray shell is authored at the real
+      135x171.5x13mm, so PS3 no longer stands at a DVD case's height, and its sleeve prints on the
+      film's own material slot rather than a rectangle over the shell. PSP is the last profile still
+      borrowing the DVD case, knowingly squeezed to a UMD case's shape; a UMD case and a 3DS card are
+      what the case family still owes this gate.
 - [ ] Bound decoded/GPU artwork with a focused-neighbour LRU and shared shell resources. Hold 60 fps at
       1280x800 and 1920x1080 with a 500-game library on the Windows integrated-GPU acceptance machine.
       — Shared baseline optimization landed 2026-08-13: 21-entry cover-texture LRU, adaptive scene
