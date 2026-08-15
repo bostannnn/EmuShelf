@@ -12,6 +12,8 @@ using Avalonia.Threading;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using EmuShelf.App.Rendering;
+using EmuShelf.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
@@ -331,6 +333,10 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
+        OnPropertyChanged(nameof(ShowShelfTube));
+        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(IsShelfTubeActive));
+        OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
         OnPropertyChanged(nameof(IsGridViewModeSelected));
         OnPropertyChanged(nameof(IsListViewModeSelected));
@@ -706,11 +712,29 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>The couch physical-media shelf is on screen: gamepad mode, games present, shelf layout.</summary>
     public bool ShowGamepadShelf => IsGamepadMode && HasGames && GamepadLayout == GamepadLibraryLayout.Shelf;
 
+    /// <summary>
+    /// The CRT tube is on screen. Deliberately NOT gated on <see cref="HasGames"/>.
+    /// </summary>
+    /// <remarks>
+    /// Stepping platforms with LB/RB empties the collection and refills it, so anything gated on
+    /// games being present blinks off in between. For the shelf's contents that is invisible; for
+    /// the tube it meant the whole effect dropped out for a frame and the bare, un-warped couch UI
+    /// showed through — and worse, the GL scene was detached and rebuilt on every single platform
+    /// step. The tube stays up across the gap and simply shows an empty shelf, which is also the
+    /// right answer for a platform that genuinely has no games: the empty state belongs inside the
+    /// television, not beside it.
+    /// </remarks>
+    public bool ShowShelfTube => IsGamepadMode && GamepadLayout == GamepadLibraryLayout.Shelf;
+
     partial void OnHasGamesChanged(bool value)
     {
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
+        OnPropertyChanged(nameof(ShowShelfTube));
+        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(IsShelfTubeActive));
+        OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
     }
 
@@ -740,6 +764,80 @@ public partial class MainViewModel : ViewModelBase
     /// the fallback for artwork with no usable colour. Offered next to the theme gallery in both modes.</summary>
     [ObservableProperty]
     public partial bool AmbientThemeFromArtwork { get; set; }
+
+    /// <summary>Whether the couch shelf is presented through a simulated CRT tube.</summary>
+    [ObservableProperty]
+    public partial bool CrtScreenEffect { get; set; }
+
+    /// <summary>
+    /// The presentation the couch screen is handed, or <see cref="CrtPresentation.Off"/>.
+    /// </summary>
+    /// <remarks>
+    /// The knobs still come from the environment while the per-parameter Settings controls do not
+    /// exist; this property is only the on/off switch over the top of them.
+    /// </remarks>
+    public CrtPresentation CouchCrt =>
+        CrtScreenEffect ? _crtTuning : CrtPresentation.Off;
+
+    /// <summary>
+    /// The tuned presentation, resolved once.
+    /// </summary>
+    /// <remarks>
+    /// A property getter that re-read sixteen environment variables every time a binding evaluated
+    /// it would be a silly thing to leave behind, and the values cannot change within a run anyway.
+    /// </remarks>
+    private static readonly CrtPresentation _crtTuning = CrtTuning.FromEnvironment();
+
+    /// <summary>
+    /// The tube is on screen. Every couch layout, not just the shelf.
+    /// </summary>
+    /// <remarks>
+    /// The CRT is a property of the television the couch UI is being shown on, not of one layout
+    /// inside it — the grid and the spotlight are just as much "a console menu on a TV" as the shelf
+    /// is. Desktop mode is deliberately excluded: it is a mouse-driven library window, and a warped,
+    /// scanned one would be unusable rather than nostalgic.
+    /// </remarks>
+    /// <remarks>
+    /// The OR is load-bearing. This control is not only the tube — it is also the only thing that
+    /// draws the physical-media shelf, since the flat 2D strip beside it is a fallback for machines
+    /// with no usable GL and stays hidden whenever the scene works. Gating it purely on the CRT
+    /// setting therefore emptied the shelf completely the moment the effect was switched off.
+    /// </remarks>
+    public bool ShowCouchTube => IsGamepadMode && (CrtScreenEffect || IsGamepadShelfView);
+
+    /// <summary>
+    /// The games the 3D scene draws, or nothing outside the shelf layout.
+    /// </summary>
+    /// <remarks>
+    /// The tube runs over every couch layout, but only the shelf has physical media in it. Handing
+    /// the scene an empty list on the grid and spotlight leaves it compositing the captured UI and
+    /// nothing else, instead of drawing a row of cartridges on top of the cover grid.
+    /// </remarks>
+    public IReadOnlyList<GameViewModel>? ShelfSceneItems => IsGamepadShelfView ? Games : null;
+
+    /// <summary>
+    /// The tube is both on screen and actually distorting.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="ShowShelfTube"/>, which stays true with the effect switched off: the
+    /// scene control is full-bleed either way, but only an active tube paints the couch backdrop and
+    /// composites the captured UI. With the effect off those responsibilities go back to Avalonia,
+    /// so the couch root has to paint its own background again and the shelf its own accent wash.
+    /// </remarks>
+    public bool IsShelfTubeActive =>
+        IsGamepadMode && CrtScreenEffect && GamepadLayout == GamepadLibraryLayout.Shelf;
+
+    /// <summary>The shelf paints its own flat backdrop: no GPU scene, or no tube to paint one.</summary>
+    public bool ShowShelfFlatBackdrop => !ShelfSceneSupported || !CrtScreenEffect;
+
+    partial void OnCrtScreenEffectChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CouchCrt));
+        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(IsShelfTubeActive));
+        OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
+        _ = _themeService.SetCrtScreenEffectAsync(value);
+    }
 
     /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
     /// theme gallery projects the same instances so both modes stay in lock-step.</summary>
@@ -1275,6 +1373,7 @@ public partial class MainViewModel : ViewModelBase
         };
         // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
         AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
+        CrtScreenEffect = _themeService.CrtScreenEffect;
 
         Systems = new ObservableCollection<GameSystem>(systems);
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
@@ -3354,6 +3453,10 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadGrid));
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
+        OnPropertyChanged(nameof(ShowShelfTube));
+        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(IsShelfTubeActive));
+        OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
 
         if (value)
@@ -5951,6 +6054,12 @@ public partial class MainViewModel : ViewModelBase
             themeChoices: ThemeChoices,
             ambientThemeFromArtwork: AmbientThemeFromArtwork,
             setAmbientThemeFromArtwork: SetAmbientThemeFromArtworkAsync,
+            setCrtScreenEffect: enabled =>
+            {
+                CrtScreenEffect = enabled;
+                return Task.CompletedTask;
+            },
+            crtShelfEffect: CrtScreenEffect,
             profiles: profiles,
             updates: Updates,
             libraryFolders: libraryFolders);

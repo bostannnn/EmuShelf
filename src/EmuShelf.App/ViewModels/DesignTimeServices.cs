@@ -94,6 +94,17 @@ internal sealed class NullAppThemeService : IAppThemeService
 
     public event EventHandler? AmbientFromArtworkChanged;
 
+    public bool CrtScreenEffect { get; private set; } = true;
+
+    public event EventHandler? CrtScreenEffectChanged;
+
+    public Task SetCrtScreenEffectAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        CrtScreenEffect = enabled;
+        CrtScreenEffectChanged?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    }
+
     public Task SetThemeAsync(
         ThemePreference preference,
         CancellationToken cancellationToken = default)

@@ -70,6 +70,21 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     public static readonly StyledProperty<PhysicalShelfLaunchPose?> LaunchPoseProperty =
         AvaloniaProperty.Register<MediaShelf3DControl, PhysicalShelfLaunchPose?>(nameof(LaunchPose));
 
+    public static readonly StyledProperty<CrtPresentation> CrtProperty =
+        AvaloniaProperty.Register<MediaShelf3DControl, CrtPresentation>(
+            nameof(Crt), CrtPresentation.Off);
+
+    /// <summary>
+    /// The couch UI to draw inside the tube, rather than on top of it.
+    /// </summary>
+    /// <remarks>
+    /// Must be a visual that does NOT contain this control, or the capture would be trying to
+    /// photograph itself. That is why the scene sits beside <c>GamepadRoot</c> in the window rather
+    /// than inside it.
+    /// </remarks>
+    public static readonly StyledProperty<Visual?> ChromeSourceProperty =
+        AvaloniaProperty.Register<MediaShelf3DControl, Visual?>(nameof(ChromeSource));
+
     private readonly List<LayoutEntry> _layout = [];
     private readonly List<MediaShelfRenderItem> _renderItems = new((NeighbourRadius * 2) + 1);
     private readonly Dictionary<long, GameViewModel> _gamesByKey = [];
@@ -81,6 +96,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private readonly Dictionary<ArtworkKey, PhysicalArtworkLoad> _physicalArtworkLoads = [];
     private readonly Queue<PhysicalArtworkLoad> _physicalArtworkQueue = [];
     private readonly Dictionary<long, PhysicalShelfDeparturePose> _departurePoses = [];
+    private readonly System.Diagnostics.Stopwatch _crtClock = System.Diagnostics.Stopwatch.StartNew();
+    private ChromeSnapshot? _chromeSnapshot;
     private INotifyCollectionChanged? _observedCollection;
     private int _observedStart = -1;
     private int _observedEnd = -1;
@@ -139,6 +156,56 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         set => SetValue(LaunchPoseProperty, value);
     }
 
+    /// <summary>How hard the scene is pushed through a CRT tube on the way to the screen.</summary>
+    public CrtPresentation Crt
+    {
+        get => GetValue(CrtProperty);
+        set => SetValue(CrtProperty, value);
+    }
+
+    /// <inheritdoc cref="ChromeSourceProperty"/>
+    public Visual? ChromeSource
+    {
+        get => GetValue(ChromeSourceProperty);
+        set => SetValue(ChromeSourceProperty, value);
+    }
+
+    /// <summary>
+    /// Hands the newest couch-UI capture to the renderer, if one has arrived since the last frame.
+    /// </summary>
+    /// <remarks>
+    /// Runs on the render thread, which is why it only ever touches the byte buffer the snapshot
+    /// timer left behind and never the visual tree itself. A chrome refresh rate below the frame
+    /// rate therefore costs nothing per frame beyond the check.
+    /// </remarks>
+    private void UploadChrome(MediaShellRenderer renderer) =>
+        _chromeSnapshot?.TryTake((pixels, size) =>
+            renderer.SetCrtChrome(pixels, size.Width, size.Height));
+
+    /// <summary>
+    /// The colour the tube shows where the shelf does not cover it.
+    /// </summary>
+    /// <remarks>
+    /// The CRT pass composites and writes opaque, so it — not the Border stack behind this control —
+    /// paints the couch backdrop wherever the pass is active. Resolving the same theme brush and
+    /// applying the same accent wash the XAML would have keeps the two paths matching, which is what
+    /// stops the scene's rectangle from showing as a seam against the screen around it.
+    /// </remarks>
+    private Vector3 ResolveBackdrop(Color accent)
+    {
+        var library = this.TryFindResource("EmuLibraryBrush", out var resource)
+            && resource is ISolidColorBrush { } brush
+            ? brush.Color
+            : Color.FromRgb(22, 23, 27);
+
+        // Matches the wash Borders in MainWindow.axaml: the accent at 0.16 over the library colour.
+        const float WashOpacity = 0.16f;
+        return new Vector3(
+            ((library.R / 255f) * (1f - WashOpacity)) + ((accent.R / 255f) * WashOpacity),
+            ((library.G / 255f) * (1f - WashOpacity)) + ((accent.G / 255f) * WashOpacity),
+            ((library.B / 255f) * (1f - WashOpacity)) + ((accent.B / 255f) * WashOpacity));
+    }
+
     public event EventHandler? InitializationSucceeded;
 
     public event EventHandler? ContextLost;
@@ -178,6 +245,14 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         {
             RequestNextFrameRendering();
         }
+
+        if (change.Property == CrtProperty)
+        {
+            // Switching the effect on or off has to start or stop the capture timer, not just change
+            // what the shader does with its output.
+            StartChromeCapture();
+            RequestNextFrameRendering();
+        }
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -187,6 +262,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         ObserveCollection();
         UpdateVisibleSubscriptions(force: true);
         PrepareShells();
+        StartChromeCapture();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -195,7 +271,39 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         StopObserving();
         ClearDecodedPhysicalArtwork();
         _preparationGeneration++;
+        _chromeSnapshot?.Dispose();
+        _chromeSnapshot = null;
         base.OnDetachedFromVisualTree(e);
+    }
+
+    /// <summary>
+    /// Begins capturing the couch UI, if there is one to capture and a tube to show it in.
+    /// </summary>
+    /// <remarks>
+    /// The interval is the chrome's own frame rate, and it is deliberately not the display's. The
+    /// rail's indicator slide and the focus transitions are the only things in there that move, and
+    /// they read fine at 30Hz once the tube's scanlines and softening are over them — while halving
+    /// the number of full-window offscreen renders the UI thread has to absorb.
+    /// </remarks>
+    private void StartChromeCapture()
+    {
+        if (!_isAttached || !Crt.IsActive)
+        {
+            // Switching the effect off has to stop the timer, not merely stop using its output: the
+            // capture is a full-window offscreen render on the UI thread, and leaving it ticking is
+            // most of what the setting is meant to reclaim.
+            _chromeSnapshot?.Dispose();
+            _chromeSnapshot = null;
+            return;
+        }
+
+        if (_chromeSnapshot is not null)
+        {
+            return;
+        }
+
+        _chromeSnapshot = new ChromeSnapshot(() => ChromeSource, TimeSpan.FromMilliseconds(33));
+        _chromeSnapshot.Start();
     }
 
     protected override void OnOpenGlInit(GlInterface gl)
@@ -223,7 +331,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
     protected override void OnOpenGlRender(GlInterface gl, int fb)
     {
-        if (_renderer is null || Items is not { Count: > 0 })
+        if (_renderer is null)
+        {
+            return;
+        }
+
+        // An empty item list is normal, not a reason to skip the frame: the tube runs over every
+        // couch layout, and on the grid and spotlight there is no physical media to draw — only the
+        // captured UI to warp. Returning early here left those layouts with a stale surface.
+        if (Items is not { Count: > 0 } && !Crt.IsActive)
         {
             return;
         }
@@ -241,9 +357,35 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 _uploadedAccent = accent;
             }
 
+            _renderer.Crt = Crt.IsActive ? Crt with { Backdrop = ResolveBackdrop(accent) } : Crt;
+            _renderer.CrtElapsedSeconds = (float)_crtClock.Elapsed.TotalSeconds;
+            if (Crt.IsActive)
+            {
+                UploadChrome(_renderer);
+            }
+            else
+            {
+                // Dropped here rather than when the setting changed, because releasing a texture
+                // needs the GL context current and the setting changes on the UI thread. Without it,
+                // switching the effect off and on again showed one frame of the couch UI as it
+                // looked when it was last switched off.
+                _renderer.ClearCrtChrome();
+            }
+
             var renderItems = BuildRenderItems();
             SynchronizeArtworkTextures(renderItems);
             _renderer.RenderShelf(renderItems, _sceneMediaHeight, (uint)fb, width, height);
+
+            // A tube whose roll, hum and jitter are moving has to be redrawn even when nothing in
+            // the library changed, so the scene cannot go back to drawing only on demand. This is
+            // the whole cost of the animated effects — it holds the couch screen at the compositor's
+            // frame rate for as long as shelf mode is open, which on a handheld is a battery
+            // decision as much as a visual one. Turning the animation knobs off returns the shelf to
+            // its old on-demand behaviour rather than merely freezing a still tube.
+            if (Crt.IsAnimated)
+            {
+                RequestNextFrameRendering();
+            }
         }
         catch (Exception exception)
         {
