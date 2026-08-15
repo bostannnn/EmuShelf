@@ -22,6 +22,8 @@ public sealed record GameDiscSet(
 /// <summary>
 /// Conservatively recognizes ordinary filename conventions such as <c>Game (Disc 1)</c> and
 /// <c>Game CD2</c>. It intentionally declines ambiguous names, demos, and bonus discs.
+/// A release tag the filename keeps — <c>(Rev 1)</c>, <c>(Beta)</c> — stays part of the grouping
+/// key, so two discs of one revision merge while a revised disc never joins an original one.
 /// </summary>
 public static partial class GameDiscSetBuilder
 {
@@ -81,18 +83,30 @@ public static partial class GameDiscSetBuilder
         return result;
     }
 
+    /// <summary>
+    /// Reads the disc number an ordinary release name carries — <c>Game (Disc 2)</c>, <c>Game CD2</c>
+    /// — from a filename or a catalogue title. False when the name names no disc.
+    /// </summary>
+    public static bool TryReadDiscNumber(string name, out int number)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        number = 0;
+        return DiscMarker.Match(name) is { Success: true } match &&
+               int.TryParse(match.Groups["number"].Value, out number) &&
+               number > 0;
+    }
+
     private static bool TryCreateCandidate(Game game, out DiscCandidate candidate)
     {
         var sourceTitle = Path.GetFileNameWithoutExtension(game.Path);
-        var match = DiscMarker.Match(sourceTitle);
-        if (!match.Success || ExcludedRelease.IsMatch(sourceTitle))
+        if (ExcludedRelease.IsMatch(sourceTitle) || !TryReadDiscNumber(sourceTitle, out var number))
         {
             candidate = default;
             return false;
         }
 
         var normalized = NormalizeTitle(sourceTitle);
-        if (normalized.Length == 0 || !int.TryParse(match.Groups["number"].Value, out var number) || number <= 0)
+        if (normalized.Length == 0)
         {
             candidate = default;
             return false;
@@ -128,6 +142,10 @@ public static partial class GameDiscSetBuilder
     [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
     private static partial Regex CreateWhitespaceRegex();
 
-    [GeneratedRegex(@"(?<![A-Za-z])(?:demo|bonus|rev(?:ision)?\s*[0-9]+)(?![A-Za-z0-9])", RegexOptions.IgnoreCase)]
+    // A revision is not excluded: only the disc marker is stripped from the grouping key, so the
+    // "(Rev 1)" the filename carries survives in it. That separates a revised disc from an original
+    // one — the reason the tag was declined at all — without also splitting a set whose discs are
+    // all the same revision, which is how a normal Redump dump of "Game (Rev 1) (Disc 1/2)" ships.
+    [GeneratedRegex(@"(?<![A-Za-z])(?:demo|bonus)(?![A-Za-z0-9])", RegexOptions.IgnoreCase)]
     private static partial Regex CreateExcludedReleaseRegex();
 }

@@ -88,6 +88,7 @@ public sealed class GameMetadataService : IGameMetadataService
     {
         var ids = await Task.Run(
             () => _store.GetGamesMissingMetadata(systemId)
+                .Concat(_store.GetGamesWithMismatchedDiscTitles(systemId))
                 .Select(game => game.Id)
                 .ToArray(),
             cancellationToken);
@@ -174,11 +175,13 @@ public sealed class GameMetadataService : IGameMetadataService
                 {
                     try
                     {
-                        // The filename carries the region tag ("(Europe)") the catalog needs to pick
-                        // the right entry when a region-free serial is shared across regional dumps.
-                        var regionHint = Path.GetFileNameWithoutExtension(game.Path);
+                        // The filename carries the tags the catalog needs to pick the right entry
+                        // when one key is shared: the region ("(Europe)") across regional dumps of a
+                        // region-free serial, and the disc ("(Disc 2)") plus revision ("(Rev 1)")
+                        // across the entries of one multi-disc product number.
+                        var filenameHint = Path.GetFileNameWithoutExtension(game.Path);
                         match = await _catalog.FindMatchAsync(
-                            profile, identifiers, regionHint, cancellationToken);
+                            profile, identifiers, filenameHint, cancellationToken);
                     }
                     catch (OperationCanceledException)
                     {

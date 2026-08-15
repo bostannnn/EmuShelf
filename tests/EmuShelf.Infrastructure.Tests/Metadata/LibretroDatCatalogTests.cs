@@ -305,6 +305,120 @@ public class LibretroDatCatalogTests
         Assert.Equal("Pocket Monsters Ultra Moon (Korea)", japan.Title);
     }
 
+    // Every disc of a Dreamcast title carries the same product number in IP.BIN, so one serial keys
+    // the whole set. The entries differ only by a "(Disc N)" suffix of identical length, so region
+    // and PreferenceScore both tie and Disc 1 used to win for discs 2 and 3 as well — naming and
+    // covering all three after the first disc.
+    [Fact]
+    public void Parser_SharedDiscSerial_PrefersTheDiscTheFilenameNames()
+    {
+        const string dat = """
+            game (
+                name "Shenmue (Europe) (En,Fr,De,Es) (Disc 1)"
+                region "Europe"
+                serial "MK-5105950"
+            )
+            game (
+                name "Shenmue (Europe) (En,Fr,De,Es) (Disc 2)"
+                region "Europe"
+                serial "MK-5105950"
+            )
+            game (
+                name "Shenmue (Europe) (En,Fr,De,Es) (Disc 3)"
+                region "Europe"
+                serial "MK-5105950"
+            )
+            """;
+
+        var index = LibretroDatCatalog.Parse(new StringReader(dat), GameIdentifierKind.Serial);
+        const string key = "MK5105950";
+
+        foreach (var disc in new[] { 1, 2, 3 })
+        {
+            Assert.True(index.TryGetValue(
+                GameIdentifierKind.Serial,
+                key,
+                $"Shenmue (Europe) (EnFrDeEs) (Disc {disc})",
+                out var entry));
+            Assert.Equal($"Shenmue (Europe) (En,Fr,De,Es) (Disc {disc})", entry.Title);
+        }
+
+        // Every candidate names a disc, so a filename that names none cannot decide between them and
+        // the historical pick still applies.
+        Assert.True(index.TryGetValue(GameIdentifierKind.Serial, key, "Shenmue (Europe)", out var noDisc));
+        Assert.Equal("Shenmue (Europe) (En,Fr,De,Es) (Disc 1)", noDisc.Title);
+    }
+
+    // Naming no disc is itself an answer when the key holds an entry that names none either: that
+    // entry wins, rather than whichever disc happens to have the shortest title.
+    [Fact]
+    public void Parser_SharedDiscSerial_PrefersTheUnnumberedEntryWhenTheFilenameNamesNoDisc()
+    {
+        const string dat = """
+            game (
+                name "Example (USA) (Disc 1)"
+                region "USA"
+                serial "SLUS-00001"
+            )
+            game (
+                name "Example (USA) (Disc 2)"
+                region "USA"
+                serial "SLUS-00001"
+            )
+            game (
+                name "Example (USA) (Single Disc Edition)"
+                region "USA"
+                serial "SLUS-00001"
+            )
+            """;
+
+        var index = LibretroDatCatalog.Parse(new StringReader(dat), GameIdentifierKind.Serial);
+        var key = LibretroDatCatalog.NormalizeKey(GameIdentifierKind.Serial, "SLUS-00001");
+
+        Assert.True(index.TryGetValue(GameIdentifierKind.Serial, key, out var hintless));
+        Assert.Equal("Example (USA) (Single Disc Edition)", hintless.Title);
+
+        Assert.True(index.TryGetValue(GameIdentifierKind.Serial, key, "Example (USA) (Disc 2)", out var disc2));
+        Assert.Equal("Example (USA) (Disc 2)", disc2.Title);
+    }
+
+    // A serial shared by an original and its revision: the "(Rev 1)" penalty in PreferenceScore
+    // always picked the original, so a Rev 1 dump was named — and grouped — as the original.
+    [Fact]
+    public void Parser_SharedRevisionSerial_PrefersTheRevisionTheFilenameNames()
+    {
+        const string dat = """
+            game (
+                name "Metal Gear Solid (USA) (Disc 1)"
+                region "USA"
+                serial "SLUS-00594"
+            )
+            game (
+                name "Metal Gear Solid (USA) (Rev 1) (Disc 1)"
+                region "USA"
+                serial "SLUS-00594"
+            )
+            """;
+
+        var index = LibretroDatCatalog.Parse(new StringReader(dat), GameIdentifierKind.Serial);
+        var key = LibretroDatCatalog.NormalizeKey(GameIdentifierKind.Serial, "SLUS-00594");
+
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Serial,
+            key,
+            "Metal Gear Solid (USA) (Rev 1) (Disc 1)",
+            out var revised));
+        Assert.Equal("Metal Gear Solid (USA) (Rev 1) (Disc 1)", revised.Title);
+
+        // An unrevised dump keeps the original entry: an absent tag matches an absent tag.
+        Assert.True(index.TryGetValue(
+            GameIdentifierKind.Serial,
+            key,
+            "Metal Gear Solid (USA) (Disc 1)",
+            out var original));
+        Assert.Equal("Metal Gear Solid (USA) (Disc 1)", original.Title);
+    }
+
     // The language list a No-Intro filename carries ("(En,Ja,Fr,…)") must never be mistaken for a
     // region: a "Ko" language code does not select a "Korea" entry.
     [Fact]

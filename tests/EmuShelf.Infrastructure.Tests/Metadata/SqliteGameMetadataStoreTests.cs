@@ -210,6 +210,29 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
         Assert.False(titles.ContainsKey(unscraped.Id));
     }
 
+    // Rows named after disc 1 because their whole set shares one product number look complete, so a
+    // fetch has to ask for them by name once the catalogue can tell the discs apart.
+    [Fact]
+    public void MismatchedDiscTitles_AreOnlyTheRowsNamingAnotherDisc()
+    {
+        var wrong = AddGame("Shenmue (Europe) (Disc 2).chd", GameTitleOrigin.Filename);
+        var right = AddGame("Shenmue (Europe) (Disc 3).chd", GameTitleOrigin.Filename);
+        var wholeSet = AddGame("Twin Snakes (USA) (Disc 2).rvz", GameTitleOrigin.Filename);
+        var renamed = AddGame("Xenogears (USA) (Disc 2).chd", GameTitleOrigin.Filename);
+
+        Assert.True(_metadata.TryApplyCatalogTitle(wrong.Id, "Shenmue (Europe) (Disc 1)", wrong.Title));
+        Assert.True(_metadata.TryApplyCatalogTitle(right.Id, "Shenmue (Europe) (Disc 3)", right.Title));
+        // A DAT that holds one entry for the whole set is not evidence of a wrong disc.
+        Assert.True(_metadata.TryApplyCatalogTitle(wholeSet.Id, "Twin Snakes (USA)", wholeSet.Title));
+        _library.UpdateTitle(renamed.Id, "Xenogears (USA) (Disc 1)");
+
+        var mismatched = _metadata.GetGamesWithMismatchedDiscTitles();
+
+        // The user's own rename is left alone; a catalogue fetch could not overwrite it anyway.
+        Assert.Equal([wrong.Id], mismatched.Select(game => game.Id));
+        Assert.Empty(_metadata.GetGamesWithMismatchedDiscTitles("dreamcast"));
+    }
+
     private static GameMetadataValue TitleValue(long gameId, string value, string? locale) =>
         new(
             gameId,
