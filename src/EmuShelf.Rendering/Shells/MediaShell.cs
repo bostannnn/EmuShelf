@@ -35,8 +35,19 @@ public enum MediaShell
     /// <summary>The Nintendo DS game card.</summary>
     DsCard,
 
-    /// <summary>Temporary keep-case geometry shared by PS2, PS3, GameCube and Wii profiles.</summary>
+    /// <summary>Temporary keep-case geometry shared by PS2, GameCube, Wii and PSP profiles.</summary>
     DiscKeepCase,
+
+    /// <summary>The shorter Blu-ray keep case a PS3 game shipped in.</summary>
+    /// <remarks>
+    /// Separate geometry rather than a profile over <see cref="DiscKeepCase"/>, because the two
+    /// cases are different objects: 135 x 171.5 x 13mm against a DVD case's 135 x 190 x 14mm. Sharing
+    /// the DVD mesh is what forced PS3 to render 19mm too tall for a year — the scene scales each
+    /// axis independently, so its truthful height came out as a 13.7% stretch rather than a shorter
+    /// case, and the honest option with one mesh was to keep the wrong height. With the real
+    /// geometry both are simply right. See DECISIONS 2026-08-15.
+    /// </remarks>
+    BluRayCase,
 
     /// <summary>
     /// An arcade cabinet, cut off below its control panel so it stands as a bartop machine.

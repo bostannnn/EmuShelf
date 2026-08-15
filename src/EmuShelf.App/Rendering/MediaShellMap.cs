@@ -31,11 +31,14 @@ public static class MediaShellMap
         // in for it, cut off under its control panel so it is a bartop rather than a wardrobe.
         ["arcade"] = MediaShell.ArcadeCabinet,
 
-        // One temporary geometry family, five distinct profiles. PSP is the odd one: the other four
-        // shipped in this exact case, and a UMD case is a different object that borrows it — see its
-        // profile below for what that costs and why it is still worth it.
+        // A PS3 game ships in the shorter Blu-ray case, which is now its own authored geometry
+        // rather than a profile stretched over the DVD one.
+        ["playstation3"] = MediaShell.BluRayCase,
+
+        // One temporary geometry family, four distinct profiles. PSP is the odd one: the other
+        // three shipped in this exact case, and a UMD case is a different object that borrows it —
+        // see its profile below for what that costs and why it is still worth it.
         ["playstation2"] = MediaShell.DiscKeepCase,
-        ["playstation3"] = MediaShell.DiscKeepCase,
         ["gamecube"] = MediaShell.DiscKeepCase,
         ["wii"] = MediaShell.DiscKeepCase,
         ["psp"] = MediaShell.DiscKeepCase,
@@ -128,15 +131,17 @@ public static class MediaShellMap
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "ps2-black", "case-downward"),
-        // A PS3 game really does ship in the shorter 135x171x12mm Blu-ray case, and this profile
-        // used to say so. The trouble is that it says so while sharing the DVD case's geometry, and
-        // the scene scales each axis independently: measured against the asset that is a 13.7%
-        // horizontal stretch, which does not read as "a shorter case" — it reads as a broken one.
-        // Of the two honest options with one mesh, too tall beats the wrong shape, so PS3 renders
-        // undistorted at the shared case's proportions until a Blu-ray shell is authored. The real
-        // dimensions belong with that shell, not with a squashed stand-in. See DECISIONS 2026-08-14.
+        // The Blu-ray shell the note here used to promise. This profile spent a year recording the
+        // DVD case's 135 x 190 x 14mm and explaining why: a PS3 game really ships in a shorter
+        // case, but saying so over shared DVD geometry came out as a 13.7% stretch, and of the two
+        // honest options with one mesh, too tall beat the wrong shape. With the case authored the
+        // choice is gone — 135 x 171.5 x 13mm is both the real object and, to three digits, the
+        // asset's own scale, so this is the one profile here that is a transcription rather than a
+        // measurement reconciled against a mesh. It is also the shortest of the disc cases now,
+        // which is the point: a PS3 case really does stand a fifth shorter than a PS2 one beside it.
+        // See DECISIONS 2026-08-15.
         ["playstation3"] = new(
-            MediaShell.DiscKeepCase, new(135f, 190f, 14f),
+            MediaShell.BluRayCase, new(135f, 171.5f, 13f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "ps3-clear", "case-downward"),
         ["gamecube"] = new(
@@ -149,8 +154,8 @@ public static class MediaShellMap
             "wii-white", "case-downward"),
         // A real UMD case, 104 x 178 x 15mm, and the one profile here that knowingly disagrees with
         // its asset: against the shared case's own 0.695 proportions this draws the mesh at 84% of
-        // its authored width. That is deliberate, and it is the opposite of the call the PS3 profile
-        // above makes, so it needs its reason recorded.
+        // its authored width. That is deliberate, and it is now the only such disagreement left in
+        // this table, so it needs its reason recorded.
         //
         // The rule those comments keep restating — take the asset's ratios, a profile that
         // disagrees silently distorts the shell — was written for cartridges, where the moulding
@@ -163,8 +168,10 @@ public static class MediaShellMap
         //
         // Rendered both before choosing. Squeezed mesh with correct art reads as a UMD case;
         // correct mesh with fat art reads as a slightly small PS2 case with something wrong with
-        // the cover. PS3 went the other way because a Blu-ray case really is 135mm wide, so its
-        // undistorted option cost it nothing on the sleeve. Locked by
+        // the cover. PS3 faced the same trade and answered it differently, taking the undistorted
+        // mesh at the wrong height; it is out of the comparison now that its own case is authored,
+        // and what that leaves behind is the more useful lesson — the trade only ever existed
+        // because two objects were sharing one mesh, and it ends when they stop. Locked by
         // MediaShellTests.MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted, which is
         // also why PSP is the one exclusion from the proportion theory. See DECISIONS 2026-08-15.
         ["psp"] = new(

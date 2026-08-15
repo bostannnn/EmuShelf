@@ -297,9 +297,11 @@ public class MediaShellTests
     [InlineData("dreamcast", MediaShell.JewelCase)]
     // The one system whose "medium" is a machine: an arcade game never shipped to a player at all.
     [InlineData("arcade", MediaShell.ArcadeCabinet)]
+    // The shorter Blu-ray case, authored separately once it became clear that one mesh could not
+    // be both objects without lying about one of them.
+    [InlineData("playstation3", MediaShell.BluRayCase)]
     // One temporary geometry family; profiles still retain the systems' different metrics/materials.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
-    [InlineData("playstation3", MediaShell.DiscKeepCase)]
     [InlineData("gamecube", MediaShell.DiscKeepCase)]
     [InlineData("wii", MediaShell.DiscKeepCase)]
     [InlineData("psp", MediaShell.DiscKeepCase)]
@@ -491,16 +493,37 @@ public class MediaShellTests
         Assert.True(profile.DepthInShelfUnits < 0.03f);
     }
 
+    /// <summary>
+    /// PS3 stands at a real Blu-ray case's height, on a real Blu-ray case's geometry.
+    /// </summary>
+    /// <remarks>
+    /// This test used to assert the opposite — that PS3 stood at a DVD case's 190mm and was told
+    /// apart by its finish alone — and it was right to, for as long as the two shared one mesh:
+    /// the scene scales each axis independently, so the truthful height came out as a 13.7%
+    /// stretch, and too tall beat the wrong shape. Inverted rather than deleted, because the pair
+    /// of them is the record of why a shell was worth sourcing at all. See DECISIONS 2026-08-15.
+    /// <para>
+    /// The width is the part worth stating explicitly: a Blu-ray case is exactly as wide as a DVD
+    /// case and differs only in height and thickness, so a PS3 case that came out narrower than a
+    /// PS2 one would be wrong in a way "it is shorter now" would not catch.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void MetricProfile_DistinguishesPs3ByFinishNotByADistortedHeight()
+    public void MetricProfile_StandsThePs3CaseShorterOnItsOwnBluRayGeometry()
     {
         var ps2 = MediaShellMap.ProfileForSystem("playstation2", 0.708);
         var ps3 = MediaShellMap.ProfileForSystem("playstation3", 0.708);
 
-        // PS3's real Blu-ray case is shorter, but expressing that on shared DVD geometry distorted
-        // it; the difference now lives in the finish until a Blu-ray shell is authored.
-        Assert.Equal(ps2.HeightInShelfUnits, ps3.HeightInShelfUnits, 3);
+        Assert.Equal(MediaShell.DiscKeepCase, ps2.Shell);
+        Assert.Equal(MediaShell.BluRayCase, ps3.Shell);
         Assert.NotEqual(ps2.MaterialVariant, ps3.MaterialVariant);
+
+        // 171.5 against 190mm, asserted as the ratio so the check survives a re-measurement of
+        // either case — the same way PSP's is.
+        Assert.Equal(171.5f / 190f, ps3.HeightInShelfUnits / ps2.HeightInShelfUnits, 0.001f);
+        Assert.True(ps3.HeightInShelfUnits < ps2.HeightInShelfUnits);
+        Assert.Equal(ps2.WidthInShelfUnits, ps3.WidthInShelfUnits, 3);
+        Assert.True(ps3.DepthInShelfUnits < ps2.DepthInShelfUnits);
     }
 
     /// <summary>

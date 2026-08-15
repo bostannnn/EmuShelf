@@ -436,7 +436,92 @@ public static class MediaShellCatalog
             PanelRoughness: 0.13f,
             // The clear cover's curve is what sells it as a case; keep the geometry's own normal.
             FlattenPanelNormal: false),
+
+        // Diablo's case, authored upright at a real Blu-ray case's 135 x 171.5 x 13mm — the scale is
+        // literally those three numbers on its root node — so it needs no reorientation and its
+        // profile is a transcription rather than a measurement.
+        //
+        // The one shell sourced blank. Every other model here arrived wearing a specific game's
+        // packaging and had to have it flattened out before the derivative could ship; this one has
+        // no textures and two untextured materials, because its author modelled it as an empty case
+        // to drop your own cover into. That is why the constants below are heavier than any other
+        // shell's: with no maps at all, everything the plastic does under the studio light has to
+        // come from these numbers rather than from a scan.
+        [MediaShell.BluRayCase] = new MediaShellDefinition(
+            MediaShell.BluRayCase,
+            "EmuShelf.Rendering.Assets.blu-ray-case.glb",
+            Matrix4x4.Identity,
+            // Nothing to downsample — the shell ships 148KB against the arcade cabinet's 6.5MB —
+            // but the loader takes the figure regardless, and a later re-export with maps should
+            // not silently arrive at full size.
+            MaxTextureSize: 1024,
+            // Scoped to the sleeve's own material, which the keep case above could not do: its
+            // sleeve and its body are one mesh, so it has to draw a rectangle against the whole
+            // shell and then bound how deep the print may reach. Here the clear film is its own
+            // mesh — front sheet, spine wrap and back sheet, and nothing else — so the panel is
+            // simply "all of it", measured against the film rather than against the case. That is
+            // what the inset of zero means: not a tighter margin than the keep case's 0.02, but a
+            // rectangle whose edges are already the print's edges. The film is inset 4mm from the
+            // case's top and bottom in the mesh, the way it is on the real object.
+            CoverPanel: SleevePanel(ArtFace.Front),
+            // Back before Spine — ShelfArtworkFace fixes Back at panel 1 and Spine at 2, and the
+            // jewel case above records what swapping them costs.
+            ExtraPanels: [SleevePanel(ArtFace.Back), SleevePanel(ArtFace.Spine)],
+            // The same paper-under-clear-film surface as the keep case, so the same figure.
+            PanelRoughness: 0.13f,
+            // The film is gently domed away from the sheet behind it; keep that curve.
+            FlattenPanelNormal: false,
+            // The source material is a flat 0.824 roughness with no map — matte, near enough to
+            // paper. A keep case is moulded polypropylene: not a mirror, but plainly glossier than
+            // that. This lands it at 0.34 once the ps3-clear finish has taken its 0.76.
+            BodyRoughnessScale: 0.54f,
+            // And a flat 0.8 linear base colour, which is nearly white — the author modelled a PS5
+            // case, and PS5 cases are white. A PS3 case is clear, and clear plastic rendered
+            // opaquely is a mid grey with a bright edge, not a pale slab. Left alone this reads as
+            // the wrong console before the blue tint is even applied, which is the whole reason
+            // this knob exists: the asset's material was tuned for its author's viewer.
+            //
+            // Set by measuring the rendered rim rather than by eye, because at the hero pose the
+            // body is a few pixels of mostly specular and 0.25 against 0.60 is indistinguishable
+            // there — the edge poses and the shelf row are where this is legible at all. On the
+            // spine pose the body's lit face lands at sRGB 153 here, against 188 at 0.60 and the
+            // PS2 case's black plastic at 54. That is the placement being aimed at, and the shelf
+            // row is where it is checked: a clear case has to sit plainly above the black PS2 and
+            // GameCube cases and plainly below the white Wii one. Above the Wii it stops reading as
+            // clear at all and starts reading as the PS5 case this mesh was modelled from.
+            BodyAlbedoScale: 0.34f,
+            // The case is a sheet of clear polypropylene over a printed sleeve, which is the jewel
+            // case's situation and not the DVD case's — that one earns its gloss from a scanned
+            // metallic/roughness map this shell does not have. Weaker than the jewel case's full
+            // coat, because polypropylene is softer and less optically flat than polystyrene: a
+            // keep case has a sheen where a jewel case has a reflection.
+            ClearcoatFactor: 0.55f,
+            ClearcoatRoughness: 0.10f),
     };
+
+    /// <summary>
+    /// One face of the Blu-ray case's printed sleeve, which is a single wrapped sheet.
+    /// </summary>
+    /// <remarks>
+    /// The three faces differ only in which way they point, so they are built rather than written
+    /// out: three near-identical eleven-argument panels invite exactly the transcription slip the
+    /// jewel case's Back/Spine comment warns about.
+    ///
+    /// <see cref="ArtFit.Stretch"/> for the same reason the keep case uses it — a box scan and a
+    /// sleeve are the same shape by definition — and it is the spine that pays, being a 13mm strip
+    /// wearing art scraped for a 135mm face. Nothing scrapes spine art yet, so what it actually
+    /// wears is the platform tint, which has no shape to distort.
+    ///
+    /// The depth allowance is belt-and-braces here rather than load-bearing. Material scoping has
+    /// already excluded the body, and the film's other two sheets face the wrong way for the panel
+    /// to claim them, so a millimetre on a 171.5mm case exists to catch a re-export that welds the
+    /// film into the body rather than to hold the print off anything in this one.
+    /// </remarks>
+    private static ArtPanel SleevePanel(ArtFace face) =>
+        ArtPanel.Full(face, fit: ArtFit.Stretch, maxSurfaceDepth: 1f / 171.5f) with
+        {
+            Material = "cover",
+        };
 
     public static MediaShellDefinition Definition(MediaShell shell) => Definitions[shell];
 
