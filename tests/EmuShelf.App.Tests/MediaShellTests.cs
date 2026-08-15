@@ -423,18 +423,40 @@ public class MediaShellTests
     /// These two were tuned independently and silently disagreed: the camera now pulls back only as
     /// far as the tallest medium requires, so the headroom above a cartridge is a fraction of what
     /// it was under the old fixed distance, and a lift sized for that distance carried the medium
-    /// out through the top of the frame on its way up. Checked at 16:10 as well as 16:9 because the
-    /// Steam Deck's shorter panel is the tighter of the two.
+    /// out through the top of the frame on its way up.
+    ///
+    /// Run for a portrait medium as well as a cartridge, because the two are framed by different
+    /// axes and so have different headroom: a cartridge is held back by the frame's sides and keeps
+    /// the height it had, while a portrait medium fills 62% of the frame and has correspondingly
+    /// less room above it to rise into. A test that only asked about SNES would say nothing about
+    /// the media the framing change actually moves.
+    ///
+    /// PSP and PS1 rather than PS2, which this asked about until disc games got their own
+    /// choreography: a keep case now plays <see cref="PhysicalShelfLaunchStyle.Disc"/>, so asking
+    /// how it fares under this sequence tests a composition the app never runs.
+    ///
+    /// The jewel case is the row that matters and the reason PS1 is here at all. The lift is
+    /// absolute while the frame scales with the medium, so the tightest medium is the shortest
+    /// height-led one — not the tallest, which is where this test had been looking. A 125mm jewel
+    /// case gets two thirds of a keep case's frame and the same 0.10 lift, and it is what caps
+    /// ShelfFrameFill at 0.55: it leaves the frame between 0.56 and 0.57, where a UMD case survives
+    /// to 0.64 and a keep case under the disc sequence to 0.66.
     /// </remarks>
     [Theory]
-    [InlineData(1280f / 800f)]
-    [InlineData(1920f / 1080f)]
-    public void LaunchChoreography_StaysInsideTheShelfCameraFrame(float aspect)
+    [InlineData("snes", 1.43, ShelfViewportAspects.SteamDeck)]
+    [InlineData("snes", 1.43, ShelfViewportAspects.Narrowest)]
+    [InlineData("psp", 0.581, ShelfViewportAspects.SteamDeck)]
+    [InlineData("psp", 0.581, ShelfViewportAspects.Narrowest)]
+    [InlineData("playstation", 0.9, ShelfViewportAspects.SteamDeck)]
+    [InlineData("playstation", 0.9, ShelfViewportAspects.Narrowest)]
+    public void LaunchChoreography_StaysInsideTheShelfCameraFrame(
+        string systemId, double coverAspect, float aspect)
     {
-        var profile = MediaShellMap.ProfileForSystem("snes", 1.43);
+        var profile = MediaShellMap.ProfileForSystem(systemId, coverAspect);
         var asset = MediaShellCatalog.Load(profile.Shell);
         var band = profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits;
-        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(aspect, band);
+        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(
+            aspect, band, profile.TurningWidthInShelfUnits);
         var viewProjection = view * projection;
 
         var transition = new PhysicalShelfLaunchTransitionModel();
@@ -470,6 +492,160 @@ public class MediaShellTests
     }
 
     /// <summary>
+    /// Aspect ratios of the control the shelf scene is actually drawn into.
+    /// </summary>
+    /// <remarks>
+    /// Not the display's. <c>GamepadShelfMediaHost</c> is 1248 x 560 inside a 1280 x 800 Steam Deck
+    /// — 2.23, where the panel is 1.6 — because the shelf page spends a fixed 32 x 240px on margins
+    /// and the title beneath the media. Measured by laying out the real MainWindow headlessly at
+    /// 1024 x 640, 1280 x 800, 1920 x 1080 and 2560 x 1440, which bracket the viewport between 2.11
+    /// and 2.48.
+    ///
+    /// Worth stating because testing the shelf camera at the panel's aspect is not a slightly
+    /// pessimistic approximation, it is a different composition: a cartridge is width-led at every
+    /// aspect the viewport can have, and at 1.6 it is 28% smaller than the app ever draws it.
+    /// </remarks>
+    private static class ShelfViewportAspects
+    {
+        /// <summary>1248 x 560, the reference viewport.</summary>
+        public const float SteamDeck = 2.229f;
+
+        /// <summary>2528 x 1200. The fixed chrome is proportionally smallest on a big display.</summary>
+        public const float Narrowest = 2.107f;
+
+        /// <summary>992 x 400, a small window.</summary>
+        public const float Widest = 2.480f;
+    }
+
+    /// <summary>
+    /// A disc case and a cartridge must end up comparably large on screen, not merely comparably
+    /// tall.
+    /// </summary>
+    /// <remarks>
+    /// The camera framed the tallest medium to half the viewport height and left width alone, which
+    /// treats "how big does this look" as a question about height. It is not: measured in the shelf
+    /// viewport a SNES cartridge is landscape and covered 20.6% of the frame under that rule, while
+    /// a portrait PS2 keep case — the taller object of the two in real life — covered 8.6%. Hence
+    /// the report that disc-based games were small in shelf mode after cartridges had been fixed.
+    ///
+    /// Area, deliberately, because it is the measure that caught this: every single-axis measure
+    /// said the two were framed identically.
+    ///
+    /// Both bounds are absolute rather than a ratio, and asserted only at the reference viewport,
+    /// because the ratio is aspect-dependent by design: a cartridge is width-led and a case is
+    /// height-led, so they close and separate as the window changes shape. A single ratio spanning
+    /// the viewport's whole range would have to sit near what the broken framing already scored.
+    ///
+    /// The case reaches half the cartridge, not parity. The height fill is capped at 0.56 by the
+    /// PS1 jewel case's launch lift — see <see cref="MediaShellRenderer"/> — and parity needs about
+    /// 0.77, so the rest is the choreography's to give.
+    /// </remarks>
+    [Fact]
+    public void ShelfCamera_FramesADiscCaseComparablyToACartridge()
+    {
+        var cartridge = FrameCoverage("snes", 1.43, ShelfViewportAspects.SteamDeck);
+        var keepCase = FrameCoverage("playstation2", 0.708, ShelfViewportAspects.SteamDeck);
+
+        var cartridgeArea = cartridge.Width * cartridge.Height;
+        var caseArea = keepCase.Width * keepCase.Height;
+
+        // 0.105 measured, against 0.086 under the height-only rule. This is the regression guard:
+        // the old framing fails it outright.
+        Assert.True(
+            caseArea >= 0.098f,
+            $"A keep case covers only {caseArea:P1} of the shelf viewport.");
+        Assert.True(
+            caseArea >= cartridgeArea * 0.47f,
+            $"A keep case covers {caseArea:P1} of the frame against a cartridge's {cartridgeArea:P1}.");
+    }
+
+    /// <summary>
+    /// A cartridge keeps the framing the height-only rule gave it, to within a tenth of a percent.
+    /// </summary>
+    /// <remarks>
+    /// The complaint this change answers was about disc cases, and cartridges had just been tuned
+    /// and signed off — so growing them too would be an unrequested change, and shrinking them a
+    /// regression. <see cref="MediaShellRenderer"/>'s width fill is calibrated to leave them where
+    /// they were; this is the assertion that says so, and it is what fixes that constant at 0.368.
+    ///
+    /// The expected figures are measured silhouettes rather than the nominal fill — the near corner
+    /// of a turned cartridge projects larger than its centre plane, which is why the height reads
+    /// 0.549 under a rule that asked for 0.5. They hold at this viewport only: a cartridge is
+    /// width-led, so its height share follows the window's shape.
+    /// </remarks>
+    [Fact]
+    public void ShelfCamera_LeavesACartridgeWhereTheHeightOnlyRuleFramedIt()
+    {
+        var coverage = FrameCoverage("snes", 1.43, ShelfViewportAspects.SteamDeck);
+
+        Assert.Equal(0.3747f, coverage.Width, 0.002f);
+        Assert.Equal(0.5488f, coverage.Height, 0.002f);
+    }
+
+    /// <summary>
+    /// No medium may be framed off the edges of the viewport it is drawn into.
+    /// </summary>
+    /// <remarks>
+    /// The shelf viewport cannot currently be narrower than about 2.1, so 0.9 and 1.0 are not
+    /// Steam Decks — they are the guard on the rule rather than on today's layout. Framing on
+    /// height alone put a SNES cartridge at 82% of the frame's width at 1:1 and past its edges
+    /// below that, so any future layout that gave the scene a squarer control clipped the medium
+    /// against the sides. Nothing in the height-only rule knew the frame had sides at all.
+    /// </remarks>
+    [Theory]
+    [InlineData("snes", 1.43)]
+    [InlineData("playstation2", 0.708)]
+    [InlineData("arcade", 0.75)]
+    public void ShelfCamera_KeepsAMediumInsideANarrowViewport(string systemId, double coverAspect)
+    {
+        foreach (var aspect in new[]
+                 {
+                     0.9f, 1.0f, ShelfViewportAspects.Narrowest, ShelfViewportAspects.SteamDeck,
+                     ShelfViewportAspects.Widest, 21f / 9f,
+                 })
+        {
+            var coverage = FrameCoverage(systemId, coverAspect, aspect);
+            Assert.True(
+                coverage.Width <= 1f && coverage.Height <= 1f,
+                $"{systemId} covers {coverage.Width:P1} x {coverage.Height:P1} at aspect {aspect:F2}.");
+        }
+    }
+
+    /// <summary>
+    /// The fraction of the frame's width and height a focused medium's silhouette spans, through
+    /// the real shelf camera at its resting pose.
+    /// </summary>
+    private static (float Width, float Height) FrameCoverage(
+        string systemId, double coverAspect, float aspect)
+    {
+        var profile = MediaShellMap.ProfileForSystem(systemId, coverAspect);
+        var asset = MediaShellCatalog.Load(profile.Shell);
+        var band = profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits;
+        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(
+            aspect, band, profile.TurningWidthInShelfUnits);
+        var viewProjection = view * projection;
+        var model = EmuShelf.Rendering.MediaShellRenderer.ShelfModel(
+            new EmuShelf.Rendering.MediaShelfRenderItem(
+                1, profile, 0f, 1f, MediaRotationModel.RestYaw, MediaRotationModel.RestPitch,
+                Vector3.One),
+            asset);
+
+        var min = new Vector2(float.PositiveInfinity);
+        var max = new Vector2(float.NegativeInfinity);
+        foreach (var corner in Corners(asset.BoundsMin, asset.BoundsMax))
+        {
+            var world = Vector3.Transform(corner, model);
+            var clip = Vector4.Transform(new Vector4(world, 1f), viewProjection);
+            var ndc = new Vector2(clip.X / clip.W, clip.Y / clip.W);
+            min = Vector2.Min(min, ndc);
+            max = Vector2.Max(max, ndc);
+        }
+
+        // NDC spans -1..1, so a full frame is two units on each axis.
+        return ((max.X - min.X) * 0.5f, (max.Y - min.Y) * 0.5f);
+    }
+
+    /// <summary>
     /// The disc's launch puts a second body on screen, and it has to obey the same frame.
     /// </summary>
     /// <remarks>
@@ -477,17 +653,24 @@ public class MediaShellTests
     /// here: the disc travels up and forward out of a case that is already at the top of its lift,
     /// and stepping toward the camera magnifies a rise that was already close to the ceiling. Both
     /// bodies are checked because the case is still on screen for the first half of the sequence.
+    ///
+    /// This is now what fixes <c>ShelfFrameFill</c>, having taken that job over from the cartridge
+    /// test above: a disc case plays this sequence and not that one, and this is the taller
+    /// excursion of the two. See <see cref="ShelfViewportAspects"/> for why the aspects are the
+    /// shelf control's rather than the display's.
     /// </remarks>
     [Theory]
-    [InlineData(1280f / 800f)]
-    [InlineData(1920f / 1080f)]
+    [InlineData(ShelfViewportAspects.SteamDeck)]
+    [InlineData(ShelfViewportAspects.Narrowest)]
+    [InlineData(ShelfViewportAspects.Widest)]
     public void DiscLaunchChoreography_KeepsBothBodiesInsideTheShelfCameraFrame(float aspect)
     {
         var profile = MediaShellMap.ProfileForSystem("wii", 0.708);
         var caseAsset = MediaShellCatalog.Load(profile.Shell);
         var discAsset = MediaShellCatalog.Load(MediaShell.GameDisc);
         var band = profile.HeightInShelfUnits + profile.FloorClearanceInShelfUnits;
-        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(aspect, band);
+        var (view, projection, _) = EmuShelf.Rendering.MediaShellRenderer.ShelfCamera(
+            aspect, band, profile.TurningWidthInShelfUnits);
         var viewProjection = view * projection;
 
         var transition = new PhysicalShelfLaunchTransitionModel();
