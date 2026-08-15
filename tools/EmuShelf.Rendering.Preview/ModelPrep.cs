@@ -10,7 +10,7 @@ namespace EmuShelf.Rendering.Preview;
 
 /// <summary>
 /// Produces a redistributable runtime derivative of a downloaded shell by flattening the artwork of
-/// one named material and reducing every map to the portable runtime size.
+/// the named materials and reducing every map to the portable runtime size.
 /// </summary>
 /// <remarks>
 /// The models that ship a cartridge also ship a specific game's label — Battletoads, Sonic 2,
@@ -41,11 +41,15 @@ internal static class ModelPrep
     [Flags]
     private enum NeutralMaps
     {
-        None = 0,
         BaseColour = 1 << 0,
         Surface = 1 << 1,
         All = BaseColour | Surface,
     }
+
+    /// <summary>One image to flatten: to what colour, and over which part of itself.</summary>
+    /// <param name="Rect">The island to mask, or null to flatten the whole map.</param>
+    private readonly record struct NeutralImage(
+        (byte R, byte G, byte B, byte A) Fill, (float U0, float V0, float U1, float V1)? Rect);
 
     public static void Prepare(
         string inputPath,
@@ -60,7 +64,15 @@ internal static class ModelPrep
         string? closeLid,
         int maxTextureSize)
     {
-        var rect = ParseRect(neutralRect);
+        var rects = ParseRects(neutralRect);
+        var materials = neutralMaterial is null ? null : Split(neutralMaterial);
+        if (rects.Count > 1 && rects.Count != materials?.Length)
+        {
+            throw new ArgumentException(
+                $"--neutral-rect has {rects.Count} rectangles but --neutral-material names "
+                + $"{materials?.Length ?? 0} materials. Give one rectangle, or one per material.");
+        }
+
         var maps = ParseMaps(neutralMaps);
         // A masked rectangle is only ever perfectly covered by the art panel if the two were
         // derived from each other, and they are not — the rectangle is read off an atlas and the
@@ -107,16 +119,20 @@ internal static class ModelPrep
         var images = root["images"]!.AsArray();
         var textures = root["textures"]?.AsArray();
 
-        var keepArtwork = string.Equals(neutralMaps, "none", StringComparison.OrdinalIgnoreCase);
-        var neutralImages = keepArtwork
-            ? []
-            : neutralMaterial is null
-            ? ResolveAllMaterialImages(root, textures, baseFill, maps)
-            : ResolveNeutralImages(root, textures, neutralMaterial, baseFill, maps);
-        if (neutralImages.Count == 0 && !keepArtwork)
+        // After the geometry edits, because that is what makes a map unreachable: dropping the disc
+        // leaves its 1024px label in the file, a quarter of the shipped bytes drawn by nothing.
+        var orphans = OrphanedImages(root, textures);
+
+        var neutralImages = materials is null
+            ? ResolveAllMaterialImages(root, textures, baseFill, maps, rects.FirstOrDefault())
+            : ResolveNeutralImages(root, textures, materials, baseFill, maps, rects);
+        // Named materials that do not exist are caught by name in ResolveNeutralImages, which is the
+        // more useful error. This is what is left: they exist and none of them samples a map.
+        if (neutralImages.Count == 0)
         {
             throw new InvalidDataException(
-                $"Nothing to neutralize: no material named '{neutralMaterial}' with a base-colour texture.");
+                $"Nothing to neutralize: {(neutralMaterial is null ? "this model has" : $"'{neutralMaterial}' has")} "
+                + "no texture the requested --neutral-maps would flatten.");
         }
 
         var replacements = new Dictionary<int, byte[]>();
@@ -129,6 +145,13 @@ internal static class ModelPrep
             var offset = view["byteOffset"]?.GetValue<int>() ?? 0;
             var length = view["byteLength"]!.GetValue<int>();
 
+            if (orphans.Contains(imageIndex))
+            {
+                replacements[viewIndex] = PngWriter.Encode(1, 1, [0, 0, 0, 255]);
+                image["mimeType"] = "image/png";
+                continue;
+            }
+
             var decoded = ImageResult.FromMemory(
                 source.AsSpan(binStart + offset, length).ToArray(), ColorComponents.RedGreenBlueAlpha);
             var texture = new TextureImage
@@ -138,15 +161,15 @@ internal static class ModelPrep
                 Rgba = decoded.Data,
             };
 
-            if (neutralImages.TryGetValue(imageIndex, out var fill))
+            if (neutralImages.TryGetValue(imageIndex, out var neutral))
             {
-                if (rect is { } island)
+                if (neutral.Rect is { } island)
                 {
-                    FlattenRect(texture, fill, island);
+                    FlattenRect(texture, neutral.Fill, island);
                 }
                 else
                 {
-                    Flatten(texture, fill);
+                    Flatten(texture, neutral.Fill);
                 }
             }
 
@@ -155,9 +178,9 @@ internal static class ModelPrep
             image["mimeType"] = "image/png";
         }
 
-        var flattened = neutralMaterial is null
+        var flattened = materials is null
             ? "The label region of the shared atlas is flattened"
-            : $"The '{neutralMaterial}' material's artwork is flattened";
+            : $"The artwork of {string.Join(", ", materials.Select(name => $"'{name}'"))} is flattened";
         var scope = maps == NeutralMaps.BaseColour
             ? " out of the base-colour map, leaving the model's own surface maps intact"
             : " to a blank label";
@@ -174,38 +197,66 @@ internal static class ModelPrep
     /// leaving the label's normal map behind would emboss the removed artwork into EmuShelf's own —
     /// which is why <see cref="NeutralMaps.All"/> is the default and narrowing it is deliberate.
     /// </remarks>
-    private static Dictionary<int, (byte R, byte G, byte B, byte A)> ResolveNeutralImages(
+    private static Dictionary<int, NeutralImage> ResolveNeutralImages(
         JsonObject root,
         JsonArray? textures,
-        string materialName,
+        IReadOnlyList<string> materialNames,
         (byte, byte, byte, byte) baseFill,
-        NeutralMaps maps)
+        NeutralMaps maps,
+        IReadOnlyList<(float, float, float, float)> rects)
     {
-        var result = new Dictionary<int, (byte, byte, byte, byte)>();
-        foreach (var material in root["materials"]?.AsArray() ?? [])
+        var result = new Dictionary<int, NeutralImage>();
+        for (var slot = 0; slot < materialNames.Count; slot++)
         {
-            var node = material!.AsObject();
-            if (!string.Equals(node["name"]?.GetValue<string>(), materialName, StringComparison.OrdinalIgnoreCase))
+            // One rectangle serves every material, or each material carries its own. A jewel case
+            // needs the second: its lid, its promo card and its tray inlay are three photographs of
+            // the same case, and the print starts at a different column in each.
+            var rect = rects.Count == 0
+                ? null
+                : ((float, float, float, float)?)(rects.Count == 1 ? rects[0] : rects[slot]);
+            var found = false;
+            foreach (var material in root["materials"]?.AsArray() ?? [])
             {
-                continue;
+                var node = material!.AsObject();
+                if (!string.Equals(
+                    node["name"]?.GetValue<string>(), materialNames[slot], StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                found = true;
+                var pbr = node["pbrMetallicRoughness"]?.AsObject();
+                AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill, rect);
+                AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255), rect);
+                AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255), rect);
             }
 
-            var pbr = node["pbrMetallicRoughness"]?.AsObject();
-            AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill);
-            AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255));
-            AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255));
+            // Loud, because the silent version is the whole failure mode this pass exists to stop:
+            // a mistyped material name leaves the publisher's artwork in a shipped binary and the
+            // command still reports success.
+            if (!found)
+            {
+                throw new InvalidDataException(
+                    $"--neutral-material names '{materialNames[slot]}', which this model does not have. "
+                    + $"It has: {string.Join(", ", MaterialNames(root))}.");
+            }
         }
 
         return result;
     }
 
+    private static IEnumerable<string> MaterialNames(JsonObject root) =>
+        (root["materials"]?.AsArray() ?? []).Select(
+            material => material?["name"]?.GetValue<string>() ?? "(unnamed)");
+
     private static void AddMap(
-        Dictionary<int, (byte, byte, byte, byte)> result,
+        Dictionary<int, NeutralImage> result,
         JsonArray? textures,
         NeutralMaps maps,
         NeutralMaps required,
         JsonNode? reference,
-        (byte, byte, byte, byte) fill)
+        (byte, byte, byte, byte) fill,
+        (float, float, float, float)? rect)
     {
         if ((maps & required) == 0)
         {
@@ -219,24 +270,26 @@ internal static class ModelPrep
         }
 
         var imageIndex = textures[textureIndex.Value]?["source"]?.GetValue<int>();
-        if (imageIndex is not null)
+        if (imageIndex is null)
         {
-            result[imageIndex.Value] = fill;
+            return;
         }
+
+        // Two named materials sampling one atlas is legitimate — this model's lid and tray share
+        // theirs — but only if they agree on what to mask. Overwriting instead would leave the
+        // first material's artwork in the build and report success, which is the one outcome this
+        // whole pass exists to prevent.
+        if (result.TryGetValue(imageIndex.Value, out var existing)
+            && (existing.Rect != rect || existing.Fill != fill))
+        {
+            throw new InvalidDataException(
+                $"Image {imageIndex} is shared by materials that ask for different masks. Give them "
+                + "one rectangle and one fill, or the second would silently undo the first.");
+        }
+
+        result[imageIndex.Value] = new NeutralImage(fill, rect);
     }
 
-    /// <summary>
-    /// Leaves only the first mesh-bearing node drawable, for a file that ships several copies of the
-    /// same object.
-    /// </summary>
-    /// <remarks>
-    /// The DS download is four identical cards laid out in a row by node matrices, so loading it
-    /// as-is draws four cartridges. The duplicates lose their <c>mesh</c> reference rather than
-    /// being deleted: the loader walks every logical node and skips those without one, so this
-    /// needs no index remapping anywhere — and index remapping across meshes, accessors and buffer
-    /// views is precisely where a prep step goes quietly wrong. The orphaned vertex data stays in
-    /// the buffer; it is a fraction of a file whose bulk is textures, and nothing references it.
-    /// </remarks>
     /// <summary>A mesh's first primitive, with the world transform its node chain gives it.</summary>
     private sealed record MeshPlacement(int PositionAccessor, Matrix4x4 Transform);
 
@@ -608,6 +661,18 @@ internal static class ModelPrep
         Console.WriteLine($"  swung {moved} lid vertices onto the tray");
     }
 
+    /// <summary>
+    /// Leaves only the first mesh-bearing node drawable, for a file that ships several copies of the
+    /// same object.
+    /// </summary>
+    /// <remarks>
+    /// The DS download is four identical cards laid out in a row by node matrices, so loading it
+    /// as-is draws four cartridges. The duplicates lose their <c>mesh</c> reference rather than
+    /// being deleted: the loader walks every logical node and skips those without one, so this
+    /// needs no index remapping anywhere — and index remapping across meshes, accessors and buffer
+    /// views is precisely where a prep step goes quietly wrong. The orphaned vertex data stays in
+    /// the buffer; it is a fraction of a file whose bulk is textures, and nothing references it.
+    /// </remarks>
     private static void KeepOneInstance(JsonObject root)
     {
         var kept = false;
@@ -780,15 +845,37 @@ internal static class ModelPrep
         return colour;
     }
 
-    private static (float U0, float V0, float U1, float V1)? ParseRect(string? value)
+    /// <summary>One masked island per rectangle, semicolon-separated.</summary>
+    private static IReadOnlyList<(float U0, float V0, float U1, float V1)> ParseRects(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return null;
-        var parts = value.Split(',', StringSplitOptions.TrimEntries);
-        if (parts.Length != 4) throw new ArgumentException("--neutral-rect wants u0,v0,u1,v1.");
-        var numbers = parts
-            .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+        if (string.IsNullOrWhiteSpace(value)) return [];
+        return value
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(entry =>
+            {
+                var parts = entry.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length != 4)
+                {
+                    throw new ArgumentException("--neutral-rect wants u0,v0,u1,v1[;u0,v0,u1,v1...].");
+                }
+
+                var numbers = parts
+                    .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+                    .ToArray();
+                // Checked rather than clamped. FlattenRect turns an inverted or out-of-range
+                // rectangle into a loop that runs zero times, so the artwork stays in the build and
+                // the command reports success — the same silent failure a mistyped material name
+                // used to give.
+                if (numbers.Any(number => number is < 0f or > 1f)
+                    || numbers[0] >= numbers[2] || numbers[1] >= numbers[3])
+                {
+                    throw new ArgumentException(
+                        $"--neutral-rect '{entry}' is not a rectangle in 0..1 with u0 < u1 and v0 < v1.");
+                }
+
+                return (numbers[0], numbers[1], numbers[2], numbers[3]);
+            })
             .ToArray();
-        return (numbers[0], numbers[1], numbers[2], numbers[3]);
     }
 
     /// <summary>The colour a masked region takes, as RRGGBB.</summary>
@@ -808,34 +895,127 @@ internal static class ModelPrep
     }
 
     /// <summary>Every material's maps, for a model that keeps its label on a shared atlas.</summary>
-    private static Dictionary<int, (byte R, byte G, byte B, byte A)> ResolveAllMaterialImages(
-        JsonObject root, JsonArray? textures, (byte, byte, byte, byte) baseFill, NeutralMaps maps)
+    private static Dictionary<int, NeutralImage> ResolveAllMaterialImages(
+        JsonObject root,
+        JsonArray? textures,
+        (byte, byte, byte, byte) baseFill,
+        NeutralMaps maps,
+        (float, float, float, float)? rect)
     {
-        var result = new Dictionary<int, (byte, byte, byte, byte)>();
+        var result = new Dictionary<int, NeutralImage>();
         foreach (var material in root["materials"]?.AsArray() ?? [])
         {
             var node = material!.AsObject();
             var pbr = node["pbrMetallicRoughness"]?.AsObject();
-            AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill);
-            AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255));
-            AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255));
+            AddMap(result, textures, maps, NeutralMaps.BaseColour, pbr?["baseColorTexture"], baseFill, rect);
+            AddMap(result, textures, maps, NeutralMaps.Surface, pbr?["metallicRoughnessTexture"], (255, 128, 0, 255), rect);
+            AddMap(result, textures, maps, NeutralMaps.Surface, node["normalTexture"], (128, 128, 255, 255), rect);
         }
 
         return result;
     }
 
-    /// <summary>Which maps a neutralize pass touches; all three unless narrowed.</summary>
+    /// <summary>
+    /// Images no drawable primitive can reach, so that a dropped mesh takes its maps with it.
+    /// </summary>
+    /// <remarks>
+    /// Conservative by construction: an image counts as orphaned only if a dead material reaches it
+    /// and no live one does. The reference walk is generic — anything under a <c>*Texture</c> key,
+    /// extensions included — so a map held by an extension this tool does not model is still seen.
+    /// Getting it wrong in the safe direction leaves a texture in the file; getting it wrong the
+    /// other way blanks a drawn surface, which a render would catch but only if someone looks.
+    /// </remarks>
+    private static HashSet<int> OrphanedImages(JsonObject root, JsonArray? textures)
+    {
+        var meshes = root["meshes"]?.AsArray() ?? [];
+        var materials = root["materials"]?.AsArray() ?? [];
+        var live = new HashSet<int>();
+        foreach (var node in root["nodes"]?.AsArray() ?? [])
+        {
+            if (node!["mesh"]?.GetValue<int>() is not { } meshIndex)
+            {
+                continue;
+            }
+
+            foreach (var primitive in meshes[meshIndex]?["primitives"]?.AsArray() ?? [])
+            {
+                if (primitive!["material"]?.GetValue<int>() is { } material)
+                {
+                    live.Add(material);
+                }
+            }
+        }
+
+        var drawn = new HashSet<int>();
+        var undrawn = new HashSet<int>();
+        for (var index = 0; index < materials.Count; index++)
+        {
+            foreach (var image in MaterialImages(materials[index]!.AsObject(), textures))
+            {
+                (live.Contains(index) ? drawn : undrawn).Add(image);
+            }
+        }
+
+        undrawn.ExceptWith(drawn);
+        if (undrawn.Count > 0)
+        {
+            Console.WriteLine(
+                $"  dropped {undrawn.Count} image(s) no drawable mesh reaches: "
+                + string.Join(", ", undrawn.Order()));
+        }
+
+        return undrawn;
+    }
+
+    /// <summary>Every image a material samples, however deeply its texture reference is nested.</summary>
+    private static IEnumerable<int> MaterialImages(JsonObject material, JsonArray? textures)
+    {
+        if (textures is null)
+        {
+            yield break;
+        }
+
+        foreach (var index in TextureReferences(material))
+        {
+            if (index < textures.Count && textures[index]?["source"]?.GetValue<int>() is { } image)
+            {
+                yield return image;
+            }
+        }
+    }
+
+    private static IEnumerable<int> TextureReferences(JsonNode? node)
+    {
+        if (node is not JsonObject value)
+        {
+            yield break;
+        }
+
+        foreach (var (name, child) in value)
+        {
+            // Matched as an object, not merely by key: indexing a JsonValue throws, and glTF is not
+            // required to keep every "*Texture" key an object in an extension this does not model.
+            if (child is JsonObject candidate
+                && name.EndsWith("Texture", StringComparison.OrdinalIgnoreCase)
+                && candidate["index"]?.GetValue<int>() is { } index)
+            {
+                yield return index;
+            }
+
+            foreach (var nested in TextureReferences(child))
+            {
+                yield return nested;
+            }
+        }
+    }
+
+    /// <summary>Which maps a neutralize pass touches; all of them unless narrowed.</summary>
     private static NeutralMaps ParseMaps(string? value) =>
         value?.Trim().ToLowerInvariant() switch
         {
             null or "" or "all" => NeutralMaps.All,
             "base" => NeutralMaps.BaseColour,
-            // Nothing is flattened. Only for a shell whose own author licensed its artwork to us —
-            // it is the exception, and the reason to reach for it is that a case model often paints
-            // its plastic and its printed insert into one map, so removing the insert takes the
-            // hinge and the moulding with it.
-            "none" => NeutralMaps.None,
-            _ => throw new ArgumentException("--neutral-maps wants 'all', 'base' or 'none'."),
+            _ => throw new ArgumentException("--neutral-maps wants 'all' or 'base'."),
         };
 
     /// <summary>

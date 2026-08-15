@@ -206,7 +206,11 @@ public static class GlbLoader
             OcclusionTexture = ResolveTexture(
                 occlusion, root, textures, textureBySourceImage, maxTextureSize),
             ClearcoatFactor = ReadFactor(clearcoat, "ClearCoatFactor", 0f),
-            ClearcoatRoughness = ReadFactor(clearcoatRoughness, "ClearCoatRoughnessFactor", 0.04f),
+            // "RoughnessFactor", not "ClearCoatRoughnessFactor": the parameter is named within its
+            // channel, so the channel already says which roughness this is. Asking for the longer
+            // name matched nothing and returned this fallback for every value a file could carry,
+            // which is indistinguishable from a file that carries none.
+            ClearcoatRoughness = ReadFactor(clearcoatRoughness, "RoughnessFactor", 0.04f),
         };
 
         materials.Add(resolved);

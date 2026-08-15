@@ -315,38 +315,56 @@ public static class MediaShellCatalog
             CavityStrength: 0.42f,
             NormalStrength: 2.40f),
 
-        // xqspx's PS1 case, and the one shell whose source needed geometry surgery rather than
-        // texture work. The download is a jewel case with its disc lying beside it, and the case is
-        // posed for a product shot with the lid standing 9.2 degrees open — 29mm thick against a
-        // real case's 10mm. ModelPrep drops the disc and swings the lid shut, which is why this
-        // loads at 0.062 D/H rather than 0.234. Authored lying flat and facing away, so it needs a
-        // quarter turn up and a half turn round.
+        // sodaraptor's Hypnagogia case, and the one shell whose source needed geometry surgery as
+        // well as texture work. The download is a jewel case with its disc lying in the tray, posed
+        // for a product shot with the lid standing 25 degrees open — 66mm thick against a real
+        // case's 10mm. ModelPrep drops the disc and swings the lid shut, which is why this loads at
+        // 0.072 D/H rather than 0.533. Authored upright and already facing +Z once shut, so no
+        // reorientation.
         [MediaShell.JewelCase] = new MediaShellDefinition(
             MediaShell.JewelCase,
             "EmuShelf.Rendering.Assets.jewel-case.glb",
-            // Authored upright and already facing +Z once its lid is shut, so no reorientation.
             Matrix4x4.Identity,
             MaxTextureSize: 1024,
-            // Measured off the insert's own UV island and projected back through the lid's
-            // triangles, the way the Game Boy label was. It stops well short of the hinge side
-            // because a PS1 front insert does — the strip beside it is the printed banner and the
-            // moulded hinge, and covering them is what made the first attempts read as a poster in
-            // a frame rather than a case.
+            // The whole front insert, banner included, because that is what a scraped PS1 cover is:
+            // a scan of the 120mm card with the platform's own banner printed down its left. An
+            // earlier version stopped at -0.493 to clear the banner the source model paints there,
+            // which put the scan's banner beside a second, fictional one — the reason that banner
+            // is now flattened out of the asset instead.
+            // Measured rather than eyeballed, the way the Game Boy label was: the lid's front face
+            // carries a clean linear UV, nx = 2.663u - 1.273, and the print runs from u 0.182 (the
+            // plastic seam inboard of the hinge) to u 0.838. Past 0.958 is the lid's own 1.5mm rim.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.493f, 0.942f, -0.957f, 0.957f, ArtFit: ArtFit.Cover),
+                ArtFace.Front, -0.789f, 0.958f, -0.957f, 0.957f, ArtFit: ArtFit.Cover),
+            // Back before Spine, and the order is not cosmetic: ShelfArtworkFace is the panel index
+            // the app uploads each scraped face to, and it fixes Back at 1 and Spine at 2. Declared
+            // the other way round, a scraped back inlay lands on the spine and the spine on the
+            // back — invisible in the shell preview, which only ever supplies a front cover.
             ExtraPanels:
             [
+                // The tray inlay. It was left off on the grounds that this model's back inlay is
+                // the tray's interior seen through it rather than a face at the shell's -Z bound,
+                // so projecting onto it would paint the outside of the tray. That is what a
+                // transparent tray is for — the inlay is behind it — and rendered, the projection
+                // lands on the inlay and nowhere else. Without it the back is a blank white card.
+                ArtPanel.Full(ArtFace.Back, inset: 0.04f, fit: ArtFit.Cover),
+                // The hinge side, which is where a CD case carries its title: the tray inlay's flap
+                // shows through it, so canonical -X is right here for the same reason it is on a
+                // keep case even though the two hinge opposite ways.
                 ArtPanel.Full(ArtFace.Spine, inset: 0.06f, fit: ArtFit.Cover),
             ],
             // The insert sits under a clear polystyrene lid, so it is the glossiest printed surface
             // of any shell here.
             PanelRoughness: 0.16f,
-            // No Back panel: this model's back inlay is the tray's interior seen through it, not a
-            // face at the shell's -Z bound, so a back projection paints the outside of the tray.
-            // The tray already carries the author's own inlay, which is licensed to us.
             FlattenPanelNormal: false,
             BodyRoughnessScale: 1.0f,
-            BodyAlbedoScale: 1.0f),
+            BodyAlbedoScale: 1.0f,
+            // The only shell with a coat, and the reason the renderer reads one at all. Full
+            // strength because the lid is not lacquered plastic but a sheet of clear polystyrene:
+            // the insert is genuinely behind glass. 0.06 rather than a mirror because a moulded lid
+            // has a faint orange peel to it, and a mirror-flat coat reads as a render, not a case.
+            ClearcoatFactor: 1.0f,
+            ClearcoatRoughness: 0.06f),
 
         [MediaShell.DiscKeepCase] = new MediaShellDefinition(
             MediaShell.DiscKeepCase,

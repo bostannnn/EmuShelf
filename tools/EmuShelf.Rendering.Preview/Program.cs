@@ -184,7 +184,7 @@ var shelfProfiles = new[]
     new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     // Landscape and thin, which is what separates it at a glance from the portrait keep case two
     // along. In frame rather than appended, for the reason the Mega Drive note below records.
-    new PhysicalMediaProfile(MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine, "ps1-jewel", "case-downward"),
+    new PhysicalMediaProfile(MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine, "ps1-jewel", "case-downward"),
     // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge of
     // the acceptance shot, which is how it kept a profile a quarter too big for a whole milestone.
     new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
