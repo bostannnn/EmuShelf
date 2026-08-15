@@ -5224,21 +5224,37 @@ public partial class MainViewModel : ViewModelBase
                     recordedPlay = true;
                 });
             // The launch service returns only after a tracked emulator exits, or immediately when
-            // process start fails. In either case the visible shelf returns from the held insertion
-            // pose before post-exit status work continues.
-            await RestorePhysicalShelfAfterLaunchAsync();
+            // process start fails. The medium comes back *beside* the post-exit save sync rather
+            // than in front of it — the mirror of what the outward launch already does, and for the
+            // same reason: the upload is the wait the choreography exists to cover. Awaited in
+            // sequence, the player watched the shelf reassemble and only then began waiting.
+            var shelfRestore = RestorePhysicalShelfAfterLaunchAsync();
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
                 _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
 
             CloudSaveSyncOutcome? afterSync = null;
-            if (result.ProcessExited)
-                afterSync = await SyncSavesForLaunchAsync(
-                    launchGame,
-                    displayTitle,
-                    afterExit: true,
-                    CancellationToken.None);
+            try
+            {
+                if (result.ProcessExited)
+                    afterSync = await SyncSavesForLaunchAsync(
+                        launchGame,
+                        displayTitle,
+                        afterExit: true,
+                        CancellationToken.None);
+            }
+            catch
+            {
+                // Report the failure without sitting through the rest of the return first, but
+                // observe the animation so its task cannot fault unwatched.
+                ObserveShelfLaunch(shelfRestore);
+                throw;
+            }
+
+            // Still before the closing status, so the shelf is whole again when it is written —
+            // which is what the sequential version was really buying, and is kept.
+            await shelfRestore;
             SetStatus(
                 DescribeLaunchAndSaveSync(result, beforeSync, afterSync),
                 result.Succeeded ? StatusSeverity.Info : StatusSeverity.Error);
