@@ -161,18 +161,20 @@ All eight are licensed
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
 
-- **Nintendo Ds cartridge (preset)** — by
-  [littlengvfx](https://sketchfab.com/littlengvfx), from
-  [Sketchfab](https://sketchfab.com/3d-models/nintendo-ds-cartridge-preset-01e161c3e7c24b40888fdf94ad003501).
-  Bundled as `ds-card.glb`. Authored as a blank cartridge to apply artwork to rather than as a copy
-  of one particular game: the label is its own quad on its own material and texture, so the
-  placeholder image it ships with is cleared by flattening that material's maps — the same route the
-  NES model takes, with no rectangle to read off an atlas by eye. Maps were reduced to 1024px, and
-  canonical orientation, metric scaling and per-game label art are applied at runtime. Original
-  authorship and license metadata remain embedded in the GLB.
+- **Nitendo DS Cartridge Super Mario 64** — by
+  [satchii_](https://sketchfab.com/stachiii_), from
+  [Sketchfab](https://sketchfab.com/3d-models/nitendo-ds-cartridge-super-mario-64-2a768cba31054846817bcf2465611e21).
+  Bundled as `ds-card.glb`. The download is four copies of the card laid out in a row; only the
+  first is left drawable, by clearing the duplicates' mesh references. This shell keeps its label on
+  the same atlas as its body, so unlike the NES model it could not be cleared by flattening a
+  material: EmuShelf masks the label rectangle in the base-colour, metallic/roughness and normal
+  maps, leaving none of the Super Mario 64 DS artwork — which the author's CC BY licence does not
+  cover — in the build. Maps were reduced to 1024px, and canonical orientation, metric scaling and
+  per-game label art are applied at runtime. Original authorship and license metadata remain
+  embedded in the GLB.
 
-  This replaced **Nitendo DS Cartridge Super Mario 64** by
-  [satchii_](https://sketchfab.com/stachiii_), also CC BY 4.0, which is no longer bundled.
+  This replaced **Nintendo Ds cartridge (preset)** by
+  [littlengvfx](https://sketchfab.com/littlengvfx), also CC BY 4.0, which is no longer bundled.
 
 - **Sonic 2 Mega Drive Cartridge** — by [Naser](https://sketchfab.com/naser.ali), from
   [Sketchfab](https://sketchfab.com/3d-models/sonic-2-mega-drive-cartridge-4c453f8527384c718f652a9f04067119).

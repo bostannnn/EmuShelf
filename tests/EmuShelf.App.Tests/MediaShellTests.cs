@@ -759,76 +759,129 @@ public class MediaShellTests
     /// The DS card loads upright, roughly square, and thin.
     /// </summary>
     /// <remarks>
-    /// The blank template that replaced satchii_'s model is authored lying flat with its label
-    /// toward +Y, so it needs a quarter turn about X rather than the half turn about Y the previous
-    /// asset took. A shell that loads on its side still fills a plausible-looking bounding box, so
-    /// this pins the axes rather than trusting the render.
+    /// satchii_'s card carries its orientation in its node matrices — the raw accessor bounds say it
+    /// is lying flat, and reading those rather than the loaded model cost a wrong rotation once — so
+    /// it needs only a half turn about Y to bring the label round from -Z. A shell that loads on its
+    /// side still fills a plausible-looking bounding box, so this pins the axes rather than trusting
+    /// the render.
     /// </remarks>
     [Fact]
     public void Load_StandsTheDsCardUpright()
     {
         var model = MediaShellCatalog.Load(MediaShell.DsCard);
 
-        // Near square: this asset is 0.996 W/H where a real 33.4 x 35mm card is 0.954.
-        Assert.InRange(model.Size.X / model.Size.Y, 0.97f, 1.02f);
+        // Near square: this asset is 0.960 W/H where a real 33.4 x 35mm card is 0.954.
+        Assert.InRange(model.Size.X / model.Size.Y, 0.94f, 0.98f);
         Assert.True(
             model.Size.Z < 0.12f * model.Size.Y,
             $"A DS card is thin; got depth {model.Size.Z} against height {model.Size.Y}.");
     }
 
     /// <summary>
-    /// The shipped DS asset must carry no trace of the artwork its source was authored with.
+    /// The shipped DS asset must carry no trace of the Super Mario 64 DS label it was scanned from.
     /// </summary>
     /// <remarks>
-    /// This template keeps its label on a dedicated plate, material and texture, so it takes the
-    /// same clean route NES does: flatten the material's maps and there is no rectangle to get
-    /// wrong. That is a real improvement on the model it replaced, whose label shared an atlas with
-    /// the body and had to be masked by a hand-read rectangle — the fallback that shipped a
-    /// paper-grey halo and then a near-black finish to hide it.
+    /// This model keeps its label on the same atlas and material as its body, so the clean route the
+    /// NES shell takes — flattening a dedicated material — is not available and the label goes by a
+    /// hand-read rectangle. That is the fallback, and the mode it fails in is a sliver left along one
+    /// edge, so this walks the rectangle's edges rather than sampling its middle.
     /// </remarks>
     [Fact]
-    public void DsLabelPlate_CarriesNoSourceArtwork()
+    public void DsLabelArea_CarriesNoSourceArtwork()
     {
         var model = MediaShellCatalog.Load(MediaShell.DsCard);
-        var plate = model.Materials.Single(
-            material => string.Equals(
-                material.Name, "presetNdsiCartridgeFront4", StringComparison.OrdinalIgnoreCase));
-        var texture = model.Textures[plate.BaseColorTexture];
+        var material = model.Materials.First(candidate => candidate.BaseColorTexture >= 0);
+        var texture = model.Textures[material.BaseColorTexture];
 
-        var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
-        for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
+        (byte R, byte G, byte B) Sample(float u, float v)
         {
-            if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        const float u0 = 0.0605f, u1 = 0.4795f, v0 = 0.0298f, v1 = 0.4795f;
+        var reference = Sample((u0 + u1) * 0.5f, (v0 + v1) * 0.5f);
+        for (var u = u0; u <= u1; u += 0.01f)
+        {
+            foreach (var v in new[] { v0, (v0 + v1) * 0.5f, v1 })
             {
-                Assert.Fail(
-                    $"The DS label plate still varies at byte {offset}; its artwork was not flattened.");
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The DS label area still varies at ({u:F3},{v:F3}); artwork was not removed.");
+            }
+        }
+
+        for (var v = v0; v <= v1; v += 0.01f)
+        {
+            foreach (var u in new[] { u0, u1 })
+            {
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"The DS label edge still varies at ({u:F3},{v:F3}); the mask is too small.");
             }
         }
     }
 
     /// <summary>
-    /// The DS artwork panel has to stay inside the shell's moulded recess.
+    /// The DS artwork panel has to land on the label's own footprint and stay off the bare plastic.
     /// </summary>
     /// <remarks>
-    /// The panel was first set from the label quad's world-space bounding box, which is larger than
-    /// the face that quad presents — that put it 0.08 past the recess on the right and 0.12 below
-    /// it, and the projection painted artwork onto the moulding. The recess was then measured off a
-    /// render. This pins the panel inside the branding band above it and the card's edges around it,
-    /// so a future re-fit cannot silently spill again.
+    /// Unlike the template shell this replaced, the label here is a printed sticker rather than a
+    /// moulded recess, so it carries the NINTENDO DS band itself and the panel runs to the sticker's
+    /// own top edge. The footprint was measured twice and to the same place: off the atlas through
+    /// the face quad's UV mapping, and off a straight-on render of the asset with its label still on.
+    /// This pins the panel to that footprint, so a future re-fit cannot silently spill onto the
+    /// plastic frame or shrink away from it.
     /// </remarks>
     [Fact]
-    public void DsCoverPanel_StaysInsideTheRecess()
+    public void DsCoverPanel_CoversTheLabelFootprint()
     {
         var panel = MediaShellCatalog.Definition(MediaShell.DsCard).CoverPanel;
 
-        // The moulded NINTENDO DS band starts around 0.59 of the half-height.
-        Assert.InRange(panel.MaxV, 0.55f, 0.61f);
-        Assert.InRange(panel.MinV, -0.75f, -0.68f);
-        Assert.InRange(panel.MaxU, 0.78f, 0.82f);
-        Assert.InRange(panel.MinU, -0.82f, -0.78f);
+        Assert.InRange(panel.MaxV, 0.88f, 0.93f);
+        Assert.InRange(panel.MinV, -0.83f, -0.78f);
+        Assert.InRange(panel.MaxU, 0.81f, 0.86f);
+        Assert.InRange(panel.MinU, -0.86f, -0.81f);
         // A DS label is chamfered at the bottom left; squaring it stops the card reading as a DS
         // card, and oversizing it bites a wedge out of the artwork.
-        Assert.InRange(panel.CutCorner, 0.06f, 0.13f);
+        Assert.InRange(panel.CutCorner, 0.06f, 0.10f);
+    }
+
+    /// <summary>
+    /// The masked rectangle has to contain the artwork panel on every side.
+    /// </summary>
+    /// <remarks>
+    /// The two are derived from different things — the mask from the atlas, the panel from the
+    /// geometry — so they never agree exactly, and whichever way they disagree is what shows. If the
+    /// panel spills past the mask the source label reappears around EmuShelf's own artwork, which is
+    /// the failure this shell shipped once as a paper-grey halo. Pinning the margin as well as the
+    /// order keeps the fill's near-invisibility a property rather than a coincidence: it is the
+    /// card's own plastic colour, so a millimetre of it around the label reads as plastic.
+    /// </remarks>
+    [Fact]
+    public void DsMaskedRectangle_ContainsTheArtworkPanel()
+    {
+        var panel = MediaShellCatalog.Definition(MediaShell.DsCard).CoverPanel;
+
+        // The prep command's --neutral-rect in panel coordinates. Not computed from the UV mapping:
+        // that route put the bottom edge 0.02 out, because it cannot see the few texels of bleed the
+        // prep grows the fill by. These come off a render of the asset prepared with a magenta fill,
+        // which measures where the mask actually lands on the shipped shell. Recorded in DECISIONS
+        // 2026-08-15 alongside the command itself.
+        const float maskMinU = -0.919f, maskMaxU = 0.870f, maskMinV = -0.853f, maskMaxV = 0.953f;
+
+        Assert.True(panel.MinU > maskMinU, "The DS panel reaches left of the masked rectangle.");
+        Assert.True(panel.MaxU < maskMaxU, "The DS panel reaches right of the masked rectangle.");
+        Assert.True(panel.MinV > maskMinV, "The DS panel reaches below the masked rectangle.");
+        Assert.True(panel.MaxV < maskMaxV, "The DS panel reaches above the masked rectangle.");
+
+        // A wide margin is its own failure: the fill only reads as plastic while it is a hairline.
+        Assert.InRange(panel.MinU - maskMinU, 0.01f, 0.12f);
+        Assert.InRange(maskMaxU - panel.MaxU, 0.01f, 0.12f);
+        Assert.InRange(panel.MinV - maskMinV, 0.01f, 0.12f);
+        Assert.InRange(maskMaxV - panel.MaxV, 0.01f, 0.12f);
     }
 
     /// <summary>

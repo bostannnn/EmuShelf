@@ -85,13 +85,14 @@ public static class MediaShellMap
             "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
         // A DS card is 33.4 x 35 x 3.8mm, and genuinely tiny beside a keep case — at true scale it
         // is under a fifth of one's height. That is the metric contract working, not a bug.
-        // Anchored on the real 35mm height and otherwise taking the blank-template asset's own
-        // ratios, which is the rule every shell follows: a profile that disagrees with its asset
-        // does not read as a size error, it silently distorts the shell. Two known deviations, both
-        // the asset's and neither worth expressing as a stretch — it is 0.996 W/H against a real
-        // card's 0.954, so about 4% squarer, and 2.6mm thick against a real 3.8mm.
+        // Anchored on the real 35mm height and otherwise taking satchii_'s asset's own ratios, which
+        // is the rule every shell follows: a profile that disagrees with its asset does not read as
+        // a size error, it silently distorts the shell. Its face is almost exactly right — 0.960 W/H
+        // against a real card's 0.954 — and its thickness is not: 1.75mm against a real 3.8mm, which
+        // is the price of the flat, unwarped front this asset was chosen for. Correcting that belongs
+        // in the asset, not here.
         ["nds"] = new(
-            MediaShell.DsCard, new(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport,
+            MediaShell.DsCard, new(33.6f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport,
             "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
         // Anchored on a real CD jewel case's 142mm width, with height and depth from the asset's
         // own ratios. It lands at 125.2 x 9.0mm against a nominal 125 x 10mm, which is as close as

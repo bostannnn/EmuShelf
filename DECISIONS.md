@@ -7197,6 +7197,87 @@ The 3D scene's **per-item** accent is deliberately left alone. That uniform tint
 ambient fill and its unprinted faces (see the 2026-08-13 entry) — it is the physical medium's colour
 identity, not interface chrome, and neutralizing it would light a GBC cartridge and a PS2 case
 identically. The setting governs what the interface does, not what the objects on the shelf are.
+
+## 2026-08-15 — The DS card goes back to satchii_'s scan, because the template's front is not flat
+
+The blank template adopted the day before was the better *kind* of asset and the worse object. Its
+label sits on a dedicated plate, on its own material, on its own texture — the clean route, no
+rectangle read off an atlas by eye — and that is why it was picked. But the plate is modelled as a
+separate panel floating inside the frame rather than as a face of it, and the frame itself waves:
+straight on it passes, and at any pose that shows an edge the card reads as bent. Reported that way,
+and it is the right reading. A shell is looked at from every angle the hero turns through, so
+"correct from the front" is not a property worth much.
+
+satchii_'s model is a scan of a real card and has the opposite trade. The face is one plane, the
+back moulds the Nintendo logo, the "PAT. PEND." line and the contact pins, and no pose shows a warp.
+What it costs is the clean prep route: the label shares an atlas and a material with the body, so it
+goes by a masked rectangle — the fallback that fails silently, and the one this shell has already
+shipped a paper-grey halo through once.
+
+**The halo is a fill problem, not a technique problem.** The mask's colour is now the card's own
+plastic, measured off the atlas at sRGB (38, 36, 42) rather than left at `ModelPrep`'s paper grey.
+The rectangle is deliberately larger than the artwork panel on every side — 0.5 to 1.4mm of margin —
+because the two are derived from different things and the question is only which way they disagree.
+A hairline of the card's own plastic colour, on plastic, is not visible; a hairline of the source
+label is a licence problem. `DsMaskedRectangle_ContainsTheArtworkPanel` pins both the order and the
+size of that margin.
+
+**The earlier entry's claim that no triangle samples the Super Mario 64 label is wrong.** It is the
+front face's own texture, and rendering the asset with the mask lifted shows the label in full. The
+misread came from `--dump-atlas` classifying faces in the model's own space, where the label face is
+-Z — the card is brought round by a half turn about Y, which the catalog entry has always applied.
+Nothing shipped wrong because of it, since the label was masked regardless, but the reasoning
+recorded for *why* it was safe was not sound.
+
+**The panel is the label's own footprint, and this label is a sticker rather than a recess.** It
+carries the NINTENDO DS band itself, so unlike the template there is nothing to leave bare above it
+and the panel runs to the sticker's top edge. Measured twice, by routes that share no step: through
+the face quad's UV mapping onto the atlas island, and off a straight-on render of the asset with its
+label intact. They agree to 0.01 on three edges and 0.03 on the fourth, which is the bottom strip
+the render's brightness threshold clips. That comes out 29.0 x 29.9mm on a 33.5 x 35mm card against
+a real label's ~29 x 30mm. The chamfer measures 23 of 287 pixels on the render — 0.080 of the label
+height, the same figure two photographs gave, and now confirmable against the model rather than
+only against paper.
+
+**The thickness gets worse and the face gets better.** This asset is 0.960 W/H against a real card's
+0.954, where the template was 0.996 — the face is now almost exactly right. It is 1.75mm thick
+against a real 3.8mm, where the template was 2.64mm. The profile takes the asset's ratios either
+way, because a profile that disagrees with its asset distorts the shell instead of resizing it, so
+the card is now noticeably thin edge-on. That is the trade taken knowingly: a card that is too thin
+looks like a thin card, and a card whose face waves looks broken.
+
+`BodyAlbedoScale` returns to 3.2 — this plastic is authored at sRGB 38 against the template's 57 —
+and lands the shell frame's median at sRGB 91 to a photograph's 90.
+
+The prep command, which supersedes both recorded above:
+
+```
+dotnet run --project tools/EmuShelf.Rendering.Preview -c Release -- \
+  --prepare-model models/ds/nitendo_ds_cartridge_super_mario_64.glb \
+  --prepare-out src/EmuShelf.Rendering/Assets/ds-card.glb \
+  --neutral-rect 0.0605,0.0298,0.4795,0.4795 --neutral-fill 26242A \
+  --single-instance --max-texture 1024
+```
+
+In panel coordinates that rectangle is -0.919 to 0.870 across and -0.853 to 0.953 up, which is what
+the containment test compares the panel against. Recording it in both spaces is the point: the
+rectangle is written in UV and every mistake it causes is visible in the other one.
+
+Those figures come off a render of the asset prepared with a magenta fill rather than out of the UV
+mapping, and the difference is the reason to prefer it. Computed, the bottom edge came out 0.02 low,
+because `FlattenRect` grows the fill a few texels past the requested rectangle — deliberately, so a
+mip does not smear the source label back in — and no amount of arithmetic on the UVs can see that.
+The general rule this shell keeps relearning: measure the prepared asset, not the instruction that
+produced it.
+
+**Too glossy, and it was the label more than the plastic.** `PanelRoughness` at the 0.44 the other
+cartridges use put a broad specular wash across the whole sticker, which flattened its diffuse
+falloff — the panel's light-to-dark spread measured 14 sRGB, and raising the figure to 0.58 took it
+to 24. That reads the right way round: a matte print picks up more shading from the key, not less,
+because it is no longer washed out by its own highlight. `BodyRoughnessScale` 1.20 and
+`DielectricReflectance` 0.033 do the same for the plastic, and are the same pair the SNES shell
+carries at 1.16 and 0.033 for the same cause — a scan tuned in its author's viewer rather than under
+a close product-lighting camera.
 ## 2026-08-15 — One jewel case for PS1 and Dreamcast, and a correction about the file it came from
 
 **First, a correction.** The 2026-08-14 entry above records `postal_x_psx_cd-r_disk.glb` as "a disc,

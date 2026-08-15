@@ -79,7 +79,7 @@ public static class PreviewShelf
             MediaShell.CoverCard, new Vector3(214.51f, 190f, 5f),
             PhysicalArtworkSlots.Front, "cover-card", "card-downward")),
         new("nds", new PhysicalMediaProfile(
-            MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f),
+            MediaShell.DsCard, new Vector3(33.6f, 35f, 1.75f),
             PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical",
             FloorClearanceInShelfUnits: 0.008f)),
         new("gba", new PhysicalMediaProfile(
