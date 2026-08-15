@@ -344,6 +344,11 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
+
+        // Leaving the shelf layout: no launch pose should be left mid-flight for the next visit.
+        if (value != GamepadLibraryLayout.Shelf)
+            AbandonOrphanedShelfLaunchTransition();
+
         OnPropertyChanged(nameof(IsGridViewModeSelected));
         OnPropertyChanged(nameof(IsListViewModeSelected));
         OnPropertyChanged(nameof(IsShelfViewModeSelected));
@@ -859,6 +864,15 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         _ = _themeService.SetCrtScreenEffectAsync(value);
+    }
+
+    /// <summary>Follows the CRT flag when the service is changed by any path, not just this one.</summary>
+    private void OnThemeServiceCrtScreenEffectChanged(object? sender, EventArgs e)
+    {
+        if (CrtScreenEffect != _themeService.CrtScreenEffect)
+        {
+            CrtScreenEffect = _themeService.CrtScreenEffect;
+        }
     }
 
     /// <summary>Every built-in appearance, offered in Desktop Settings. The controller
@@ -1396,6 +1410,13 @@ public partial class MainViewModel : ViewModelBase
         // Assigned after the timer exists: a persisted "on" fires OnAmbientThemeFromArtworkChanged.
         AmbientThemeFromArtwork = _themeService.AmbientFromArtwork;
         CrtScreenEffect = _themeService.CrtScreenEffect;
+        // The theme service is the single source of truth for the CRT flag. Both settings surfaces
+        // reach it through this view model, but nothing had it read the service back — so a change made
+        // any other way (a settings-file restore, a future caller) left the bound toggle and the actual
+        // presentation out of step, which is exactly how "the switch does nothing" happens. Mirror the
+        // service here; the setter re-persists through it, and the service no-ops on an unchanged value,
+        // so this cannot loop. The service outlives this view model, so no unsubscribe is needed.
+        _themeService.CrtScreenEffectChanged += OnThemeServiceCrtScreenEffectChanged;
 
         Systems = new ObservableCollection<GameSystem>(systems);
         _systemsById = systems.ToDictionary(system => system.Id, StringComparer.Ordinal);
@@ -2344,6 +2365,33 @@ public partial class MainViewModel : ViewModelBase
         }
 
         return changed;
+    }
+
+    /// <summary>
+    /// Drops an in-flight launch pose that no launch is managing, when the shelf leaves the screen.
+    /// </summary>
+    /// <remarks>
+    /// The choreography clears itself through commit → return inside the launch flow, and that is safe
+    /// today only because input is frozen for the whole launch, so layout, mode and platform cannot
+    /// change under it. This is the belt for that brace: if the shelf stops being shown while the
+    /// transition is somehow still mid-flight, reset it so a stale pose cannot strand a cartridge on a
+    /// later shelf. Guarded on <see cref="IsBusy"/> so it never cuts a launch that is genuinely running
+    /// its course — a committed medium sitting out an emulator session holds <see cref="IsBusy"/>, and
+    /// its own finally owns the return.
+    /// </remarks>
+    private void AbandonOrphanedShelfLaunchTransition()
+    {
+        if (IsBusy || _shelfLaunchTransition.IsIdle)
+        {
+            return;
+        }
+
+        _shelfLaunchTransition.Reset();
+        _shelfLaunchTimer.Stop();
+        _shelfLaunchTimestamp = 0;
+        _shelfLaunchCompletion?.TrySetResult();
+        _shelfLaunchCompletion = null;
+        OnPropertyChanged(nameof(ShelfLaunchPose));
     }
 
     private void MoveShelfToFocusedGame(GameViewModel? oldValue, GameViewModel? newValue)
@@ -3482,6 +3530,10 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsShelfTubeActive));
         OnPropertyChanged(nameof(ShelfSceneItems));
         NotifySaveSyncPresentationChanged();
+
+        // Leaving couch mode entirely: drop any launch pose so it cannot resurface next session.
+        if (!value)
+            AbandonOrphanedShelfLaunchTransition();
 
         if (value)
         {
@@ -5225,6 +5277,12 @@ public partial class MainViewModel : ViewModelBase
             _shelfHeroRotation.Yaw,
             _shelfHeroRotation.Pitch);
         OnPropertyChanged(nameof(ShelfLaunchPose));
+        // A previous launch's return can still be easing back on the timer: an exception tail (a
+        // failed post-exit save sync) releases IsBusy and resumes input without awaiting the return,
+        // so a quick relaunch lands here while that animation is live. Release its abandoned waiter
+        // before taking the field, or the earlier RestorePhysicalShelfAfterLaunchAsync Task — awaiting
+        // the source we are about to overwrite — never completes and leaks pending forever.
+        _shelfLaunchCompletion?.TrySetResult();
         _shelfLaunchCompletion = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         _shelfLaunchTimestamp = Stopwatch.GetTimestamp();

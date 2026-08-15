@@ -614,6 +614,55 @@ public sealed class MediaShellRenderer : IDisposable
     }
 
     /// <summary>
+    /// Re-runs only the CRT tube over the scene already in the supersampled buffer, skipping the 3D
+    /// scene render entirely.
+    /// </summary>
+    /// <remarks>
+    /// The animated tube (roll, hum, the occasional fault) has to redraw every frame it is on screen.
+    /// When the shelf itself is settled — no launch, no glide, no focus or artwork change — the scene
+    /// in <c>_sceneColour</c> is identical frame to frame, and re-rendering every cartridge, shadow
+    /// and reflection to advance nothing but the shader's clock is pure waste on a handheld. The host
+    /// calls this instead when it is redrawing purely for the tube's own motion, so an idle couch
+    /// screen costs one fullscreen post pass rather than a full scene. Only valid while the effect is
+    /// active and only after a full <see cref="RenderShelf"/> at the same size has filled the buffer.
+    /// </remarks>
+    public void RepresentShelf(uint targetFramebuffer, uint width, uint height)
+    {
+        if (width == 0 || height == 0 || !Crt.IsActive || _sceneColour == 0)
+        {
+            return;
+        }
+
+        Present(targetFramebuffer, width, height);
+    }
+
+    /// <summary>
+    /// The pixel size of the framebuffer currently bound, read straight from the GL viewport.
+    /// </summary>
+    /// <remarks>
+    /// The alternative — the host computing <c>Bounds * RenderScaling</c> — disagrees with this on a
+    /// HiDPI surface where RenderScaling under-reports, and only the viewport matches the framebuffer
+    /// Avalonia actually sized. Call it at the very top of a frame, before anything here moves the
+    /// viewport. Returns false if the driver has not reported a viewport yet, so the host can fall
+    /// back to the computed size for that one frame.
+    /// </remarks>
+    public bool TryGetSurfaceSize(out uint width, out uint height)
+    {
+        Span<int> viewport = stackalloc int[4];
+        _gl.GetInteger(GetPName.Viewport, viewport);
+        if (viewport[2] > 0 && viewport[3] > 0)
+        {
+            width = (uint)viewport[2];
+            height = (uint)viewport[3];
+            return true;
+        }
+
+        width = 0;
+        height = 0;
+        return false;
+    }
+
+    /// <summary>
     /// Resolves the supersampled scene onto whatever surface the host handed us, either as a plain
     /// filtered blit or through the CRT tube.
     /// </summary>
@@ -630,6 +679,8 @@ public sealed class MediaShellRenderer : IDisposable
                 BlitFramebufferFilter.Linear);
             _gl.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
             _gl.Viewport(0, 0, width, height);
+            // The scene pass left depth-test on; hand the shared context back at GL defaults.
+            RestoreDefaultPipelineState();
             return;
         }
 
@@ -704,6 +755,26 @@ public sealed class MediaShellRenderer : IDisposable
         _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
 
         _gl.BindVertexArray(0);
+        RestoreDefaultPipelineState();
+    }
+
+    /// <summary>
+    /// Returns the depth, blend and cull state to the GL defaults before the frame is handed back.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="OpenGlControlBase"/> does not snapshot GL state around <c>OnOpenGlRender</c>, and on
+    /// the forced-OpenGL path (see Program.cs) Avalonia's Skia compositor draws the surrounding 2D UI
+    /// on the very same context this renderer just used. Anything left enabled here bleeds into that
+    /// UI — the depth test the scene pass turns on, or a non-default blend function — so every exit
+    /// normalises the pipeline rather than trusting Skia to reset what it happens to need.
+    /// </remarks>
+    private void RestoreDefaultPipelineState()
+    {
+        _gl.Disable(EnableCap.DepthTest);
+        _gl.Disable(EnableCap.Blend);
+        _gl.Disable(EnableCap.CullFace);
+        _gl.BlendFunc(BlendingFactor.One, BlendingFactor.Zero);
+        _gl.DepthMask(true);
     }
 
     private void DrawShelfItem(
@@ -1218,6 +1289,11 @@ public sealed class MediaShellRenderer : IDisposable
         _receivingPlane.Draw();
         _gl.DepthMask(true);
         _gl.Disable(EnableCap.Blend);
+        // Put the blend function back to the GL default. This is the only place the whole renderer
+        // ever changes it, and leaving it at (One, OneMinusSrcAlpha) leaked out to the shared context
+        // Avalonia's Skia compositor draws the surrounding 2D UI on — corrupting the cover grid on
+        // exactly the frames a shadow was drawn. Present() normalises the rest of the pipeline.
+        _gl.BlendFunc(BlendingFactor.One, BlendingFactor.Zero);
     }
 
     /// <summary>

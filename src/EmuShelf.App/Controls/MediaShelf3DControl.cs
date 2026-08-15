@@ -117,6 +117,16 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private Color _uploadedAccent;
 
     /// <summary>
+    /// The snapshot the supersampled scene buffer was last fully drawn from, and the surface size it
+    /// was drawn at. When the next frame is the very same snapshot at the same size — a redraw driven
+    /// purely by the tube's own animation — the 3D scene is identical and only the post pass needs to
+    /// run again. Render-thread only; reset to null whenever the GL context or renderer changes.
+    /// </summary>
+    private FrameSnapshot? _lastRenderedSnapshot;
+    private uint _lastRenderedWidth;
+    private uint _lastRenderedHeight;
+
+    /// <summary>
     /// The frozen description of the next frame, built on the UI thread and read by the render
     /// thread.
     /// </summary>
@@ -444,6 +454,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _renderer = MediaShellRenderer.Create(
                 _gl, dialect, version.Major, version.Minor, ToLinear(accent));
             _uploadedAccent = accent;
+            // A fresh renderer has an empty scene buffer, so the first frame must render in full.
+            _lastRenderedSnapshot = null;
             InitializationSucceeded?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception exception)
@@ -469,10 +481,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         // The tube's configuration, its backdrop and the display scaling all ride in on the snapshot
         // too, resolved on the UI thread — the backdrop's theme-brush lookup and the scaling's
-        // top-level walk both traverse the visual tree, which the render thread must not do. Only
-        // Bounds is still read live, because it has to match the framebuffer Avalonia sized for this
-        // exact frame. The live-property fallback is reached only before the first publish, which the
-        // attach handler makes vanishingly narrow.
+        // top-level walk both traverse the visual tree, which the render thread must not do. Only the
+        // framebuffer size is still read live, straight from the GL viewport below, because it has to
+        // match the framebuffer Avalonia sized for this exact frame; the snapshot's RenderScaling is
+        // just the fallback for the first frame before a viewport exists.
         var crt = frame?.Crt ?? Crt;
 
         // An empty item list is normal, not a reason to skip the frame: the tube runs over every
@@ -483,19 +495,31 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return;
         }
 
-        var scaling = frame?.RenderScaling ?? 1.0;
-        var width = (uint)Math.Max(1, Math.Round(Bounds.Width * scaling));
-        var height = (uint)Math.Max(1, Math.Round(Bounds.Height * scaling));
+        // Avalonia sizes its own framebuffer and leaves the viewport set to match before handing the
+        // frame over, so the viewport it left is the true pixel size of the surface — which is not
+        // always Bounds * RenderScaling. On a HiDPI panel where RenderScaling under-reports, computing
+        // the size from it renders the tube into a fraction of the screen (see the couch shelf notes),
+        // so query the surface and only fall back to the computed size before the first viewport is
+        // reported. This read is safe on the render thread: nothing has touched the viewport yet.
+        if (!_renderer.TryGetSurfaceSize(out var width, out var height))
+        {
+            var scaling = frame?.RenderScaling ?? 1.0;
+            width = (uint)Math.Max(1, Math.Round(Bounds.Width * scaling));
+            height = (uint)Math.Max(1, Math.Round(Bounds.Height * scaling));
+        }
+
+        // The 3D scene in the supersampled buffer only changes when a new snapshot is published; a
+        // redraw driven purely by the animated tube reuses the very same snapshot at the same size. In
+        // that case the whole scene render — every cartridge, shadow and reflection — would draw an
+        // identical picture, so skip it and re-run only the post pass over the buffer already there.
+        var sceneUnchanged = crt.IsActive
+            && frame is not null
+            && ReferenceEquals(frame, _lastRenderedSnapshot)
+            && width == _lastRenderedWidth
+            && height == _lastRenderedHeight;
 
         try
         {
-            var accent = frame?.FocusedAccent ?? Colors.Gray;
-            if (accent != _uploadedAccent)
-            {
-                _renderer.SetAccent(ToLinear(accent));
-                _uploadedAccent = accent;
-            }
-
             _renderer.Crt = crt.IsActive && frame is not null
                 ? crt with { Backdrop = frame.Backdrop }
                 : crt;
@@ -513,19 +537,39 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 _renderer.ClearCrtChrome();
             }
 
-            if (frame is not null)
+            if (sceneUnchanged)
             {
-                SynchronizeArtworkTextures(frame);
+                // Same scene, moving tube: re-run the CRT pass over the cached scene and the freshly
+                // uploaded chrome, at the new time, without re-rendering anything in 3D.
+                _renderer.RepresentShelf((uint)fb, width, height);
             }
+            else
+            {
+                var accent = frame?.FocusedAccent ?? Colors.Gray;
+                if (accent != _uploadedAccent)
+                {
+                    _renderer.SetAccent(ToLinear(accent));
+                    _uploadedAccent = accent;
+                }
 
-            // main's camera now frames both axes, so the row's width travels with its height.
-            _renderer.RenderShelf(
-                frame?.Items ?? [],
-                frame?.SceneMediaHeight ?? 1f,
-                frame?.SceneMediaWidth ?? 1f,
-                (uint)fb,
-                width,
-                height);
+                if (frame is not null)
+                {
+                    SynchronizeArtworkTextures(frame);
+                }
+
+                // main's camera now frames both axes, so the row's width travels with its height.
+                _renderer.RenderShelf(
+                    frame?.Items ?? [],
+                    frame?.SceneMediaHeight ?? 1f,
+                    frame?.SceneMediaWidth ?? 1f,
+                    (uint)fb,
+                    width,
+                    height);
+
+                _lastRenderedSnapshot = frame;
+                _lastRenderedWidth = width;
+                _lastRenderedHeight = height;
+            }
 
             // A clean frame clears the transient-failure count that keeps a one-off from ever
             // reaching the give-up threshold.
@@ -544,6 +588,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         }
         catch (Exception exception)
         {
+            // A half-written scene buffer must not be re-presented as if it were whole, so the next
+            // frame is forced back onto the full render path rather than the animation shortcut.
+            _lastRenderedSnapshot = null;
+
             // A render exception is no longer treated as an unsupported GPU on sight. The snapshot
             // above already removed the cross-thread races that used to throw here, so a stray
             // exception is far more likely to be transient — a bitmap disposed a frame before its
@@ -567,6 +615,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         _renderer?.Dispose();
         _renderer = null;
         _gl = null;
+        _lastRenderedSnapshot = null;
         ClearUploadedCoverState();
         ContextLost?.Invoke(this, EventArgs.Empty);
     }
@@ -575,6 +624,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     {
         _renderer = null;
         _gl = null;
+        _lastRenderedSnapshot = null;
         ClearUploadedCoverState();
         ContextLost?.Invoke(this, EventArgs.Empty);
     }
@@ -814,8 +864,24 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     continue;
                 }
 
-                _renderer.SetPanelArt(
-                    item.Key, (int)face, artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null);
+                TextureImage? texture;
+                try
+                {
+                    texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
+                }
+                catch (Exception)
+                {
+                    // The snapshot holds a live reference to this bitmap, but the UI thread can still
+                    // dispose it — an eviction, a path change, a detach — between the frame being
+                    // published and this upload reading its pixels. That throws here. Keep whatever is
+                    // already on the GPU for this face and do not record the upload, so a later clean
+                    // frame retries. This is deliberately a per-face skip rather than failing the whole
+                    // draw: one racing bitmap must not drop the entire shelf toward the flat-cover
+                    // fallback via the consecutive-failure counter.
+                    continue;
+                }
+
+                _renderer.SetPanelArt(item.Key, (int)face, texture);
                 uploaded.Faces[(int)face] = artwork;
             }
         }
