@@ -222,6 +222,17 @@ public sealed class MediaShellRenderer : IDisposable
     public float CrtElapsedSeconds { get; set; }
 
     /// <summary>
+    /// Holds one fault on permanently, in place of the schedule.
+    /// </summary>
+    /// <remarks>
+    /// For looking at a fault rather than waiting for one. A fault lasts under a second and arrives
+    /// every few tens of seconds, so reviewing eight of them by watching the clock is not a
+    /// workflow — and getting the timestamps slightly wrong is how four of them were first signed
+    /// off on frames where nothing was happening.
+    /// </remarks>
+    public CrtFaultState? ForcedFault { get; set; }
+
+    /// <summary>
     /// A snapshot of the host's own UI, composited into the tube's image before it is warped.
     /// </summary>
     /// <remarks>
@@ -680,6 +691,15 @@ public sealed class MediaShellRenderer : IDisposable
         _crtProgram.Set("uChromaBleed", Crt.ChromaBleed);
         _crtProgram.Set("uJitter", Crt.Jitter);
         _crtProgram.Set("uFlicker", Crt.Flicker);
+        // Which fault, and how hard, is decided here rather than in the shader — see
+        // CrtFaultSchedule for why. ForcedFault overrides it so a fault can be looked at on demand
+        // instead of waited for.
+        var faultState = ForcedFault is { } forced
+            ? forced
+            : CrtFaultSchedule.Sample(CrtElapsedSeconds, Crt.GlitchPeriod, Crt.Glitch);
+        _crtProgram.Set("uFaultKind", (float)(int)faultState.Fault);
+        _crtProgram.Set("uFaultAmount", faultState.Amount);
+        _crtProgram.Set("uFaultSeed", faultState.Seed);
 
         _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
 

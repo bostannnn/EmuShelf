@@ -390,9 +390,30 @@ if (args.Contains("--crt"))
         ChromaBleed = ArgumentFloat("--crt-chroma", CrtPresentation.Default.ChromaBleed),
         Jitter = ArgumentFloat("--crt-jitter", CrtPresentation.Default.Jitter),
         Flicker = ArgumentFloat("--crt-flicker", CrtPresentation.Default.Flicker),
+        Glitch = ArgumentFloat("--crt-glitch", CrtPresentation.Default.Glitch),
+        GlitchPeriod = ArgumentFloat("--crt-glitch-period", CrtPresentation.Default.GlitchPeriod),
         // Stands in for the couch backdrop the app passes: its library brush under the accent wash.
         Backdrop = new System.Numerics.Vector3(0.086f, 0.090f, 0.106f),
     };
+
+    // Forces one fault on at full strength, in place of waiting for the schedule to produce it.
+    // Reviewing eight sub-second faults by guessing timestamps is not a workflow, and getting those
+    // timestamps slightly wrong is exactly how four of them were first signed off on frames where
+    // nothing was happening.
+    if (ArgumentValue("--crt-fault") is { } faultName)
+    {
+        if (!Enum.TryParse<CrtFault>(faultName, ignoreCase: true, out var forced))
+        {
+            throw new ArgumentException(
+                $"--crt-fault wants one of: {string.Join(", ", Enum.GetNames<CrtFault>())}.");
+        }
+
+        renderer.ForcedFault = new CrtFaultState(
+            forced,
+            ArgumentFloat("--crt-fault-amount", CrtPresentation.Default.Glitch),
+            ArgumentFloat("--crt-fault-seed", 0.5f));
+        Console.WriteLine($"  crt fault forced: {forced} at {renderer.ForcedFault.Value.Amount}");
+    }
 
     // Stated, not read off a clock: a shot of an animated tube is only useful for review if the
     // same command produces the same image.
@@ -410,6 +431,12 @@ Composite(shelfFrame, background);
 var shelfPath = Path.Combine(outputDirectory, "physical-shelf-scene.png");
 PngWriter.Write(shelfPath, shelfWidth, shelfHeight, shelfFrame);
 Console.WriteLine($"  {shelfPath} ({stopwatch.ElapsedMilliseconds} ms)");
+
+// And switched off again the moment that shot is taken. The comment above promised the tube would
+// stay on the shelf frame, but nothing enforced it: the disc strip below renders through the same
+// renderer, so it inherited a scanned, curved, phosphor-tinted copy of a sheet whose entire job is
+// to show the disc's finish and prove the two bodies do not intersect.
+renderer.Crt = CrtPresentation.Off;
 
 // A strip through the disc launch. The poses are stated here rather than driven by the app's
 // PhysicalShelfLaunchTransitionModel, which this tool cannot reference for the same reason it

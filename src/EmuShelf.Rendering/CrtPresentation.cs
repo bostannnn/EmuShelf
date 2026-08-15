@@ -97,6 +97,31 @@ public readonly record struct CrtPresentation
     public float Flicker { get; init; }
 
     /// <summary>
+    /// Strength of the occasional faults: tearing, a vertical kick, a degauss ring, a dropout.
+    /// </summary>
+    /// <remarks>
+    /// Every other knob here is a finish the tube wears all the time. These are the four things a
+    /// set that has been on for twenty years does now and then and then stops doing, and the fact
+    /// that they stop is the whole effect — a fault visible at any moment is a broken television,
+    /// and one that arrives twice a minute and clears is a working one with some miles on it.
+    /// Which fault fires, where inside its window, and how long it lasts are all drawn from the
+    /// window index, so the sequence is deterministic and a screenshot at a stated time reproduces.
+    /// </remarks>
+    public float Glitch { get; init; }
+
+    /// <summary>
+    /// Seconds between fault windows.
+    /// </summary>
+    /// <remarks>
+    /// A fault lasts well under a second, so the period is also the odds of ever seeing one: at
+    /// twenty-seven seconds the duty cycle was about three percent and the effect could be missed
+    /// entirely across several minutes of use, which is exactly what happened the first time this
+    /// was looked at. Fourteen keeps each individual fault rare enough to stay a surprise while
+    /// making the *feature* something you meet rather than hear about.
+    /// </remarks>
+    public float GlitchPeriod { get; init; }
+
+    /// <summary>
     /// Whether anything in this presentation moves.
     /// </summary>
     /// <remarks>
@@ -105,7 +130,12 @@ public readonly record struct CrtPresentation
     /// </remarks>
     public bool IsAnimated =>
         IsActive
-        && (RollSpeed != 0f || HumBar > 0f || ChromaBleed > 0f || Jitter > 0f || Flicker > 0f);
+        && (RollSpeed != 0f
+            || HumBar > 0f
+            || ChromaBleed > 0f
+            || Jitter > 0f
+            || Flicker > 0f
+            || Glitch > 0f);
 
     /// <summary>
     /// The tube's background, in the same sRGB space Avalonia's brushes use.
@@ -128,7 +158,7 @@ public readonly record struct CrtPresentation
     public static CrtPresentation Default { get; } = new()
     {
         Intensity = 1f,
-        Curvature = 0.055f,
+        Curvature = 0.035f,
         Overscan = 1.08f,
         ChromeOverscan = 0f,
         ScanlineDepth = 0.35f,
@@ -143,6 +173,8 @@ public readonly record struct CrtPresentation
         ChromaBleed = 1.4f,
         Jitter = 0.06f,
         Flicker = 0.35f,
+        Glitch = 0.85f,
+        GlitchPeriod = 14f,
         Backdrop = Vector3.Zero,
     };
 

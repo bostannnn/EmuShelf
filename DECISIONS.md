@@ -8302,6 +8302,202 @@ exposing any of them later is a UI job rather than a refactor. The shim is gone 
 scaffolding that ships is scaffolding that rots: its own comment promised deletion once Settings
 existed, and that promise would have quietly become false the moment it merged.
 
+## 2026-08-15 — The tube gains occasional faults, and a rewrite that was reverted
+
+`CrtPresentation` grows two knobs — `Glitch` and `GlitchPeriod` — and the shader an eighty-line
+block. Roughly every twenty-seven seconds a window opens and one of four faults fires and clears:
+the horizontal lock lets go and tears the lines, the vertical lock kicks and re-settles with its
+retrace bar crossing the picture, the mask rings after a knock and the three beams stop landing on
+top of each other, or the signal drops for a moment and the picture goes soft and noisy.
+
+The point is that they stop. A fault visible at any moment is a broken television; one that arrives
+twice a minute and clears is a working one with some miles on it — and it is the difference between
+a finish laid over the picture and a set that is *doing* something. That is also why the faults are
+the only new thing here: everything else the tube does, it was already doing.
+
+Which fault fires, where inside its window, and how long it lasts are all drawn from the window
+index, so the sequence is deterministic and `--crt-time` reproduces a given fault exactly. Without
+that a moving artefact cannot be reviewed at all, because the only way to look at one is in a still.
+
+`hash11` now folds its argument before taking a sine of it, which is a fix the shader needed
+independently of any of this. Both callers key on something that counts up — a line index times a
+tick, and now a window index — and a 32-bit sine of a million-radian angle has almost no mantissa
+left. A few minutes after the tube was switched on the hash stopped varying and the horizontal
+jitter locked solid, on some drivers and not others. The look is unchanged; only the specific
+sub-pixel offsets differ.
+
+### The rewrite that was reverted
+
+Everything above sits on the original shader, because a full rebuild of the tube — brightness-driven
+Gaussian beam, procedural aperture/slot/shadow masks with a real black matrix, YIQ composite
+artefacts, a halation pass — was built, looked at in the app, and rejected. It was more physically
+defensible and it looked worse to live with: at a 240p-class raster the couch UI's text genuinely is
+unreadable, which is correct behaviour and the wrong product. Two rounds of dialling it back did not
+recover the original's legibility, and the reverted look was preferred.
+
+Three measurements from that work are worth keeping, because they are true of the shader that
+shipped and someone will eventually want to change it:
+
+- **The aperture mask carries no luminance.** It is three cosines a third of a cycle apart, and their
+  sum is a constant — at every x the three channels total the same number. Measured on a 1080p frame:
+  12% per-channel swing, 0.7% luma swing. It is a hue rotation, not a mask, and it cannot produce the
+  black matrix between phosphor stripes that a mask is mostly made of. Fixing that needs at least six
+  output pixels per triad, which is why `MaskPitch` is 3 and the effect is subtle.
+- **The scanline profile is the same fraction of the signal at every brightness**, so an unlit
+  backdrop wears an 11% stripe pattern where a real tube would be black. A beam whose spot widens
+  with the current driving it fixes this, and costs the vertical resampling described next.
+- **`scanLoss`/`maskLoss` restore the mean, which lifts the trough as much as the peak.** The gap
+  between traces comes up 15% and the trace itself is pushed past clipping. A real set answers
+  scanline loss with beam current, which raises the peak and leaves the unlit gap alone. Also, the
+  0.38 constant should be 0.4235 — the true mean of `pow(1-d*d, 1.6)` is 0.5765, and the measured
+  residual darkening (0.9822) matches that prediction rather than the constant in the file.
+
+Two traps for anyone who tries again. Resampling the picture onto the line grid **needs a vertical
+prefilter**: point-sampling row centres turns a 1229-pixel window decimated onto 200 lines into
+straightforward aliasing, and UI captions come out as three overlaid copies. And any effect driven by
+the *average picture level* needs a value smoothed across frames — the shelf swaps a dark cover for a
+bright one between two frames, so an unsmoothed one zooms and dims the whole picture on every input,
+which is far louder than the supply sag it models.
+
+Also fixed here, unrelated: the preview tool left `renderer.Crt` set after the shelf shot, so the
+disc-launch strip was being rendered through the tube. Its own comment had promised otherwise since
+the tube was added.
+
+## 2026-08-15 — The fault schedule moves to the CPU, because a shader schedule cannot be checked
+
+Eight faults now, not four — the four originals plus a travelling raster wave, a cross-colour
+rainbow, a head-switch band tear, and a beam-current surge — and the window is fourteen seconds
+rather than twenty-seven. A fault lasts well under a second, so the period is also the odds of ever
+meeting one: at twenty-seven seconds the duty cycle was about three percent, and the first person to
+sit in front of it used the app for several minutes and saw nothing at all.
+
+More importantly, **which fault fires and how hard is now decided in `CrtFaultSchedule`, on the CPU**,
+and the shader is handed the answer in three uniforms.
+
+The first version hashed the schedule out of `uTime` inside the fragment shader. That is not
+inspectable, not testable, and — the part that actually bit — not reproducible off-GPU. Working out
+when to screenshot each fault meant reimplementing `fract(sin(x * k))` in float32 on the host, and
+GLSL's sine agrees with a host language's to only a few digits while the hash multiplies the
+disagreement by forty thousand. The predicted onsets were near misses. Four of the eight faults were
+reviewed, and their amplitudes "tuned", on frames where they were not happening: raising four
+amplitudes and the master strength produced byte-identical renders, which is what finally gave it
+away.
+
+Three things follow from having it on the CPU, and all three are the point:
+
+- **It is unit tested.** `CrtFaultScheduleTests` asserts every kind fires, that exactly one fires per
+  window and clears before the next, that the amount stays inside the strength, that the seed holds
+  still across one fault, and that the same second always gives the same fault.
+- **The hash is integer arithmetic**, which is exact on every platform. It also distributes far
+  better over eight buckets than a sine did: the shader version fired one fault twenty-nine times per
+  cycle and another eight, with runs of five identical faults back to back. The test now fails if
+  the spread exceeds 60% of an even share or any kind repeats more than three windows running.
+- **A fault can be forced.** `--crt-fault Rainbow` renders one on demand, so reviewing eight
+  sub-second events is a command rather than a stakeout. `MediaShellRenderer.ForcedFault` is the
+  hook; it is null in the app.
+
+Curvature drops from 0.055 to 0.035 at the same time. On a wall-sized television the old value read
+as extreme, and the honest reason it was ever that high is that it was tuned in a small window on a
+desk.
+
+## 2026-08-15 — The selected view-mode card was eating its own label
+
+The couch start menu's view-mode cards put a check badge in a third grid column that only existed
+when the card was selected. So the selected card — and only the selected card — gave up
+twenty-two pixels plus a gap that its two neighbours kept, and at the width three cards share in that
+panel there was not enough left: "Grid" rendered as "Gri" with the badge sitting on the missing
+letter, and "Shelf" as "Shel✓". The labels also reflowed every time the selection moved.
+
+The badge is now always laid out and only fades in, so all three labels get the same width in every
+state, with the paddings trimmed to buy the room back and `TextTrimming` so any residual overflow
+degrades to an ellipsis instead of a glyph under a badge. `CouchMenuLayoutTests` asserts that no
+label runs under its badge, that none is trimmed, and that the three widths differ by at most the one
+pixel a three-way star split leaves behind.
+
+**The other reported symptom — the menu moving as you scroll through it — was a nine-pixel shift, and
+it took a diagnostic build to find.** Three rounds of reading XAML and writing layout tests found
+nothing, because the tests measured the cards against their own row, and the row moves as a unit. So
+the app was made to write down its own geometry (`CouchMenuDiagnostics`, gated on `EMUSHELF_DIAG`)
+and the answer came back in one reproduction: the sort row's y went 137 -> 146 the moment it took
+focus and back when it lost it, five clean cycles.
+
+The cause is the `A` / `Reverse` affordance in the "Sort by" header, which appeared on focus. The
+pill is taller than the text beside it, so the header grew nine logical pixels and pushed the sort
+row and the whole options list down with it — on a couch window at 2x, eighteen physical pixels of
+the lower half of the panel lurching on every d-pad press between rows. It is the exact thing the row
+style's own comment promises does not happen ("a transparent 2px outline + padding reserves the space
+so focusing the row never shifts the tiles"); the outline was reserved and the affordance was not.
+It is now laid out always and only faded in.
+
+Two things worth carrying forward. Measure a moving element against the **window**, not against its
+parent, or a parent that moves takes the whole test with it. And a bug that will not reproduce on the
+developer's machine is a reason to make the program report on itself, not a reason to read the markup
+a fourth time — the diagnostic cost less than any one of the three failed attempts before it.
+
+## 2026-08-15 — Fault displacements wrap instead of running off the picture
+
+A band tear shoves a strip of lines up to twelve percent of the screen sideways, and the overscan
+margin is under two percent. So the displaced strip ran past the edge of the picture, met the
+out-of-glass branch, and came back as a hard black wedge — a hole punched in the image rather than a
+torn line. Displacing faults now wrap horizontally, which is both what a real tear looks like and
+free. Guarded on a fault being active, so the steady state is byte-identical: forcing `None` and
+letting the schedule sit quiet produce the same image to the last bit.
+
+## 2026-08-15 — A BoxShadow on a Border displaces that Border's children
+
+On Avalonia 12.1.0, a `Border` that both casts a `BoxShadow` and contains content draws that content
+offset — up and to the left — from where it is laid out. Nothing else in the frame moves.
+
+Two symptoms, reported for weeks and chased three times without success:
+
+- the couch start menu's selector cards flew out of the panel, but only while their row had focus —
+  and focus is the only thing that put a `BoxShadow` on that row;
+- cover artwork sat outside its own tile in the couch grid, on the unfocused tiles only — and the
+  focused style already removed the tile's shadow, for an unrelated reason.
+
+That second one is the proof, and it was sitting in a photograph the whole time: two tiles side by
+side, identical but for a shadow, and only the shadowed one displaced.
+
+**Why it took so long is worth recording, because every instinct pointed the wrong way.** Layout is
+correct — `TranslatePoint` returns the right answer, so every assertion about arranged position
+passes. `RenderTargetBitmap.Render(window)` is *also* correct, so the window's own idea of what it is
+drawing looks fine. The fault only appears through the compositor, which means it is invisible to
+headless tests, invisible to the app's self-render, and reproducible only on a real screen. Three
+rounds of reading markup and writing layout tests found nothing because there was nothing there to
+find.
+
+What broke the deadlock was making the program report on itself (`CouchMenuDiagnostics`, gated on
+`EMUSHELF_DIAG`) and then a photograph of two tiles that differed by one property.
+
+The fix is the same everywhere: a shadow is cast by an empty sibling Border behind the content, never
+by the Border holding it. Done for the couch tile, the desktop tile, the flat no-GL shelf cover, and
+the menu's selector rows — the last by dropping the focus glow outright, since its own comment
+already said the accent outline was the guaranteed cue and the glow merely an enhancement.
+
+Swept everywhere afterwards: both Edit-title popovers, the update banner, the couch empty-state
+medallion, and `Border.spotlight-chip`. The desktop status toast simply lost its shadow, because the
+gamepad toast is the same component and already shipped without one — matching them is a
+simplification rather than a workaround. The sidebar's accent icon keeps its shadow: it is the only
+shadowed container in the file with neither border thickness nor padding, which is the one shape that
+has never misbehaved.
+
+That trigger — `BoxShadow` **plus** a non-zero `BorderThickness` or `Padding` — is what every broken
+case had in common, and it matches the shape of Avalonia issue 18263 on the neighbouring `Effect`
+path. Nothing matching this was found reported against Avalonia 12, so it is probably worth filing.
+
+`BoxShadowContainerTests` now fails the build if the construct returns, in markup or in a style. It
+is a source check rather than a rendering one on purpose: the fault is invisible to arranged
+geometry, invisible to `RenderTargetBitmap`, and reproducible only through the compositor, so no
+runtime test in this repo can see it. It earned its place immediately — it caught
+`Border.spotlight-chip`, which a hand scan of the inline attributes had missed because that shadow
+came from a style.
+
+The diagnostic that found all this (`CouchMenuDiagnostics`, gated on `EMUSHELF_DIAG`) has been
+deleted now that the answer is known.
+
+Worth checking whether this is a known Avalonia 12 regression before working around it any further;
+this project has already been bitten once by that major version, when it started choosing Metal and
+silently broke `OpenGlControlBase`.
 ## 2026-08-15 — Presented size is compressed by one power law; the camera frames by area
 
 Two reports about the shelf, one root cause each, and both answered by a rule rather than a table.
