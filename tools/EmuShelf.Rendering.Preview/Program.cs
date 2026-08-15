@@ -227,9 +227,15 @@ for (var row = 0; row < shells.Length; row++)
     // the per-shell call arrived, and its comment still claimed it was what the shells were drawn
     // with. --no-cover skips it here instead: that flag exercises the real fallback for a game with
     // no scraped art, and is the check that no retail artwork baked into a shell shows through.
-    if (entry is not null && !args.Contains("--no-cover"))
+    // A shell with no entry still gets a cover, on the stand-in shape. That is now the cover card's
+    // situation and only the cover card's: every system in KnownSystems has authored media, so
+    // nothing in the shelf row names the fallback any more. Skipping it here left the one shell that
+    // exists to carry an arbitrary cover as the only row on the sheet reviewed with nothing printed
+    // on it — a blank tinted slab, which is also exactly what a broken panel looks like. 0.708 is the
+    // same portrait default MediaShellMap.ProfileForSystem falls back to.
+    if (!args.Contains("--no-cover"))
     {
-        renderer.SetCoverArt(TestCover.Create(entry.CoverAspect));
+        renderer.SetCoverArt(TestCover.Create(entry?.CoverAspect ?? 0.708));
 
         // The back and spine too, for any medium whose profile claims them. Until this, the sheet
         // only ever supplied a front cover, so a case's other two panels were reviewed with nothing
@@ -244,20 +250,26 @@ for (var row = 0; row < shells.Length; row++)
         // Written as literals because that enum lives in EmuShelf.App, which this tool deliberately
         // cannot reference — the same reason PreviewShelf is a hand-copy with a test holding it
         // honest. The order is fixed by the shell declaring its extra panels back-then-spine.
-        var slots = entry.Profile.ArtworkSlots;
-        if ((slots & PhysicalArtworkSlots.Back) != 0)
+        // Only for a shell some medium claims: these two read the profile's own slots and spine
+        // depth, and the entry-less cover card has neither. It has one printed face, which the line
+        // above just gave it.
+        if (entry is not null)
         {
-            renderer.SetPanelArt(0, 1, TestCover.CreateBack(entry.CoverAspect));
-        }
+            var slots = entry.Profile.ArtworkSlots;
+            if ((slots & PhysicalArtworkSlots.Back) != 0)
+            {
+                renderer.SetPanelArt(0, 1, TestCover.CreateBack(entry.CoverAspect));
+            }
 
-        if ((slots & PhysicalArtworkSlots.Spine) != 0)
-        {
-            var dimensions = entry.Profile.DimensionsMillimetres;
-            var spineAspect = double.Parse(
-                ArgumentValue("--spine-aspect")
-                    ?? (dimensions.Z / dimensions.Y).ToString(System.Globalization.CultureInfo.InvariantCulture),
-                System.Globalization.CultureInfo.InvariantCulture);
-            renderer.SetPanelArt(0, 2, TestCover.CreateSpine(spineAspect));
+            if ((slots & PhysicalArtworkSlots.Spine) != 0)
+            {
+                var dimensions = entry.Profile.DimensionsMillimetres;
+                var spineAspect = double.Parse(
+                    ArgumentValue("--spine-aspect")
+                        ?? (dimensions.Z / dimensions.Y).ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    System.Globalization.CultureInfo.InvariantCulture);
+                renderer.SetPanelArt(0, 2, TestCover.CreateSpine(spineAspect));
+            }
         }
     }
 
@@ -497,6 +509,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.BluRayCase => "blu-ray-case",
     MediaShell.CoverCard => "cover-card",
+    MediaShell.Nintendo3dsCard => "3ds-card",
     _ => shell.ToString().ToLowerInvariant(),
 };
 

@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The eleven
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The twelve
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All eleven are licensed
+All twelve are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -175,6 +175,19 @@ Credit is given here and the models keep their authorship metadata inside the `.
 
   This replaced **Nintendo Ds cartridge (preset)** by
   [littlengvfx](https://sketchfab.com/littlengvfx), also CC BY 4.0, which is no longer bundled.
+
+- **3DS Cartridge** — by [SGLilac](https://sketchfab.com/SGLilac), from
+  [Sketchfab](https://sketchfab.com/3d-models/3ds-cartridge-e075af04a56f4d31bbd7d92365f1d8fc).
+  Bundled as `3ds-card.glb`. This is a scan of a retail Rune Factory 4 card, and like the DS model it
+  keeps its label on the same atlas as its body, so the print could not be cleared by flattening a
+  material. EmuShelf masks two rectangles of that atlas in the base-colour, metallic/roughness and
+  normal maps: the front label, and the title's own product serial moulded into the back of the card.
+  Neither the Rune Factory 4 artwork nor the code that identifies it — which the author's CC BY
+  licence does not cover — remains in the build. The card's generic moulding is kept: the contact
+  pins, the anti-insertion tab and Nintendo's hardware markings are the object rather than the game.
+  Maps were reduced from 2048px to 1024px, and canonical orientation, metric scaling and per-game
+  label art are applied at runtime. Original authorship and license metadata remain embedded in the
+  GLB.
 
 - **Sonic 2 Mega Drive Cartridge** — by [Naser](https://sketchfab.com/naser.ali), from
   [Sketchfab](https://sketchfab.com/3d-models/sonic-2-mega-drive-cartridge-4c453f8527384c718f652a9f04067119).

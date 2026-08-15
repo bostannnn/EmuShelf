@@ -26,6 +26,9 @@ public static class MediaShellMap
         ["nes"] = MediaShell.NesCartridge,
         ["megadrive"] = MediaShell.MegaDriveCartridge,
         ["nds"] = MediaShell.DsCard,
+        // Its own card, not the DS one recoloured: the two footprints agree to a millimetre, and
+        // the tab that stops a 3DS card entering a DS is the only thing that says which is which.
+        ["3ds"] = MediaShell.Nintendo3dsCard,
 
         // Arcade has no physical medium — nobody ever owned the ROM board — so the machine stands
         // in for it, cut off under its control panel so it is a bartop rather than a wardrobe.
@@ -101,6 +104,17 @@ public static class MediaShellMap
         ["nds"] = new(
             MediaShell.DsCard, new(33.6f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport,
             "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+        // The same 35mm anchor and the same rule as its DS sibling, and it lands closer to the real
+        // object than any other cartridge here: 33.7 x 35 x 3.2mm against a real card's 33 x 35 x
+        // 3.8mm, all three from a scan of one. The depth is the honest deviation — a scanned card is
+        // 0.6mm thinner than a measured one, which at shelf scale is a sixth of a millimetre and
+        // belongs in the asset rather than in a profile that would distort the shell to state it.
+        // On a shelf beside a DS card the two are the same size, and that is not an error to correct:
+        // the two cards really are one footprint, which is why the tab had to come from geometry.
+        ["3ds"] = new(
+            MediaShell.Nintendo3dsCard, new(33.7f, 35f, 3.2f),
+            PhysicalArtworkSlots.CartridgeSupport,
+            "3ds-white", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
         // Anchored on a real CD jewel case's 142mm width, with height and depth from the asset's
         // own ratios. It lands at 125.2 x 9.0mm against a nominal 125 x 10mm, which is as close as
         // any shell here has come — the width and height are the object's, and the 9mm is honestly

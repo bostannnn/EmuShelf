@@ -1803,9 +1803,12 @@ the hands-on review gate before Phase 2 begins.
       where the real packaging differs rather than recolouring one inaccurate universal case.
       — PS3 left the universal case 2026-08-15: Diablo's CC BY Blu-ray shell is authored at the real
       135x171.5x13mm, so PS3 no longer stands at a DVD case's height, and its sleeve prints on the
-      film's own material slot rather than a rectangle over the shell. PSP is the last profile still
-      borrowing the DVD case, knowingly squeezed to a UMD case's shape; a UMD case and a 3DS card are
-      what the case family still owes this gate.
+      film's own material slot rather than a rectangle over the shell. 3DS left the cover card
+      2026-08-15 on SGLilac's CC BY scan of a real card, authored as its own geometry rather than a
+      recoloured DS card because the anti-insertion tab is moulded rather than measured; every system
+      in KnownSystems now has authored media. PSP is the last profile still borrowing the DVD case,
+      knowingly squeezed to a UMD case's shape, and a UMD case is what the case family still owes
+      this gate.
 - [ ] Bound decoded/GPU artwork with a focused-neighbour LRU and shared shell resources. Hold 60 fps at
       1280x800 and 1920x1080 with a 500-game library on the Windows integrated-GPU acceptance machine.
       — Shared baseline optimization landed 2026-08-13: 21-entry cover-texture LRU, adaptive scene

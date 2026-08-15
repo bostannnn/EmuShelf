@@ -8068,6 +8068,79 @@ comment should be read as describing a risk that does not exist rather than one 
 
 No shell constant changed. The defect was in the instrument.
 
+## 2026-08-15 — The 3DS card is its own shell, and the last unauthored system graduates
+
+`3ds` rendered as a flat cover card because it had no authored medium. It has one now — SGLilac's
+CC BY 4.0 "3DS Cartridge", prepared from `models/3ds/3ds_cartridge.glb` — which makes every system
+in `KnownSystems` a system with authored media, and turns three tests that were waiting for exactly
+that inside out.
+
+**Its own geometry, not a profile over the DS card.** The two footprints agree to within a
+millimetre — 33 x 35 x 3.8mm against 33.4 x 35 x 3.8mm — so the case for sharing a mesh and
+distinguishing them by profile is stronger here than anywhere else in the catalog. It is still the
+wrong call, for the reason the Blu-ray case records from the other direction: what tells these two
+cards apart is moulded, not measured. A 3DS card carries the anti-insertion tab on its upper right
+edge that stops it entering a DS. A profile can express a millimetre of height; it cannot grow a tab,
+and without the tab the shelf would show two identical cards in two different colours.
+
+**Two candidates, and the low-poly one won.** `models/3ds/` holds SGLilac's scan (210 triangles, one
+material, one 2048px atlas) and JodieWebster's "3DS Game Cartridge" (3,901 triangles, two materials,
+six maps). Rendered both. The dense one is two cards — a cartridge mesh and a second chip mesh
+behind it — so its silhouette carries a spurious white frame, and its label sits in a wide bare
+margin that no real card has. The scan is the better object: the tab, the pin bay and the moulded
+hardware markings are all there in its normal map, and at shelf size a card is a flat plate a
+fingernail thick with no form a denser mesh could describe. Triangle count is not asset quality.
+
+**The mask needed a second rectangle, and the tool needed to allow one.** The scan is of a retail
+Rune Factory 4 card, and it identifies that game twice: the label on the front, and `AR4E930220` —
+the title's own product code — moulded into the back. `ModelPrep` accepted several rectangles only
+when several materials were named, one each, which is the jewel case's arrangement. It now also
+accepts several rectangles against a single material, which is this one's: one material, one atlas,
+two islands. The back matters because the shelf turns a cartridge to launch it, so it is not a face
+nobody sees. Everything generic stays — pins, tab, Nintendo's hardware markings are the object
+rather than the game.
+
+**The panel was derived rather than eyeballed, which the DS card could not be.** This front face is
+two large triangles with an affine UV map, so the sticker's own bounds in the atlas carry straight
+back into object space, and both triangles agree to three decimals. Taking the panel off the sticker
+and the mask off a rectangle grown around it leaves the mask larger on all four sides by 0.018 —
+about a third of a millimetre of the card's own plastic, which is the hairline the fill has to
+disappear into. It does: the fill is sRGB 186, the plastic's own value, which this scan holds flat
+across the whole body.
+
+The panel is asymmetric — U -0.864 to 0.765 — and that is the tab. It adds about 1.3 units on +X to
+a 30.2-unit card, so the label's centre sits left of the bounding box's, and a symmetric panel would
+print cover art onto the plastic frame on one side and leave bare label on the other. Pinned by
+`Nintendo3dsCoverPanel_SitsLeftOfCentreByTheTabsWidth`, which states the asymmetry rather than
+leaving it implicit in four bounds, because it is the number most likely to be "corrected" by
+someone reading the constants rather than the card.
+
+The prep command, which supersedes nothing and should be kept with the shell:
+
+```
+dotnet run --project tools/EmuShelf.Rendering.Preview -c Release -- \
+  --prepare-model models/3ds/3ds_cartridge.glb \
+  --prepare-out src/EmuShelf.Rendering/Assets/3ds-card.glb \
+  --neutral-material Cartridge_Backuplambert2 \
+  --neutral-rect '0.5464,0.0391,0.9463,0.4658;0.0986,0.2666,0.3726,0.3081' \
+  --neutral-fill BABABA --max-texture 1024
+```
+
+**No albedo correction, which is a first.** Every other cartridge here scales its authored base
+colour — SNES by 2.4, the DS card by 3.2 — because a downloaded model's plastic was tuned in its
+author's viewer. This scan's plastic is already a retail card's white, so it ships at 1.0. The
+profile is 33.7 x 35 x 3.2mm: the real card's 35mm height, the asset's ratios from there, and a
+depth 0.6mm under a real card's, which is the asset's deviation and belongs in the asset rather than
+in a profile that would distort the shell to state it.
+
+**What emptied out.** `ForSystem_LeavesUnauthoredSystemsOnFlatCovers` had one case left and now has
+none, so it is inverted: every known system is mapped, and an id no system has still falls back to a
+cover card. `MetricProfile_UsesAThinCoverCardForUnauthoredSystems` had been retargeted three times
+as PS1, PSP and 3DS graduated and is now aimed at a deliberately non-existent id, which is the only
+target that cannot silently stop testing anything. `PreviewShelf`'s 3DS entry was the cover card's
+only occupant and is now a 3DS card, placed immediately before the DS card so the pair can be
+compared — the same reason PSP sits beside the PS2 case. The fallback card is not dead code; it is
+what the next system EmuShelf adds will land on, and it goes back into that row when one arrives.
 ## 2026-08-15 — The keep case's three sheets now meet round its corners
 
 Reported plainly: "DVD boxes have gaps between images, so it looks weird even when scraped". They

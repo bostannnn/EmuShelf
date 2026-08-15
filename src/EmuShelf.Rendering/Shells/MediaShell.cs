@@ -35,6 +35,15 @@ public enum MediaShell
     /// <summary>The Nintendo DS game card.</summary>
     DsCard,
 
+    /// <summary>The Nintendo 3DS game card.</summary>
+    /// <remarks>
+    /// Its own geometry rather than a profile over <see cref="DsCard"/>, even though the two cards
+    /// share a footprint to within a millimetre. What tells them apart is moulded rather than
+    /// measured: a 3DS card carries the tab on its upper right edge that stops it entering a DS.
+    /// A profile can express a millimetre of height; it cannot grow a tab.
+    /// </remarks>
+    Nintendo3dsCard,
+
     /// <summary>Temporary keep-case geometry shared by PS2, GameCube, Wii and PSP profiles.</summary>
     DiscKeepCase,
 

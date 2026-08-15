@@ -261,6 +261,73 @@ public static class MediaShellCatalog
             BodyRoughnessScale: 1.20f,
             DielectricReflectance: 0.033f),
 
+        // SGLilac's 3DS card, which is a photogrammetric scan of a real one rather than a modelled
+        // cartridge: 210 triangles carrying a 2048px scan, where the moulding that matters — the
+        // anti-insertion tab on the upper right edge, the pin bay and the moulded serial on the back
+        // — is in the normal map rather than in the mesh. That is the right trade for this medium.
+        // A DS or 3DS card is a flat plate a fingernail thick; there is no form for a denser mesh to
+        // describe, and at shelf size the tab is the whole silhouette difference between the two
+        // cards.
+        //
+        // Authored lying flat with its label toward +Y, so a quarter turn about X stands it up.
+        // Unlike the DS card, whose node matrices already stand it upright, this one's really is
+        // flat as loaded — checked by loading it, not by reading accessor bounds, which is the
+        // mistake that cost the DS shell a wrong rotation.
+        [MediaShell.Nintendo3dsCard] = new MediaShellDefinition(
+            MediaShell.Nintendo3dsCard,
+            "EmuShelf.Rendering.Assets.3ds-card.glb",
+            Matrix4x4.CreateRotationX(MathF.PI / 2f),
+            MaxTextureSize: 1024,
+            // Label and body share one atlas and one material, as on the DS card, so the Rune
+            // Factory 4 print goes by a masked rectangle and this panel has to stay inside that
+            // mask. Two rectangles rather than one: the scanned card also carries that title's
+            // product serial moulded into its back, which the shelf shows whenever a card is turned.
+            // The fill is the card's own plastic sampled off the atlas — sRGB 186, which the scan
+            // holds flat across the whole body — so the hairline between mask and panel reads as
+            // plastic rather than as a halo.
+            //
+            // Derived rather than eyeballed, which is available here and was not on the DS card: the
+            // front face is two large triangles with an affine UV map, so the sticker's own bounds
+            // in the atlas — 1125..1931 by 86..947 of 2048 — can be carried straight back into
+            // object space. Both triangles agree to three decimals. Taken off the sticker rather
+            // than off the masked rectangle around it, which is what leaves the mask strictly larger
+            // than the panel on all four sides by about 0.018, a third of a millimetre of the card's
+            // own plastic.
+            //
+            // The result is asymmetric in U — -0.864 against 0.765 — and that is the tab: it adds
+            // about 1.3 units on +X to a 30.2-unit card, so the body's centre sits left of the
+            // bounding box's, and a panel centred on the box would print off the label.
+            //
+            // A real 3DS label is chamfered at its bottom left, like a DS one. Measured off the
+            // atlas rather than off a photograph: the sticker's left edge steps in over the last 55
+            // rows of its 861 and 61 columns horizontally, which are 0.064 and 0.071 of the panel's
+            // height once the isotropic UV carries them over. 0.067 is those two averaged.
+            //
+            // The corner radius is the one figure here that is not measured. This scan squares the
+            // sticker's corners — its edge is straight to within six texels — where a real label is
+            // gently rounded, so 0.03 is a real card's corner rather than this one's, and small
+            // enough that either way it stays inside the mask.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.864f, 0.765f, -0.844f, 0.831f,
+                CornerRadius: 0.03f, CutCorner: 0.067f, ArtFit: ArtFit.Cover),
+            ExtraPanels: [],
+            // A 3DS label is a glossier print than a DS card's matte vinyl sticker, which is why
+            // this is the cartridges' usual figure rather than the 0.58 the DS shell needs.
+            PanelRoughness: 0.44f,
+            FlattenPanelNormal: true,
+            // No albedo correction, unlike every other cartridge here: this scan's plastic is
+            // already a retail card's white at sRGB 186, so scaling it would blow it out rather than
+            // rescue it. The one shell in the catalog whose body colour is simply the object's.
+            BodyAlbedoScale: 1f,
+            BodyRoughnessScale: 1f),
+        // No ClearcoatFactor here, and setting one would do nothing. This is the first shell whose
+        // own material carries KHR_materials_clearcoat — the scan declares a coat of 1.0 at
+        // roughness 1.0, the lacquer on a card's printed face — and the renderer takes the asset's
+        // coat over the definition's wherever the asset has one, which is the rule the jewel case
+        // established from the other side. So the card's sheen is the model's to change, not this
+        // table's; if it ever needs turning down it comes out of the prep, not out of a knob here.
+
+
         // thegraphicsgeek's Game Pak, which replaced a smaller-textured shell that had no source
         // in models/ and so could not be regenerated or corrected. It is authored upright and
         // already facing +Z, so it needs no reorientation — and it moulds "GAME BOY ADVANCE SP"
