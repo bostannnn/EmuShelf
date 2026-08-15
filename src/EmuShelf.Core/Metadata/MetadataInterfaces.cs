@@ -14,14 +14,15 @@ public interface IGameMetadataCatalog
 {
     /// <summary>
     /// Resolves the best catalog entry for a game's identifiers. When one catalog key maps to
-    /// several regional releases — as a region-free cartridge's shared serial does — the optional
-    /// <paramref name="regionHint"/> (typically the game's filename, which carries a "(Europe)"-style
-    /// tag) selects the matching region instead of an arbitrary one.
+    /// several releases — a region-free cartridge's shared serial, or the one product number every
+    /// disc of a multi-disc title carries — the optional <paramref name="filenameHint"/> (the game's
+    /// filename, which carries the "(Europe)", "(Disc 2)" and "(Rev 1)" tags) selects the matching
+    /// entry instead of an arbitrary one.
     /// </summary>
     Task<GameCatalogMatch?> FindMatchAsync(
         MetadataSystemProfile profile,
         IReadOnlyList<GameIdentifier> identifiers,
-        string? regionHint = null,
+        string? filenameHint = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -70,6 +71,14 @@ public interface IGameMetadataStore
     Game? GetGame(long gameId);
 
     IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null);
+
+    /// <summary>
+    /// Games already carrying a catalogue title that names a different disc than their file does.
+    /// Until the catalogue learned to tell the discs of one shared product number apart, every disc
+    /// of a set was named after disc 1; those rows look complete, so a fetch has to ask for them by
+    /// name to correct them. Defaults to empty for stores that hold no metadata.
+    /// </summary>
+    IReadOnlyList<Game> GetGamesWithMismatchedDiscTitles(string? systemId = null) => [];
 
     IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId);
 

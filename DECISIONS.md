@@ -8348,3 +8348,38 @@ Note the two changes are independent and each fixes only its own report. Compres
 per-platform page, because the camera fits whatever the largest medium is and a uniform scale then
 cancels out; area framing cannot touch the all-games row, because there the media are framed against
 each other rather than against the frame.
+
+## 2026-08-15 — One catalogue key can name several releases; the filename settles which
+
+A disc set shares a single product number — every Shenmue disc reports MK-5105950 — so the DAT
+lookup for discs 2 and 3 hit the same key as disc 1 and returned three candidate entries. The
+tie-break was region plus `PreferenceScore`, which scores by title length: "(Disc 1)", "(Disc 2)"
+and "(Disc 3)" are the same length and all say Europe, so the score tied every time and the
+first-seen entry won. All three discs were named, and covered, as disc 1. The same tie-break also
+had a deliberate `(Rev ` penalty, so a Rev 1 dump was always named after the original.
+
+The filename was already being passed in for its region tag; it also carries the disc number and the
+revision, and those are decided first now, each as a narrowing pass over the candidates. An absent
+marker matches an absent marker, so a plain dump still prefers the plain entry, and a pass that
+matches nothing narrows nothing rather than inventing an answer — a DAT that numbers its discs and a
+filename that does not still falls through to the historical region-then-score pick. The parameter is
+`filenameHint` rather than `regionHint`, because region is now one of three things read from it.
+
+Rows already stored under the wrong disc's name look complete to `GetGamesMissingMetadata`, so they
+would never be revisited. `GetGamesWithMismatchedDiscTitles` asks for them by name and the fetch
+re-resolves them. It only claims a row whose title names a *different* disc than its file: a title
+carrying no disc at all may be perfectly correct, because a DAT can hold one entry for a whole set
+(GameTDB does, for both discs of a GameCube game), and re-queuing those would never settle.
+
+## 2026-08-15 — A revision tag belongs in the disc-grouping key, not on an exclusion list
+
+`GameDiscSetBuilder` refused any file whose name contained "Rev <n>", so "Metal Gear Solid (USA)
+(Rev 1) (Disc 1/2)" — an ordinary Redump dump — showed as two tiles with no disc selector. The
+intent was right: a revised disc must not merge with an original one. The implementation threw away
+the whole title to achieve it.
+
+Only the disc marker is stripped when the grouping key is built, so the revision tag survives in the
+key on its own. Dropping it from the exclusion list is therefore sufficient and strictly better:
+two discs of one revision merge, while a mixed pair stays apart because their keys differ. Demos and
+bonus discs stay excluded — there the name is ambiguous about what a "set" even is, which is a
+different problem from a tag that simply needs to be carried along.

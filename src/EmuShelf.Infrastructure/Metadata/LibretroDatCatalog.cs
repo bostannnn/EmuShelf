@@ -32,7 +32,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     public async Task<GameCatalogMatch?> FindMatchAsync(
         MetadataSystemProfile profile,
         IReadOnlyList<GameIdentifier> identifiers,
-        string? regionHint = null,
+        string? filenameHint = null,
         CancellationToken cancellationToken = default)
     {
         var relevant = identifiers
@@ -63,7 +63,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         foreach (var identifier in relevant)
         {
             var key = NormalizeKey(identifier.Kind, identifier.Value);
-            if (index.TryGetValue(identifier.Kind, key, regionHint, out var entry))
+            if (index.TryGetValue(identifier.Kind, key, filenameHint, out var entry))
             {
                 return new GameCatalogMatch(
                     "libretro-database",
@@ -502,12 +502,22 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     // back to the region-agnostic preferred entry. The filename's parenthetical tags include both
     // the region ("(Europe)") and language codes ("(En,Ja,Fr,…)"); DAT regions are spelled-out
     // words that never collide with the two-letter language codes, so a token intersection is safe.
-    private static CatalogEntry SelectEntry(IReadOnlyList<CatalogEntry> candidates, string? regionHint)
+    //
+    // Disc and revision are settled first, because neither is decidable by region or by
+    // PreferenceScore: every disc of a multi-disc title shares one product number, and its DAT
+    // entries differ only in a "(Disc N)" suffix of identical length, so the score ties and the
+    // first-seen entry — always Disc 1 — used to win for all of them.
+    private static CatalogEntry SelectEntry(IReadOnlyList<CatalogEntry> candidates, string? filenameHint)
     {
         if (candidates.Count == 1)
             return candidates[0];
 
-        var hintRegions = RegionTokens(FilenameTags(regionHint));
+        candidates = NarrowBy(candidates, filenameHint, DiscMarkerRegex());
+        candidates = NarrowBy(candidates, filenameHint, RevisionRegex());
+        if (candidates.Count == 1)
+            return candidates[0];
+
+        var hintRegions = RegionTokens(FilenameTags(filenameHint));
         if (hintRegions.Count > 0)
         {
             CatalogEntry? best = null;
@@ -528,6 +538,33 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         }
         return PreferredEntry(candidates);
     }
+
+    // Keeps the candidates whose own marker matches the filename's. An absent marker on both sides
+    // counts as a match, so a plain dump still prefers the plain entry over a revision. When nothing
+    // matches — the DAT numbers its discs but the filename does not, say — this field cannot decide
+    // and every candidate stays in the running for the next one.
+    private static IReadOnlyList<CatalogEntry> NarrowBy(
+        IReadOnlyList<CatalogEntry> candidates,
+        string? filenameHint,
+        Regex marker)
+    {
+        if (candidates.Count == 1)
+            return candidates;
+
+        var hint = MarkerValue(marker, filenameHint);
+        var matching = candidates
+            .Where(candidate => string.Equals(
+                MarkerValue(marker, candidate.Title),
+                hint,
+                StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        return matching.Length > 0 ? matching : candidates;
+    }
+
+    private static string? MarkerValue(Regex marker, string? value) =>
+        value is not null && marker.Match(value) is { Success: true } match
+            ? match.Groups["value"].Value
+            : null;
 
     private static IEnumerable<string> FilenameTags(string? filename)
     {
@@ -593,23 +630,26 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         IReadOnlyDictionary<string, CatalogEntry> Entries,
         IReadOnlyDictionary<GameIdentifierKind, IReadOnlyDictionary<string, IReadOnlyList<CatalogEntry>>> EntriesByKind)
     {
-        // Region-agnostic lookup (the historical contract): the preferred entry for the key.
+        // Hintless lookup: the preferred entry for the key. Asking without naming a disc or a
+        // revision is itself an answer — an entry carrying neither wins over one that does — and
+        // among equals this is the historical region-agnostic pick.
         public bool TryGetValue(GameIdentifierKind kind, string key, out CatalogEntry entry) =>
-            TryGetValue(kind, key, regionHint: null, out entry);
+            TryGetValue(kind, key, filenameHint: null, out entry);
 
-        // Region-aware lookup: when a key is shared by several regional releases, the hint (the
-        // game's filename) selects the matching region; otherwise the preferred entry is returned.
+        // Filename-aware lookup: when a key is shared by several releases, the hint (the game's
+        // filename) selects the matching disc, revision and region; otherwise the preferred entry
+        // is returned.
         public bool TryGetValue(
             GameIdentifierKind kind,
             string key,
-            string? regionHint,
+            string? filenameHint,
             out CatalogEntry entry)
         {
             if (EntriesByKind.TryGetValue(kind, out var entries) &&
                 entries.TryGetValue(key, out var candidates) &&
                 candidates.Count > 0)
             {
-                entry = SelectEntry(candidates, regionHint);
+                entry = SelectEntry(candidates, filenameHint);
                 return true;
             }
 
@@ -625,4 +665,16 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
 
     [GeneratedRegex(@"[\(\[]\s*(?<tag>[^\)\]]+?)\s*[\)\]]", RegexOptions.CultureInvariant)]
     private static partial Regex ParentheticalTagRegex();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?:disc|disk|cd)\s*(?<value>[0-9]+)(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex DiscMarkerRegex();
+
+    // Redump writes "(Rev 1)", No-Intro also uses letters ("(Rev A)"). The trailing boundary keeps
+    // an ordinary word such as "Revenge" from reading as revision "e".
+    [GeneratedRegex(
+        @"(?<![A-Za-z])rev(?:ision)?\s*(?<value>[0-9]+|[A-Z])(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex RevisionRegex();
 }

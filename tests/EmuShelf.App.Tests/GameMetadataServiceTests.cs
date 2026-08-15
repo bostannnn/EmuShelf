@@ -53,7 +53,7 @@ public class GameMetadataServiceTests
     }
 
     [Fact]
-    public async Task Enrich_ForwardsTheFilenameToTheCatalogAsRegionHint()
+    public async Task Enrich_ForwardsTheFilenameToTheCatalogAsItsHint()
     {
         // A region-free serial resolves to the wrong region unless the catalog is told which
         // regional dump this is; the filename carries that tag, so the coordinator must forward it.
@@ -88,7 +88,46 @@ public class GameMetadataServiceTests
 
         Assert.Equal(
             "Pokemon Ultra Moon (Europe) (En,Ja,Fr,De,Es,It,Zh,Ko)",
-            catalog.LastRegionHint);
+            catalog.LastFilenameHint);
+    }
+
+    [Fact]
+    public async Task EnrichMissing_AlsoRevisitsARowNamedAfterAnotherDisc()
+    {
+        // A disc the shared-serial collapse named after disc 1 has both a catalogue title and a
+        // cover, so the missing-metadata sweep passes straight over it. The fetch has to ask for it
+        // by name, or the wrong name is permanent.
+        var game = new Game
+        {
+            Id = 21,
+            SystemId = "test-system",
+            Path = "/roms/Shenmue (Europe) (Disc 2).chd",
+            Title = "Shenmue (Europe) (Disc 1)",
+            TitleOrigin = GameTitleOrigin.Catalog,
+            CoverPath = "Covers/21.png",
+            CoverOrigin = GameCoverOrigin.Downloaded,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game, missingMetadata: false, mismatchedDiscTitle: true);
+        var service = new GameMetadataService(
+            store,
+            [
+                new MetadataSystemProfile(
+                    "test-system",
+                    GameIdentifierKind.Serial,
+                    new Uri("https://example.test/catalog.dat"),
+                    new FixedExtractor(),
+                    []),
+            ],
+            new FixedCatalog(),
+            new FixedDownloader(null),
+            new RecordingCoverService());
+
+        var summary = await service.EnrichMissingAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, summary.TitlesApplied);
+        Assert.Equal("Catalog Game (USA)", store.Game.Title);
     }
 
     [Fact]
@@ -367,7 +406,7 @@ public class GameMetadataServiceTests
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
-            string? regionHint = null,
+            string? filenameHint = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<GameCatalogMatch?>(new(
                 "test-catalog",
@@ -381,7 +420,7 @@ public class GameMetadataServiceTests
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
-            string? regionHint = null,
+            string? filenameHint = null,
             CancellationToken cancellationToken = default) =>
             Task.FromException<GameCatalogMatch?>(new HttpRequestException("Catalog unavailable"));
     }
@@ -391,22 +430,22 @@ public class GameMetadataServiceTests
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
-            string? regionHint = null,
+            string? filenameHint = null,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<GameCatalogMatch?>(null);
     }
 
     private sealed class CapturingCatalog : IGameMetadataCatalog
     {
-        public string? LastRegionHint { get; private set; }
+        public string? LastFilenameHint { get; private set; }
 
         public Task<GameCatalogMatch?> FindMatchAsync(
             MetadataSystemProfile profile,
             IReadOnlyList<GameIdentifier> identifiers,
-            string? regionHint = null,
+            string? filenameHint = null,
             CancellationToken cancellationToken = default)
         {
-            LastRegionHint = regionHint;
+            LastFilenameHint = filenameHint;
             return Task.FromResult<GameCatalogMatch?>(null);
         }
     }
@@ -498,7 +537,10 @@ public class GameMetadataServiceTests
             CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
-    private sealed class RecordingMetadataStore(Game game) : IGameMetadataStore
+    private sealed class RecordingMetadataStore(
+        Game game,
+        bool missingMetadata = true,
+        bool mismatchedDiscTitle = false) : IGameMetadataStore
     {
         private IReadOnlyList<GameIdentifier> _identifiers = [];
 
@@ -506,7 +548,12 @@ public class GameMetadataServiceTests
         public GameMetadataAttempt? LastAttempt { get; private set; }
 
         public Game? GetGame(long gameId) => gameId == Game.Id ? Game : null;
-        public IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null) => [Game];
+
+        public IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null) =>
+            missingMetadata ? [Game] : [];
+
+        public IReadOnlyList<Game> GetGamesWithMismatchedDiscTitles(string? systemId = null) =>
+            mismatchedDiscTitle ? [Game] : [];
         public IReadOnlyList<GameIdentifier> GetIdentifiers(long gameId) => _identifiers;
 
         public IReadOnlyDictionary<long, IReadOnlyList<GameIdentifier>> GetAllIdentifiers() =>
