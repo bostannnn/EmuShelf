@@ -103,6 +103,9 @@ uniform float uHasKeyShadow;
 // focused platform colour at draw time, leaving the white softbox reflections photographic.
 uniform vec3 uAmbientAccent;
 uniform float uAmbientAccentMix;
+// Strength of the diffraction rainbow an optical disc's track spiral throws across its own
+// reflections. Zero for every moulded shell, which is what keeps plastic from shimmering.
+uniform float uIridescence;
 
 const float PI = 3.14159265359;
 
@@ -199,6 +202,50 @@ float keyVisibility(float geometricNoL)
     return visibility / 9.0;
 }
 
+// The colour an optical disc's track spiral splits its reflections into.
+//
+// A pressed disc is a mirror with a fine spiral groove cut into it, and that groove is a diffraction
+// grating: which wavelength it sends toward the eye depends on how obliquely the light meets the
+// track, which changes with where you are around the disc and how it is tilted. That is why a disc's
+// rainbow sweeps round as it turns rather than sitting still like a painted-on colour, and why it
+// only appears where there is a highlight to split.
+//
+// Object space is what makes this cheap and correct at once: the disc is authored flat in XY, so its
+// azimuth and radius are its own and the pattern spins with the geometry for free.
+// Returns a hue in x..z and how much of it this fragment earns in w.
+vec4 discDiffraction(vec3 N, vec3 V, vec3 L)
+{
+    vec2 radial = vObjectPosition.xy;
+    float radius = length(radial);
+    if (radius < 1e-4)
+    {
+        return vec4(1.0, 1.0, 1.0, 0.0);
+    }
+
+    radial /= radius;
+
+    // A disc's tracks are concentric, so the grating runs tangentially and disperses light along
+    // the radius — which is why a real disc shows arcs facing the lamp and is plain mirror at
+    // ninety degrees to them, rather than a pinwheel of colour everywhere at once. This is that
+    // geometry: how strongly the light and the eye are separated along the local radial direction
+    // is what decides whether this fragment is on a rainbow at all.
+    vec3 H = normalize(V + L);
+    vec2 objectH = normalize(vec2(dot(H, vec3(1.0, 0.0, 0.0)), dot(H, vec3(0.0, 1.0, 0.0))) + 1e-6);
+    float alongTrack = abs(dot(objectH, radial));
+
+    // Concentric bands, which a disc does have, at a pitch that reads at arm's length rather than
+    // aliasing into noise as it spins.
+    float phase = (radius * 26.0) + (alongTrack * 14.0) + (dot(N, V) * 4.0);
+    vec3 hue = 0.5 + (0.5 * cos(phase + vec3(0.0, 2.0944, 4.1888)));
+
+    // Normalized to unit brightness, so what comes back is a hue and nothing else. A grating
+    // splits the light it reflects; it does not absorb any, and a rainbow that averages half
+    // darkens the mirror it is applied to — which turns a disc into a grey washer with a faint
+    // tint, the exact opposite of the intended effect.
+    hue /= max(dot(hue, vec3(0.3333)), 1e-3);
+    return vec4(hue, smoothstep(0.35, 0.95, alongTrack));
+}
+
 // Filmic curve (Hill's ACES fit, condensed). Keeps the softbox highlight from clipping to a flat
 // white blob, which is what makes the reflection read as a light source rather than a paint colour.
 vec3 tonemap(vec3 x)
@@ -259,6 +306,12 @@ void main()
         cavity = 1.0 - (uCavityStrength * smoothstep(0.065, 0.50, normalRelief));
         N = normalize(cotangentFrame(N, vWorldPosition, vTexCoord) * tangentNormal);
     }
+
+    // How much of this fragment the panels printed, so anything applied after the loop can leave
+    // the printing alone. Without it a per-face material override silently repaints the label it
+    // was meant to sit behind — which is how a disc wearing its "artwork missing" placeholder came
+    // out plain white, with the label drawing correctly underneath the whole time.
+    float printed = 0.0;
 
     // Project the artwork panels. A fragment belongs to a panel when it lies inside the panel's
     // rectangle AND its face points the same way, so the cover cannot bleed onto the shell's sides.
@@ -347,6 +400,7 @@ void main()
             }
         }
 
+        printed = max(printed, panelMask);
         baseColor.rgb = mix(baseColor.rgb, art.rgb, panelMask);
         roughness = mix(roughness, uPanelRoughness, panelMask);
         metallic = mix(metallic, 0.0, panelMask);
@@ -361,6 +415,27 @@ void main()
 
     roughness = clamp(roughness, 0.045, 1.0);
     metallic = clamp(metallic, 0.0, 1.0);
+
+    // A disc is two different surfaces on one body, and treating it as one is why its printed face
+    // came out as a mirror throwing rainbows at the player. Only the underside is the aluminium
+    // reflector; the side you read is lacquered print — a pale dielectric, matte enough to have no
+    // diffraction of its own. Object +Z is the printed face, the same face the label panel is on.
+    //
+    // Doing this here rather than as a second material means the label panel above has already had
+    // its say, so a disc with real scraped art keeps it and only a bare one falls back to blank
+    // white. And because the diffraction below is scaled by metalness, zeroing that on this face is
+    // all it takes to keep the rainbow off the print.
+    if (uIridescence > 0.0)
+    {
+        float dataSide = clamp(-normalize(vObjectNormal).z, 0.0, 1.0);
+        // Bare lacquer only where nothing was printed. The label's own ink is already the right
+        // surface and must survive this; blanking it is what made a placeholder-bearing disc read
+        // as a plain white one.
+        float bareLabel = (1.0 - dataSide) * (1.0 - printed);
+        metallic *= dataSide;
+        roughness = mix(roughness, 0.40, bareLabel);
+        baseColor.rgb = mix(baseColor.rgb, vec3(0.82, 0.82, 0.84), bareLabel);
+    }
 
     vec3 albedo = baseColor.rgb;
     // Dielectrics normally sit close to 4%; a per-shell correction compensates source scans whose
@@ -393,6 +468,29 @@ void main()
     float directG = geometrySchlickGGX(NoV, roughness) * geometrySchlickGGX(NoL, roughness);
     vec3 directSpecular = (directD * directG * directF) / max(4.0 * NoV * NoL, 1e-4);
     vec3 directDiffuse = ((vec3(1.0) - directF) * diffuseColor) / PI;
+
+    if (uIridescence > 0.0)
+    {
+        // Tint the reflection rather than adding light to it. A disc has no colour of its own — it
+        // is a mirror — so the rainbow has to arrive as part of what it reflects, appearing only
+        // where there is a highlight and vanishing where the disc is dark. Scaled by metalness so
+        // the printed label, which the panel above turns into a dielectric, stays opaque ink.
+        //
+        // The strength matters more than the hue. A disc is silver that throws colour, not a
+        // rainbow object: taken to full the term replaces the reflection outright, and since a
+        // metal has no diffuse to dilute it the disc stops reading as a disc and starts reading as
+        // a toy. Most of it stays the mirror, with the colour strongest at grazing angles — which
+        // is where a real one shows it, and why tilting a disc under a lamp is how you see it.
+        float grazing = pow(1.0 - NoV, 2.0);
+        vec4 spectrum = discDiffraction(N, V, L);
+        // The last term is the one that stops it being a lollipop: most of a disc's face is on no
+        // rainbow at any given moment, and the arcs sweep round as it turns rather than the whole
+        // surface glowing at once.
+        float strength = uIridescence * metallic * spectrum.w * (0.30 + (0.45 * grazing));
+        vec3 diffraction = mix(vec3(1.0), spectrum.rgb, strength);
+        specular *= diffraction;
+        directSpecular *= diffraction;
+    }
     float visibility = keyVisibility(geometricNoL);
     float ambientVisibility = mix(1.0, visibility, uShadowFillOcclusion);
     diffuse *= uAmbientIntensity * ambientVisibility * cavity;

@@ -47,6 +47,7 @@ if (prepModel is not null)
         // product shot. Both are geometry problems a profile cannot fix.
         ArgumentValue("--drop-meshes"),
         ArgumentValue("--close-lid"),
+        args.Contains("--strip-textures"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }
@@ -111,10 +112,15 @@ if (inspectionModel is not null)
     float Degrees(string name) => float.Parse(
         ArgumentValue(name) ?? "0", System.Globalization.CultureInfo.InvariantCulture)
         * MathF.PI / 180f;
-    var inspectionOrientation =
-        Matrix4x4.CreateRotationX(Degrees("--model-pitch"))
-        * Matrix4x4.CreateRotationY(Degrees("--model-yaw"))
-        * Matrix4x4.CreateRotationZ(Degrees("--model-roll"));
+    // And some cannot be brought back with angles at all. A Sketchfab export often bakes an
+    // arbitrary node rotation into the scene graph, which the loader composes into the vertices;
+    // undoing it means the inverse of that exact quaternion, and reaching it by turning three
+    // Euler dials is a search rather than a correction.
+    var inspectionOrientation = ArgumentValue("--model-quat") is { } quaternion
+        ? Matrix4x4.CreateFromQuaternion(ParseQuaternion(quaternion))
+        : Matrix4x4.CreateRotationX(Degrees("--model-pitch"))
+            * Matrix4x4.CreateRotationY(Degrees("--model-yaw"))
+            * Matrix4x4.CreateRotationZ(Degrees("--model-roll"));
     var candidate = GlbLoader.Load(
         File.ReadAllBytes(inspectionModel), inspectionOrientation, maxTextureSize: 1024);
     // A candidate's own measured panel, as MinU,MaxU,MinV,MaxV — the numbers that would go into its
@@ -320,10 +326,86 @@ var shelfPath = Path.Combine(outputDirectory, "physical-shelf-scene.png");
 PngWriter.Write(shelfPath, shelfWidth, shelfHeight, shelfFrame);
 Console.WriteLine($"  {shelfPath} ({stopwatch.ElapsedMilliseconds} ms)");
 
+// A strip through the disc launch. The poses are stated here rather than driven by the app's
+// PhysicalShelfLaunchTransitionModel, which this tool cannot reference for the same reason it
+// cannot reference MediaShellMap — the renderer knows nothing about the app. They are review
+// samples of the renderer's disc path, not a second copy of the choreography: what this shot is
+// for is the disc's finish, its size against the case, and the two bodies not intersecting.
+(string Name, float CaseLift, float CaseDepth, float CaseScale, MediaShelfDiscPose Disc)[] launchFrames =
+[
+    // The disc holds the case's own depth until it is clear of the edge — that occlusion is the
+    // whole of the reveal, so the strip samples it twice on the way out.
+    ("stowed", 0.10f, 0.16f, 1.10f, new MediaShelfDiscPose(0f, 0.10f, 0.16f, 0f, 0f, Scale: 1f)),
+    ("half-out", 0.10f, 0.16f, 1.10f, new MediaShelfDiscPose(0.24f, 0.10f, 0.16f, 2.00f, 0f, Scale: 1f)),
+    ("clear", 0.10f, 0.16f, 1.10f, new MediaShelfDiscPose(0.44f, 0.10f, 0.16f, 3.77f, 0f, Scale: 1f)),
+    // Mid-flip, showing the data side the case never had.
+    ("turned-over", 0.10f, 0.16f, 1.10f,
+        new MediaShelfDiscPose(0.44f, 0.10f, 0.40f, 3.77f, 0f, Flip: MathF.PI, Scale: 1f)),
+    ("spun-up", 0.03f, 0.05f, 1.02f, new MediaShelfDiscPose(0.10f, 0.12f, 0.34f, 9.60f, -0.31f, Scale: 1.10f)),
+    ("laid-flat", 0f, 0f, 1f, new MediaShelfDiscPose(0f, -0.30f, 0.40f, 18.0f, -1.31f, Scale: 1.05f)),
+];
+
+var launchProfile = new PhysicalMediaProfile(
+    MediaShell.DiscKeepCase,
+    new Vector3(135f, 190f, 14f),
+    PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
+    "ps2-black",
+    "disc-from-case",
+    DiscDiameterMillimetres: 120f);
+var launchWidth = shelfHeight * 3 / 4;
+var launchTarget = CreateTargetFramebuffer(gl, (uint)launchWidth, (uint)shelfHeight);
+var launchStrip = new byte[launchWidth * launchFrames.Length * shelfHeight * 4];
+// Front is the case's sleeve; slot 3 is the disc's own scraped label. Uploading both is what
+// shows the routing working — the same game, two shells, two different pictures.
+renderer.SetPanelArt(500L, 0, TestCover.Create());
+renderer.SetPanelArt(500L, 3, TestCover.Create());
+
+for (var index = 0; index < launchFrames.Length; index++)
+{
+    var (name, lift, depth, scale, disc) = launchFrames[index];
+    renderer.RenderShelf(
+        [
+            new MediaShelfRenderItem(
+                500L, launchProfile, 0f, 1f, 0f, 0f,
+                MediaShellRenderer.ToLinear(0.31f, 0.55f, 0.76f),
+                lift, depth, scale, disc),
+        ],
+        launchProfile.HeightInShelfUnits,
+        launchTarget,
+        (uint)launchWidth,
+        (uint)shelfHeight);
+    gl.Finish();
+    var launchFrame = ReadPixels(gl, launchTarget, launchWidth, shelfHeight);
+    Composite(launchFrame, background);
+    BlitIntoSheet(
+        launchStrip, launchWidth * launchFrames.Length, launchFrame,
+        launchWidth, shelfHeight, index * launchWidth, 0);
+    Console.WriteLine($"  disc launch frame '{name}'");
+}
+
+var launchPath = Path.Combine(outputDirectory, "disc-launch-frames.png");
+PngWriter.Write(launchPath, launchWidth * launchFrames.Length, shelfHeight, launchStrip);
+Console.WriteLine($"  {launchPath}");
+
 string? ArgumentValue(string name)
 {
     var index = Array.IndexOf(args, name);
     return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+}
+
+static System.Numerics.Quaternion ParseQuaternion(string value)
+{
+    var parts = value
+        .Split(',', StringSplitOptions.TrimEntries)
+        .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+        .ToArray();
+    if (parts.Length != 4)
+    {
+        throw new ArgumentException("--model-quat wants x,y,z,w.");
+    }
+
+    return System.Numerics.Quaternion.Normalize(
+        new System.Numerics.Quaternion(parts[0], parts[1], parts[2], parts[3]));
 }
 
 static string Slug(MediaShell shell) => shell switch
