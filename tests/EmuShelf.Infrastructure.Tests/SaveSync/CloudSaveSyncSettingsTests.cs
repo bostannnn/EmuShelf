@@ -190,4 +190,52 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         service.Save(loaded);
         Assert.DoesNotContain("SaveStateRetention", File.ReadAllText(AppPaths.SettingsFilePath), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TransportKind_DefaultsToRcloneForASettingsFileWrittenBeforeTheChoiceExisted()
+    {
+        // An already-connected user must keep syncing against the remote they are connected to.
+        // Defaulting the other way would silently point them at an empty folder under a new scope.
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"Enabled\":true,\"RemoteName\":\"emushelf-gdrive\",\"CloudFolder\":\"EmuShelf/Saves\"}}");
+
+        var loaded = new JsonSettingsService(AppPaths).Load();
+
+        Assert.Equal(CloudTransportKind.Rclone, loaded.CloudSaveSync.TransportKind);
+        Assert.Equal("emushelf-gdrive", loaded.CloudSaveSync.RemoteName);
+    }
+
+    [Fact]
+    public void TransportKind_SurvivesARoundTripThroughSettingsJson()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths);
+        var saved = service.Load() with
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                CloudFolder = "EmuShelf/Saves",
+            },
+        };
+
+        service.Save(saved);
+
+        Assert.Equal(CloudTransportKind.GoogleDrive, service.Load().CloudSaveSync.TransportKind);
+    }
+
+    [Fact]
+    public void TransportKind_ParticipatesInEquality()
+    {
+        // The hand-written Equals exists so a round-trip compares equal. A field left out of it
+        // reads as "nothing changed" for a change that matters.
+        var rclone = new CloudSaveSyncSettings { Enabled = true, CloudFolder = "EmuShelf/Saves" };
+        var managed = rclone with { TransportKind = CloudTransportKind.GoogleDrive };
+
+        Assert.NotEqual(rclone, managed);
+        Assert.Equal(rclone, rclone with { TransportKind = CloudTransportKind.Rclone });
+    }
 }
