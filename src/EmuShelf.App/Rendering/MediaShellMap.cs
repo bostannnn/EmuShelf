@@ -97,13 +97,13 @@ public static class MediaShellMap
         // the model's once its lid is shut in prep. It ships open at 66mm.
         ["playstation"] = new(
             MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "ps1-jewel", "case-downward"),
         // Same case, different finish. A Dreamcast jewel case is the whiter, colder plastic of the
         // two, which is the entire difference the shelf can express without separate geometry.
         ["dreamcast"] = new(
             MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "dreamcast-jewel", "case-downward"),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),

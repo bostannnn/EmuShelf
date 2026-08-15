@@ -814,38 +814,82 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// This shell keeps its source artwork, which is the exception and needs to stay deliberate.
+    /// The shipped jewel case must carry no trace of the game its source was modelled around.
     /// </summary>
     /// <remarks>
-    /// Every other shell has its label or sleeve flattened, because the modeller's CC BY licence
-    /// covers the model and not the publisher's art. Here the modeller <em>is</em> the publisher —
-    /// sodaraptor wrote the game and built the case — and licensed both, and the case moulds its own
-    /// "DreamStation" branding rather than Sony's. That matters beyond the licence: three earlier
-    /// candidates were rejected because flattening their sleeve left a rectangle, and the only
-    /// reason this one survives is that its painted hinge and plastic did not have to go with it.
-    /// If this ever fails, the shell has lost the detail it was chosen for.
+    /// This shell shipped once with its artwork intact, on the argument that sodaraptor wrote the
+    /// game as well as the case and licensed both. The licence was never the problem: it put one
+    /// game's cover, back inlay, spine title and a fictional "DreamStation" console mark on every
+    /// PS1 and Dreamcast game in the library. The three printed maps are masked by rectangle, which
+    /// is the fallback precisely because a wrong one either leaves the artwork in the build or
+    /// erases the plastic beside it — so this samples to the very edge of each, not its safe middle.
     /// </remarks>
-    [Fact]
-    public void JewelCase_KeepsTheAuthorsOwnArtwork()
+    [Theory]
+    // The lid, whose print starts at the plastic seam inboard of the hinge.
+    [InlineData("01_-_Default", 0.19f, 0.99f)]
+    // The tray inlay, which begins further out because the hinge is not in front of it.
+    [InlineData("02_-_Default", 0.12f, 0.99f)]
+    // The promo card behind the lid, whose every sampled texel is print.
+    [InlineData("03_-_Default", 0.01f, 0.99f)]
+    public void JewelCasePrintedArea_CarriesNoSourceArtwork(string materialName, float u0, float u1)
     {
         var model = MediaShellCatalog.Load(MediaShell.JewelCase);
+        var material = model.Materials.Single(candidate => candidate.Name == materialName);
+        var texture = model.Textures[material.BaseColorTexture];
 
-        Assert.NotEmpty(model.Textures);
-        var varies = model.Textures.Any(texture =>
+        (byte R, byte G, byte B) Sample(float u, float v)
         {
-            var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
-            for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
+            var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+            var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+            var offset = ((y * texture.Width) + x) * 4;
+            return (texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]);
+        }
+
+        var reference = Sample((u0 + u1) * 0.5f, 0.5f);
+        for (var u = u0; u <= u1; u += 0.01f)
+        {
+            foreach (var v in new[] { 0.01f, 0.5f, 0.99f })
             {
-                if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
-                {
-                    return true;
-                }
+                Assert.True(
+                    Sample(u, v) == reference,
+                    $"'{materialName}' still varies at ({u:F2},{v:F2}); source artwork was not removed.");
             }
+        }
+    }
 
-            return false;
-        });
+    /// <summary>
+    /// Flattening the print must not take the case's own plastic with it.
+    /// </summary>
+    /// <remarks>
+    /// The counterweight to the test above, and the reason the mask is a rectangle rather than the
+    /// whole map: this model paints the clear outer edge and the moulded hinge teeth into the same
+    /// atlas as the insert. They are the entire difference between a jewel case and a grey slab, and
+    /// they live to the left of every mask. Three earlier candidates were rejected for going blank
+    /// under exactly this check.
+    /// </remarks>
+    [Fact]
+    public void JewelCaseHinge_SurvivesTheFlattening()
+    {
+        var model = MediaShellCatalog.Load(MediaShell.JewelCase);
+        var material = model.Materials.Single(candidate => candidate.Name == "01_-_Default");
+        var texture = model.Textures[material.BaseColorTexture];
 
-        Assert.True(varies, "Every jewel-case map is flat; the case detail was flattened away.");
+        var samples = new HashSet<(byte, byte, byte)>();
+        for (var u = 0.01f; u < 0.17f; u += 0.005f)
+        {
+            for (var v = 0.05f; v < 0.95f; v += 0.05f)
+            {
+                var x = Math.Clamp((int)(u * texture.Width), 0, texture.Width - 1);
+                var y = Math.Clamp((int)(v * texture.Height), 0, texture.Height - 1);
+                var offset = ((y * texture.Width) + x) * 4;
+                samples.Add((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]));
+            }
+        }
+
+        Assert.True(
+            samples.Count > 100,
+            $"The jewel case's hinge and outer plastic are flat ({samples.Count} distinct colours); "
+            + "the mask has eaten the detail the shell was chosen for.");
     }
 
     [Fact]

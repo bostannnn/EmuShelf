@@ -7301,3 +7301,63 @@ found what that costs:
 
 The general lesson is that a silently ignored input looks exactly like an input the asset does not
 have, and the only way to tell them apart is to go and read the file.
+
+## 2026-08-15 — The jewel case shipped another game's artwork, and three corrections above it
+
+Review of the jewel-case branch before merge. The shell was rendering sodaraptor's Hypnagogia cover,
+its back inlay, its spine title, its rating mark and a fictional "DreamStation" console logo on
+**every PS1 and Dreamcast game in the library**. It was not an oversight: `--neutral-maps none` was
+added for it, a `DECISIONS` entry argued for it, `THIRD-PARTY-NOTICES` documented it, and a test
+named `JewelCase_KeepsTheAuthorsOwnArtwork` locked it in.
+
+**The licence argument was sound and answered the wrong question.** sodaraptor did write the game
+and build the case, and CC BY does cover both — so nothing here was ever a licensing problem. What
+made it wrong is that a shelf of PS1 games is not allowed to show one particular PS1 game's box on
+all of them. Every other shell in this catalog is blanked for a licence reason, and that shared
+reason hid the fact that there is a second, independent one. **A shell carries the medium, never a
+title.** Check the licence and then check that anyway.
+
+**The claim that blanking would kill this model was also wrong, and checkable in a minute.** The
+argument was that the case's plastic, hinge and printed banner share a base-colour map with the
+insert. They share a *map*; they do not share a *region*. The insert starts at u 0.182 on the lid
+and the hinge teeth end at 0.172. Three rectangles — one per printed map, since the lid, the tray
+inlay and the promo card are three photographs of the same case with the print starting at a
+different column in each — take the artwork and leave the plastic. `--neutral-maps none` is deleted;
+`--neutral-material` and `--neutral-rect` now take lists.
+
+**The cover panel was drawn around the fictional branding, so widening it was part of the same
+fix.** It ran from -0.493 rather than the insert's own -0.789, to stop short of the moulded
+"DreamStation" banner. But a scraped PS1 cover *is* the whole 120mm insert with the platform's
+banner printed down its left, so that arrangement put the scan's banner next to a second, invented
+one. With the source banner flattened, the panel is now the insert.
+
+### The occlusion map was bound over the panel art
+
+Unrelated to the artwork and worse. `BindMaterial` bound `uOcclusionMap` to texture unit 6, which is
+panel art slot 1 — units 5 to 7 are the three panels, 8 is the key shadow. Materials are bound per
+mesh, after the panels are bound per shell, so this overwrote that slot on every draw: with the AO
+map on a shell that has one, and with a white pixel on every shell that does not. The Mega Drive's
+folded top strip sampled the cartridge's AO map instead of the cover art and drew a yellow-green
+line along the crease; the keep case's back scan and the jewel case's spine scan were being replaced
+with white, invisible in the preview only because neither is fed art there. Now unit 9.
+
+The occlusion work itself stands and is the good half of that change — the Game Boy and Mega Drive
+both ship baked AO that was being discarded. `KHR_materials_clearcoat` did not: the only material
+carrying one in any shipped asset is the jewel case's disc, which `--drop-meshes` removes, so the
+whole shader path drew nothing on anything. Rather than delete it, `MediaShellDefinition` now
+carries a coat and the jewel case sets it — the lid genuinely is a sheet of clear polystyrene over a
+printed card, which is what the extension is for and what no roughness value imitates.
+
+### Corrections to the three entries above
+
+- The entry describing this shell as **xqspx's case with its lid 9.2 degrees open** is stale. It
+  describes a candidate that was tried and rejected, and was left behind when the shell was replaced
+  with sodaraptor's. The shipped case is sodaraptor's, and it ships 25 degrees open at 66mm.
+- **"`--neutral-maps none` exists for exactly this case and should stay rare"** — it existed for no
+  case, and is gone.
+- **"this model paints its plastic, hinge teeth and printed banner into the same base-colour maps as
+  the insert, so flattening the insert would have taken them with it"** — measured, and false.
+
+Also: dropping a mesh now drops the maps only it reached. The disc's 1024px label stayed in the file
+after `--drop-meshes` removed the disc, a quarter of the shipped bytes drawn by nothing. With that
+and the flattened print, the asset falls from 7.2 MB to 1.75 MB.

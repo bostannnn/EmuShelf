@@ -175,6 +175,13 @@ public enum ArtFace
 /// fill. Zero is a fully filled product shot; one lets a key shadow remove all ambient light.</param>
 /// <param name="CavityStrength">Strength of the authored normal map's small-scale occlusion cue.</param>
 /// <param name="NormalStrength">Scale applied to tangent-space normal-map X/Y before normalization.</param>
+/// <param name="ClearcoatFactor">Strength of a clear lacquer over the whole shell, for a case that
+/// is literally that: a jewel case is clear polystyrene over a printed insert, which is a second
+/// sharper specular lobe and not a lower roughness — the coat has its own highlight while the card
+/// under it stays matte. A material that carries <c>KHR_materials_clearcoat</c> of its own wins.
+/// Zero on every shell with no lacquer, which costs one comparison.</param>
+/// <param name="ClearcoatRoughness">Roughness of that coat. Moulded polystyrene is not optically
+/// flat, so this is not zero.</param>
 public sealed record MediaShellDefinition(
     MediaShell Shell,
     string ResourceName,
@@ -191,7 +198,9 @@ public sealed record MediaShellDefinition(
     float AmbientIntensity = 0.86f,
     float ShadowFillOcclusion = 0.30f,
     float CavityStrength = 0.12f,
-    float NormalStrength = 1f);
+    float NormalStrength = 1f,
+    float ClearcoatFactor = 0f,
+    float ClearcoatRoughness = 0.04f);
 
 /// <summary>
 /// A medium's real-world presentation contract for the shared shelf scene.
