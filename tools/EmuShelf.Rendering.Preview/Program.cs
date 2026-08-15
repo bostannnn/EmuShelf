@@ -47,6 +47,9 @@ if (prepModel is not null)
         // product shot. Both are geometry problems a profile cannot fix.
         ArgumentValue("--drop-meshes"),
         ArgumentValue("--close-lid"),
+        // Folds rims that a closed lid leaves protruding past the case's outer faces back onto them,
+        // so a jewel case reads as one boxy edge rather than two walls with a channel between.
+        ArgumentValue("--clamp-thickness"),
         args.Contains("--strip-textures"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;

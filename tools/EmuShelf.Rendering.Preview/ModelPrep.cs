@@ -79,6 +79,7 @@ internal static class ModelPrep
         bool bakeVertexColours,
         string? dropMeshes,
         string? closeLid,
+        string? clampThickness,
         bool stripTextures,
         int maxTextureSize)
     {
@@ -145,6 +146,22 @@ internal static class ModelPrep
         if (dropMeshes is not null)
         {
             DropMeshes(root, Split(dropMeshes));
+        }
+
+        // After the disc is dropped, so the case's own faces are all the clamp ever measures or
+        // moves — a disc lying in the tray would drag the thickness extent it is read against.
+        if (clampThickness is not null)
+        {
+            var band = Split(clampThickness)
+                .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+                .ToArray();
+            if (band.Length != 2)
+            {
+                throw new ArgumentException(
+                    "--clamp-thickness wants <keepLow,keepHigh> as fractions of the thickness extent.");
+            }
+
+            ClampThickness(root, source, binStart, band[0], band[1]);
         }
 
         var views = root["bufferViews"]!.AsArray();
@@ -703,6 +720,89 @@ internal static class ModelPrep
         }
 
         Console.WriteLine($"  swung {moved} lid vertices onto the tray");
+    }
+
+    /// <summary>
+    /// Merges rims that protrude past the case's outer faces into them, along its thinnest axis,
+    /// keeping the overall thickness.
+    /// </summary>
+    /// <remarks>
+    /// The jewel case is a clear lid shell nested over a tray, and closing it does not seat the two
+    /// flush: the lid's hinge spine stands proud behind the tray's back, and the tray's front lip
+    /// pokes ahead of the lid window. Each protruding rim is a thin wall the studio key catches on
+    /// its own, so an edge that should read as one boxy face reads as two with a channel between —
+    /// the artefact <see cref="CloseHingedLid"/> leaves and a profile cannot reach, because it is a
+    /// difference between two pieces within one axis rather than that axis's overall scale.
+    ///
+    /// <para>Two fractions of the thickness extent, measured from its thin face, name the band the
+    /// real outer faces sit in — the clusters just inside the protruding rims, read off the model
+    /// rather than assumed. Everything outside the band folds onto the nearer edge of it, merging the
+    /// stray wall into the face beside it, and then the band is scaled back out to the full original
+    /// extent. That second step is why this is not a plain clamp: folding alone would thin the case
+    /// by whatever the rims were sticking out, leaving the profile to stretch the depth back and
+    /// distort it. Rescaling bakes the true thickness into the mesh, so the shell stays boxy and its
+    /// depth still agrees with its profile.</para>
+    ///
+    /// <para>Run after <see cref="DropMeshes"/>, so a disc lying in the tray neither sets the extent
+    /// the fractions are taken against nor gets folded through a face.</para>
+    /// </remarks>
+    private static void ClampThickness(
+        JsonObject root, byte[] source, int binStart, float keepLow, float keepHigh)
+    {
+        var placements = MeshPlacements(root).Values.ToArray();
+        if (placements.Length == 0)
+        {
+            throw new InvalidDataException("--clamp-thickness: the model has no drawable mesh.");
+        }
+
+        // The thickness axis is the one the case is shallowest along, found over every drawable mesh
+        // the same way --close-lid finds which way is up off the tray, rather than assumed.
+        var worldPoints = placements
+            .SelectMany(mesh => ReadPositions(root, source, binStart, mesh)
+                .Select(point => Vector3.Transform(point, mesh.Transform)))
+            .ToArray();
+        var bounds = worldPoints.Aggregate(
+            (Min: worldPoints[0], Max: worldPoints[0]),
+            (acc, point) => (Vector3.Min(acc.Min, point), Vector3.Max(acc.Max, point)));
+        var extent = bounds.Max - bounds.Min;
+        var axis = extent.X <= extent.Y && extent.X <= extent.Z ? Vector3.UnitX
+            : extent.Y <= extent.Z ? Vector3.UnitY
+            : Vector3.UnitZ;
+
+        float Thickness(Vector3 point) => Vector3.Dot(point, axis);
+        var thin = worldPoints.Min(Thickness);
+        var span = worldPoints.Max(Thickness) - thin;
+        var low = thin + (keepLow * span);
+        var high = thin + (keepHigh * span);
+        var stretch = span / (high - low);
+
+        Console.WriteLine(
+            $"  merging walls on {(axis == Vector3.UnitX ? "X" : axis == Vector3.UnitY ? "Y" : "Z")}: "
+            + $"folding outside [{keepLow:F3}, {keepHigh:F3}] of the extent in and scaling back out");
+
+        var moved = 0;
+        foreach (var mesh in placements)
+        {
+            var inverse = Invert(mesh.Transform);
+            var local = ReadPositions(root, source, binStart, mesh);
+            for (var i = 0; i < local.Length; i++)
+            {
+                var world = Vector3.Transform(local[i], mesh.Transform);
+                var thickness = Thickness(world);
+                var folded = thin + ((Math.Clamp(thickness, low, high) - low) * stretch);
+                if (folded == thickness)
+                {
+                    continue;
+                }
+
+                local[i] = Vector3.Transform(world + (axis * (folded - thickness)), inverse);
+                moved++;
+            }
+
+            WritePositions(root, source, binStart, mesh, local);
+        }
+
+        Console.WriteLine($"  remapped {moved} vertices along the thickness axis");
     }
 
     /// <summary>

@@ -1963,7 +1963,9 @@ public class MediaShellTests
             model.Size.X > model.Size.Y,
             $"A jewel case is wider than it is tall; got {model.Size.X} x {model.Size.Y}.");
         Assert.Equal(142f / 125f, model.Size.X / model.Size.Y, 0.01f);
-        // Shut, this is 0.072. Ajar, as the source ships it, it is 0.533.
+        // Shut, this is 0.072 — and stays 0.072 after the wall-merge pass that stops the closed
+        // case reading as two walls, because that pass folds the stray rims in and then scales the
+        // depth back out to the same extent. Ajar, as the source ships it, it is 0.533.
         Assert.True(
             model.Size.Z < 0.09f,
             $"The jewel case's lid is not shut: it loads {model.Size.Z} deep per unit of height.");

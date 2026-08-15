@@ -36,14 +36,17 @@ reproduces `src/EmuShelf.Rendering/Assets/snes-cartridge.glb` byte-for-byte (SHA
 `6c0825db…8d11`, 3,474,256 bytes). It needs no GPU and returns before any GL setup, so it runs on
 macOS. Keep these sources: without them the shipped derivative cannot be regenerated or corrected.
 
-`dotnet run --project tools/EmuShelf.Rendering.Preview -- --prepare-model "models/ps1/hypnagogia__boundless_dreams_jewel_case.glb" --prepare-out src/EmuShelf.Rendering/Assets/jewel-case.glb --close-lid "ntsc_case_front_01 - Default_0,ntsc_case_promo_03 - Default_0" --drop-meshes "ntsc_disc_back_10 - Default_0,ntsc_disc_front_08 - Default_0" --neutral-material "01_-_Default,02_-_Default,03_-_Default" --neutral-rect "0.182,0,1,1;0.115,0,1,1;0,0,1,1" --neutral-fill D8D6D0 --neutral-maps base --max-texture 1024`
-reproduces `jewel-case.glb` byte-for-byte (SHA-256 `4dcfdcc2…8970`, 1,752,532 bytes). Three
+`dotnet run --project tools/EmuShelf.Rendering.Preview -- --prepare-model "models/ps1/hypnagogia__boundless_dreams_jewel_case.glb" --prepare-out src/EmuShelf.Rendering/Assets/jewel-case.glb --close-lid "ntsc_case_front_01 - Default_0,ntsc_case_promo_03 - Default_0" --drop-meshes "ntsc_disc_back_10 - Default_0,ntsc_disc_front_08 - Default_0" --clamp-thickness "0.19,0.93" --neutral-material "01_-_Default,02_-_Default,03_-_Default" --neutral-rect "0.182,0,1,1;0.115,0,1,1;0,0,1,1" --neutral-fill D8D6D0 --neutral-maps base --max-texture 1024`
+reproduces `jewel-case.glb` byte-for-byte (SHA-256 `76e73847…e2b4`, 1,752,384 bytes). Three
 materials and three rectangles, because the lid, the tray inlay and the promo card are three
 photographs of the same case and the print starts at a different column in each — the lid's is
 furthest in, since the hinge teeth stand in front of it. The tray keeps its
 map untouched: it carries no game art. `--close-lid` derives the swing from the lid's own plane
 rather than from a hinge edge picked out of its vertices; two earlier rules looked reasonable and
-drove the lid through the tray.
+drove the lid through the tray. `--clamp-thickness` then folds the two rims a shut lid leaves
+protruding — the lid's hinge spine behind the tray back, the tray's front lip ahead of the lid
+window — into the faces beside them and scales the depth back out, so the closed case reads as one
+boxy edge rather than two walls with a channel, without thinning it.
 
 `dotnet run --project tools/EmuShelf.Rendering.Preview -- --prepare-model models/gbc/gameboy_cartridge_lowpoly.glb --prepare-out src/EmuShelf.Rendering/Assets/gbc-cartridge.glb --neutral-rect 0.5100,0.1690,0.8480,0.4885 --neutral-fill 696969 --max-texture 1024`
 reproduces `gbc-cartridge.glb` byte-for-byte (SHA-256 `c8fb6323…e365`, 3,280,136 bytes). The
