@@ -1,7 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
-using EmuShelf.App.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Rendering;
@@ -48,7 +47,7 @@ public sealed class MediaShelf3DHost : ContentControl
 
     public static readonly StyledProperty<CrtPresentation> CrtProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, CrtPresentation>(
-            nameof(Crt), CrtTuning.FromEnvironment());
+            nameof(Crt), CrtPresentation.Off);
 
     private readonly DispatcherTimer _initializationWatchdog;
     private MediaShelf3DControl? _scene;

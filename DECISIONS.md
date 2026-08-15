@@ -8212,3 +8212,19 @@ Two consequences worth remembering, each of which was a bug first:
   the shelf entirely.
 - Outside the shelf there is nothing for the 3D scene to draw, so it is handed an empty item list.
   Passing it the library on the grid would draw a row of cartridges over the cover grid.
+
+## 2026-08-15 — The CRT ships at fixed defaults; only its on/off switch is a setting
+
+The per-parameter dials — curvature, scanline depth, mask, halation, and the animated instabilities —
+were tuned by eye through a temporary environment-variable shim, which has now been deleted. The
+values it settled on are the constants in `CrtPresentation.Default`, and the only user-facing control
+is the on/off toggle.
+
+Deliberate, not an oversight. Sixteen sliders is a large surface to design, document and support for
+an effect most people will either want or not want, and every one of them is a way to make the couch
+UI look worse. The defaults are the look the feature is for.
+
+They remain individually addressable fields rather than being folded into the shader as literals, so
+exposing any of them later is a UI job rather than a refactor. The shim is gone because dev
+scaffolding that ships is scaffolding that rots: its own comment promised deletion once Settings
+existed, and that promise would have quietly become false the moment it merged.
