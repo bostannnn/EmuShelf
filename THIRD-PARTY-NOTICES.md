@@ -221,16 +221,18 @@ Credit is given here and the models keep their authorship metadata inside the `.
   the author's CC BY licence does not cover — in the build. Maps were reduced to 1024px, and
   canonical orientation, metric scaling and per-game label art are applied at runtime. Original
   authorship and license metadata remain embedded in the GLB.
-- **Postal X PSX CD-R disk** — by [xqspx](https://sketchfab.com/xqspx), from
-  [Sketchfab](https://sketchfab.com/3d-models/postal-x-psx-cd-r-disk-59475e899e164884aef067aec7f7388c).
-  Bundled as `jewel-case.glb`, and despite its title the usable part is the jewel case rather than
-  the disc: the download is a PS1 case with its disc lying beside it. EmuShelf detaches the disc,
-  swings the case's lid shut — it was modelled 9.2 degrees ajar for a product shot — and flattens
-  every base-colour map, which removes the Postal X sleeve, spine and inlay artwork entirely. That
-  artwork is the publisher's and is not covered by the author's CC BY licence. The model carries no
-  normal or metallic/roughness maps, so nothing else is lost with it. Maps were reduced to 1024px,
-  and canonical orientation, metric scaling and per-game cover art are applied at runtime. Original
-  authorship and license metadata remain embedded in the GLB.
+- **Hypnagogia 無限の夢 Boundless Dreams Jewel Case** — by
+  [sodaraptor](https://sketchfab.com/sodaraptor), from
+  [Sketchfab](https://sketchfab.com/3d-models/hypnagogia-boundless-dreams-jewel-case-20e4780167b6441fb364060c79870378).
+  Bundled as `jewel-case.glb`, serving PS1 and Dreamcast. **This is the one shell whose source
+  artwork is kept rather than flattened**, and deliberately: sodaraptor wrote the game and built the
+  case, so the CC BY licence covers both the model and the art on it, and the case moulds its own
+  "DreamStation" branding rather than any console manufacturer's. Keeping it is also what makes the
+  shell usable — the case's plastic, hinge teeth and printed banner live in the same base-colour
+  maps as the insert, so flattening the insert would take them too, which is exactly how three
+  earlier jewel-case candidates failed. EmuShelf projects its own cover art over the insert area at
+  runtime. The disc was dropped, the lid shut from the 25-degree product-shot pose it ships in, and
+  maps reduced to 1024px. Original authorship and license metadata remain embedded in the GLB.
 - **DVD/PS2/Wii case** — by [MacDrawz](https://sketchfab.com/MacDrawz), from
   [Sketchfab](https://sketchfab.com/3d-models/dvdps2wii-case-60c2e703f9764cd6885811452802b3aa).
   Bundled as `disc-keep-case.glb`. The download's base-colour map is a scan of a retail Mortal

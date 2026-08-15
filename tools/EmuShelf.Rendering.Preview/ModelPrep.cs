@@ -41,6 +41,7 @@ internal static class ModelPrep
     [Flags]
     private enum NeutralMaps
     {
+        None = 0,
         BaseColour = 1 << 0,
         Surface = 1 << 1,
         All = BaseColour | Surface,
@@ -106,10 +107,13 @@ internal static class ModelPrep
         var images = root["images"]!.AsArray();
         var textures = root["textures"]?.AsArray();
 
-        var neutralImages = neutralMaterial is null
+        var keepArtwork = string.Equals(neutralMaps, "none", StringComparison.OrdinalIgnoreCase);
+        var neutralImages = keepArtwork
+            ? []
+            : neutralMaterial is null
             ? ResolveAllMaterialImages(root, textures, baseFill, maps)
             : ResolveNeutralImages(root, textures, neutralMaterial, baseFill, maps);
-        if (neutralImages.Count == 0)
+        if (neutralImages.Count == 0 && !keepArtwork)
         {
             throw new InvalidDataException(
                 $"Nothing to neutralize: no material named '{neutralMaterial}' with a base-colour texture.");
@@ -314,6 +318,49 @@ internal static class ModelPrep
         return result;
     }
 
+    /// <summary>The normal of the plane a set of points best fits: its least-spread direction.</summary>
+    private static Vector3 PlaneNormal(IReadOnlyList<Vector3> points, Vector3 centre)
+    {
+        // Inverse power iteration on the covariance, done the cheap way: find the two directions
+        // the points spread along most, and take what is left.
+        var first = PrincipalDirection(points, centre);
+        var residual = points
+            .Select(p => p - centre - (first * Vector3.Dot(p - centre, first)))
+            .ToArray();
+        var second = PrincipalDirection(residual, Vector3.Zero);
+        var normal = Vector3.Cross(first, second);
+        return normal.LengthSquared() < 1e-12f ? Vector3.UnitZ : Vector3.Normalize(normal);
+    }
+
+    /// <summary>The direction a set of points is most spread along, by power iteration.</summary>
+    private static Vector3 PrincipalDirection(IReadOnlyList<Vector3> points, Vector3 centre)
+    {
+        var direction = Vector3.Normalize(points[^1] - points[0]);
+        if (!float.IsFinite(direction.X))
+        {
+            return Vector3.UnitX;
+        }
+
+        for (var pass = 0; pass < 24; pass++)
+        {
+            var next = Vector3.Zero;
+            foreach (var point in points)
+            {
+                var offset = point - centre;
+                next += offset * Vector3.Dot(offset, direction);
+            }
+
+            if (next.LengthSquared() < 1e-20f)
+            {
+                return direction;
+            }
+
+            direction = Vector3.Normalize(next);
+        }
+
+        return direction;
+    }
+
     private static Matrix4x4 Invert(Matrix4x4 value) =>
         Matrix4x4.Invert(value, out var inverse)
             ? inverse
@@ -466,22 +513,71 @@ internal static class ModelPrep
         var lidPoints = ReadPositions(root, source, binStart, lid)
             .Select(p => Vector3.Transform(p, lid.Transform))
             .ToArray();
-        var lowest = lidPoints.Min(p => p.Y);
-        var highest = lidPoints.Max(p => p.Y);
-        var hinge = lidPoints.Where(p => p.Y <= lowest + 1e-4f).ToArray();
+
+        // Which way is "up" off the tray is the model's business, not a convention: the PS1 case
+        // this was written for lies with its thickness on Y, the next one had it on Z. A lid is a
+        // flat panel however far it is swung, so its smallest extent is the axis it lifts along.
+        var spread = lidPoints.Aggregate(
+            (Min: lidPoints[0], Max: lidPoints[0]),
+            (bounds, p) => (Vector3.Min(bounds.Min, p), Vector3.Max(bounds.Max, p)));
+        var extent = spread.Max - spread.Min;
+        var up = extent.X <= extent.Y && extent.X <= extent.Z ? Vector3.UnitX
+            : extent.Y <= extent.Z ? Vector3.UnitY
+            : Vector3.UnitZ;
+
+        float Height(Vector3 point) => Vector3.Dot(point, up);
+        var lowest = lidPoints.Min(Height);
+        var highest = lidPoints.Max(Height);
+        var hinge = lidPoints.Where(p => Height(p) <= lowest + (0.02f * (highest - lowest))).ToArray();
         if (hinge.Length < 2)
         {
             throw new InvalidDataException("--close-lid: the lid has no identifiable hinge edge.");
         }
 
-        var axis = Vector3.Normalize(
-            hinge.OrderBy(p => p.Z).Last() - hinge.OrderBy(p => p.Z).First());
-        // Rise over run across the lid gives the angle to take out.
-        var reach = lidPoints.Max(p => Math.Abs(Vector3.Dot(p - hinge[0], Vector3.Cross(axis, Vector3.UnitY))));
-        var angle = MathF.Atan2(highest - lowest, reach);
-        var rotation = Matrix4x4.CreateFromAxisAngle(axis, -angle);
+        // Derived from the lid's plane rather than from which vertices happen to sit lowest. A lid
+        // is a panel, so the rotation that shuts it is the one taking its normal onto the tray's:
+        // the hinge runs perpendicular to both, and the angle between them is how far it stands
+        // open. Picking a hinge edge out of the vertex cloud instead looked reasonable and failed
+        // twice — once on a diagonal chord, once on a scattered low edge — because a lid with two
+        // hundred vertices has no single lowest edge to find.
+        var centre = lidPoints.Aggregate(Vector3.Zero, (sum, p) => sum + p) / lidPoints.Length;
+        var lidNormal = PlaneNormal(lidPoints, centre);
+        if (Vector3.Dot(lidNormal, up) < 0f)
+        {
+            lidNormal = -lidNormal;
+        }
+
+        var axis = Vector3.Cross(lidNormal, up);
+        if (axis.LengthSquared() < 1e-12f)
+        {
+            Console.WriteLine($"  '{names[0]}' is already shut; nothing to swing.");
+            return;
+        }
+
+        axis = Vector3.Normalize(axis);
+        var angle = MathF.Acos(Math.Clamp(Vector3.Dot(lidNormal, up), -1f, 1f));
+        var pivot = lidPoints.Where(p => Height(p) <= lowest + (0.05f * (highest - lowest)))
+            .Aggregate(Vector3.Zero, (sum, p) => sum + p)
+            / lidPoints.Count(p => Height(p) <= lowest + (0.05f * (highest - lowest)));
+
+        var rotation = Matrix4x4.CreateFromAxisAngle(axis, angle);
+        var alternative = Matrix4x4.CreateFromAxisAngle(axis, -angle);
+        float Flatness(Matrix4x4 candidate)
+        {
+            var swung = lidPoints
+                .Select(p => Height(Vector3.Transform(p - pivot, candidate) + pivot))
+                .ToArray();
+            return swung.Max() - swung.Min();
+        }
+
+        if (Flatness(alternative) < Flatness(rotation))
+        {
+            rotation = alternative;
+        }
+
         Console.WriteLine(
-            $"  closing '{names[0]}': lid stands {angle * 180f / MathF.PI:F2} deg open, hinge at y={lowest:F3}");
+            $"  closing '{names[0]}': lid stands {angle * 180f / MathF.PI:F2} deg open about "
+            + $"{(up == Vector3.UnitX ? "X" : up == Vector3.UnitY ? "Y" : "Z")}");
 
         var moved = 0;
         foreach (var name in names)
@@ -496,12 +592,12 @@ internal static class ModelPrep
             for (var i = 0; i < local.Length; i++)
             {
                 var world = Vector3.Transform(local[i], mesh.Transform);
-                if (world.Y <= lowest - 0.02f)
+                if (Height(world) <= lowest - (0.02f * (highest - lowest)))
                 {
                     continue;
                 }
 
-                var swung = Vector3.Transform(world - hinge[0], rotation) + hinge[0];
+                var swung = Vector3.Transform(world - pivot, rotation) + pivot;
                 local[i] = Vector3.Transform(swung, inverse);
                 moved++;
             }
@@ -734,7 +830,12 @@ internal static class ModelPrep
         {
             null or "" or "all" => NeutralMaps.All,
             "base" => NeutralMaps.BaseColour,
-            _ => throw new ArgumentException("--neutral-maps wants 'all' or 'base'."),
+            // Nothing is flattened. Only for a shell whose own author licensed its artwork to us —
+            // it is the exception, and the reason to reach for it is that a case model often paints
+            // its plastic and its printed insert into one map, so removing the insert takes the
+            // hinge and the moulding with it.
+            "none" => NeutralMaps.None,
+            _ => throw new ArgumentException("--neutral-maps wants 'all', 'base' or 'none'."),
         };
 
     /// <summary>

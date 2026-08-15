@@ -305,29 +305,30 @@ public static class MediaShellCatalog
         [MediaShell.JewelCase] = new MediaShellDefinition(
             MediaShell.JewelCase,
             "EmuShelf.Rendering.Assets.jewel-case.glb",
-            Matrix4x4.CreateRotationX(-MathF.PI / 2f) * Matrix4x4.CreateRotationY(MathF.PI),
+            // Authored upright and already facing +Z once its lid is shut, so no reorientation.
+            Matrix4x4.Identity,
             MaxTextureSize: 1024,
-            // Measured off the front insert's own quad, the way the Game Boy label was, rather than
-            // eyeballed against a render. It stops short of the hinge side because a jewel case's
-            // printed insert does — that strip is the spine, and it gets its own panel.
+            // Measured off the insert's own UV island and projected back through the lid's
+            // triangles, the way the Game Boy label was. It stops well short of the hinge side
+            // because a PS1 front insert does — the strip beside it is the printed banner and the
+            // moulded hinge, and covering them is what made the first attempts read as a poster in
+            // a frame rather than a case.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.99f, 0.86f, -0.99f, 0.99f, ArtFit: ArtFit.Stretch),
+                ArtFace.Front, -0.493f, 0.942f, -0.957f, 0.957f, ArtFit: ArtFit.Cover),
             ExtraPanels:
             [
-                ArtPanel.Full(ArtFace.Spine, inset: 0.02f),
+                ArtPanel.Full(ArtFace.Spine, inset: 0.06f, fit: ArtFit.Cover),
             ],
-            // A jewel case's insert sits under a clear polystyrene lid, so it is the glossiest
-            // printed surface of any shell here — closer to the keep case's 0.13 than to a
-            // cartridge label. No Back panel: this model's back inlay is interior geometry seen
-            // through the tray rather than a face at the shell's -Z bound, so a full-face back
-            // projection would paint the tray's outside instead of the inlay.
+            // The insert sits under a clear polystyrene lid, so it is the glossiest printed surface
+            // of any shell here.
             PanelRoughness: 0.16f,
+            // No Back panel: this model's back inlay is the tray's interior seen through it, not a
+            // face at the shell's -Z bound, so a back projection paints the outside of the tray.
+            // The tray already carries the author's own inlay, which is licensed to us.
             FlattenPanelNormal: false,
             BodyRoughnessScale: 1.0f,
             BodyAlbedoScale: 1.0f),
 
-        // Authored upright and close to a real keep case (135 x 190 x 14mm, plus the lip around
-        // the lid), so no reorientation is needed.
         [MediaShell.DiscKeepCase] = new MediaShellDefinition(
             MediaShell.DiscKeepCase,
             "EmuShelf.Rendering.Assets.disc-keep-case.glb",

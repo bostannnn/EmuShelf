@@ -7223,3 +7223,64 @@ a full-face back projection would paint the outside of the tray instead of the i
 
 The other supplied PS1 file, `ps1_case_-_deathtrap_dungeon_1998.glb`, was re-checked and the earlier
 assessment of it stands: 36 triangles, three flat billboards carrying photographs. Unusable.
+
+## 2026-08-15 — The jewel case, and the check that should come first on any case candidate
+
+`MediaShell.JewelCase`, mapped from `playstation` and `dreamcast`, using sodaraptor's CC BY
+Hypnagogia case. Four candidates were tried and the three that failed all failed identically, which
+is the part worth keeping.
+
+**A downloaded case model is usually a photograph wrapped onto flat panels.** Its credibility is a
+sleeve scan, and that scan is what has to be flattened before the derivative can ship. Flatten it
+and a rectangle is left. `postal_x_psx_cd-r_disk.glb` is a correctly-proportioned 324-triangle case
+that goes blank; `ps1_case_-_deathtrap_dungeon_1998.glb` is 36 triangles of billboards; bloobloo's
+is a product shot of the same kind. **The check that settles it takes one render: flatten the
+artwork and look.** That is now the first thing to do with a case candidate, before measuring
+anything, because proportions and triangle counts look fine on all of them.
+
+**The one that works does so because its artwork did not have to go.** sodaraptor wrote the game and
+built the case, so the CC BY licence covers both, and it moulds "DreamStation" rather than Sony's
+mark. That matters more than the licence: this model paints its plastic, hinge teeth and printed
+banner into the same base-colour maps as the insert, so flattening the insert would have taken them
+with it — the same death as the others. `--neutral-maps none` exists for exactly this case and
+should stay rare.
+
+**A generated jewel case was built and rejected, and the reason is worth recording.** A jewel case
+is regular, hard-edged and fully specified, so generating it looked like the right answer, and the
+2026-08-14 entry recommended it. Built to the real 142 x 125 x 10mm with a lid, tray, rim, recessed
+window and three hinge lugs, it still read as a box: at shelf distance a 4mm rim and a 2mm recess
+are sub-pixel, and the lugs sit on the one face the shelf rarely shows. What a case actually needs
+is the fine printed and moulded detail a photograph carries and code does not — which is the
+opposite of the conclusion the cartridge shells had led to. Generating is right for a shape; it is
+wrong for a surface.
+
+**Corrections, in both directions.** The original "a disc, not packaging" note about the Postal X
+file was wrong — it contains a case. The entry that overturned the recommendation on the strength of
+that was also wrong. And the recommendation to generate, which looked vindicated when three
+downloads failed, turned out wrong once a fourth appeared. None of these could have been settled by
+measurement; each needed a render.
+
+## 2026-08-15 — The loader was dropping occlusion maps and every material extension
+
+Prompted by asking why `KHR_materials_clearcoat` was ignored. It was not a decision:
+`GlbLoader.ResolveMaterial` reads three channels — base colour, metallic/roughness, normal — and
+drops everything else a glTF material carries. An audit across every shipped and candidate model
+found what that costs:
+
+- **`occlusionTexture`, on two shipped shells.** The Game Boy and Mega Drive cartridges both ship
+  baked AO that was being discarded. Worse, `CavityStrength` had been turned up to 0.42 on the Game
+  Boy to *infer* occlusion from normal-map slope — estimating a quantity the file already contained.
+  Now read, and applied to ambient only: a recess darkens without the shell losing the key that
+  describes its form.
+- **`KHR_materials_clearcoat`.** A jewel case is clear polystyrene over a printed insert, which is
+  what a clearcoat lobe is for and what no roughness value can imitate — the coat needs its own
+  sharp highlight while the paper under it stays matte.
+- **`TANGENT`, on six of seven shells.** Deliberate and documented: the shader derives a cotangent
+  frame from screen-space derivatives to keep every model on one path. Left alone.
+- **`KHR_materials_unlit`, on the DS card.** Correctly ignored — unlit would bypass the studio.
+- `KHR_texture_transform`, `KHR_materials_sheen`, `KHR_materials_anisotropy`, `TEXCOORD_1..3`:
+  candidates only or unused. `KHR_materials_specular` is the obvious next one, since its
+  `specularFactor` is what `DielectricReflectance` already expresses per shell.
+
+The general lesson is that a silently ignored input looks exactly like an input the asset does not
+have, and the only way to tell them apart is to go and read the file.

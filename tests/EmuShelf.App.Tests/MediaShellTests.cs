@@ -787,60 +787,65 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// The jewel case must load closed, landscape, and carrying only the case.
+    /// The jewel case must load landscape, shut, and carrying only the case.
     /// </summary>
     /// <remarks>
-    /// Three separate defects in one source, and all three are silent. The download is a jewel case
-    /// with its disc lying beside it, so without the drop it loads as a case-and-disc diorama whose
-    /// bounds are 60% too wide. The case is posed for a product shot with its lid 9.2 degrees open,
-    /// which measures 29mm thick against a real case's 10mm — and a profile cannot fix that, since
-    /// the scene scales each axis independently and would squash the whole case rather than shut
-    /// the lid. And it is authored lying flat and facing away, so it needs standing up and turning
-    /// round. The depth bound here is the one that matters: it is what fails if the lid ever stops
-    /// being closed.
+    /// Three defects in one source and all three silent. The download is a case with its disc lying
+    /// in the tray, so without the drop it loads a case-and-disc diorama. It is posed for a product
+    /// shot with its lid 25 degrees open, which measures 66mm thick against a real case's 10mm — and
+    /// no profile can fix that, since the scene scales each axis independently and would squash the
+    /// whole case rather than shut the lid. The depth bound is the one that matters: it is what
+    /// fails if the lid ever stops being closed.
     /// </remarks>
     [Fact]
     public void Load_ClosesTheJewelCaseAndKeepsOnlyTheCase()
     {
         var model = MediaShellCatalog.Load(MediaShell.JewelCase);
 
-        // A CD jewel case is landscape — 142mm across, 125mm tall.
+        // A CD jewel case is landscape — 142mm across, 125mm tall — unlike every keep case.
         Assert.True(
             model.Size.X > model.Size.Y,
             $"A jewel case is wider than it is tall; got {model.Size.X} x {model.Size.Y}.");
-        Assert.InRange(model.Size.X, 1.10f, 1.20f);
-        // Closed, this is 0.062. Ajar, as the source ships it, it is 0.234.
+        Assert.Equal(142f / 125f, model.Size.X / model.Size.Y, 0.01f);
+        // Shut, this is 0.072. Ajar, as the source ships it, it is 0.533.
         Assert.True(
-            model.Size.Z < 0.10f,
-            $"The jewel case's lid is not closed: it loads {model.Size.Z} deep per unit of height.");
+            model.Size.Z < 0.09f,
+            $"The jewel case's lid is not shut: it loads {model.Size.Z} deep per unit of height.");
     }
 
     /// <summary>
-    /// The shipped jewel case must carry no trace of the Postal X sleeve it was modelled from.
+    /// This shell keeps its source artwork, which is the exception and needs to stay deliberate.
     /// </summary>
     /// <remarks>
-    /// Unlike the cartridges, this shell's entire base colour is a scan of one retail sleeve — front
-    /// cover, spine and inlay — so there is no rectangle to mask and no label material to single
-    /// out. Every base-colour map is flattened whole, which is only affordable because this model
-    /// carries no normal or roughness maps for that to take with it.
+    /// Every other shell has its label or sleeve flattened, because the modeller's CC BY licence
+    /// covers the model and not the publisher's art. Here the modeller <em>is</em> the publisher —
+    /// sodaraptor wrote the game and built the case — and licensed both, and the case moulds its own
+    /// "DreamStation" branding rather than Sony's. That matters beyond the licence: three earlier
+    /// candidates were rejected because flattening their sleeve left a rectangle, and the only
+    /// reason this one survives is that its painted hinge and plastic did not have to go with it.
+    /// If this ever fails, the shell has lost the detail it was chosen for.
     /// </remarks>
     [Fact]
-    public void JewelCase_CarriesNoSourceArtwork()
+    public void JewelCase_KeepsTheAuthorsOwnArtwork()
     {
         var model = MediaShellCatalog.Load(MediaShell.JewelCase);
 
-        foreach (var texture in model.Textures)
+        Assert.NotEmpty(model.Textures);
+        var varies = model.Textures.Any(texture =>
         {
             var first = (texture.Rgba[0], texture.Rgba[1], texture.Rgba[2]);
             for (var offset = 0; offset < texture.Rgba.Length; offset += 4)
             {
                 if ((texture.Rgba[offset], texture.Rgba[offset + 1], texture.Rgba[offset + 2]) != first)
                 {
-                    Assert.Fail(
-                        $"A jewel-case map still varies at byte {offset}; the sleeve was not flattened.");
+                    return true;
                 }
             }
-        }
+
+            return false;
+        });
+
+        Assert.True(varies, "Every jewel-case map is flat; the case detail was flattened away.");
     }
 
     [Fact]

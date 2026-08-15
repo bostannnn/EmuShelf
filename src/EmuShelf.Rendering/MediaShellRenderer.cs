@@ -915,6 +915,13 @@ public sealed class MediaShellRenderer : IDisposable
         BindMaterialTexture(resources, material?.BaseColorTexture ?? -1, 0, "uBaseColorMap", "uHasBaseColorMap", _whitePixel);
         BindMaterialTexture(resources, material?.MetallicRoughnessTexture ?? -1, 1, "uMetallicRoughnessMap", "uHasMetallicRoughnessMap", _whitePixel);
         BindMaterialTexture(resources, material?.NormalTexture ?? -1, 2, "uNormalMap", "uHasNormalMap", _flatNormal);
+        // Unit 6: units 3-5 are the environment and the key shadow map, bound once per frame.
+        BindMaterialTexture(resources, material?.OcclusionTexture ?? -1, 6, "uOcclusionMap", "uHasOcclusionMap", _whitePixel);
+
+        // A printed panel is under the coat on a jewel case, so the coat is a property of the shell
+        // rather than of the panel, and stays on while artwork is drawn over the body beneath it.
+        _program.Set("uClearcoatFactor", material?.ClearcoatFactor ?? 0f);
+        _program.Set("uClearcoatRoughness", material?.ClearcoatRoughness ?? 0.04f);
     }
 
     private void BindMaterialTexture(

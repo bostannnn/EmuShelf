@@ -91,18 +91,18 @@ public static class MediaShellMap
         ["nds"] = new(
             MediaShell.DsCard, new(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport,
             "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
-        // 142mm is a real CD jewel case's width, with height and depth from the asset's own
-        // ratios rather than the nominal 125 x 10mm — the same anchoring the Game Boy and Game Boy
-        // Advance profiles use. The depth is the honest figure for this model once its lid is shut;
-        // a real case is 10mm, and closing the lid in prep is what brought it from 29mm to here.
+        // Anchored on a real CD jewel case's 142mm width, with height and depth from the asset's
+        // own ratios. It lands at 125.2 x 9.0mm against a nominal 125 x 10mm, which is as close as
+        // any shell here has come — the width and height are the object's, and the 9mm is honestly
+        // the model's once its lid is shut in prep. It ships open at 66mm.
         ["playstation"] = new(
-            MediaShell.JewelCase, new(142f, 122.5f, 7.6f),
+            MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
             "ps1-jewel", "case-downward"),
         // Same case, different finish. A Dreamcast jewel case is the whiter, colder plastic of the
         // two, which is the entire difference the shelf can express without separate geometry.
         ["dreamcast"] = new(
-            MediaShell.JewelCase, new(142f, 122.5f, 7.6f),
+            MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
             "dreamcast-jewel", "case-downward"),
         ["playstation2"] = new(
