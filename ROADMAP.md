@@ -1833,7 +1833,12 @@ the hands-on review gate before Phase 2 begins.
       current pose. Executable verification remains pending because the local execution allowance ended.
 - [ ] Give cartridges and disc cases appropriate downward handoff paths. Reduced motion uses a brief
       translate/fade; optional sounds must be licensed, independently mutable and independently muted.
-      — The shared downward handoff and no-spin reduced-motion model path are present; platform-specific
-      insertion depths, an exposed reduced-motion setting and optional sound remain open.
+      — Split into two choreographies on 2026-08-15, selected by the profile's `InsertionAnimationId`
+      (see DECISIONS). A cartridge keeps the turn-and-insert path; a case squares up, slides its disc
+      out from behind its own edge and settles back onto the shelf while the disc spins up and drops
+      away flat. Both run to the same 1920ms so process start is unaffected, reduced motion skips the
+      opening for both, and closing the game plays the whole sequence backwards.
+      An exposed reduced-motion setting and optional sound remain open, as does moving PS1, Dreamcast
+      and PSP onto the disc path once they stop rendering as flat cover cards.
 - [ ] Keep the mode experimental until SNES, GBA and supported case variants pass real-hardware visual,
       performance, no-cover, no-GL, cancellation and every launch-failure acceptance path.

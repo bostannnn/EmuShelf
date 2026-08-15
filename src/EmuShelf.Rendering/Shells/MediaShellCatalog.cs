@@ -29,6 +29,25 @@ public static class MediaShellCatalog
     private static readonly Matrix4x4 GbaOrientation = Matrix4x4.CreateRotationY(-MathF.PI / 2f);
 
     /// <summary>
+    /// Undoes the arbitrary scene rotation the compact disc's source bakes into its node graph.
+    /// </summary>
+    /// <remarks>
+    /// A quaternion rather than the Euler triples every other shell uses, because this is not a
+    /// choice of pose — it is the exact inverse of one. The export composes a rotation down its node
+    /// chain that leaves the disc tumbled on no particular axis, and the loader bakes that into the
+    /// vertices: measured as loaded, the disc came out 1.829 wide per unit of height and very nearly
+    /// as deep, which is a disc standing on a corner. Turning three angle dials until a round object
+    /// looks round is a search with no way to know it has finished; the composed world rotation is
+    /// knowable, and its conjugate lands the disc flat in XY exactly.
+    ///
+    /// That puts its label on +Z like every other shell's cover, and makes a spin about the disc's
+    /// own axis a rotation about Z.
+    /// </remarks>
+    private static readonly Matrix4x4 DiscOrientation = Matrix4x4.CreateFromQuaternion(
+        Quaternion.Normalize(
+            new Quaternion(-0.73831944f, 0.35954587f, 0.4302002f, -0.37488526f)));
+
+    /// <summary>
     /// How far the keep case's printed sleeve may follow the shell away from a face, in canonical
     /// object units. One millimetre on a case that stands 190mm tall.
     /// </summary>
@@ -497,6 +516,60 @@ public static class MediaShellCatalog
             // keep case has a sheen where a jewel case has a reflection.
             ClearcoatFactor: 0.55f,
             ClearcoatRoughness: 0.10f),
+
+        // SEMA Game Studio's compact disc, stripped to its geometry and material factors — see
+        // THIRD-PARTY-NOTICES. The shape is what it was taken for: the raised hub, the stacking
+        // ring and the rounded rim, none of which a generated annulus has. Everything about its
+        // surface is stated below instead, which is also what removes the last of the source's
+        // "SONY CD-R" trade dress from the build.
+        [MediaShell.GameDisc] = new MediaShellDefinition(
+            MediaShell.GameDisc,
+            "EmuShelf.Rendering.Assets.game-disc.glb",
+            DiscOrientation,
+            // Nothing to downsample: the prepared asset carries no maps at all.
+            MaxTextureSize: 1,
+            // A pressed disc's printed area runs from the hub out to near the rim, so the label is
+            // a circle rather than a rectangle — a corner radius of half the panel's shorter edge
+            // rounds the square away entirely. It stays inscribed in the disc: the far corner of a
+            // 0.7 square sits at 0.495 of the radius, just inside the edge, so no part of the
+            // printed sheet hangs off the medium it is printed on.
+            CoverPanel: new ArtPanel(
+                ArtFace.Front, -0.7f, 0.7f, -0.7f, 0.7f, CornerRadius: 0.5f, ArtFit: ArtFit.Contain,
+                MaxSurfaceDepth: DiscLabelDepth),
+            ExtraPanels: [],
+            // Screen-printed ink on lacquer: flatter than a keep case's sleeve under its clear
+            // overlay, and nowhere near the mirror of the data side beneath it.
+            PanelRoughness: 0.34f,
+            FlattenPanelNormal: true,
+            // glTF defaults an unstated metallic-roughness pair to 1.0/1.0 — a perfectly rough
+            // mirror, which is not a plausible object and is what a stripped material inherits.
+            // Metalness is right at 1; the roughness has to come almost all the way back down, and
+            // this scale is what turns the source's default into a pressed aluminium reflector.
+            BodyRoughnessScale: 0.09f,
+            // The base colour factor is likewise an unstated white. Darker than aluminium's real
+            // reflectance on purpose: this studio is bright, and a full mirror in it returns a flat
+            // white face with no contrast left to show either the diffraction or the disc's shape.
+            BodyAlbedoScale: 0.66f,
+            AmbientIntensity: 0.64f,
+            // Nothing on a disc casts onto anything else on it, and the flat faces have no moulding
+            // for a cavity term to find.
+            ShadowFillOcclusion: 0f,
+            CavityStrength: 0f,
+            Iridescence: 1f,
+            // ScreenScraper's support texture, which for a disc system is a picture of the disc
+            // itself. Its own face rather than the case's: the two shells are on screen together
+            // during a launch, and slot 0 is the box scan — which is the one medium a disc's label
+            // is never a picture of.
+            // 3, matching the app layer's ShelfArtworkFace.DiscLabel. A literal because this
+            // assembly knows about media and not about how the app names a game's faces; the two
+            // are held together by MediaShellTests.GameDisc_DrawsTheScrapedDiscLabelNotTheBoxScan.
+            CoverArtIndex: 3,
+            // With no such artwork the panel draws nothing at all and the disc is simply a disc. A
+            // flat tinted circle over the middle of a mirror does not read as a label — it reads as
+            // half a disc and half a pasted-on texture, which is how it was reported.
+            RequiresArtwork: true,
+            // Ink on a silver substrate rather than a coloured chip, for when there is ink.
+            PanelTintLift: 0.34f),
     };
 
     /// <summary>
@@ -522,6 +595,23 @@ public static class MediaShellCatalog
         {
             Material = "cover",
         };
+
+    /// <summary>
+    /// How far behind the disc's front plane its printed label may follow, in canonical units.
+    /// </summary>
+    /// <remarks>
+    /// Measured off the loaded mesh rather than derived from the disc's thickness, because the two
+    /// disagree by more than the allowance is wide. A panel's plane sits at the model's furthest
+    /// extent along its normal, and on this disc that extent is the raised stacking ring around the
+    /// hub — not the face the label is printed on. The front-facing surfaces inside the panel sit
+    /// at 0.002, 0.003 and 0.005 behind that plane, so an allowance sized as a fraction of the
+    /// 0.0152 thickness rejected every one of them and the label did not draw at all.
+    ///
+    /// 0.007 clears the deepest of them with room to spare and still stops less than half way
+    /// through the disc, so the data side — which is the whole 0.0152 away — can never take the
+    /// print. Both bounds matter: the label has to reach the face, and it must not reach the back.
+    /// </remarks>
+    private const float DiscLabelDepth = 0.007f;
 
     public static MediaShellDefinition Definition(MediaShell shell) => Definitions[shell];
 

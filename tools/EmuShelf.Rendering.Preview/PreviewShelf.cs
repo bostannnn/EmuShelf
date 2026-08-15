@@ -125,8 +125,9 @@ public static class PreviewShelf
             FloorClearanceInShelfUnits: 0.010f)),
         new("playstation2", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps2-black", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps2-black", "disc-from-case", DiscDiameterMillimetres: 120f)),
         // Immediately after the PS2 case on purpose: PSP shares that geometry and the entire claim
         // being reviewed is that it stands shorter and clearer beside it. Split apart in this list
         // the two would be judged separately, which is the one comparison that cannot answer the
@@ -142,20 +143,23 @@ public static class PreviewShelf
         // shell, so this row is the only acceptance artefact that renders that geometry at all.
         new("playstation3", new PhysicalMediaProfile(
             MediaShell.BluRayCase, new Vector3(135f, 171.5f, 13f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps3-clear", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps3-clear", "disc-from-case", DiscDiameterMillimetres: 120f)),
         // The other two disc-case finishes. They carry identical metrics to the PS2 case and differ
         // only in material, which is exactly why they belong here: a finish is the whole reason
         // these platforms are distinguishable at all, and until this list included them
         // `gamecube-black` and `wii-white` were rendered by nothing.
         new("gamecube", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "gamecube-black", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "gamecube-black", "disc-from-case", DiscDiameterMillimetres: 80f)),
         new("wii", new PhysicalMediaProfile(
             MediaShell.DiscKeepCase, new Vector3(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "wii-white", "case-downward")),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "wii-white", "disc-from-case", DiscDiameterMillimetres: 120f)),
         new("nes", new PhysicalMediaProfile(
             MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f),
             PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical",

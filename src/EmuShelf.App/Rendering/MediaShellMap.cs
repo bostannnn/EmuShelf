@@ -127,10 +127,18 @@ public static class MediaShellMap
         ["arcade"] = new(
             MediaShell.ArcadeCabinet, new(341f, 480f, 533f), PhysicalArtworkSlots.Front,
             "arcade-cabinet", "cartridge-vertical"),
+        // The four keep-case profiles take "disc-from-case": their launch opens the case and sends the
+        // disc on alone, because nobody has ever turned a DVD case over and pushed it into a
+        // console. PS1, Dreamcast and PSP are disc media too and deliberately stay on the cartridge
+        // motion — they render as flat cover cards until their own shells are authored, and a disc
+        // cannot be pulled out of a card. PS1 and Dreamcast now have real jewel cases and a PSP a
+        // UMD case, so the first two could plausibly join them and the third could not — a UMD is a
+        // disc in a caddy you never take out. Left as they are here rather than decided in passing.
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps2-black", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps2-black", "disc-from-case", DiscDiameterMillimetres: 120f),
         // The Blu-ray shell the note here used to promise. This profile spent a year recording the
         // DVD case's 135 x 190 x 14mm and explaining why: a PS3 game really ships in a shorter
         // case, but saying so over shared DVD geometry came out as a 13.7% stretch, and of the two
@@ -139,19 +147,28 @@ public static class MediaShellMap
         // asset's own scale, so this is the one profile here that is a transcription rather than a
         // measurement reconciled against a mesh. It is also the shortest of the disc cases now,
         // which is the point: a PS3 case really does stand a fifth shorter than a PS2 one beside it.
+        // The disc it gives up stays 120mm — a Blu-ray is a full-size disc, and it is the case that
+        // is smaller, which is the whole reason the two measurements are separate numbers.
         // See DECISIONS 2026-08-15.
         ["playstation3"] = new(
             MediaShell.BluRayCase, new(135f, 171.5f, 13f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "ps3-clear", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "ps3-clear", "disc-from-case", DiscDiameterMillimetres: 120f),
+        // 80mm, not 120mm: a GameCube game ships on a mini-DVD, and this is the one place the
+        // difference is visible now that the disc leaves the case. The case is the shared stand-in
+        // and cannot show it; the disc it gives up can, and comes out two thirds the size of a
+        // Wii's from the same mesh.
         ["gamecube"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "gamecube-black", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "gamecube-black", "disc-from-case", DiscDiameterMillimetres: 80f),
         ["wii"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
-            "wii-white", "case-downward"),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
+                | PhysicalArtworkSlots.DiscLabel,
+            "wii-white", "disc-from-case", DiscDiameterMillimetres: 120f),
         // A real UMD case, 104 x 178 x 15mm, and the one profile here that knowingly disagrees with
         // its asset: against the shared case's own 0.695 proportions this draws the mesh at 84% of
         // its authored width. That is deliberate, and it is now the only such disagreement left in

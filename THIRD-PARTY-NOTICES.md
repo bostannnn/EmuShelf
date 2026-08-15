@@ -150,13 +150,13 @@ the source project's terms and to the rights of their respective publishers.
 
 ## Bundled 3D models (couch physical-media shelf)
 
-The couch shelf's 3D hero renders a game's physical medium as a lit object. The ten
+The couch shelf's 3D hero renders a game's physical medium as a lit object. The eleven
 shells are third-party models bundled inside `EmuShelf.Rendering` at
 `src/EmuShelf.Rendering/Assets/*.glb`. Runtime-size and packaging-removal modifications are
 documented per model below. Game artwork is supplied dynamically by EmuShelf; no game packaging
 from a model download is intentionally displayed.
 
-All ten are licensed
+All eleven are licensed
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), which permits redistribution —
 including in commercial and differently licensed works — provided the author is credited.
 Credit is given here and the models keep their authorship metadata inside the `.glb` files.
@@ -263,6 +263,22 @@ Credit is given here and the models keep their authorship metadata inside the `.
   plastic of a PS3 case rather than the white of a PS5 one. Canonical orientation, metric scaling,
   the plastic's calibration and per-game sleeve art are applied at runtime. Original authorship and
   license metadata remain embedded in the GLB.
+
+- **Compact disc** — by [SEMA Game Studio](https://sketchfab.com/sema.game.studio), from
+  [Sketchfab](https://sketchfab.com/3d-models/compact-disc-06254ae4c6c04bc4b1cb5bd9b6c2ea41).
+  Bundled as `game-disc.glb`, and used for the disc a keep case gives up while a PS2, PS3, GameCube
+  or Wii game is launching. This one ships as **geometry and material factors only** — every texture
+  map is stripped. The download's maps carry "SONY CD-R 700MB" trade dress in the base colour and
+  again, embossed, in the metallic/roughness map, and unlike the shells above it cannot be masked:
+  the disc's two faces share one atlas as interleaved circular islands, so every rectangle covering
+  the branding also clips the brushed data surface beside it. The model was taken for its shape —
+  the raised hub, the stacking ring and the rounded rim — and that is what remains. Its whole
+  appearance is stated in EmuShelf's own shell definition, and its label is the game's own scraped
+  disc artwork. The author's CC BY licence covers the mesh; none of the trade dress it shipped with
+  is in the build, and stripping the maps also took the asset from 3.4MB to 390KB. A malformed
+  animation clip that made the file fail to load was removed with them. Canonical orientation and
+  metric scaling are applied at runtime. Original authorship and license metadata remain embedded
+  in the GLB.
 
 These models are not affiliated with or endorsed by Nintendo, Sony, or any console
 manufacturer, and no console manufacturer's branding is used as EmuShelf's own.
