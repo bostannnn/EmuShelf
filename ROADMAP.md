@@ -1788,8 +1788,10 @@ the hands-on review gate before Phase 2 begins.
       lets true depth visibility suppress 58% of that fill, and applies thresholded normal-map cavity
       only to strong relief while excluding the printed label. The studio key now rakes from high-left
       rather than following the camera axis, and isolated 1024px per-item maps give readable neutral-pose
-      self-shadows without one shelf item shadowing another. The SNES asset contains no authored occlusion
-      texture, so AO-map ingestion and the real-Windows 1080p review keep this gate open.
+      self-shadows without one shelf item shadowing another. AO-map ingestion landed 2026-08-15 —
+      `occlusionTexture` was being dropped by the loader, and the Game Boy and Mega Drive shells both
+      ship one — but the SNES asset itself carries no authored occlusion texture, so that shell still
+      infers it from normal-map slope, and the real-Windows 1080p review keeps this gate open.
 
 ### Phase 3 — Correct scraped media and remaining launch set
 

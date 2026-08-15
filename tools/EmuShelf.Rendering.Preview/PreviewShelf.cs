@@ -27,8 +27,7 @@ public sealed record PreviewShelfEntry(string SystemId, PhysicalMediaProfile Pro
     /// PSP box scan is 0.581 and its sleeve was being stretched 20% wider with nothing to show for
     /// it on screen; SNES cover art is landscape at 1.434, and its label was being judged against
     /// portrait art. A preview tool whose placeholder is the wrong shape reviews the placeholder.
-    /// </remarks>
-    /// <remarks>
+    ///
     /// Resolved explicitly rather than with Single() so a bad id says which id. This runs inside a
     /// static initializer, so the exception a future editor of this table sees first is wrapped in
     /// a TypeInitializationException — and "Sequence contains no matching element", thrown from
@@ -103,11 +102,11 @@ public static class PreviewShelf
         // geometry and differ only in finish, and a finish can only be judged against its neighbour.
         new("playstation", new PhysicalMediaProfile(
             MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "ps1-jewel", "case-downward")),
         new("dreamcast", new PhysicalMediaProfile(
             MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f),
-            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "dreamcast-jewel", "case-downward")),
         // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge
         // of the acceptance shot, which is how it kept a profile a quarter too big for a whole
