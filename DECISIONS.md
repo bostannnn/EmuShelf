@@ -8601,3 +8601,29 @@ treated as transient: the renderer is kept and the frame retried, and only a fau
 `MaxConsecutiveRenderFailures` frames in a row — an actually-broken context — falls back to flat
 covers. The count resets on the first clean frame, so a one-off (including the now-designed-out race,
 or a bitmap disposed a frame before its upload) never accumulates to the threshold.
+
+## 2026-08-16 — The jewel case's doubled top edge, and a third ModelPrep geometry step
+
+The closed jewel case read as two thin walls with a channel between them along its top and opening
+edges, with rims that overhung the back — not the one solid box it should be. It is a clear lid shell
+nested over a tray, and `--close-lid` shuts the lid but does not seat the two flush: measured on the
+shut asset, the lid's hinge spine stands ~19% of the case depth *behind* the tray's back plane, and
+the tray's front lip pokes ~7% *ahead* of the lid window. Each stray rim is a thin wall the studio
+key catches on its own, so the edge doubled. This is a difference between two pieces *within* the
+thickness axis, so — like the lid swing before it — no profile can reach it: a profile scales the
+whole axis, it cannot merge two walls inside it.
+
+**`--clamp-thickness <keepLow,keepHigh>`,** the third `ModelPrep` geometry step after `--drop-meshes`
+and `--close-lid`. Two fractions name the band the real outer faces sit in — the clusters just inside
+the protruding rims, read off the model. Everything outside folds onto the nearer edge of the band,
+merging each stray wall into the face beside it. The jewel case runs `0.19,0.93`.
+
+**It folds *and then rescales the band back out to the original extent*, and the rescale is the
+non-obvious half.** Folding alone thinned the case by however far the rims stuck out (D/H 0.072 →
+0.053), which does not thin the render — the profile pins depth by scaling the mesh's Z onto
+`DepthInShelfUnits` — but it *distorts* it: the profile then stretches the depth 1.35× to hit the
+real ~9mm, exactly the silent per-axis deformation `MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset`
+exists to catch. Rescaling the kept band back to the original extent bakes the true thickness into the
+mesh instead, so coincident merged walls stay coincident, the shell stays boxy, and its depth ratio
+still agrees with its profile (D/H back to 0.072). The case renders identically either way; only the
+mesh-vs-profile agreement differs, and that is worth keeping honest rather than excepting.
