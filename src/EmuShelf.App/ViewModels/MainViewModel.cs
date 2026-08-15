@@ -12,7 +12,6 @@ using Avalonia.Threading;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using EmuShelf.App.Rendering;
 using EmuShelf.Rendering;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
@@ -773,20 +772,12 @@ public partial class MainViewModel : ViewModelBase
     /// The presentation the couch screen is handed, or <see cref="CrtPresentation.Off"/>.
     /// </summary>
     /// <remarks>
-    /// The knobs still come from the environment while the per-parameter Settings controls do not
-    /// exist; this property is only the on/off switch over the top of them.
+    /// The individual parameters are fixed at the shipped defaults; this property is only the on/off
+    /// switch over the top of them. If per-parameter controls are ever wanted, this is where a tuned
+    /// presentation would come from instead.
     /// </remarks>
     public CrtPresentation CouchCrt =>
-        CrtScreenEffect ? _crtTuning : CrtPresentation.Off;
-
-    /// <summary>
-    /// The tuned presentation, resolved once.
-    /// </summary>
-    /// <remarks>
-    /// A property getter that re-read sixteen environment variables every time a binding evaluated
-    /// it would be a silly thing to leave behind, and the values cannot change within a run anyway.
-    /// </remarks>
-    private static readonly CrtPresentation _crtTuning = CrtTuning.FromEnvironment();
+        CrtScreenEffect ? CrtPresentation.Default : CrtPresentation.Off;
 
     /// <summary>
     /// The tube is on screen. Every couch layout, not just the shelf.

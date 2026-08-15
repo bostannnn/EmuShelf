@@ -6,11 +6,13 @@ namespace EmuShelf.Rendering;
 /// How hard the shelf is pushed through a CRT tube on the way to the screen.
 /// </summary>
 /// <remarks>
-/// Every field is exposed to Settings rather than tuned to a constant here. A CRT emulation is
-/// judged entirely by eye and the right answer depends on things this code cannot see — panel size,
-/// viewing distance, whether the player wanted a nostalgic television or a subtle glass sheen. The
-/// defaults below aim at a couch: visible, but not so curved that the platform rail bends off the
-/// corners of the screen.
+/// Every field is a separate knob rather than a baked constant, because a CRT emulation is judged
+/// entirely by eye and the right answer depends on things this code cannot see — panel size, viewing
+/// distance, whether the player wanted a nostalgic television or a subtle glass sheen. Only the
+/// on/off switch is currently a user setting, though: the rest ship at the defaults below, which aim
+/// at a couch — visible, but not so curved that the platform rail bends off the corners of the
+/// screen. Keeping them as fields is what makes exposing them later a UI job rather than a
+/// refactor.
 /// </remarks>
 public readonly record struct CrtPresentation
 {
@@ -122,7 +124,7 @@ public readonly record struct CrtPresentation
         Backdrop = Vector3.Zero,
     };
 
-    /// <summary>The shipped look, and the starting point every knob in Settings moves away from.</summary>
+    /// <summary>The shipped look. These are the values the effect was tuned to by eye.</summary>
     public static CrtPresentation Default { get; } = new()
     {
         Intensity = 1f,
