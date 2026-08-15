@@ -3378,6 +3378,47 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task GamepadShelf_AccentWash_FollowsTheMatchColoursSetting()
+    {
+        // Regression: the shelf backdrop washed the whole screen in the focused game's platform accent
+        // unconditionally, so turning "Match colours to game artwork" off still left the interface
+        // recolouring as the highlight moved between platforms — the artwork palette stopped, this did
+        // not. With the setting off the wash must rest on the chosen theme's accent instead.
+        var viewModel = await BuildSpotlightViewModelAsync();
+        viewModel.GamepadLayout = GamepadLibraryLayout.Shelf;
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            viewModel.AmbientThemeFromArtwork = true;
+            await PumpAsync();
+
+            // Both washes live inside the shelf host, so assert it is on screen — otherwise this only
+            // proves a binding flips on a control nobody can see.
+            var shelf = window.FindControl<Border>("GamepadShelf");
+            Assert.NotNull(shelf);
+            Assert.True(shelf.IsVisible);
+
+            var platformWash = window.FindControl<Border>("ShelfPlatformAccentWash");
+            var themeWash = window.FindControl<Border>("ShelfThemeAccentWash");
+            Assert.NotNull(platformWash);
+            Assert.NotNull(themeWash);
+            Assert.True(platformWash.IsVisible);
+            Assert.False(themeWash.IsVisible);
+
+            viewModel.AmbientThemeFromArtwork = false;
+            await PumpAsync();
+
+            Assert.False(platformWash.IsVisible);
+            Assert.True(themeWash.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task GamepadSpotlight_SplitsChipsAcrossCenteredRowsAndAlignsListToActions()
     {
         var viewModel = await BuildSpotlightViewModelAsync();

@@ -2937,10 +2937,18 @@
                 ClipToBounds="True"
                 IsHitTestVisible="{Binding !HasGamepadOverlay}">
             <Panel>
-                <!-- Calm monochrome backdrop, tinted by the focused system's accent so the whole screen
-                     shifts colour as you browse platforms. -->
+                <!-- Calm monochrome backdrop with an accent wash over it. The wash follows the focused
+                     system while "Match colours to game artwork" is on, so the whole screen shifts
+                     colour as you browse platforms; with the setting off it rests on the chosen
+                     theme's accent, so moving the highlight recolours nothing. Two Borders rather
+                     than one converter-driven brush: each source is a plain binding this way. -->
                 <Border Background="{DynamicResource EmuLibraryBrush}" />
-                <Border Background="{Binding FocusedGame.AccentColor}" Opacity="0.16" />
+                <Border x:Name="ShelfPlatformAccentWash"
+                        Background="{Binding FocusedGame.AccentColor}" Opacity="0.16"
+                        IsVisible="{Binding AmbientThemeFromArtwork}" />
+                <Border x:Name="ShelfThemeAccentWash"
+                        Background="{DynamicResource EmuAccentBrush}" Opacity="0.16"
+                        IsVisible="{Binding !AmbientThemeFromArtwork}" />
 
                 <Grid RowDefinitions="*,Auto" Margin="0,28,0,40">
                     <!-- Coverflow strip viewport. GamepadShelfStrip is translated by the code-behind so
