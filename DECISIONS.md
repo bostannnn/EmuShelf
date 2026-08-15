@@ -7965,6 +7965,25 @@ shot, is still answered from the height constraint alone — the width constrain
 camera further back, so the frame it derives is never narrower than promised, only occasionally
 roomier.
 
+## 2026-08-15 — The closing choreography runs beside the post-exit save sync, not in front of it
+
+The outward launch was given this shape when the shelf animation landed: the medium starts moving
+*beside* the pre-launch cloud save sync, so a slow round-trip happens behind the choreography instead
+of in front of it, and both still have to finish before the emulator starts. The closing half was
+never brought along. `RestorePhysicalShelfAfterLaunchAsync` was awaited and *then* the after-exit
+sync ran, so on closing a game the player watched the shelf reassemble and only then began waiting
+for the upload — the whole cost the animation exists to hide, paid twice per session.
+
+Both now start together, and the closing status still waits for both, which is what awaiting them in
+sequence was really buying. A sync that throws observes the animation rather than sitting through the
+rest of it before reporting, mirroring the outward path exactly.
+
+Pinned by asserting what the shelf is doing at the moment the sync is entered rather than by
+measuring overlap on the clock, which would be a race dressed up as an assertion: under the
+sequential version the return has necessarily finished by then and `ShelfLaunchPose` is null. The
+test was confirmed to fail against the old ordering for that reason before being kept.
+
+Nothing about the choreography itself changes here.
 ## 2026-08-15 — PS3 gets its own Blu-ray case, ending the shared-mesh compromise
 
 Two earlier entries on this shelf record the same unresolved trade. On 2026-08-13 PS3 was given its
