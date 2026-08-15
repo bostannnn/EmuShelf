@@ -270,10 +270,24 @@ internal static class ModelPrep
         }
 
         var imageIndex = textures[textureIndex.Value]?["source"]?.GetValue<int>();
-        if (imageIndex is not null)
+        if (imageIndex is null)
         {
-            result[imageIndex.Value] = new NeutralImage(fill, rect);
+            return;
         }
+
+        // Two named materials sampling one atlas is legitimate — this model's lid and tray share
+        // theirs — but only if they agree on what to mask. Overwriting instead would leave the
+        // first material's artwork in the build and report success, which is the one outcome this
+        // whole pass exists to prevent.
+        if (result.TryGetValue(imageIndex.Value, out var existing)
+            && (existing.Rect != rect || existing.Fill != fill))
+        {
+            throw new InvalidDataException(
+                $"Image {imageIndex} is shared by materials that ask for different masks. Give them "
+                + "one rectangle and one fill, or the second would silently undo the first.");
+        }
+
+        result[imageIndex.Value] = new NeutralImage(fill, rect);
     }
 
     /// <summary>A mesh's first primitive, with the world transform its node chain gives it.</summary>
@@ -848,6 +862,17 @@ internal static class ModelPrep
                 var numbers = parts
                     .Select(part => float.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
                     .ToArray();
+                // Checked rather than clamped. FlattenRect turns an inverted or out-of-range
+                // rectangle into a loop that runs zero times, so the artwork stays in the build and
+                // the command reports success — the same silent failure a mistyped material name
+                // used to give.
+                if (numbers.Any(number => number is < 0f or > 1f)
+                    || numbers[0] >= numbers[2] || numbers[1] >= numbers[3])
+                {
+                    throw new ArgumentException(
+                        $"--neutral-rect '{entry}' is not a rectangle in 0..1 with u0 < u1 and v0 < v1.");
+                }
+
                 return (numbers[0], numbers[1], numbers[2], numbers[3]);
             })
             .ToArray();
@@ -968,8 +993,11 @@ internal static class ModelPrep
 
         foreach (var (name, child) in value)
         {
-            if (name.EndsWith("Texture", StringComparison.OrdinalIgnoreCase)
-                && child?["index"]?.GetValue<int>() is { } index)
+            // Matched as an object, not merely by key: indexing a JsonValue throws, and glTF is not
+            // required to keep every "*Texture" key an object in an extension this does not model.
+            if (child is JsonObject candidate
+                && name.EndsWith("Texture", StringComparison.OrdinalIgnoreCase)
+                && candidate["index"]?.GetValue<int>() is { } index)
             {
                 yield return index;
             }

@@ -228,6 +228,44 @@ public class MediaShellTests
             MediaShelf3DControl.ArtworkKindFor(keepCase, ShelfArtworkFace.Spine, true));
     }
 
+    /// <summary>
+    /// A shell's extra panels must be declared in the order <see cref="ShelfArtworkFace"/> numbers
+    /// them: cover first, then Back, then Spine.
+    /// </summary>
+    /// <remarks>
+    /// The link between the two is positional and nothing else — the renderer hands panel <c>n</c>
+    /// the artwork uploaded to slot <c>n</c>, and the app uploads by casting this enum. Declare a
+    /// case's spine before its back and the scraped inlay is painted down the hinge while the spine
+    /// strip is stretched over the back, with no error anywhere. The shell preview cannot catch it
+    /// because it only ever supplies a front cover, which is exactly how the jewel case shipped
+    /// with them swapped. Asserted for every shell, since the trap is open to all of them.
+    /// </remarks>
+    [Fact]
+    public void ExtraPanels_AreDeclaredInArtworkFaceOrder()
+    {
+        foreach (var shell in MediaShellCatalog.All)
+        {
+            var extras = MediaShellCatalog.Definition(shell).ExtraPanels;
+            for (var index = 0; index < extras.Count; index++)
+            {
+                var slot = (ShelfArtworkFace)(index + 1);
+                var expected = slot switch
+                {
+                    ShelfArtworkFace.Back => ArtFace.Back,
+                    ShelfArtworkFace.Spine => ArtFace.Spine,
+                    _ => throw new InvalidOperationException(
+                        $"{shell} declares an extra panel at slot {index + 1}, which no "
+                        + "ShelfArtworkFace names; the app cannot upload artwork to it."),
+                };
+
+                Assert.True(
+                    extras[index].Face == expected,
+                    $"{shell}'s extra panel {index} is {extras[index].Face}, but the app uploads "
+                    + $"{slot} artwork to that slot. Declare Back before Spine.");
+            }
+        }
+    }
+
     /// <summary>A cartridge has no back or spine slot, so those faces stay bare however much art exists.</summary>
     [Theory]
     [InlineData(ShelfArtworkFace.Back)]

@@ -7361,3 +7361,21 @@ printed card, which is what the extension is for and what no roughness value imi
 Also: dropping a mesh now drops the maps only it reached. The disc's 1024px label stayed in the file
 after `--drop-meshes` removed the disc, a quarter of the shipped bytes drawn by nothing. With that
 and the flattened print, the asset falls from 7.2 MB to 1.75 MB.
+
+## 2026-08-15 — Panel slots are positional, and that is twice now
+
+Reviewing the fix above found the same shape of bug in it. `ShelfArtworkFace` is a plain enum —
+`Front = 0, Back = 1, Spine = 2` — and the renderer hands panel *n* whatever the app uploaded to slot
+*n*. A shell's `ExtraPanels` therefore has to be declared in that order, and the jewel case had been
+given `[Spine, Back]`. A scraped back inlay would have been painted down the hinge and the spine
+strip stretched over the back, with nothing to report it.
+
+Both of this branch's slot bugs — the occlusion map landing on texture unit 6, and this — are
+invisible to the shell preview, because the preview only ever supplies a front cover. That is the
+thing to take from it: **the preview proves what a shell looks like, not what it is wired to.**
+`ExtraPanels_AreDeclaredInArtworkFaceOrder` now asserts the mapping for every shell, which is the
+only kind of check that reaches it.
+
+The general form is worth naming, since three different indices in this renderer are positional and
+none of them is typed: texture units, panel slots and artwork faces. A wrong number in any of them
+compiles, runs, and draws something plausible.

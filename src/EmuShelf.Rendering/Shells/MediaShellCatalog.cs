@@ -317,18 +317,22 @@ public static class MediaShellCatalog
             // plastic seam inboard of the hinge) to u 0.838. Past 0.958 is the lid's own 1.5mm rim.
             CoverPanel: new ArtPanel(
                 ArtFace.Front, -0.789f, 0.958f, -0.957f, 0.957f, ArtFit: ArtFit.Cover),
+            // Back before Spine, and the order is not cosmetic: ShelfArtworkFace is the panel index
+            // the app uploads each scraped face to, and it fixes Back at 1 and Spine at 2. Declared
+            // the other way round, a scraped back inlay lands on the spine and the spine on the
+            // back — invisible in the shell preview, which only ever supplies a front cover.
             ExtraPanels:
             [
-                // The hinge side, which is where a CD case carries its title: the tray inlay's flap
-                // shows through it, so canonical -X is right here for the same reason it is on a
-                // keep case even though the two hinge opposite ways.
-                ArtPanel.Full(ArtFace.Spine, inset: 0.06f, fit: ArtFit.Cover),
                 // The tray inlay. It was left off on the grounds that this model's back inlay is
                 // the tray's interior seen through it rather than a face at the shell's -Z bound,
                 // so projecting onto it would paint the outside of the tray. That is what a
                 // transparent tray is for — the inlay is behind it — and rendered, the projection
                 // lands on the inlay and nowhere else. Without it the back is a blank white card.
                 ArtPanel.Full(ArtFace.Back, inset: 0.04f, fit: ArtFit.Cover),
+                // The hinge side, which is where a CD case carries its title: the tray inlay's flap
+                // shows through it, so canonical -X is right here for the same reason it is on a
+                // keep case even though the two hinge opposite ways.
+                ArtPanel.Full(ArtFace.Spine, inset: 0.06f, fit: ArtFit.Cover),
             ],
             // The insert sits under a clear polystyrene lid, so it is the glossiest printed surface
             // of any shell here.
