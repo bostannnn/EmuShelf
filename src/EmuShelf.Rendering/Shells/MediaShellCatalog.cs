@@ -172,41 +172,60 @@ public static class MediaShellCatalog
             PanelRoughness: 0.40f,
             FlattenPanelNormal: true),
 
-        // A blank DS card template, which replaced satchii_'s four-card model. This one is authored
-        // as a cartridge to put artwork on rather than as a copy of one particular game: the label
-        // is its own quad on its own material and texture, and the shell moulds the NINTENDO DS band
-        // above it, so EmuShelf's artwork lands where a real label's artwork does instead of over
-        // the whole face. It is authored lying flat with the label facing +Y, so a quarter turn
-        // about X stands it up and brings that face round to +Z.
+        // satchii_'s DS card, reduced to one instance: the download is four cards laid out in a row
+        // by node matrices, and loading it whole draws four cartridges. It replaced littlengvfx's
+        // blank template, which was the better *kind* of asset — a dedicated label plate on its own
+        // material — and the worse object: its front plate is not flat. The plate is modelled as a
+        // separate panel floating inside the frame, and the frame itself waves, so the card read as
+        // bent at any pose that showed an edge. This one is a scan of a real card: the face is one
+        // plane, the back moulds the Nintendo logo and the contact pins, and no pose shows a warp.
+        //
+        // Its node transforms already stand the card upright — the raw accessor bounds suggest
+        // otherwise, and that misread cost a wrong rotation once — so it needs only a half turn to
+        // bring the label side round from -Z, where the contact pins are not.
         [MediaShell.DsCard] = new MediaShellDefinition(
             MediaShell.DsCard,
             "EmuShelf.Rendering.Assets.ds-card.glb",
-            Matrix4x4.CreateRotationX(MathF.PI / 2f),
+            Matrix4x4.CreateRotationY(MathF.PI),
             MaxTextureSize: 1024,
-            // The artwork area is the shell's moulded recess, which this model carries a dedicated
-            // quad for on the "presetNdsiCartridgeFront4" material. Measured off a straight-on
-            // render of the prepared asset rather than off that quad's bounds: the quad's world-space
-            // AABB is larger than the face it presents, so reading the bounds alone put the panel
-            // 0.08 past the recess on the right and 0.12 below it, which painted artwork onto the
-            // moulding. What is rendered is what can be checked.
-            // The top stops just under the moulded NINTENDO DS band, which is separate geometry — a
-            // panel taken to the recess's own top edge paints over the bottom of the branding.
-            // The chamfer is real: a DS label is cut diagonally at the bottom left, and this shell
-            // moulds the cut into the recess while the quad stays rectangular, so the panel still
-            // has to describe it. Traced off two photographs, one blank card and one retail cart, it
-            // runs 0.080 of the full label height both times — and this panel is the label minus the
-            // branding band, 0.825 of it, so the same chamfer is 0.097 here.
+            // This model keeps its label on the same atlas and material as its body, so the label
+            // goes by masking a rectangle rather than by flattening a material — the fallback, and
+            // the technique that fails silently. What makes it safe here is that the mask's fill is
+            // the card's own plastic, measured off the atlas, so the ring between the mask and this
+            // panel reads as plastic rather than as the paper-grey halo this shell shipped once.
+            //
+            // The panel is the label's own footprint, and the label is a printed sticker rather than
+            // a moulded recess: it carries the NINTENDO DS band at its top, so unlike the template
+            // shell there is nothing to leave bare above it. Measured twice and to the same place —
+            // off the prepared asset's atlas through the face quad's UV mapping, and off a
+            // straight-on render of the asset with its label still on. That comes out 29.0 x 29.9mm
+            // on a 33.5 x 35mm card, against a real label's ~29 x 30mm.
+            // The chamfer is real: a DS label is cut diagonally at the bottom left so it clears the
+            // thumb notch. Traced off two photographs at 0.080 of the label's height, and this
+            // model's own label measures 23 of 287 pixels in a straight-on render — 0.080 again.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.805f, 0.805f, -0.712f, 0.605f,
-                CornerRadius: 0.04f, CutCorner: 0.097f, ArtFit: ArtFit.Cover),
+                ArtFace.Front, -0.833f, 0.833f, -0.808f, 0.905f,
+                CornerRadius: 0.05f, CutCorner: 0.080f, ArtFit: ArtFit.Cover),
             ExtraPanels: [],
-            PanelRoughness: 0.44f,
+            // These three are the "it reads as plastic" knobs, and they were turned together because
+            // the complaint is one thing seen from two surfaces. The label is the larger half: a DS
+            // sticker is matte vinyl, and at the 0.44 the other cartridges use, its specular washed
+            // flat across the whole panel and killed the diffuse falloff — measured, the panel's
+            // light-to-dark spread went from 14 to 24 sRGB when this was raised, which is the print
+            // getting its shading back rather than losing it.
+            PanelRoughness: 0.58f,
             FlattenPanelNormal: true,
-            // This asset's plastic is sRGB ~57 (linear 0.041) against a real DS card's charcoal of
-            // nearer sRGB 75, so it needs a fraction of the correction the previous model did — that
-            // one was authored at sRGB ~31 and needed 3.2 to reach the same place. Tuned against a
-            // straight-on render: the shell frame averages sRGB 89 to the photograph's 90.
-            BodyAlbedoScale: 1.95f),
+            // The plastic around the label is authored at sRGB 38 against a real DS card's charcoal
+            // of nearer 75, so this needs the larger correction the sRGB ~57 template shell did not —
+            // and scaling the authored colour rather than replacing it is what keeps the moulding,
+            // the seam and the pin-side step visible. Tuned against a straight-on render: the shell
+            // frame's median lands at sRGB 91 to a photograph's 90.
+            BodyAlbedoScale: 3.2f,
+            // The other half, and the same correction the SNES shell takes at 1.16 and 0.033 for the
+            // same reason: a downloaded scan's material was tuned in its author's viewer, not under
+            // EmuShelf's close product-lighting camera, where it reads like a glossy miniature.
+            BodyRoughnessScale: 1.20f,
+            DielectricReflectance: 0.033f),
 
         // thegraphicsgeek's Game Pak, which replaced a smaller-textured shell that had no source
         // in models/ and so could not be regenerated or corrected. It is authored upright and

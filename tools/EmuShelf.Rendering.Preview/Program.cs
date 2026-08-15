@@ -172,7 +172,7 @@ var shelfProfiles = new[]
     // silently kept the pre-correction GBA and SNES figures, so the acceptance shot was showing
     // proportions the app had already stopped using.
     new PhysicalMediaProfile(MediaShell.CoverCard, new Vector3(135f, 190f, 5f), PhysicalArtworkSlots.Front, "cover-card", "cover-card"),
-    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+    new PhysicalMediaProfile(MediaShell.DsCard, new Vector3(33.6f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
     new PhysicalMediaProfile(MediaShell.GbaCartridge, new Vector3(57.5f, 32.9f, 6.58f), PhysicalArtworkSlots.CartridgeSupport, "gba-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
     new PhysicalMediaProfile(MediaShell.SnesCartridge, new Vector3(129f, 77.5f, 20f), PhysicalArtworkSlots.CartridgeSupport, "snes-pal-grey", "cartridge-vertical", PresentationScale: 1.235f, FloorClearanceInShelfUnits: 0.014f),
     // Inside the frame for the same reason as the Mega Drive below. Appended last it fell off the
