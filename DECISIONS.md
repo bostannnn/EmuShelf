@@ -7197,3 +7197,107 @@ The 3D scene's **per-item** accent is deliberately left alone. That uniform tint
 ambient fill and its unprinted faces (see the 2026-08-13 entry) — it is the physical medium's colour
 identity, not interface chrome, and neutralizing it would light a GBC cartridge and a PS2 case
 identically. The setting governs what the interface does, not what the objects on the shelf are.
+## 2026-08-15 — One jewel case for PS1 and Dreamcast, and a correction about the file it came from
+
+**First, a correction.** The 2026-08-14 entry above records `postal_x_psx_cd-r_disk.glb` as "a disc,
+not packaging". That is wrong, and the mistake is instructive: the assessment stopped at the
+filename. The file is a complete PS1 jewel case *with* a disc lying beside it, and the case is the
+best-proportioned one available — 1.160 wide per unit of height against a real CD jewel case's
+1.136. The same entry's conclusion, that PS1 had to be generated or sourced afresh, followed from
+that error. Measure what is in a file before recording what it is not.
+
+`MediaShell.JewelCase`, mapped from both `playstation` and `dreamcast`. PAL and US Dreamcast games
+shipped in the same CD case a PS1 game did, so one authored geometry family serves two consoles with
+different profiles and finishes — the arrangement the keep case already has, and the reason
+`MediaShell` is one entry per geometry family rather than per console. This retires two of the four
+remaining cover-card systems from a single asset; only PSP and arcade are left.
+
+**This is the first shell whose source needed geometry surgery rather than texture work,** and the
+two operations are now in `ModelPrep` because neither can be expressed downstream:
+
+- **`--drop-meshes`.** The scene holds the case and its disc. `--single-instance` cannot express
+  "keep the case", only "keep the first", so this selects by name and detaches the rest the same
+  non-destructive way — the node loses its `mesh` reference and the loader skips it.
+- **`--close-lid`.** The case is posed with its lid 9.2 degrees open, which measures 29mm thick
+  against a real case's 10mm. A profile cannot correct this. The scene scales each axis onto the
+  measured dimensions independently, so a profile carrying the true 10mm would not shut the lid — it
+  would squash the whole case to a third of its depth — and a profile carrying the asset's 29mm
+  ships a case visibly ajar with its cover art projected onto a tilted plane. Closing it in the
+  asset is the only honest option, and it brings the shell to 7.6mm.
+
+Two selection rules for that swing each looked sufficient and were not, which is worth recording
+because the failure is invisible until rendered. Selecting the vertices on the lid's own plane
+misses an inner card attached to the lid at a different angle, leaving the case 22.7mm thick.
+Selecting by height above the tray instead catches the tray's own rim, which rises to within a hair
+of the hinge, and throws the tray through the floor. It takes both: named lid meshes, and height
+within them.
+
+Recorded and not fixed: this model carries no normal or metallic/roughness maps, only base colour,
+and that base colour is a scan of one retail sleeve which has to be flattened whole. The case is
+therefore smooth where the DVD keep case has ribs, hinge and seams. It also gets no back panel — its
+inlay is interior geometry seen through the tray rather than a face at the shell's own -Z bound, so
+a full-face back projection would paint the outside of the tray instead of the inlay.
+
+The other supplied PS1 file, `ps1_case_-_deathtrap_dungeon_1998.glb`, was re-checked and the earlier
+assessment of it stands: 36 triangles, three flat billboards carrying photographs. Unusable.
+
+## 2026-08-15 — The jewel case, and the check that should come first on any case candidate
+
+`MediaShell.JewelCase`, mapped from `playstation` and `dreamcast`, using sodaraptor's CC BY
+Hypnagogia case. Four candidates were tried and the three that failed all failed identically, which
+is the part worth keeping.
+
+**A downloaded case model is usually a photograph wrapped onto flat panels.** Its credibility is a
+sleeve scan, and that scan is what has to be flattened before the derivative can ship. Flatten it
+and a rectangle is left. `postal_x_psx_cd-r_disk.glb` is a correctly-proportioned 324-triangle case
+that goes blank; `ps1_case_-_deathtrap_dungeon_1998.glb` is 36 triangles of billboards; bloobloo's
+is a product shot of the same kind. **The check that settles it takes one render: flatten the
+artwork and look.** That is now the first thing to do with a case candidate, before measuring
+anything, because proportions and triangle counts look fine on all of them.
+
+**The one that works does so because its artwork did not have to go.** sodaraptor wrote the game and
+built the case, so the CC BY licence covers both, and it moulds "DreamStation" rather than Sony's
+mark. That matters more than the licence: this model paints its plastic, hinge teeth and printed
+banner into the same base-colour maps as the insert, so flattening the insert would have taken them
+with it — the same death as the others. `--neutral-maps none` exists for exactly this case and
+should stay rare.
+
+**A generated jewel case was built and rejected, and the reason is worth recording.** A jewel case
+is regular, hard-edged and fully specified, so generating it looked like the right answer, and the
+2026-08-14 entry recommended it. Built to the real 142 x 125 x 10mm with a lid, tray, rim, recessed
+window and three hinge lugs, it still read as a box: at shelf distance a 4mm rim and a 2mm recess
+are sub-pixel, and the lugs sit on the one face the shelf rarely shows. What a case actually needs
+is the fine printed and moulded detail a photograph carries and code does not — which is the
+opposite of the conclusion the cartridge shells had led to. Generating is right for a shape; it is
+wrong for a surface.
+
+**Corrections, in both directions.** The original "a disc, not packaging" note about the Postal X
+file was wrong — it contains a case. The entry that overturned the recommendation on the strength of
+that was also wrong. And the recommendation to generate, which looked vindicated when three
+downloads failed, turned out wrong once a fourth appeared. None of these could have been settled by
+measurement; each needed a render.
+
+## 2026-08-15 — The loader was dropping occlusion maps and every material extension
+
+Prompted by asking why `KHR_materials_clearcoat` was ignored. It was not a decision:
+`GlbLoader.ResolveMaterial` reads three channels — base colour, metallic/roughness, normal — and
+drops everything else a glTF material carries. An audit across every shipped and candidate model
+found what that costs:
+
+- **`occlusionTexture`, on two shipped shells.** The Game Boy and Mega Drive cartridges both ship
+  baked AO that was being discarded. Worse, `CavityStrength` had been turned up to 0.42 on the Game
+  Boy to *infer* occlusion from normal-map slope — estimating a quantity the file already contained.
+  Now read, and applied to ambient only: a recess darkens without the shell losing the key that
+  describes its form.
+- **`KHR_materials_clearcoat`.** A jewel case is clear polystyrene over a printed insert, which is
+  what a clearcoat lobe is for and what no roughness value can imitate — the coat needs its own
+  sharp highlight while the paper under it stays matte.
+- **`TANGENT`, on six of seven shells.** Deliberate and documented: the shader derives a cotangent
+  frame from screen-space derivatives to keep every model on one path. Left alone.
+- **`KHR_materials_unlit`, on the DS card.** Correctly ignored — unlit would bypass the studio.
+- `KHR_texture_transform`, `KHR_materials_sheen`, `KHR_materials_anisotropy`, `TEXCOORD_1..3`:
+  candidates only or unused. `KHR_materials_specular` is the obvious next one, since its
+  `specularFactor` is what `DielectricReflectance` already expresses per shell.
+
+The general lesson is that a silently ignored input looks exactly like an input the asset does not
+have, and the only way to tell them apart is to go and read the file.

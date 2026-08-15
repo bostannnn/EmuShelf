@@ -22,9 +22,16 @@ uniform float uRoughnessFactor;
 uniform sampler2D uBaseColorMap;
 uniform sampler2D uMetallicRoughnessMap;
 uniform sampler2D uNormalMap;
+uniform sampler2D uOcclusionMap;
 uniform float uHasBaseColorMap;
 uniform float uHasMetallicRoughnessMap;
 uniform float uHasNormalMap;
+uniform float uHasOcclusionMap;
+// KHR_materials_clearcoat. A jewel case is clear polystyrene over a printed insert, which is this
+// and not a low roughness: the coat has its own sharp highlight while the paper underneath stays
+// matte. Zero on every shell that has no lacquer, which costs one multiply.
+uniform float uClearcoatFactor;
+uniform float uClearcoatRoughness;
 uniform float uDielectricReflectance;
 uniform float uAmbientIntensity;
 uniform float uShadowFillOcclusion;
@@ -386,7 +393,37 @@ void main()
     vec3 direct = (directDiffuse + directSpecular) * uKeyRadiance * NoL * visibility
         * mix(1.0, cavity, 0.22);
 
+    // Authored occlusion, where the model ships it. This is the measured version of the cavity
+    // term above: it darkens ambient only, never the key, so a recess goes dark without the whole
+    // shell losing its form.
+    if (uHasOcclusionMap > 0.5)
+    {
+        float ao = texture(uOcclusionMap, vTexCoord).r;
+        diffuse *= ao;
+        specular *= mix(1.0, ao, 0.6);
+    }
+
     vec3 colour = (diffuse + specular + direct) * uExposure;
+
+    // The clear coat sits on top of everything below it: its own Fresnel, its own roughness, and it
+    // attenuates what shows through rather than adding to it.
+    if (uClearcoatFactor > 0.001)
+    {
+        float coatRoughness = clamp(uClearcoatRoughness, 0.02, 1.0);
+        float coatF = 0.04 + (0.96 * pow(1.0 - NoV, 5.0));
+        float coatStrength = uClearcoatFactor * coatF;
+
+        float coatNoH = max(dot(geometricN, H), 0.0);
+        float coatD = distributionGGX(coatNoH, coatRoughness);
+        float coatG = geometrySchlickGGX(NoV, coatRoughness) * geometrySchlickGGX(NoL, coatRoughness);
+        vec3 coatDirect = vec3((coatD * coatG) / max(4.0 * NoV * NoL, 1e-4))
+            * uKeyRadiance * NoL * visibility;
+        vec3 coatEnv = textureLod(uSpecularMap, reflect(-V, geometricN), coatRoughness * uSpecularMaxLod).rgb
+            * uAmbientIntensity * ambientVisibility;
+
+        colour = (colour * (1.0 - coatStrength))
+            + (((coatDirect + coatEnv) * coatStrength) * uExposure);
+    }
 
     colour = tonemap(colour);
     // Manual encode: the target framebuffer is a plain RGBA8 surface the host composites, not an

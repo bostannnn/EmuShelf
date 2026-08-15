@@ -41,6 +41,10 @@ if (prepModel is not null)
         ArgumentValue("--neutral-maps"),
         args.Contains("--single-instance"),
         args.Contains("--bake-vertex-colours"),
+        // A downloaded scene often holds more than the shell, and often poses it open for a
+        // product shot. Both are geometry problems a profile cannot fix.
+        ArgumentValue("--drop-meshes"),
+        ArgumentValue("--close-lid"),
         int.Parse(ArgumentValue("--max-texture") ?? "1024"));
     return;
 }
@@ -178,6 +182,9 @@ var shelfProfiles = new[]
     // Inside the frame for the same reason as the Mega Drive below. Appended last it fell off the
     // right-hand edge of the acceptance shot, which was already observed once while reviewing it.
     new PhysicalMediaProfile(MediaShell.GbcCartridge, new Vector3(57f, 64.42f, 8.99f), PhysicalArtworkSlots.CartridgeSupport, "gbc-grey", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
+    // Landscape and thin, which is what separates it at a glance from the portrait keep case two
+    // along. In frame rather than appended, for the reason the Mega Drive note below records.
+    new PhysicalMediaProfile(MediaShell.JewelCase, new Vector3(142f, 125.2f, 9.0f), PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine, "ps1-jewel", "case-downward"),
     // Beside the SNES cartridge on purpose, and no longer last: it was off the right-hand edge of
     // the acceptance shot, which is how it kept a profile a quarter too big for a whole milestone.
     new PhysicalMediaProfile(MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f), PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
@@ -279,6 +286,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.SnesCartridge => "snes-cartridge",
     MediaShell.GbaCartridge => "gba-cartridge",
     MediaShell.GbcCartridge => "gbc-cartridge",
+    MediaShell.JewelCase => "jewel-case",
     MediaShell.DiscKeepCase => "disc-keep-case",
     MediaShell.CoverCard => "cover-card",
     _ => shell.ToString().ToLowerInvariant(),

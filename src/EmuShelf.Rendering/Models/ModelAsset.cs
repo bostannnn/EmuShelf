@@ -45,6 +45,25 @@ public sealed class ModelMaterial
 
     /// <inheritdoc cref="BaseColorTexture"/>
     public int NormalTexture { get; init; } = -1;
+
+    /// <summary>Baked ambient occlusion, in the map's red channel.</summary>
+    /// <remarks>
+    /// Two shipped shells carry one and both were throwing it away. It is the authored answer to
+    /// the question <see cref="MediaShellDefinition.CavityStrength"/> only estimates — that term
+    /// infers occlusion from the slope of the normal map, which cannot know that a moulded recess
+    /// is deep, only that its wall is steep.
+    /// </remarks>
+    public int OcclusionTexture { get; init; } = -1;
+
+    /// <summary>KHR_materials_clearcoat: a clear lacquer over the base material.</summary>
+    /// <remarks>
+    /// What a jewel case actually is — clear polystyrene over a printed insert — and the reason the
+    /// generated shell reads as a box without it. A second, sharper specular lobe on top of the
+    /// base one, unaffected by the base roughness underneath.
+    /// </remarks>
+    public float ClearcoatFactor { get; init; }
+
+    public float ClearcoatRoughness { get; init; } = 0.04f;
 }
 
 /// <summary>A decoded, tightly packed RGBA8 image ready for <c>glTexImage2D</c>.</summary>

@@ -18,12 +18,17 @@ public static class MediaShellMap
         ["snes"] = MediaShell.SnesCartridge,
         ["gba"] = MediaShell.GbaCartridge,
         ["gbc"] = MediaShell.GbcCartridge,
+        // One jewel case, two consoles: a PAL/US Dreamcast game shipped in the same CD case a PS1
+        // game did. The same arrangement the keep case already has, and the reason MediaShell is
+        // one entry per authored geometry family rather than per console.
+        ["playstation"] = MediaShell.JewelCase,
+        ["dreamcast"] = MediaShell.JewelCase,
         ["nes"] = MediaShell.NesCartridge,
         ["megadrive"] = MediaShell.MegaDriveCartridge,
         ["nds"] = MediaShell.DsCard,
 
-        // One temporary geometry family, four distinct profiles. PS1 (jewel case), Dreamcast
-        // (jewel case) and PSP (UMD case) remain cover cards until those shells are authored.
+        // One temporary geometry family, four distinct profiles. PSP (UMD case) remains a cover
+        // card until that shell is authored.
         ["playstation2"] = MediaShell.DiscKeepCase,
         ["playstation3"] = MediaShell.DiscKeepCase,
         ["gamecube"] = MediaShell.DiscKeepCase,
@@ -86,6 +91,20 @@ public static class MediaShellMap
         ["nds"] = new(
             MediaShell.DsCard, new(34.85f, 35f, 2.64f), PhysicalArtworkSlots.CartridgeSupport,
             "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
+        // Anchored on a real CD jewel case's 142mm width, with height and depth from the asset's
+        // own ratios. It lands at 125.2 x 9.0mm against a nominal 125 x 10mm, which is as close as
+        // any shell here has come — the width and height are the object's, and the 9mm is honestly
+        // the model's once its lid is shut in prep. It ships open at 66mm.
+        ["playstation"] = new(
+            MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            "ps1-jewel", "case-downward"),
+        // Same case, different finish. A Dreamcast jewel case is the whiter, colder plastic of the
+        // two, which is the entire difference the shelf can express without separate geometry.
+        ["dreamcast"] = new(
+            MediaShell.JewelCase, new(142f, 125.2f, 9.0f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Spine,
+            "dreamcast-jewel", "case-downward"),
         ["playstation2"] = new(
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

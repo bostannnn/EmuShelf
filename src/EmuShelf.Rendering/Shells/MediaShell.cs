@@ -23,6 +23,9 @@ public enum MediaShell
     /// <summary>The Game Boy/Game Boy Color ROM cartridge.</summary>
     GbcCartridge,
 
+    /// <summary>The CD jewel case PS1 and Dreamcast games shipped in.</summary>
+    JewelCase,
+
     /// <summary>The NES/Famicom ROM cartridge.</summary>
     NesCartridge,
 
