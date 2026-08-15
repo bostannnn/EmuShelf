@@ -21,6 +21,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EmuShelf.App\EmuShelf.App.csproj" />
+    <!-- The headless preview tool keeps a hand-copy of MediaShellMap's profiles, because it cannot
+         reference the app. This project can see both, so it is the only place the two tables can be
+         compared — see MediaShellTests.PreviewShelf_RendersTheSameProfilesTheAppDoes. Referencing
+         the tool loads its assembly, never its Main. -->
+    <ProjectReference Include="..\..\tools\EmuShelf.Rendering.Preview\EmuShelf.Rendering.Preview.csproj" />
     <ProjectReference Include="..\..\src\EmuShelf.Core\EmuShelf.Core.csproj" />
     <ProjectReference Include="..\..\src\EmuShelf.Infrastructure\EmuShelf.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\EmuShelf.Integrations\EmuShelf.Integrations.csproj" />

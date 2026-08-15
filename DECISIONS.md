@@ -7460,3 +7460,115 @@ only kind of check that reaches it.
 The general form is worth naming, since three different indices in this renderer are positional and
 none of them is typed: texture units, panel slots and artwork faces. A wrong number in any of them
 compiles, runs, and draws something plausible.
+## 2026-08-15 — PSP takes a real UMD case's shape on the shared keep case, squeezing the mesh
+
+Supersedes the 2026-07-30 entry's "PSP (UMD) is a genuinely different shape and stays on a flat
+cover". It is still a different shape; the judgement that changed is that a slightly-wrong case
+beats a flat card on a shelf whose whole point is physical media.
+
+The profile is a real UMD case: 104 x 178 x 15mm against the shared asset's 135 x 190 x 14. Since
+the scene scales each axis independently that draws the mesh at 84% of its authored width, and
+PSP therefore becomes the single deliberate exclusion from
+`MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset` — a theory that had just been cleared of
+its last accidental exclusion, so departing from it needs a reason.
+
+The reason is that the theory was written for cartridges, where the moulding is the object. A keep
+case is a flat sleeve filling nearly the whole silhouette with a rim a few pixels wide around it, so
+the question is not whether the mesh is undistorted but which of the mesh and the artwork should
+carry the error — and the keep case's cover panel is `ArtFit.Stretch`, meaning the profile's own
+width over height is the shape every scraped cover gets pulled to. At 104mm the front face is 0.584
+against a PSP box scan's 0.581, so covers land undistorted. At the asset's own 0.695 it stretches
+every scraped PSP cover about 20% wider on the one surface anybody looks at.
+
+One arithmetic note, because it was got wrong once here: the asset's width ratio is 0.695 and the
+PS2 profile's is 0.711, and the mesh distortion has to be measured against the asset. Taking the
+profile's figure is what first recorded this squeeze as 18% when it is 16%.
+
+This was decided by rendering both, not by argument, and the first attempt went the other way: an
+undistorted mesh scaled uniformly to 178mm (126.5 x 178 x 13.1), which passed the proportion theory
+and looked like a slightly small PS2 case with something wrong with the cover. The squeezed mesh
+with correct art reads as a UMD case. PS3 (2026-08-14) went the opposite way on the same trade
+because a Blu-ray case really is 135mm wide, so its undistorted option cost it nothing on the
+sleeve; the two entries agree on the principle and differ only in what each case's real width is.
+
+`MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted` pins both halves — the panel
+matches `KnownSystems`' PSP cover aspect, and the mesh squeeze is exactly the accepted 0.82 rather
+than some new one — so the exclusion cannot quietly widen. Its remarks say plainly that re-adding
+`psp` to the proportion theory is not the fix if the two ever appear to conflict.
+
+Finding this at all took a fix to the preview tool, which is the durable lesson here. Its stand-in
+cover was one fixed 512 x 724 image — a disc case's 0.707 — so the PSP sleeve was being reviewed
+with art that already matched the wrong panel, and the stretch was invisible in every render until
+the stand-in was generated at each medium's own cover aspect. A preview tool whose placeholder is
+the wrong shape does not review a fit decision; it reviews the placeholder.
+
+The finish is a new `psp-clear` variant. On this geometry the difference between case finishes is
+read almost entirely off the spine rim, because the sleeve covers the front, and the first attempt
+(reflectance 1.42, PS3's blue) blew that rim into a cyan strip that looked like a light leak down
+the edge of the case. Clear plastic is not brighter than black plastic by half — it is less
+absorbing and slightly glossier — so it settled at 1.18 and a near-neutral tint.
+
+Genuine UMD-case geometry, which would end the squeeze, still has no source. The Sketchfab search
+that preceded this found no usable case model: the one free case asset is 160 triangles and reads as
+a PSP case only because of the copyrighted cover art printed on it. A UMD *disc* does exist under
+CC BY 4.0 (Cutlass Digital, 2.8k triangles) if an insertion animation ever wants one.
+
+## 2026-08-15 — The preview tool's profile table is checked against the app's, not kept in step by hand
+
+`EmuShelf.Rendering.Preview` renders the acceptance shot from its own copy of
+`MediaShellMap`'s metric profiles, because it cannot reference the app: EmuShelf.App is an Avalonia
+`WinExe` with a git-stamping build target, and pulling the whole UI into a headless dev tool to read
+one static table is the worse trade. The renderer it does reference deliberately knows nothing about
+consoles, so there is nowhere lower to put the table.
+
+The copy is fine; keeping it in step by hand was not. It had already kept pre-correction GBA and
+SNES figures for a whole milestone, so the shot a reviewer trusts to show what shipped was showing
+proportions the app had abandoned, and it was still naming insertion animations (`case-vertical`,
+`cover-card`) that the app had renamed. A stale preview is worse than no preview: it launders a
+wrong render into an approved one.
+
+So the array moved out of `Program.cs`'s top-level statements — where nothing outside the file could
+reach it — into `PreviewShelf`, keyed by system id, and `EmuShelf.App.Tests` (which can see both)
+asserts it matches `MediaShellMap.ProfileForSystem` exactly. Two things are deliberately *not*
+asserted: the order, which is a framing decision (the Mega Drive sits beside the SNES cartridge, PSP
+beside the PS2 case), and the presence of extra entries, since the preview may reasonably draw a
+medium the app has no shell for.
+
+A second test covers the failure a value comparison cannot see — an entry that is simply missing.
+That caught three: `ps3-clear`, `gamecube-black` and `wii-white` were rendered by nothing, so three
+of the app's eight finishes had never appeared in any acceptance artefact. They are now drawn in a
+row after the PS2 and PSP cases, where identical metrics and differing material is exactly the
+comparison wanted.
+
+Adding them overran the frame, which is the same defect in its original form — the camera pulls back
+only as far as the tallest medium needs, so how much of the row is visible is set by the output
+aspect, and at the old 1440x720 default the last media sat outside it. That is how the Mega Drive
+went unlooked-at. The default is now 6000x900, wide enough for the current twelve.
+
+The tool also gained a reference to `EmuShelf.Integrations` so stand-in cover art is generated at
+`KnownSystems.CoverAspectRatio` rather than from a fourth copy of those ratios. Integrations is
+Core-only with no UI or GL dependency, so this costs the tool nothing.
+## 2026-08-15 — The acceptance shot's frame is derived from the row, not chosen
+
+Merging the jewel case in beside the UMD case took the preview row to fourteen media and truncated
+the acceptance shot again. That default had already been raised by hand twice in the same branch,
+and the shot is the artefact a reviewer trusts to show what shipped — a medium outside the frame is
+a medium nobody looks at, which is exactly how the Mega Drive kept a profile a quarter too big for
+a whole milestone and how the Game Boy shell landed in the same blind spot.
+
+The camera pulls back only as far as the tallest medium needs, so how much of a row is visible is
+decided entirely by the output aspect. That makes "is every medium in shot" a question no caller can
+answer before rendering, which is why guessing kept failing. `MediaShellRenderer` now exposes
+`ShelfAspectForVisibleWidth`, and the tool sizes its own frame from the row it is about to draw.
+`--shelf-width` still overrides.
+
+The subtlety worth recording is that the row is centred on the focused item, not in the frame, so
+what has to fit is twice the larger distance from focus to either end — not the row's total width.
+Sizing to the total width was the first attempt and it under-reached badly, because the acceptance
+shot's focus sits a third of the way along.
+
+PSP also displaced two things the jewel case had just claimed. `MetricProfile_UsesAThinCoverCardFor
+UnauthoredSystems` had been retargeted from PS1 to PSP when PS1 got a shell, and PSP then got one
+here; it now asks about 3DS, with a note that the failure mode of retargeting it badly is a test
+that passes without checking anything. `PreviewShelf`'s cover-card stand-in moved off PS1 for the
+same reason. Only 3DS and Arcade are left with no authored shell.

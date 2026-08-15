@@ -499,6 +499,30 @@ public sealed class MediaShellRenderer : IDisposable
     /// centre of the media band rather than a fixed height is what removes the lopsided gap above
     /// the cartridges — the band, not the world origin, is what the viewer is looking at.
     /// </remarks>
+    /// <summary>
+    /// The output aspect at which <paramref name="visibleWidthInShelfUnits"/> of shelf is exactly
+    /// as wide as the frame, for a row whose tallest medium is
+    /// <paramref name="mediaHeightInShelfUnits"/>.
+    /// </summary>
+    /// <remarks>
+    /// The camera pulls back only as far as the tallest medium needs, so how much of a row is
+    /// visible is decided entirely by the output aspect — which makes "will every medium be in
+    /// shot" a question no caller can answer by eye until after it has rendered. The headless
+    /// preview tool answers it with this instead of a hardcoded width, having silently truncated
+    /// its acceptance shot three times: once losing the Mega Drive while it carried a profile a
+    /// quarter too big, once losing the Game Boy shell, and again each time a medium was added.
+    ///
+    /// Note the row is not centred in the frame — the shelf is centred on the focused item — so a
+    /// caller wants twice its largest distance from focus to either end of the row, not the row's
+    /// total width.
+    /// </remarks>
+    public static float ShelfAspectForVisibleWidth(
+        float visibleWidthInShelfUnits, float mediaHeightInShelfUnits)
+    {
+        var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
+        return visibleWidthInShelfUnits * ShelfFrameFill / band;
+    }
+
     internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
         float aspect, float mediaHeightInShelfUnits)
     {
@@ -1353,6 +1377,18 @@ public sealed class MediaShellRenderer : IDisposable
             "ds-black" => new(new Vector3(0.045f, 0.045f, 0.052f), 0.12f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
+            // Clearer and more neutral than the Blu-ray case above, which is the difference you
+            // actually see between the two in life: a UMD case is uncoloured transparent plastic
+            // over its sleeve, where a PS3 case is tinted blue. Same family of correction — the
+            // gloss and reflectance of a clear shell, not a repaint.
+            //
+            // The reflectance is 1.18 rather than the 1.42 first tried here, and the tint is
+            // near-neutral rather than carrying PS3's blue. On this geometry the difference between
+            // the case finishes is read almost entirely off the spine rim — the front is covered by
+            // the sleeve — and at 1.42 that rim blew out into a cyan strip that read as a light
+            // leak down the edge of the case rather than as clear plastic. Clear plastic is not
+            // brighter than black plastic by half, it is less absorbing and slightly glossier.
+            "psp-clear" => new(new Vector3(0.56f, 0.57f, 0.59f), 0.20f, 0.74f, 1.18f),
             // Jewel-case polystyrene rather than the keep cases' polypropylene: harder, glossier
             // and more reflective, which is most of what tells the two apart on screen. The tint is
             // a light touch because this shell's printed area is masked to a card grey and its

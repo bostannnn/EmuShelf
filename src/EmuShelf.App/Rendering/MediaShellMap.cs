@@ -27,12 +27,14 @@ public static class MediaShellMap
         ["megadrive"] = MediaShell.MegaDriveCartridge,
         ["nds"] = MediaShell.DsCard,
 
-        // One temporary geometry family, four distinct profiles. PSP (UMD case) remains a cover
-        // card until that shell is authored.
+        // One temporary geometry family, five distinct profiles. PSP is the odd one: the other four
+        // shipped in this exact case, and a UMD case is a different object that borrows it — see its
+        // profile below for what that costs and why it is still worth it.
         ["playstation2"] = MediaShell.DiscKeepCase,
         ["playstation3"] = MediaShell.DiscKeepCase,
         ["gamecube"] = MediaShell.DiscKeepCase,
         ["wii"] = MediaShell.DiscKeepCase,
+        ["psp"] = MediaShell.DiscKeepCase,
     };
 
     private static readonly Dictionary<string, PhysicalMediaProfile> ProfilesBySystemId = new(StringComparer.Ordinal)
@@ -129,11 +131,45 @@ public static class MediaShellMap
             MediaShell.DiscKeepCase, new(135f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "wii-white", "case-downward"),
+        // A real UMD case, 104 x 178 x 15mm, and the one profile here that knowingly disagrees with
+        // its asset: against the shared case's own 0.695 proportions this draws the mesh at 84% of
+        // its authored width. That is deliberate, and it is the opposite of the call the PS3 profile
+        // above makes, so it needs its reason recorded.
+        //
+        // The rule those comments keep restating — take the asset's ratios, a profile that
+        // disagrees silently distorts the shell — was written for cartridges, where the moulding
+        // *is* the object. A keep case is not that. Its front is a flat sleeve that fills nearly
+        // the whole silhouette, and the mesh's own contribution is a rim a few pixels wide. So the
+        // squeeze has to be weighed against what it buys, and what it buys is the sleeve: this
+        // panel is ArtFit.Stretch, and at 104mm the front face is 0.584 against a PSP box scan's
+        // 0.581, so the art lands undistorted. At the asset's own 0.695 it stretches every scraped
+        // PSP cover about 20% wider — on the one surface you actually look at.
+        //
+        // Rendered both before choosing. Squeezed mesh with correct art reads as a UMD case;
+        // correct mesh with fat art reads as a slightly small PS2 case with something wrong with
+        // the cover. PS3 went the other way because a Blu-ray case really is 135mm wide, so its
+        // undistorted option cost it nothing on the sleeve. Locked by
+        // MediaShellTests.MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted, which is
+        // also why PSP is the one exclusion from the proportion theory. See DECISIONS 2026-08-15.
+        ["psp"] = new(
+            MediaShell.DiscKeepCase, new(104f, 178f, 15f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
+            "psp-clear", "case-downward"),
     };
 
     /// <summary>The shell for a system, or null when it should keep its flat cover.</summary>
     public static MediaShell? ForSystem(string systemId) =>
         BySystemId.TryGetValue(systemId, out var shell) ? shell : null;
+
+    /// <summary>Every system id this table claims to have authored media for.</summary>
+    /// <remarks>
+    /// Exposed only so tests can check the keys themselves, which <see cref="ForSystem"/> cannot:
+    /// asked about an id, it answers about that id, so an entry filed under an id no system has —
+    /// a typo, or a system id renamed on the other side of the app — is unreachable rather than
+    /// wrong. The shell simply never renders and the platform quietly keeps a flat cover, which
+    /// looks exactly like a platform that was never given a shell.
+    /// </remarks>
+    public static IEnumerable<string> MappedSystemIds => BySystemId.Keys;
 
     /// <summary>
     /// The metric profile used by the shared shelf scene. Systems without authored media become a

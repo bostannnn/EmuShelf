@@ -17,5 +17,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EmuShelf.Rendering\EmuShelf.Rendering.csproj" />
+    <!-- For KnownSystems.CoverAspectRatio, so the stand-in cover art is the shape the scraper
+         really returns rather than a fourth copy of those ratios. Integrations is Core-only with
+         no UI or GL dependency, unlike EmuShelf.App, which this tool still cannot reference. -->
+    <ProjectReference Include="..\..\src\EmuShelf.Integrations\EmuShelf.Integrations.csproj" />
   </ItemGroup>
 </Project>
