@@ -71,23 +71,26 @@ public sealed class MediaShellRenderer : IDisposable
     /// horizontal space nobody was using growing as the viewport got wider. That is why disc-based
     /// media looked small next to cartridges that had been "fixed": both filled half the height.
     /// <see cref="ShelfFrameWidthFill"/> is the other half of the rule, and this is the height a
-    /// portrait medium can take once the width limit is what stops the wide ones.
+    /// portrait medium takes once the width limit is what stops the wide ones.
     ///
-    /// 0.62 rather than more because the launch lift sets the ceiling, not taste: the medium rises
-    /// 0.10 units and grows a tenth on its way to the spin, and a keep case standing on the shelf
-    /// floor already reaches three quarters of the way up the frame at this fill. 0.72 was tried
-    /// first and carried the case out through the top;
-    /// MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame, which now runs for a disc
-    /// case as well as a cartridge, was walked up until it broke, and it breaks between 0.64 and
-    /// 0.66. 0.62 keeps a couple of percent in hand. Raising it means shortening the lift; the two
-    /// constants have to move together, which is what the test is there to enforce.
+    /// 0.55 rather than more because the launch lift sets the ceiling, not taste, and the medium
+    /// that sets it is not the one this change is about. The lift is an absolute 0.10 units while
+    /// the frame scales with the medium's own height, so the *shortest* height-led medium has the
+    /// least room to rise into — a PS1 jewel case at 125mm, whose frame is two thirds of a keep
+    /// case's while its lift is the same. Walking
+    /// MediaShellTests.LaunchChoreography_StaysInsideTheShelfCameraFrame up until it breaks puts
+    /// the jewel case's limit between 0.56 and 0.57, against 0.64–0.66 for a UMD case and 0.66–0.70
+    /// for a keep case under the disc sequence. One camera constant serves all three, so the
+    /// smallest wins and 0.55 keeps a little in hand.
     ///
-    /// It stops short of making a case as big on screen as a cartridge — measured in the Steam
-    /// Deck's shelf viewport, a keep case covers 13.4% of the frame against a cartridge's 20.6%,
-    /// having covered 8.6% before. So it grows by half again and reaches 65% of the cartridge,
-    /// not parity; parity needs about 0.77, which the choreography cannot hold.
+    /// The consequence is worth stating plainly: a keep case covers 10.5% of the Steam Deck's shelf
+    /// viewport against a cartridge's 20.6%, having covered 8.6% before. So it grows by about a
+    /// fifth and reaches half the cartridge, not parity — parity needs a fill near 0.77, which no
+    /// medium's choreography can hold. Getting there means making the lift proportional to the
+    /// medium instead of absolute, which is a change to the launch sequences and to how a cartridge
+    /// launch feels, not to this constant.
     /// </remarks>
-    private const float ShelfFrameFill = 0.62f;
+    private const float ShelfFrameFill = 0.55f;
 
     /// <summary>
     /// Fraction of the viewport width the widest medium in the library view fills, when width is
@@ -180,6 +183,8 @@ public sealed class MediaShellRenderer : IDisposable
     private Vector3 _accent;
     private readonly Dictionary<long, PanelArtSet> _coverArt = [];
     private readonly List<ShelfDrawItem> _shelfDrawItems = new(7);
+    // Only ever the one medium being launched, but held as a list so the draw reads like the other.
+    private readonly List<ShelfDrawItem> _discDrawItems = new(1);
     private readonly List<ShadowFootprint> _shadowFootprints = new(7);
     private PanelArtSet? _activePanelArt;
     private Vector3 _drawAccent;
@@ -324,7 +329,7 @@ public sealed class MediaShellRenderer : IDisposable
     /// </remarks>
     public void SetPanelArt(long key, int panelIndex, TextureImage? art)
     {
-        if (panelIndex is < 0 or >= MaxPanels)
+        if (panelIndex is < 0 or >= MaxArtworkFaces)
         {
             return;
         }
@@ -463,11 +468,19 @@ public sealed class MediaShellRenderer : IDisposable
         var viewProjection = view * projection;
 
         _shelfDrawItems.Clear();
+        _discDrawItems.Clear();
         foreach (var item in items)
         {
             if (TryResources(item.Profile.Shell, out var resources))
             {
                 _shelfDrawItems.Add(new ShelfDrawItem(item, resources, ShelfModel(item, resources.Asset)));
+            }
+
+            if (item.Disc is not null
+                && item.Profile.HasDisc
+                && TryResources(MediaShell.GameDisc, out var disc))
+            {
+                _discDrawItems.Add(new ShelfDrawItem(item, disc, DiscModel(item, disc.Asset)));
             }
         }
         DrawShelfShadows(_shelfDrawItems, viewProjection);
@@ -481,6 +494,16 @@ public sealed class MediaShellRenderer : IDisposable
             var keyViewProjection = DrawKeyShadow(item.Resources, item.Model);
             DrawShelfItem(
                 item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow: true);
+        }
+
+        foreach (var disc in _discDrawItems)
+        {
+            // No depth pass of its own: the pass exists to let moulding shadow itself, and two flat
+            // faces and a rim have nothing to cast onto. Skipping it also leaves the shadow map
+            // holding the case that was drawn just before, which is the wrong caster for the disc
+            // and the reason the colour pass below is told there is no key shadow at all.
+            DrawShelfItem(
+                disc, viewProjection, cameraPosition, Matrix4x4.Identity, hasKeyShadow: false);
         }
 
         _gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, _sceneFramebuffer);
@@ -510,7 +533,12 @@ public sealed class MediaShellRenderer : IDisposable
 
         _activePanelArt = _coverArt.GetValueOrDefault(item.Key);
         _drawAccent = item.Accent;
-        _activeMaterialAppearance = MaterialVariantAppearance.For(item.Profile.MaterialVariant);
+        // The disc is drawn against a profile that describes the case around it, so the profile's
+        // finish is not its own: "ps2-black" would paint an aluminium mirror the colour of the box
+        // it came out of. Its own material already says what it is made of.
+        _activeMaterialAppearance = resources.Definition.Shell == MediaShell.GameDisc
+            ? MaterialVariantAppearance.Default
+            : MaterialVariantAppearance.For(item.Profile.MaterialVariant);
 
         _program.Use();
         _program.Set("uModel", model);
@@ -553,6 +581,44 @@ public sealed class MediaShellRenderer : IDisposable
             * Matrix4x4.CreateRotationX(item.Pitch)
             * Matrix4x4.CreateRotationY(item.Yaw)
             * Matrix4x4.CreateTranslation(item.CentreX, centreY, centreZ);
+    }
+
+    /// <summary>
+    /// Places one medium's loose disc in the same world its case stands in.
+    /// </summary>
+    /// <remarks>
+    /// Scaled uniformly, unlike <see cref="ShelfModel"/>. A shell is matched axis by axis because
+    /// sourced geometry only approximates the package it stands for; this mesh is generated at the
+    /// exact proportions of the object, so stretching it against anything could only introduce an
+    /// error. The disc's own diameter is what varies — a GameCube's is two thirds of a DVD's.
+    /// </remarks>
+    internal static Matrix4x4 DiscModel(MediaShelfRenderItem item, ModelAsset asset)
+    {
+        var profile = item.Profile;
+        var disc = item.Disc ?? default;
+        var focus = Math.Clamp(item.FocusAmount, 0f, 1f);
+        var scale = profile.DiscDiameterInShelfUnits
+            / MathF.Max(asset.Size.X, 1e-5f)
+            * item.LaunchScale
+            * disc.Scale;
+
+        var centreY = ShelfBaselineY
+            + profile.FloorClearanceInShelfUnits
+            + (profile.HeightInShelfUnits * 0.5f)
+            + (focus * FocusLift)
+            + disc.VerticalOffset;
+        var centreZ = (focus * FocusDepth) + disc.DepthOffset;
+        // Spin about the disc's own axis first, so it keeps turning in its own plane however far
+        // the disc has been tilted or the shelf turned. Applying the shelf's yaw last is what keeps
+        // the disc inside the case for the part of the launch where it is still in it.
+        return Matrix4x4.CreateScale(scale)
+            * Matrix4x4.CreateRotationZ(disc.Spin)
+            * Matrix4x4.CreateRotationX(disc.Tilt)
+            // The flip rides with the shelf's own yaw: both turn the disc about the up axis, and
+            // one is the medium being shown to the player while the other is the shelf's pose.
+            * Matrix4x4.CreateRotationY(item.Yaw + disc.Flip)
+            * Matrix4x4.CreateTranslation(
+                item.CentreX + disc.HorizontalOffset, centreY, centreZ);
     }
 
     /// <summary>
@@ -701,6 +767,7 @@ public sealed class MediaShellRenderer : IDisposable
         _program.Set("uBodyTint", _activeMaterialAppearance.BodyTint);
         _program.Set("uBodyTintMix", _activeMaterialAppearance.BodyTintMix);
         _program.Set("uBodyAlbedoScale", resources.Definition.BodyAlbedoScale);
+        _program.Set("uIridescence", resources.Definition.Iridescence);
     }
 
     private void DrawResources(ShellResources resources)
@@ -975,15 +1042,31 @@ public sealed class MediaShellRenderer : IDisposable
             return;
         }
 
-        var panels = resources.Panels;
+        // A shell that refuses the tint fallback contributes only the panels it actually has art
+        // for, and they take consecutive shader slots. The slot a panel lands in is not the face it
+        // draws — that is ArtIndex, which is looked up separately — so closing the gaps here cannot
+        // move a picture onto the wrong surface.
+        var panels = definition.RequiresArtwork
+            ? resources.Panels
+                .Where(panel => definition.TakesScrapedArtwork
+                    && _activePanelArt?.Get(panel.ArtIndex) is not null)
+                .ToList()
+            : resources.Panels;
 
         _program.Set("uPanelCount", panels.Count);
         _program.Set("uPanelRoughness", definition.PanelRoughness);
         _program.Set("uPanelFlattenNormal", definition.FlattenPanelNormal ? 1f : 0f);
 
         // The unlit sides of the sleeve get the system's colour rather than the model's own printed
-        // artwork, which belongs to whichever game the model was scanned from.
-        var tint = new Vector4(_drawAccent * 0.85f, 1f);
+        // artwork, which belongs to whichever game the model was scanned from. A shell whose
+        // untextured panel is printing rather than a stand-in picture lifts that toward its own
+        // substrate, so the accent reads as ink laid on the medium instead of as a colour chip.
+        var tint = new Vector4(
+            Vector3.Lerp(
+                _drawAccent * 0.85f,
+                new Vector3(0.62f),
+                Math.Clamp(definition.PanelTintLift, 0f, 1f)),
+            1f);
 
         for (var i = 0; i < panels.Count; i++)
         {
@@ -1010,8 +1093,11 @@ public sealed class MediaShellRenderer : IDisposable
                     * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
 
             // Each face is independent: a case can wear a scraped front with no back yet, and
-            // the missing one takes the platform tint instead of blanking the others.
-            var art = _activePanelArt?.Get(panel.ArtIndex);
+            // the missing one takes the platform tint instead of blanking the others. A shell that
+            // refuses scraped artwork outright never reaches for it on any face.
+            var art = definition.TakesScrapedArtwork
+                ? _activePanelArt?.Get(panel.ArtIndex)
+                : null;
             _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
 
             // Fit the artwork to the whole printed sheet first, then hand this panel its slice of
@@ -1220,8 +1306,8 @@ public sealed class MediaShellRenderer : IDisposable
         {
             // Artwork v runs top-down, so a label that folds gives its strip the top of the sheet
             // and the face everything from the crease down.
-            new(cover, MediaShellCatalog.Place(cover, asset), 0, sheetAspect,
-                1f - cover.TopWrap, cover.TopWrap, PanelMaterial(asset, cover)),
+            new(cover, MediaShellCatalog.Place(cover, asset), definition.CoverArtIndex,
+                sheetAspect, 1f - cover.TopWrap, cover.TopWrap, PanelMaterial(asset, cover)),
         };
 
         // The fold is drawn as a second panel because the shader projects one plane at a time, and
@@ -1229,8 +1315,8 @@ public sealed class MediaShellRenderer : IDisposable
         if (MediaShellCatalog.TryWrapPanel(cover, asset) is { } strip)
         {
             panels.Add(new ArtPanelBinding(
-                strip, MediaShellCatalog.Place(strip, asset), 0, sheetAspect, cover.TopWrap,
-                MaterialIndex: PanelMaterial(asset, strip)));
+                strip, MediaShellCatalog.Place(strip, asset), definition.CoverArtIndex,
+                sheetAspect, cover.TopWrap, MaterialIndex: PanelMaterial(asset, strip)));
         }
 
         for (var index = 0; index < definition.ExtraPanels.Count; index++)
@@ -1584,12 +1670,25 @@ public sealed class MediaShellRenderer : IDisposable
     public const int MaxPanels = 3;
 
     /// <summary>
+    /// Faces of one game that can carry their own artwork, which is more than a shell can draw
+    /// at once.
+    /// </summary>
+    /// <remarks>
+    /// These were one constant, and splitting them is what lets a disc have a label. A keep case
+    /// draws three panels and a disc draws one, but they are two shells belonging to the same game:
+    /// the case's front already owns art slot 0, so the disc's label needs a slot of its own rather
+    /// than the one holding the box scan. The shader's budget is per draw and unchanged at three;
+    /// this is how many faces the game's uploaded set holds.
+    /// </remarks>
+    public const int MaxArtworkFaces = 4;
+
+    /// <summary>
     /// One game's uploaded faces. Held as a set rather than three dictionary entries so evicting a
     /// game that scrolled out of the window cannot leave a stray face behind on the GPU.
     /// </summary>
     private sealed class PanelArtSet : IDisposable
     {
-        private readonly CoverResource?[] _panels = new CoverResource?[MaxPanels];
+        private readonly CoverResource?[] _panels = new CoverResource?[MaxArtworkFaces];
 
         public bool IsEmpty => _panels.All(panel => panel is null);
 

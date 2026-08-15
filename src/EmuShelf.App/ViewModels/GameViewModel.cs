@@ -181,6 +181,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
         {
             ShelfArtworkFace.Front when (slots & PhysicalArtworkSlots.CartridgeSupport) != 0 =>
                 PhysicalMediaTexturePath,
+            // The same scraped support texture as a cartridge's label, on the medium it belongs to:
+            // for a disc system ScreenScraper's support art is a picture of the disc, not the box.
+            ShelfArtworkFace.DiscLabel when (slots & PhysicalArtworkSlots.DiscLabel) != 0 =>
+                PhysicalMediaTexturePath,
             ShelfArtworkFace.Back when (slots & PhysicalArtworkSlots.Back) != 0 => BoxBackPath,
             ShelfArtworkFace.Spine when (slots & PhysicalArtworkSlots.Spine) != 0 => BoxSpinePath,
             _ => null,

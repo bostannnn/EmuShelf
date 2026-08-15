@@ -75,6 +75,7 @@ internal static class ModelPrep
         bool bakeVertexColours,
         string? dropMeshes,
         string? closeLid,
+        bool stripTextures,
         int maxTextureSize)
     {
         var rects = ParseRects(neutralRect);
@@ -106,9 +107,17 @@ internal static class ModelPrep
         var root = JsonNode.Parse(json)?.AsObject() ?? throw new InvalidDataException("Empty GLB JSON.");
         var binStart = 20 + jsonLength + 8;
 
+        StripAnimations(root);
+
         if (singleInstance)
         {
             KeepOneInstance(root);
+        }
+
+        if (stripTextures)
+        {
+            StripTextures(root, source, binStart, outputPath, inputPath);
+            return;
         }
 
         if (bakeVertexColours)
@@ -693,6 +702,114 @@ internal static class ModelPrep
     /// views is precisely where a prep step goes quietly wrong. The orphaned vertex data stays in
     /// the buffer; it is a fraction of a file whose bulk is textures, and nothing references it.
     /// </remarks>
+    /// <summary>
+    /// Removes animation data, which a runtime shell has no use for and can be actively broken.
+    /// </summary>
+    /// <remarks>
+    /// Unconditional, because every shell in this catalogue is a rigid prop: the renderer poses each
+    /// one from its own choreography and has no sampler to play a clip through, so this can only
+    /// ever be dead weight. It earns its place by being more than dead weight in practice — the
+    /// sourced compact disc carries a spin clip whose output accessor sits on a buffer view with a
+    /// <c>byteStride</c>, which the glTF schema forbids on animation data. SharpGLTF validates on
+    /// read, so the whole model failed to load over a clip nothing was ever going to play.
+    ///
+    /// Only the animations array goes. The accessors and buffer views it referenced are left where
+    /// they are and simply become unreferenced, for the same reason the duplicate instances below
+    /// keep their vertex data: renumbering indices across accessors and buffer views is exactly
+    /// where a prep step goes quietly wrong, and the bytes are noise beside the textures.
+    /// </remarks>
+    private static void StripAnimations(JsonObject root)
+    {
+        if (root["animations"] is not JsonArray animations || animations.Count == 0)
+        {
+            return;
+        }
+
+        root.Remove("animations");
+        Console.WriteLine($"  stripped {animations.Count} animation(s)");
+    }
+
+    /// <summary>
+    /// Takes a model down to its geometry and material factors, discarding every map.
+    /// </summary>
+    /// <remarks>
+    /// The blunt instrument, and sometimes the right one. Masking a rectangle assumes a model's
+    /// branding sits somewhere a rectangle can reach; the sourced compact disc's does not. Its two
+    /// faces share one atlas with interleaved circular islands, so every square that covers the
+    /// "SONY CD-R 700MB" trade dress on the label also clips the brushed data surface — and the same
+    /// logo is embossed a second time into the metallic/roughness map, where flattening it would
+    /// take the disc's mirror with it.
+    ///
+    /// What the model was actually wanted for is its shape: the hub, the stacking ring and the
+    /// rounded rim that a generated annulus does not have. Those are in the vertices. Dropping the
+    /// maps keeps all of it, ships no third-party artwork whatsoever, and turns a 3.4MB download
+    /// into a small one — and the surface the maps described is then supplied by the material
+    /// factors and the game's own scraped disc art, which is what belongs on that face anyway.
+    ///
+    /// The image buffer views are emptied rather than deleted, and that distinction is the whole
+    /// reason this is not two lines. Removing entries would renumber every view after them — the
+    /// trap this file avoids everywhere else — while merely dropping the <c>images</c> array would
+    /// leave <see cref="WriteGlb"/> faithfully copying 3.4MB of unreferenced PNG into the output,
+    /// trade dress included. Emptying their payloads keeps every index where it was and takes the
+    /// bytes out of the file, which is what actually matters here.
+    /// </remarks>
+    private static void StripTextures(
+        JsonObject root,
+        byte[] source,
+        int binStart,
+        string outputPath,
+        string inputPath)
+    {
+        // Collected before the images array goes, since that is what names the views to empty.
+        var imageViews = new Dictionary<int, byte[]>();
+        foreach (var image in root["images"]?.AsArray() ?? [])
+        {
+            if (image?["bufferView"]?.GetValue<int>() is { } view)
+            {
+                // One byte, not none: glTF requires a buffer view to be at least a byte long, and
+                // an empty one fails validation on read as surely as the malformed animation did.
+                imageViews[view] = [0];
+            }
+        }
+
+        var dropped = 0;
+        foreach (var material in root["materials"]?.AsArray() ?? [])
+        {
+            var node = material!.AsObject();
+            var pbr = node["pbrMetallicRoughness"]?.AsObject();
+            foreach (var slot in new[] { "baseColorTexture", "metallicRoughnessTexture" })
+            {
+                if (pbr?.Remove(slot) == true)
+                {
+                    dropped++;
+                }
+            }
+
+            foreach (var slot in new[] { "normalTexture", "occlusionTexture", "emissiveTexture" })
+            {
+                if (node.Remove(slot))
+                {
+                    dropped++;
+                }
+            }
+
+            // Extension materials carry their own maps, and a clearcoat normal left pointing at a
+            // texture index that no longer exists is a load failure rather than a missing detail.
+            node.Remove("extensions");
+        }
+
+        root.Remove("textures");
+        root.Remove("images");
+        root.Remove("samplers");
+        Console.WriteLine(
+            $"  stripped {dropped} texture reference(s) and emptied {imageViews.Count} image(s)");
+
+        WriteGlb(
+            root, root["bufferViews"]!.AsArray(), source, binStart, imageViews,
+            outputPath, inputPath,
+            "Every texture map is removed, leaving the model's geometry and material factors");
+    }
+
     private static void KeepOneInstance(JsonObject root)
     {
         var kept = false;
