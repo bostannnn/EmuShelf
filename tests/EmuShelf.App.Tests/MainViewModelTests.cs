@@ -4115,6 +4115,7 @@ public class MainViewModelTests : IDisposable
     {
         public bool AutomaticallyFetchAfterImport { get; private set; }
         public bool ConsentPromptShown { get; private set; }
+        public bool WebImageSearchEnabled { get; private set; } = true;
         public MetadataConsentChoice? RecordedChoice { get; private set; }
 
         public Task SaveAutomaticFetchAsync(
@@ -4123,6 +4124,14 @@ public class MainViewModelTests : IDisposable
         {
             AutomaticallyFetchAfterImport = enabled;
             ConsentPromptShown = true;
+            return Task.CompletedTask;
+        }
+
+        public Task SaveWebImageSearchAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+        {
+            WebImageSearchEnabled = enabled;
             return Task.CompletedTask;
         }
 

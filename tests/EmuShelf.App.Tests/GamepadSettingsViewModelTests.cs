@@ -83,7 +83,7 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Equal(
             [
                 SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements,
-                SettingsSection.ScreenScraper, SettingsSection.Saves, SettingsSection.TexturePacks,
+                SettingsSection.ArtworkMetadata, SettingsSection.Saves, SettingsSection.TexturePacks,
                 SettingsSection.Themes, SettingsSection.About,
             ],
             order);
@@ -136,11 +136,11 @@ public sealed class GamepadSettingsViewModelTests
                     connectedPassword = password;
                 }));
 
-        Assert.Contains(SettingsSection.ScreenScraper, viewModel.Sections);
+        Assert.Contains(SettingsSection.ArtworkMetadata, viewModel.Sections);
 
-        viewModel.SelectedSection = SettingsSection.ScreenScraper;
-        Assert.True(viewModel.IsScreenScraperSection);
-        Assert.Equal("ScreenScraper", viewModel.SectionTitle);
+        viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
+        Assert.True(viewModel.IsArtworkMetadataSection);
+        Assert.Equal("Artwork & Metadata", viewModel.SectionTitle);
 
         // Disconnected: the section offers username, a masked password, and connect.
         var username = viewModel.Rows.Single(row => row.Key == "scraper.username");
@@ -174,15 +174,15 @@ public sealed class GamepadSettingsViewModelTests
     {
         using var viewModel = CreateGamepadSettings(retroAchievements: CreateRetroAchievementsContext());
 
-        Assert.DoesNotContain(SettingsSection.ScreenScraper, viewModel.Sections);
+        Assert.DoesNotContain(SettingsSection.ArtworkMetadata, viewModel.Sections);
     }
 
     [AvaloniaFact]
-    public async Task GeneralPill_ShowsRescanStatus_NotAFinishedMetadataFetchProgressLine()
+    public async Task ArtworkMetadataPill_ShowsFetchSummary_AndGeneralRescanIsNotMasked()
     {
-        // The General section collapses metadata and maintenance into one pill. Before the fix, a
-        // completed metadata fetch left its live "Fetching N of N" line set and the pill (which ranks
-        // progress text ahead of status) kept showing it, so a later rescan looked like it did nothing.
+        // Metadata fetch now lives in the Artwork & Metadata section; rescan stays in General. A
+        // completed fetch must show its summary in the Artwork & Metadata pill (not the frozen
+        // "Fetching N of N" progress line), and must not leak into the separate General rescan pill.
         var maintenance = new LibraryMaintenanceActions(
             RescanSystem: (_, _) => Task.FromResult(string.Empty),
             RescanAll: _ => Task.FromResult("Rescan complete — no new games"),
@@ -191,8 +191,8 @@ public sealed class GamepadSettingsViewModelTests
                 progress.Report(new MetadataEnrichmentProgress(40, 40, "Final Fantasy"));
                 return Task.FromResult("Added 40 covers");
             });
-        using var viewModel = CreateGamepadSettings(maintenance);
-        viewModel.SelectedSection = SettingsSection.General;
+        using var viewModel = CreateGamepadSettings(maintenance, screenScraper: CreateScreenScraperContext());
+        viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
 
         await viewModel.Rows.Single(row => row.Key == "general.fetch-metadata").SelectCommand.ExecuteAsync(null);
         // The completion summary shows — not the frozen "Fetching 40 of 40" progress line.
@@ -200,8 +200,9 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Equal(string.Empty, viewModel.Settings.MetadataProgressText);
         Assert.False(viewModel.Settings.HasMetadataProgress);
 
+        viewModel.SelectedSection = SettingsSection.General;
         await viewModel.Rows.Single(row => row.Key == "general.rescan").SelectCommand.ExecuteAsync(null);
-        // The rescan's own status wins; the earlier metadata summary no longer masks it.
+        // The General rescan pill shows its own status; the earlier metadata summary does not mask it.
         Assert.Equal("Rescan complete — no new games", viewModel.StatusText);
     }
 
@@ -287,12 +288,17 @@ public sealed class GamepadSettingsViewModelTests
         bool? showEmpty = null;
         var metadata = new RecordingMetadataPreferences();
         var maintenance = CreateMaintenance(value => showEmpty = value);
-        var settings = CreateSettings(maintenance: maintenance, metadataPreferences: metadata);
+        var settings = CreateSettings(
+            maintenance: maintenance,
+            metadataPreferences: metadata,
+            screenScraper: CreateScreenScraperContext());
         using var viewModel = new GamepadSettingsViewModel(settings);
         bool? closedAsSaved = null;
         viewModel.CloseRequested += saved => closedAsSaved = saved;
 
         await viewModel.Rows.Single(row => row.Key == "general.empty-platforms").SelectCommand.ExecuteAsync(null);
+        // The metadata auto-fetch toggle moved into the Artwork & Metadata section.
+        viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
         await viewModel.Rows.Single(row => row.Key == "general.metadata-auto").SelectCommand.ExecuteAsync(null);
         var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         viewModel.CloseRequested += value =>
@@ -627,10 +633,17 @@ public sealed class GamepadSettingsViewModelTests
     {
         public bool AutomaticallyFetchAfterImport { get; private set; }
         public bool ConsentPromptShown => true;
+        public bool WebImageSearchEnabled { get; private set; } = true;
 
         public Task SaveAutomaticFetchAsync(bool enabled, CancellationToken cancellationToken = default)
         {
             AutomaticallyFetchAfterImport = enabled;
+            return Task.CompletedTask;
+        }
+
+        public Task SaveWebImageSearchAsync(bool enabled, CancellationToken cancellationToken = default)
+        {
+            WebImageSearchEnabled = enabled;
             return Task.CompletedTask;
         }
 

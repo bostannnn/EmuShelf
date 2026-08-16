@@ -15,6 +15,7 @@ public static class SettingsSectionLabel
         // field ids (general.*) and settings compatibility.
         SettingsSection.General => "Library",
         SettingsSection.TexturePacks => "Texture Packs",
+        SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         _ => section.ToString(),
     });
 }

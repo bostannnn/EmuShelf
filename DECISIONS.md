@@ -8627,3 +8627,40 @@ exists to catch. Rescaling the kept band back to the original extent bakes the t
 mesh instead, so coincident merged walls stay coincident, the shell stays boxy, and its depth ratio
 still agrees with its profile (D/H back to 0.072). The case renders identically either way; only the
 mesh-vs-profile agreement differs, and that is worth keeping honest rather than excepting.
+
+## 2026-08-16 — Scraping is one "Artwork & Metadata" surface; the settings model tells the truth
+
+The three artwork/metadata sources (built-in catalogue, authenticated ScreenScraper, and the manual
+DuckDuckGo cover search) were surfaced through unrelated menus on top of a settings model that was
+mostly dead: `ScrapeProviderSettings.BuiltInCatalog.Enabled`, `DuckDuckGoArtwork.Enabled`, and
+`ScreenScraperSettings.AutomaticallyScrapeAfterImport` were serialized but never read or written, and
+the ScreenScraper language/region/field/media lists were code-owned defaults masquerading as user
+settings (with a `WithCatalogDefaultsEnsured` migration to repair frozen copies). That is the
+"half-baked" seam.
+
+`ScrapingSettings` is now honest: `{ ScreenScraper: { Enabled }, WebImageSearchEnabled }`. The dead
+`Enabled` flags, the duplicate auto-scrape toggle, `ScrapeProviderSettings`, and the whole media/field
+config are removed from the persisted model. The media/field/region/language defaults move to a
+code-owned `ScreenScraperMediaProfile` constant read by the mapper and preview service, so the
+serialized file no longer carries them and the migration hack is deleted. `ScreenScraper.Enabled`
+stays but is documented as a connection mirror (set on connect, cleared on disconnect), not an
+independent preference. Old `settings.json` files keep loading — the removed members are simply
+ignored (System.Text.Json skips unknown members), so a legacy `DuckDuckGoArtwork.Enabled: false` no
+longer suppresses the picker; `WebImageSearchEnabled` defaults on.
+
+The desktop `SettingsSection.ScreenScraper` becomes `SettingsSection.ArtworkMetadata` ("Artwork &
+Metadata") and gathers all three providers: the built-in auto-fetch toggle and "Fetch missing
+metadata" action move out of General into a Built-in catalogue card, the ScreenScraper connect card
+stays, and a new Web image search toggle (`metadata.web-image-search`) is added. The toggle is real:
+`DialogService.PickGameCoverAsync` reads `WebImageSearchEnabled` and, when off, the "Set cover" picker
+is a plain local-file pick with no web results. The gamepad settings projection mirrors the move —
+the built-in and web-toggle rows now live in the Artwork & Metadata section, and its status pill
+surfaces metadata-fetch progress. Desktop/gamepad field-id parity is preserved for the `scraper.*`
+prefix; the moved built-in ids keep their `general.*` prefix on both surfaces.
+
+Still open (next slice): the manual DuckDuckGo cover search is desktop-only in Gamepad mode (the
+`CoverDesktopHandoff` overlay), against the 2026-08-01 intent that it be controller-native. Making the
+web cover picker a controller-native overlay (reusing `CoverSearchViewModel` behind a D-pad focus
+wrapper like the ScreenScraper scraper overlay, with local-file "choose a file" still handing off to
+Desktop for the OS picker) reverses that handoff and is deferred to its own focused pass, since the
+controller *feel* needs real Deck/controller acceptance that headless tests cannot cover.

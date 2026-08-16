@@ -345,7 +345,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.Emulators => "Emulators",
         SettingsSection.Hotkeys => "Hotkeys",
         SettingsSection.RetroAchievements => "RetroAchievements",
-        SettingsSection.ScreenScraper => "ScreenScraper",
+        SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
         SettingsSection.About => "About",
@@ -362,8 +362,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             "Write one in-game hotkey scheme into each emulator and see the Steam Input mapping.",
         SettingsSection.RetroAchievements =>
             "Read achievement sets and your progress. Emulators still own unlocks and submission.",
-        SettingsSection.ScreenScraper =>
-            "Sign in to fetch titles and artwork from ScreenScraper. Game files are never uploaded.",
+        SettingsSection.ArtworkMetadata =>
+            "Fetch titles and artwork from the built-in catalogue or ScreenScraper, and toggle web image search. Game files are never uploaded.",
         SettingsSection.Saves =>
             "Reconcile emulator saves through your own rclone remote. Game files are never included.",
         SettingsSection.TexturePacks =>
@@ -382,7 +382,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.RetroAchievements => FirstNonEmpty(
             _settings.RetroAchievementsProgressText,
             _settings.RetroAchievementsStatusText),
-        SettingsSection.ScreenScraper => _settings.ScreenScraperStatusText,
+        SettingsSection.ArtworkMetadata => FirstNonEmpty(
+            _settings.MetadataProgressText,
+            _settings.MetadataStatusText,
+            _settings.ScreenScraperStatusText),
         SettingsSection.Saves => FirstNonEmpty(
             _settings.CloudSyncProgressText,
             _settings.CloudStatusText),
@@ -393,8 +396,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.About => UpdateStatusHint,
         _ => FirstNonEmpty(
             _settings.StatusText,
-            _settings.MetadataProgressText,
-            _settings.MetadataStatusText,
             _settings.MaintenanceStatusText),
     };
 
@@ -423,7 +424,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.Emulators => _settings.IsMaintainingLibrary,
         SettingsSection.Hotkeys => _settings.IsHotkeyBusy,
         SettingsSection.RetroAchievements => _settings.IsRetroAchievementsBusy,
-        SettingsSection.ScreenScraper => _settings.IsScreenScraperBusy,
+        SettingsSection.ArtworkMetadata => _settings.IsScreenScraperBusy || _settings.IsMaintainingLibrary,
         SettingsSection.Saves => _settings.IsCloudBusy,
         SettingsSection.TexturePacks => _settings.IsTexturePackBusy,
         SettingsSection.About => _settings.IsUpdateBusy,
@@ -434,7 +435,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     public bool IsEmulatorsSection => !IsThemesSection && SelectedSection == SettingsSection.Emulators;
     public bool IsHotkeysSection => !IsThemesSection && SelectedSection == SettingsSection.Hotkeys;
     public bool IsRetroAchievementsSection => !IsThemesSection && SelectedSection == SettingsSection.RetroAchievements;
-    public bool IsScreenScraperSection => !IsThemesSection && SelectedSection == SettingsSection.ScreenScraper;
+    public bool IsArtworkMetadataSection => !IsThemesSection && SelectedSection == SettingsSection.ArtworkMetadata;
     public bool IsSavesSection => !IsThemesSection && SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => !IsThemesSection && SelectedSection == SettingsSection.TexturePacks;
     public bool IsAboutSection => !IsThemesSection && SelectedSection == SettingsSection.About;
@@ -1003,7 +1004,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsEmulatorsSection));
         OnPropertyChanged(nameof(IsHotkeysSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
-        OnPropertyChanged(nameof(IsScreenScraperSection));
+        OnPropertyChanged(nameof(IsArtworkMetadataSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
         OnPropertyChanged(nameof(IsAboutSection));
@@ -1060,7 +1061,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsEmulatorsSection));
         OnPropertyChanged(nameof(IsHotkeysSection));
         OnPropertyChanged(nameof(IsRetroAchievementsSection));
-        OnPropertyChanged(nameof(IsScreenScraperSection));
+        OnPropertyChanged(nameof(IsArtworkMetadataSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
         OnPropertyChanged(nameof(IsAboutSection));
@@ -1137,7 +1138,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             SettingsSection.Emulators => BuildEmulatorsRows(),
             SettingsSection.Hotkeys => BuildHotkeysRows(),
             SettingsSection.RetroAchievements => BuildRetroAchievementsRows(),
-            SettingsSection.ScreenScraper => BuildScreenScraperRows(),
+            SettingsSection.ArtworkMetadata => BuildArtworkMetadataRows(),
             SettingsSection.Saves => BuildSaveRows(),
             SettingsSection.TexturePacks => BuildTextureRows(),
             SettingsSection.About => BuildAboutRows(),
@@ -1166,14 +1167,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             value => _settings.ShowEmptyPlatforms = value,
             onLabel: "SHOW",
             offLabel: "HIDE");
-        yield return ToggleRow(
-            "general.metadata-auto",
-            "Metadata and artwork",
-            "Titles and individual covers are downloaded only after you opt in. Game files and paths are never uploaded.",
-            _settings.AutomaticallyFetchMetadataAfterImport,
-            value => _settings.AutomaticallyFetchMetadataAfterImport = value,
-            onLabel: "AUTO",
-            offLabel: "MANUAL");
         yield return ActionRow(
             "general.rescan",
             "Rescan all consoles",
@@ -1181,13 +1174,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
-        yield return ActionRow(
-            "general.fetch-metadata",
-            "Fetch missing metadata",
-            "Fill missing titles and artwork for the current library after your metadata opt-in.",
-            _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
-            _settings.FetchAllMetadataCommand,
-            _settings.CanFetchAllMetadata);
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
         // folder too, and so the two surfaces' general.* field sets stay in parity.
         if (_settings.HasDataDirectory)
@@ -1418,8 +1404,42 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             isGrouped: true);
     }
 
-    private IEnumerable<GamepadSettingsRowSpec> BuildScreenScraperRows()
+    private IEnumerable<GamepadSettingsRowSpec> BuildArtworkMetadataRows()
     {
+        // Built-in catalogue: always available, no account needed. Same stable ids as Desktop's
+        // built-in card so the two surfaces stay in parity.
+        yield return HeaderRow("metadata.builtin-header", "Built-in catalogue");
+        yield return ToggleRow(
+            "general.metadata-auto",
+            "Fetch after import",
+            "Exact titles and covers from bundled catalogues are downloaded only after you opt in. Game files and paths are never uploaded.",
+            _settings.AutomaticallyFetchMetadataAfterImport,
+            value => _settings.AutomaticallyFetchMetadataAfterImport = value,
+            onLabel: "AUTO",
+            offLabel: "MANUAL",
+            isGrouped: true);
+        yield return ActionRow(
+            "general.fetch-metadata",
+            "Fetch missing metadata",
+            "Fill missing titles and artwork for the current library after your metadata opt-in.",
+            _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
+            _settings.FetchAllMetadataCommand,
+            _settings.CanFetchAllMetadata,
+            isGrouped: true);
+
+        // Web image search: the manual "Set cover" picker toggle.
+        yield return HeaderRow("metadata.web-header", "Web image search");
+        yield return ToggleRow(
+            "metadata.web-image-search",
+            "Web image search",
+            "Let the \"Set cover\" picker search the web (DuckDuckGo) for cover images. Results are unverified and never applied automatically — you always choose.",
+            _settings.WebImageSearchEnabled,
+            value => _settings.WebImageSearchEnabled = value,
+            onLabel: "ON",
+            offLabel: "OFF",
+            isGrouped: true);
+
+        yield return HeaderRow("scraper.header", "ScreenScraper");
         if (_settings.IsScreenScraperConnected)
         {
             yield return HeaderRow("scraper.account-header", "ScreenScraper account");

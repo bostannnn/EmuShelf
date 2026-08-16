@@ -192,7 +192,10 @@ public sealed class DialogService : IDialogService
         var owner = Owner;
         if (owner is null)
             return null;
-        if (_artworkSearch is null || _artworkDownloader is null)
+        // When web image search is turned off (Settings → Artwork & Metadata), or no search provider is
+        // wired, "Set cover" is a plain local-file pick — no web results are offered.
+        var webSearchEnabled = _settingsService?.Load().Scraping.WebImageSearchEnabled ?? true;
+        if (_artworkSearch is null || _artworkDownloader is null || !webSearchEnabled)
         {
             var path = await PickCoverImageAsync(context.GameTitle);
             return path is null ? null : new PickedGameCover(path);
