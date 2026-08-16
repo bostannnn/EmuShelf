@@ -516,9 +516,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial bool ShowAchievementMark { get; set; }
 
-    /// <summary>List-view Achievements column: an <c>awarded/total</c> fraction or an em dash.</summary>
+    /// <summary>List-view Softcore column: the <c>awarded/total</c> softcore fraction or an em dash.</summary>
     [ObservableProperty]
     public partial string AchievementsColumnText { get; set; } = RetroAchievementsDisplay.Dash;
+
+    /// <summary>List-view Hardcore column: the <c>hardcore/total</c> fraction or an em dash.</summary>
+    [ObservableProperty]
+    public partial string HardcoreColumnText { get; set; } = RetroAchievementsDisplay.Dash;
 
     [ObservableProperty]
     public partial string AchievementsTooltip { get; set; } = string.Empty;
@@ -614,11 +618,19 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// spotlight hero needs, so scrolling the list re-loads a game's details at most once.</summary>
     public bool AreSpotlightDetailsLoaded { get; set; }
 
-    /// <summary>Sort key for the Achievements column: -1 when the game has no set, 0 when a set
-    /// exists but progress hasn't loaded, otherwise the number of unlocked achievements.</summary>
+    /// <summary>Sort key for the Softcore column: -1 when the game has no set, 0 when a set
+    /// exists but progress hasn't loaded, otherwise the number of softcore unlocks.</summary>
     public int AchievementSortKey { get; private set; } = -1;
 
-    /// <summary>Couch-distance achievement copy for the focused-game dock.</summary>
+    /// <summary>Sort key for the Hardcore column, mirroring <see cref="AchievementSortKey"/> for the
+    /// hardcore subset.</summary>
+    public int HardcoreSortKey { get; private set; } = -1;
+
+    private int _achievementsAwarded;
+    private int _achievementsHardcore;
+    private int _achievementsTotal;
+
+    /// <summary>Couch-distance softcore copy for the focused-game dock (silver): every unlock counts.</summary>
     public string GamepadAchievementCountText =>
         TryGetAchievementProgress(out var awarded, out var total)
             ? $"{awarded}/{total}"
@@ -627,6 +639,17 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public double GamepadAchievementProgressRatio =>
         TryGetAchievementProgress(out var awarded, out var total)
             ? Math.Clamp(awarded / (double)total, 0, 1)
+            : 0;
+
+    /// <summary>Couch-distance hardcore copy for the focused-game dock (gold): the hardcore subset.</summary>
+    public string GamepadHardcoreCountText =>
+        TryGetAchievementProgress(out _, out var total)
+            ? $"{_achievementsHardcore}/{total}"
+            : "—/—";
+
+    public double GamepadHardcoreProgressRatio =>
+        TryGetAchievementProgress(out _, out var total)
+            ? Math.Clamp(_achievementsHardcore / (double)total, 0, 1)
             : 0;
 
     /// <summary>The actual source that A will launch, kept compact for the focused-game dock.</summary>
@@ -647,19 +670,40 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public void ApplyAchievementsDisplay(RetroAchievementsDisplay display)
     {
         ShowAchievementMark = display.ShowMark;
+        _achievementsAwarded = display.Awarded;
+        _achievementsHardcore = display.AwardedHardcore;
+        _achievementsTotal = display.Total;
         AchievementsColumnText = display.ColumnText;
+        // The hardcore column mirrors the softcore fraction over the same total, or an em dash while
+        // progress hasn't loaded (the softcore column is a dash then too).
+        HardcoreColumnText = display.ShowMark && display.Total > 0
+            ? $"{display.AwardedHardcore}/{display.Total}"
+            : RetroAchievementsDisplay.Dash;
         AchievementsTooltip = display.Tooltip;
-        AchievementSortKey = ComputeAchievementSortKey(display);
-    }
-
-    partial void OnAchievementsColumnTextChanged(string value)
-    {
+        AchievementSortKey = ComputeAchievementSortKey(display, display.Awarded);
+        HardcoreSortKey = ComputeAchievementSortKey(display, display.AwardedHardcore);
         OnPropertyChanged(nameof(GamepadAchievementCountText));
         OnPropertyChanged(nameof(GamepadAchievementProgressRatio));
+        OnPropertyChanged(nameof(GamepadHardcoreCountText));
+        OnPropertyChanged(nameof(GamepadHardcoreProgressRatio));
+        OnPropertyChanged(nameof(HasHardcoreAchievementProgress));
     }
+
+    /// <summary>Whether any achievement has been unlocked in hardcore, so the gold readout is shown.</summary>
+    public bool HasHardcoreAchievementProgress => _achievementsHardcore > 0;
 
     private bool TryGetAchievementProgress(out int awarded, out int total)
     {
+        // The resolved display carries real counts; use them so the widget can tell hardcore from
+        // softcore. A display built without counts (e.g. a manually constructed fraction) still
+        // renders by parsing the column text, so the em-dash/fraction behaviour is unchanged.
+        if (_achievementsTotal > 0)
+        {
+            awarded = _achievementsAwarded;
+            total = _achievementsTotal;
+            return true;
+        }
+
         awarded = 0;
         total = 0;
         var slash = AchievementsColumnText.IndexOf('/');
@@ -669,15 +713,10 @@ public partial class GameViewModel : ObservableObject, IDisposable
                awarded >= 0 && total > 0;
     }
 
-    private static int ComputeAchievementSortKey(RetroAchievementsDisplay display)
-    {
-        if (!display.ShowMark)
-            return -1;
-        var slash = display.ColumnText.IndexOf('/');
-        return slash > 0 && int.TryParse(display.ColumnText.AsSpan(0, slash), out var awarded)
-            ? awarded
-            : 0;
-    }
+    // -1 sorts games with no set below every game that has one; a set with no loaded progress sorts at
+    // 0, and a set with progress sorts by its unlock count. Softcore and hardcore each use their count.
+    private static int ComputeAchievementSortKey(RetroAchievementsDisplay display, int count) =>
+        !display.ShowMark ? -1 : display.Total > 0 ? count : 0;
 
     /// <summary>Whether the cover shows the texture-pack mark (a confirmed, usable installed pack).</summary>
     [ObservableProperty]

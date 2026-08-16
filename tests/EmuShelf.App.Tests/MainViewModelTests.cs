@@ -952,6 +952,29 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task FocusedGameWidget_ShowsSoftcoreAndHardcoreCountsTogether()
+    {
+        var path = Path.Combine(_baseDirectory, "BothAchievements.cue");
+        File.WriteAllText(path, "FILE \"BothAchievements.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Both game", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        const int raGameId = 9100;
+        var readStore = new MutableRetroAchievementsReadStore(gameId, raGameId);
+        readStore.SetProgress(raGameId, awarded: 7, total: 10, hardcore: 4);
+        var vm = CreateViewModel(
+            retroAchievementsRead: readStore,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        // The dock widget shows the softcore total and the hardcore subset side by side.
+        Assert.Equal("7/10", vm.FocusedGame!.GamepadAchievementCountText);
+        Assert.Equal("4/10", vm.FocusedGame.GamepadHardcoreCountText);
+        Assert.True(vm.FocusedGame.HasHardcoreAchievementProgress);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadAchievements_StayInTheMainOverlayAndNeverRequestDesktopDialog()
     {
         var path = Path.Combine(_baseDirectory, "GamepadAchievements.cue");
@@ -4152,9 +4175,9 @@ public class MainViewModelTests : IDisposable
     {
         private readonly Dictionary<int, RetroAchievementsProgressSnapshot> _progress = new();
 
-        public void SetProgress(int raGameId, int awarded, int total) =>
+        public void SetProgress(int raGameId, int awarded, int total, int hardcore = 0) =>
             _progress[raGameId] = new RetroAchievementsProgressSnapshot(
-                new RetroAchievementsGameProgress(raGameId, total, awarded, 0), DateTimeOffset.UtcNow);
+                new RetroAchievementsGameProgress(raGameId, total, awarded, hardcore), DateTimeOffset.UtcNow);
 
         public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks() =>
             new Dictionary<long, RetroAchievementsGameLink>

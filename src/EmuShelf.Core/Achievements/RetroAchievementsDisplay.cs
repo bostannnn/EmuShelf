@@ -2,11 +2,21 @@ namespace EmuShelf.Core.Achievements;
 
 /// <summary>
 /// How a game's achievement state is presented: whether the grid tile shows the trophy mark, the
-/// list column text (a progress fraction or an em dash), and the tooltip that explains the state.
-/// This is pure: the same link + progress + connection always yield the same presentation, so the
-/// grid mark and the list column can never disagree.
+/// list column text (a progress fraction or an em dash), the tooltip that explains the state, and
+/// the softcore and hardcore unlock counts so the couch widget can show both at once. This is pure:
+/// the same link + progress + connection always yield the same presentation, so the grid mark and
+/// the list column can never disagree.
 /// </summary>
-public sealed record RetroAchievementsDisplay(bool ShowMark, string ColumnText, string Tooltip)
+/// <param name="Awarded">Softcore-inclusive unlocks (every unlock counts), or 0.</param>
+/// <param name="AwardedHardcore">The hardcore subset of <paramref name="Awarded"/>, or 0.</param>
+/// <param name="Total">The game's achievement count when progress is known, otherwise 0.</param>
+public sealed record RetroAchievementsDisplay(
+    bool ShowMark,
+    string ColumnText,
+    string Tooltip,
+    int Awarded = 0,
+    int AwardedHardcore = 0,
+    int Total = 0)
 {
     public const string Dash = "—";
 
@@ -52,7 +62,10 @@ public sealed record RetroAchievementsDisplay(bool ShowMark, string ColumnText, 
                 return new RetroAchievementsDisplay(
                     ShowMark: true,
                     $"{summary.NumAwarded}/{summary.AchievementCount}",
-                    tooltip);
+                    tooltip,
+                    summary.NumAwarded,
+                    summary.NumAwardedHardcore,
+                    summary.AchievementCount);
             }
 
             return new RetroAchievementsDisplay(

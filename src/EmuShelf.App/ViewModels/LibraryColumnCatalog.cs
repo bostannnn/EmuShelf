@@ -32,8 +32,15 @@ internal static class LibraryColumnCatalog
             sortColumn: LibrarySortColumn.Format, defaultWidth: 90, minWidth: 60,
             isFlex: false, canHide: true, visibleByDefault: true),
 
-        new LibraryColumn(LibraryColumnKey.Achievements, "Achievements", header: "ACHIEVEMENTS",
-            sortColumn: LibrarySortColumn.Achievements, defaultWidth: 96, minWidth: 90,
+        // Achievements split into a softcore (silver) and hardcore (gold) column so the list shows the
+        // same distinction as the couch widget and the achievements menu. The softcore column keeps the
+        // `Achievements` key for persistence continuity.
+        new LibraryColumn(LibraryColumnKey.Achievements, "Softcore", header: "SOFTCORE",
+            sortColumn: LibrarySortColumn.Achievements, defaultWidth: 96, minWidth: 88,
+            isFlex: false, canHide: true, visibleByDefault: true),
+
+        new LibraryColumn(LibraryColumnKey.HardcoreAchievements, "Hardcore", header: "HARDCORE",
+            sortColumn: LibrarySortColumn.HardcoreAchievements, defaultWidth: 96, minWidth: 88,
             isFlex: false, canHide: true, visibleByDefault: true),
 
         new LibraryColumn(LibraryColumnKey.Textures, "Textures", header: "TEXTURES",

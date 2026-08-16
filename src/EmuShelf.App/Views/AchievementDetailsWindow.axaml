@@ -49,6 +49,12 @@
         <Style Selector="Border.achievement-state.unlocked TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource EmuAchievementBrush}" />
         </Style>
+        <!-- A hardcore unlock is marked by a gold ring around the badge (a hardcore unlock always
+             implies the softcore one, so the list stays the standard softcore view). -->
+        <Style Selector="Border.achievement-badge.hardcore">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAchievementBrush}" />
+            <Setter Property="BorderThickness" Value="2.5" />
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
@@ -70,25 +76,39 @@
                             IsEnabled="{Binding !IsRefreshing}"
                             VerticalAlignment="Center" />
                 </Grid>
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18"
-                      IsVisible="{Binding HasAchievements}">
-                    <StackPanel Spacing="3">
-                        <TextBlock Text="{Binding ProgressText}" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                        <ProgressBar x:Name="AchievementProgress" Minimum="0"
-                                     Maximum="{Binding ProgressMaximum}"
-                                     Value="{Binding UnlockedCount}" Height="7"
+                <!-- Softcore (silver) and hardcore (gold) as two parallel rows: mode + count, a bar, and
+                     that mode's points, aligned in shared columns so the two read as a matched pair. A
+                     hardcore unlock implies the softcore one, so the gold bar can only trail the silver. -->
+                <Border Background="{DynamicResource EmuFormatPillBrush}" CornerRadius="10"
+                        Padding="14,12" IsVisible="{Binding HasAchievements}">
+                    <Grid ColumnDefinitions="132,*,96" RowDefinitions="Auto,Auto"
+                          ColumnSpacing="16" RowSpacing="11">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding ProgressText}"
+                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                        <ProgressBar x:Name="AchievementProgress" Grid.Row="0" Grid.Column="1"
+                                     Minimum="0" Maximum="{Binding ProgressMaximum}"
+                                     Value="{Binding UnlockedCount}" Height="7" VerticalAlignment="Center"
+                                     Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding PointsText}"
+                                   FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Right"
+                                   Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding HardcoreProgressText}"
+                                   FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource EmuAchievementBrush}" />
+                        <ProgressBar x:Name="AchievementHardcoreProgress" Grid.Row="1" Grid.Column="1"
+                                     Minimum="0" Maximum="{Binding ProgressMaximum}"
+                                     Value="{Binding HardcoreUnlockedCount}" Height="7" VerticalAlignment="Center"
                                      Foreground="{DynamicResource EmuAchievementBrush}" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" HorizontalAlignment="Right" Spacing="2">
-                        <TextBlock Text="{Binding PointsText}" FontWeight="SemiBold"
-                                   HorizontalAlignment="Right"
-                                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                        <TextBlock Text="{Binding LastRefreshText}" FontSize="10.5"
-                                   HorizontalAlignment="Right"
-                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                    </StackPanel>
-                </Grid>
+                        <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HardcorePointsText}"
+                                   FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Right"
+                                   Foreground="{DynamicResource EmuAchievementBrush}" />
+                    </Grid>
+                </Border>
+                <TextBlock Text="{Binding LastRefreshText}" IsVisible="{Binding HasAchievements}"
+                           FontSize="10.5" HorizontalAlignment="Right"
+                           Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                 <TextBlock Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
                            TextWrapping="Wrap" FontSize="11"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -114,6 +134,7 @@
                                 <Grid ColumnDefinitions="88,*,152" ClipToBounds="True">
                                     <Border Classes="achievement-badge-panel">
                                         <Border Classes="achievement-badge" Width="64" Height="64"
+                                                Classes.hardcore="{Binding IsHardcore}"
                                                 ClipToBounds="True" HorizontalAlignment="Center"
                                                 VerticalAlignment="Center">
                                             <Panel>
