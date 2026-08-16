@@ -8673,3 +8673,44 @@ actually available: provider-side growth (new data added upstream after a comple
 later *broadening* their ScreenScraper media/language settings. Neither is detectable locally; the escape
 for both stays the Replace toggle or the single-game scraper. Existing matches migrate to
 CoverageComplete=0, so the first batch after upgrade re-checks each once and re-stamps it.
+## 2026-08-16 — Scoped couch-shelf GL failure: keep the two renderers, stop one from killing the other
+
+v1.3.7 (`5d92607`, "draw the effect-off shelf in place") split the couch shelf into two OpenGL
+renderers: the window-covering tube for the CRT-on case, and a separate in-place scene for the
+CRT-off case, stood up lazily the moment the effect was switched off. That split is *correct* — the
+in-place scene keeps the rail, overlays and toasts as live Avalonia around it, so effect-off needs no
+full-window capture and idles when the shelf is still. The bug was never "two renderers." A dynamic
+review reproduced it: both hosts bound `IsSceneSupported` to one shared flag (`_shelfHeroSupported`),
+so when the in-place host failed to bring up GL on the Steam Deck, `DisableShelfHero` flipped that one
+flag and the effect-on tube died with it — every 3D model flat, for the session, unrecoverable
+without a restart. `Program.cs` already documents the trigger's shape: `OpenGlControlBase` can
+silently get no GL context (no init, no throw), and only the watchdog notices.
+
+Fix keeps both renderers and scopes the failure:
+
+- Two support flags. `_shelfHeroSupported`/`TubeSceneSupported` is the tube's; `_inlineShelfSupported`/
+  `InlineSceneSupported` is the in-place host's. `DisableShelfHero` rules out only the tube;
+  `DisableInlineShelf` rules out only the in-place host. Neither touches the other. Wired to two view
+  handlers (`OnGamepadShelfHeroFailed`, `OnGamepadInlineShelfFailed`).
+- Effect-off degrades instead of blacking out. `ShowInlineShelfScene` prefers the in-place host; if it
+  is ruled out, `ShowCouchScene` brings the tube up on the shelf drawn flat (`CouchCrt` → `Flat`,
+  which composites the captured chrome, unlike `Off`'s bare resolve). So on the Deck the effect-off
+  shelf still shows 3D via the tube fallback, and the tube (effect-on) is never disabled by the
+  in-place host's failure.
+- `ShelfSceneSupported` is now mode-aware — effect-on needs the tube, effect-off takes the in-place
+  host *or* the tube fallback — and drives the flat-covers fallback. `IsShelfTubeActive` (the couch
+  root's transparent-background gate) is true only when the tube actually draws the shelf: effect-on,
+  or the effect-off fallback. The in-place host sits in the slot and does not capture the root.
+
+Also hardened the init watchdog (`MediaShelf3DHost`): a single 4-second timeout is no longer taken as
+proof the platform cannot render. The scene is rebuilt and given another attempt
+(`MaxInitializationAttempts`), and only a timeout that repeats across the whole budget reports the
+failure. This mirrors the render loop's existing transient-fault handling (see 2026-08-15) on the
+initialization path, and covers a driver that is merely slow to hand out its first context.
+
+Not verified on the Deck (no device here). Residual risk: switching modes creates/destroys a GL
+context (the two hosts are mutually exclusive), so if the Deck's failure is that *any* second context
+in a session cannot come up — not just the in-place host — the tube fallback would also fail and
+effect-off would show flat covers there. Distinguishing that needs the Deck's log line
+("could not start; falling back…"); if it shows a hard second-context limit, the single-renderer
+merge (never recreates a context) is the fallback design.
