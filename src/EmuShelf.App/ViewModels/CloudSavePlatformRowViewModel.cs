@@ -155,6 +155,37 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         LastNoticeText = platform.LastNotice;
     }
 
+    /// <summary>
+    /// Re-reads this row from a snapshot taken for a different emulator, after the user switched the
+    /// system's active emulator in the Emulators section. Each emulator keeps its own override, so the
+    /// shown folders and save-states toggle must follow the picker. The switch is not persisted until
+    /// Save, so this only updates the display — the guard keeps the toggle from writing back onto the
+    /// still-current emulator, and any unsaved edit to this box is replaced by the picked emulator's
+    /// stored value.
+    /// </summary>
+    public void ApplyEmulatorSwitch(CloudSaveSyncPlatformContext platform)
+    {
+        _isInitializing = true;
+        try
+        {
+            OverrideDirectory = platform.Override ?? string.Empty;
+            StateOverrideDirectory = platform.StateOverride ?? string.Empty;
+            SyncSaveStates = platform.SyncSaveStates;
+        }
+        finally
+        {
+            _isInitializing = false;
+        }
+
+        // The detected path is resolved against the persisted active emulator, which the unsaved
+        // switch has not changed yet, so it would still describe the previous emulator. Clear it
+        // rather than show a stale line; it re-detects on the next sync or the next time Settings opens.
+        DetectedDirectory = null;
+        CompatibilityWarning = null;
+        OptionalContentSummary = null;
+        DetectionErrorText = null;
+    }
+
     /// <summary>Re-reads the concrete directory this platform resolves to on this machine.</summary>
     public async Task RefreshDetectedDirectoryAsync()
     {

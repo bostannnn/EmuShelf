@@ -461,7 +461,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         UpdateOverrides,
         UpdateStateOverride,
         IsManagedTransportAvailable,
-        ConnectGoogleDriveManagedAsync);
+        ConnectGoogleDriveManagedAsync,
+        DescribePlatformForEmulator);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -658,23 +659,47 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         RunForcePipelineAsync(systemId, direction, progress, cancellationToken);
 
     private IReadOnlyList<CloudSaveSyncPlatformContext> DescribePlatforms() =>
-        SaveProviderRegistry.All.Select(descriptor =>
-        {
-            var location = LocationFor(_settings.CloudSaveSync, descriptor.SystemId);
-            return new CloudSaveSyncPlatformContext(
-                descriptor.SystemId,
-                descriptor.DisplayName,
-                descriptor.SaveShapeDescription,
-                descriptor.OverridePlaceholder,
-                location.DirectoryOverride,
-                location.LastSuccessUtc,
-                location.LastError,
-                location.LastNotice,
-                descriptor.SupportsSaveStates,
-                location.SyncSaveStates,
-                location.StateDirectoryOverride,
-                descriptor.SaveStatesLabel);
-        }).ToArray();
+        SaveProviderRegistry.All
+            .Select(descriptor => DescribePlatform(descriptor, LocationFor(_settings.CloudSaveSync, descriptor.SystemId)))
+            .ToArray();
+
+    /// <summary>
+    /// One system's platform context read against a specific emulator's saved override rather than
+    /// its persisted active emulator. Settings uses this to refresh the Saves row when the user
+    /// switches the emulator picker, before that switch is saved. Returns null when the system has no
+    /// save-sync platform. The emulator id is resolved through the registry, so an unknown id falls
+    /// back to the system's default profile — the same way a launch would resolve it.
+    /// </summary>
+    public CloudSaveSyncPlatformContext? DescribePlatformForEmulator(string systemId, string emulatorId)
+    {
+        var descriptor = SaveProviderRegistry.Find(systemId);
+        if (descriptor is null)
+            return null;
+        var resolvedEmulatorId = SaveProviderRegistry.Resolve(systemId, emulatorId)?.EmulatorId;
+        var location = resolvedEmulatorId is { } id
+            ? _settings.CloudSaveSync.GetLocation(systemId, id)
+            : _settings.CloudSaveSync.GetLocation(systemId);
+        return DescribePlatform(descriptor, location);
+    }
+
+    // The display text (name, shape, placeholder, save-states label) is emulator-neutral — the row
+    // reads the same whichever profile is active — so only the location varies between the active
+    // emulator and a switched-to one.
+    private static CloudSaveSyncPlatformContext DescribePlatform(
+        SaveProviderDescriptor descriptor, SaveLocationSettings location) =>
+        new(
+            descriptor.SystemId,
+            descriptor.DisplayName,
+            descriptor.SaveShapeDescription,
+            descriptor.OverridePlaceholder,
+            location.DirectoryOverride,
+            location.LastSuccessUtc,
+            location.LastError,
+            location.LastNotice,
+            descriptor.SupportsSaveStates,
+            location.SyncSaveStates,
+            location.StateDirectoryOverride,
+            descriptor.SaveStatesLabel);
 
     private async Task<CloudSaveSyncOutcome> RunForcePipelineAsync(
         string systemId,
@@ -1389,4 +1414,10 @@ public sealed record CloudSaveSyncSettingsContext(
     /// in a test context that does not exercise it.
     /// </summary>
     Func<string, IReadOnlyDictionary<string, string?>, Action<Uri>, CancellationToken, Task<CloudSaveSyncConnectResult>>?
-        ConnectGoogleDriveManagedAsync = null);
+        ConnectGoogleDriveManagedAsync = null,
+    /// <summary>
+    /// Reads one system's platform context against a specific emulator's saved override, so the
+    /// Saves row can follow the emulator picker before the switch is saved. Null in a test context
+    /// that does not exercise it.
+    /// </summary>
+    Func<string, string, CloudSaveSyncPlatformContext?>? DescribePlatformForEmulator = null);
