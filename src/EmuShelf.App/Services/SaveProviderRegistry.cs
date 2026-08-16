@@ -67,12 +67,13 @@ public sealed record OptionalContentDetection(
     string? Warning = null);
 
 /// <summary>
-/// One supported save-sync platform. Everything the coordinator and Settings need per platform
+/// One (system, emulator) save profile. Everything the coordinator and Settings need per platform
 /// lives here, so adding an emulator is a new provider class plus one entry in
-/// <see cref="SaveProviderRegistry.All"/> rather than edits scattered across the coordinator,
+/// <see cref="SaveProviderRegistry.Profiles"/> rather than edits scattered across the coordinator,
 /// the settings record, the view model, and the view.
 /// </summary>
 /// <param name="SystemId">The stable system id, matching the library's own ids.</param>
+/// <param name="EmulatorId">The emulator this profile serves, matching the emulator configuration id.</param>
 /// <param name="DisplayName">The platform name shown in Settings and progress messages.</param>
 /// <param name="SaveShapeDescription">One short line describing what this platform syncs.</param>
 /// <param name="OverridePlaceholder">Placeholder text for the override path box.</param>
@@ -89,6 +90,7 @@ public sealed record OptionalContentDetection(
 /// </param>
 public sealed record SaveProviderDescriptor(
     string SystemId,
+    string EmulatorId,
     string DisplayName,
     string SaveShapeDescription,
     string OverridePlaceholder,
@@ -107,26 +109,40 @@ public static class SaveProviderRegistry
     private static readonly ConcurrentDictionary<string, Lazy<string?>> ExecutableVersions =
         new(FilePathComparison.Comparer);
 
-    public static IReadOnlyList<SaveProviderDescriptor> All { get; } =
+    /// <summary>Every (system, emulator) save profile, in presentation order. A multi-emulator
+    /// system (PlayStation: DuckStation + RetroArch) appears once per emulator; presentation shows
+    /// one row per system via <see cref="All"/>/<see cref="SystemIds"/> and the active profile is
+    /// picked by <see cref="Resolve"/>.</summary>
+    public static IReadOnlyList<SaveProviderDescriptor> Profiles { get; } =
     [
         // PlayStation has two emulator profiles: DuckStation (default) and RetroArch (Beetle PSX /
-        // SwanStation / PCSX ReARMed). The active profile decides which save layout is resolved, so
-        // switching the emulator in Settings switches which saves are synced.
+        // SwanStation / PCSX ReARMed). Each is its own (system, emulator) entry; Resolve picks the
+        // active one, so nothing branches on the emulator inside CreateProvider/DetectAsync. Both
+        // carry the same emulator-neutral display text, so the single PlayStation row reads the same
+        // whichever profile is active.
         new SaveProviderDescriptor(
             SystemId: "playstation",
+            EmulatorId: "duckstation",
             DisplayName: "PlayStation",
             SaveShapeDescription: "Memory-card saves from the configured PlayStation emulator",
             OverridePlaceholder: "Use the configured emulator, or choose its save/user data folder",
-            CreateProvider: static context => IsRetroArch(context.ActiveEmulatorId)
-                ? CreateRetroArchProvider("playstation", context)
-                : CreateDuckStationProvider(context),
-            DetectAsync: static (provider, cancellationToken) => provider is RetroArchSaveLocationProvider
-                ? DetectRetroArchAsync(provider, cancellationToken)
-                : DetectDuckStationAsync(provider, cancellationToken),
+            CreateProvider: static context => CreateDuckStationProvider(context),
+            DetectAsync: static (provider, cancellationToken) => DetectDuckStationAsync(provider, cancellationToken),
+            SupportsSaveStates: true),
+
+        new SaveProviderDescriptor(
+            SystemId: "playstation",
+            EmulatorId: "retroarch",
+            DisplayName: "PlayStation",
+            SaveShapeDescription: "Memory-card saves from the configured PlayStation emulator",
+            OverridePlaceholder: "Use the configured emulator, or choose its save/user data folder",
+            CreateProvider: static context => CreateRetroArchProvider("playstation", context),
+            DetectAsync: static (provider, cancellationToken) => DetectRetroArchAsync(provider, cancellationToken),
             SupportsSaveStates: true),
 
         new SaveProviderDescriptor(
             SystemId: "playstation2",
+            EmulatorId: "pcsx2",
             DisplayName: "PlayStation 2",
             SaveShapeDescription: "PCSX2 memory cards · uses configured emulator unless overridden",
             OverridePlaceholder: "Use configured PCSX2, or choose its folder",
@@ -147,6 +163,7 @@ public static class SaveProviderRegistry
 
         new SaveProviderDescriptor(
             SystemId: "playstation3",
+            EmulatorId: "rpcs3",
             DisplayName: "PlayStation 3",
             SaveShapeDescription:
                 "RPCS3 save data, trophies, and PS1/PS2 Classics memory cards · synced into this machine's RPCS3 user",
@@ -184,6 +201,7 @@ public static class SaveProviderRegistry
 
         new SaveProviderDescriptor(
             SystemId: "psp",
+            EmulatorId: "ppsspp",
             DisplayName: "PSP",
             SaveShapeDescription: "PPSSPP saves · uses configured emulator unless overridden",
             OverridePlaceholder: "Use configured PPSSPP, or choose its Memory Stick folder",
@@ -211,6 +229,7 @@ public static class SaveProviderRegistry
 
         new SaveProviderDescriptor(
             SystemId: "gamecube",
+            EmulatorId: "dolphin",
             DisplayName: "GameCube",
             SaveShapeDescription: "Dolphin memory cards · configured raw cards or individual GCI files",
             OverridePlaceholder: "Use configured Dolphin, or choose its user data folder",
@@ -233,6 +252,7 @@ public static class SaveProviderRegistry
 
         new SaveProviderDescriptor(
             SystemId: "wii",
+            EmulatorId: "dolphin",
             DisplayName: "Wii",
             SaveShapeDescription: "Dolphin Wii title saves · follows the configured NAND root",
             OverridePlaceholder: "Use configured Dolphin, or choose its user data folder",
@@ -250,6 +270,7 @@ public static class SaveProviderRegistry
 
         new SaveProviderDescriptor(
             SystemId: "3ds",
+            EmulatorId: "azahar",
             DisplayName: "Nintendo 3DS",
             SaveShapeDescription:
                 "Azahar in-game save data · per-title save archives and extdata on the emulated SD card",
@@ -295,6 +316,15 @@ public static class SaveProviderRegistry
         .. RetroArchPlatform("arcade", "Arcade"),
     ];
 
+    /// <summary>One representative descriptor per system, in order — the row Settings and Saves
+    /// present. For a multi-emulator system this is the default (first-registered) emulator's
+    /// profile; its display text is emulator-neutral, so the row reads the same whichever profile is
+    /// active.</summary>
+    public static IReadOnlyList<SaveProviderDescriptor> All { get; } = Profiles
+        .GroupBy(descriptor => descriptor.SystemId, StringComparer.Ordinal)
+        .Select(group => group.First())
+        .ToArray();
+
     private static ISaveLocationProvider? CreateDolphinProvider(
         string systemId,
         SaveProviderContext context)
@@ -324,6 +354,7 @@ public static class SaveProviderRegistry
     {
         yield return new SaveProviderDescriptor(
             SystemId: systemId,
+            EmulatorId: "retroarch",
             DisplayName: displayName,
             SaveShapeDescription: "RetroArch battery saves · one file per game, named after the game file",
             OverridePlaceholder: "Use configured RetroArch, or choose its saves folder",
@@ -331,9 +362,6 @@ public static class SaveProviderRegistry
             DetectAsync: static (provider, cancellationToken) => DetectRetroArchAsync(provider, cancellationToken),
             SupportsSaveStates: true);
     }
-
-    private static bool IsRetroArch(string? emulatorId) =>
-        string.Equals(emulatorId, "retroarch", StringComparison.Ordinal);
 
     private static ISaveLocationProvider? CreateDuckStationProvider(SaveProviderContext context)
     {
@@ -415,9 +443,34 @@ public static class SaveProviderRegistry
             perGame + duplicates);
     }
 
-    /// <summary>The descriptor for one system id, or null when the platform is not supported.</summary>
+    /// <summary>The representative descriptor for one system id, or null when the platform is not
+    /// supported. Emulator-neutral per-system metadata (display name, save-states support) only — use
+    /// <see cref="Resolve"/> when the active emulator's provider or detection is needed.</summary>
     public static SaveProviderDescriptor? Find(string systemId) =>
         All.FirstOrDefault(descriptor => string.Equals(descriptor.SystemId, systemId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The save profile for a system's active emulator, or the system's default profile when the id
+    /// is unset or unknown. This is the single place per-(system, emulator) resolution happens, so
+    /// CreateProvider/DetectAsync never branch on the emulator internally.
+    /// </summary>
+    public static SaveProviderDescriptor? Resolve(string systemId, string? activeEmulatorId)
+    {
+        SaveProviderDescriptor? fallback = null;
+        foreach (var descriptor in Profiles)
+        {
+            if (!string.Equals(descriptor.SystemId, systemId, StringComparison.Ordinal))
+                continue;
+            // The first profile for a system is its default (DuckStation for PlayStation), used when
+            // no emulator is active yet or the active id has no matching profile.
+            fallback ??= descriptor;
+            if (activeEmulatorId is not null &&
+                string.Equals(descriptor.EmulatorId, activeEmulatorId, StringComparison.Ordinal))
+                return descriptor;
+        }
+
+        return fallback;
+    }
 
     /// <summary>Every supported system id, in presentation order.</summary>
     public static IReadOnlyList<string> SystemIds { get; } = All.Select(descriptor => descriptor.SystemId).ToArray();

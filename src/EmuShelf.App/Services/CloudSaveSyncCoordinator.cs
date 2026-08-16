@@ -124,18 +124,19 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         string systemId,
         CancellationToken cancellationToken = default)
     {
-        var descriptor = SaveProviderRegistry.Find(systemId);
-        if (descriptor is null)
-            return null;
-
         // Everything below reads the emulator's own configuration, its version resources and binary
         // architecture, and the save/state folders — often on a slow external drive. The Saves
         // section resolves every platform at once when it opens, so this must stay off the UI thread;
         // running it inline froze the window for a few seconds each time. Provider construction reads
-        // the RetroArch core info file, so it is off-thread too.
-        var provider = await Task.Run(() => CreateBaseProvider(systemId), cancellationToken);
-        if (provider is null)
+        // the RetroArch core info file, and building the context resolves emulator installations, so
+        // both run off-thread. The active emulator profile is resolved here so DetectAsync and the
+        // optional-content pass below both use the emulator that is actually configured.
+        var resolved = await Task.Run(
+            () => ResolveActiveProvider(systemId, _settings.CloudSaveSync),
+            cancellationToken);
+        if (resolved is not { } active)
             return null;
+        var (context, descriptor, provider) = active;
 
         var detection = await descriptor.DetectAsync(provider, cancellationToken);
         var optionalSummary = (Summary: (string?)null, Locations: (IReadOnlyList<OptionalContentDetection>)[]);
@@ -145,7 +146,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 () => SaveProviderRegistry.WithOptionalContent(
                     descriptor,
                     provider,
-                    CreateProviderContext(systemId, _settings.CloudSaveSync),
+                    context,
                     includeSaveStates: true),
                 cancellationToken);
             optionalSummary = await DescribeOptionalContentAsync(optional, provider, cancellationToken);
@@ -950,13 +951,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         SyncContentScope contentScope,
         IReadOnlyCollection<string>? stateGameKeys = null)
     {
-        if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
+        if (ResolveActiveProvider(systemId, configuration) is not { } active)
             return null;
-
-        var context = CreateProviderContext(systemId, configuration);
-        var saves = descriptor.CreateProvider(context);
-        if (saves is null)
-            return null;
+        var (context, descriptor, saves) = active;
         return SaveProviderRegistry.WithOptionalContent(
             descriptor,
             saves,
@@ -970,11 +967,21 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private ISaveLocationProvider? CreateBaseProvider(string systemId) =>
         CreateBaseProvider(systemId, _settings.CloudSaveSync);
 
-    private ISaveLocationProvider? CreateBaseProvider(string systemId, CloudSaveSyncSettings configuration)
+    private ISaveLocationProvider? CreateBaseProvider(string systemId, CloudSaveSyncSettings configuration) =>
+        ResolveActiveProvider(systemId, configuration)?.Provider;
+
+    // Resolves a system's active emulator profile, builds its provider context, and constructs the
+    // base save provider — the one place all three provider-building callers share, so the active
+    // (system, emulator) profile is chosen once and CreateProvider/DetectAsync never branch on the
+    // emulator. Returns null when the platform has nothing to sync on this machine.
+    private (SaveProviderContext Context, SaveProviderDescriptor Descriptor, ISaveLocationProvider Provider)?
+        ResolveActiveProvider(string systemId, CloudSaveSyncSettings configuration)
     {
-        if (SaveProviderRegistry.Find(systemId) is not { } descriptor)
+        var context = CreateProviderContext(systemId, configuration);
+        if (SaveProviderRegistry.Resolve(systemId, context.ActiveEmulatorId) is not { } descriptor)
             return null;
-        return descriptor.CreateProvider(CreateProviderContext(systemId, configuration));
+        var provider = descriptor.CreateProvider(context);
+        return provider is null ? null : (context, descriptor, provider);
     }
 
     private SaveProviderContext CreateProviderContext(string systemId, CloudSaveSyncSettings configuration)
