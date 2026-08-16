@@ -9,20 +9,16 @@ namespace EmuShelf.Infrastructure.SaveSync;
 /// Copy-only rclone transport for save units. Payloads and their EmuShelf hashes are stored as
 /// separate remote files so rclone's provider-specific hashes never participate in reconciliation.
 /// </summary>
-public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
+public sealed class RcloneCloudSyncTransport : IVerifiableCloudSyncTransport
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        WriteIndented = true,
-    };
-
     // rclone exit code 3 ("directory not found") / 4 ("file not found") are the expected states
     // before the first upload to a fresh remote, and must read as an empty listing, not a failure.
     private const int RcloneDirectoryNotFoundExit = 3;
     private const int RcloneFileNotFoundExit = 4;
 
-    // One index file describes every unit on the remote so listing is a single request.
-    private const string IndexFileName = "index.json";
+    // One index file describes every unit on the remote so listing is a single request. The format
+    // itself belongs to CloudSaveIndex, shared with every other transport.
+    private const string IndexFileName = CloudSaveIndex.FileName;
 
     // How much one commit batch may carry. Each batch costs one extra index write, so these trade
     // that fixed overhead against how much work an interrupted pass loses.
@@ -96,28 +92,8 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         }
         if (exitCode != 0)
             throw new IOException($"rclone could not read the cloud index (exit code {exitCode}).");
-        if (buffer.Length == 0)
-            throw new InvalidDataException("The cloud index is empty.");
 
-        var entries = JsonSerializer.Deserialize<List<RemoteUnitMetadata>>(buffer.ToArray()) ??
-            throw new InvalidDataException("The cloud index is not valid EmuShelf metadata.");
-        var index = new Dictionary<string, SaveUnitSnapshot>(StringComparer.Ordinal);
-        foreach (var entry in entries)
-        {
-            if (entry is null || !IsSafeUnitId(entry.UnitId) ||
-                string.IsNullOrWhiteSpace(entry.ContentHash) || entry.ModifiedUtc == default)
-            {
-                throw new InvalidDataException("The cloud index is not valid EmuShelf metadata.");
-            }
-
-            if (!index.TryAdd(
-                    entry.UnitId,
-                    new SaveUnitSnapshot(entry.UnitId, entry.ContentHash, entry.ModifiedUtc, entry.Compatibility)))
-            {
-                throw new InvalidDataException("The cloud index contains a duplicate save unit.");
-            }
-        }
-
+        var index = CloudSaveIndex.Parse(buffer.ToArray());
         _remoteIndexExists = true;
         return index;
     }
@@ -128,14 +104,14 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         // Downloads for one sync are served from a single rclone-populated cache (one session for
         // the whole remote) rather than a `cat` per unit.
         var inbox = await EnsureInboxAsync(cancellationToken);
-        var payloadPath = Path.Combine(inbox, StageRelativePath(unitId + ".payload"));
+        var payloadPath = Path.Combine(inbox, StageRelativePath(CloudSaveIndex.PayloadName(unitId)));
         if (!File.Exists(payloadPath))
         {
             // The session was scoped to the announced units. A download outside that set is still
             // served — one extra call for one payload — so scoping can never lose a save.
             Directory.CreateDirectory(Path.GetDirectoryName(payloadPath)!);
             var exitCode = await RunAsync(
-                ["copyto", RemoteRoot.TrimEnd('/') + "/" + unitId + ".payload", payloadPath, "--no-traverse"],
+                ["copyto", RemoteRoot.TrimEnd('/') + "/" + CloudSaveIndex.PayloadName(unitId), payloadPath, "--no-traverse"],
                 Stream.Null,
                 cancellationToken,
                 throwOnNonZeroExit: false);
@@ -169,7 +145,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         // changed payloads plus a rebuilt index.json — happens once, in FlushAsync, as a single
         // rclone session so the provider's rate limiter is respected.
         _outbox ??= CreateStagingDirectory("outbox");
-        var payloadPath = Path.Combine(_outbox, StageRelativePath(unitId + ".payload"));
+        var payloadPath = Path.Combine(_outbox, StageRelativePath(CloudSaveIndex.PayloadName(unitId)));
         Directory.CreateDirectory(Path.GetDirectoryName(payloadPath)!);
 
         await using (var payload = new FileStream(payloadPath, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -324,7 +300,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
     {
         try
         {
-            var path = Path.Combine(_outbox!, StageRelativePath(unitId + ".payload"));
+            var path = Path.Combine(_outbox!, StageRelativePath(CloudSaveIndex.PayloadName(unitId)));
             return File.Exists(path) ? new FileInfo(path).Length : 0;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -348,7 +324,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         {
             await File.WriteAllLinesAsync(
                 fileList,
-                unitIds.Select(unitId => unitId + ".payload"),
+                unitIds.Select(unitId => CloudSaveIndex.PayloadName(unitId)),
                 cancellationToken);
             await RunAsync(
                 ["copy", _outbox!, RemoteRoot, "--files-from", fileList, "--no-traverse", "--ignore-times"],
@@ -366,19 +342,12 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         IReadOnlyDictionary<string, SaveUnitSnapshot> index,
         CancellationToken cancellationToken)
     {
-        var entries = index.Values
-            .Select(snapshot => new RemoteUnitMetadata(
-                snapshot.UnitId,
-                snapshot.ContentHash,
-                snapshot.ModifiedUtc,
-                snapshot.Compatibility))
-            .ToList();
         var indexDirectory = CreateStagingDirectory("index");
         try
         {
             await File.WriteAllTextAsync(
                 Path.Combine(indexDirectory, IndexFileName),
-                JsonSerializer.Serialize(entries, SerializerOptions),
+                CloudSaveIndex.Serialize(index.Values),
                 cancellationToken);
             await RunAsync(
                 ["copy", indexDirectory, RemoteRoot, "--no-traverse", "--ignore-times"],
@@ -423,7 +392,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             fileList = Path.Combine(Path.GetDirectoryName(inbox)!, Path.GetFileName(inbox) + "-files.txt");
             await File.WriteAllLinesAsync(
                 fileList,
-                _expectedDownloads.Select(unitId => unitId + ".payload"),
+                _expectedDownloads.Select(unitId => CloudSaveIndex.PayloadName(unitId)),
                 cancellationToken);
             arguments.Add("--files-from");
             arguments.Add(fileList);
@@ -557,7 +526,7 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
             throw new IOException("rclone could not verify the cloud index while listing save payloads.");
 
         var missing = _remoteIndex.Keys
-            .Where(unitId => !present.Contains(unitId + ".payload"))
+            .Where(unitId => !present.Contains(CloudSaveIndex.PayloadName(unitId)))
             .OrderBy(unitId => unitId, StringComparer.Ordinal)
             .ToList();
         foreach (var unitId in missing)
@@ -766,17 +735,9 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         }
     }
 
-    private static bool IsSafeUnitId(string unitId) =>
-        !string.IsNullOrWhiteSpace(unitId) &&
-        unitId.Split('/', StringSplitOptions.None).All(segment =>
-            segment.Length > 0 && segment is not "." and not ".." &&
-            !segment.Contains('\\') && !segment.Contains(':'));
+    private static bool IsSafeUnitId(string unitId) => CloudSaveIndex.IsSafeUnitId(unitId);
 
-    private static void ValidateUnitId(string unitId)
-    {
-        if (!IsSafeUnitId(unitId))
-            throw new ArgumentException("The cloud save unit id is not a safe remote-relative path.", nameof(unitId));
-    }
+    private static void ValidateUnitId(string unitId) => CloudSaveIndex.ValidateUnitId(unitId);
 
     private static void ValidateRemoteName(string remoteName)
     {
@@ -822,12 +783,6 @@ public sealed class RcloneCloudSyncTransport : ICloudSyncTransport
         {
         }
     }
-
-    private sealed record RemoteUnitMetadata(
-        string UnitId,
-        string ContentHash,
-        DateTimeOffset ModifiedUtc,
-        string? Compatibility = null);
 
     private sealed record RemoteStatEntry(string? ID, string? Name, bool IsDir);
 }

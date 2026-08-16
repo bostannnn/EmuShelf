@@ -33,9 +33,27 @@ public sealed record SaveLocationSettings
     public bool SyncSaveStates { get; init; }
 }
 
+/// <summary>How EmuShelf reaches the cloud.</summary>
+public enum CloudTransportKind
+{
+    /// <summary>
+    /// The external rclone binary. The original transport, and the only one that can address a
+    /// backend other than Google Drive — a user who hand-writes <c>Settings/rclone.conf</c> can point
+    /// <see cref="CloudSaveSyncSettings.RemoteName"/> at any remote rclone supports.
+    /// </summary>
+    Rclone,
+
+    /// <summary>
+    /// EmuShelf's own Google Drive client, talking to the API directly. Needs no external binary,
+    /// which is what makes it the only option on Android.
+    /// </summary>
+    GoogleDrive,
+}
+
 /// <summary>
-/// Portable cloud save-sync configuration. Holds no secret: the OAuth token lives only in rclone's
-/// own config file, never here. Empty until the user connects a remote.
+/// Portable cloud save-sync configuration. Holds no secret: under rclone the OAuth token lives only
+/// in rclone's own config file, and under the managed transport it lives in a protected blob beside
+/// it — never here. Empty until the user connects a remote.
 /// </summary>
 public sealed record CloudSaveSyncSettings
 {
@@ -50,6 +68,13 @@ public sealed record CloudSaveSyncSettings
 
     /// <summary>Whether save sync is turned on.</summary>
     public bool Enabled { get; init; }
+
+    /// <summary>
+    /// Which transport carries the saves. Defaults to <see cref="CloudTransportKind.Rclone"/> so an
+    /// existing settings.json — written before there was a choice — keeps working exactly as it did,
+    /// against the remote it is already connected to. Only an explicit connect changes it.
+    /// </summary>
+    public CloudTransportKind TransportKind { get; init; } = CloudTransportKind.Rclone;
 
     /// <summary>The rclone remote name (e.g. <c>emushelf-gdrive</c>). Not a secret. Null until connected.</summary>
     public string? RemoteName { get; init; }
@@ -169,6 +194,7 @@ public sealed record CloudSaveSyncSettings
     {
         if (other is null ||
             Enabled != other.Enabled ||
+            TransportKind != other.TransportKind ||
             RemoteName != other.RemoteName ||
             CloudFolder != other.CloudFolder ||
             Pcsx2ConfigDirectory != other.Pcsx2ConfigDirectory ||
@@ -185,6 +211,7 @@ public sealed record CloudSaveSyncSettings
 
     public override int GetHashCode() => HashCode.Combine(
         Enabled,
+        TransportKind,
         RemoteName,
         CloudFolder,
         Pcsx2ConfigDirectory,

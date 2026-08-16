@@ -5,6 +5,7 @@ using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 using EmuShelf.Infrastructure.SaveSync;
+using EmuShelf.Infrastructure.SaveSync.GoogleDrive;
 
 namespace EmuShelf.App.Services;
 
@@ -42,6 +43,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private readonly SemaphoreSlim _gate = new(1, 1);
     private AppSettings _settings;
 
+    // Built on first use and then kept, so the hour-long access token is minted once per run rather
+    // than once per sync. Null until the managed transport is actually used, so a user on rclone
+    // never constructs an OAuth client or touches the token blob.
+    private HttpClient? _googleHttpClient;
+    private GoogleAccessTokenSource? _accessTokens;
+
     public CloudSaveSyncCoordinator(
         IAppPaths paths,
         ISettingsService settingsService,
@@ -66,9 +73,32 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     /// <summary>The current cloud-sync settings snapshot.</summary>
     public CloudSaveSyncSettings Current => _settings.CloudSaveSync;
 
-    /// <summary>Whether a remote is connected and sync is enabled.</summary>
-    public bool IsConfigured =>
-        _settings.CloudSaveSync is { Enabled: true, RemoteName.Length: > 0, CloudFolder.Length: > 0 };
+    /// <summary>
+    /// Whether a remote is connected and sync is enabled. What counts as "connected" differs by
+    /// transport: rclone addresses a named remote from its own config, whereas the managed client
+    /// authenticates as the connected account and needs only the folder.
+    /// </summary>
+    public bool IsConfigured => _settings.CloudSaveSync switch
+    {
+        { Enabled: false } => false,
+        { TransportKind: CloudTransportKind.GoogleDrive } cloud => cloud.CloudFolder is { Length: > 0 },
+        var cloud => cloud is { RemoteName.Length: > 0, CloudFolder.Length: > 0 },
+    };
+
+    /// <summary>Whether this build ships an OAuth client, and so can offer the managed transport.</summary>
+    public bool IsManagedTransportAvailable => GoogleOAuthClientSource.IsConfigured;
+
+    private HttpClient GoogleHttpClient =>
+        _googleHttpClient ??= new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+
+    private GoogleAccessTokenSource AccessTokens =>
+        _accessTokens ??= new GoogleAccessTokenSource(
+            new GoogleOAuthClient(
+                GoogleHttpClient,
+                GoogleOAuthClientSource.Resolve() ??
+                    throw new InvalidOperationException(
+                        "This build ships no Google OAuth client, so it cannot use the built-in Drive transport.")),
+            GoogleDriveTokenStoreFactory.Create(_paths, _logger));
 
     /// <summary>
     /// Whether one system participates in sync. This asks the registry to build the provider, the
@@ -234,6 +264,10 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             Persist(candidate with
             {
                 Enabled = true,
+                // Explicit, not assumed: connecting through rclone must move the stored kind back,
+                // or a user switching away from the built-in transport would keep building a Drive
+                // client for the remote they just set up here.
+                TransportKind = CloudTransportKind.Rclone,
                 RemoteName = trimmedRemote,
                 CloudFolder = trimmedFolder,
                 // A different folder has a different id; carrying the old one over would address
@@ -264,17 +298,112 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         }
     }
 
-    /// <summary>Turns sync off and forgets the remote. rclone's config and the cloud data are left intact.</summary>
+    /// <summary>
+    /// Signs into Google Drive with EmuShelf's own client — no rclone — and connects the managed
+    /// transport. Opens the system browser, waits for the redirect, and stores only the refresh token
+    /// in a protected blob; nothing secret reaches settings.json.
+    /// </summary>
+    /// <param name="openBrowser">
+    /// How to show the consent page. Injected rather than called directly so this stays testable and
+    /// so Android can hand it a custom tab instead of a desktop browser launch.
+    /// </param>
+    public async Task<CloudSaveSyncConnectResult> ConnectGoogleDriveManagedAsync(
+        string cloudFolder,
+        IReadOnlyDictionary<string, string?> overrides,
+        Action<Uri> openBrowser,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(overrides);
+        ArgumentNullException.ThrowIfNull(openBrowser);
+        if (string.IsNullOrWhiteSpace(cloudFolder))
+            return CloudSaveSyncConnectResult.InvalidInput;
+
+        // At least one platform must produce a provider once the overrides are applied, otherwise
+        // connecting leaves the user with a remote and nothing to sync into it. Checked before the
+        // build capability below because this is the half the user can actually act on.
+        var candidate = _settings.CloudSaveSync;
+        foreach (var (systemId, directory) in overrides)
+            candidate = candidate.WithOverride(systemId, directory);
+        if (!SaveProviderRegistry.SystemIds.Any(systemId => CreateBaseProvider(systemId, candidate) is not null))
+            return CloudSaveSyncConnectResult.InvalidInput;
+
+        if (!IsManagedTransportAvailable)
+            return CloudSaveSyncConnectResult.ManagedTransportUnavailable;
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            var oauth = new GoogleOAuthClient(GoogleHttpClient, GoogleOAuthClientSource.Resolve()!);
+            using var redirect = new LoopbackOAuthRedirectHandler(_logger);
+            var request = oauth.CreateAuthorizationRequest(redirect.RedirectUri);
+
+            openBrowser(request.AuthorizationUri);
+            var code = await redirect.WaitForCodeAsync(request.State, cancellationToken);
+            AccessTokens.Adopt(await oauth.ExchangeCodeAsync(request, code, cancellationToken));
+
+            var trimmedFolder = cloudFolder.Trim();
+            // Create the folder now rather than on first sync, so a connect that appears to succeed
+            // has actually proved it can write to the account.
+            var transport = new GoogleDriveCloudSyncTransport(
+                new GoogleDriveApiClient(GoogleHttpClient, AccessTokens, _logger),
+                _paths,
+                trimmedFolder,
+                _logger);
+            await transport.EnsureCloudFolderAsync(cancellationToken);
+
+            Persist(candidate with
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                // The managed client authenticates as the account itself; there is no named remote.
+                RemoteName = null,
+                CloudFolder = trimmedFolder,
+                CloudFolderId = transport.CloudFolderId,
+            });
+            return CloudSaveSyncConnectResult.Connected;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (GoogleAuthorizationRequiredException ex)
+        {
+            _logger.Error("Cloud save connect failed: the Google sign-in did not complete.", ex);
+            return CloudSaveSyncConnectResult.SignInDeclined;
+        }
+        catch (Exception ex) when (ex is IOException or HttpRequestException or InvalidOperationException)
+        {
+            _logger.Error("Cloud save connect failed.", ex);
+            return CloudSaveSyncConnectResult.Failed;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Turns sync off and forgets the remote. rclone's config and the cloud data are left intact; the
+    /// managed transport's stored account is dropped, because leaving a refresh token behind for a
+    /// connection the user just ended is not what "disconnect" means.
+    /// </summary>
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            if (_settings.CloudSaveSync.TransportKind == CloudTransportKind.GoogleDrive &&
+                IsManagedTransportAvailable)
+            {
+                AccessTokens.Disconnect();
+            }
+
             Persist(_settings.CloudSaveSync with
             {
                 Enabled = false,
                 RemoteName = null,
                 CloudFolder = null,
+                CloudFolderId = null,
             });
         }
         finally
@@ -322,7 +451,9 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         GetDetectionAsync,
         UpdateOptionalContent,
         UpdateOverrides,
-        UpdateStateOverride);
+        UpdateStateOverride,
+        IsManagedTransportAvailable,
+        ConnectGoogleDriveManagedAsync);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -570,6 +701,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 ? $"Upload {platformName} → cloud"
                 : $"Download {platformName} → local";
             await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
+            BankCloudFolderId(transport);
             RecordOutcome([systemId], error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
         }
@@ -669,6 +801,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             var report = await service.SyncAllAsync(targets, progress, cancellationToken);
             elapsed.Stop();
             await WriteSyncLogAsync(operationLabel, report, elapsed.Elapsed, transport.Timings, cancellationToken);
+            BankCloudFolderId(transport);
             if (recordOutcome)
                 RecordOutcome(synced, error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
@@ -707,19 +840,35 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             RecordOutcome([systemId], outcome.Message);
     }
 
-    private RcloneCloudSyncTransport CreateTransport() => new(
+    private RcloneCloudSyncTransport CreateRcloneTransport() => new(
         _paths,
         _settings.CloudSaveSync.RemoteName!,
         _settings.CloudSaveSync.CloudFolder!,
         _rclonePath,
         cloudFolderId: _settings.CloudSaveSync.CloudFolderId);
 
+    private GoogleDriveCloudSyncTransport CreateGoogleDriveTransport() => new(
+        new GoogleDriveApiClient(GoogleHttpClient, AccessTokens, _logger),
+        _paths,
+        _settings.CloudSaveSync.CloudFolder ?? string.Empty,
+        _logger,
+        _settings.CloudSaveSync.CloudFolderId);
+
+    /// <summary>Builds the transport this connection is configured for, ready to use.</summary>
+    private async Task<IVerifiableCloudSyncTransport> CreateTransportAsync(CancellationToken cancellationToken)
+    {
+        if (_settings.CloudSaveSync.TransportKind == CloudTransportKind.GoogleDrive)
+            return await CreateGoogleDriveTransportAsync(cancellationToken);
+
+        return await CreateRcloneTransportAsync(cancellationToken);
+    }
+
     // One extra call, once: from then on every pass addresses the saves folder by its provider id
     // instead of walking the account root to it. A failed lookup is not an error — the transport
     // keeps using the path — and a stale id is repaired by clearing it on the next failed pass.
-    private async Task<RcloneCloudSyncTransport> CreateTransportAsync(CancellationToken cancellationToken)
+    private async Task<IVerifiableCloudSyncTransport> CreateRcloneTransportAsync(CancellationToken cancellationToken)
     {
-        var transport = CreateTransport();
+        var transport = CreateRcloneTransport();
         if (!string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
             return transport;
 
@@ -738,6 +887,54 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         {
             _logger.Warning($"Could not resolve the cloud folder id; using the folder path instead: {ex.Message}");
             return transport;
+        }
+    }
+
+    // The managed transport resolves the folder id as part of its first call rather than needing a
+    // probe of its own, so the only thing to do here is bank the id once it knows it.
+    private async Task<IVerifiableCloudSyncTransport> CreateGoogleDriveTransportAsync(
+        CancellationToken cancellationToken)
+    {
+        var transport = CreateGoogleDriveTransport();
+        if (!string.IsNullOrWhiteSpace(_settings.CloudSaveSync.CloudFolderId))
+            return transport;
+
+        try
+        {
+            await transport.ListAsync(cancellationToken);
+            BankCloudFolderId(transport);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException)
+        {
+            // Not fatal: the caller lists again anyway, and a transport without a cached folder id
+            // simply resolves the path on its next call.
+            _logger.Warning($"Could not resolve the cloud folder id; using the folder path instead: {ex.Message}");
+        }
+
+        return transport;
+    }
+
+    /// <summary>
+    /// Persists the folder id a managed transport ended a pass holding, when it differs from what is
+    /// stored. This is how a cached id that turned out to be wrong — and was re-resolved by path
+    /// mid-pass — stops being wrong, instead of costing the same correction on every later sync.
+    /// </summary>
+    private void BankCloudFolderId(IVerifiableCloudSyncTransport transport)
+    {
+        if (transport is not GoogleDriveCloudSyncTransport { CloudFolderId: { } folderId })
+            return;
+        if (string.Equals(folderId, _settings.CloudSaveSync.CloudFolderId, StringComparison.Ordinal))
+            return;
+
+        try
+        {
+            Persist(_settings.CloudSaveSync with { CloudFolderId = folderId });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // A cache hint, not the transfer. A portable install on a removed or read-only drive
+            // must not turn a completed sync into a reported failure over it.
+            _logger.Warning($"Could not record the resolved cloud folder id: {ex.Message}");
         }
     }
 
@@ -1053,6 +1250,20 @@ public enum CloudSaveSyncConnectResult
     /// holding it. Distinct from <see cref="Failed"/> so the user is told to close it or restart.
     /// </summary>
     SignInServerBusy,
+
+    /// <summary>
+    /// The Google sign-in was declined, closed, or answered with a response that did not belong to
+    /// this request. Distinct from <see cref="Failed"/> because nothing is wrong with the setup —
+    /// the user simply did not finish, and the fix is to try again rather than to check anything.
+    /// </summary>
+    SignInDeclined,
+
+    /// <summary>
+    /// This build ships no Google OAuth client, so the built-in transport cannot be offered at all.
+    /// Distinct from <see cref="Failed"/> because nothing the user does will change it — it is a
+    /// property of how the binary was built, not of their setup or their network.
+    /// </summary>
+    ManagedTransportUnavailable,
 }
 
 /// <summary>One supported save platform as Settings needs to present it.</summary>
@@ -1091,4 +1302,12 @@ public sealed record CloudSaveSyncSettingsContext(
     Func<string, CancellationToken, Task<SaveProviderDetection?>>? GetDetectionAsync = null,
     Action<string, bool>? UpdateOptionalContent = null,
     Action<IReadOnlyDictionary<string, string?>>? UpdateOverrides = null,
-    Action<string, string?>? UpdateStateOverride = null);
+    Action<string, string?>? UpdateStateOverride = null,
+    /// <summary>Whether this build ships an OAuth client, and so can offer the built-in transport.</summary>
+    bool IsManagedTransportAvailable = false,
+    /// <summary>
+    /// Connects Google Drive without rclone, taking the browser launcher as its third argument. Null
+    /// in a test context that does not exercise it.
+    /// </summary>
+    Func<string, IReadOnlyDictionary<string, string?>, Action<Uri>, CancellationToken, Task<CloudSaveSyncConnectResult>>?
+        ConnectGoogleDriveManagedAsync = null);
