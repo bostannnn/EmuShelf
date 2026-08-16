@@ -423,10 +423,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         if (!_isAttached || !Crt.IsActive || ChromeSource is null
             || _observedWindow?.WindowState == WindowState.Minimized)
         {
-            // Switching the effect off has to stop the timer, not merely stop using its output: the
-            // capture is a full-window offscreen render on the UI thread, and leaving it ticking is
-            // most of what the setting is meant to reclaim. A scene with no chrome source — the
-            // in-place shelf, which draws no couch UI into itself — never starts one to begin with.
+            // A non-active presentation stops the timer, not merely stops using its output: the
+            // capture is a full-window offscreen render on the UI thread. This fires on the grid and
+            // spotlight with the effect off, where the one renderer idles entirely, and while the
+            // window is minimised. On the effect-off shelf the presentation is Flat (active), so the
+            // capture keeps running — the price of one renderer compositing the couch chrome (rail,
+            // title, overlays, toasts) over the flat media there. A scene with no chrome source never
+            // starts a capture at all.
             _chromeSnapshot?.Dispose();
             _chromeSnapshot = null;
             return;
@@ -437,8 +440,29 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return;
         }
 
-        _chromeSnapshot = new ChromeSnapshot(() => ChromeSource, TimeSpan.FromMilliseconds(33));
+        _chromeSnapshot = new ChromeSnapshot(
+            () => ChromeSource, TimeSpan.FromMilliseconds(33), OnChromeCaptured);
         _chromeSnapshot.Start();
+    }
+
+    /// <summary>
+    /// Runs on the UI thread after each chrome capture; keeps the couch chrome live behind a still
+    /// scene.
+    /// </summary>
+    /// <remarks>
+    /// The animated tube already requests a frame every render, so its captures upload on their own
+    /// and this does nothing for it. A Flat presentation redraws only on demand, so nothing would
+    /// upload a capture taken while the shelf sits still — and the chrome it carries is the whole
+    /// couch UI, including overlays and toasts that appear without moving the shelf. Requesting a
+    /// frame per capture is what keeps those visible, at the capture's own 30Hz rather than the
+    /// tube's 60Hz. When the capture stops — off the shelf, or minimised — so do these redraws.
+    /// </remarks>
+    private void OnChromeCaptured()
+    {
+        if (Crt.IsActive && !Crt.IsAnimated)
+        {
+            RequestNextFrameRendering();
+        }
     }
 
     protected override void OnOpenGlInit(GlInterface gl)
@@ -864,20 +888,11 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     continue;
                 }
 
-                TextureImage? texture;
-                try
+                if (!TryBuildFaceTexture(artwork, out var texture))
                 {
-                    texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
-                }
-                catch (Exception)
-                {
-                    // The snapshot holds a live reference to this bitmap, but the UI thread can still
-                    // dispose it — an eviction, a path change, a detach — between the frame being
-                    // published and this upload reading its pixels. That throws here. Keep whatever is
-                    // already on the GPU for this face and do not record the upload, so a later clean
-                    // frame retries. This is deliberately a per-face skip rather than failing the whole
-                    // draw: one racing bitmap must not drop the entire shelf toward the flat-cover
-                    // fallback via the consecutive-failure counter.
+                    // The artwork raced disposal — see TryBuildFaceTexture. Keep whatever is already
+                    // on the GPU for this face and do not record the upload, so a later clean frame
+                    // retries. A per-face skip, never the whole draw.
                     continue;
                 }
 
@@ -1577,6 +1592,35 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
     private static Vector3 ToLinear(Color colour) =>
         MediaShellRenderer.ToLinear(colour.R / 255f, colour.G / 255f, colour.B / 255f);
+
+    /// <summary>
+    /// Builds one shell face's GPU texture from its artwork, or reports that the artwork raced
+    /// disposal and the face should be skipped.
+    /// </summary>
+    /// <remarks>
+    /// The frame snapshot holds a live reference to the bitmap, but the UI thread can still dispose it
+    /// — an eviction, a path change, a detach, or (the reported case) a scrape swapping the cover —
+    /// between the frame being published and this upload reading its pixels. Reading a disposed bitmap
+    /// throws, and this contains that throw to the single face: it returns <c>false</c> so the caller
+    /// keeps whatever is on the GPU and retries on a later clean frame, rather than letting the
+    /// exception escape into <see cref="OnOpenGlRender"/> and march the whole shelf toward the
+    /// flat-cover fallback via the consecutive-failure counter — which is exactly how a scrape could
+    /// blank the CRT and every model. Extracted so this invariant can be tested without a GL context;
+    /// a returned <c>true</c> with a null texture is the normal no-artwork face.
+    /// </remarks>
+    internal static bool TryBuildFaceTexture(object? artwork, out TextureImage? texture)
+    {
+        try
+        {
+            texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
+            return true;
+        }
+        catch (Exception)
+        {
+            texture = null;
+            return false;
+        }
+    }
 
     private static TextureImage? ToTextureImage(Bitmap bitmap)
     {
