@@ -112,8 +112,31 @@ public class GameBatchScraperViewModelTests
 
         await vm.StartCommand.ExecuteAsync(null);
 
-        Assert.Contains("2 already complete", vm.StatusMessage);
+        Assert.Equal("2 already complete.", vm.StatusMessage);
+        Assert.DoesNotContain("0 scraped", vm.StatusMessage);
         Assert.False(vm.AppliedChanges);
+    }
+
+    [Fact]
+    public async Task Done_SummaryOfAllFailed_ReadsAsFailed_NotZeroScraped()
+    {
+        var batch = new FakeBatch
+        {
+            Result = new GameScrapeBatchSummary(
+                2,
+                GameScrapeBatchStopReason.Completed,
+                [
+                    new GameScrapeBatchItemResult(1, "a", GameScrapeBatchOutcome.Failed),
+                    new GameScrapeBatchItemResult(2, "b", GameScrapeBatchOutcome.Failed),
+                ]),
+        };
+        var vm = new GameBatchScraperViewModel([1, 2], "PS1", batch, Enabled());
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal("2 failed.", vm.StatusMessage);
+        Assert.DoesNotContain("scraped", vm.StatusMessage);
+        Assert.DoesNotContain("already complete", vm.StatusMessage);
     }
 
     [Fact]
