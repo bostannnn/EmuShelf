@@ -24,6 +24,7 @@ using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Systems;
+using EmuShelf.Rendering;
 
 namespace EmuShelf.App.Tests;
 
@@ -85,6 +86,8 @@ public class MainViewModelTests : IDisposable
         IScreenScraperBatchService? scrapeBatch = null,
         IScreenScraperAccountService? screenScraperAccount = null,
         ISettingsService? settingsService = null,
+        IGameArtworkSearchProvider? artworkSearch = null,
+        IRemoteArtworkDownloader? artworkDownloader = null,
         TexturePackCoordinator? texturePacks = null,
         IFileRevealService? fileReveal = null)
     {
@@ -119,6 +122,8 @@ public class MainViewModelTests : IDisposable
             scrapeApply: scrapeApply,
             scrapeBatch: scrapeBatch,
             settingsService: settingsService,
+            artworkSearch: artworkSearch,
+            artworkDownloader: artworkDownloader,
             fileReveal: fileReveal);
     }
 
@@ -947,6 +952,29 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task FocusedGameWidget_ShowsSoftcoreAndHardcoreCountsTogether()
+    {
+        var path = Path.Combine(_baseDirectory, "BothAchievements.cue");
+        File.WriteAllText(path, "FILE \"BothAchievements.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Both game", DateAdded = DateTimeOffset.UtcNow }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        const int raGameId = 9100;
+        var readStore = new MutableRetroAchievementsReadStore(gameId, raGameId);
+        readStore.SetProgress(raGameId, awarded: 7, total: 10, hardcore: 4);
+        var vm = CreateViewModel(
+            retroAchievementsRead: readStore,
+            retroAccount: new RecordingRetroAchievementsAccountService(isConnected: true));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        // The dock widget shows the softcore total and the hardcore subset side by side.
+        Assert.Equal("7/10", vm.FocusedGame!.GamepadAchievementCountText);
+        Assert.Equal("4/10", vm.FocusedGame.GamepadHardcoreCountText);
+        Assert.True(vm.FocusedGame.HasHardcoreAchievementProgress);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadAchievements_StayInTheMainOverlayAndNeverRequestDesktopDialog()
     {
         var path = Path.Combine(_baseDirectory, "GamepadAchievements.cue");
@@ -1190,6 +1218,71 @@ public class MainViewModelTests : IDisposable
         var focusedBeforeUp = vm.FocusedGame;
         vm.MoveGamepadFocusUpCommand.Execute(null);
         Assert.Same(focusedBeforeUp, vm.FocusedGame);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSetCover_WithWebSearch_OpensControllerNativeCoverSearch()
+    {
+        var path = Path.Combine(_baseDirectory, "CoverSearch.cue");
+        File.WriteAllText(path, "FILE \"CoverSearch.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Cover search", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(
+            artworkSearch: new StubArtworkSearchProvider(),
+            artworkDownloader: new StubArtworkDownloader());
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+
+        // Controller-native web search instead of the Desktop handoff, with the shared picker wired up.
+        Assert.Equal(GamepadOverlayKind.CoverSearch, vm.GamepadOverlay);
+        Assert.True(vm.IsGamepadCoverSearchOpen);
+        Assert.NotNull(vm.GamepadCoverSearchDetails);
+        Assert.Equal("Set cover — Cover search", vm.GamepadOverlayTitle);
+        // B backs out to the game actions, and the picker is disposed.
+        vm.BackFromGamepadOverlayCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.Actions, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadCoverSearchDetails);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSetCover_WithWebSearchDisabled_FallsBackToDesktopHandoff()
+    {
+        var path = Path.Combine(_baseDirectory, "CoverHandoff.cue");
+        File.WriteAllText(path, "FILE \"CoverHandoff.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Cover handoff", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(
+            artworkSearch: new StubArtworkSearchProvider(),
+            artworkDownloader: new StubArtworkDownloader(),
+            settingsService: new StubSettingsService(webImageSearchEnabled: false));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+
+        // Nothing to search when web image search is off, so it goes straight to the Desktop handoff.
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadCoverSearchDetails);
+    }
+
+    private sealed class StubArtworkSearchProvider : IGameArtworkSearchProvider
+    {
+        public Task<IReadOnlyList<ArtworkSearchResult>> SearchAsync(
+            string title,
+            string systemName,
+            double preferredAspectRatio,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ArtworkSearchResult>>([]);
+    }
+
+    private sealed class StubArtworkDownloader : IRemoteArtworkDownloader
+    {
+        public Task<DownloadedArtwork?> DownloadFirstAsync(
+            IReadOnlyList<ArtworkCandidate> candidates,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<DownloadedArtwork?>(null);
     }
 
     [AvaloniaFact]
@@ -2498,6 +2591,8 @@ public class MainViewModelTests : IDisposable
         vm.StatusText = "Syncing saves before launch…";
         vm.StatusSeverity = StatusSeverity.Progress;
         vm.IsSyncingSavesForLaunch = true;
+        // The pre-launch pass blocks; the shelf overrides that to keep the scene visible.
+        vm.IsBlockingLaunchSaveSync = true;
 
         Assert.True(vm.ShowGamepadStatusToast);
         Assert.False(vm.ShowBlockingLaunchSaveSync);
@@ -2798,8 +2893,8 @@ public class MainViewModelTests : IDisposable
             new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Never Played.cue"), Title = "Never Played", DateAdded = DateTimeOffset.UtcNow },
         ]);
         var games = _library.GetGames();
-        _library.SetLastPlayed(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
-        _library.SetLastPlayed(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
         var vm = CreateViewModel();
 
         await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
@@ -2855,8 +2950,8 @@ public class MainViewModelTests : IDisposable
         ]);
         var games = _library.GetGames();
         // Relative to now so the assertion never depends on the test machine's wall clock.
-        _library.SetLastPlayed(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
-        _library.SetLastPlayed(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
         var vm = CreateViewModel(launchService: new RecordingLaunchService(new GameLaunchResult(true, "Alpha finished")));
         await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
         Assert.Equal(["Beta", "Alpha"], vm.Games.Select(game => game.Title));
@@ -3659,6 +3754,102 @@ public class MainViewModelTests : IDisposable
         Assert.Null(vm.ShelfLaunchPose);
     }
 
+    private MainViewModel CreateShelfViewModel()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll([new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = Ps1.Id,
+                Path = "/Games/Game 1.cue",
+                Title = "Game 1",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name, Ps1.ShortName, Ps1.AccentColor, coverAspectRatio: Ps1.CoverAspectRatio)]);
+        vm.HasGames = true;
+        vm.SelectShelfViewModeCommand.Execute(null);
+        vm.FocusedGame = vm.Games[0];
+        return vm;
+    }
+
+    [AvaloniaFact]
+    public void CrtToggle_SwitchesBetweenTubeAndInPlaceHost()
+    {
+        var vm = CreateShelfViewModel();
+
+        // Effect on: the window-covering tube draws the shelf; the in-place host is idle.
+        vm.CrtScreenEffect = true;
+        Assert.True(vm.ShowCouchScene);
+        Assert.False(vm.ShowInlineShelfScene);
+        Assert.Equal(CrtPresentation.Default, vm.CouchCrt);
+        Assert.True(vm.IsShelfTubeActive);
+
+        // Effect off: the in-place host takes the shelf (live chrome, no capture); the tube idles and
+        // the couch root goes opaque again (IsShelfTubeActive false).
+        vm.CrtScreenEffect = false;
+        Assert.True(vm.ShowInlineShelfScene);
+        Assert.False(vm.ShowCouchScene);
+        Assert.False(vm.IsShelfTubeActive);
+        Assert.True(vm.ShelfSceneSupported);
+
+        // Effect off away from the shelf: neither renderer runs — plain Avalonia UI, no GL.
+        vm.SelectGridViewModeCommand.Execute(null);
+        Assert.False(vm.ShowCouchScene);
+        Assert.False(vm.ShowInlineShelfScene);
+    }
+
+    // The Steam Deck fix, and a regression guard for the proven over-scoped-latch bug: the effect-off
+    // in-place host failing must fall the effect-off shelf back to the tube drawn flat, and must NOT
+    // disable the effect-on tube.
+    [AvaloniaFact]
+    public void InlineShelfFailure_FallsBackToTubeFlat_AndKeepsTheTubeAlive()
+    {
+        var vm = CreateShelfViewModel();
+        vm.CrtScreenEffect = false;
+        Assert.True(vm.ShowInlineShelfScene);
+
+        // The in-place host cannot bring up GL (the Deck).
+        vm.DisableInlineShelf(new TimeoutException("in-place host: no GL context (simulated Deck)"));
+
+        // Effect-off shelf falls back to the tube drawn flat — still 3D, not flat covers.
+        Assert.False(vm.ShowInlineShelfScene);
+        Assert.True(vm.ShowCouchScene);
+        Assert.Equal(CrtPresentation.Flat, vm.CouchCrt);
+        Assert.True(vm.IsShelfTubeActive);
+        Assert.True(vm.ShelfSceneSupported);
+        Assert.False(vm.ShowShelfFlatBackdrop);
+
+        // And the tube itself was never disabled: turning the effect back on still shows 3D. Before the
+        // fix, the shared support flag left this false for the session.
+        vm.CrtScreenEffect = true;
+        Assert.True(vm.TubeSceneSupported);
+        Assert.True(vm.ShowCouchScene);
+        Assert.True(vm.ShelfSceneSupported);
+    }
+
+    [AvaloniaFact]
+    public void TubeFailure_LeavesTheInPlaceHostWorkingWithTheEffectOff()
+    {
+        var vm = CreateShelfViewModel();
+        vm.CrtScreenEffect = true;
+        Assert.True(vm.ShowCouchScene);
+
+        // The tube cannot bring up GL. Effect-on drops to flat covers.
+        vm.DisableShelfHero(new TimeoutException("tube: no GL context"));
+        Assert.False(vm.TubeSceneSupported);
+        Assert.False(vm.ShelfSceneSupported);
+        Assert.True(vm.ShowShelfFlatBackdrop);
+
+        // But the in-place host is independent, so the effect-off shelf still renders 3D.
+        vm.CrtScreenEffect = false;
+        Assert.True(vm.InlineSceneSupported);
+        Assert.True(vm.ShowInlineShelfScene);
+        Assert.True(vm.ShelfSceneSupported);
+        Assert.False(vm.ShowShelfFlatBackdrop);
+    }
+
     /// <summary>Reports what the shelf was doing at the moment each sync was entered.</summary>
     private sealed class ShelfObservingSaveSyncService : IGameSaveSyncService
     {
@@ -3984,9 +4175,9 @@ public class MainViewModelTests : IDisposable
     {
         private readonly Dictionary<int, RetroAchievementsProgressSnapshot> _progress = new();
 
-        public void SetProgress(int raGameId, int awarded, int total) =>
+        public void SetProgress(int raGameId, int awarded, int total, int hardcore = 0) =>
             _progress[raGameId] = new RetroAchievementsProgressSnapshot(
-                new RetroAchievementsGameProgress(raGameId, total, awarded, 0), DateTimeOffset.UtcNow);
+                new RetroAchievementsGameProgress(raGameId, total, awarded, hardcore), DateTimeOffset.UtcNow);
 
         public IReadOnlyDictionary<long, RetroAchievementsGameLink> GetAllLinks() =>
             new Dictionary<long, RetroAchievementsGameLink>
@@ -4115,6 +4306,7 @@ public class MainViewModelTests : IDisposable
     {
         public bool AutomaticallyFetchAfterImport { get; private set; }
         public bool ConsentPromptShown { get; private set; }
+        public bool WebImageSearchEnabled { get; private set; } = true;
         public MetadataConsentChoice? RecordedChoice { get; private set; }
 
         public Task SaveAutomaticFetchAsync(
@@ -4123,6 +4315,14 @@ public class MainViewModelTests : IDisposable
         {
             AutomaticallyFetchAfterImport = enabled;
             ConsentPromptShown = true;
+            return Task.CompletedTask;
+        }
+
+        public Task SaveWebImageSearchAsync(
+            bool enabled,
+            CancellationToken cancellationToken = default)
+        {
+            WebImageSearchEnabled = enabled;
             return Task.CompletedTask;
         }
 

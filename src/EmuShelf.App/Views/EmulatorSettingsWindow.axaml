@@ -147,51 +147,6 @@
                         </StackPanel>
                     </Grid>
                 </Border>
-                <Border Classes="settings-card" Margin="0,0,0,12">
-                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
-                          ColumnSpacing="16" RowSpacing="8">
-                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                            <TextBlock Text="METADATA AND ARTWORK" FontSize="10"
-                                       FontWeight="Bold" LetterSpacing="1"
-                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                            <TextBlock Text="Titles and individual covers are downloaded only after you opt in. Game files and paths are never uploaded."
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                        </StackPanel>
-                        <ToggleSwitch Grid.Row="0" Grid.Column="1"
-                                      AutomationProperties.AutomationId="general.metadata-auto"
-                                      OnContent="Automatic" OffContent="Manual"
-                                      IsChecked="{Binding AutomaticallyFetchMetadataAfterImport, Mode=TwoWay}"
-                                      HorizontalAlignment="Right"
-                                      VerticalAlignment="Center" />
-                        <StackPanel Grid.Row="1" Grid.Column="0"
-                                    Orientation="Horizontal" Spacing="10">
-                            <HyperlinkButton Content="Libretro sources"
-                                             NavigateUri="https://github.com/libretro/libretro-database"
-                                             Padding="0" />
-                            <HyperlinkButton Content="xlenore PS1/PS2 covers"
-                                             NavigateUri="https://github.com/xlenore"
-                                             Padding="0" />
-                        </StackPanel>
-                        <Button Grid.Row="1" Grid.Column="1"
-                                AutomationProperties.AutomationId="general.fetch-metadata"
-                                Content="Fetch missing metadata"
-                                Command="{Binding FetchAllMetadataCommand}"
-                                IsEnabled="{Binding CanFetchAllMetadata}" />
-                        <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
-                                   Text="{Binding MetadataStatusText}"
-                                   IsVisible="{Binding HasMetadataStatus}"
-                                   FontSize="11" TextWrapping="Wrap"
-                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                        <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="4"
-                                    IsVisible="{Binding HasMetadataProgress}">
-                            <ProgressBar Minimum="0" Maximum="{Binding MetadataProgressTotal}"
-                                         Value="{Binding MetadataProgressCompleted}" Height="6" />
-                            <TextBlock Text="{Binding MetadataProgressText}" FontSize="11"
-                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
                 <Border Classes="settings-card" Margin="0,0,0,12"
                         IsVisible="{Binding HasDataDirectory}">
                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto"
@@ -538,8 +493,53 @@
                         </Border>
                     </StackPanel>
 
-                    <StackPanel IsVisible="{Binding IsScreenScraperSection}" Spacing="12">
+                    <StackPanel IsVisible="{Binding IsArtworkMetadataSection}" Spacing="12">
                         <Border Classes="settings-card">
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
+                                  ColumnSpacing="16" RowSpacing="8">
+                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
+                                    <TextBlock Text="BUILT-IN CATALOGUE" FontSize="10"
+                                               FontWeight="Bold" LetterSpacing="1"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <TextBlock Text="Exact titles and covers from bundled catalogues. Downloaded only after you opt in; game files and paths are never uploaded."
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Row="0" Grid.Column="1"
+                                              AutomationProperties.AutomationId="general.metadata-auto"
+                                              OnContent="Automatic" OffContent="Manual"
+                                              IsChecked="{Binding AutomaticallyFetchMetadataAfterImport, Mode=TwoWay}"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Center" />
+                                <StackPanel Grid.Row="1" Grid.Column="0"
+                                            Orientation="Horizontal" Spacing="10">
+                                    <HyperlinkButton Content="Libretro sources"
+                                                     NavigateUri="https://github.com/libretro/libretro-database"
+                                                     Padding="0" />
+                                    <HyperlinkButton Content="xlenore PS1/PS2 covers"
+                                                     NavigateUri="https://github.com/xlenore"
+                                                     Padding="0" />
+                                </StackPanel>
+                                <Button Grid.Row="1" Grid.Column="1"
+                                        AutomationProperties.AutomationId="general.fetch-metadata"
+                                        Content="Fetch missing metadata"
+                                        Command="{Binding FetchAllMetadataCommand}"
+                                        IsEnabled="{Binding CanFetchAllMetadata}" />
+                                <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
+                                           Text="{Binding MetadataStatusText}"
+                                           IsVisible="{Binding HasMetadataStatus}"
+                                           FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="4"
+                                            IsVisible="{Binding HasMetadataProgress}">
+                                    <ProgressBar Minimum="0" Maximum="{Binding MetadataProgressTotal}"
+                                                 Value="{Binding MetadataProgressCompleted}" Height="6" />
+                                    <TextBlock Text="{Binding MetadataProgressText}" FontSize="11"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Classes="settings-card" IsVisible="{Binding HasScreenScraper}">
                             <StackPanel Spacing="14">
                                 <StackPanel Spacing="3">
                                     <TextBlock Text="SCREENSCRAPER" FontSize="10"
@@ -598,6 +598,24 @@
                                            FontSize="11" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
+                        </Border>
+                        <Border Classes="settings-card">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                                <StackPanel Grid.Column="0" Spacing="3">
+                                    <TextBlock Text="WEB IMAGE SEARCH" FontSize="10"
+                                               FontWeight="Bold" LetterSpacing="1"
+                                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    <TextBlock Text="Let the &quot;Set cover&quot; picker search the web (DuckDuckGo) for cover images. Results are unverified and never applied automatically — you always choose."
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              AutomationProperties.AutomationId="metadata.web-image-search"
+                                              OnContent="On" OffContent="Off"
+                                              IsChecked="{Binding WebImageSearchEnabled, Mode=TwoWay}"
+                                              HorizontalAlignment="Right"
+                                              VerticalAlignment="Center" />
+                            </Grid>
                         </Border>
                     </StackPanel>
 

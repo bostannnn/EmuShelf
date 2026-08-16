@@ -78,6 +78,21 @@ public class RetroAchievementsDisplayTests
     }
 
     [Fact]
+    public void Matched_WithProgress_CarriesBothSoftcoreAndHardcoreCounts()
+    {
+        // The list column keeps the softcore total; the widget reads the hardcore subset off the
+        // separate count so it can show both at once.
+        var link = Link(RetroAchievementsIdentificationStatus.Hashed, hasAchievements: true);
+        var display = RetroAchievementsDisplay.For(
+            connected: true, link, Progress(total: 40, awarded: 12, hardcore: 3));
+
+        Assert.Equal("12/40", display.ColumnText);
+        Assert.Equal(12, display.Awarded);
+        Assert.Equal(3, display.AwardedHardcore);
+        Assert.Equal(40, display.Total);
+    }
+
+    [Fact]
     public void Matched_NoProgressYet_Connected_ShowsMarkAndDash()
     {
         var link = Link(RetroAchievementsIdentificationStatus.Hashed, hasAchievements: true);

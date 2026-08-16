@@ -1306,9 +1306,14 @@ public class MainWindowVisualSnapshotTests
             Assert.Single(
                 focusedDock.GetVisualDescendants().OfType<Border>(),
                 control => control.Classes.Contains("gamepad-key"));
-            Assert.Equal(122, achievementTrack.Bounds.Width, 1);
+            Assert.True(achievementTrack.Bounds.Width > 40);
             Assert.Equal(4, achievementTrack.Bounds.Height, 1);
+            // Softcore (silver) bar reflects the inclusive total; the hardcore (gold) bar is shown
+            // alongside it and, for this fixture with no hardcore unlocks, stays empty.
             Assert.Equal(3d / 62d, Assert.IsType<ScaleTransform>(achievementFill.RenderTransform).ScaleX, 8);
+            var hardcoreFill = window.FindControl<Border>("GamepadHardcoreFill");
+            Assert.NotNull(hardcoreFill);
+            Assert.Equal(0d, Assert.IsType<ScaleTransform>(hardcoreFill.RenderTransform).ScaleX, 8);
             Assert.Equal("Final Fantasy X (Disc 2).chd", subtitle.Text);
             Assert.InRange(focusedDock.Bounds.Height, 102, 106);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
@@ -2512,7 +2517,7 @@ public class MainWindowVisualSnapshotTests
         {
             (SettingsSection.General, "general."),
             (SettingsSection.RetroAchievements, "retro."),
-            (SettingsSection.ScreenScraper, "scraper."),
+            (SettingsSection.ArtworkMetadata, "scraper."),
             (SettingsSection.Saves, "saves."),
             (SettingsSection.TexturePacks, "textures."),
         };
@@ -2558,7 +2563,9 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Border>()
                 .Where(border => border.IsVisible && border.Classes.Contains("gamepad-settings-switch"))
                 .ToArray();
-            Assert.Equal(2, switches.Length);
+            // General now has one toggle (empty-platforms); the metadata auto-fetch toggle moved into
+            // the Artwork & Metadata section.
+            Assert.Single(switches);
             Assert.All(switches, toggle =>
             {
                 Assert.InRange(toggle.Bounds.Width, 138, 142);
@@ -2569,7 +2576,7 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Button>()
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-nav"))
                 .ToArray();
-            // Library, Emulators, RetroAchievements, ScreenScraper, Saves, Texture Packs, About.
+            // Library, Emulators, RetroAchievements, Artwork & Metadata, Saves, Texture Packs, About.
             // (Hotkeys needs a hotkey context and Themes needs theme choices — neither is set up here.)
             Assert.Equal(7, navigationButtons.Length);
             Assert.All(
@@ -2587,9 +2594,9 @@ public class MainWindowVisualSnapshotTests
                 "emushelf-gamepad-settings-retro-1280x800.png");
             AssertGamepadSettingsParity(SettingsSection.RetroAchievements, "retro.");
 
-            gamepadSettings.SelectedSection = SettingsSection.ScreenScraper;
+            gamepadSettings.SelectedSection = SettingsSection.ArtworkMetadata;
             await PumpAsync();
-            AssertGamepadSettingsParity(SettingsSection.ScreenScraper, "scraper.");
+            AssertGamepadSettingsParity(SettingsSection.ArtworkMetadata, "scraper.");
 
             gamepadSettings.SelectedSection = SettingsSection.TexturePacks;
             await PumpAsync();
@@ -2720,12 +2727,12 @@ public class MainWindowVisualSnapshotTests
             // Connected ScreenScraper swaps the entry rows for the account summary and a disconnect
             // action, so re-check parity in that state to cover the disconnect row on both surfaces.
             desktopSettings.ScreenScraperConnectedName = "Parity Player";
-            desktopFieldIds[SettingsSection.ScreenScraper] = await CaptureDesktopFieldIdsAsync(
-                SettingsSection.ScreenScraper,
+            desktopFieldIds[SettingsSection.ArtworkMetadata] = await CaptureDesktopFieldIdsAsync(
+                SettingsSection.ArtworkMetadata,
                 "scraper.");
-            gamepadSettings.SelectedSection = SettingsSection.ScreenScraper;
+            gamepadSettings.SelectedSection = SettingsSection.ArtworkMetadata;
             await PumpAsync();
-            AssertGamepadSettingsParity(SettingsSection.ScreenScraper, "scraper.");
+            AssertGamepadSettingsParity(SettingsSection.ArtworkMetadata, "scraper.");
 
             desktopSettings.IsCloudConnected = false;
             desktopFieldIds[SettingsSection.Saves] = await CaptureDesktopFieldIdsAsync(

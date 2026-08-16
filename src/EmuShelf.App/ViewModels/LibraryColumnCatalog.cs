@@ -32,8 +32,15 @@ internal static class LibraryColumnCatalog
             sortColumn: LibrarySortColumn.Format, defaultWidth: 90, minWidth: 60,
             isFlex: false, canHide: true, visibleByDefault: true),
 
-        new LibraryColumn(LibraryColumnKey.Achievements, "Achievements", header: "ACHIEVEMENTS",
-            sortColumn: LibrarySortColumn.Achievements, defaultWidth: 96, minWidth: 90,
+        // Achievements split into a softcore (silver) and hardcore (gold) column so the list shows the
+        // same distinction as the couch widget and the achievements menu. The softcore column keeps the
+        // `Achievements` key for persistence continuity.
+        new LibraryColumn(LibraryColumnKey.Achievements, "Softcore", header: "SOFTCORE",
+            sortColumn: LibrarySortColumn.Achievements, defaultWidth: 96, minWidth: 88,
+            isFlex: false, canHide: true, visibleByDefault: true),
+
+        new LibraryColumn(LibraryColumnKey.HardcoreAchievements, "Hardcore", header: "HARDCORE",
+            sortColumn: LibrarySortColumn.HardcoreAchievements, defaultWidth: 96, minWidth: 88,
             isFlex: false, canHide: true, visibleByDefault: true),
 
         new LibraryColumn(LibraryColumnKey.Textures, "Textures", header: "TEXTURES",
@@ -45,9 +52,17 @@ internal static class LibraryColumnCatalog
             isFlex: false, canHide: true, visibleByDefault: true),
 
         // Off by default — opt-in from the column picker. Sourced straight from the Game record
-        // (M38 LastPlayedAt, DateAdded), so no metadata read is needed.
+        // (M38 LastPlayedAt, M43 Playtime/PlayCount, DateAdded), so no metadata read is needed.
         new LibraryColumn(LibraryColumnKey.LastPlayed, "Last Played", header: "LAST PLAYED",
             sortColumn: LibrarySortColumn.LastPlayed, defaultWidth: 130, minWidth: 100,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.Playtime, "Play Time", header: "PLAY TIME",
+            sortColumn: LibrarySortColumn.Playtime, defaultWidth: 104, minWidth: 84,
+            isFlex: false, canHide: true, visibleByDefault: false),
+
+        new LibraryColumn(LibraryColumnKey.PlayCount, "Play Count", header: "PLAYS",
+            sortColumn: LibrarySortColumn.PlayCount, defaultWidth: 76, minWidth: 60,
             isFlex: false, canHide: true, visibleByDefault: false),
 
         new LibraryColumn(LibraryColumnKey.DateAdded, "Date Added", header: "DATE ADDED",

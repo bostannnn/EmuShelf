@@ -37,6 +37,12 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
     public string UnlockStateText { get; }
     public bool IsUnlocked { get; }
     public bool IsLocked => !IsUnlocked;
+
+    /// <summary>
+    /// Whether this achievement was unlocked in hardcore. A hardcore unlock always implies the
+    /// softcore unlock, so the list stays the RA-standard softcore view and the hardcore ones are
+    /// distinguished by a gold border rather than a separate mode. See DECISIONS 2026-08-16.
+    /// </summary>
     public bool IsHardcore { get; }
     public string BadgeName { get; }
     public int Points { get; }
@@ -179,6 +185,14 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial int TotalPoints { get; set; }
 
+    /// <summary>Unlocks earned in hardcore (the gold subset of <see cref="UnlockedCount"/>).</summary>
+    [ObservableProperty]
+    public partial int HardcoreUnlockedCount { get; set; }
+
+    /// <summary>Points from hardcore unlocks (the gold subset of <see cref="EarnedPoints"/>).</summary>
+    [ObservableProperty]
+    public partial int HardcoreEarnedPoints { get; set; }
+
     [ObservableProperty]
     public partial DateTimeOffset? LastRefreshedAt { get; set; }
 
@@ -192,9 +206,13 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     public partial string StatusText { get; set; } = string.Empty;
 
     public int ProgressMaximum => Math.Max(TotalCount, 1);
-    public string ProgressText => $"{UnlockedCount} / {TotalCount} unlocked";
+    // Softcore (silver) and hardcore (gold) read in parallel — same shape, one word apart — so no
+    // surface labels one of them "unlocked" and the other by mode. Both are always shown once a set
+    // has loaded, so they never disagree.
+    public string ProgressText => $"{UnlockedCount} / {TotalCount} softcore";
     public string PointsText => $"{EarnedPoints} / {TotalPoints} points";
-    public string ProgressAndPointsText => $"{ProgressText} · {PointsText}";
+    public string HardcoreProgressText => $"{HardcoreUnlockedCount} / {TotalCount} hardcore";
+    public string HardcorePointsText => $"{HardcoreEarnedPoints} / {TotalPoints} points";
     public string LastRefreshText => LastRefreshedAt is { } refreshed
         ? $"Last refreshed {refreshed.ToLocalTime():g}"
         : "Not refreshed yet";
@@ -400,6 +418,10 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         TotalCount = snapshot.Details.TotalAchievements;
         EarnedPoints = snapshot.Details.EarnedPoints;
         TotalPoints = snapshot.Details.TotalPoints;
+        HardcoreUnlockedCount = snapshot.Details.UnlockedHardcoreAchievements;
+        HardcoreEarnedPoints = snapshot.Details.Achievements
+            .Where(achievement => achievement.IsHardcore)
+            .Sum(achievement => achievement.Points);
         LastRefreshedAt = snapshot.LastRefreshedAt;
         HasLoadedSnapshot = true;
         RebuildVisibleAchievements();
@@ -467,7 +489,6 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     partial void OnUnlockedCountChanged(int value)
     {
         OnPropertyChanged(nameof(ProgressText));
-        OnPropertyChanged(nameof(ProgressAndPointsText));
         OnPropertyChanged(nameof(LockedCount));
         OnPropertyChanged(nameof(LockedFilterText));
         OnPropertyChanged(nameof(UnlockedFilterText));
@@ -476,7 +497,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(ProgressMaximum));
         OnPropertyChanged(nameof(ProgressText));
-        OnPropertyChanged(nameof(ProgressAndPointsText));
+        OnPropertyChanged(nameof(HardcoreProgressText));
         OnPropertyChanged(nameof(LockedCount));
         OnPropertyChanged(nameof(AllFilterText));
         OnPropertyChanged(nameof(LockedFilterText));
@@ -484,12 +505,19 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     partial void OnEarnedPointsChanged(int value)
     {
         OnPropertyChanged(nameof(PointsText));
-        OnPropertyChanged(nameof(ProgressAndPointsText));
     }
     partial void OnTotalPointsChanged(int value)
     {
         OnPropertyChanged(nameof(PointsText));
-        OnPropertyChanged(nameof(ProgressAndPointsText));
+        OnPropertyChanged(nameof(HardcorePointsText));
+    }
+    partial void OnHardcoreUnlockedCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(HardcoreProgressText));
+    }
+    partial void OnHardcoreEarnedPointsChanged(int value)
+    {
+        OnPropertyChanged(nameof(HardcorePointsText));
     }
     partial void OnLastRefreshedAtChanged(DateTimeOffset? value) => OnPropertyChanged(nameof(LastRefreshText));
     partial void OnStatusTextChanged(string value) => OnPropertyChanged(nameof(HasStatus));

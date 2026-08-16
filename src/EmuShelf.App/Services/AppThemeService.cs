@@ -193,6 +193,7 @@ public sealed class AppThemeService : IAppThemeService
             ["EmuAccentMutedBrush"] = new SolidColorBrush(Color.FromArgb(0x33, accent.R, accent.G, accent.B)),
             ["EmuSelectionBrush"] = new SolidColorBrush(accent),
             ["EmuAchievementBrush"] = Solid(p.IsDark ? "#E0A526" : "#A96400"),
+            ["EmuAchievementSoftcoreBrush"] = Solid(p.IsDark ? "#C3C9D4" : "#78828F"),
             ["EmuInfoBrush"] = Solid(p.IsDark ? "#5AB0E0" : "#28749A"),
             ["EmuProgressBrush"] = Solid(p.IsDark ? "#5AB0E0" : "#28749A"),
             ["EmuSuccessBrush"] = Solid(p.IsDark ? "#4BB07C" : "#287A59"),

@@ -143,33 +143,63 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void LastPlayed_DefaultsToNull_AndSetLastPlayedRoundTrips()
+    public void LastPlayed_DefaultsToNull_AndRecordLaunchStartedRoundTrips()
     {
         _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
         var game = _library.GetGames("playstation").Single();
         Assert.Null(game.LastPlayedAt);
+        Assert.Equal(0, game.PlayCount);
 
         var playedAt = DateTimeOffset.FromUnixTimeMilliseconds(
             DateTimeOffset.Parse("2026-08-04T09:15:00+00:00").ToUnixTimeMilliseconds());
-        _library.SetLastPlayed(game.Id, playedAt);
+        _library.RecordLaunchStarted(game.Id, playedAt);
 
-        Assert.Equal(playedAt, _library.GetGames("playstation").Single().LastPlayedAt);
+        var reloaded = _library.GetGames("playstation").Single();
+        Assert.Equal(playedAt, reloaded.LastPlayedAt);
+        Assert.Equal(1, reloaded.PlayCount);
     }
 
     [Fact]
-    public void SetLastPlayed_OverwritesTheEarlierTimestamp()
+    public void RecordLaunchStarted_OverwritesTimestamp_AndCountsEveryLaunch()
     {
         _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
         var game = _library.GetGames("playstation").Single();
         var first = DateTimeOffset.Parse("2026-08-01T00:00:00+00:00");
         var later = DateTimeOffset.Parse("2026-08-04T00:00:00+00:00");
 
-        _library.SetLastPlayed(game.Id, first);
-        _library.SetLastPlayed(game.Id, later);
+        _library.RecordLaunchStarted(game.Id, first);
+        _library.RecordLaunchStarted(game.Id, later);
 
+        var reloaded = _library.GetGames("playstation").Single();
         Assert.Equal(
             later.ToUnixTimeMilliseconds(),
-            _library.GetGames("playstation").Single().LastPlayedAt!.Value.ToUnixTimeMilliseconds());
+            reloaded.LastPlayedAt!.Value.ToUnixTimeMilliseconds());
+        Assert.Equal(2, reloaded.PlayCount);
+    }
+
+    [Fact]
+    public void Playtime_DefaultsToZero_AndAddPlaytimeAccumulates()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        Assert.Equal(TimeSpan.Zero, game.Playtime);
+
+        _library.AddPlaytime(game.Id, TimeSpan.FromMinutes(20));
+        _library.AddPlaytime(game.Id, TimeSpan.FromMinutes(25));
+
+        Assert.Equal(TimeSpan.FromMinutes(45), _library.GetGames("playstation").Single().Playtime);
+    }
+
+    [Fact]
+    public void AddPlaytime_IgnoresZeroAndNegativeDurations()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+
+        _library.AddPlaytime(game.Id, TimeSpan.Zero);
+        _library.AddPlaytime(game.Id, TimeSpan.FromSeconds(-30));
+
+        Assert.Equal(TimeSpan.Zero, _library.GetGames("playstation").Single().Playtime);
     }
 
     [Fact]

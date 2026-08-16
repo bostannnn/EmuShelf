@@ -41,6 +41,90 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
+    public void AchievementProgress_PrefersTheDisplayCounts_OverTheColumnText()
+    {
+        var viewModel = CreateGame();
+
+        // Real counts are supplied; the count/ratio come from them, not from re-parsing the text.
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true,
+            ColumnText: "ignored",
+            Tooltip: "5 of 20 unlocked.",
+            Awarded: 5,
+            Total: 20));
+
+        Assert.Equal("5/20", viewModel.GamepadAchievementCountText);
+        Assert.Equal(5d / 20d, viewModel.GamepadAchievementProgressRatio, 8);
+    }
+
+    [Fact]
+    public void AchievementWidget_ExposesSoftcoreAndHardcoreReadoutsAtOnce()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: "7/20", Tooltip: "",
+            Awarded: 7, AwardedHardcore: 4, Total: 20));
+
+        // Softcore (silver) readout.
+        Assert.Equal("7/20", viewModel.GamepadAchievementCountText);
+        Assert.Equal(7d / 20d, viewModel.GamepadAchievementProgressRatio, 8);
+        // Hardcore (gold) readout, shown alongside.
+        Assert.Equal("4/20", viewModel.GamepadHardcoreCountText);
+        Assert.Equal(4d / 20d, viewModel.GamepadHardcoreProgressRatio, 8);
+        Assert.True(viewModel.HasHardcoreAchievementProgress);
+    }
+
+    [Fact]
+    public void AchievementColumns_SplitSoftcoreAndHardcoreFractionsAndSortKeys()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: "7/20", Tooltip: "",
+            Awarded: 7, AwardedHardcore: 4, Total: 20));
+
+        Assert.Equal("7/20", viewModel.AchievementsColumnText);
+        Assert.Equal("4/20", viewModel.HardcoreColumnText);
+        Assert.Equal(7, viewModel.AchievementSortKey);
+        Assert.Equal(4, viewModel.HardcoreSortKey);
+    }
+
+    [Fact]
+    public void AchievementColumns_AreEmDashesUntilProgressLoads_AndSortBelowLoadedGames()
+    {
+        var viewModel = CreateGame();
+
+        // Matched set, but progress hasn't loaded (no counts): both columns dash, both sort at 0.
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: RetroAchievementsDisplay.Dash, Tooltip: ""));
+        Assert.Equal(RetroAchievementsDisplay.Dash, viewModel.AchievementsColumnText);
+        Assert.Equal(RetroAchievementsDisplay.Dash, viewModel.HardcoreColumnText);
+        Assert.Equal(0, viewModel.AchievementSortKey);
+        Assert.Equal(0, viewModel.HardcoreSortKey);
+
+        // No achievement set at all: both sort below every game that has one.
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: false, ColumnText: RetroAchievementsDisplay.Dash, Tooltip: ""));
+        Assert.Equal(-1, viewModel.AchievementSortKey);
+        Assert.Equal(-1, viewModel.HardcoreSortKey);
+    }
+
+    [Fact]
+    public void AchievementWidget_HidesTheHardcoreReadoutWhenNoHardcoreUnlocks()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: "7/20", Tooltip: "",
+            Awarded: 7, AwardedHardcore: 0, Total: 20));
+
+        Assert.Equal("7/20", viewModel.GamepadAchievementCountText);
+        Assert.Equal("0/20", viewModel.GamepadHardcoreCountText);
+        Assert.False(viewModel.HasHardcoreAchievementProgress);
+    }
+
+    [Fact]
     public void DisplayTitle_PrefersTheScrapedName_ButFallsBackToTitleAndTracksRenames()
     {
         var viewModel = CreateGame();
@@ -342,8 +426,61 @@ public sealed class GameViewModelPresentationTests
         Assert.Equal(0, viewModel.YearSortKey);
     }
 
+    [Theory]
+    [InlineData(0, "—")]
+    [InlineData(30, "< 1m")]
+    [InlineData(60, "1m")]
+    [InlineData(45 * 60, "45m")]
+    [InlineData(60 * 60, "1h")]
+    [InlineData(2 * 60 * 60 + 5 * 60, "2h 5m")]
+    [InlineData(90 * 60, "1h 30m")]
+    public void PlaytimeText_FormatsAsCompactHoursAndMinutes(int totalSeconds, string expected)
+    {
+        var viewModel = CreateGameWith(TimeSpan.FromSeconds(totalSeconds), playCount: 1);
+
+        Assert.Equal(expected, viewModel.PlaytimeText);
+        Assert.Equal(TimeSpan.FromSeconds(totalSeconds), viewModel.PlaytimeSortKey);
+    }
+
+    [Theory]
+    [InlineData(0, "—")]
+    [InlineData(1, "1")]
+    [InlineData(12, "12")]
+    public void PlayCountText_ShowsDashOnlyWhenNeverPlayed(int playCount, string expected)
+    {
+        var viewModel = CreateGameWith(TimeSpan.Zero, playCount);
+
+        Assert.Equal(expected, viewModel.PlayCountText);
+        Assert.Equal(playCount, viewModel.PlayCountSortKey);
+    }
+
+    [Fact]
+    public void GamepadPlaytimeSummary_CombinesTimeAndPlays_AndHidesWhenUnplayed()
+    {
+        Assert.False(CreateGameWith(TimeSpan.Zero, playCount: 0).HasGamepadPlaytime);
+        Assert.Equal(string.Empty, CreateGameWith(TimeSpan.Zero, playCount: 0).GamepadPlaytimeSummary);
+
+        var single = CreateGameWith(TimeSpan.FromMinutes(90), playCount: 1);
+        Assert.True(single.HasGamepadPlaytime);
+        Assert.Equal("1h 30m • 1 play", single.GamepadPlaytimeSummary);
+
+        var many = CreateGameWith(TimeSpan.FromHours(12), playCount: 5);
+        Assert.Equal("12h • 5 plays", many.GamepadPlaytimeSummary);
+
+        // Launched but never tracked to exit (app killed mid-session): the count shows, the time does not.
+        var killed = CreateGameWith(TimeSpan.Zero, playCount: 2);
+        Assert.Equal("2 plays", killed.GamepadPlaytimeSummary);
+    }
+
     private static GameViewModel CreateGame() => new(
         CreateModel(1, "/games/sample.chd"),
+        "PlayStation 2",
+        "PS2",
+        "#4657D7",
+        platformArtwork: new DrawingImage());
+
+    private static GameViewModel CreateGameWith(TimeSpan playtime, int playCount) => new(
+        CreateModel(1, "/games/sample.chd") with { Playtime = playtime, PlayCount = playCount },
         "PlayStation 2",
         "PS2",
         "#4657D7",

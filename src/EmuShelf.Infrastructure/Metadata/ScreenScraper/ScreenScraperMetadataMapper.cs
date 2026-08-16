@@ -1,7 +1,6 @@
 using System.Globalization;
 using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Metadata.ScreenScraper;
-using EmuShelf.Core.Settings;
 
 namespace EmuShelf.Infrastructure.Metadata.ScreenScraper;
 
@@ -15,23 +14,22 @@ public static class ScreenScraperMetadataMapper
         long gameId,
         int screenScraperSystemId,
         ScreenScraperGameInfo game,
-        ScreenScraperSettings settings,
         DateTimeOffset fetchedAt)
     {
-        var fields = settings.MetadataFields ?? [];
+        var fields = ScreenScraperMediaProfile.MetadataFields;
         var values = new List<GameMetadataValue>();
         var sourceUri = BuildPublicGameUri(screenScraperSystemId, game.ProviderGameId);
 
         if (fields.Contains(GameMetadataField.Title))
-            Add(values, gameId, GameMetadataField.Title, SelectByRegion(game.Names, settings), null, game, sourceUri, fetchedAt);
+            Add(values, gameId, GameMetadataField.Title, SelectByRegion(game.Names), null, game, sourceUri, fetchedAt);
         if (fields.Contains(GameMetadataField.Developer))
             Add(values, gameId, GameMetadataField.Developer, game.Developer, null, game, sourceUri, fetchedAt);
         if (fields.Contains(GameMetadataField.Publisher))
             Add(values, gameId, GameMetadataField.Publisher, game.Publisher, null, game, sourceUri, fetchedAt);
         if (fields.Contains(GameMetadataField.Genre))
-            Add(values, gameId, GameMetadataField.Genre, SelectByLanguage(game.Genres, settings), null, game, sourceUri, fetchedAt);
+            Add(values, gameId, GameMetadataField.Genre, SelectByLanguage(game.Genres), null, game, sourceUri, fetchedAt);
         if (fields.Contains(GameMetadataField.ReleaseDate))
-            Add(values, gameId, GameMetadataField.ReleaseDate, SelectDate(game.ReleaseDates, settings), null, game, sourceUri, fetchedAt);
+            Add(values, gameId, GameMetadataField.ReleaseDate, SelectDate(game.ReleaseDates), null, game, sourceUri, fetchedAt);
         if (fields.Contains(GameMetadataField.Players))
             Add(values, gameId, GameMetadataField.Players, game.Players, null, game, sourceUri, fetchedAt);
         if (fields.Contains(GameMetadataField.Rating) &&
@@ -71,17 +69,16 @@ public static class ScreenScraperMetadataMapper
     }
 
     public static IReadOnlyDictionary<GameMediaKind, ScreenScraperMediaCandidate> SelectMedia(
-        ScreenScraperGameInfo game,
-        ScreenScraperSettings settings)
+        ScreenScraperGameInfo game)
     {
         var selected = new Dictionary<GameMediaKind, ScreenScraperMediaCandidate>();
-        foreach (var kind in settings.MediaKinds ?? [])
+        foreach (var kind in ScreenScraperMediaProfile.MediaKinds)
         {
             var candidate = game.Media
                 .Select(media => new { Media = media, TypeRank = GetTypeRank(kind, media.MediaType) })
                 .Where(item => item.TypeRank >= 0)
-                .OrderBy(item => GetRegionRank(item.Media.Region, settings.RegionPriority))
-                .ThenBy(item => GetLanguageRank(item.Media.Language, settings.PreferredLanguage))
+                .OrderBy(item => GetRegionRank(item.Media.Region, ScreenScraperMediaProfile.RegionPriority))
+                .ThenBy(item => GetLanguageRank(item.Media.Language, ScreenScraperMediaProfile.PreferredLanguage))
                 .ThenBy(item => item.TypeRank)
                 .Select(item => item.Media)
                 .FirstOrDefault();
@@ -91,34 +88,28 @@ public static class ScreenScraperMetadataMapper
         return selected;
     }
 
-    private static string? SelectByRegion(
-        IReadOnlyList<ScreenScraperLocalizedText> values,
-        ScreenScraperSettings settings) =>
+    private static string? SelectByRegion(IReadOnlyList<ScreenScraperLocalizedText> values) =>
         values
             .Where(value => !string.IsNullOrWhiteSpace(value.Value))
-            .OrderBy(value => GetRegionRank(value.Region, settings.RegionPriority))
+            .OrderBy(value => GetRegionRank(value.Region, ScreenScraperMediaProfile.RegionPriority))
             .Select(value => value.Value)
             .FirstOrDefault();
 
-    private static string? SelectByLanguage(
-        IReadOnlyList<ScreenScraperLocalizedText> values,
-        ScreenScraperSettings settings) =>
+    private static string? SelectByLanguage(IReadOnlyList<ScreenScraperLocalizedText> values) =>
         values
             .Where(value => !string.IsNullOrWhiteSpace(value.Value))
-            .OrderBy(value => GetLanguageRank(value.Language, settings.PreferredLanguage))
+            .OrderBy(value => GetLanguageRank(value.Language, ScreenScraperMediaProfile.PreferredLanguage))
             .Select(value => value.Value)
             .FirstOrDefault();
 
-    private static string? SelectDate(
-        IReadOnlyList<ScreenScraperReleaseDate> values,
-        ScreenScraperSettings settings) =>
+    private static string? SelectDate(IReadOnlyList<ScreenScraperReleaseDate> values) =>
         values
             .Where(value => DateOnly.TryParse(
                 value.Value,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.None,
                 out _))
-            .OrderBy(value => GetRegionRank(value.Region, settings.RegionPriority))
+            .OrderBy(value => GetRegionRank(value.Region, ScreenScraperMediaProfile.RegionPriority))
             .Select(value => DateOnly.Parse(value.Value, CultureInfo.InvariantCulture).ToString("yyyy-MM-dd"))
             .FirstOrDefault();
 

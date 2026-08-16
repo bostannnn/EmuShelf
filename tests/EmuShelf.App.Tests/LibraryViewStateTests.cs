@@ -404,7 +404,7 @@ public class LibraryViewStateTests : IDisposable
     public void ResizingAFixedColumnAdjustsTheFlexColumnAndPersists()
     {
         var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings()));
-        viewModel.ListViewportWidth = 1000; // enough room that the flex column is above its minimum
+        viewModel.ListViewportWidth = 1300; // enough room that the flex column is above its minimum
         var console = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Console);
         var title = viewModel.Columns.Single(column => column.Key == LibraryColumnKey.Title);
         var flexBefore = title.Width;

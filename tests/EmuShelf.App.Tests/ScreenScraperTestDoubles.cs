@@ -147,12 +147,13 @@ internal sealed class StubSettingsService : ISettingsService
 {
     private AppSettings _settings;
 
-    public StubSettingsService(bool screenScraperEnabled = true) =>
+    public StubSettingsService(bool screenScraperEnabled = true, bool webImageSearchEnabled = true) =>
         _settings = new AppSettings
         {
             Scraping = new ScrapingSettings
             {
                 ScreenScraper = new ScreenScraperSettings { Enabled = screenScraperEnabled },
+                WebImageSearchEnabled = webImageSearchEnabled,
             },
         };
 

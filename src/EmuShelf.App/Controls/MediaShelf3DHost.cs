@@ -13,7 +13,24 @@ namespace EmuShelf.App.Controls;
 /// </summary>
 public sealed class MediaShelf3DHost : ContentControl
 {
-    private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(4);
+    /// <summary>
+    /// How long a scene is given to bring up a GL context before the flat-cover fallback is taken as
+    /// the real answer.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately generous. Some drivers — the Steam Deck's Mesa stack among them — are slow to hand
+    /// out a context the first time, and the renderer then links five shader programs and bakes an
+    /// environment cubemap before it reports success, all synchronously inside <c>OnOpenGlInit</c>. A
+    /// single long deadline covers that cold start.
+    ///
+    /// It deliberately does <em>not</em> retry by tearing the scene down and rebuilding it. Rebuilding
+    /// restarts the same cold start from zero, so splitting the budget into short windows that must
+    /// each independently beat the clock can only fail a slow-but-capable driver that one long wait
+    /// would have rendered — the opposite of the intent. If the context genuinely never comes (an
+    /// unsupported GL surface) the deadline still expires and the flat-cover fallback takes over, only
+    /// later rather than wrongly. See DECISIONS 2026-08-16.
+    /// </remarks>
+    private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(10);
 
     public static readonly StyledProperty<bool> IsActiveProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, bool>(nameof(IsActive));
@@ -254,7 +271,10 @@ public sealed class MediaShelf3DHost : ContentControl
 
     private void OnInitializationTimedOut(object? sender, EventArgs e) =>
         Fail(new TimeoutException(
-            "The OpenGL shelf did not initialize. The platform may not support Avalonia's shared GL surface."));
+            $"The OpenGL shelf did not report a ready context within {InitializationTimeout.TotalSeconds:0}s. "
+            + "If the log has no \"Shelf GL context acquired\" line the framework never handed the control a "
+            + "GL context — the platform may not support Avalonia's shared GL surface; if it does, the "
+            + "renderer build did not finish in time."));
 
     private void RestartWatchdog()
     {

@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Logging;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Platform;
@@ -28,6 +29,9 @@ namespace EmuShelf.App.Controls;
 /// </summary>
 public sealed class MediaShelf3DControl : OpenGlControlBase
 {
+    /// <summary>Avalonia log area for this scene's own GL diagnostics; captured by AvaloniaFileLogSink.</summary>
+    internal const string ShelfLogArea = "EmuShelf.Shelf3D";
+
     private const int NeighbourRadius = 3;
     // Tightened alongside the camera's closer framing: at the old gap the neighbouring media fell
     // entirely outside a filled frame, which turns a shelf back into a single-hero view.
@@ -125,6 +129,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private FrameSnapshot? _lastRenderedSnapshot;
     private uint _lastRenderedWidth;
     private uint _lastRenderedHeight;
+    // One line per context: proves frames actually reach the surface and at what pixel size, so a
+    // scene that inits cleanly but shows nothing (a degenerate viewport, or output that never
+    // composites) is told apart from one that renders wrong. See DECISIONS 2026-08-16.
+    private bool _firstFrameLogged;
 
     /// <summary>
     /// The frozen description of the next frame, built on the UI thread and read by the render
@@ -423,10 +431,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         if (!_isAttached || !Crt.IsActive || ChromeSource is null
             || _observedWindow?.WindowState == WindowState.Minimized)
         {
-            // Switching the effect off has to stop the timer, not merely stop using its output: the
-            // capture is a full-window offscreen render on the UI thread, and leaving it ticking is
-            // most of what the setting is meant to reclaim. A scene with no chrome source — the
-            // in-place shelf, which draws no couch UI into itself — never starts one to begin with.
+            // A non-active presentation stops the timer, not merely stops using its output: the
+            // capture is a full-window offscreen render on the UI thread. This fires on the grid and
+            // spotlight with the effect off, where the one renderer idles entirely, and while the
+            // window is minimised. On the effect-off shelf the presentation is Flat (active), so the
+            // capture keeps running — the price of one renderer compositing the couch chrome (rail,
+            // title, overlays, toasts) over the flat media there. A scene with no chrome source never
+            // starts a capture at all.
             _chromeSnapshot?.Dispose();
             _chromeSnapshot = null;
             return;
@@ -437,12 +448,43 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return;
         }
 
-        _chromeSnapshot = new ChromeSnapshot(() => ChromeSource, TimeSpan.FromMilliseconds(33));
+        _chromeSnapshot = new ChromeSnapshot(
+            () => ChromeSource, TimeSpan.FromMilliseconds(33), OnChromeCaptured);
         _chromeSnapshot.Start();
+    }
+
+    /// <summary>
+    /// Runs on the UI thread after each chrome capture; keeps the couch chrome live behind a still
+    /// scene.
+    /// </summary>
+    /// <remarks>
+    /// The animated tube already requests a frame every render, so its captures upload on their own
+    /// and this does nothing for it. A Flat presentation redraws only on demand, so nothing would
+    /// upload a capture taken while the shelf sits still — and the chrome it carries is the whole
+    /// couch UI, including overlays and toasts that appear without moving the shelf. Requesting a
+    /// frame per capture is what keeps those visible, at the capture's own 30Hz rather than the
+    /// tube's 60Hz. When the capture stops — off the shelf, or minimised — so do these redraws.
+    /// </remarks>
+    private void OnChromeCaptured()
+    {
+        if (Crt.IsActive && !Crt.IsAnimated)
+        {
+            RequestNextFrameRendering();
+        }
     }
 
     protected override void OnOpenGlInit(GlInterface gl)
     {
+        // Instrumentation for the Steam Deck "no 3D/CRT" diagnosis. This entry line proves the
+        // framework actually handed the control a context — its absence in the log means the silent
+        // no-context path (an unsupported GL surface), which no init timeout can cure. The elapsed
+        // time to build the renderer then separates a slow Mesa cold start from an unsupported
+        // platform, since Create links five shader programs and bakes an environment cubemap here,
+        // synchronously, before success is reported. Routed through Avalonia's log, which now lands in
+        // Logs/ (AvaloniaFileLogSink). See DECISIONS 2026-08-16.
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        Logger.TryGet(LogEventLevel.Information, ShelfLogArea)
+            ?.Log(this, "Shelf GL context acquired; building renderer.");
         try
         {
             _gl = GL.GetApi(new LamdaNativeContext(name => gl.GetProcAddress(name)));
@@ -456,13 +498,41 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _uploadedAccent = accent;
             // A fresh renderer has an empty scene buffer, so the first frame must render in full.
             _lastRenderedSnapshot = null;
+            _firstFrameLogged = false;
+            Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
+                this,
+                "Shelf GL init succeeded in {Elapsed} ms using {Dialect}; {GlIdentity}",
+                (long)System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
+                dialect,
+                DescribeGl());
             InitializationSucceeded?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception exception)
         {
             _renderer = null;
             _gl = null;
+            Logger.TryGet(LogEventLevel.Error, ShelfLogArea)?.Log(
+                this,
+                "Shelf GL init failed after {Elapsed} ms: {Error}",
+                (long)System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
+                exception.Message);
             Fail(exception);
+        }
+    }
+
+    /// <summary>The GPU identity behind the context, for the log — tells a Mesa/RADV Deck from Windows/ANGLE.</summary>
+    private string DescribeGl()
+    {
+        try
+        {
+            return $"vendor={_gl!.GetStringS(Silk.NET.OpenGL.StringName.Vendor)}; "
+                + $"renderer={_gl.GetStringS(Silk.NET.OpenGL.StringName.Renderer)}; "
+                + $"version={_gl.GetStringS(Silk.NET.OpenGL.StringName.Version)}; "
+                + $"glsl={_gl.GetStringS(Silk.NET.OpenGL.StringName.ShadingLanguageVersion)}";
+        }
+        catch (Exception exception)
+        {
+            return $"(GL identity unavailable: {exception.Message})";
         }
     }
 
@@ -501,7 +571,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         // the size from it renders the tube into a fraction of the screen (see the couch shelf notes),
         // so query the surface and only fall back to the computed size before the first viewport is
         // reported. This read is safe on the render thread: nothing has touched the viewport yet.
-        if (!_renderer.TryGetSurfaceSize(out var width, out var height))
+        var surfaceSizeReported = _renderer.TryGetSurfaceSize(out var width, out var height);
+        if (!surfaceSizeReported)
         {
             var scaling = frame?.RenderScaling ?? 1.0;
             width = (uint)Math.Max(1, Math.Round(Bounds.Width * scaling));
@@ -574,6 +645,18 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             // A clean frame clears the transient-failure count that keeps a one-off from ever
             // reaching the give-up threshold.
             _consecutiveRenderFailures = 0;
+
+            if (!_firstFrameLogged)
+            {
+                _firstFrameLogged = true;
+                Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
+                    this,
+                    "Shelf first frame drawn at {Width}x{Height} px (viewportReported={Reported}, crtActive={Crt}).",
+                    width,
+                    height,
+                    surfaceSizeReported,
+                    crt.IsActive);
+            }
 
             // A tube whose roll, hum and jitter are moving has to be redrawn even when nothing in
             // the library changed, so the scene cannot go back to drawing only on demand. This is
@@ -864,20 +947,11 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     continue;
                 }
 
-                TextureImage? texture;
-                try
+                if (!TryBuildFaceTexture(artwork, out var texture))
                 {
-                    texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
-                }
-                catch (Exception)
-                {
-                    // The snapshot holds a live reference to this bitmap, but the UI thread can still
-                    // dispose it — an eviction, a path change, a detach — between the frame being
-                    // published and this upload reading its pixels. That throws here. Keep whatever is
-                    // already on the GPU for this face and do not record the upload, so a later clean
-                    // frame retries. This is deliberately a per-face skip rather than failing the whole
-                    // draw: one racing bitmap must not drop the entire shelf toward the flat-cover
-                    // fallback via the consecutive-failure counter.
+                    // The artwork raced disposal — see TryBuildFaceTexture. Keep whatever is already
+                    // on the GPU for this face and do not record the upload, so a later clean frame
+                    // retries. A per-face skip, never the whole draw.
                     continue;
                 }
 
@@ -1577,6 +1651,35 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
     private static Vector3 ToLinear(Color colour) =>
         MediaShellRenderer.ToLinear(colour.R / 255f, colour.G / 255f, colour.B / 255f);
+
+    /// <summary>
+    /// Builds one shell face's GPU texture from its artwork, or reports that the artwork raced
+    /// disposal and the face should be skipped.
+    /// </summary>
+    /// <remarks>
+    /// The frame snapshot holds a live reference to the bitmap, but the UI thread can still dispose it
+    /// — an eviction, a path change, a detach, or (the reported case) a scrape swapping the cover —
+    /// between the frame being published and this upload reading its pixels. Reading a disposed bitmap
+    /// throws, and this contains that throw to the single face: it returns <c>false</c> so the caller
+    /// keeps whatever is on the GPU and retries on a later clean frame, rather than letting the
+    /// exception escape into <see cref="OnOpenGlRender"/> and march the whole shelf toward the
+    /// flat-cover fallback via the consecutive-failure counter — which is exactly how a scrape could
+    /// blank the CRT and every model. Extracted so this invariant can be tested without a GL context;
+    /// a returned <c>true</c> with a null texture is the normal no-artwork face.
+    /// </remarks>
+    internal static bool TryBuildFaceTexture(object? artwork, out TextureImage? texture)
+    {
+        try
+        {
+            texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
+            return true;
+        }
+        catch (Exception)
+        {
+            texture = null;
+            return false;
+        }
+    }
 
     private static TextureImage? ToTextureImage(Bitmap bitmap)
     {

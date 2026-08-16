@@ -346,10 +346,10 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
             """
             INSERT INTO GameProviderMatches (
                 GameId, ProviderId, ProviderSystemId, SystemMappingVersion, ProviderGameId, ProviderRomId,
-                MatchMethod, EvidenceValue, Status, LastAttemptUnixMilliseconds, LastError)
+                MatchMethod, EvidenceValue, Status, LastAttemptUnixMilliseconds, LastError, CoverageComplete)
             VALUES (
                 $gameId, $providerId, $providerSystemId, $systemMappingVersion, $providerGameId, $providerRomId,
-                $matchMethod, $evidenceValue, $status, $lastAttempt, $lastError)
+                $matchMethod, $evidenceValue, $status, $lastAttempt, $lastError, $coverageComplete)
             ON CONFLICT (GameId, ProviderId) DO UPDATE SET
                 ProviderSystemId = excluded.ProviderSystemId,
                 SystemMappingVersion = excluded.SystemMappingVersion,
@@ -359,7 +359,8 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
                 EvidenceValue = excluded.EvidenceValue,
                 Status = excluded.Status,
                 LastAttemptUnixMilliseconds = excluded.LastAttemptUnixMilliseconds,
-                LastError = excluded.LastError;
+                LastError = excluded.LastError,
+                CoverageComplete = excluded.CoverageComplete;
             """;
         command.Parameters.AddWithValue("$gameId", match.GameId);
         command.Parameters.AddWithValue("$providerId", match.ProviderId.Trim());
@@ -374,6 +375,7 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         command.Parameters.AddWithValue("$status", (int)match.Status);
         command.Parameters.AddWithValue("$lastAttempt", match.LastAttemptedAt.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$lastError", DbValue(match.LastError));
+        command.Parameters.AddWithValue("$coverageComplete", match.CoverageComplete ? 1 : 0);
         command.ExecuteNonQuery();
     }
 
@@ -456,7 +458,7 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         command.CommandText =
             """
             SELECT ProviderId, ProviderSystemId, SystemMappingVersion, ProviderGameId, ProviderRomId, MatchMethod,
-                   EvidenceValue, Status, LastAttemptUnixMilliseconds, LastError
+                   EvidenceValue, Status, LastAttemptUnixMilliseconds, LastError, CoverageComplete
             FROM GameProviderMatches
             WHERE GameId = $gameId
             ORDER BY ProviderId;
@@ -477,7 +479,8 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
                 ReadNullableString(reader, 6),
                 (GameMetadataStatus)reader.GetInt32(7),
                 DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(8)),
-                ReadNullableString(reader, 9)));
+                ReadNullableString(reader, 9),
+                reader.GetInt64(10) != 0));
         }
         return matches;
     }

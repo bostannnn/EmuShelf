@@ -1,5 +1,4 @@
 using EmuShelf.Core.Settings;
-using EmuShelf.Core.Metadata;
 using EmuShelf.Infrastructure.Settings;
 
 namespace EmuShelf.Infrastructure.Tests.Settings;
@@ -21,11 +20,8 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.Equal(ThemePreference.System, settings.Theme);
         Assert.False(settings.AutomaticallyFetchMetadataAfterImport);
         Assert.False(settings.MetadataConsentPromptShown);
-        Assert.True(settings.Scraping.BuiltInCatalog.Enabled);
         Assert.False(settings.Scraping.ScreenScraper.Enabled);
-        Assert.False(settings.Scraping.ScreenScraper.AutomaticallyScrapeAfterImport);
-        Assert.True(settings.Scraping.DuckDuckGoArtwork.Enabled);
-        Assert.Contains(GameMediaKind.Fanart, settings.Scraping.ScreenScraper.MediaKinds);
+        Assert.True(settings.Scraping.WebImageSearchEnabled);
     }
 
     [Fact]
@@ -39,16 +35,8 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
             MetadataConsentPromptShown = true,
             Scraping = new ScrapingSettings
             {
-                DuckDuckGoArtwork = new ScrapeProviderSettings { Enabled = false },
-                ScreenScraper = new ScreenScraperSettings
-                {
-                    Enabled = true,
-                    AutomaticallyScrapeAfterImport = true,
-                    PreferredLanguage = "fr",
-                    RegionPriority = ["fr", "eu", "wor"],
-                    MetadataFields = [GameMetadataField.Description, GameMetadataField.Genre],
-                    MediaKinds = [GameMediaKind.BoxFront, GameMediaKind.Wheel],
-                },
+                WebImageSearchEnabled = false,
+                ScreenScraper = new ScreenScraperSettings { Enabled = true },
             },
         };
 
@@ -58,28 +46,17 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.Equal(ThemePreference.Dark, loaded.Theme);
         Assert.True(loaded.AutomaticallyFetchMetadataAfterImport);
         Assert.True(loaded.MetadataConsentPromptShown);
-        Assert.False(loaded.Scraping.DuckDuckGoArtwork.Enabled);
+        Assert.False(loaded.Scraping.WebImageSearchEnabled);
         Assert.True(loaded.Scraping.ScreenScraper.Enabled);
-        Assert.True(loaded.Scraping.ScreenScraper.AutomaticallyScrapeAfterImport);
-        Assert.Equal("fr", loaded.Scraping.ScreenScraper.PreferredLanguage);
-        Assert.Equal(["fr", "eu", "wor"], loaded.Scraping.ScreenScraper.RegionPriority);
-        // MetadataFields and MediaKinds are code-owned catalogue defaults (no UI edits them), so loading
-        // re-merges the current defaults: the entries the file listed are preserved AND every supported
-        // kind/field is ensured, so an older file can never hide one the app now scrapes.
-        Assert.Contains(GameMetadataField.Description, loaded.Scraping.ScreenScraper.MetadataFields);
-        Assert.Contains(GameMetadataField.Genre, loaded.Scraping.ScreenScraper.MetadataFields);
-        Assert.Contains(GameMetadataField.Title, loaded.Scraping.ScreenScraper.MetadataFields);
-        Assert.Contains(GameMediaKind.BoxFront, loaded.Scraping.ScreenScraper.MediaKinds);
-        Assert.Contains(GameMediaKind.Wheel, loaded.Scraping.ScreenScraper.MediaKinds);
-        Assert.Contains(GameMediaKind.TitleScreen, loaded.Scraping.ScreenScraper.MediaKinds);
     }
 
     [Fact]
-    public void Load_OlderFileMissingNewMediaKinds_MergesCurrentCatalogueDefaults()
+    public void Load_OlderFileWithLegacyScrapingFields_IgnoresThemAndLoads()
     {
-        // A settings.json written by a build that predated the extra media kinds froze the old four-kind
-        // allow-list. After an in-place update, the new kinds (title screen, box back/spine, cartridge/disc
-        // and its texture) must still reach the scraper instead of being filtered out on load.
+        // A settings.json written by an older build serialized media-kind/metadata-field lists and other
+        // now-removed scraping toggles (BuiltInCatalog/DuckDuckGoArtwork/AutomaticallyScrapeAfterImport).
+        // Those are code-owned again, so the loader must ignore the unknown members and still read the
+        // fields that remain, without throwing.
         File.WriteAllText(
             AppPaths.SettingsFilePath,
             """
@@ -87,23 +64,22 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
               "Scraping": {
                 "ScreenScraper": {
                   "Enabled": true,
+                  "AutomaticallyScrapeAfterImport": true,
                   "MediaKinds": ["BoxFront", "Screenshot", "Wheel", "Fanart"]
-                }
+                },
+                "DuckDuckGoArtwork": { "Enabled": false },
+                "BuiltInCatalog": { "Enabled": true }
               }
             }
             """);
         var service = new JsonSettingsService(AppPaths);
 
-        var mediaKinds = service.Load().Scraping.ScreenScraper.MediaKinds;
+        var scraping = service.Load().Scraping;
 
-        Assert.Contains(GameMediaKind.TitleScreen, mediaKinds);
-        Assert.Contains(GameMediaKind.BoxBack, mediaKinds);
-        Assert.Contains(GameMediaKind.BoxSpine, mediaKinds);
-        Assert.Contains(GameMediaKind.PhysicalMedia, mediaKinds);
-        Assert.Contains(GameMediaKind.PhysicalMediaTexture, mediaKinds);
-        // The kinds the file already listed remain present.
-        Assert.Contains(GameMediaKind.BoxFront, mediaKinds);
-        Assert.Contains(GameMediaKind.Screenshot, mediaKinds);
+        Assert.True(scraping.ScreenScraper.Enabled);
+        // WebImageSearchEnabled is the new toggle; the legacy DuckDuckGoArtwork block is ignored, so it
+        // keeps its default rather than picking up the old "Enabled": false.
+        Assert.True(scraping.WebImageSearchEnabled);
     }
 
     [Fact]

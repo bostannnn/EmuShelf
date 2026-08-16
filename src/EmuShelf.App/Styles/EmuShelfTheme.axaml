@@ -30,6 +30,7 @@
             <SolidColorBrush x:Key="EmuAccentMutedBrush" Color="#337C6CE0" />
             <SolidColorBrush x:Key="EmuSelectionBrush" Color="#7C6CE0" />
             <SolidColorBrush x:Key="EmuAchievementBrush" Color="#A96400" />
+            <SolidColorBrush x:Key="EmuAchievementSoftcoreBrush" Color="#78828F" />
             <SolidColorBrush x:Key="EmuInfoBrush" Color="#28749A" />
             <SolidColorBrush x:Key="EmuProgressBrush" Color="#28749A" />
             <SolidColorBrush x:Key="EmuSuccessBrush" Color="#287A59" />
@@ -66,6 +67,7 @@
             <SolidColorBrush x:Key="EmuAccentMutedBrush" Color="#335B58D9" />
             <SolidColorBrush x:Key="EmuSelectionBrush" Color="#5B58D9" />
             <SolidColorBrush x:Key="EmuAchievementBrush" Color="#F0BD55" />
+            <SolidColorBrush x:Key="EmuAchievementSoftcoreBrush" Color="#C3C9D4" />
             <SolidColorBrush x:Key="EmuInfoBrush" Color="#6EBCE1" />
             <SolidColorBrush x:Key="EmuProgressBrush" Color="#6EBCE1" />
             <SolidColorBrush x:Key="EmuSuccessBrush" Color="#70D3A4" />

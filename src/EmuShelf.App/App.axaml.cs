@@ -38,6 +38,12 @@ public partial class App : Application
     {
         Bootstrapper = new AppBootstrapper();
 
+        // Route Avalonia's framework log into the portable Logs/ file. The default .LogToTrace() sink
+        // (Program.cs) writes to System.Diagnostics.Trace, which has no listener in a Steam Game Mode
+        // AppImage — so the reason a GL context failed on the Steam Deck was being discarded. The
+        // shelf's GL init happens after this point, so its diagnosis is captured. See DECISIONS 2026-08-16.
+        Avalonia.Logging.Logger.Sink = new Diagnostics.AvaloniaFileLogSink(Bootstrapper.Logger);
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var themeService = new AppThemeService(
@@ -113,6 +119,11 @@ public partial class App : Application
                 _webArtworkHttpClient,
                 Bootstrapper.Logger,
                 publicArtworkPolicy);
+            // One provider instance, shared by the Desktop "Set cover" dialog and the Gamepad
+            // controller-native cover search.
+            var webArtworkSearch = new DuckDuckGoArtworkSearchProvider(
+                _metadataHttpClient,
+                publicArtworkPolicy);
             // ScreenScraper media are fetched through the SSRF-checked public downloader, then
             // imported atomically under Data/Media/ by the provider-neutral apply service.
             var scrapeApply = new GameScrapeApplicationService(
@@ -132,6 +143,7 @@ public partial class App : Application
                     Bootstrapper.ScreenScraperPreview,
                     scrapeApply,
                     Bootstrapper.MetadataStore,
+                    Bootstrapper.GameDetailsStore,
                     Bootstrapper.Logger);
             var metadataService = new GameMetadataService(
                 Bootstrapper.MetadataStore,
@@ -213,9 +225,7 @@ public partial class App : Application
                     retroAchievementsDetails,
                     retroAchievementsAccount,
                     retroAchievementsBadges,
-                    new DuckDuckGoArtworkSearchProvider(
-                        _metadataHttpClient,
-                        publicArtworkPolicy),
+                    webArtworkSearch,
                     webArtworkDownloader,
                     Bootstrapper.ScreenScraperPreview,
                     scrapeApply,
@@ -251,6 +261,7 @@ public partial class App : Application
                 scrapeApply: scrapeApply,
                 scrapeBatch: scrapeBatch,
                 artworkDownloader: webArtworkDownloader,
+                artworkSearch: webArtworkSearch,
                 settingsService: Bootstrapper.SettingsService,
                 onScreenKeyboard: new PlatformOnScreenKeyboardService(),
                 gameDetails: Bootstrapper.GameDetailsStore,

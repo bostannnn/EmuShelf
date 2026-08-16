@@ -209,9 +209,16 @@ public class MediaShellCatalogTests
         foreach (var shell in MediaShellCatalog.All)
         {
             var allowance = DepthAllowance(shell);
-            var placement = MediaShellCatalog.Place(
-                MediaShellCatalog.Definition(shell).CoverPanel, MediaShellCatalog.Load(shell));
-            var panelArea = placement.UEdge.Length() * placement.VEdge.Length();
+            var panel = MediaShellCatalog.Definition(shell).CoverPanel;
+            var placement = MediaShellCatalog.Place(panel, MediaShellCatalog.Load(shell));
+            // The rounded-corner area, not the raw rectangle's: the disc's label is a full
+            // corner-round, so its square is clipped to the inscribed circle before anything is
+            // printed. Measuring the printed face against the square would demand surface in corners
+            // that the panel itself throws away — and on the disc those corners fall past the rim.
+            var w = placement.UEdge.Length();
+            var h = placement.VEdge.Length();
+            var radius = panel.CornerRadius * MathF.Min(w, h);
+            var panelArea = (w * h) - ((4f - MathF.PI) * radius * radius);
             var printedArea = CoverPanelSurfaces(shell)
                 .Where(surface => surface.Depth <= allowance)
                 .Sum(surface => surface.Area);

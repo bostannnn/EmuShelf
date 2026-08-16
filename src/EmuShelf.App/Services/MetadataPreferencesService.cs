@@ -14,7 +14,14 @@ public interface IMetadataPreferencesService
     bool AutomaticallyFetchAfterImport { get; }
     bool ConsentPromptShown { get; }
 
+    /// <summary>Whether the manual "Set cover" picker offers unverified web image search.</summary>
+    bool WebImageSearchEnabled { get; }
+
     Task SaveAutomaticFetchAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default);
+
+    Task SaveWebImageSearchAsync(
         bool enabled,
         CancellationToken cancellationToken = default);
 
@@ -31,6 +38,7 @@ public sealed class MetadataPreferencesService : IMetadataPreferencesService
     public bool AutomaticallyFetchAfterImport =>
         _settings.AutomaticallyFetchMetadataAfterImport;
     public bool ConsentPromptShown => _settings.MetadataConsentPromptShown;
+    public bool WebImageSearchEnabled => _settings.Scraping.WebImageSearchEnabled;
 
     public MetadataPreferencesService(ISettingsService settingsService, AppSettings settings)
     {
@@ -45,6 +53,15 @@ public sealed class MetadataPreferencesService : IMetadataPreferencesService
         {
             AutomaticallyFetchMetadataAfterImport = enabled,
             MetadataConsentPromptShown = true,
+        },
+        cancellationToken);
+
+    public Task SaveWebImageSearchAsync(
+        bool enabled,
+        CancellationToken cancellationToken = default) => SaveAsync(
+        current => current with
+        {
+            Scraping = current.Scraping with { WebImageSearchEnabled = enabled },
         },
         cancellationToken);
 
@@ -72,8 +89,12 @@ internal sealed class NullMetadataPreferencesService : IMetadataPreferencesServi
 {
     public bool AutomaticallyFetchAfterImport => false;
     public bool ConsentPromptShown => true;
+    public bool WebImageSearchEnabled => true;
 
     public Task SaveAutomaticFetchAsync(bool enabled, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    public Task SaveWebImageSearchAsync(bool enabled, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 
     public Task RecordConsentAsync(

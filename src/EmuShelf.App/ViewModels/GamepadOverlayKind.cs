@@ -15,6 +15,7 @@ public enum GamepadOverlayKind
     DiscSelection,
     RemoveConfirmation,
     CoverDesktopHandoff,
+    CoverSearch,
     Scraper,
     BatchScraper,
     SystemMenu,
