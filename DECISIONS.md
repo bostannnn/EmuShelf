@@ -8669,3 +8669,17 @@ in a session cannot come up — not just the in-place host — the tube fallback
 effect-off would show flat covers there. Distinguishing that needs the Deck's log line
 ("could not start; falling back…"); if it shows a hard second-context limit, the single-renderer
 merge (never recreates a context) is the fallback design.
+
+## 2026-08-16 — The post-exit save sync is non-blocking
+
+The launch flow syncs saves twice: once before the emulator starts (download the newest save so you
+play the right one) and once after it exits (upload what you just played). Both raised the same modal
+grid-covering panel (`ShowBlockingLaunchSaveSync`), so on exit the whole desktop library was hidden
+behind a scrim until the upload finished — the covers appeared to "drop" every time you closed a game.
+
+Only the pre-launch pass genuinely blocks: the emulator cannot start until the download lands. On
+exit the player is back in the library and free to browse while the upload runs in the background.
+So `IsBlockingLaunchSaveSync` now tracks the pre-launch phase alone, and only it raises the modal
+panel / suppresses the couch corner toast. The post-exit pass keeps `IsSyncingSavesForLaunch` true
+(the lifecycle flag, still used for input suspension and the shelf toast) but leaves the grid visible,
+reporting progress through the ordinary non-modal status toast instead.

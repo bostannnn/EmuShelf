@@ -2499,6 +2499,8 @@ public class MainViewModelTests : IDisposable
         vm.StatusText = "Syncing saves before launch…";
         vm.StatusSeverity = StatusSeverity.Progress;
         vm.IsSyncingSavesForLaunch = true;
+        // The pre-launch pass blocks; the shelf overrides that to keep the scene visible.
+        vm.IsBlockingLaunchSaveSync = true;
 
         Assert.True(vm.ShowGamepadStatusToast);
         Assert.False(vm.ShowBlockingLaunchSaveSync);

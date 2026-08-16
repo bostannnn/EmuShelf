@@ -820,10 +820,17 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    // True only while a launch/exit cloud save sync is actually running. Grid/spotlight show the
-    // large centered panel; physical-shelf mode keeps the scene visible and uses its progress toast.
+    // True only while a launch/exit cloud save sync is actually running. Physical-shelf mode keeps
+    // the scene visible and uses its progress toast in both phases.
     [ObservableProperty]
     public partial bool IsSyncingSavesForLaunch { get; set; }
+
+    // True only for the pre-launch phase of that sync — the one that must finish before the emulator
+    // starts, so it holds the grid behind the large centered panel. The post-exit phase leaves this
+    // false: the player is back in the library and free to browse while the upload finishes in the
+    // background, with only the ordinary status toast to say so.
+    [ObservableProperty]
+    public partial bool IsBlockingLaunchSaveSync { get; set; }
 
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
@@ -1264,12 +1271,14 @@ public partial class MainViewModel : ViewModelBase
     public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
-    /// <summary>Drives the Gamepad corner toast. Physical-shelf launch sync stays non-modal so the
-    /// cartridge choreography remains visible; the other couch layouts retain their large panel.</summary>
+    /// <summary>Drives the Gamepad corner toast. Only the blocking pre-launch sync trades the toast
+    /// for the large centered panel, and only off the physical shelf — the shelf keeps the toast so
+    /// the cartridge choreography stays visible, and the non-blocking post-exit sync keeps it too so
+    /// the player can browse while the upload finishes.</summary>
     public bool ShowGamepadStatusToast =>
-        HasStatusMessage && (!IsSyncingSavesForLaunch || ShowGamepadShelf);
+        HasStatusMessage && (!IsBlockingLaunchSaveSync || ShowGamepadShelf);
 
-    public bool ShowBlockingLaunchSaveSync => IsSyncingSavesForLaunch && !ShowGamepadShelf;
+    public bool ShowBlockingLaunchSaveSync => IsBlockingLaunchSaveSync && !ShowGamepadShelf;
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
@@ -1776,6 +1785,9 @@ public partial class MainViewModel : ViewModelBase
     }
 
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
+        NotifySaveSyncPresentationChanged();
+
+    partial void OnIsBlockingLaunchSaveSyncChanged(bool value) =>
         NotifySaveSyncPresentationChanged();
 
     private void NotifySaveSyncPresentationChanged()
@@ -5595,6 +5607,9 @@ public partial class MainViewModel : ViewModelBase
             return null;
 
         IsSyncingSavesForLaunch = true;
+        // Only the pre-launch pass blocks the grid: the emulator cannot start until it finishes. The
+        // post-exit pass runs while the player browses, so it stays off the modal panel.
+        IsBlockingLaunchSaveSync = !afterExit;
         SetStatus(
             afterExit
                 ? $"{displayTitle} finished. Syncing saves…"
@@ -5647,6 +5662,7 @@ public partial class MainViewModel : ViewModelBase
         finally
         {
             IsSyncingSavesForLaunch = false;
+            IsBlockingLaunchSaveSync = false;
         }
     }
 
