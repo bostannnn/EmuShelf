@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Logging;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -23,6 +24,9 @@ internal sealed class ChromeSnapshot : IDisposable
     /// <summary>Longest edge the chrome is captured at, before the tube softens it further.</summary>
     private const int MaximumEdge = 1280;
 
+    /// <summary>Avalonia log area for the chrome-capture geometry trace; captured to Logs/.</summary>
+    internal const string ChromeLogArea = "EmuShelf.Shelf3D";
+
     private readonly Lock _gate = new();
     private readonly DispatcherTimer _timer;
     private readonly Func<Visual?> _source;
@@ -43,6 +47,11 @@ internal sealed class ChromeSnapshot : IDisposable
     private PixelSize _size;
     private bool _hasNewFrame;
     private volatile bool _disposed;
+    // The source (GamepadRoot) bounds the last diagnostic line reported. The captured chrome carries
+    // the platform rail into the tube; if it is captured at desktop size while the tube surface is
+    // full screen (or vice versa) the warped rail lands at the wrong scale — a "doubled platform row"
+    // ingredient. Logged only when it changes, so Logs/ shows the capture tracking the resize.
+    private Size _lastLoggedSourceBounds;
 
     /// <param name="onCaptured">
     /// Invoked on the UI thread after each capture tick. It lets the owner drive the render that
@@ -106,6 +115,18 @@ internal sealed class ChromeSnapshot : IDisposable
         var size = new PixelSize(
             Math.Max(1, (int)Math.Round(bounds.Width * scale)),
             Math.Max(1, (int)Math.Round(bounds.Height * scale)));
+
+        if (bounds.Size != _lastLoggedSourceBounds)
+        {
+            Logger.TryGet(LogEventLevel.Information, ChromeLogArea)?.Log(
+                null,
+                "Couch chrome captured from {BoundsW}x{BoundsH} dip source into {PixelW}x{PixelH} px.",
+                bounds.Width,
+                bounds.Height,
+                size.Width,
+                size.Height);
+            _lastLoggedSourceBounds = bounds.Size;
+        }
 
         try
         {

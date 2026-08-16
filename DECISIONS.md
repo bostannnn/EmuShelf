@@ -9050,3 +9050,99 @@ is read by nothing.
 (Yandex Disk is the concrete plan) adds a new transport implementation and a new enum value, and
 `CreateTransportAsync` gains a branch; nothing above the interface changes. The Google Drive
 transport, its OAuth flow, the protected token store, and the sync engine are untouched.
+## 2026-08-17 — Saves override display follows the emulator picker; SaveAsync order kept
+
+Save overrides are keyed per `(system, emulator)` (see the 2026-08-16 per-emulator entry). The
+Settings → Saves row was built once from the system's *persisted* active emulator, and switching the
+emulator picker in the Emulators section never rebuilt it, so the shown override kept reflecting the
+emulator that was active when Settings opened. Fixed by having `EmulatorSettingsViewModel.OnRowProfileChanged`
+re-read the newly-selected emulator's stored override — via a new
+`CloudSaveSyncCoordinator.DescribePlatformForEmulator(systemId, emulatorId)` that resolves the emulator
+through `SaveProviderRegistry.Resolve` and reads its `(system, emulator)` key directly — and apply it to
+the matching `CloudSavePlatformRowViewModel` (`ApplyEmulatorSwitch`). The picker switch is not persisted
+until Save, so this read cannot go through the coordinator's persisted-active-emulator lookup; it reads the
+selected emulator's key explicitly.
+
+`SaveAsync` intentionally keeps its existing order — `SetActiveEmulator` first, then
+`PersistCloudSaveLocations` — because with the display now following the picker, the override box always
+holds the currently-selected emulator's value, so persisting after the active-emulator write files it under
+the right emulator. PR #145 (reorder to persist overrides *before* `SetActiveEmulator`) is therefore
+rejected: it was a band-aid for the missing display refresh, and combined with this fix it would file the
+newly-selected emulator's edited value under the *previous* emulator. #145 is closed, not merged.
+
+Known limitation: the Saves override box has no per-emulator in-session draft (unlike the Emulators row's
+editable fields), so an *unsaved* edit is replaced by the picked emulator's stored value when switching away
+and back. The detected-path line is cleared on switch rather than re-detected, because detection still
+resolves against the persisted (pre-switch) emulator; it re-derives on the next sync or the next time
+Settings opens.
+## 2026-08-16 — ScreenScraper couldn't replace box art it didn't put there: narrow "protected" to genuinely hand-picked covers
+
+A user's box art that "didn't come from ScreenScraper" could not be replaced by a scrape. The shelf cover
+carries a `GameCoverOrigin` (`None` / `Downloaded` / `User`), and `TryApplyDownloadedCover` only overwrote
+`Downloaded` or empty covers — it refused `User`. The trap was that **art the user never chose still got
+stamped `User`**: the `AddGames` upsert relabeled any incoming cover with origin `None` as `User`, and the
+v3 migration back-stamped every pre-existing cover as `User`. So scanned/imported and legacy covers were
+all treated as hand-picked and became permanently un-scrapeable. The single-game scraper's ticked media row
+already passed `OverwriteExistingMedia: true` and meant "use this art," but the cover projection ignored
+that intent for `User` covers, and the row disabled its own checkbox — so there was no path through the
+scraper to replace such a cover.
+
+The fix (chosen: "both" — stop the mislabeling *and* honor the explicit tick):
+
+- **`User` now means only hand-picked.** The `AddGames` upsert keeps a scanned cover's origin as `None`
+  (`GameLibrary.cs`); only `UpdateCoverPath` (the manual "set cover" path) stamps `User`.
+  `TryApplyDownloadedCover` now replaces anything that isn't `User` (`WHERE CoverOrigin <> User`), so
+  `None`-with-a-path scanned covers are scrapeable again.
+- **Explicit tick overrides even a `User` cover.** `TryApplyDownloadedCover(..., overwriteUserCover)` and
+  `IGameDetailsStore.SaveMedia(..., overrideUserSelection)` gained opt-in flags that
+  `GameScrapeApplicationService` wires from `request.OverwriteExistingMedia`. The single-game scraper sets
+  it; fill-missing/batch does not, so batch still leaves hand-picked covers alone. The scraper's media row
+  is now always applyable (`CanApply = true`), just left unticked when the current art is user-owned so
+  replacing your own image is a deliberate opt-in ("Your image — tick to replace it").
+- **Repair migration v19.** Existing databases already had legacy covers wrongly stamped `User`. v19 demotes
+  a `User` cover to `Downloaded` when the game carries download provenance (`GameMetadata.CoverProviderId`
+  is set) — i.e. it was auto-acquired, not hand-picked — so batch scrapes can refresh it. Covers with no
+  provenance stay `User`. The migration is defensive (skips the repair on a minimal schema that lacks the
+  column/table), matching the v17 healing pattern. Edge case left as-is: a cover that was downloaded and
+  *then* manually overridden keeps its provenance row, so v19 would treat it as auto-acquired — rare, and
+  the only cost is that a later scrape may replace it.
+
+## 2026-08-17 — Doubled platform row on desktop→gamepad: hold the switch for the full-screen resize, and instrument the geometry
+
+Symptom (Steam Deck, reported): launching in Desktop mode and then switching to Gamepad shows the
+platform rail twice; launching straight into Gamepad is fine.
+
+Ruled out first, so the fix targets the right layer. A headless render test that reproduces the exact
+Desktop→Gamepad switch shows `GamepadPlatforms` holds one entry per system and the visual tree
+realizes exactly one set of rail-tab buttons. So the second rail is not a control — it is painted by
+the CRT tube. In couch mode a full-window GL scene captures `GamepadRoot` (the opaque rail included)
+into a texture and draws it warped over the top; the live rail is meant to sit hidden behind the
+opaque tube (2026-08-15 "captured into the tube, not composited over it"). You see the double when the
+tube fails to fully cover the live rail.
+
+Why only Desktop-first: it is the one path that resizes the window. Straight-to-Gamepad is full screen
+from birth (`WindowInterfaceModeService` ctor), so the tube's GL surface and its chrome capture are
+built at final geometry and stay pixel-aligned with the live rail. Switching from Desktop flips the
+window to `FullScreen` *around* the moment the tube first becomes visible, and on Linux/gamescope that
+resize is applied asynchronously — so the tube can come up at the old desktop geometry and not cover
+the now-full-screen live rail.
+
+Fix (unverified on-device; no Deck here): `WindowInterfaceModeService.SetModeAsync`, when entering
+Gamepad from a non-full-screen window, now holds the `ModeChanged` notification until the window's
+`ClientSize` actually changes (the resize landed) or a 400 ms timeout elapses — whichever first. It
+waits on the resize itself, not `WindowState`, because Avalonia flips `WindowState` to `FullScreen`
+synchronously while the real resize trails it. The timeout keeps a window that never resizes (a
+maximized window already at full-screen size, or a WM that never reports it) from stalling the switch.
+Because the couch UI (and thus the tube) is gated on `IsGamepadMode`, which the VM sets from
+`ModeChanged`, deferring that event stands the tube up only after the window is full screen — matching
+the gamepad-first path. Headless windows resize synchronously, so the wait is a no-op there and the
+existing service tests are unaffected.
+
+Instrumentation (kept, per the Deck-diagnosis pattern of 2026-08-16): three Info-level lines land in
+`Logs/` (area starts with `EmuShelf`, so `AvaloniaFileLogSink` keeps them). `MediaShelf3DControl` now
+logs every *change* of its rendered surface size, not just the first frame, so a surface that stays
+smaller than the window after the switch (the tube not covering) is visible rather than inferred.
+`ChromeSnapshot` logs each change of the captured source bounds, so a rail captured at desktop size
+while the tube is full screen (or vice versa) shows up. `WindowInterfaceModeService` logs the client
+size before/after the gamepad-entry wait and why the wait ended. If the fix is only partial, these
+lines say whether the residual is a stuck surface, a mismatched capture, or a resize that never fired.

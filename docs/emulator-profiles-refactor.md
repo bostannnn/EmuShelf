@@ -243,6 +243,23 @@ Result: per-emulator overrides isolated (PS1 DuckStation vs RetroArch), single-e
 byte-identical, one row per console preserved. App 861/861 Release (incl. snapshots) + Infra 1143/1143
 green; independently reviewed with no blockers.
 
+**Increment 2 follow-up — the Saves row must follow the emulator picker live (2026-08-17).**
+Increment 2's "a Saves row always acts on the *active* emulator" held for *storage* but left a UI gap.
+The Saves override is shown in the Saves section while the emulator picker lives in the Emulators
+section; the row was built once from the *persisted* active emulator, and switching the picker (not
+persisted until Save) never rebuilt it — so each emulator's override existed on disk but the row kept
+showing the open-time emulator's folder. Fixed by
+`CloudSaveSyncCoordinator.DescribePlatformForEmulator(systemId, emulatorId)` (reads a specific emulator's
+`(system, emulator)` location, resolving the id through `Resolve`, display text still emulator-neutral)
+plus `EmulatorSettingsViewModel.OnRowProfileChanged` re-applying it to the matching
+`CloudSavePlatformRowViewModel` via `ApplyEmulatorSwitch`. `SaveAsync` order is kept intentionally
+(`SetActiveEmulator` before persist, so the box's value files under the now-selected emulator); PR #145's
+reorder is rejected — see DECISIONS.md 2026-08-17. Limitations: the Saves box has no per-emulator
+in-session draft (an *unsaved* edit is replaced when you switch away and back), and the detected-path line
+clears on switch (re-derives after Save/reopen) because detection still resolves against the persisted
+emulator. Verified against a real user save: `playstation/duckstation` and `playstation/retroarch` held
+distinct folders with no leakage.
+
 **Later increments (no Android work yet):** Android save/launch providers (gap #3), the OS-aware profile
 model + third `EmulatorLaunchTarget` subtype (gap #1), and the shared-card cloud bridge for the
 different-app case (PS2, per "Save continuity across OSes"). These wait for the Android head and device.

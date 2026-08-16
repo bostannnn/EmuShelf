@@ -321,15 +321,17 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void AddGames_WithExistingCover_ClassifiesItAsUserOwned()
+    public void AddGames_WithExistingCover_KeepsItReplaceable_NotUserOwned()
     {
+        // Art discovered during scanning/import keeps origin None so a later scrape may replace it.
+        // Only a cover the user hand-picks (UpdateCoverPath) is stamped User and protected.
         var coverPath = Path.Combine(AppPaths.CoversDirectory, "existing.png");
 
         _library.AddGames([
             NewGame("playstation", "/g/a.cue", "A") with { CoverPath = coverPath },
         ]);
 
-        Assert.Equal(GameCoverOrigin.User, _library.GetGames().Single().CoverOrigin);
+        Assert.Equal(GameCoverOrigin.None, _library.GetGames().Single().CoverOrigin);
     }
 
     [Fact]

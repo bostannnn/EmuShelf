@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Logging;
+using Avalonia.Threading;
 using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App.Services;
@@ -11,6 +14,16 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
     // single shared instance is reused across every mode switch; the value is compared by reference
     // in tests, so it must stay the same object.
     private static readonly Cursor HiddenCursor = new(StandardCursorType.None);
+
+    /// <summary>Avalonia log area for the couch mode-switch geometry trace; captured to Logs/.</summary>
+    internal const string ModeSwitchLogArea = "EmuShelf.InterfaceMode";
+
+    /// <summary>
+    /// How long the switch into Gamepad waits for the window to actually resize to full screen before
+    /// giving up and proceeding anyway. Bounded so a window manager that never reports the resize (or a
+    /// maximized window whose size already equals full screen) cannot stall the mode switch.
+    /// </summary>
+    private static readonly TimeSpan FullScreenSettleTimeout = TimeSpan.FromMilliseconds(400);
 
     private readonly ISettingsService _settingsService;
     private AppSettings _settings;
@@ -57,9 +70,33 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
 
     public async Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default)
     {
+        // The couch UI is presented through a full-window GL "tube" that captures GamepadRoot (rail and
+        // all) into a texture and draws it, warped, over the top — the live rail is meant to sit hidden
+        // behind the opaque tube. When we enter Gamepad from a windowed/maximized desktop, the window
+        // goes full screen; on Linux/gamescope that resize is applied asynchronously, so if the tube's
+        // GL surface is stood up at the old (smaller) geometry it can fail to cover the now-full-screen
+        // live rail, and both the flat live rail and the tube's warped copy show at once — the "doubled
+        // platform row" seen only on the desktop→gamepad path (an app launched straight into Gamepad is
+        // full screen from birth and never hits it). So hold the mode change until the window has
+        // actually resized, so the tube and its capture are both built at final geometry.
+        var awaitFullScreenResize = mode == InterfaceMode.Gamepad
+            && _window.WindowState != WindowState.FullScreen;
+        var sizeBeforeFullScreen = _window.ClientSize;
+
         Current = mode;
         ApplyWindowState();
         ApplyCursor();
+
+        if (awaitFullScreenResize)
+        {
+            await WaitForFullScreenResizeAsync(sizeBeforeFullScreen);
+
+            // A second switch could have landed during the wait and already fired its own
+            // ModeChanged; don't fire this now-stale one on top of it and flip the mode back.
+            if (Current != mode)
+                return;
+        }
+
         ModeChanged?.Invoke(this, mode);
         if (IsCommandLineOverride)
             return;
@@ -68,6 +105,55 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
             () => _settingsService.Update(latest => latest with { InterfaceMode = mode }),
             cancellationToken);
     }
+
+    /// <summary>
+    /// Completes once the window's client size has actually changed from <paramref name="sizeBefore"/>
+    /// (the full-screen resize has landed) or a short timeout elapses, whichever comes first. Avalonia
+    /// flips <see cref="Window.WindowState"/> to full screen synchronously, but on Linux/gamescope the
+    /// real resize arrives a few frames later — so this waits on the resize itself, not the state flag.
+    /// The timeout keeps a window whose size does not change (a maximized window already at full-screen
+    /// size, or a WM that never reports it) from stalling the switch.
+    /// </summary>
+    private Task WaitForFullScreenResizeAsync(Size sizeBefore)
+    {
+        if (_window.ClientSize != sizeBefore)
+        {
+            LogModeSwitch("full-screen size already settled", sizeBefore, _window.ClientSize);
+            return Task.CompletedTask;
+        }
+
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var timer = new DispatcherTimer { Interval = FullScreenSettleTimeout };
+        EventHandler<AvaloniaPropertyChangedEventArgs>? onWindowChanged = null;
+
+        void Finish(string reason)
+        {
+            if (!completion.TrySetResult())
+                return;
+            timer.Stop();
+            _window.PropertyChanged -= onWindowChanged;
+            LogModeSwitch(reason, sizeBefore, _window.ClientSize);
+        }
+
+        onWindowChanged = (_, change) =>
+        {
+            if (change.Property == Window.ClientSizeProperty && _window.ClientSize != sizeBefore)
+                Finish("full-screen resize landed");
+        };
+
+        timer.Tick += (_, _) => Finish("full-screen resize wait timed out");
+        _window.PropertyChanged += onWindowChanged;
+        timer.Start();
+        return completion.Task;
+    }
+
+    private static void LogModeSwitch(string reason, Size before, Size after) =>
+        Logger.TryGet(LogEventLevel.Information, ModeSwitchLogArea)?.Log(
+            null,
+            "Gamepad entry: {Reason} (client size {Before} -> {After}).",
+            reason,
+            $"{before.Width:0}x{before.Height:0}",
+            $"{after.Width:0}x{after.Height:0}");
 
     /// <summary>
     /// Gamepad mode takes the window full screen. Returning to Desktop restores whatever state the

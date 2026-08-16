@@ -133,6 +133,12 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     // scene that inits cleanly but shows nothing (a degenerate viewport, or output that never
     // composites) is told apart from one that renders wrong. See DECISIONS 2026-08-16.
     private bool _firstFrameLogged;
+    // The surface size the last diagnostic line reported. The tube must cover the whole window, so a
+    // surface that stays smaller than the window after a mode switch (the desktop→gamepad full-screen
+    // resize not reaching the GL surface) is exactly the "doubled platform row" signature: log every
+    // change so a stuck surface is visible in Logs/, not just the first frame.
+    private uint _lastLoggedSurfaceWidth;
+    private uint _lastLoggedSurfaceHeight;
 
     /// <summary>
     /// The frozen description of the next frame, built on the UI thread and read by the render
@@ -656,6 +662,23 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     height,
                     surfaceSizeReported,
                     crt.IsActive);
+                _lastLoggedSurfaceWidth = width;
+                _lastLoggedSurfaceHeight = height;
+            }
+            else if (width != _lastLoggedSurfaceWidth || height != _lastLoggedSurfaceHeight)
+            {
+                // The surface resized after the first frame — normally the window going full screen on
+                // entry. Logged so a surface that never grows to the window (the tube not covering the
+                // live rail) is distinguishable from one that tracks the resize as it should.
+                Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
+                    this,
+                    "Shelf surface resized {Old} -> {New} px (boundsDip={Bounds}, scaling={Scaling}).",
+                    $"{_lastLoggedSurfaceWidth}x{_lastLoggedSurfaceHeight}",
+                    $"{width}x{height}",
+                    $"{Bounds.Width:0}x{Bounds.Height:0}",
+                    frame?.RenderScaling ?? 1.0);
+                _lastLoggedSurfaceWidth = width;
+                _lastLoggedSurfaceHeight = height;
             }
 
             // A tube whose roll, hum and jitter are moving has to be redrawn even when nothing in

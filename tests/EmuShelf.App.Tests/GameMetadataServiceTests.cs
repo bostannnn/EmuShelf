@@ -576,7 +576,8 @@ public class GameMetadataServiceTests
             long gameId,
             string coverPath,
             string providerId,
-            string sourceUri)
+            string sourceUri,
+            bool overwriteUserCover = false)
         {
             Game = Game with
             {

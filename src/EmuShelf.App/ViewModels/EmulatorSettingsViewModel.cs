@@ -858,6 +858,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     private void OnRowProfileChanged(EmulatorSettingsRowViewModel source)
     {
         RecomputeSharedInstallations();
+        RefreshCloudOverrideForRow(source);
 
         if (!source.IsExecutableShared || !string.IsNullOrWhiteSpace(source.ExecutablePath))
             return;
@@ -872,6 +873,21 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         source.TargetKind = sibling.TargetKind;
         source.ExecutablePath = sibling.ExecutablePath;
         source.FlatpakAppId = sibling.FlatpakAppId;
+    }
+
+    // Each emulator keeps its own save override, so switching the picker must show the newly-selected
+    // emulator's stored folder rather than the one active when Settings opened. The switch is not
+    // persisted until Save, so read the override for the selected emulator directly instead of through
+    // the coordinator's persisted-active-emulator lookup.
+    private void RefreshCloudOverrideForRow(EmulatorSettingsRowViewModel source)
+    {
+        if (_cloudSaves?.DescribePlatformForEmulator is not { } describe)
+            return;
+        if (describe(source.SystemId, source.EmulatorId) is not { } platform)
+            return;
+        CloudPlatforms
+            .FirstOrDefault(row => string.Equals(row.SystemId, source.SystemId, StringComparison.Ordinal))
+            ?.ApplyEmulatorSwitch(platform);
     }
 
     private void RecomputeSharedInstallations()

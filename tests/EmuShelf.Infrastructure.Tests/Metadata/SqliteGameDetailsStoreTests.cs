@@ -179,6 +179,26 @@ public class SqliteGameDetailsStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void ProviderMedia_TakesOverAUserSelection_WhenOverrideRequested()
+    {
+        // The single-game scraper's explicit tick overrides even a user-selected asset.
+        var game = AddGame("OverrideSelection.iso");
+        var firstPath = Path.Combine(AppPaths.DataDirectory, "Media", game.Id.ToString(), "first.png");
+        var secondPath = Path.Combine(AppPaths.DataDirectory, "Media", game.Id.ToString(), "second.png");
+        var first = _details.SaveMedia(ProviderMedia(game.Id, firstPath, isSelected: false));
+        var second = _details.SaveMedia(ProviderMedia(game.Id, secondPath, isSelected: false));
+        Assert.True(_details.SelectMedia(game.Id, GameMediaKind.Screenshot, first.Id));
+
+        var overridden = _details.SaveMedia(
+            ProviderMedia(game.Id, secondPath, isSelected: true) with { Id = second.Id },
+            overrideUserSelection: true);
+
+        Assert.True(overridden.IsSelected);
+        var selected = Assert.Single(_details.GetDetails(game.Id).Media, asset => asset.IsSelected);
+        Assert.Equal(second.Id, selected.Id);
+    }
+
+    [Fact]
     public void ProviderMedia_CannotOverwriteUserOwnedMediaAtTheSamePath()
     {
         var game = AddGame("ProtectedMedia.iso");

@@ -1,3 +1,4 @@
+using EmuShelf.Core.Library;
 using EmuShelf.Core.Storage;
 using Microsoft.Data.Sqlite;
 
@@ -10,7 +11,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 18;
+    private const int CurrentSchemaVersion = 19;
 
     private readonly IAppPaths _appPaths;
 
@@ -156,7 +157,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 18)
+        {
             ApplyMigrationV18(connection);
+            version = 18;
+        }
+
+        if (version < 19)
+            ApplyMigrationV19(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -844,6 +851,71 @@ public sealed class LibraryDatabase
         command.CommandText = "UPDATE SchemaVersion SET Version = 18;";
         command.ExecuteNonQuery();
         transaction.Commit();
+    }
+
+    private static void ApplyMigrationV19(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+
+        // Repair covers wrongly protected as "user-picked". The v3 migration stamped every pre-existing
+        // cover as User (origin 2), and an old upsert did the same to art found while scanning — so a
+        // scrape could never replace them. A cover the app downloaded carries provenance in
+        // GameMetadata.CoverProviderId; where that is present, the cover was auto-acquired, not
+        // hand-picked, so demote it to Downloaded (origin 1) and let scrapes refresh it again. Covers
+        // with no download provenance stay User and remain protected. A minimal or interrupted schema
+        // may lack the column/table this repair reads; there is nothing to repair there, so skip it.
+        if (ColumnExists(connection, transaction, "Games", "CoverOrigin") &&
+            TableExists(connection, transaction, "GameMetadata"))
+        {
+            using var repair = connection.CreateCommand();
+            repair.Transaction = transaction;
+            repair.CommandText =
+                """
+                UPDATE Games
+                SET CoverOrigin = $downloaded
+                WHERE CoverOrigin = $user
+                  AND EXISTS (
+                      SELECT 1 FROM GameMetadata
+                      WHERE GameMetadata.GameId = Games.Id
+                        AND GameMetadata.CoverProviderId IS NOT NULL);
+                """;
+            repair.Parameters.AddWithValue("$downloaded", (int)GameCoverOrigin.Downloaded);
+            repair.Parameters.AddWithValue("$user", (int)GameCoverOrigin.User);
+            repair.ExecuteNonQuery();
+        }
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE SchemaVersion SET Version = 19;";
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static bool ColumnExists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string table,
+        string column)
+    {
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText =
+            $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = $column;";
+        check.Parameters.AddWithValue("$column", column);
+        return (long)check.ExecuteScalar()! > 0;
+    }
+
+    private static bool TableExists(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        string table)
+    {
+        using var check = connection.CreateCommand();
+        check.Transaction = transaction;
+        check.CommandText =
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $table;";
+        check.Parameters.AddWithValue("$table", table);
+        return (long)check.ExecuteScalar()! > 0;
     }
 
     private static void AddGameColumnIfMissing(
