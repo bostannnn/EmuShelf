@@ -70,7 +70,7 @@ public class LibraryViewStateTests : IDisposable
 
         public GameDetails GetDetails(long gameId) => new(gameId, [], [], []);
         public bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode) => false;
-        public GameMediaAsset SaveMedia(GameMediaAsset media) => media;
+        public GameMediaAsset SaveMedia(GameMediaAsset media, bool overrideUserSelection = false) => media;
         public bool SelectMedia(long gameId, GameMediaKind kind, long mediaId) => false;
         public void UpsertProviderMatch(GameProviderMatch match) { }
     }

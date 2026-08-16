@@ -9032,3 +9032,34 @@ editable fields), so an *unsaved* edit is replaced by the picked emulator's stor
 and back. The detected-path line is cleared on switch rather than re-detected, because detection still
 resolves against the persisted (pre-switch) emulator; it re-derives on the next sync or the next time
 Settings opens.
+## 2026-08-16 — ScreenScraper couldn't replace box art it didn't put there: narrow "protected" to genuinely hand-picked covers
+
+A user's box art that "didn't come from ScreenScraper" could not be replaced by a scrape. The shelf cover
+carries a `GameCoverOrigin` (`None` / `Downloaded` / `User`), and `TryApplyDownloadedCover` only overwrote
+`Downloaded` or empty covers — it refused `User`. The trap was that **art the user never chose still got
+stamped `User`**: the `AddGames` upsert relabeled any incoming cover with origin `None` as `User`, and the
+v3 migration back-stamped every pre-existing cover as `User`. So scanned/imported and legacy covers were
+all treated as hand-picked and became permanently un-scrapeable. The single-game scraper's ticked media row
+already passed `OverwriteExistingMedia: true` and meant "use this art," but the cover projection ignored
+that intent for `User` covers, and the row disabled its own checkbox — so there was no path through the
+scraper to replace such a cover.
+
+The fix (chosen: "both" — stop the mislabeling *and* honor the explicit tick):
+
+- **`User` now means only hand-picked.** The `AddGames` upsert keeps a scanned cover's origin as `None`
+  (`GameLibrary.cs`); only `UpdateCoverPath` (the manual "set cover" path) stamps `User`.
+  `TryApplyDownloadedCover` now replaces anything that isn't `User` (`WHERE CoverOrigin <> User`), so
+  `None`-with-a-path scanned covers are scrapeable again.
+- **Explicit tick overrides even a `User` cover.** `TryApplyDownloadedCover(..., overwriteUserCover)` and
+  `IGameDetailsStore.SaveMedia(..., overrideUserSelection)` gained opt-in flags that
+  `GameScrapeApplicationService` wires from `request.OverwriteExistingMedia`. The single-game scraper sets
+  it; fill-missing/batch does not, so batch still leaves hand-picked covers alone. The scraper's media row
+  is now always applyable (`CanApply = true`), just left unticked when the current art is user-owned so
+  replacing your own image is a deliberate opt-in ("Your image — tick to replace it").
+- **Repair migration v19.** Existing databases already had legacy covers wrongly stamped `User`. v19 demotes
+  a `User` cover to `Downloaded` when the game carries download provenance (`GameMetadata.CoverProviderId`
+  is set) — i.e. it was auto-acquired, not hand-picked — so batch scrapes can refresh it. Covers with no
+  provenance stay `User`. The migration is defensive (skips the repair on a minimal schema that lacks the
+  column/table), matching the v17 healing pattern. Edge case left as-is: a cover that was downloaded and
+  *then* manually overridden keeps its provenance row, so v19 would treat it as auto-acquired — rare, and
+  the only cost is that a later scrape may replace it.

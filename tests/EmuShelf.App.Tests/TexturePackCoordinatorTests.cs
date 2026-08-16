@@ -375,7 +375,8 @@ public sealed class TexturePackCoordinatorTests : IDisposable
             long gameId,
             string coverPath,
             string providerId,
-            string sourceUri) => false;
+            string sourceUri,
+            bool overwriteUserCover = false) => false;
 
         public void RecordAttempt(GameMetadataAttempt attempt)
         {
