@@ -26,39 +26,19 @@ public sealed class MediaShelf3DHostTests
     }
 
     [AvaloniaFact]
-    public void InitializationWatchdog_RetriesBeforeRequestingFallback()
+    public void InitializationWatchdog_TimeoutRequestsFallback()
     {
         var host = new MediaShelf3DHost();
         Exception? failure = null;
         host.InitializationFailed += (_, exception) => failure = exception;
         host.IsActive = true;
 
-        // First timeout is a retry, not a verdict: a fresh scene is stood up and no fallback fires.
+        // The deadline is one long window, not a retry-by-teardown budget: a single timeout is the
+        // verdict. (Rebuilding the scene would only restart the same cold GL start and could never
+        // rescue a slow-but-capable driver — see MediaShelf3DHost.InitializationTimeout.)
         host.ExpireInitializationForTests();
-        Assert.Null(failure);
-        Assert.True(host.HasAttachedScene);
 
-        // A timeout that repeats across the retry budget is taken as a real failure.
-        host.ExpireInitializationForTests();
         Assert.IsType<TimeoutException>(failure);
         Assert.False(host.HasAttachedScene);
-    }
-
-    [AvaloniaFact]
-    public void InitializationWatchdog_SuccessAfterATimeoutCancelsTheFallback()
-    {
-        var host = new MediaShelf3DHost();
-        Exception? failure = null;
-        host.InitializationFailed += (_, exception) => failure = exception;
-        host.IsActive = true;
-
-        // A slow first start times out once, then the rebuilt scene comes up cleanly. The retry
-        // budget resets, so a later timeout does not immediately give up.
-        host.ExpireInitializationForTests();
-        host.SignalInitializationSucceededForTests();
-        host.ExpireInitializationForTests();
-
-        Assert.Null(failure);
-        Assert.True(host.HasAttachedScene);
     }
 }

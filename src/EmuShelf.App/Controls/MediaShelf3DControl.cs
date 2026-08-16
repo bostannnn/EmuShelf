@@ -6,6 +6,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using Avalonia.Logging;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Platform;
@@ -28,6 +29,9 @@ namespace EmuShelf.App.Controls;
 /// </summary>
 public sealed class MediaShelf3DControl : OpenGlControlBase
 {
+    /// <summary>Avalonia log area for this scene's own GL diagnostics; captured by AvaloniaFileLogSink.</summary>
+    internal const string ShelfLogArea = "EmuShelf.Shelf3D";
+
     private const int NeighbourRadius = 3;
     // Tightened alongside the camera's closer framing: at the old gap the neighbouring media fell
     // entirely outside a filled frame, which turns a shelf back into a single-hero view.
@@ -467,6 +471,16 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
     protected override void OnOpenGlInit(GlInterface gl)
     {
+        // Instrumentation for the Steam Deck "no 3D/CRT" diagnosis. This entry line proves the
+        // framework actually handed the control a context — its absence in the log means the silent
+        // no-context path (an unsupported GL surface), which no init timeout can cure. The elapsed
+        // time to build the renderer then separates a slow Mesa cold start from an unsupported
+        // platform, since Create links five shader programs and bakes an environment cubemap here,
+        // synchronously, before success is reported. Routed through Avalonia's log, which now lands in
+        // Logs/ (AvaloniaFileLogSink). See DECISIONS 2026-08-16.
+        var startedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        Logger.TryGet(LogEventLevel.Information, ShelfLogArea)
+            ?.Log(this, "Shelf GL context acquired; building renderer.");
         try
         {
             _gl = GL.GetApi(new LamdaNativeContext(name => gl.GetProcAddress(name)));
@@ -480,13 +494,40 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _uploadedAccent = accent;
             // A fresh renderer has an empty scene buffer, so the first frame must render in full.
             _lastRenderedSnapshot = null;
+            Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
+                this,
+                "Shelf GL init succeeded in {Elapsed} ms using {Dialect}; {GlIdentity}",
+                (long)System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
+                dialect,
+                DescribeGl());
             InitializationSucceeded?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception exception)
         {
             _renderer = null;
             _gl = null;
+            Logger.TryGet(LogEventLevel.Error, ShelfLogArea)?.Log(
+                this,
+                "Shelf GL init failed after {Elapsed} ms: {Error}",
+                (long)System.Diagnostics.Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds,
+                exception.Message);
             Fail(exception);
+        }
+    }
+
+    /// <summary>The GPU identity behind the context, for the log — tells a Mesa/RADV Deck from Windows/ANGLE.</summary>
+    private string DescribeGl()
+    {
+        try
+        {
+            return $"vendor={_gl!.GetStringS(Silk.NET.OpenGL.StringName.Vendor)}; "
+                + $"renderer={_gl.GetStringS(Silk.NET.OpenGL.StringName.Renderer)}; "
+                + $"version={_gl.GetStringS(Silk.NET.OpenGL.StringName.Version)}; "
+                + $"glsl={_gl.GetStringS(Silk.NET.OpenGL.StringName.ShadingLanguageVersion)}";
+        }
+        catch (Exception exception)
+        {
+            return $"(GL identity unavailable: {exception.Message})";
         }
     }
 
