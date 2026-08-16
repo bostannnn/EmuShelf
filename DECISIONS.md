@@ -8627,3 +8627,49 @@ exists to catch. Rescaling the kept band back to the original extent bakes the t
 mesh instead, so coincident merged walls stay coincident, the shell stays boxy, and its depth ratio
 still agrees with its profile (D/H back to 0.072). The case renders identically either way; only the
 mesh-vs-profile agreement differs, and that is worth keeping honest rather than excepting.
+
+## 2026-08-16 — Batch scrape skips already-matched games in fill-missing mode
+
+A ScreenScraper batch (including "Scrape all in view") now checks each game's stored provider matches
+before contacting the API: in **fill-missing** mode, a game that already carries a recorded
+ScreenScraper match is reported as `AlreadyScraped` without spending a request, because a fill-missing
+pass could only re-fill gaps the earlier scrape already filled. A **refresh** run (replace owned
+values) is an explicit re-pull and still re-queries every game. The check is a local detail-store read,
+far cheaper than the per-game API call it avoids, which matters against ScreenScraper's daily quota.
+
+Trade-off: if the earlier run deselected some fields/media, or the provider has since added data, the
+skip can leave a real gap unfilled. The escape is the "Replace values ScreenScraper already owns"
+toggle (re-queries everything) or the per-game scraper. This is deliberate — the common re-run case is
+"I clicked scrape all again," where every skip is correct and the quota saved is real.
+
+Paired UI fix: the batch summary now counts these matched-but-nothing-written games as
+"N already complete" (`GameScrapeBatchSummary.AlreadyComplete`, covering both `AlreadyScraped` and the
+API's `NothingToApply`). Previously they fell into no bucket, so a re-run over a complete library read
+as a bare "0 scraped." even though many games matched.
+
+## 2026-08-16 — Batch skip is gated on coverage-complete, not mere match presence
+
+Refines the earlier same-day decision. The batch fill-missing skip no longer fires on "a ScreenScraper
+match exists" — that coarsely skipped games whose earlier scrape was only *partial* (a narrowed media
+pick, a metadata-off run, or a per-field single-game scrape), so "get the other 7 of 9 fields later"
+silently did nothing.
+
+Instead, `GameProviderMatch` gains a persisted `CoverageComplete` flag (schema v17, added to
+`GameProviderMatches`). The apply service — the one choke point both the batch and single-game scraper
+pass through — stamps it after applying, by comparing the provider's **full offering** (passed on
+`GameScrapeApplyRequest.OfferedFields`/`OfferedMediaKinds`, not the narrowed selection) against what the
+game holds afterwards. It is true only when every offered field and every offered media kind is present.
+A narrowed pick or a failed media download therefore leaves it false, so a later run re-queries and fills
+the gap. The batch skips only coverage-complete matches; a refresh (replace owned values) run still never
+skips. Determined post-apply (from this run's media outcomes) so a failed download is never mistaken for
+coverage.
+
+Consequences: field-level narrowing means field-level coverage equals locale-level coverage (a field the
+run includes brings all its offered locales), so no locale false-skip within one offering. Coverage is
+measured against the *settings-filtered* offering, and video is excluded from it entirely — video is opt-in
+with no in-app player and the batch never fetches it, so requiring it would keep such games permanently
+incomplete and re-queried. Two unavoidable residuals leave a coverage-complete game skipped when more is
+actually available: provider-side growth (new data added upstream after a complete scrape), and a user
+later *broadening* their ScreenScraper media/language settings. Neither is detectable locally; the escape
+for both stays the Replace toggle or the single-game scraper. Existing matches migrate to
+CoverageComplete=0, so the first batch after upgrade re-checks each once and re-stamps it.

@@ -28,7 +28,11 @@ public static class ScreenScraperApplyMapper
             .ToList();
 
         return new GameScrapeApplyRequest(
-            preview.GameId, preview.Match, metadata, media, mode, preview.CoverKind);
+            preview.GameId, preview.Match, metadata, media, mode, preview.CoverKind,
+            // The full offering (not the narrowed metadata/media above) lets the apply service decide
+            // whether this leaves the game coverage-complete for the batch's quota-saving skip.
+            OfferedFields: preview.Metadata.Select(value => value.Field).ToHashSet(),
+            OfferedMediaKinds: preview.Media.Keys.ToHashSet());
     }
 
     private static GameMediaImport ToImport(GameMediaKind kind, ScreenScraperMediaCandidate candidate) =>

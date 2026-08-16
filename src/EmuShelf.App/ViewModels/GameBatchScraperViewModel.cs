@@ -223,6 +223,8 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
             _ => string.Empty,
         };
         var parts = new List<string> { $"{summary.Applied} scraped" };
+        if (summary.AlreadyComplete > 0)
+            parts.Add($"{summary.AlreadyComplete} already complete");
         if (summary.NoMatch > 0)
             parts.Add($"{summary.NoMatch} no match");
         if (summary.Unsupported > 0)
