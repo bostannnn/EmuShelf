@@ -65,15 +65,20 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         _frontend.SuspendForGame();
         try
         {
+            // Time only the tracked process itself — not the preflight, save sync, or launch
+            // animation around it — so the accrued play time is the emulator's actual runtime.
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var exitCode = await _processRunner.RunAsync(preparation.StartSpec!, cancellationToken);
+            stopwatch.Stop();
             _logger.Information($"{preparation.EmulatorName} exited with code {exitCode}.");
             if (exitCode == 0)
-                return new GameLaunchResult(true, $"{title} finished", ProcessExited: true);
+                return new GameLaunchResult(true, $"{title} finished", ProcessExited: true, PlayDuration: stopwatch.Elapsed);
 
             var failure = new GameLaunchResult(
                 false,
                 $"{preparation.EmulatorName} exited with code {exitCode}.",
-                ProcessExited: true);
+                ProcessExited: true,
+                PlayDuration: stopwatch.Elapsed);
             _logger.Warning(failure.StatusText);
             return failure;
         }

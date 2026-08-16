@@ -4575,6 +4575,8 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Textures => By(g => g.TextureSortKey),
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
             LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),
+            LibrarySortColumn.Playtime => By(g => g.PlaytimeSortKey),
+            LibrarySortColumn.PlayCount => By(g => g.PlayCountSortKey),
             LibrarySortColumn.DateAdded => By(g => g.DateAddedSortKey),
             LibrarySortColumn.MetadataCompleteness => By(g => g.MetadataCompletenessSortKey),
             LibrarySortColumn.ArtworkCover => By(g => g.HasScrapedCover),
@@ -5482,8 +5484,9 @@ public partial class MainViewModel : ViewModelBase
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
+                    // Stamps last-played and increments the play count in one write.
                     await Task.Run(
-                        () => _library.SetLastPlayed(launchGame.Id, DateTimeOffset.UtcNow),
+                        () => _library.RecordLaunchStarted(launchGame.Id, DateTimeOffset.UtcNow),
                         cancellationToken);
                     recordedPlay = true;
                 });
@@ -5497,6 +5500,20 @@ public partial class MainViewModel : ViewModelBase
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
                 _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
+            // A tracked exit reports the emulator's runtime; accrue it as play time. Guarded and off the
+            // UI thread so a write failure can never turn a completed launch into a reported error. The
+            // Recently Played refresh in the finally then rebuilds the collection with the new total.
+            if (result is { ProcessExited: true, PlayDuration: { } playDuration })
+            {
+                try
+                {
+                    await Task.Run(() => _library.AddPlaytime(launchGame.Id, playDuration));
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Could not record playtime after a launch.", ex);
+                }
+            }
 
             CloudSaveSyncOutcome? afterSync = null;
             try

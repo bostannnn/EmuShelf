@@ -10,6 +10,8 @@ public enum LibrarySortColumn
     Textures,
     Status,
     LastPlayed,
+    Playtime,
+    PlayCount,
     DateAdded,
     MetadataCompleteness,
     ArtworkCover,

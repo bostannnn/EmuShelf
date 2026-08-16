@@ -66,7 +66,25 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
         command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(17L, (long)command.ExecuteScalar()!);
+        Assert.Equal(18L, (long)command.ExecuteScalar()!);
+    }
+
+    [Fact]
+    public void Initialize_AddsPlaytimeColumns_DefaultingToZero()
+    {
+        // Schema v18 (M43): playtime tracking columns land on Games with a 0 default so existing rows
+        // read as never played.
+        var database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+
+        using var connection = database.CreateConnection();
+        InsertGame(connection, "PS1/g.cue");
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT PlaytimeSeconds, PlayCount FROM Games LIMIT 1;";
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(0L, reader.GetInt64(0));
+        Assert.Equal(0L, reader.GetInt64(1));
     }
 
     [Fact]
@@ -190,7 +208,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         using var check = database.CreateConnection();
         using var version = check.CreateCommand();
         version.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(17L, (long)version.ExecuteScalar()!);
+        Assert.Equal(18L, (long)version.ExecuteScalar()!);
 
         using var origins = check.CreateCommand();
         origins.CommandText = "SELECT TitleOrigin, CoverOrigin FROM Games LIMIT 1;";
