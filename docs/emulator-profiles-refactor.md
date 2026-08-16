@@ -105,6 +105,43 @@ and no "canonical card per platform" to build. If a user wants two format-compat
 share a card (e.g. the PCSX2 family's `.ps2` images), the mechanism is the per-emulator folder
 override below, pointing both at one folder — EmuShelf never converts save formats.
 
+### Save continuity across OSes — the other half of "saves are per-emulator"
+
+Per-emulator namespacing does more than prevent collisions: it is exactly what lets a save cross
+devices — or blocks it. The rule is one question: **is the emulator the same app on both OSes, or a
+different app?**
+
+- **Same app on both (carries across, both directions).** The cloud folder *and* the per-game key are
+  identical, so a PC save lands on the same cloud unit Android reads. The per-game key is a portable,
+  emulator-native id, not a local filename — PPSSPP keys by the `PSP/SAVEDATA/<gameSaveId>` folder name,
+  DuckStation by PlayStation disc serial, Dolphin by title id — so it matches across devices. This
+  covers **PSP (PPSSPP), GameCube/Wii (Dolphin), 3DS (Azahar), PS1 (if Android also uses DuckStation),
+  and every RetroArch retro system** (same core, standard `.srm`).
+- **Different apps for one console (does not carry today).** The save *format* can be compatible, but
+  the two apps live under different cloud folders and never meet. This is essentially **PS2** — desktop
+  PCSX2 vs Android AetherSX2 / NetherSX2 (PCSX2-lineage `.ps2` cards, format-compatible, different
+  emulator id). PS3 is moot (no real Android RPCS3).
+
+Two hard limits, independent of the above:
+
+- **Save states never cross platforms.** A state is bound to one emulator build and CPU (x86 desktop vs
+  ARM Android); it will not load across devices, often not across versions. Only in-game / memory-card
+  saves are portable. Sync states within a platform only.
+- **EmuShelf never converts formats.** Where two apps' formats disagree there is no bridge, by design.
+
+What this demands of the refactor:
+
+1. **Layout parity is a hard requirement, not a nicety.** Each Android save provider must emit the
+   *identical* `UnitId` and on-disk layout as its desktop twin, or same-app continuity fails silently.
+   Add a cross-provider test that a given (system, emulator, game) yields the same unit id on both OSes.
+2. **The different-app case needs a real shared-card bridge, and there isn't one.** The only mechanism
+   today is the per-`(system, emulator)` *local folder* override "point both at one folder" — that does
+   not reconcile at the cloud layer, so each emulator still syncs its own copy and they drift. Making
+   PC↔Android PS2 actually continue needs a declared "these emulators are card-compatible → sync them as
+   one cloud unit" concept. This is *more* necessary under "OS as identity" (NetherSX2 is its own
+   emulator id, its own `nethersx2/` scope), not less — decide whether to build the bridge or to
+   document PS2 cross-OS continuity as unsupported.
+
 ### The real gaps for the end state
 
 1. **Profiles must become OS-aware.** `EmulatorDefinition.SupportedSystemIds` is a flat, OS-agnostic
