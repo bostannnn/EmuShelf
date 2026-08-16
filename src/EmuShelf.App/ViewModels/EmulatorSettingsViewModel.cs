@@ -297,11 +297,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsWorking => IsSaving || IsMaintainingLibrary;
 
     /// <summary>True while ANY async settings operation is running — save, library maintenance,
-    /// cloud sync/connect, account connects, texture rescan, or the rclone download. The global
-    /// Save/Cancel buttons gate on this so the window can't be committed or torn down mid-operation
-    /// (which would race concurrent writes and orphan the in-flight task's progress callbacks).</summary>
+    /// cloud sync/connect, account connects, or texture rescan. The global Save/Cancel buttons gate on
+    /// this so the window can't be committed or torn down mid-operation (which would race concurrent
+    /// writes and orphan the in-flight task's progress callbacks).</summary>
     public bool IsBusy => IsWorking || IsCloudBusy || IsRetroAchievementsBusy
-        || IsScreenScraperBusy || IsTexturePackBusy || IsDownloadingRclone;
+        || IsScreenScraperBusy || IsTexturePackBusy;
 
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
     public bool HasMetadataStatus => !string.IsNullOrWhiteSpace(MetadataStatusText);
@@ -328,9 +328,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public partial string DataFolderStatusText { get; set; } = string.Empty;
 
     public bool HasDataFolderStatus => !string.IsNullOrWhiteSpace(DataFolderStatusText);
-
-    [ObservableProperty]
-    public partial string CloudRemoteName { get; set; } = "emushelf-gdrive";
 
     [ObservableProperty]
     public partial string CloudFolder { get; set; } = "EmuShelf/Saves";
@@ -418,49 +415,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial string CloudSyncProgressText { get; set; } = string.Empty;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowRcloneMissingBanner))]
-    public partial bool IsRcloneMissing { get; set; }
-
-    [ObservableProperty]
-    public partial string RcloneExpectedPath { get; set; } = string.Empty;
-
     /// <summary>
-    /// Whether this build ships an OAuth client, so the built-in (rclone-free) Google Drive
-    /// transport can be offered at all. Set once at construction; a build without a client only
-    /// ever shows the rclone path. See <see cref="CloudSaveSyncCoordinator.IsManagedTransportAvailable"/>.
+    /// Whether this build ships an OAuth client, so the built-in Google Drive transport — the only
+    /// transport — can be offered at all. Set once at construction; a build without a client cannot
+    /// connect. See <see cref="CloudSaveSyncCoordinator.IsManagedTransportAvailable"/>.
     /// </summary>
     public bool IsManagedTransportAvailable { get; private set; }
 
-    /// <summary>
-    /// The transport the user has chosen for a *new* connection: built-in Google Drive when true,
-    /// the advanced rclone remote when false. Only meaningful while disconnected; once connected the
-    /// stored transport is authoritative. Seeded to prefer the built-in client where it is available.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowManagedConnectFields))]
-    [NotifyPropertyChangedFor(nameof(ShowRcloneConnectFields))]
-    [NotifyPropertyChangedFor(nameof(ShowRcloneMissingBanner))]
-    public partial bool UseManagedTransport { get; set; }
-
-    /// <summary>A one-line description of the live connection (which transport, and its account/remote).</summary>
+    /// <summary>A one-line description of the live connection (the connected Google Drive account).</summary>
     [ObservableProperty]
     public partial string CloudConnectionSummary { get; set; } = string.Empty;
-
-    /// <summary>Whether to offer the transport chooser at all — only when both transports are possible.</summary>
-    public bool ShowTransportChoice => IsManagedTransportAvailable;
-
-    /// <summary>Whether the built-in Google Drive connect fields are the ones on screen.</summary>
-    public bool ShowManagedConnectFields => IsManagedTransportAvailable && UseManagedTransport;
-
-    /// <summary>Whether the rclone connect fields are the ones on screen (the only option, or the chosen one).</summary>
-    public bool ShowRcloneConnectFields => !ShowManagedConnectFields;
-
-    /// <summary>
-    /// Whether to nag about the missing rclone binary. Suppressed when the built-in transport is the
-    /// active choice, so a user who never touches rclone is never told to install it.
-    /// </summary>
-    public bool ShowRcloneMissingBanner => IsRcloneMissing && ShowRcloneConnectFields;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSyncLog))]
@@ -473,10 +437,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// <summary>The activity log as a file URI so the view can offer to open it.</summary>
     public Uri? SyncLogUri =>
         string.IsNullOrWhiteSpace(SyncLogPath) ? null : new Uri(SyncLogPath);
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBusy))]
-    public partial bool IsDownloadingRclone { get; set; }
 
     public bool IsCloudDisconnected => !IsCloudConnected;
     public bool HasCloudStatus => !string.IsNullOrWhiteSpace(CloudStatusText);
@@ -528,10 +488,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         SteamInputTemplateInstaller? steamTemplateInstaller = null,
         Func<bool, Task>? setCrtScreenEffect = null,
         bool crtShelfEffect = true,
-        // False on hosts whose Saves UI cannot yet drive the built-in transport (the gamepad shell,
-        // whose connect rows are rclone-shaped): the managed path is suppressed so its shared connect
-        // command does not silently run the browser OAuth flow behind an rclone-looking UI.
-        bool allowManagedTransport = true,
         Action<Uri>? openSignInUri = null)
     {
         _configurations = configurations;
@@ -584,12 +540,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         if (cloudSaves is not null)
         {
             var saves = cloudSaves.Current;
-            // Only offer the built-in transport when the host allows it (the gamepad shell does not
-            // yet), the build ships a client, *and* the coordinator handed us a delegate to drive it —
-            // any one missing must fall back to rclone.
-            IsManagedTransportAvailable = allowManagedTransport &&
+            // The built-in Google Drive client is the only transport. It can be offered when the build
+            // ships an OAuth client *and* the coordinator handed us a delegate to drive it — either
+            // missing means this build cannot connect at all.
+            IsManagedTransportAvailable =
                 cloudSaves.IsManagedTransportAvailable && cloudSaves.ConnectGoogleDriveManagedAsync is not null;
-            CloudRemoteName = string.IsNullOrWhiteSpace(saves.RemoteName) ? "emushelf-gdrive" : saves.RemoteName!;
             CloudFolder = string.IsNullOrWhiteSpace(saves.CloudFolder) ? "EmuShelf/Saves" : saves.CloudFolder!;
             // One row per registered platform. The row owns its own override, detected path, and
             // per-platform actions, so this view model never names an emulator.
@@ -602,26 +557,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                     _logger,
                     (systemId, direction) => ForceCloudAsync(systemId, direction)));
             }
-            // What counts as "connected" is transport-shaped: the managed client authenticates as the
-            // account and needs only the folder, whereas rclone needs its named remote. Mirror the
-            // coordinator's own IsConfigured so the two never disagree.
+            // Mirror the coordinator's own IsConfigured so the two never disagree: the built-in client
+            // authenticates as the account and needs only the folder, and a connection left over from
+            // the retired rclone transport counts as not connected (the user reconnects).
             IsCloudConnected = saves switch
             {
                 { Enabled: false } => false,
                 { TransportKind: CloudTransportKind.GoogleDrive } => saves.CloudFolder is { Length: > 0 },
-                _ => saves is { RemoteName.Length: > 0, CloudFolder.Length: > 0 },
-            };
-            // Reflect the live transport when connected; otherwise prefer the built-in client for a
-            // fresh connection wherever it is available.
-            UseManagedTransport = saves switch
-            {
-                { TransportKind: CloudTransportKind.GoogleDrive } => true,
-                { Enabled: true, RemoteName.Length: > 0 } => false,
-                _ => IsManagedTransportAvailable,
+                _ => false,
             };
             CloudConnectionSummary = DescribeConnection(saves);
-            IsRcloneMissing = !cloudSaves.IsRcloneAvailable;
-            RcloneExpectedPath = cloudSaves.RcloneExpectedPath;
             SyncLogPath = cloudSaves.SyncLogPath;
         }
         if (retroAchievements?.CurrentAccount is { } account)
@@ -1434,70 +1379,26 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             _ = platform.RefreshDetectedDirectoryAsync();
     }
 
-    [RelayCommand]
-    private async Task ConnectCloudAsync()
-    {
-        if (_cloudSaves is null || IsCloudBusy)
-            return;
-
-        // Built-in Google Drive when it is the chosen, available transport; the advanced rclone
-        // remote otherwise. The two connect flows differ enough — one has no remote name and no
-        // external binary — that they are separate methods rather than one branched body.
-        if (ShowManagedConnectFields && _cloudSaves.ConnectGoogleDriveManagedAsync is not null)
-        {
-            await ConnectManagedCloudAsync();
-            return;
-        }
-
-        IsCloudBusy = true;
-        CloudStatusText = "Connecting… complete the Google sign-in in your browser.";
-        try
-        {
-            var result = await _cloudSaves.ConnectGoogleDriveAsync(
-                CloudRemoteName.Trim(),
-                CloudFolder.Trim(),
-                CollectOverrides(),
-                CancellationToken.None);
-            CloudStatusText = result switch
-            {
-                CloudSaveSyncConnectResult.Connected => "Connected. Use Sync now to reconcile enabled saves.",
-                CloudSaveSyncConnectResult.InvalidInput => "Enter a remote name and cloud folder, then configure at least one save platform.",
-                CloudSaveSyncConnectResult.RcloneMissing => "rclone isn't installed — use “Download rclone” above (or place it at the expected path shown there), then reconnect.",
-                CloudSaveSyncConnectResult.SignInServerBusy => "A previous Google sign-in is still open. Close that browser window (or restart EmuShelf), then try again.",
-                _ => "Couldn't connect. The Google sign-in may have been declined.",
-            };
-            if (result == CloudSaveSyncConnectResult.Connected)
-            {
-                IsCloudConnected = true;
-                CloudConnectionSummary = $"rclone remote: {CloudRemoteName.Trim()}";
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Cloud save connect failed from Settings.", ex);
-            CloudStatusText = $"Couldn't connect: {ex.Message}";
-        }
-        finally
-        {
-            IsCloudBusy = false;
-        }
-    }
-
-    // Signs into Google Drive with EmuShelf's own client, no rclone. Needs only a cloud folder; the
-    // account itself is the "remote". The browser launcher is handed to the coordinator so the
-    // loopback redirect it starts receives the code — and so Android can substitute a custom tab.
+    // Signs into Google Drive with EmuShelf's own built-in client — the only transport. Needs only a
+    // cloud folder; the account itself is the connection. The browser launcher is handed to the
+    // coordinator so the loopback redirect it starts receives the code — and so Android can substitute
+    // a custom tab.
     //
     // Bounded by a timeout, and cancelled immediately if the browser cannot be opened, because the
     // coordinator otherwise waits on the loopback redirect indefinitely — which would leave IsCloudBusy
     // stuck (locking every cloud control) and hold the coordinator's sync gate for the whole time.
-    private async Task ConnectManagedCloudAsync()
+    [RelayCommand]
+    private async Task ConnectCloudAsync()
     {
+        if (_cloudSaves?.ConnectGoogleDriveManagedAsync is not { } connect || IsCloudBusy)
+            return;
+
         IsCloudBusy = true;
         CloudStatusText = "Connecting… complete the Google sign-in in your browser.";
         using var flow = new CancellationTokenSource(ManagedConnectTimeout);
         try
         {
-            var result = await _cloudSaves!.ConnectGoogleDriveManagedAsync!(
+            var result = await connect(
                 CloudFolder.Trim(),
                 CollectOverrides(),
                 uri => LaunchSignIn(uri, flow),
@@ -1507,7 +1408,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 CloudSaveSyncConnectResult.Connected => "Connected to Google Drive. Use Sync now to reconcile enabled saves.",
                 CloudSaveSyncConnectResult.InvalidInput => "Enter a cloud folder, then configure at least one save platform.",
                 CloudSaveSyncConnectResult.ManagedTransportUnavailable =>
-                    "This build can't sign in to Google Drive directly. Choose the advanced rclone option instead.",
+                    "This build can't sign in to Google Drive, so cloud sync isn't available in it.",
                 CloudSaveSyncConnectResult.SignInDeclined =>
                     "The Google sign-in didn't finish. Try again and complete the consent in your browser.",
                 _ => "Couldn't connect to Google Drive.",
@@ -1515,19 +1416,19 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             if (result == CloudSaveSyncConnectResult.Connected)
             {
                 IsCloudConnected = true;
-                CloudConnectionSummary = "Google Drive (built-in) — signed in directly.";
+                CloudConnectionSummary = "Google Drive — signed in directly.";
             }
         }
         catch (OperationCanceledException)
         {
-            // Timed out, or cancelled because the browser could not be opened. Either way the fix is
-            // to try again (or use rclone), not to check anything — and IsCloudBusy is released below.
+            // Timed out, or cancelled because the browser could not be opened. Either way the fix is to
+            // try again, not to check anything — and IsCloudBusy is released below.
             CloudStatusText =
-                "The Google sign-in didn't finish (the browser may not have opened). Try again, or use the advanced rclone option.";
+                "The Google sign-in didn't finish (the browser may not have opened). Try again.";
         }
         catch (Exception ex)
         {
-            _logger.Error("Managed Google Drive connect failed from Settings.", ex);
+            _logger.Error("Google Drive connect failed from Settings.", ex);
             CloudStatusText = $"Couldn't connect: {ex.Message}";
         }
         finally
@@ -1562,16 +1463,16 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         });
     }
 
-    // A one-line description of a live connection for the connected panel. Empty for a connection
-    // that is not actually established (no transport has a remote yet).
-    // Kept in lockstep with the IsCloudConnected seeding above (and CloudSaveSyncCoordinator.IsConfigured):
-    // every state those treat as connected produces a non-empty summary, and no other state does.
+    // A one-line description of a live connection for the connected panel. Empty for a connection that
+    // is not actually established (including a stale rclone-era connection, which is treated as not
+    // connected). Kept in lockstep with the IsCloudConnected seeding above (and
+    // CloudSaveSyncCoordinator.IsConfigured): every state those treat as connected produces a non-empty
+    // summary, and no other state does.
     private static string DescribeConnection(CloudSaveSyncSettings saves) => saves switch
     {
         { Enabled: false } => string.Empty,
         { TransportKind: CloudTransportKind.GoogleDrive, CloudFolder.Length: > 0 } =>
-            "Google Drive (built-in) — signed in directly.",
-        { RemoteName.Length: > 0, CloudFolder.Length: > 0 } => $"rclone remote: {saves.RemoteName}",
+            "Google Drive — signed in directly.",
         _ => string.Empty,
     };
 
@@ -1587,8 +1488,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             await _cloudSaves.DisconnectAsync(CancellationToken.None);
             IsCloudConnected = false;
             CloudConnectionSummary = string.Empty;
-            // Re-offer the built-in client by default for the next connection where it is available.
-            UseManagedTransport = IsManagedTransportAvailable;
             CloudStatusText = "Disconnected. Your cloud saves were left untouched.";
         }
         catch (Exception ex)
@@ -1599,37 +1498,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         finally
         {
             IsCloudBusy = false;
-        }
-    }
-
-    [RelayCommand]
-    private async Task DownloadRcloneAsync()
-    {
-        if (_cloudSaves is null || IsDownloadingRclone)
-            return;
-
-        IsDownloadingRclone = true;
-        CloudStatusText = "Downloading rclone…";
-        try
-        {
-            if (await _cloudSaves.DownloadRcloneAsync(CancellationToken.None))
-            {
-                IsRcloneMissing = false;
-                CloudStatusText = "rclone installed. You can connect Google Drive now.";
-            }
-            else
-            {
-                CloudStatusText = "Couldn't download rclone. Check your connection, or add it manually.";
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Error("Cloud save rclone download failed from Settings.", ex);
-            CloudStatusText = $"Couldn't download rclone: {ex.Message}";
-        }
-        finally
-        {
-            IsDownloadingRclone = false;
         }
     }
 

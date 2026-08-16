@@ -4,8 +4,8 @@ using EmuShelf.Core.SaveSync;
 namespace EmuShelf.Infrastructure.Tests.SaveSync;
 
 /// <summary>
-/// An in-memory stand-in for the rclone-backed cloud transport, used to drive save-sync tests
-/// without a real remote. It can simulate an offline/failing remote via <see cref="ThrowOnAccess"/>.
+/// An in-memory stand-in for the cloud transport, used to drive save-sync tests without a real
+/// remote. It can simulate an offline/failing remote via <see cref="ThrowOnAccess"/>.
 /// </summary>
 internal sealed class InMemoryCloudSyncTransport : ICloudSyncTransport
 {

@@ -3,7 +3,8 @@ namespace EmuShelf.Core.SaveSync;
 /// <summary>
 /// The cloud side of save sync: list, download, and upload opaque per-unit payloads. It is
 /// deliberately copy-only — there is no delete — so a reconciliation bug can never remove the
-/// only copy of a save. The v1 implementation drives an external, user-owned rclone remote.
+/// only copy of a save. The implementation is EmuShelf's built-in Google Drive client; the interface
+/// stays provider-agnostic so a future backend can add a transport without changing anything above it.
 /// </summary>
 public interface ICloudSyncTransport
 {
@@ -37,10 +38,10 @@ public interface ICloudSyncTransport
         string? compatibility = null);
 
     /// <summary>
-    /// Commits everything queued by <see cref="UploadAsync"/> since the last flush. The rclone
-    /// implementation stages uploads locally and pushes them here in a single rclone session, so a
-    /// whole sync paces itself against the provider's rate limits instead of making one call per
-    /// save. Called once at the end of a sync.
+    /// Commits everything queued by <see cref="UploadAsync"/> since the last flush. The transport
+    /// stages uploads locally and pushes them here in a single batch, so a whole sync paces itself
+    /// against the provider's rate limits instead of making one call per save. Called once at the
+    /// end of a sync.
     ///
     /// This is where a sync that moves real data spends its time, so implementations report the
     /// transfer's progress as it goes; a caller that does not care passes null.

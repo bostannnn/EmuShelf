@@ -7,9 +7,6 @@ namespace EmuShelf.App.Tests;
 
 public class CloudSaveSyncCoordinatorTests
 {
-    private static readonly string NonexistentRclone =
-        Path.Combine(Path.GetTempPath(), "emushelf-no-rclone", Guid.NewGuid().ToString("N"));
-
     [Fact]
     public async Task SyncNow_WhenNotConfigured_DoesNothing()
     {
@@ -17,45 +14,6 @@ public class CloudSaveSyncCoordinatorTests
             .SyncNowAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(CloudSaveSyncStatus.NotConfigured, outcome.Status);
-    }
-
-    [Fact]
-    public async Task Connect_WithMissingInput_ReportsInvalidInput()
-    {
-        var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync("", "", Overrides(), CancellationToken.None);
-
-        Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
-    }
-
-    [Fact]
-    public async Task Connect_WithNoUsablePlatform_ReportsInvalidInput()
-    {
-        // A remote alone is not enough: without a platform that can produce a provider there would
-        // be nothing to sync into the newly created cloud folder.
-        var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
-
-        Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
-    }
-
-    [Fact]
-    public async Task Connect_WhenRcloneMissing_ReportsRcloneMissing()
-    {
-        var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync(
-                "gdrive",
-                "EmuShelf/Saves",
-                Overrides(("playstation2", "/pcsx2")),
-                CancellationToken.None);
-
-        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
-    }
-
-    [Fact]
-    public void IsRcloneAvailable_IsFalse_WhenTheBinaryDoesNotExist()
-    {
-        Assert.False(CreateCoordinator(new FakeSettingsService()).IsRcloneAvailable);
     }
 
     [Fact]
@@ -77,7 +35,7 @@ public class CloudSaveSyncCoordinatorTests
             CloudSaveSync = new CloudSaveSyncSettings
             {
                 Enabled = true,
-                RemoteName = "gdrive",
+                TransportKind = CloudTransportKind.GoogleDrive,
                 CloudFolder = "EmuShelf/Saves",
                 Pcsx2ConfigDirectory = "/portable/pcsx2",
                 PpssppMemoryStickDirectory = "/portable/ppsspp",
@@ -128,15 +86,18 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
-    public void CanSyncSystem_RcloneTransportStillRequiresItsRemoteName()
+    public void CanSyncSystem_TreatsAStoredRcloneConnectionAsNotConfigured()
     {
+        // rclone is retired: a fully-populated connection left over from it (remote name, folder, and
+        // an emulator directory) is deliberately not syncable, so the user reconnects through the
+        // built-in client rather than syncing against a transport that no longer exists.
         var settings = new AppSettings
         {
             CloudSaveSync = new CloudSaveSyncSettings
             {
                 Enabled = true,
                 TransportKind = CloudTransportKind.Rclone,
-                RemoteName = null,
+                RemoteName = "gdrive",
                 CloudFolder = "EmuShelf/Saves",
                 Pcsx2ConfigDirectory = "/portable/pcsx2",
             },
@@ -190,40 +151,6 @@ public class CloudSaveSyncCoordinatorTests
 
         Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
         Assert.False(browserOpened);
-    }
-
-    [Fact]
-    public async Task ConnectRclone_WhenItCannotProceed_LeavesTheExistingConnectionUntouched()
-    {
-        // A connect that fails must not half-apply. Moving the transport kind before rclone is known
-        // to work would point a working Drive connection at a remote that was never created.
-        //
-        // The successful branch — where the kind is set to Rclone — cannot be covered here: it needs
-        // both an rclone binary (opt-in, EMUSHELF_TEST_RCLONE_PATH) and an interactive Google
-        // consent screen. That branch is verified by inspection only.
-        var settings = new FakeSettingsService
-        {
-            Current = new AppSettings
-            {
-                CloudSaveSync = new CloudSaveSyncSettings
-                {
-                    Enabled = true,
-                    TransportKind = CloudTransportKind.GoogleDrive,
-                    CloudFolder = "EmuShelf/Saves",
-                    CloudFolderId = "folder-abc",
-                    Pcsx2ConfigDirectory = "/portable/pcsx2",
-                },
-            },
-        };
-        var coordinator = CreateCoordinator(settings, settings.Current);
-
-        var result = await coordinator.ConnectGoogleDriveAsync(
-            "gdrive", "EmuShelf/Saves", Overrides(("playstation2", "/pcsx2")), CancellationToken.None);
-
-        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
-        Assert.Equal(CloudTransportKind.GoogleDrive, settings.Current.CloudSaveSync.TransportKind);
-        Assert.Equal("folder-abc", settings.Current.CloudSaveSync.CloudFolderId);
-        Assert.True(settings.Current.CloudSaveSync.Enabled);
     }
 
     [Fact]
@@ -415,7 +342,7 @@ public class CloudSaveSyncCoordinatorTests
             CloudSaveSync = new CloudSaveSyncSettings
             {
                 Enabled = true,
-                RemoteName = "gdrive",
+                TransportKind = CloudTransportKind.GoogleDrive,
                 CloudFolder = "EmuShelf/Saves",
                 Pcsx2ConfigDirectory = "/legacy/pcsx2",
                 PpssppMemoryStickDirectory = "/legacy/ppsspp",
@@ -517,17 +444,21 @@ public class CloudSaveSyncCoordinatorTests
         Assert.Equal("/legacy/ps1", coordinator.Current.GetOverride("playstation"));
     }
 
+    // These four exercise the "at least one usable save platform" gate the connect applies before it
+    // reaches the transport. A local test build embeds no OAuth client, so a connect whose platform
+    // check passes returns ManagedTransportUnavailable — proof the gate let it through — rather than
+    // InvalidInput, which is what an empty platform set returns.
     [Fact]
     public async Task Connect_WithPpssppOverride_DoesNotRequirePcsx2Directory()
     {
         var result = await CreateCoordinator(new FakeSettingsService())
-            .ConnectGoogleDriveAsync(
-                "gdrive",
+            .ConnectGoogleDriveManagedAsync(
                 "EmuShelf/Saves",
                 Overrides(("psp", "/portable/ppsspp")),
+                _ => { },
                 CancellationToken.None);
 
-        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+        Assert.Equal(CloudSaveSyncConnectResult.ManagedTransportUnavailable, result);
     }
 
     [Fact]
@@ -536,9 +467,9 @@ public class CloudSaveSyncCoordinatorTests
         var result = await CreateCoordinator(
                 new FakeSettingsService(),
                 emulators: systemId => systemId == "psp" ? new SaveEmulatorInstallation("/app/ppsspp", false) : null)
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
+            .ConnectGoogleDriveManagedAsync("EmuShelf/Saves", Overrides(), _ => { }, CancellationToken.None);
 
-        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+        Assert.Equal(CloudSaveSyncConnectResult.ManagedTransportUnavailable, result);
     }
 
     [Fact]
@@ -549,9 +480,9 @@ public class CloudSaveSyncCoordinatorTests
                 emulators: systemId => systemId == "playstation"
                     ? new SaveEmulatorInstallation("/app/duckstation", false)
                     : null)
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
+            .ConnectGoogleDriveManagedAsync("EmuShelf/Saves", Overrides(), _ => { }, CancellationToken.None);
 
-        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+        Assert.Equal(CloudSaveSyncConnectResult.ManagedTransportUnavailable, result);
     }
 
     [Fact]
@@ -560,9 +491,9 @@ public class CloudSaveSyncCoordinatorTests
         var result = await CreateCoordinator(
                 new FakeSettingsService(),
                 emulators: systemId => systemId == "psp" ? new SaveEmulatorInstallation(null, true) : null)
-            .ConnectGoogleDriveAsync("gdrive", "EmuShelf/Saves", Overrides(), CancellationToken.None);
+            .ConnectGoogleDriveManagedAsync("EmuShelf/Saves", Overrides(), _ => { }, CancellationToken.None);
 
-        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+        Assert.Equal(CloudSaveSyncConnectResult.ManagedTransportUnavailable, result);
     }
 
     [Fact]
@@ -673,7 +604,6 @@ public class CloudSaveSyncCoordinatorTests
             settings,
             initial ?? new AppSettings(),
             NullAppLogger.Instance,
-            NonexistentRclone,
             emulatorInstallations: emulators);
 
     [Fact]
@@ -689,7 +619,7 @@ public class CloudSaveSyncCoordinatorTests
                 CloudSaveSync = new CloudSaveSyncSettings
                 {
                     Enabled = true,
-                    RemoteName = "gdrive",
+                    TransportKind = CloudTransportKind.GoogleDrive,
                     CloudFolder = "EmuShelf/Saves",
                     Pcsx2ConfigDirectory = "/pcsx2",
                 },
@@ -697,8 +627,8 @@ public class CloudSaveSyncCoordinatorTests
         };
         var coordinator = CreateCoordinator(settings, settings.Current);
 
-        // rclone is absent, so the transport fails and the pipeline takes its catch path — the
-        // exact route where RecordOutcome used to throw a second time and escape.
+        // This build embeds no OAuth client, so the transport cannot be built and the pipeline takes
+        // its catch path — the exact route where RecordOutcome used to throw a second time and escape.
         var outcome = await coordinator.SyncNowAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(CloudSaveSyncStatus.Failed, outcome.Status);
@@ -711,7 +641,7 @@ public class CloudSaveSyncCoordinatorTests
         var configuration = new CloudSaveSyncSettings
         {
             Enabled = true,
-            RemoteName = "gdrive",
+            TransportKind = CloudTransportKind.GoogleDrive,
             CloudFolder = "EmuShelf/Saves",
         }
             .WithOverride("playstation2", "/pcsx2")
@@ -735,7 +665,7 @@ public class CloudSaveSyncCoordinatorTests
         var configuration = new CloudSaveSyncSettings
         {
             Enabled = true,
-            RemoteName = "gdrive",
+            TransportKind = CloudTransportKind.GoogleDrive,
             CloudFolder = "EmuShelf/Saves",
         }
             .WithOverride("playstation", "/duckstation")

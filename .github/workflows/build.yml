@@ -87,27 +87,11 @@ jobs:
           -p:PublishReadyToRun=true
           -p:PublishReadyToRunShowWarnings=true
           -o publish/EmuShelf
-      - name: Bundle rclone (cloud save sync)
-        shell: pwsh
-        run: |
-          Invoke-WebRequest -Uri 'https://downloads.rclone.org/rclone-current-windows-amd64.zip' -OutFile rclone.zip
-          Expand-Archive rclone.zip -DestinationPath rclone-extract -Force
-          $exe = Get-ChildItem rclone-extract -Recurse -Filter rclone.exe | Select-Object -First 1
-          if (-not $exe) { throw 'rclone.exe was not found in the downloaded archive' }
-          Copy-Item $exe.FullName publish/EmuShelf/rclone.exe
-          New-Item -ItemType Directory -Force publish/EmuShelf/ThirdParty/rclone | Out-Null
-          # rclone's release archives ship no license file, but we redistribute the binary and
-          # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
-          $tag = $exe.Directory.Name -replace '^rclone-(v[\d.]+)-.*$', '$1'
-          if ($tag -eq $exe.Directory.Name) { throw "Could not derive the rclone version from '$($exe.Directory.Name)'" }
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING" -OutFile publish/EmuShelf/ThirdParty/rclone/LICENSE.txt
       - name: Verify portable payload
         shell: pwsh
         run: |
           $required = @(
             'publish/EmuShelf/EmuShelf.exe',
-            'publish/EmuShelf/rclone.exe',
-            'publish/EmuShelf/ThirdParty/rclone/LICENSE.txt',
             'publish/EmuShelf/THIRD-PARTY-NOTICES.md',
             'publish/EmuShelf/ThirdParty/OpenEmu/LICENSE.txt'
           )
@@ -166,19 +150,6 @@ jobs:
         run: >-
           dotnet publish src/EmuShelf.App -c Release -r linux-x64 --self-contained true
           -p:InvariantGlobalization=false -o publish/EmuShelf
-      - name: Bundle rclone (cloud save sync)
-        run: |
-          curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-linux-amd64.zip
-          unzip -o rclone.zip -d rclone-extract
-          rclone_dir="$(dirname "$(find rclone-extract -name rclone -type f | head -n1)")"
-          install -m 0755 "$rclone_dir/rclone" publish/EmuShelf/rclone
-          mkdir -p publish/EmuShelf/ThirdParty/rclone
-          # rclone's release archives ship no license file, but we redistribute the binary and
-          # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
-          tag="$(basename "$rclone_dir" | sed -n 's/^rclone-\(v[0-9.]*\)-.*$/\1/p')"
-          [ -n "$tag" ] || { echo "Could not derive the rclone version from $rclone_dir" >&2; exit 1; }
-          curl -fL -o publish/EmuShelf/ThirdParty/rclone/LICENSE.txt \
-            "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING"
       - name: Build and validate AppImage
         run: |
           curl -L -o /tmp/appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
@@ -230,19 +201,6 @@ jobs:
         run: >-
           dotnet publish src/EmuShelf.App -c Release -r osx-arm64 --self-contained true
           -p:InvariantGlobalization=false -o publish/mac
-      - name: Bundle rclone (cloud save sync)
-        run: |
-          curl -L -o rclone.zip https://downloads.rclone.org/rclone-current-osx-arm64.zip
-          unzip -o rclone.zip -d rclone-extract
-          rclone_dir="$(dirname "$(find rclone-extract -name rclone -type f | head -n1)")"
-          install -m 0755 "$rclone_dir/rclone" publish/mac/rclone
-          mkdir -p publish/mac/ThirdParty/rclone
-          # rclone's release archives ship no license file, but we redistribute the binary and
-          # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
-          tag="$(basename "$rclone_dir" | sed -n 's/^rclone-\(v[0-9.]*\)-.*$/\1/p')"
-          [ -n "$tag" ] || { echo "Could not derive the rclone version from $rclone_dir" >&2; exit 1; }
-          curl -fL -o publish/mac/ThirdParty/rclone/LICENSE.txt \
-            "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING"
       - name: Assemble .app bundle
         run: |
           chmod +x packaging/macos/build-macos-app.sh
@@ -252,7 +210,7 @@ jobs:
       - name: Verify portable payload
         run: |
           app="artifacts/EmuShelf.app/Contents/MacOS"
-          for f in EmuShelf rclone THIRD-PARTY-NOTICES.md ThirdParty/OpenEmu/LICENSE.txt ThirdParty/rclone/LICENSE.txt; do
+          for f in EmuShelf THIRD-PARTY-NOTICES.md ThirdParty/OpenEmu/LICENSE.txt; do
             if [ ! -e "$app/$f" ]; then echo "Portable payload is missing $f"; exit 1; fi
           done
           test -x "$app/EmuShelf" || { echo "EmuShelf is not executable"; exit 1; }

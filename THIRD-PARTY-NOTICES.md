@@ -131,15 +131,6 @@ the source project's terms and to the rights of their respective publishers.
   does not apply a result automatically. A selected image remains subject to its hosting site's
   terms and to the rights of its respective publisher.
 
-## Bundled tools
-
-- [rclone](https://rclone.org/) is bundled with EmuShelf's Windows and Linux (AppImage) packages
-  to power optional cloud save sync. It is invoked as a separate, unmodified executable — EmuShelf
-  does not link against it, and rclone owns any cloud OAuth token, which never passes through
-  EmuShelf. rclone is distributed under the
-  [MIT License](https://github.com/rclone/rclone/blob/master/COPYING); its license ships beside the
-  executable at `ThirdParty/rclone/LICENSE.txt`.
-
 ## Bundled fonts
 
 - [Exo 2](https://fonts.google.com/specimen/Exo+2), by Natanael Gama and the Exo 2 Project Authors,

@@ -194,8 +194,9 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     [Fact]
     public void TransportKind_DefaultsToRcloneForASettingsFileWrittenBeforeTheChoiceExisted()
     {
-        // An already-connected user must keep syncing against the remote they are connected to.
-        // Defaulting the other way would silently point them at an empty folder under a new scope.
+        // Back-compat only: a settings.json from before this field existed must still deserialize.
+        // It lands on the retired Rclone kind, which the coordinator treats as not configured, so the
+        // user reconnects through the built-in client rather than syncing against a dead transport.
         AppPaths.EnsureDirectoriesExist();
         File.WriteAllText(
             AppPaths.SettingsFilePath,
@@ -232,11 +233,11 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     {
         // The hand-written Equals exists so a round-trip compares equal. A field left out of it
         // reads as "nothing changed" for a change that matters.
-        var rclone = new CloudSaveSyncSettings { Enabled = true, CloudFolder = "EmuShelf/Saves" };
-        var managed = rclone with { TransportKind = CloudTransportKind.GoogleDrive };
+        var legacy = new CloudSaveSyncSettings { Enabled = true, CloudFolder = "EmuShelf/Saves" };
+        var managed = legacy with { TransportKind = CloudTransportKind.GoogleDrive };
 
-        Assert.NotEqual(rclone, managed);
-        Assert.Equal(rclone, rclone with { TransportKind = CloudTransportKind.Rclone });
+        Assert.NotEqual(legacy, managed);
+        Assert.Equal(legacy, legacy with { TransportKind = CloudTransportKind.Rclone });
     }
 
     [Fact]

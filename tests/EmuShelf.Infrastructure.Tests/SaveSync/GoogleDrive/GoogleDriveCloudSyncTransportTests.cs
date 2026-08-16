@@ -38,10 +38,10 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
     }
 
     [Fact]
-    public async Task Upload_ProducesTheNestedLayoutTheRcloneTransportProduces()
+    public async Task Upload_ProducesTheExpectedNestedLayout()
     {
-        // The layout is the contract between transports. If this drifts, a user who switches
-        // transports sees an empty remote and re-uploads everything.
+        // The on-remote layout is the wire format save sync depends on. If this drifts, a machine that
+        // already synced sees an empty remote and re-uploads everything.
         var drive = new FakeDriveServer();
         var transport = Transport(drive);
 

@@ -6,13 +6,10 @@ namespace EmuShelf.Infrastructure.SaveSync.GoogleDrive;
 /// Resolves the Google OAuth client this build ships, for the managed Drive transport.
 /// </summary>
 /// <remarks>
-/// The same embedded values the rclone path already uses (see
-/// <see cref="EmuShelf.Infrastructure.SaveSync.RcloneConfigurator.ResolveGoogleClient"/> and
-/// DECISIONS 2026-08-04): the client identifies EmuShelf-the-app, every user still signs into their
-/// own Drive, and no per-user token is ever embedded. Unlike the rclone path there is no shared
-/// fallback client to degrade to — EmuShelf is the only thing talking to Google here — so a build
-/// with no embedded client cannot offer this transport at all, and says so rather than failing at
-/// sign-in.
+/// The embedded values (see DECISIONS 2026-08-04) identify EmuShelf-the-app: every user still signs
+/// into their own Drive, and no per-user token is ever embedded. There is no shared fallback client to
+/// degrade to — EmuShelf is the only thing talking to Google here — so a build with no embedded client
+/// cannot offer this transport at all, and says so rather than failing at sign-in.
 /// </remarks>
 public static class GoogleOAuthClientSource
 {
@@ -27,7 +24,7 @@ public static class GoogleOAuthClientSource
 
     /// <summary>
     /// Both halves are required for the desktop client: an id without its secret authenticates as
-    /// nothing, which is the same all-or-nothing rule the rclone path applies.
+    /// nothing, so the resolver is all-or-nothing.
     /// </summary>
     /// <remarks>
     /// Android will need a second, secret-less client of its own — Google issues one client per

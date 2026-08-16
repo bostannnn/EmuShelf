@@ -67,35 +67,9 @@ try {
         -o $PublishDir
     if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
 
-    Write-Host '==> Bundling rclone (cloud save sync)' -ForegroundColor Cyan
-    $staging = Join-Path ([System.IO.Path]::GetTempPath()) ("emushelf-rclone-" + [guid]::NewGuid())
-    New-Item -ItemType Directory -Force $staging | Out-Null
-    try {
-        $zip = Join-Path $staging 'rclone.zip'
-        Invoke-WebRequest -Uri 'https://downloads.rclone.org/rclone-current-linux-amd64.zip' -OutFile $zip
-        Expand-Archive $zip -DestinationPath (Join-Path $staging 'extract') -Force
-        $binary = Get-ChildItem (Join-Path $staging 'extract') -Recurse -Filter rclone -File |
-            Select-Object -First 1
-        if (-not $binary) { throw 'rclone was not found in the downloaded archive' }
-        Copy-Item $binary.FullName (Join-Path $PublishDir 'rclone')
-        $licenseDir = Join-Path $PublishDir 'ThirdParty/rclone'
-        New-Item -ItemType Directory -Force $licenseDir | Out-Null
-        # rclone's release archives ship no license file, but we redistribute the binary and
-        # its MIT terms require the notice, so pull COPYING from the matching upstream tag.
-        $tag = $binary.Directory.Name -replace '^rclone-(v[\d.]+)-.*$', '$1'
-        if ($tag -eq $binary.Directory.Name) { throw "Could not derive the rclone version from '$($binary.Directory.Name)'" }
-        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING" `
-            -OutFile (Join-Path $licenseDir 'LICENSE.txt')
-    }
-    finally {
-        Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
-    }
-
     Write-Host '==> Verifying portable payload' -ForegroundColor Cyan
     $required = @(
         'EmuShelf',
-        'rclone',
-        'ThirdParty/rclone/LICENSE.txt',
         'THIRD-PARTY-NOTICES.md',
         'ThirdParty/OpenEmu/LICENSE.txt'
     )

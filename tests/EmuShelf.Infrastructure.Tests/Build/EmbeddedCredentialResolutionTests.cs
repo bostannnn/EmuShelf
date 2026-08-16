@@ -1,5 +1,4 @@
 using EmuShelf.Infrastructure.Metadata.ScreenScraper;
-using EmuShelf.Infrastructure.SaveSync;
 using EmuShelf.Infrastructure.SaveSync.GoogleDrive;
 
 namespace EmuShelf.Infrastructure.Tests.Build;
@@ -54,41 +53,7 @@ public class EmbeddedCredentialResolutionTests
     }
 
     [Fact]
-    public void GoogleClient_UsesTheEmbeddedClientAndTrims()
-    {
-        var resolved = RcloneConfigurator.ResolveGoogleClient(
-            embeddedClientId: " embedded-id ",
-            embeddedClientSecret: " embedded-secret ");
-
-        Assert.Equal(("embedded-id", "embedded-secret"), resolved);
-    }
-
-    [Fact]
-    public void GoogleClient_ReturnsNullWhenTheBuildEmbedsNoClient()
-    {
-        // An unconfigured local build embeds nothing; rclone's shared client is the only fallback,
-        // signalled by null.
-        var resolved = RcloneConfigurator.ResolveGoogleClient(
-            embeddedClientId: null,
-            embeddedClientSecret: null);
-
-        Assert.Null(resolved);
-    }
-
-    [Fact]
-    public void GoogleClient_ReturnsNullWhenOnlyOneHalfIsEmbedded()
-    {
-        // A half-configured build (id but no secret) must not be used; an id without its secret
-        // authenticates as nothing.
-        var resolved = RcloneConfigurator.ResolveGoogleClient(
-            embeddedClientId: "embedded-id",
-            embeddedClientSecret: null);
-
-        Assert.Null(resolved);
-    }
-
-    [Fact]
-    public void ManagedGoogleClient_UsesTheSameEmbeddedValuesAndTrims()
+    public void GoogleClient_UsesTheEmbeddedValuesAndTrims()
     {
         var resolved = GoogleOAuthClientSource.Resolve(" embedded-id ", " embedded-secret ");
 
@@ -102,9 +67,9 @@ public class EmbeddedCredentialResolutionTests
     [InlineData("embedded-id", null)]
     [InlineData(null, "embedded-secret")]
     [InlineData("  ", "embedded-secret")]
-    public void ManagedGoogleClient_ReturnsNullUnlessBothHalvesArePresent(string? id, string? secret)
+    public void GoogleClient_ReturnsNullUnlessBothHalvesArePresent(string? id, string? secret)
     {
-        // There is no shared fallback client for the managed transport, so a build that embeds
+        // There is no shared fallback client for the built-in transport, so a build that embeds
         // nothing usable must report that rather than attempt a sign-in that cannot succeed.
         Assert.Null(GoogleOAuthClientSource.Resolve(id, secret));
     }

@@ -564,7 +564,7 @@ public sealed class GamepadSettingsViewModelTests
         var current = new CloudSaveSyncSettings
         {
             Enabled = connected,
-            RemoteName = connected ? "emushelf-gdrive" : null,
+            TransportKind = connected ? CloudTransportKind.GoogleDrive : CloudTransportKind.Rclone,
             CloudFolder = connected ? "EmuShelf/Saves" : null,
         };
         var platform = new CloudSaveSyncPlatformContext(
@@ -578,17 +578,15 @@ public sealed class GamepadSettingsViewModelTests
             SupportsSaveStates: true);
         return new CloudSaveSyncSettingsContext(
             current,
-            true,
-            "/portable/rclone",
             "/portable/Logs/save-sync.log",
             () => [platform],
             (_, _) => Task.FromResult<string?>("/detected/pcsx2"),
-            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             updateOverride ?? ((_, _) => { }),
-            _ => Task.FromResult(true));
+            IsManagedTransportAvailable: true,
+            ConnectGoogleDriveManagedAsync: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected));
     }
 
     private static TexturePackSettingsContext CreateTextureContext()

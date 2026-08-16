@@ -29,9 +29,9 @@ public sealed record GoogleTokens(string AccessToken, string? RefreshToken, Date
 /// EmuShelf requests <c>drive.file</c> rather than full <c>drive</c>. It is the least privilege that
 /// does the job — the app can only ever see files it created itself, never the rest of the user's
 /// Drive — and it keeps EmuShelf out of Google's restricted-scope verification regime. The cost is
-/// that a folder created under the full scope (as rclone's backend requests) is invisible here, so
-/// switching transports means re-uploading. That is safe, because the transport is copy-only, but it
-/// is not silent: the caller must say so.
+/// that a folder created under a different app's full-Drive scope is invisible here, so a save folder
+/// set up by some other tool cannot be adopted; each machine re-uploads its own copies. That is safe,
+/// because the transport is copy-only, but it is not silent: the caller must say so.
 /// </remarks>
 public sealed class GoogleOAuthClient
 {

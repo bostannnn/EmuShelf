@@ -325,8 +325,8 @@ public sealed class SaveSyncServiceTests
     [Fact]
     public async Task EveryUnitNeedingTheCloudPayloadIsAnnouncedBeforeTheFirstTransfer()
     {
-        // The rclone transport opens one download session for the whole pass; it can only scope that
-        // session to the payloads this pass needs if the service says so before transferring.
+        // A transport that opens one download session for the whole pass can only scope that session
+        // to the payloads this pass needs if the service says so before transferring.
         var download = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
         var conflict = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
         _local.Seed(FileCard.UnitId, Bytes("upload-only"), T0);
