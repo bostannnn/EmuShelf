@@ -239,6 +239,99 @@ public class GameScrapeApplicationServiceTests : TempAppDirectoryTestBase
         Assert.Single(details.ProviderMatches);
     }
 
+    [Fact]
+    public async Task Apply_MarksCoverageComplete_WhenGameHoldsEveryOfferedFieldAndKind()
+    {
+        var game = AddGame("Complete.iso");
+
+        await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [TitleValue(game.Id, "Canonical Title")],
+            [MediaImport(GameMediaKind.BoxFront, "box"), MediaImport(GameMediaKind.Screenshot, "shot")],
+            GameMetadataApplyMode.FillMissing,
+            OfferedFields: new HashSet<GameMetadataField> { GameMetadataField.Title },
+            OfferedMediaKinds: new HashSet<GameMediaKind> { GameMediaKind.BoxFront, GameMediaKind.Screenshot }));
+
+        Assert.True(CoverageComplete(game.Id));
+    }
+
+    [Fact]
+    public async Task Apply_LeavesCoverageIncomplete_WhenAnOfferedKindIsNotApplied()
+    {
+        // The provider offers a screenshot, but this run applied only the box front (a narrowed pick), so
+        // the game still lacks a kind the provider has — a later fill-missing run must not skip it.
+        var game = AddGame("Partial.iso");
+
+        await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [TitleValue(game.Id, "Canonical Title")],
+            [MediaImport(GameMediaKind.BoxFront, "box")],
+            GameMetadataApplyMode.FillMissing,
+            OfferedFields: new HashSet<GameMetadataField> { GameMetadataField.Title },
+            OfferedMediaKinds: new HashSet<GameMediaKind> { GameMediaKind.BoxFront, GameMediaKind.Screenshot }));
+
+        Assert.False(CoverageComplete(game.Id));
+    }
+
+    [Fact]
+    public async Task Apply_LeavesCoverageIncomplete_WhenAnOfferedMediaDownloadFails()
+    {
+        var game = AddGame("FailCover.iso");
+        _downloader.ReturnNull = true;
+
+        await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [],
+            [MediaImport(GameMediaKind.BoxFront, "box")],
+            GameMetadataApplyMode.FillMissing,
+            OfferedFields: new HashSet<GameMetadataField>(),
+            OfferedMediaKinds: new HashSet<GameMediaKind> { GameMediaKind.BoxFront }));
+
+        Assert.False(CoverageComplete(game.Id));
+    }
+
+    [Fact]
+    public async Task Apply_MarksCoverageComplete_EvenWhenTheProviderOffersAVideoTheBatchNeverFetches()
+    {
+        // Video is opt-in and the batch has no video toggle, so it is never imported. Requiring it would
+        // leave the game permanently incomplete and re-queried every run; coverage must ignore it.
+        var game = AddGame("Video.iso");
+
+        await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [TitleValue(game.Id, "Canonical Title")],
+            [MediaImport(GameMediaKind.BoxFront, "box")],
+            GameMetadataApplyMode.FillMissing,
+            OfferedFields: new HashSet<GameMetadataField> { GameMetadataField.Title },
+            OfferedMediaKinds: new HashSet<GameMediaKind> { GameMediaKind.BoxFront, GameMediaKind.Video }));
+
+        Assert.True(CoverageComplete(game.Id));
+    }
+
+    [Fact]
+    public async Task Apply_WithoutAnOffering_LeavesCoverageIncomplete()
+    {
+        // Callers that don't pass the provider's offering can't be judged complete, so the batch never
+        // skips their games. (The default request omits the offering.)
+        var game = AddGame("NoOffer.iso");
+
+        await _service.ApplyAsync(new GameScrapeApplyRequest(
+            game.Id,
+            Match(game.Id),
+            [TitleValue(game.Id, "Canonical Title")],
+            [MediaImport(GameMediaKind.BoxFront, "box")],
+            GameMetadataApplyMode.FillMissing));
+
+        Assert.False(CoverageComplete(game.Id));
+    }
+
+    private bool CoverageComplete(long gameId) =>
+        _details.GetDetails(gameId).ProviderMatches.Single().CoverageComplete;
+
     private Game AddGame(string filename)
     {
         var path = Path.Combine(BaseDirectory, "Games", filename);

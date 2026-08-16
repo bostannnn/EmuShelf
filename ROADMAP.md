@@ -1852,7 +1852,7 @@ The deferred follow-up to M38's single last-played column: how long each game ha
 many times it was launched. Two aggregate totals on the game row, not a session-history table (see
 `DECISIONS.md` 2026-08-16). Surfaced as opt-in list columns and a gamepad spotlight caption.
 
-- [x] Persist two totals: schema v17 adds `Games.PlaytimeSeconds` and `Games.PlayCount`
+- [x] Persist two totals: schema v18 adds `Games.PlaytimeSeconds` and `Games.PlayCount`
       (`INTEGER NOT NULL DEFAULT 0`, healed by `AddGameColumnIfMissing`), surfaced as
       `Game.Playtime` (`TimeSpan`) and `Game.PlayCount` (`int`). `IGameLibrary.SetLastPlayed` became
       `RecordLaunchStarted`, stamping last-played and incrementing the count in one atomic update; a
@@ -1867,7 +1867,7 @@ many times it was launched. Two aggregate totals on the game row, not a session-
       `SortGames`; plus a gamepad spotlight caption ("12h 34m • 5 plays", hidden when unplayed) under
       the launch-source line.
 - [x] Tests: `RecordLaunchStarted`/`AddPlaytime` round-trip (accrual, count-every-launch, zero
-      defaults, ignore non-positive), schema-v17 migration version + column defaults, launch-service
+      defaults, ignore non-positive), schema-v18 migration version + column defaults, launch-service
       `PlayDuration` coverage (tracked runtime, non-zero exit, none when unstarted), and
       `GameViewModel` formatting (compact hours/minutes, dash-when-unplayed, gamepad summary).
       `dotnet build`/`dotnet test` green on macOS.

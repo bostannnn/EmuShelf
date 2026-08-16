@@ -191,7 +191,12 @@ public sealed record GameProviderMatch(
     string? EvidenceValue,
     GameMetadataStatus Status,
     DateTimeOffset LastAttemptedAt,
-    string? LastError);
+    string? LastError,
+    // True when the last scrape left the game holding every metadata field and media kind this
+    // provider offered — so a fill-missing re-scrape could add nothing and the batch may skip it to
+    // save the daily quota. A partial scrape (narrowed selection, or a failed media download) leaves
+    // this false, so a later run still re-queries and fills the gap. Persisted; defaults to false.
+    bool CoverageComplete = false);
 
 public sealed record GameDetails(
     long GameId,
@@ -260,7 +265,13 @@ public sealed record GameScrapeApplyRequest(
     // "use this art" choice, so it overrides fill-missing. Batch leaves it off so a fill-missing run still
     // skips games that already have the kind. User-owned art is never reached here (its scraper row is
     // disabled) and the store still refuses to overwrite user or foreign-provider files on disk.
-    bool OverwriteExistingMedia = false);
+    bool OverwriteExistingMedia = false,
+    // The provider's full offering for this game (before the caller narrowed it down to Metadata/Media
+    // above), used only to decide whether the resulting match is coverage-complete — i.e. the game now
+    // holds every field and media kind the provider had, so a fill-missing re-scrape could add nothing.
+    // Null on either leaves the match's CoverageComplete untouched (defaults to not-complete).
+    IReadOnlySet<GameMetadataField>? OfferedFields = null,
+    IReadOnlySet<GameMediaKind>? OfferedMediaKinds = null);
 
 public enum GameMediaApplyOutcome
 {
@@ -312,6 +323,11 @@ public enum GameScrapeBatchOutcome
     /// <summary>Matched by hash/serial returned nothing to write (already filled, or empty result).</summary>
     NothingToApply,
 
+    /// <summary>Skipped without contacting the provider because a previous scrape already pulled
+    /// everything the provider offered (a coverage-complete match), so a fill-missing pass could add
+    /// nothing. Saves the daily quota on a re-run. A refresh (replace owned values) run never skips.</summary>
+    AlreadyScraped,
+
     /// <summary>No hash/serial match. Batch never falls back to title search; this is left for manual scraping.</summary>
     NoMatch,
 
@@ -356,6 +372,13 @@ public sealed record GameScrapeBatchSummary(
     IReadOnlyList<GameScrapeBatchItemResult> Results)
 {
     public int Applied => Results.Count(result => result.Outcome == GameScrapeBatchOutcome.Applied);
+
+    /// <summary>Games that matched but had nothing new to write — either skipped up front because they
+    /// were already scraped, or matched via the provider and found already filled. Counted together so a
+    /// re-run reports "N already complete" instead of vanishing from the tally as "0 scraped".</summary>
+    public int AlreadyComplete => Results.Count(result =>
+        result.Outcome is GameScrapeBatchOutcome.AlreadyScraped or GameScrapeBatchOutcome.NothingToApply);
+
     public int NoMatch => Results.Count(result => result.Outcome == GameScrapeBatchOutcome.NoMatch);
     public int Unsupported => Results.Count(result => result.Outcome == GameScrapeBatchOutcome.Unsupported);
     public int Failed => Results.Count(result =>

@@ -77,7 +77,8 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
             }
         }
 
-        _details.UpsertProviderMatch(request.Match);
+        var coverageComplete = DetermineCoverageComplete(request, existing, mediaResults);
+        _details.UpsertProviderMatch(request.Match with { CoverageComplete = coverageComplete });
 
         return new GameScrapeApplyResult(
             request.GameId,
@@ -85,6 +86,46 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
             metadataSkipped,
             mediaResults,
             coverProjected);
+    }
+
+    // Did this scrape leave the game holding everything the provider offered? If so, a later fill-missing
+    // run could add nothing and the batch may skip it. Determined from the post-metadata snapshot (metadata
+    // is written before <paramref name="stateAfterMetadata"/> is read) plus this run's media outcomes, so a
+    // narrowed selection or a failed download correctly reads as incomplete and is re-queried next time.
+    private static bool DetermineCoverageComplete(
+        GameScrapeApplyRequest request,
+        GameDetails stateAfterMetadata,
+        IReadOnlyList<GameMediaApplyResult> mediaResults)
+    {
+        // Without the provider's full offering we cannot tell whether more is available, so leave the
+        // flag as the caller passed it (which defaults to not-complete — nothing gets skipped).
+        if (request.OfferedFields is null || request.OfferedMediaKinds is null)
+            return request.Match.CoverageComplete;
+
+        var presentFields = stateAfterMetadata.Metadata.Select(value => value.Field).ToHashSet();
+        if (!request.OfferedFields.All(presentFields.Contains))
+            return false;
+
+        // A kind is covered if the game already had an active asset of it, or this apply imported it,
+        // found it already present, or found it held by the user / another provider. A failed download
+        // leaves the kind uncovered, so coverage stays incomplete and a later run retries it.
+        var presentKinds = stateAfterMetadata.Media
+            .Where(asset => asset.IsSelected)
+            .Select(asset => asset.Kind)
+            .Concat(mediaResults
+                .Where(result => result.Outcome is GameMediaApplyOutcome.Imported
+                    or GameMediaApplyOutcome.SkippedExisting
+                    or GameMediaApplyOutcome.SkippedProtected)
+                .Select(result => result.Kind))
+            .ToHashSet();
+
+        // Video is excluded from the coverage requirement: it is opt-in, has no in-app player, and the
+        // batch never fetches it (its UI has no video toggle). If a game's offering includes a video, no
+        // batch run could ever import it, so requiring it would keep the game permanently incomplete and
+        // re-queried every run — the opposite of the quota-saving skip. See ScrapingSettings.MediaKinds.
+        return request.OfferedMediaKinds
+            .Where(kind => kind != GameMediaKind.Video)
+            .All(presentKinds.Contains);
     }
 
     private async Task<(GameMediaApplyResult Result, GameMediaAsset? Saved)> ImportMediaAsync(

@@ -72,6 +72,51 @@ public class GameBatchScraperViewModelTests
     }
 
     [Fact]
+    public async Task Done_SummaryReportsAlreadyCompleteGames_InsteadOfHidingThem()
+    {
+        var batch = new FakeBatch
+        {
+            Result = new GameScrapeBatchSummary(
+                4,
+                GameScrapeBatchStopReason.Completed,
+                [
+                    new GameScrapeBatchItemResult(1, "a", GameScrapeBatchOutcome.Applied, 2, 1),
+                    new GameScrapeBatchItemResult(2, "b", GameScrapeBatchOutcome.AlreadyScraped),
+                    new GameScrapeBatchItemResult(3, "c", GameScrapeBatchOutcome.NothingToApply),
+                    new GameScrapeBatchItemResult(4, "d", GameScrapeBatchOutcome.NoMatch),
+                ]),
+        };
+        var vm = new GameBatchScraperViewModel([1, 2, 3, 4], "PS1", batch, Enabled());
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Contains("1 scraped", vm.StatusMessage);
+        Assert.Contains("2 already complete", vm.StatusMessage);
+        Assert.Contains("1 no match", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Done_SummaryOfAllAlreadyComplete_DoesNotReadAsNothingScraped()
+    {
+        var batch = new FakeBatch
+        {
+            Result = new GameScrapeBatchSummary(
+                2,
+                GameScrapeBatchStopReason.Completed,
+                [
+                    new GameScrapeBatchItemResult(1, "a", GameScrapeBatchOutcome.AlreadyScraped),
+                    new GameScrapeBatchItemResult(2, "b", GameScrapeBatchOutcome.AlreadyScraped),
+                ]),
+        };
+        var vm = new GameBatchScraperViewModel([1, 2], "PS1", batch, Enabled());
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Contains("2 already complete", vm.StatusMessage);
+        Assert.False(vm.AppliedChanges);
+    }
+
+    [Fact]
     public async Task Cancel_WhileRunning_StopsTheRun_AndEndsCancelled()
     {
         var batch = new FakeBatch { BlockUntilCancelled = true };
