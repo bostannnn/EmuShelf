@@ -2798,8 +2798,8 @@ public class MainViewModelTests : IDisposable
             new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Never Played.cue"), Title = "Never Played", DateAdded = DateTimeOffset.UtcNow },
         ]);
         var games = _library.GetGames();
-        _library.SetLastPlayed(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
-        _library.SetLastPlayed(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
         var vm = CreateViewModel();
 
         await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
@@ -2855,8 +2855,8 @@ public class MainViewModelTests : IDisposable
         ]);
         var games = _library.GetGames();
         // Relative to now so the assertion never depends on the test machine's wall clock.
-        _library.SetLastPlayed(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
-        _library.SetLastPlayed(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
         var vm = CreateViewModel(launchService: new RecordingLaunchService(new GameLaunchResult(true, "Alpha finished")));
         await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
         Assert.Equal(["Beta", "Alpha"], vm.Games.Select(game => game.Title));

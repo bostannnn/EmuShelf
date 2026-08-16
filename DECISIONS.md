@@ -8627,3 +8627,40 @@ exists to catch. Rescaling the kept band back to the original extent bakes the t
 mesh instead, so coincident merged walls stay coincident, the shell stays boxy, and its depth ratio
 still agrees with its profile (D/H back to 0.072). The case renders identically either way; only the
 mesh-vs-profile agreement differs, and that is worth keeping honest rather than excepting.
+
+## 2026-08-16 — Playtime is two running totals stamped at different moments (M43)
+
+M38 stored one play fact — `LastPlayedAt` — and deliberately deferred play time and play count to
+"a later, deliberate addition." M43 is that addition. Two questions had non-obvious answers.
+
+**Aggregate columns, not a session-history table.** Play time and play count are two `NOT NULL
+DEFAULT 0` columns on `Games` (`PlaytimeSeconds`, `PlayCount`, schema v17), not a row-per-session
+log. This continues the M38 line ("a single column, not a play-history table"): every recency and
+column read stays a plain field read off the `Game` record with no join, and it covers every surface
+the product has — a total-hours column, a plays column, and a gamepad "12h 34m • 5 plays" caption. A
+per-session table is only worth its weight once something needs dated history (a "played 2h on Aug
+12" list, a playtime graph); that stays a future migration, not speculative schema now.
+
+**The two totals are stamped at different moments, and that asymmetry is intentional.** `PlayCount`
+is incremented together with `LastPlayedAt` in the launch `beforeStart` callback — after preflight
+passes, immediately *before* `Process.Start` — in one atomic `RecordLaunchStarted` update (the method
+M38's `SetLastPlayed` became), so it survives an app kill mid-session for the same reason last-played
+does: the play is recorded before the game can take over the machine. This inherits M38's exact
+`LastPlayed` placement, including its one imprecision — a launch that clears preflight but then fails
+at `Process.Start` itself (a File.Exists-passing binary that can't be exec'd: bad permissions, corrupt
+image, AV block) is still counted, because the stamp already ran. Moving the stamp to just after a
+confirmed start would need an "onStarted" hook the tracked-process interface doesn't have, and the
+over-count is a rare exec-time failure worth one stray play, not that plumbing. Play time, by
+contrast, can only be known at a clean *exit*, so it accrues then: `EmulatorLaunchService` times a
+`Stopwatch` around the tracked `RunAsync` (the process runtime only — not preflight, save sync, or the
+launch animation), returns it on `GameLaunchResult.PlayDuration`, and the App persists it with
+`AddPlaytime` after the launch returns. The consequence is honest but slightly asymmetric: a session
+ended by an app kill counts as one play with zero added time. Recording play time at start instead
+would be wrong (no duration exists yet); recording the count at exit instead would drop killed
+sessions from the count. We keep last-played and play count consistent with each other, and let play
+time be the one number that requires a clean exit.
+
+**Known undercount: hand-off launchers.** EmuShelf times the process it starts. An emulator (or
+wrapper) that spawns the real game process and returns immediately reports a runtime far shorter than
+the actual session. This is the best signal available without per-emulator hooks, so the tracked
+process's runtime is what we record; the count is unaffected because it does not depend on runtime.

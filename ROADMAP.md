@@ -1845,3 +1845,31 @@ the hands-on review gate before Phase 2 begins.
       and PSP onto the disc path once they stop rendering as flat cover cards.
 - [ ] Keep the mode experimental until SNES, GBA and supported case variants pass real-hardware visual,
       performance, no-cover, no-GL, cancellation and every launch-failure acceptance path.
+
+## M43 — Playtime tracking ✅ (2026-08-16)
+
+The deferred follow-up to M38's single last-played column: how long each game has been played and how
+many times it was launched. Two aggregate totals on the game row, not a session-history table (see
+`DECISIONS.md` 2026-08-16). Surfaced as opt-in list columns and a gamepad spotlight caption.
+
+- [x] Persist two totals: schema v17 adds `Games.PlaytimeSeconds` and `Games.PlayCount`
+      (`INTEGER NOT NULL DEFAULT 0`, healed by `AddGameColumnIfMissing`), surfaced as
+      `Game.Playtime` (`TimeSpan`) and `Game.PlayCount` (`int`). `IGameLibrary.SetLastPlayed` became
+      `RecordLaunchStarted`, stamping last-played and incrementing the count in one atomic update; a
+      new `AddPlaytime` accrues a completed session's duration (ignoring a zero/negative span).
+- [x] Count at start, time at exit: `RecordLaunchStarted` fires in the launch `beforeStart` callback
+      (so a killed session still counts as one play), while `EmulatorLaunchService` times a `Stopwatch`
+      around the tracked process and returns it on `GameLaunchResult.PlayDuration` (present on zero and
+      non-zero exit, null when the process never starts). `MainViewModel` persists it via `AddPlaytime`
+      off the UI thread, guarded so a write failure can't turn a completed launch into a reported error.
+- [x] Surface it: two opt-in Desktop list columns (`Play Time` "Nh Nm"/"< 1m"/"—", `Plays`), wired
+      through `LibraryColumnKey`/`LibrarySortColumn`/`LibraryColumnCatalog`, keyed cell templates, and
+      `SortGames`; plus a gamepad spotlight caption ("12h 34m • 5 plays", hidden when unplayed) under
+      the launch-source line.
+- [x] Tests: `RecordLaunchStarted`/`AddPlaytime` round-trip (accrual, count-every-launch, zero
+      defaults, ignore non-positive), schema-v17 migration version + column defaults, launch-service
+      `PlayDuration` coverage (tracked runtime, non-zero exit, none when unstarted), and
+      `GameViewModel` formatting (compact hours/minutes, dash-when-unplayed, gamepad summary).
+      `dotnet build`/`dotnet test` green on macOS.
+- [ ] On real Windows, launch and exit a game and confirm the play time and count increment, persist
+      across restart, and that no game file or emulator data was modified.

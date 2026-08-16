@@ -10,7 +10,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 16;
+    private const int CurrentSchemaVersion = 17;
 
     private readonly IAppPaths _appPaths;
 
@@ -144,7 +144,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 16)
+        {
             ApplyMigrationV16(connection);
+            version = 16;
+        }
+
+        if (version < 17)
+            ApplyMigrationV17(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -769,6 +775,23 @@ public sealed class LibraryDatabase
 
             UPDATE SchemaVersion SET Version = 16;
             """;
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV17(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        // Playtime tracking (M43), the deferred follow-up to M38's single last-played column:
+        // a running total of completed-session seconds and a launch counter. Both are NOT NULL with a
+        // 0 default, so every existing row reads as "never played" (0h, 0 plays) with no backfill.
+        // AddGameColumnIfMissing heals a database interrupted mid-migration, matching v9/v10/v15.
+        AddGameColumnIfMissing(connection, transaction, "PlaytimeSeconds", "INTEGER NOT NULL DEFAULT 0");
+        AddGameColumnIfMissing(connection, transaction, "PlayCount", "INTEGER NOT NULL DEFAULT 0");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE SchemaVersion SET Version = 17;";
         command.ExecuteNonQuery();
         transaction.Commit();
     }

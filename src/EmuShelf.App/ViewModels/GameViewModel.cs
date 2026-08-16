@@ -75,6 +75,60 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Sort key for Last Played; a never-played game sorts oldest.</summary>
     public DateTimeOffset LastPlayedSortKey => Model.LastPlayedAt ?? DateTimeOffset.MinValue;
 
+    /// <summary>List-view "Play Time" column: the accumulated play time as a compact "Nh Nm" string,
+    /// or "—" when nothing has been recorded (never played, or every session ended in an app kill).
+    /// Sorted by <see cref="PlaytimeSortKey"/>. From <see cref="Game.Playtime"/> (M43).</summary>
+    public string PlaytimeText => FormatPlaytime(Model.Playtime);
+
+    /// <summary>Sort key for Play Time; a never-played game (zero) sorts lowest.</summary>
+    public TimeSpan PlaytimeSortKey => Model.Playtime;
+
+    /// <summary>List-view "Plays" column: how many times the game has been launched, or "—" when it
+    /// has never been played. From <see cref="Game.PlayCount"/> (M43).</summary>
+    public string PlayCountText => Model.PlayCount > 0
+        ? Model.PlayCount.ToString(CultureInfo.CurrentCulture)
+        : RetroAchievementsDisplay.Dash;
+
+    /// <summary>Sort key for Plays.</summary>
+    public int PlayCountSortKey => Model.PlayCount;
+
+    /// <summary>Gamepad spotlight caption summarising play activity, e.g. "12h 34m • 5 plays", "3
+    /// plays" (when a session was only ever killed mid-play), or empty when the game is unplayed so
+    /// the hero hides the line. See <see cref="HasGamepadPlaytime"/>.</summary>
+    public string GamepadPlaytimeSummary
+    {
+        get
+        {
+            if (Model.PlayCount <= 0)
+                return string.Empty;
+            var plays = Model.PlayCount == 1 ? "1 play" : $"{Model.PlayCount} plays";
+            return Model.Playtime > TimeSpan.Zero ? $"{FormatPlaytime(Model.Playtime)} • {plays}" : plays;
+        }
+    }
+
+    /// <summary>Whether the game has been launched at least once, so the spotlight shows its play
+    /// summary line.</summary>
+    public bool HasGamepadPlaytime => Model.PlayCount > 0;
+
+    // Compact play-time label shared by the list column and the gamepad summary: "—" for none,
+    // "< 1m" for a sub-minute session, then "Nh Nm" / "Nh" / "Nm" trimming a zero component.
+    private static string FormatPlaytime(TimeSpan playtime)
+    {
+        var totalSeconds = (long)playtime.TotalSeconds;
+        if (totalSeconds <= 0)
+            return RetroAchievementsDisplay.Dash;
+
+        var totalMinutes = totalSeconds / 60;
+        if (totalMinutes < 1)
+            return "< 1m";
+
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        if (hours <= 0)
+            return $"{minutes}m";
+        return minutes == 0 ? $"{hours}h" : $"{hours}h {minutes}m";
+    }
+
     /// <summary>List-view "Date Added" column: a short local date. From <see cref="Game.DateAdded"/>.</summary>
     public string DateAddedText => Model.DateAdded.LocalDateTime.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
 

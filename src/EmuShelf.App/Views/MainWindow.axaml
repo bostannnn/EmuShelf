@@ -1937,6 +1937,28 @@
                                                     </Border>
                                                 </DataTemplate>
                                             </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="Playtime">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding PlaytimeText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="PlayCount">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <TextBlock VerticalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                                   x:DataType="vm:GameViewModel"
+                                                                   DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                   Text="{Binding PlayCountText}" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
                                             <vm:LibraryColumnCellTemplate Key="DateAdded">
                                                 <DataTemplate x:DataType="vm:LibraryColumn">
                                                     <Border Width="{Binding Width}" VerticalAlignment="Stretch">
@@ -2898,6 +2920,12 @@
                         <!-- The launch source (file/disc that A will run), a dim caption under the chips. -->
                         <TextBlock Text="{Binding FocusedGame.GamepadSubtitle}" HorizontalAlignment="Center"
                                    FontSize="{DynamicResource EmuGpCaptionSize}" Foreground="#99FFFFFF"
+                                   MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        <!-- Play activity (total time • times launched), shown only once the game has
+                             been played so an unplayed hero keeps a clean single caption. -->
+                        <TextBlock Text="{Binding FocusedGame.GamepadPlaytimeSummary}" HorizontalAlignment="Center"
+                                   FontSize="{DynamicResource EmuGpCaptionSize}" Foreground="#99FFFFFF"
+                                   IsVisible="{Binding FocusedGame.HasGamepadPlaytime}"
                                    MaxLines="1" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 

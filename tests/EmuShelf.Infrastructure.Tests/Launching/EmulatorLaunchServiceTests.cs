@@ -134,6 +134,55 @@ public class EmulatorLaunchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task LaunchAsync_ReportsTheTrackedRuntimeAsPlayDuration()
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("test-emulator.exe");
+        _configurations.Configuration = new(game.SystemId, executable, null);
+        _runner.Runtime = TimeSpan.FromMilliseconds(40);
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(game);
+
+        Assert.True(result.Succeeded);
+        Assert.True(result.ProcessExited);
+        // The play duration is the tracked process's wall-clock runtime; it can't be shorter than the
+        // time the process was awaited (a floor well under the 40 ms runtime avoids timer-resolution
+        // flake).
+        Assert.NotNull(result.PlayDuration);
+        Assert.True(result.PlayDuration >= TimeSpan.FromMilliseconds(20));
+    }
+
+    [Fact]
+    public async Task LaunchAsync_ReportsPlayDuration_EvenOnNonZeroExit()
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("test-emulator.exe");
+        _configurations.Configuration = new(game.SystemId, executable, null);
+        _runner.ExitCode = 3;
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(game);
+
+        // A crashed/non-zero exit still ran, so the time counts.
+        Assert.False(result.Succeeded);
+        Assert.True(result.ProcessExited);
+        Assert.NotNull(result.PlayDuration);
+    }
+
+    [Fact]
+    public async Task LaunchAsync_HasNoPlayDuration_WhenTheProcessNeverStarts()
+    {
+        // Preflight fails (missing game), so nothing is tracked and there is no runtime to accrue.
+        var service = CreateService();
+
+        var result = await service.LaunchAsync(GameAt(Path.Combine(_directory, "missing.cue")));
+
+        Assert.False(result.ProcessExited);
+        Assert.Null(result.PlayDuration);
+    }
+
+    [Fact]
     public async Task LaunchAsync_FallsBackToTheGameTitle_WhenNoDisplayNameIsGiven()
     {
         var game = CreateGameFile();
@@ -617,8 +666,10 @@ public class EmulatorLaunchServiceTests : IDisposable
         public string? WorkingDirectory { get; private set; }
         public ProcessStartSpec? StartSpec { get; private set; }
         public Exception? Exception { get; set; }
+        public int ExitCode { get; set; }
+        public TimeSpan Runtime { get; set; }
 
-        public Task<int> RunAsync(
+        public async Task<int> RunAsync(
             string executablePath,
             IReadOnlyList<string> arguments,
             string workingDirectory,
@@ -629,7 +680,9 @@ public class EmulatorLaunchServiceTests : IDisposable
             WorkingDirectory = workingDirectory;
             if (Exception is not null)
                 throw Exception;
-            return Task.FromResult(0);
+            if (Runtime > TimeSpan.Zero)
+                await Task.Delay(Runtime, cancellationToken);
+            return ExitCode;
         }
 
         public Task<int> RunAsync(ProcessStartSpec startSpec, CancellationToken cancellationToken = default)

@@ -433,6 +433,10 @@ public class SqliteEmulatorConfigurationStoreTests : TempAppDirectoryTestBase
                 """
                 CREATE TABLE SchemaVersion (Version INTEGER NOT NULL);
                 INSERT INTO SchemaVersion VALUES (15);
+                CREATE TABLE Games (
+                    Id INTEGER PRIMARY KEY,
+                    Path TEXT NOT NULL
+                );
                 CREATE TABLE EmulatorConfigs (
                     SystemId TEXT PRIMARY KEY,
                     ExecutablePath TEXT NULL,

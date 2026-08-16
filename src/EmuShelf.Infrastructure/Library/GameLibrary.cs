@@ -29,7 +29,7 @@ public sealed class GameLibrary : IGameLibrary
             """
             SELECT Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
                    ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent, IsAvailable, DateAdded,
-                   LastPlayedUnixMilliseconds
+                   LastPlayedUnixMilliseconds, PlaytimeSeconds, PlayCount
             FROM Games
             WHERE ($systemId IS NULL OR SystemId = $systemId)
             ORDER BY Title COLLATE NOCASE;
@@ -67,7 +67,7 @@ public sealed class GameLibrary : IGameLibrary
             """
             SELECT Id, SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
                    ExternalSourceId, ExternalSourceEntryId, ExternalSourcePresent, IsAvailable, DateAdded,
-                   LastPlayedUnixMilliseconds
+                   LastPlayedUnixMilliseconds, PlaytimeSeconds, PlayCount
             FROM Games
             ORDER BY DateAddedUnixMilliseconds DESC, Id DESC
             LIMIT $limit;
@@ -489,13 +489,33 @@ public sealed class GameLibrary : IGameLibrary
         transaction.Commit();
     }
 
-    public void SetLastPlayed(long gameId, DateTimeOffset playedAt)
+    public void RecordLaunchStarted(long gameId, DateTimeOffset startedAt)
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
+        // Timestamp and count move together in one statement so a launch is recorded atomically:
+        // last-played drives Recently Played, the count is the "times launched" total. Both are
+        // stamped at start (not exit), so a session ended by an app kill still counts.
         command.CommandText =
-            "UPDATE Games SET LastPlayedUnixMilliseconds = $lastPlayed WHERE Id = $id;";
-        command.Parameters.AddWithValue("$lastPlayed", playedAt.ToUnixTimeMilliseconds());
+            "UPDATE Games SET LastPlayedUnixMilliseconds = $lastPlayed, PlayCount = PlayCount + 1 WHERE Id = $id;";
+        command.Parameters.AddWithValue("$lastPlayed", startedAt.ToUnixTimeMilliseconds());
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
+    public void AddPlaytime(long gameId, TimeSpan duration)
+    {
+        // Only whole seconds are stored, and a zero/negative span (a launch that failed to start, or a
+        // process that exited instantly) adds nothing rather than writing a no-op row update.
+        var seconds = (long)Math.Round(duration.TotalSeconds, MidpointRounding.AwayFromZero);
+        if (seconds <= 0)
+            return;
+
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "UPDATE Games SET PlaytimeSeconds = PlaytimeSeconds + $seconds WHERE Id = $id;";
+        command.Parameters.AddWithValue("$seconds", seconds);
         command.Parameters.AddWithValue("$id", gameId);
         command.ExecuteNonQuery();
     }
@@ -789,6 +809,8 @@ public sealed class GameLibrary : IGameLibrary
         LastPlayedAt = reader.IsDBNull(12)
             ? null
             : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(12)),
+        Playtime = TimeSpan.FromSeconds(reader.GetInt64(13)),
+        PlayCount = (int)reader.GetInt64(14),
     };
 
     private sealed record ExistingExternalEntry(long Id, GameTitleOrigin TitleOrigin);

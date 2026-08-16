@@ -30,4 +30,11 @@ public sealed record Game
     /// launch start (not exit) so it survives an app kill mid-session. Drives the Recently Played
     /// collection.</summary>
     public DateTimeOffset? LastPlayedAt { get; init; }
+    /// <summary>Total accumulated play time across all completed sessions (whole seconds), or zero if
+    /// never played. Accrues when a tracked emulator process exits (M43), so a session lost to an app
+    /// kill contributes nothing even though it still counts toward <see cref="PlayCount"/>.</summary>
+    public TimeSpan Playtime { get; init; }
+    /// <summary>How many times the game has been launched. Incremented at launch start alongside
+    /// <see cref="LastPlayedAt"/>, so it counts every real launch — including one killed mid-session.</summary>
+    public int PlayCount { get; init; }
 }
