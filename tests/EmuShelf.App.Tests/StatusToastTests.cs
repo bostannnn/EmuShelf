@@ -149,9 +149,9 @@ public class StatusToastTests : IDisposable
     }
 
     /// <summary>
-    /// A launch/exit save sync raises the large centered Gamepad panel from the same StatusText the
-    /// corner toast reads, so while that panel is up the corner toast must stay silent — otherwise
-    /// the couch player sees the identical sync line twice, once big and once in the corner.
+    /// The blocking pre-launch save sync raises the large centered Gamepad panel from the same
+    /// StatusText the corner toast reads, so while that panel is up the corner toast must stay silent
+    /// — otherwise the couch player sees the identical sync line twice, once big and once in the corner.
     /// </summary>
     [AvaloniaFact]
     public void TheGamepadCornerToastIsSuppressedWhileTheLaunchSyncPanelIsShowing()
@@ -169,13 +169,33 @@ public class StatusToastTests : IDisposable
         Assert.True(viewModel.ShowGamepadStatusToast);
 
         viewModel.IsSyncingSavesForLaunch = true;
+        viewModel.IsBlockingLaunchSaveSync = true;
         Assert.True(viewModel.HasStatusMessage);
         Assert.False(viewModel.ShowGamepadStatusToast);
 
+        viewModel.IsBlockingLaunchSaveSync = false;
         viewModel.IsSyncingSavesForLaunch = false;
         Assert.True(viewModel.ShowGamepadStatusToast);
 
         Assert.True(changes >= 3);
+    }
+
+    /// <summary>
+    /// The post-exit save sync is not blocking: the player is back in the library and free to browse
+    /// while the upload finishes. So it must leave the corner toast up (to say the sync is running)
+    /// and never raise the modal grid-covering panel that the pre-launch pass uses.
+    /// </summary>
+    [AvaloniaFact]
+    public void ThePostExitSaveSyncStaysNonBlockingAndKeepsTheCornerToast()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.StatusText = "Alpha finished. Syncing saves…";
+        viewModel.IsSyncingSavesForLaunch = true;
+        // The post-exit pass never sets IsBlockingLaunchSaveSync.
+
+        Assert.True(viewModel.ShowGamepadStatusToast);
+        Assert.False(viewModel.ShowBlockingLaunchSaveSync);
     }
 
     private async Task<GameViewModel> AddGameAsync(MainViewModel viewModel, string title)

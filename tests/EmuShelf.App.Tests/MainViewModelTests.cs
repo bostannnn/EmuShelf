@@ -24,6 +24,7 @@ using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Systems;
+using EmuShelf.Rendering;
 
 namespace EmuShelf.App.Tests;
 
@@ -2498,6 +2499,8 @@ public class MainViewModelTests : IDisposable
         vm.StatusText = "Syncing saves before launch…";
         vm.StatusSeverity = StatusSeverity.Progress;
         vm.IsSyncingSavesForLaunch = true;
+        // The pre-launch pass blocks; the shelf overrides that to keep the scene visible.
+        vm.IsBlockingLaunchSaveSync = true;
 
         Assert.True(vm.ShowGamepadStatusToast);
         Assert.False(vm.ShowBlockingLaunchSaveSync);
@@ -2798,8 +2801,8 @@ public class MainViewModelTests : IDisposable
             new Game { SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, "Never Played.cue"), Title = "Never Played", DateAdded = DateTimeOffset.UtcNow },
         ]);
         var games = _library.GetGames();
-        _library.SetLastPlayed(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
-        _library.SetLastPlayed(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Played First").Id, DateTimeOffset.Parse("2026-08-01T00:00:00+00:00"));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Played Last").Id, DateTimeOffset.Parse("2026-08-04T00:00:00+00:00"));
         var vm = CreateViewModel();
 
         await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
@@ -2855,8 +2858,8 @@ public class MainViewModelTests : IDisposable
         ]);
         var games = _library.GetGames();
         // Relative to now so the assertion never depends on the test machine's wall clock.
-        _library.SetLastPlayed(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
-        _library.SetLastPlayed(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Alpha").Id, now.AddDays(-2));
+        _library.RecordLaunchStarted(games.Single(g => g.Title == "Beta").Id, now.AddDays(-1));
         var vm = CreateViewModel(launchService: new RecordingLaunchService(new GameLaunchResult(true, "Alpha finished")));
         await vm.ShowRecentlyPlayedCommand.ExecuteAsync(null);
         Assert.Equal(["Beta", "Alpha"], vm.Games.Select(game => game.Title));
@@ -3657,6 +3660,102 @@ public class MainViewModelTests : IDisposable
         // And the shelf is home by the time the launch reports back, so the concurrency does not
         // leak a half-returned medium into the idle view.
         Assert.Null(vm.ShelfLaunchPose);
+    }
+
+    private MainViewModel CreateShelfViewModel()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.Games.ReplaceAll([new GameViewModel(
+            new Game
+            {
+                Id = 1,
+                SystemId = Ps1.Id,
+                Path = "/Games/Game 1.cue",
+                Title = "Game 1",
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            Ps1.Name, Ps1.ShortName, Ps1.AccentColor, coverAspectRatio: Ps1.CoverAspectRatio)]);
+        vm.HasGames = true;
+        vm.SelectShelfViewModeCommand.Execute(null);
+        vm.FocusedGame = vm.Games[0];
+        return vm;
+    }
+
+    [AvaloniaFact]
+    public void CrtToggle_SwitchesBetweenTubeAndInPlaceHost()
+    {
+        var vm = CreateShelfViewModel();
+
+        // Effect on: the window-covering tube draws the shelf; the in-place host is idle.
+        vm.CrtScreenEffect = true;
+        Assert.True(vm.ShowCouchScene);
+        Assert.False(vm.ShowInlineShelfScene);
+        Assert.Equal(CrtPresentation.Default, vm.CouchCrt);
+        Assert.True(vm.IsShelfTubeActive);
+
+        // Effect off: the in-place host takes the shelf (live chrome, no capture); the tube idles and
+        // the couch root goes opaque again (IsShelfTubeActive false).
+        vm.CrtScreenEffect = false;
+        Assert.True(vm.ShowInlineShelfScene);
+        Assert.False(vm.ShowCouchScene);
+        Assert.False(vm.IsShelfTubeActive);
+        Assert.True(vm.ShelfSceneSupported);
+
+        // Effect off away from the shelf: neither renderer runs — plain Avalonia UI, no GL.
+        vm.SelectGridViewModeCommand.Execute(null);
+        Assert.False(vm.ShowCouchScene);
+        Assert.False(vm.ShowInlineShelfScene);
+    }
+
+    // The Steam Deck fix, and a regression guard for the proven over-scoped-latch bug: the effect-off
+    // in-place host failing must fall the effect-off shelf back to the tube drawn flat, and must NOT
+    // disable the effect-on tube.
+    [AvaloniaFact]
+    public void InlineShelfFailure_FallsBackToTubeFlat_AndKeepsTheTubeAlive()
+    {
+        var vm = CreateShelfViewModel();
+        vm.CrtScreenEffect = false;
+        Assert.True(vm.ShowInlineShelfScene);
+
+        // The in-place host cannot bring up GL (the Deck).
+        vm.DisableInlineShelf(new TimeoutException("in-place host: no GL context (simulated Deck)"));
+
+        // Effect-off shelf falls back to the tube drawn flat — still 3D, not flat covers.
+        Assert.False(vm.ShowInlineShelfScene);
+        Assert.True(vm.ShowCouchScene);
+        Assert.Equal(CrtPresentation.Flat, vm.CouchCrt);
+        Assert.True(vm.IsShelfTubeActive);
+        Assert.True(vm.ShelfSceneSupported);
+        Assert.False(vm.ShowShelfFlatBackdrop);
+
+        // And the tube itself was never disabled: turning the effect back on still shows 3D. Before the
+        // fix, the shared support flag left this false for the session.
+        vm.CrtScreenEffect = true;
+        Assert.True(vm.TubeSceneSupported);
+        Assert.True(vm.ShowCouchScene);
+        Assert.True(vm.ShelfSceneSupported);
+    }
+
+    [AvaloniaFact]
+    public void TubeFailure_LeavesTheInPlaceHostWorkingWithTheEffectOff()
+    {
+        var vm = CreateShelfViewModel();
+        vm.CrtScreenEffect = true;
+        Assert.True(vm.ShowCouchScene);
+
+        // The tube cannot bring up GL. Effect-on drops to flat covers.
+        vm.DisableShelfHero(new TimeoutException("tube: no GL context"));
+        Assert.False(vm.TubeSceneSupported);
+        Assert.False(vm.ShelfSceneSupported);
+        Assert.True(vm.ShowShelfFlatBackdrop);
+
+        // But the in-place host is independent, so the effect-off shelf still renders 3D.
+        vm.CrtScreenEffect = false;
+        Assert.True(vm.InlineSceneSupported);
+        Assert.True(vm.ShowInlineShelfScene);
+        Assert.True(vm.ShelfSceneSupported);
+        Assert.False(vm.ShowShelfFlatBackdrop);
     }
 
     /// <summary>Reports what the shelf was doing at the moment each sync was entered.</summary>

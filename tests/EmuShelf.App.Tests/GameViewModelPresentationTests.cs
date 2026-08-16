@@ -342,8 +342,61 @@ public sealed class GameViewModelPresentationTests
         Assert.Equal(0, viewModel.YearSortKey);
     }
 
+    [Theory]
+    [InlineData(0, "—")]
+    [InlineData(30, "< 1m")]
+    [InlineData(60, "1m")]
+    [InlineData(45 * 60, "45m")]
+    [InlineData(60 * 60, "1h")]
+    [InlineData(2 * 60 * 60 + 5 * 60, "2h 5m")]
+    [InlineData(90 * 60, "1h 30m")]
+    public void PlaytimeText_FormatsAsCompactHoursAndMinutes(int totalSeconds, string expected)
+    {
+        var viewModel = CreateGameWith(TimeSpan.FromSeconds(totalSeconds), playCount: 1);
+
+        Assert.Equal(expected, viewModel.PlaytimeText);
+        Assert.Equal(TimeSpan.FromSeconds(totalSeconds), viewModel.PlaytimeSortKey);
+    }
+
+    [Theory]
+    [InlineData(0, "—")]
+    [InlineData(1, "1")]
+    [InlineData(12, "12")]
+    public void PlayCountText_ShowsDashOnlyWhenNeverPlayed(int playCount, string expected)
+    {
+        var viewModel = CreateGameWith(TimeSpan.Zero, playCount);
+
+        Assert.Equal(expected, viewModel.PlayCountText);
+        Assert.Equal(playCount, viewModel.PlayCountSortKey);
+    }
+
+    [Fact]
+    public void GamepadPlaytimeSummary_CombinesTimeAndPlays_AndHidesWhenUnplayed()
+    {
+        Assert.False(CreateGameWith(TimeSpan.Zero, playCount: 0).HasGamepadPlaytime);
+        Assert.Equal(string.Empty, CreateGameWith(TimeSpan.Zero, playCount: 0).GamepadPlaytimeSummary);
+
+        var single = CreateGameWith(TimeSpan.FromMinutes(90), playCount: 1);
+        Assert.True(single.HasGamepadPlaytime);
+        Assert.Equal("1h 30m • 1 play", single.GamepadPlaytimeSummary);
+
+        var many = CreateGameWith(TimeSpan.FromHours(12), playCount: 5);
+        Assert.Equal("12h • 5 plays", many.GamepadPlaytimeSummary);
+
+        // Launched but never tracked to exit (app killed mid-session): the count shows, the time does not.
+        var killed = CreateGameWith(TimeSpan.Zero, playCount: 2);
+        Assert.Equal("2 plays", killed.GamepadPlaytimeSummary);
+    }
+
     private static GameViewModel CreateGame() => new(
         CreateModel(1, "/games/sample.chd"),
+        "PlayStation 2",
+        "PS2",
+        "#4657D7",
+        platformArtwork: new DrawingImage());
+
+    private static GameViewModel CreateGameWith(TimeSpan playtime, int playCount) => new(
+        CreateModel(1, "/games/sample.chd") with { Playtime = playtime, PlayCount = playCount },
         "PlayStation 2",
         "PS2",
         "#4657D7",
