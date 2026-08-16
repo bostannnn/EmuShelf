@@ -66,7 +66,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
         command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(18L, (long)command.ExecuteScalar()!);
+        Assert.Equal(19L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]
@@ -208,14 +208,51 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         using var check = database.CreateConnection();
         using var version = check.CreateCommand();
         version.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(18L, (long)version.ExecuteScalar()!);
+        Assert.Equal(19L, (long)version.ExecuteScalar()!);
 
         using var origins = check.CreateCommand();
         origins.CommandText = "SELECT TitleOrigin, CoverOrigin FROM Games LIMIT 1;";
         using var reader = origins.ExecuteReader();
         Assert.True(reader.Read());
         Assert.Equal(0L, reader.GetInt64(0));
+        // No download provenance for this cover, so v19 leaves it protected as user-owned.
         Assert.Equal(2L, reader.GetInt64(1));
+    }
+
+    [Fact]
+    public void Initialize_FromVersion18_DemotesWronglyProtectedDownloadedCovers()
+    {
+        // A cover the v3 migration over-stamped as User but which actually came from a download
+        // (it carries GameMetadata.CoverProviderId) must be demoted to Downloaded so scrapes can
+        // refresh it; a genuinely hand-picked cover with no provenance stays User.
+        var database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+        using (var seed = database.CreateConnection())
+        using (var command = seed.CreateCommand())
+        {
+            command.CommandText =
+                """
+                UPDATE SchemaVersion SET Version = 18;
+                INSERT INTO Games (SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin, IsAvailable, DateAdded)
+                VALUES
+                    ('playstation', 'PS1/downloaded.cue', 'Downloaded', 0, 'Covers/d.jpg', 2, 1, '2026-07-12'),
+                    ('playstation', 'PS1/handpicked.cue', 'Handpicked', 0, 'Covers/h.jpg', 2, 1, '2026-07-12');
+                INSERT INTO GameMetadata (GameId, CoverProviderId, CoverSourceUri)
+                SELECT Id, 'screenscraper', 'https://example.test/d.jpg' FROM Games WHERE Path = 'PS1/downloaded.cue';
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        database.Initialize();
+
+        using var check = database.CreateConnection();
+        using var origins = check.CreateCommand();
+        origins.CommandText = "SELECT CoverOrigin FROM Games ORDER BY Id;";
+        using var reader = origins.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(1L, reader.GetInt64(0)); // downloaded → Downloaded
+        Assert.True(reader.Read());
+        Assert.Equal(2L, reader.GetInt64(0)); // hand-picked → still User
     }
 
     [Fact]

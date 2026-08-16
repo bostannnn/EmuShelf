@@ -3696,8 +3696,9 @@ public class MainViewModelTests : IDisposable
             long gameId,
             string coverPath,
             string providerId,
-            string sourceUri) =>
-            inner.TryApplyDownloadedCover(gameId, coverPath, providerId, sourceUri);
+            string sourceUri,
+            bool overwriteUserCover = false) =>
+            inner.TryApplyDownloadedCover(gameId, coverPath, providerId, sourceUri, overwriteUserCover);
 
         public void RecordAttempt(GameMetadataAttempt attempt) => inner.RecordAttempt(attempt);
     }

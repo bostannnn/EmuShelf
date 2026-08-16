@@ -71,7 +71,10 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
                     request.GameId,
                     saved.LocalPath,
                     import.ProviderId,
-                    import.SourceUri.ToString()))
+                    import.SourceUri.ToString(),
+                    // An explicit media-row tick (the single-game scraper) overrides even a cover the
+                    // user hand-picked; fill-missing/batch leaves user covers alone.
+                    overwriteUserCover: request.OverwriteExistingMedia))
             {
                 coverProjected = true;
             }
@@ -225,7 +228,7 @@ public sealed class GameScrapeApplicationService : IGameScrapeApplicationService
 
         try
         {
-            var saved = _details.SaveMedia(asset);
+            var saved = _details.SaveMedia(asset, overrideUserSelection: request.OverwriteExistingMedia);
             return (new GameMediaApplyResult(import.Kind, GameMediaApplyOutcome.Imported), saved);
         }
         catch (InvalidOperationException ex)

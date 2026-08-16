@@ -143,6 +143,36 @@ public class GameScraperViewModelTests
     }
 
     [Fact]
+    public async Task Load_UserOwnedMediaRow_IsOptInOverride_NotDisabled()
+    {
+        // The user's own art is still applyable (an explicit tick overrides it), just left unticked
+        // so replacing it is deliberate.
+        var userAsset = new GameMediaAsset(
+            1, 1, GameMediaKind.Screenshot, "/covers/mine.png", IsSelected: true,
+            SelectionOrigin: GameMediaSelectionOrigin.User, Origin: GameMediaOrigin.User,
+            ProviderId: null, ProviderItemId: null, SourceUri: null, Region: null, Language: null,
+            FileExtension: ".png", Width: null, Height: null, Crc32: null, Md5: null, Sha1: null,
+            UpdatedAt: DateTimeOffset.UtcNow);
+        var existing = new GameDetails(1, [], [userAsset], []);
+        var vm = CreateViewModel(
+            new FakePreviewService(SuccessPreview(
+                existing,
+                [],
+                new Dictionary<GameMediaKind, ScreenScraperMediaCandidate>
+                {
+                    [GameMediaKind.Screenshot] = Candidate("shot"),
+                })),
+            new FakeApplyService());
+
+        await vm.LoadAsync();
+
+        var media = Assert.Single(vm.Media);
+        Assert.True(media.IsUserOwned);
+        Assert.True(media.CanApply);
+        Assert.False(media.IsSelected);
+    }
+
+    [Fact]
     public async Task Load_NotConnected_ShowsTheConnectForm()
     {
         var vm = CreateViewModel(

@@ -98,8 +98,11 @@ public sealed partial class ScraperMediaRowViewModel : ObservableObject, IDispos
         IsUserOwned = current is not null &&
             (current.Origin == GameMediaOrigin.User ||
              current.SelectionOrigin == GameMediaSelectionOrigin.User);
-        CanApply = !IsUserOwned;
-        IsSelected = CanApply;
+        // Applying a ticked row overrides whatever art the game holds, including the user's own image
+        // (the apply request sets OverwriteExistingMedia). So every row is applyable; a user-owned row
+        // is just left unticked by default so replacing your own art is a deliberate opt-in.
+        CanApply = true;
+        IsSelected = !IsUserOwned;
     }
 
     public void Dispose()

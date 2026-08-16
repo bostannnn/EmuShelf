@@ -234,7 +234,7 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         return true;
     }
 
-    public GameMediaAsset SaveMedia(GameMediaAsset media)
+    public GameMediaAsset SaveMedia(GameMediaAsset media, bool overrideUserSelection = false)
     {
         ValidateMedia(media);
         var storedPath = _pathResolver.ToStorablePath(media.LocalPath);
@@ -252,7 +252,7 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
             throw new InvalidOperationException("Provider media cannot overwrite user-owned or another provider's media.");
         }
 
-        var effectiveMedia = ApplySelectionProtection(connection, transaction, media, existing);
+        var effectiveMedia = ApplySelectionProtection(connection, transaction, media, existing, overrideUserSelection);
         if (effectiveMedia.IsSelected)
             ClearSelection(connection, transaction, effectiveMedia.GameId, effectiveMedia.Kind);
 
@@ -607,8 +607,14 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         SqliteTransaction transaction,
         GameMediaAsset media,
         (long Id, GameMediaOrigin Origin, string? ProviderId, bool IsSelected,
-            GameMediaSelectionOrigin? SelectionOrigin)? existing)
+            GameMediaSelectionOrigin? SelectionOrigin)? existing,
+        bool overrideUserSelection)
     {
+        // An explicit override (the single-game scraper's ticked row) makes the new art the selected
+        // one as requested, bypassing the user-selection guard below.
+        if (overrideUserSelection)
+            return media;
+
         if (media.Origin != GameMediaOrigin.Provider)
             return media;
 

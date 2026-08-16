@@ -160,7 +160,7 @@
                                                 <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
                                                 <TextBlock Text="{Binding ProposedText}"
                                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                <TextBlock Text="Kept — your image" FontSize="11"
+                                                <TextBlock Text="Your image — tick to replace it" FontSize="11"
                                                            IsVisible="{Binding IsUserOwned}"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                             </StackPanel>

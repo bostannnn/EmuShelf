@@ -261,23 +261,28 @@ public sealed class SqliteGameMetadataStore : IGameMetadataStore
         long gameId,
         string coverPath,
         string providerId,
-        string sourceUri)
+        string sourceUri,
+        bool overwriteUserCover = false)
     {
         using var connection = _database.CreateConnection();
         using var transaction = connection.BeginTransaction();
         using var updateGame = connection.CreateCommand();
         updateGame.Transaction = transaction;
+        // Replace any cover that isn't the user's own hand-picked one (None from a scan, or a prior
+        // download). A User cover is off-limits unless the caller explicitly opted in — the single-game
+        // scraper does, so ticking a media row overrides even a hand-picked cover.
         updateGame.CommandText =
             """
             UPDATE Games
             SET CoverPath = $coverPath, CoverOrigin = $downloaded
-            WHERE Id = $id AND (CoverPath IS NULL AND CoverOrigin = $none OR CoverOrigin = $downloaded);
+            WHERE Id = $id AND (CoverOrigin <> $user OR $overwriteUser = 1);
             """;
         updateGame.Parameters.AddWithValue(
             "$coverPath",
             _pathResolver.ToStorablePath(coverPath));
         updateGame.Parameters.AddWithValue("$downloaded", (int)GameCoverOrigin.Downloaded);
-        updateGame.Parameters.AddWithValue("$none", (int)GameCoverOrigin.None);
+        updateGame.Parameters.AddWithValue("$user", (int)GameCoverOrigin.User);
+        updateGame.Parameters.AddWithValue("$overwriteUser", overwriteUserCover ? 1 : 0);
         updateGame.Parameters.AddWithValue("$id", gameId);
         if (updateGame.ExecuteNonQuery() == 0)
         {
