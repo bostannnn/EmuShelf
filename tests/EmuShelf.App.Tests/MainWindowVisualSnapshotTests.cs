@@ -2423,13 +2423,11 @@ public class MainWindowVisualSnapshotTests
         var configuration = new CloudSaveSyncSettings
         {
             Enabled = true,
-            RemoteName = "emushelf-gdrive",
+            TransportKind = CloudTransportKind.GoogleDrive,
             CloudFolder = "EmuShelf/Saves",
         };
         var cloudSaves = new CloudSaveSyncSettingsContext(
             configuration,
-            IsRcloneAvailable: true,
-            RcloneExpectedPath: @"D:\EmuShelf\rclone.exe",
             SyncLogPath: @"D:\EmuShelf\Logs\save-sync.log",
             GetPlatforms: () => SaveProviderRegistry.All.Select(descriptor => new CloudSaveSyncPlatformContext(
                 descriptor.SystemId,
@@ -2444,12 +2442,12 @@ public class MainWindowVisualSnapshotTests
                 // exposes the `saves.{id}.states-folder` field to the parity comparison below.
                 SyncSaveStates: descriptor.SystemId is "playstation2" or "psp")).ToArray(),
             (systemId, _) => Task.FromResult<string?>(@"D:\Saves\" + systemId),
-            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _) => { },
-            _ => Task.FromResult(true));
+            IsManagedTransportAvailable: true,
+            ConnectGoogleDriveManagedAsync: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected));
         var maintenance = new LibraryMaintenanceActions(
             (_, _) => Task.FromResult(string.Empty),
             _ => Task.FromResult(string.Empty),
@@ -3151,15 +3149,13 @@ public class MainWindowVisualSnapshotTests
         var configuration = new CloudSaveSyncSettings
         {
             Enabled = true,
-            RemoteName = "emushelf-gdrive",
+            TransportKind = CloudTransportKind.GoogleDrive,
             CloudFolder = "EmuShelf/Saves",
             Pcsx2ConfigDirectory = @"D:\Emulators\PCSX2",
             PpssppMemoryStickDirectory = @"D:\Emulators\PPSSPP\memstick",
         }.NormalizeSaveLocations();
         var cloudSaves = new CloudSaveSyncSettingsContext(
             configuration,
-            IsRcloneAvailable: true,
-            RcloneExpectedPath: @"D:\EmuShelf\rclone.exe",
             SyncLogPath: @"D:\EmuShelf\Logs\save-sync.log",
             GetPlatforms: () => SaveProviderRegistry.All.Select(descriptor => new CloudSaveSyncPlatformContext(
                 descriptor.SystemId,
@@ -3172,12 +3168,12 @@ public class MainWindowVisualSnapshotTests
             (systemId, _) => Task.FromResult<string?>(systemId == "psp"
                 ? @"D:\Emulators\PPSSPP\memstick\PSP\SAVEDATA"
                 : @"D:\Emulators\PCSX2\memcards"),
-            (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected),
             _ => Task.CompletedTask,
             (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([]))),
             (_, _) => { },
-            _ => Task.FromResult(true));
+            IsManagedTransportAvailable: true,
+            ConnectGoogleDriveManagedAsync: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected));
         var viewModel = new EmulatorSettingsViewModel(
             KnownSystems.All,
             KnownEmulators.All,

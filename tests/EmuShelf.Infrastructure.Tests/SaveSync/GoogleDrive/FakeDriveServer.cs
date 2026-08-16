@@ -12,9 +12,9 @@ namespace EmuShelf.Infrastructure.Tests.SaveSync.GoogleDrive;
 /// </summary>
 /// <remarks>
 /// A fake server rather than a script of canned responses, because what these tests need to assert is
-/// the <em>resulting layout</em> on the remote — that a sync produces the same folder tree and file
-/// names rclone would produce. A response script can only assert the calls that were made, which is
-/// the thing least worth pinning down.
+/// the <em>resulting layout</em> on the remote — that a sync produces the expected folder tree and
+/// file names. A response script can only assert the calls that were made, which is the thing least
+/// worth pinning down.
 /// </remarks>
 internal class FakeDriveServer : HttpMessageHandler
 {

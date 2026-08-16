@@ -27,10 +27,9 @@ public interface IOAuthRedirectHandler : IDisposable
 /// makes after consent, and shows the user a page telling them to go back to EmuShelf.
 /// </summary>
 /// <remarks>
-/// The port is chosen per sign-in rather than fixed. rclone binds 53682 every time, and an abandoned
-/// sign-in holding that port is a documented failure mode with its own exception type and UI copy
-/// (DECISIONS 2026-08-06). Google exempts loopback redirects from exact port matching, so nothing
-/// has to be registered for this to work — which removes that whole class of failure.
+/// The port is chosen per sign-in rather than fixed, so an abandoned sign-in can never hold a
+/// well-known port and block the next one. Google exempts loopback redirects from exact port
+/// matching, so nothing has to be registered for this to work.
 /// </remarks>
 public sealed class LoopbackOAuthRedirectHandler : IOAuthRedirectHandler
 {

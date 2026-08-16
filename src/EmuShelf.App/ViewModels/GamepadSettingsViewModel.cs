@@ -105,8 +105,7 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         _ when Key.Contains("rescan", StringComparison.Ordinal) ||
             Key.Contains("refresh", StringComparison.Ordinal) ||
             Key.Contains("sync", StringComparison.Ordinal) => "↻",
-        _ when Key.Contains("fetch", StringComparison.Ordinal) ||
-            Key.Contains("rclone", StringComparison.Ordinal) => "↓",
+        _ when Key.Contains("fetch", StringComparison.Ordinal) => "↓",
         _ when Key.Contains("detected", StringComparison.Ordinal) => "↶",
         _ => "›",
     };
@@ -365,7 +364,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.ArtworkMetadata =>
             "Fetch titles and artwork from the built-in catalogue or ScreenScraper, and toggle web image search. Game files are never uploaded.",
         SettingsSection.Saves =>
-            "Reconcile emulator saves through your own rclone remote. Game files are never included.",
+            "Reconcile emulator saves through your own Google Drive. Game files are never included.",
         SettingsSection.TexturePacks =>
             "Inspect installed replacement textures without changing packs or emulator configuration.",
         SettingsSection.About =>
@@ -1492,48 +1491,27 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private IEnumerable<GamepadSettingsRowSpec> BuildSaveRows()
     {
-        if (_settings.IsRcloneMissing)
-        {
-            yield return ActionRow(
-                "saves.rclone",
-                "Get rclone",
-                $"Cloud sync needs rclone. EmuShelf installs it at {_settings.RcloneExpectedPath}.",
-                _settings.IsDownloadingRclone ? "DOWNLOADING…" : "A DOWNLOAD",
-                _settings.DownloadRcloneCommand,
-                !_settings.IsDownloadingRclone);
-        }
-
         // Connection first: Connect (when disconnected) or the connected summary + Sync all now sits
         // above the per-platform folder rows, matching the Desktop layout — on a controller the
         // primary action must not sit below every platform row.
         if (_settings.IsCloudDisconnected)
         {
-            // Connect is the primary action and the defaults just work, so it leads; the rclone
-            // remote name and cloud folder are demoted into an indented "Advanced" group.
+            // Connect is the primary action and the default folder just works, so it leads; the cloud
+            // folder is a single detail row beneath it.
             yield return ActionRow(
                 "saves.connect",
                 "Connect Google Drive",
-                "Open Google's sign-in through rclone and enable the configured save platforms.",
+                "Open Google's sign-in in your browser and enable the configured save platforms.",
                 _settings.IsCloudBusy ? "CONNECTING…" : "A CONNECT",
                 _settings.ConnectCloudCommand,
-                !_settings.IsCloudBusy && !_settings.IsRcloneMissing);
-            yield return HeaderRow("saves.advanced-header", "Advanced");
-            yield return TextRow(
-                "saves.remote",
-                "rclone remote name",
-                "The local rclone remote that owns your Google Drive connection.",
-                _settings.CloudRemoteName,
-                false,
-                value => _settings.CloudRemoteName = value,
-                isGrouped: true);
+                !_settings.IsCloudBusy);
             yield return TextRow(
                 "saves.cloud-folder",
                 "Cloud folder",
-                "The folder inside the remote that stores EmuShelf save manifests and copies.",
+                "The Google Drive folder that stores EmuShelf save manifests and copies.",
                 _settings.CloudFolder,
                 false,
-                value => _settings.CloudFolder = value,
-                isGrouped: true);
+                value => _settings.CloudFolder = value);
         }
         else
         {

@@ -6,16 +6,14 @@ using EmuShelf.Core.Storage;
 namespace EmuShelf.Infrastructure.SaveSync.GoogleDrive;
 
 /// <summary>
-/// Copy-only Google Drive transport, speaking the Drive API directly instead of driving rclone.
-/// Writes exactly the layout <see cref="CloudSaveIndex"/> defines — one <c>index.json</c> beside
-/// nested <c>&lt;unitId&gt;.payload</c> blobs — so it and the rclone transport address the same cloud
-/// folder interchangeably.
+/// Copy-only Google Drive transport, speaking the Drive API directly. Writes exactly the layout
+/// <see cref="CloudSaveIndex"/> defines — one <c>index.json</c> beside nested
+/// <c>&lt;unitId&gt;.payload</c> blobs — which is the on-remote wire format save sync depends on.
 /// </summary>
 /// <remarks>
-/// The commit discipline is deliberately identical to the rclone transport's, because it is the part
-/// that was hard to get right: payloads are uploaded first and the index second, in batches, so an
-/// interrupted pass keeps the batches it landed and can never leave the index promising a payload
-/// that is not there. See DECISIONS 2026-07-24 and the rclone transport's FlushAsync.
+/// The commit discipline is the part that was hard to get right: payloads are uploaded first and the
+/// index second, in batches, so an interrupted pass keeps the batches it landed and can never leave
+/// the index promising a payload that is not there. See DECISIONS 2026-07-24.
 /// </remarks>
 public sealed class GoogleDriveCloudSyncTransport : IVerifiableCloudSyncTransport
 {
@@ -444,9 +442,9 @@ public sealed class GoogleDriveCloudSyncTransport : IVerifiableCloudSyncTranspor
     /// </summary>
     /// <remarks>
     /// The failure this exists for is silent. A folder id cached in settings can stop being valid —
-    /// the folder was deleted, or it belongs to a folder created under rclone's full-Drive access and
-    /// is therefore invisible to this client's per-file access — and Drive answers a listing for a
-    /// parent that is not there with an <em>empty list</em>, not an error. Believing that would report
+    /// the folder was deleted, or it belongs to a folder created under some other app's full-Drive
+    /// access and is therefore invisible to this client's per-file access — and Drive answers a listing
+    /// for a parent that is not there with an <em>empty list</em>, not an error. Believing that would report
     /// an empty cloud, re-upload everything, and never reconcile with the machine whose saves are
     /// sitting in the real folder. Nothing would be destroyed and nothing would look wrong.
     ///

@@ -15,8 +15,8 @@ namespace EmuShelf.Infrastructure.Build;
 /// only to keep the raw strings out of a naive <c>strings</c>/scraper sweep of a public binary, and
 /// to guarantee the generated literals are always valid regardless of the source bytes — it is not a
 /// security boundary. When an environment variable is absent at build time the corresponding
-/// constant is empty and the accessor returns <see langword="null"/>, so the runtime falls back to
-/// its previous behaviour (developer env vars for ScreenScraper, rclone's shared Google client).
+/// constant is empty and the accessor returns <see langword="null"/>: ScreenScraper then falls back to
+/// developer env vars, and the built-in Google Drive transport is simply unavailable in that build.
 /// </remarks>
 internal static partial class EmbeddedSecrets
 {

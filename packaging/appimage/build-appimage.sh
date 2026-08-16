@@ -9,9 +9,8 @@ trap 'rm -rf "$appdir"' EXIT
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib"
 cp -a "$publish_dir/." "$appdir/usr/bin/"
 # A publish directory produced on Windows (cross-compiled linux-x64) carries no POSIX
-# permission bits, so restore the exec bit the AppRun entry point and rclone need.
+# permission bits, so restore the exec bit the AppRun entry point needs.
 chmod +x "$appdir/usr/bin/EmuShelf"
-if [ -f "$appdir/usr/bin/rclone" ]; then chmod +x "$appdir/usr/bin/rclone"; fi
 cp packaging/appimage/AppRun "$appdir/AppRun"
 chmod +x "$appdir/AppRun"
 cp packaging/appimage/emushelf.desktop "$appdir/emushelf.desktop"

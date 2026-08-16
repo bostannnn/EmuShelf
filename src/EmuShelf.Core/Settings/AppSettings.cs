@@ -38,7 +38,7 @@ public sealed record AppSettings
     /// <summary>RetroAchievements' stable ULID for the connected account. Not a secret.</summary>
     public string? RetroAchievementsUserUlid { get; init; }
 
-    /// <summary>Cloud save-sync configuration. Holds no secret — the OAuth token stays in rclone's own config.</summary>
+    /// <summary>Cloud save-sync configuration. Holds no secret — the OAuth refresh token stays in a protected blob.</summary>
     public CloudSaveSyncSettings CloudSaveSync { get; init; } = new();
 
     /// <summary>Installed texture-pack inventory configuration. Read-only discovery only.</summary>

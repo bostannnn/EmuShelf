@@ -56,11 +56,11 @@ public sealed class FileSaveSyncLogTests : TempAppDirectoryTestBase
             new SaveSyncReport([new SaveUnitSyncResult("rpcs3/savedata/BCES00006", SaveSyncAction.None, "Current.")]),
             new DateTimeOffset(2026, 7, 26, 17, 30, 0, TimeSpan.Zero),
             TimeSpan.FromSeconds(41.7),
-            ["rclone cat — 12100 ms", "rclone copy — 29400 ms"]);
+            ["drive list — 12100 ms", "drive upload — 29400 ms"]);
 
         Assert.Contains("Automatic sync (playstation3) (41.7s)", entry);
         Assert.Contains("Cloud calls:", entry);
-        Assert.Contains("rclone cat — 12100 ms", entry);
-        Assert.Contains("rclone copy — 29400 ms", entry);
+        Assert.Contains("drive list — 12100 ms", entry);
+        Assert.Contains("drive upload — 29400 ms", entry);
     }
 }

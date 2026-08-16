@@ -26,8 +26,6 @@ artifacts/
 /roms for testing/
 
 # Bundled/downloaded binaries — CI fetches these at build time (see .github/workflows/build.yml)
-rclone.exe
-/rclone
 *_libretro.so
 /arcade/
 /screenshots/

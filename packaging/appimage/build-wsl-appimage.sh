@@ -40,21 +40,6 @@ dotnet publish src/EmuShelf.App \
   -p:InvariantGlobalization=false \
   -o publish/EmuShelf
 
-# Bundle rclone so the local AppImage matches the CI artifact; cloud save sync shells out to it.
-rclone_staging=$(mktemp -d)
-trap 'rm -rf "$rclone_staging"' EXIT
-curl -L -o "$rclone_staging/rclone.zip" https://downloads.rclone.org/rclone-current-linux-amd64.zip
-unzip -o -q "$rclone_staging/rclone.zip" -d "$rclone_staging/extract"
-rclone_dir="$(dirname "$(find "$rclone_staging/extract" -name rclone -type f | head -n1)")"
-install -m 0755 "$rclone_dir/rclone" publish/EmuShelf/rclone
-mkdir -p publish/EmuShelf/ThirdParty/rclone
-# rclone's release archives ship no license file, but we redistribute the binary and its MIT
-# terms require the notice, so pull COPYING from the matching upstream tag.
-tag="$(basename "$rclone_dir" | sed -n 's/^rclone-\(v[0-9.]*\)-.*$/\1/p')"
-[ -n "$tag" ] || { echo "Could not derive the rclone version from $rclone_dir" >&2; exit 1; }
-curl -fL -o publish/EmuShelf/ThirdParty/rclone/LICENSE.txt \
-  "https://raw.githubusercontent.com/rclone/rclone/$tag/COPYING"
-
 mkdir -p "$output_dir"
 bash packaging/appimage/build-appimage.sh \
   publish/EmuShelf \

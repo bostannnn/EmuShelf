@@ -3,9 +3,9 @@
 #
 # Usage: build-macos-app.sh <publish-dir> <output.app> [version]
 #
-# The published output already contains the self-contained apphost, managed dlls,
-# native libraries and the bundled rclone binary; we just wrap them in the bundle
-# layout macOS expects and drop in an Info.plist.
+# The published output already contains the self-contained apphost, managed dlls
+# and native libraries; we just wrap them in the bundle layout macOS expects and
+# drop in an Info.plist.
 set -euo pipefail
 
 PUBLISH_DIR="${1:?publish directory required}"
@@ -24,7 +24,7 @@ rm -rf "$APP_PATH"
 mkdir -p "$APP_PATH/Contents/MacOS" "$APP_PATH/Contents/Resources"
 
 # .NET self-contained apps expect their files beside the apphost, so the entire
-# publish output (managed dlls, native libs, rclone, licences) goes into MacOS/.
+# publish output (managed dlls, native libs, licences) goes into MacOS/.
 cp -R "$PUBLISH_DIR/." "$APP_PATH/Contents/MacOS/"
 chmod +x "$APP_PATH/Contents/MacOS/$EXECUTABLE"
 

@@ -9006,3 +9006,47 @@ Honest status: the EGL switch rests on an unconfirmed link between the Deck's sy
 desktop-GL darkness (Mesa is a different driver; the "nothing" could still be a compositing/surface issue
 GLES won't touch). Not verified on a Deck. But the round is self-settling: the next log shows the dialect,
 the frame size, and whether the shelf finally draws.
+
+## 2026-08-17 — rclone removed; the built-in Google Drive client is the sole cloud transport
+
+Cloud save sync shipped with two transports: the external `rclone` binary (full-Drive scope,
+downloaded/bundled per platform) and a hand-written "managed" Google Drive client (`drive.file`
+scope, PKCE OAuth). rclone is now gone on every platform (Windows, macOS, Linux/Steam Deck, and the
+future Android head); the built-in client is the only transport.
+
+**Why not keep both.** The built-in client requests `drive.file`, so it can only see files it
+created. A folder created by rclone under the wider `drive` scope is *invisible* to the built-in
+client, and vice versa — the two transports cannot see each other's data even in the same account.
+Coexistence therefore meant a user who ever touched both would face two disjoint save sets in one
+Drive with no way to reconcile them, plus a per-platform binary download that Android forbids at
+runtime anyway. One app on every device, one transport, is the only model that reconciles reliably.
+
+**What was removed.** The four rclone-dedicated infrastructure files and their tests (already
+git-removed) plus all of the wiring: the coordinator's rclone connect/download/transport paths and
+the `RcloneMissing`/`SignInServerBusy` connect results and `IsRcloneAvailable`/`RcloneExpectedPath`/
+`DownloadRcloneAsync`/`ConnectGoogleDriveAsync` context members; the Settings view model's transport
+chooser (`UseManagedTransport`, `Show{Transport,ManagedConnect,RcloneConnect}…`, the rclone remote-name
+field, the missing-rclone banner and download command) and the `allowManagedTransport` flag; the
+matching AXAML; and the CI/packaging steps and `THIRD-PARTY-NOTICES` entry that bundled the binary.
+
+**The gamepad Saves rework.** The gamepad shell previously built the Settings VM with
+`allowManagedTransport:false` because its Saves rows were deliberately "rclone-shaped" (a remote-name
+field, a Download-rclone action) and shared the desktop VM's connect command; letting the managed
+path run there would have driven the browser OAuth behind an rclone-looking UI. With rclone gone that
+whole hazard is gone: the flag is deleted, and the gamepad Saves section now drives the built-in
+managed connect directly — a single **Connect Google Drive** action plus a cloud-folder row — so a
+controller-only player (the AYN Thor, the Steam Deck) connects through the browser like everyone else.
+
+**Settings back-compat.** `CloudSaveSyncSettings.TransportKind` keeps its `Rclone` enum member and
+still *defaults* to it, purely so a `settings.json` written before the field existed keeps
+deserializing. A stored connection whose kind is `Rclone` is treated as **not configured** (see the
+coordinator's `IsConfigured` and the VM's connected-state seeding), so the one-time cost to an
+existing rclone user is a single reconnect through the built-in client — never a silent sync against
+a transport that no longer exists. `RemoteName` is likewise retained for round-trip compatibility but
+is read by nothing.
+
+**Kept deliberately.** The `ICloudSyncTransport`/`IVerifiableCloudSyncTransport` seam and the
+`CloudTransportKind` enum stay intact — this is not a collapse to Google-only. A future provider
+(Yandex Disk is the concrete plan) adds a new transport implementation and a new enum value, and
+`CreateTransportAsync` gains a branch; nothing above the interface changes. The Google Drive
+transport, its OAuth flow, the protected token store, and the sync engine are untouched.

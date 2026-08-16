@@ -37,23 +37,24 @@ public sealed record SaveLocationSettings
 public enum CloudTransportKind
 {
     /// <summary>
-    /// The external rclone binary. The original transport, and the only one that can address a
-    /// backend other than Google Drive — a user who hand-writes <c>Settings/rclone.conf</c> can point
-    /// <see cref="CloudSaveSyncSettings.RemoteName"/> at any remote rclone supports.
+    /// The retired external rclone binary. No transport is backed by this value any more; it is kept
+    /// only so a settings.json written by an older build still deserializes. A stored connection with
+    /// this kind is treated as not configured (see the coordinator's <c>IsConfigured</c>), so the user
+    /// simply reconnects through the built-in client. A future backend (e.g. Yandex Disk) adds its own
+    /// enum value rather than reusing this one.
     /// </summary>
     Rclone,
 
     /// <summary>
     /// EmuShelf's own Google Drive client, talking to the API directly. Needs no external binary,
-    /// which is what makes it the only option on Android.
+    /// which is what makes it the only transport — and the only option on Android.
     /// </summary>
     GoogleDrive,
 }
 
 /// <summary>
-/// Portable cloud save-sync configuration. Holds no secret: under rclone the OAuth token lives only
-/// in rclone's own config file, and under the managed transport it lives in a protected blob beside
-/// it — never here. Empty until the user connects a remote.
+/// Portable cloud save-sync configuration. Holds no secret: the built-in Google Drive transport keeps
+/// its refresh token in a protected blob beside this file, never here. Empty until the user connects.
 /// </summary>
 public sealed record CloudSaveSyncSettings
 {
@@ -70,13 +71,17 @@ public sealed record CloudSaveSyncSettings
     public bool Enabled { get; init; }
 
     /// <summary>
-    /// Which transport carries the saves. Defaults to <see cref="CloudTransportKind.Rclone"/> so an
-    /// existing settings.json — written before there was a choice — keeps working exactly as it did,
-    /// against the remote it is already connected to. Only an explicit connect changes it.
+    /// Which transport carries the saves. Defaults to <see cref="CloudTransportKind.Rclone"/> purely
+    /// for back-compat: a settings.json written before this field existed deserializes to that value,
+    /// and such a connection is then treated as not configured so the user reconnects through the
+    /// built-in client. A fresh connect always writes <see cref="CloudTransportKind.GoogleDrive"/>.
     /// </summary>
     public CloudTransportKind TransportKind { get; init; } = CloudTransportKind.Rclone;
 
-    /// <summary>The rclone remote name (e.g. <c>emushelf-gdrive</c>). Not a secret. Null until connected.</summary>
+    /// <summary>
+    /// Legacy rclone remote name (e.g. <c>emushelf-gdrive</c>). Not a secret, and no longer used by any
+    /// transport — retained only so an older settings.json still deserializes. Null until connected.
+    /// </summary>
     public string? RemoteName { get; init; }
 
     /// <summary>The folder within the remote that holds EmuShelf saves (e.g. <c>EmuShelf/Saves</c>).</summary>
