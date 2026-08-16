@@ -8801,3 +8801,40 @@ So `IsBlockingLaunchSaveSync` now tracks the pre-launch phase alone, and only it
 panel / suppresses the couch corner toast. The post-exit pass keeps `IsSyncingSavesForLaunch` true
 (the lifecycle flag, still used for input suspension and the shelf toast) but leaves the grid visible,
 reporting progress through the ordinary non-modal status toast instead.
+
+## 2026-08-16 — Steam Deck "no 3D/CRT": make the failure diagnosable, and stop the watchdog defeating a slow cold start
+
+The couch shelf shows no 3D models and no CRT effect on the Steam Deck while Windows works. `CrtScreenEffect`
+defaults on and the Deck boots into Gamepad mode, so at launch only the *tube* renderer runs — a single GL
+context. "No 3D at all" therefore means the tube's very first GL init is not completing, and the flat-cover
+fallback makes it look intentional. An adversarial review left three live causes that the code could not tell
+apart: **(a)** Avalonia's default X11 backend is GLX-first (`X11Platform` selects `[Glx, Software]`, EGL never
+tried) and a GLX/shared-context failure under gamescope can leave `OpenGlControlBase` with no context, silently
+(the macOS-Metal shape, `Program.cs`); **(b)** a slow Mesa cold start — `MediaShellRenderer.Create` links five
+shader programs and bakes a six-face environment cubemap synchronously inside `OnOpenGlInit` — overrunning the
+4s watchdog; **(g)** the desktop-GLSL path (only exercised on macOS today) failing to compile on Mesa. The
+proposed X11 EGL fix addresses (a)/(g) but not (b), and the app's own log could not distinguish (a) from (b),
+because on the silent path `OnOpenGlInit` is never called and only the watchdog reacts.
+
+Rather than guess, this change makes the next Deck launch decide it, and fixes the one cause we could confirm:
+
+- **Bridge Avalonia's framework log into `Logs/`** (`AvaloniaFileLogSink`, installed in `App` right after the
+  bootstrapper). `.LogToTrace()` writes to `System.Diagnostics.Trace`, which has *no listener* in a Steam Game
+  Mode AppImage — so Avalonia's own GL-init diagnosis was being discarded on the exact device we needed it from.
+  Filtered to Error-anywhere plus Information+ for rendering/platform areas to keep the file readable.
+- **Instrument the shelf's GL init** (`MediaShelf3DControl.OnOpenGlInit`): an entry line proves the framework
+  handed the control a context (its absence ⇒ candidate (a)), the elapsed ms to build the renderer separates a
+  slow cold start (b) from an unsupported surface, and the GL vendor/renderer/version/GLSL strings identify the
+  stack (Mesa/RADV vs ANGLE) and settle (g).
+- **Replace the watchdog's retry-by-teardown with one generous 10s deadline** (`MediaShelf3DHost`). PR #132's
+  retry rebuilt the scene on a 4s timeout (`MaxInitializationAttempts=2`), which *restarts* the same cold GL
+  start from zero — splitting the budget into short windows that must each independently beat 4s can only fail a
+  slow-but-capable driver that one long wait would have rendered. The render-loop analogy it cited is wrong: the
+  render loop keeps the *same* context; teardown discards it. A single long deadline covers a slow Mesa cold
+  start and still expires (later, not wrongly) if the context genuinely never comes.
+
+Deliberately **not** done here: forcing EGL on X11. It is the likely fix for candidate (a) and would need
+`X11PlatformOptions { RenderingMode = [Egl, Glx, Software] }`, but it migrates the whole Linux fleet onto the
+GLES/`Es300` shader path and does nothing for (b). Gated on a Deck log from the instrumentation above — if it
+shows no "Shelf GL context acquired" line, EGL is next; if it shows a slow-but-successful init, the 10s deadline
+already fixed it; if it shows a shader-compile throw, that is (g). Not verified on a Deck (no device here).

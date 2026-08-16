@@ -38,6 +38,12 @@ public partial class App : Application
     {
         Bootstrapper = new AppBootstrapper();
 
+        // Route Avalonia's framework log into the portable Logs/ file. The default .LogToTrace() sink
+        // (Program.cs) writes to System.Diagnostics.Trace, which has no listener in a Steam Game Mode
+        // AppImage — so the reason a GL context failed on the Steam Deck was being discarded. The
+        // shelf's GL init happens after this point, so its diagnosis is captured. See DECISIONS 2026-08-16.
+        Avalonia.Logging.Logger.Sink = new Diagnostics.AvaloniaFileLogSink(Bootstrapper.Logger);
+
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             var themeService = new AppThemeService(
