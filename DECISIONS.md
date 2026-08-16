@@ -8912,3 +8912,38 @@ nothing to search, so "Set cover" goes straight to the handoff). As with the res
 shell, the final controller *feel* (focus hand-off to the Steam keyboard, tile scrolling on a real
 Deck) needs on-device acceptance that the headless view-model and snapshot tests cannot cover; those
 tests exercise the focus model, the open/back/import routing, and the enabled/disabled fork.
+
+## 2026-08-16 — Steam Deck "no 3D/CRT", cont'd: the log cleared GL init; force EGL/GLES for the render path
+
+Follow-up to the earlier 2026-08-16 "make the Steam Deck GL failure diagnosable" entry. A device log came
+back and disproved the whole init-failure framing. The instrumentation from that entry fired cleanly on the
+Deck: `Shelf GL context acquired` followed by `Shelf GL init succeeded in 45 ms using Desktop; vendor=AMD;
+renderer=… radeonsi, vangogh …; version=4.6 (Core Profile) Mesa 25.3.0; glsl=4.60`. So the context comes up
+fast, the renderer builds, no watchdog timeout, no fallback warning — the three candidates that entry left
+open (silent no-context, slow cold start, shader-compile throw) are all wrong. The shelf still shows nothing,
+so the pixels are lost *after* a successful init, not before it.
+
+The one thing the log pins down: the Deck runs the **Desktop** GLSL dialect (GL 4.6 Core), because its
+default X11 backend is GLX-first and GLX hands out a desktop-GL context. That is precisely the path
+`MediaShellRenderer`'s `EMUSHELF_SHADING_DEBUG` probe exists to explain — it "renders … darker than the
+Windows ANGLE path." Windows looks right because ANGLE gives it a **GLES** context (`Es300`). So "works on
+Windows, not the Deck" reduces to a render-path split the code already knew was broken, not GL availability.
+
+Acting on that:
+
+- **Force EGL + a GLES profile on X11** (`Program.cs`, `X11PlatformOptions`), so Linux takes the same
+  GLES/`Es300` path Windows ships instead of the desktop path known to render wrong. GLX and desktop-GL
+  profiles stay behind it as a fallback, and the change is inert off Linux. This supersedes the earlier
+  "deliberately not done" note now that the log motivates it for the render-path reason (not the disproven
+  no-context one). Risk: it moves the whole Linux X11 fleet onto GLES — the better-tested *dialect* (Windows
+  already runs it), but a less-tested *driver* combination (Mesa GLES, not ANGLE); the fallback chain covers
+  a host without EGL/GLES.
+- **Instrument the render path too** (`MediaShelf3DControl.OnOpenGlRender`): one line per context with the
+  frame's pixel size and whether it came from the live GL viewport. If EGL does not fix it, this tells a
+  degenerate/zero-size or uncomposited surface apart from wrong-but-drawn output — the layer the init log
+  can't see. The init log will also show the dialect flip to `Es300` if EGL takes effect.
+
+Honest status: the EGL switch rests on an unconfirmed link between the Deck's symptom and the macOS
+desktop-GL darkness (Mesa is a different driver; the "nothing" could still be a compositing/surface issue
+GLES won't touch). Not verified on a Deck. But the round is self-settling: the next log shows the dialect,
+the frame size, and whether the shelf finally draws.

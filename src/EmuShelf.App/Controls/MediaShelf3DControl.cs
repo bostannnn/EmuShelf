@@ -129,6 +129,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private FrameSnapshot? _lastRenderedSnapshot;
     private uint _lastRenderedWidth;
     private uint _lastRenderedHeight;
+    // One line per context: proves frames actually reach the surface and at what pixel size, so a
+    // scene that inits cleanly but shows nothing (a degenerate viewport, or output that never
+    // composites) is told apart from one that renders wrong. See DECISIONS 2026-08-16.
+    private bool _firstFrameLogged;
 
     /// <summary>
     /// The frozen description of the next frame, built on the UI thread and read by the render
@@ -494,6 +498,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _uploadedAccent = accent;
             // A fresh renderer has an empty scene buffer, so the first frame must render in full.
             _lastRenderedSnapshot = null;
+            _firstFrameLogged = false;
             Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
                 this,
                 "Shelf GL init succeeded in {Elapsed} ms using {Dialect}; {GlIdentity}",
@@ -566,7 +571,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         // the size from it renders the tube into a fraction of the screen (see the couch shelf notes),
         // so query the surface and only fall back to the computed size before the first viewport is
         // reported. This read is safe on the render thread: nothing has touched the viewport yet.
-        if (!_renderer.TryGetSurfaceSize(out var width, out var height))
+        var surfaceSizeReported = _renderer.TryGetSurfaceSize(out var width, out var height);
+        if (!surfaceSizeReported)
         {
             var scaling = frame?.RenderScaling ?? 1.0;
             width = (uint)Math.Max(1, Math.Round(Bounds.Width * scaling));
@@ -639,6 +645,18 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             // A clean frame clears the transient-failure count that keeps a one-off from ever
             // reaching the give-up threshold.
             _consecutiveRenderFailures = 0;
+
+            if (!_firstFrameLogged)
+            {
+                _firstFrameLogged = true;
+                Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
+                    this,
+                    "Shelf first frame drawn at {Width}x{Height} px (viewportReported={Reported}, crtActive={Crt}).",
+                    width,
+                    height,
+                    surfaceSizeReported,
+                    crt.IsActive);
+            }
 
             // A tube whose roll, hum and jitter are moving has to be redrawn even when nothing in
             // the library changed, so the scene cannot go back to drawing only on demand. This is

@@ -51,6 +51,30 @@ sealed class Program
                     Avalonia.AvaloniaNativeRenderingMode.Software,
                 ],
             })
+            // Linux/X11 only (inert elsewhere, like the macOS block above). The Steam Deck's default
+            // X11 path is GLX-first, which the device log confirms hands OpenGlControlBase a *desktop*
+            // GL context (Mesa 4.6 Core, GLSL 4.60). That is the render path this app's shaders are
+            // documented to get wrong — it renders darker than Windows, whose ANGLE backend gives a
+            // GLES context instead (see MediaShellRenderer's EMUSHELF_SHADING_DEBUG probe). Prefer EGL
+            // with a GLES profile so Linux takes the same GLES/Es300 path Windows already ships, and
+            // keep GLX + desktop-GL profiles behind it so a host without EGL/GLES still renders.
+            // See DECISIONS 2026-08-16.
+            .With(new Avalonia.X11PlatformOptions
+            {
+                RenderingMode =
+                [
+                    Avalonia.X11RenderingMode.Egl,
+                    Avalonia.X11RenderingMode.Glx,
+                    Avalonia.X11RenderingMode.Software,
+                ],
+                GlProfiles =
+                [
+                    new Avalonia.OpenGL.GlVersion(Avalonia.OpenGL.GlProfileType.OpenGLES, 3, 0),
+                    new Avalonia.OpenGL.GlVersion(Avalonia.OpenGL.GlProfileType.OpenGLES, 2, 0),
+                    new Avalonia.OpenGL.GlVersion(Avalonia.OpenGL.GlProfileType.OpenGL, 4, 0),
+                    new Avalonia.OpenGL.GlVersion(Avalonia.OpenGL.GlProfileType.OpenGL, 3, 2),
+                ],
+            })
             .WithInterFont()
             .LogToTrace();
 }
