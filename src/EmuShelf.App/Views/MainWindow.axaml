@@ -3690,16 +3690,16 @@
                                             </Grid>
                                         </Button>
                                         <Button Grid.Row="4" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
-                                                Classes.selected="{Binding GamepadSettings.IsScreenScraperSection}"
+                                                Classes.selected="{Binding GamepadSettings.IsArtworkMetadataSection}"
                                                 IsVisible="{Binding GamepadSettings.Settings.HasScreenScraper}"
                                                 Focusable="False"
                                                 Command="{Binding GamepadSettings.SelectSectionCommand}"
-                                                CommandParameter="{x:Static vm:SettingsSection.ScreenScraper}">
+                                                CommandParameter="{x:Static vm:SettingsSection.ArtworkMetadata}">
                                             <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
                                                 <Border Width="5" CornerRadius="3"
                                                         Background="{DynamicResource EmuAccentBrush}"
-                                                        IsVisible="{Binding GamepadSettings.IsScreenScraperSection}" />
-                                                <TextBlock Grid.Column="1" Text="ScreenScraper" VerticalAlignment="Center" />
+                                                        IsVisible="{Binding GamepadSettings.IsArtworkMetadataSection}" />
+                                                <TextBlock Grid.Column="1" Text="Artwork &amp; Metadata" VerticalAlignment="Center" />
                                             </Grid>
                                         </Button>
                                         <Button Grid.Row="5" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"

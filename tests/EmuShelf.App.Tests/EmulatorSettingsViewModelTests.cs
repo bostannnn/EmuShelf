@@ -1234,7 +1234,7 @@ public class EmulatorSettingsViewModelTests
             });
         var viewModel = CreateViewModel(screenScraper: context);
 
-        Assert.Contains(SettingsSection.ScreenScraper, viewModel.Sections);
+        Assert.Contains(SettingsSection.ArtworkMetadata, viewModel.Sections);
 
         viewModel.ScreenScraperUsername = "bostan";
         viewModel.ScreenScraperPassword = "secret";

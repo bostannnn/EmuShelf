@@ -247,34 +247,30 @@ public class ScreenScraperClientTests
     }
 
     [Fact]
-    public async Task MetadataMapper_SelectsConfiguredRegionsLanguagesAndHdMedia()
+    public async Task MetadataMapper_SelectsProfileRegionsLanguagesAndHdMedia()
     {
         using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));
         var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
         var result = await client.GetGameInfoAsync(
             UserCredentials,
             new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
-        var settings = new ScreenScraperSettings
-        {
-            PreferredLanguage = "fr",
-            RegionPriority = ["us", "wor"],
-        };
 
         var metadata = ScreenScraperMetadataMapper.MapMetadata(
             99,
             58,
             result.Data!,
-            settings,
             DateTimeOffset.UnixEpoch);
-        var media = ScreenScraperMetadataMapper.SelectMedia(result.Data!, settings);
+        var media = ScreenScraperMetadataMapper.SelectMedia(result.Data!);
 
-        Assert.Equal("US Title", metadata.Single(value => value.Field == GameMetadataField.Title).Value);
-        Assert.Equal("Jeu d'action", metadata.Single(value => value.Field == GameMetadataField.Genre).Value);
-        Assert.Equal("2001-02-03", metadata.Single(value => value.Field == GameMetadataField.ReleaseDate).Value);
+        // The code-owned profile ranks region "wor" ahead of "us" and prefers the "en" language, and
+        // prefers HD media variants by type rank.
+        Assert.Equal("World Title", metadata.Single(value => value.Field == GameMetadataField.Title).Value);
+        Assert.Equal("Action", metadata.Single(value => value.Field == GameMetadataField.Genre).Value);
+        Assert.Equal("2001-01-01", metadata.Single(value => value.Field == GameMetadataField.ReleaseDate).Value);
         Assert.Equal("18.5", metadata.Single(value => value.Field == GameMetadataField.Rating).Value);
         Assert.Equal(2, metadata.Count(value => value.Field == GameMetadataField.Description));
         Assert.All(metadata, value => Assert.Equal(ScreenScraperProvider.Id, value.ProviderId));
-        Assert.Equal("box-us", media[GameMediaKind.BoxFront].ProviderMediaId);
+        Assert.Equal("box-world", media[GameMediaKind.BoxFront].ProviderMediaId);
         Assert.Equal("shot-hd", media[GameMediaKind.Screenshot].ProviderMediaId);
         Assert.Equal("wheel-hd", media[GameMediaKind.Wheel].ProviderMediaId);
         Assert.Equal("fanart", media[GameMediaKind.Fanart].ProviderMediaId);
@@ -283,23 +279,8 @@ public class ScreenScraperClientTests
         Assert.Equal("box-side", media[GameMediaKind.BoxSpine].ProviderMediaId);
         Assert.Equal("support", media[GameMediaKind.PhysicalMedia].ProviderMediaId);
         Assert.Equal("support-texture", media[GameMediaKind.PhysicalMediaTexture].ProviderMediaId);
-        // Video is opt-in: it is absent from the default media kinds, so it is not selected here.
+        // Video is intentionally absent from the profile (no in-app player yet), so it is never selected.
         Assert.False(media.ContainsKey(GameMediaKind.Video));
-    }
-
-    [Fact]
-    public async Task MetadataMapper_SelectsVideo_OnlyWhenEnabled_PreferringNormalizedEncode()
-    {
-        using var httpClient = new HttpClient(new StubHandler(_ => JsonResponse(GameFixture())));
-        var client = new ScreenScraperClient(httpClient, DeveloperCredentials);
-        var result = await client.GetGameInfoAsync(
-            UserCredentials,
-            new ScreenScraperGameRequest(58, "game.iso", 100, Sha1: "ABC"));
-        var settings = new ScreenScraperSettings { MediaKinds = [GameMediaKind.Video] };
-
-        var media = ScreenScraperMetadataMapper.SelectMedia(result.Data!, settings);
-
-        Assert.Equal("video-normalized", media[GameMediaKind.Video].ProviderMediaId);
     }
 
     [Theory]
