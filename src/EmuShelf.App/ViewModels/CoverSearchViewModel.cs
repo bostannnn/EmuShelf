@@ -17,6 +17,11 @@ public sealed partial class CoverSearchResultViewModel : ObservableObject, IDisp
     public string SourceText => Result.SourcePageUri?.Host ?? Result.ImageUri.Host;
     public IAsyncRelayCommand SelectCommand { get; }
 
+    /// <summary>Whether the Gamepad D-pad focus ring is on this tile. Gamepad presentation only —
+    /// the desktop picker uses pointer/keyboard focus and never sets it.</summary>
+    [ObservableProperty]
+    public partial bool IsFocused { get; set; }
+
     public CoverSearchResultViewModel(
         int searchIndex,
         ArtworkSearchResult result,
@@ -306,8 +311,14 @@ public partial class CoverSearchViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(ResultsCountText));
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed)
+            return;
+        _disposed = true;
+
         _lifetimeCancellation.Cancel();
         _searchCancellation?.Cancel();
         _searchCancellation?.Dispose();

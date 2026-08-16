@@ -86,6 +86,8 @@ public class MainViewModelTests : IDisposable
         IScreenScraperBatchService? scrapeBatch = null,
         IScreenScraperAccountService? screenScraperAccount = null,
         ISettingsService? settingsService = null,
+        IGameArtworkSearchProvider? artworkSearch = null,
+        IRemoteArtworkDownloader? artworkDownloader = null,
         TexturePackCoordinator? texturePacks = null,
         IFileRevealService? fileReveal = null)
     {
@@ -120,6 +122,8 @@ public class MainViewModelTests : IDisposable
             scrapeApply: scrapeApply,
             scrapeBatch: scrapeBatch,
             settingsService: settingsService,
+            artworkSearch: artworkSearch,
+            artworkDownloader: artworkDownloader,
             fileReveal: fileReveal);
     }
 
@@ -1191,6 +1195,71 @@ public class MainViewModelTests : IDisposable
         var focusedBeforeUp = vm.FocusedGame;
         vm.MoveGamepadFocusUpCommand.Execute(null);
         Assert.Same(focusedBeforeUp, vm.FocusedGame);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSetCover_WithWebSearch_OpensControllerNativeCoverSearch()
+    {
+        var path = Path.Combine(_baseDirectory, "CoverSearch.cue");
+        File.WriteAllText(path, "FILE \"CoverSearch.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Cover search", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(
+            artworkSearch: new StubArtworkSearchProvider(),
+            artworkDownloader: new StubArtworkDownloader());
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+
+        // Controller-native web search instead of the Desktop handoff, with the shared picker wired up.
+        Assert.Equal(GamepadOverlayKind.CoverSearch, vm.GamepadOverlay);
+        Assert.True(vm.IsGamepadCoverSearchOpen);
+        Assert.NotNull(vm.GamepadCoverSearchDetails);
+        Assert.Equal("Set cover — Cover search", vm.GamepadOverlayTitle);
+        // B backs out to the game actions, and the picker is disposed.
+        vm.BackFromGamepadOverlayCommand.Execute(null);
+        Assert.Equal(GamepadOverlayKind.Actions, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadCoverSearchDetails);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSetCover_WithWebSearchDisabled_FallsBackToDesktopHandoff()
+    {
+        var path = Path.Combine(_baseDirectory, "CoverHandoff.cue");
+        File.WriteAllText(path, "FILE \"CoverHandoff.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Cover handoff", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(
+            artworkSearch: new StubArtworkSearchProvider(),
+            artworkDownloader: new StubArtworkDownloader(),
+            settingsService: new StubSettingsService(webImageSearchEnabled: false));
+        vm.IsGamepadMode = true;
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+
+        // Nothing to search when web image search is off, so it goes straight to the Desktop handoff.
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadCoverSearchDetails);
+    }
+
+    private sealed class StubArtworkSearchProvider : IGameArtworkSearchProvider
+    {
+        public Task<IReadOnlyList<ArtworkSearchResult>> SearchAsync(
+            string title,
+            string systemName,
+            double preferredAspectRatio,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ArtworkSearchResult>>([]);
+    }
+
+    private sealed class StubArtworkDownloader : IRemoteArtworkDownloader
+    {
+        public Task<DownloadedArtwork?> DownloadFirstAsync(
+            IReadOnlyList<ArtworkCandidate> candidates,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<DownloadedArtwork?>(null);
     }
 
     [AvaloniaFact]

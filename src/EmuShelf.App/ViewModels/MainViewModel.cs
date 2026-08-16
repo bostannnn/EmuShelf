@@ -85,6 +85,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IGameScrapeApplicationService? _scrapeApply;
     private readonly IScreenScraperBatchService? _scrapeBatch;
     private readonly IRemoteArtworkDownloader? _artworkDownloader;
+    private readonly IGameArtworkSearchProvider? _artworkSearch;
     private readonly ISettingsService? _settingsService;
     private readonly IRetroAchievementsMatchingService? _retroMatching;
     private readonly IRetroAchievementsProgressService? _retroProgress;
@@ -997,6 +998,9 @@ public partial class MainViewModel : ViewModelBase
     public partial GamepadScraperViewModel? GamepadScraperDetails { get; set; }
 
     [ObservableProperty]
+    public partial GamepadCoverSearchViewModel? GamepadCoverSearchDetails { get; set; }
+
+    [ObservableProperty]
     public partial GamepadBatchScraperViewModel? GamepadBatchScraperDetails { get; set; }
 
     [ObservableProperty]
@@ -1010,6 +1014,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadRenameOpen => GamepadOverlay == GamepadOverlayKind.Rename;
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
+    public bool IsGamepadCoverSearchOpen => GamepadOverlay == GamepadOverlayKind.CoverSearch;
     public bool IsGamepadScraperOpen => GamepadOverlay == GamepadOverlayKind.Scraper;
     public bool IsGamepadBatchScraperOpen => GamepadOverlay == GamepadOverlayKind.BatchScraper;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
@@ -1044,13 +1049,13 @@ public partial class MainViewModel : ViewModelBase
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
+         GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
          GamepadOverlayKind.RemoveConfirmation or GamepadOverlayKind.DesktopModeConfirmation or
          GamepadOverlayKind.QuitConfirmation);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
          GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Hotkeys or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Hotkeys or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     // Confirmations render their own centred title inside the dialog card, so the chrome header title
     // is suppressed for them (it would otherwise pin a second title to the top-left of the sheet).
@@ -1066,6 +1071,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game?",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
+        GamepadOverlayKind.CoverSearch => FocusedGame is null ? "Set cover" : $"Set cover — {FocusedGame.DisplayTitle}",
         GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
         GamepadOverlayKind.BatchScraper => "Scrape games with ScreenScraper",
         GamepadOverlayKind.SystemMenu => "Menu",
@@ -1374,6 +1380,7 @@ public partial class MainViewModel : ViewModelBase
         IGameScrapeApplicationService? scrapeApply = null,
         IScreenScraperBatchService? scrapeBatch = null,
         IRemoteArtworkDownloader? artworkDownloader = null,
+        IGameArtworkSearchProvider? artworkSearch = null,
         ISettingsService? settingsService = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
         IGameDetailsStore? gameDetails = null,
@@ -1390,6 +1397,7 @@ public partial class MainViewModel : ViewModelBase
         _scrapeApply = scrapeApply;
         _scrapeBatch = scrapeBatch;
         _artworkDownloader = artworkDownloader;
+        _artworkSearch = artworkSearch;
         _settingsService = settingsService;
         _library = library;
         _scanner = scanner;
@@ -1977,11 +1985,63 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadMode)
         {
+            // Web cover search is controller-native; a local-file pick still needs the OS picker, so it
+            // hands off to Desktop. When web search is off (or unavailable) there is nothing to search,
+            // so go straight to the handoff.
+            if (FocusedGame is { } game && CanGamepadCoverSearch)
+                return OpenGamepadCoverSearchAsync(game);
+
             OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff);
             return Task.CompletedTask;
         }
 
         return SetGameCoverAsync(FocusedGame);
+    }
+
+    /// <summary>Whether the controller-native web cover search can open: a search provider and
+    /// downloader are wired, and the user has left web image search on in Settings.</summary>
+    private bool CanGamepadCoverSearch =>
+        _artworkSearch is not null &&
+        _artworkDownloader is not null &&
+        (_settingsService?.Load().Scraping.WebImageSearchEnabled ?? true);
+
+    private Task OpenGamepadCoverSearchAsync(GameViewModel game)
+    {
+        if (_artworkSearch is null || _artworkDownloader is null)
+        {
+            OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff);
+            return Task.CompletedTask;
+        }
+
+        var preferredAspectRatio = _systemsById.TryGetValue(game.SystemId, out var system)
+            ? system.CoverAspectRatio
+            : game.CoverAspectRatio;
+        // The local-file pick is not passed through here: choosing a file needs the OS picker, so the
+        // overlay's "Choose a file" target hands off to Desktop instead of calling this.
+        var search = new CoverSearchViewModel(
+            new GameCoverPickerContext(game.DisplayTitle, game.SystemName, preferredAspectRatio),
+            _artworkSearch,
+            _artworkDownloader,
+            () => Task.FromResult<string?>(null),
+            _logger);
+        search.CloseRequested += picked => OnGamepadCoverPicked(game, picked);
+        var details = new GamepadCoverSearchViewModel(
+            search,
+            () => OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff));
+
+        OpenGamepadOverlay(GamepadOverlayKind.CoverSearch);
+        GamepadCoverSearchDetails = details;
+        return details.LoadAsync();
+    }
+
+    // Raised when the wrapped picker resolves — either a downloaded web cover (import it) or a cancel
+    // (null). Closing the overlay disposes the picker; the downloaded staging file it handed us
+    // survives until ImportPickedCoverAsync consumes and deletes it.
+    private void OnGamepadCoverPicked(GameViewModel game, PickedGameCover? picked)
+    {
+        CloseGamepadOverlay();
+        if (picked is not null)
+            _ = ImportPickedCoverAsync(game, picked);
     }
 
     [RelayCommand]
@@ -2244,6 +2304,7 @@ public partial class MainViewModel : ViewModelBase
         }
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
         if (closingOverlay == GamepadOverlayKind.Settings)
@@ -2305,7 +2366,8 @@ public partial class MainViewModel : ViewModelBase
             GamepadOverlayKind.Rename or
             GamepadOverlayKind.DiscSelection or
             GamepadOverlayKind.RemoveConfirmation or
-            GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
+            GamepadOverlayKind.CoverDesktopHandoff or
+            GamepadOverlayKind.CoverSearch => GamepadOverlayKind.Actions,
             // Desktop-mode confirm returns to whichever overlay opened it, not always the System Menu.
             GamepadOverlayKind.DesktopModeConfirmation => _desktopModeConfirmationParent,
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
@@ -2549,6 +2611,9 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadScraperOpen)
             return DispatchScraperOverlayAction(action);
 
+        if (IsGamepadCoverSearchOpen)
+            return DispatchCoverSearchOverlayAction(action);
+
         if (IsGamepadBatchScraperOpen)
             return DispatchBatchScraperOverlayAction(action);
 
@@ -2623,6 +2688,31 @@ public partial class MainViewModel : ViewModelBase
                 return true;
             case GamepadAction.Confirm:
                 GamepadScraperDetails?.Activate();
+                return true;
+            case GamepadAction.Cancel:
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private bool DispatchCoverSearchOverlayAction(GamepadAction action)
+    {
+        // Modal like the scraper: Up/Down move the ring across the query field, Search, the cover
+        // tiles, and "Choose a file"; A activates the focused one; B backs out. The query field takes
+        // real keyboard focus (via the view) so the Steam/OS on-screen keyboard types into it. Every
+        // other action is swallowed so it cannot leak to the library beneath.
+        switch (action)
+        {
+            case GamepadAction.NavigateUp:
+                GamepadCoverSearchDetails?.MoveFocus(-1);
+                return true;
+            case GamepadAction.NavigateDown:
+                GamepadCoverSearchDetails?.MoveFocus(1);
+                return true;
+            case GamepadAction.Confirm:
+                GamepadCoverSearchDetails?.Activate();
                 return true;
             case GamepadAction.Cancel:
                 BackFromGamepadOverlayCommand.Execute(null);
@@ -2814,6 +2904,7 @@ public partial class MainViewModel : ViewModelBase
 
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
         FocusedGamepadAchievement = null;
@@ -2846,6 +2937,7 @@ public partial class MainViewModel : ViewModelBase
                 break;
             case GamepadOverlayKind.Scraper:
             case GamepadOverlayKind.BatchScraper:
+            case GamepadOverlayKind.CoverSearch:
                 // These overlays render their own body and own their D-pad focus; no option list.
                 break;
             case GamepadOverlayKind.SystemMenu:
@@ -3008,6 +3100,17 @@ public partial class MainViewModel : ViewModelBase
             _ = ReloadGamesAsync();
     }
 
+    private void DisposeGamepadCoverSearchDetails()
+    {
+        if (GamepadCoverSearchDetails is not { } details)
+            return;
+
+        // The picked cover is imported by OnGamepadCoverPicked (which drives the grid tile update
+        // itself), so there is nothing to reload here — just tear down the wrapped picker.
+        details.Dispose();
+        GamepadCoverSearchDetails = null;
+    }
+
     private void DisposeGamepadBatchScraperDetails()
     {
         if (GamepadBatchScraperDetails is not { } details)
@@ -3042,6 +3145,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadRenameOpen));
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
+        OnPropertyChanged(nameof(IsGamepadCoverSearchOpen));
         OnPropertyChanged(nameof(IsGamepadScraperOpen));
         OnPropertyChanged(nameof(IsGamepadBatchScraperOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
@@ -5992,6 +6096,16 @@ public partial class MainViewModel : ViewModelBase
         if (pickedCover is null)
             return;
 
+        await ImportPickedCoverAsync(game, pickedCover);
+    }
+
+    /// <summary>
+    /// Imports a chosen cover (a local file or a downloaded web image) into EmuShelf's own Covers/
+    /// store, refreshes the grid tile and cover projection, and removes the previous EmuShelf-owned
+    /// cover. Shared by the Desktop "Set cover" dialog and the Gamepad controller-native cover search.
+    /// </summary>
+    private async Task ImportPickedCoverAsync(GameViewModel game, PickedGameCover pickedCover)
+    {
         IsBusy = true;
         SetStatus($"Preparing cover for {game.DisplayTitle}…", StatusSeverity.Progress);
         var previousCoverPath = game.CoverPath;
