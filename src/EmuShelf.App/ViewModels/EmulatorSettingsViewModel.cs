@@ -990,6 +990,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             // emulator setup survives, then pin the active profile the user has selected per system.
             var configurations = Rows.SelectMany(row => row.ToConfigurations()).ToArray();
             var activeBySystem = Rows.ToDictionary(row => row.SystemId, row => row.EmulatorId, StringComparer.Ordinal);
+            // Persist the Saves overrides BEFORE switching each system's active emulator. Overrides are
+            // keyed per (system, emulator) and attributed to the system's currently-active emulator, so
+            // writing them after the switch would file an override the user set against the old emulator
+            // under the new one — making a per-emulator folder look shared across emulators.
+            PersistCloudSaveLocations();
             await Task.Run(() =>
             {
                 _configurations.SaveAll(configurations);
@@ -1004,7 +1009,6 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             }
             if (_maintenance?.SetShowEmptyPlatforms is not null)
                 await _maintenance.SetShowEmptyPlatforms(ShowEmptyPlatforms);
-            PersistCloudSaveLocations();
             CloseRequested?.Invoke(true);
         }
         catch (Exception ex)

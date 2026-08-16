@@ -93,6 +93,39 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task Saving_PersistsCloudOverridesBeforeSwitchingTheActiveEmulator()
+    {
+        // Regression: save overrides are keyed per (system, emulator) and attributed to a system's
+        // active emulator. If Save switched the active emulator BEFORE persisting the overrides, a
+        // folder the user set against DuckStation would be filed under the RetroArch they switched to
+        // in the same Save — making a per-emulator folder look shared. The override must be written
+        // while the old emulator is still active.
+        string? activeWhenOverridePersisted = "unset";
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            updateOverride: (systemId, _) =>
+            {
+                if (systemId == "playstation")
+                    activeWhenOverridePersisted =
+                        _configurations.ActiveEmulators.TryGetValue("playstation", out var emulatorId)
+                            ? emulatorId
+                            : null;
+            }));
+
+        var emulatorRow = viewModel.Rows.Single(row => row.SystemId == "playstation");
+        emulatorRow.SelectedProfile = emulatorRow.AvailableProfiles.Single(p => p.EmulatorId == "retroarch");
+        emulatorRow.ExecutablePath = "/portable/RetroArch/retroarch";
+        emulatorRow.CorePath = "/portable/RetroArch/cores/swanstation_libretro.dll";
+        Row(viewModel, "playstation").OverrideDirectory = "/saves/A";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        // The override was persisted before the switch landed, so it is NOT attributed to RetroArch.
+        Assert.NotEqual("retroarch", activeWhenOverridePersisted);
+        // The emulator switch itself still takes effect.
+        Assert.Equal("retroarch", _configurations.ActiveEmulators["playstation"]);
+    }
+
+    [AvaloniaFact]
     public void DataFolder_IsSurfacedFromMaintenance_WhenProvided()
     {
         var maintenance = new LibraryMaintenanceActions(
