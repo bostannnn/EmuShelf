@@ -125,11 +125,27 @@ public sealed class ScreenScraperBatchService : IScreenScraperBatchService
     {
         var request = ScreenScraperApplyMapper.BuildRequest(preview, mode, includeFields, includeMedia);
         var applyResult = await _apply.ApplyAsync(request, cancellationToken);
-        var outcome = applyResult.MetadataApplied > 0 || applyResult.MediaImported > 0
-            ? GameScrapeBatchOutcome.Applied
-            : GameScrapeBatchOutcome.NothingToApply;
+        GameScrapeBatchOutcome outcome;
+        if (applyResult.MetadataApplied > 0 || applyResult.MediaImported > 0)
+        {
+            // Something was actually written this run.
+            outcome = GameScrapeBatchOutcome.Applied;
+        }
+        else if (applyResult.Media.Any(media => media.Outcome == GameMediaApplyOutcome.DownloadFailed))
+        {
+            // Matched, but every selected image failed to download (or store): the game is NOT complete
+            // and must not be reported as such. Surface it as a failure so the status is honest, and leave
+            // the match coverage-incomplete so a later run retries it.
+            outcome = GameScrapeBatchOutcome.Failed;
+        }
+        else
+        {
+            // Matched and everything the provider offered was already present — genuinely nothing to do.
+            outcome = GameScrapeBatchOutcome.NothingToApply;
+        }
         return new GameScrapeBatchItemResult(
-            gameId, title, outcome, applyResult.MetadataApplied, applyResult.MediaImported);
+            gameId, title, outcome, applyResult.MetadataApplied, applyResult.MediaImported,
+            applyResult.Error);
     }
 
     // A local detail-store read (no network): did a previous ScreenScraper scrape already pull everything

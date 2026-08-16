@@ -98,6 +98,27 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Run_MatchedButAllDownloadsFailed_IsReportedAsFailed_NotAlreadyComplete()
+    {
+        // Regression: a match whose selected images all fail to download writes nothing, but it is NOT
+        // "already complete" — it must read as failed, and must not be silently counted as done.
+        var ids = AddGames("NoNet.iso");
+        _preview.Results[ids[0]] = Success(ids[0]);
+        _apply.Results[ids[0]] = new GameScrapeApplyResult(
+            ids[0], 0, 0,
+            [new GameMediaApplyResult(GameMediaKind.BoxFront, GameMediaApplyOutcome.DownloadFailed)],
+            false);
+
+        var summary = await _batch.RunAsync(
+            ids, Enabled(), GameMetadataApplyMode.FillMissing, null, null, null);
+
+        Assert.Equal(GameScrapeBatchOutcome.Failed, Assert.Single(summary.Results).Outcome);
+        Assert.Equal(1, summary.Failed);
+        Assert.Equal(0, summary.AlreadyComplete);
+        Assert.Equal(0, summary.Applied);
+    }
+
+    [Fact]
     public async Task Run_FillMissing_SkipsCoverageCompleteGames_WithoutContactingProvider()
     {
         var ids = AddGames("Done.iso", "Fresh.iso");
