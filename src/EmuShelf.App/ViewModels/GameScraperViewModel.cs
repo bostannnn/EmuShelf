@@ -551,7 +551,11 @@ public sealed partial class GameScraperViewModel : ViewModelBase, IDisposable
                 // game currently has for that kind, rather than skipping kinds that are already filled.
                 new GameScrapeApplyRequest(
                     _gameId, _current.Match, metadata, media, mode, _current.CoverKind,
-                    OverwriteExistingMedia: true),
+                    OverwriteExistingMedia: true,
+                    // The full offering (not the user's ticked subset) so the match records whether the
+                    // game is now coverage-complete — a partial pick correctly stays re-scrapeable.
+                    OfferedFields: _current.Metadata.Select(value => value.Field).ToHashSet(),
+                    OfferedMediaKinds: _current.Media.Keys.ToHashSet()),
                 _lifetime.Token);
             LastApplyResult = result;
             SetMessage(GameScraperState.Applied, SummarizeResult(result));

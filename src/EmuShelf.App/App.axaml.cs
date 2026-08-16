@@ -132,6 +132,7 @@ public partial class App : Application
                     Bootstrapper.ScreenScraperPreview,
                     scrapeApply,
                     Bootstrapper.MetadataStore,
+                    Bootstrapper.GameDetailsStore,
                     Bootstrapper.Logger);
             var metadataService = new GameMetadataService(
                 Bootstrapper.MetadataStore,
