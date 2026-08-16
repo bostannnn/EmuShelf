@@ -26,6 +26,7 @@ internal sealed class ChromeSnapshot : IDisposable
     private readonly Lock _gate = new();
     private readonly DispatcherTimer _timer;
     private readonly Func<Visual?> _source;
+    private readonly Action? _onCaptured;
 
     private RenderTargetBitmap? _target;
     private WriteableBitmap? _staging;
@@ -43,11 +44,22 @@ internal sealed class ChromeSnapshot : IDisposable
     private bool _hasNewFrame;
     private volatile bool _disposed;
 
-    public ChromeSnapshot(Func<Visual?> source, TimeSpan interval)
+    /// <param name="onCaptured">
+    /// Invoked on the UI thread after each capture tick. It lets the owner drive the render that
+    /// uploads the capture: a still (non-animated) presentation redraws only on demand, so without
+    /// this the couch chrome kept live behind it — overlays and toasts that move without touching the
+    /// shelf — would be captured but never uploaded until the next shelf change.
+    /// </param>
+    public ChromeSnapshot(Func<Visual?> source, TimeSpan interval, Action? onCaptured = null)
     {
         _source = source;
+        _onCaptured = onCaptured;
         _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = interval };
-        _timer.Tick += (_, _) => Capture();
+        _timer.Tick += (_, _) =>
+        {
+            Capture();
+            _onCaptured?.Invoke();
+        };
     }
 
     public void Start() => _timer.Start();

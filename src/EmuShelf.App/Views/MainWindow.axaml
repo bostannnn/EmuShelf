@@ -3036,9 +3036,10 @@
                      theme's accent, so moving the highlight recolours nothing. Two Borders rather
                      than one converter-driven brush: each source is a plain binding this way.
 
-                     Only the no-GL fallback paints these. When a scene is up — the tube, or the
-                     effect-off in-place shelf — it resolves the couch library colour itself and draws
-                     opaque over it, so a backdrop sheet here would only be something to paint out. The
+                     Only the no-GL fallback paints these. When the scene is up — in either mode, since
+                     one renderer draws the shelf whether the effect is on or off — it resolves the
+                     couch library colour itself and draws opaque over it, so a backdrop sheet here
+                     would only be something to paint out. The
                      wrapping Panel carries the condition so each inner Border keeps its own plain
                      binding. Its top margin clears the platform rail (100px): the rail is an opaque
                      toolbar drawn in the couch root beneath this, and a full-height sheet painted it
@@ -3132,18 +3133,22 @@
                         </ItemsControl>
                     </Panel>
 
-                    <!-- The in-place 3D shelf, shown only with the CRT effect off. Unlike the tube at
+                    <!-- The in-place 3D shelf: the preferred effect-off renderer. Unlike the tube at
                          the window root, this one sits inside the shelf's own slot, so the couch UI
                          stacks around it for free — the rail above, the title below, any overlay over
-                         it — and nothing has to be captured or composited back. It has no ChromeSource
-                         for exactly that reason, and renders opaque over its own backdrop so it does
-                         not depend on the GL surface being alpha-blended into the window. With the
-                         effect on this stays hidden and the window-covering tube draws the shelf. -->
+                         it — as live Avalonia, with no capture and a redraw only when the shelf itself
+                         moves. It has no ChromeSource for exactly that reason, and renders opaque over
+                         its own backdrop so it does not depend on the GL surface being alpha-blended
+                         into the window. Its support is tracked separately (InlineSceneSupported): if
+                         it cannot bring up GL — the Steam Deck — its failure disables only this path
+                         (OnGamepadInlineShelfFailed), and the effect-off shelf falls back to the tube
+                         drawn flat rather than dropping every model to flat covers. With the effect on
+                         this stays hidden and the window-covering tube draws the shelf. -->
                     <controls:MediaShelf3DHost x:Name="GamepadShelfInlineScene"
                                                IsHitTestVisible="False"
                                                IsVisible="{Binding ShowInlineShelfScene}"
                                                IsActive="{Binding ShowInlineShelfScene}"
-                                               IsSceneSupported="{Binding ShelfSceneSupported}"
+                                               IsSceneSupported="{Binding InlineSceneSupported}"
                                                Crt="{Binding InlineShelfCrt}"
                                                TintBackdropWithAccent="False"
                                                Items="{Binding ShelfSceneItems}"
@@ -3153,7 +3158,7 @@
                                                Pitch="{Binding ShelfHeroPitch}"
                                                DeparturePose="{Binding ShelfDeparturePose}"
                                                LaunchPose="{Binding ShelfLaunchPose}"
-                                               InitializationFailed="OnGamepadShelfHeroFailed" />
+                                               InitializationFailed="OnGamepadInlineShelfFailed" />
                     </Grid>
 
                     <!-- Focused game's platform + title, centred beneath the shelf (the dock is hidden here). -->
@@ -4859,15 +4864,23 @@
          picture the CRT is displaying instead of flat overlays sitting on a curved image. A scene
          inside that subtree would be capturing itself.
 
+         With the effect on it presents the tube (CouchCrt → Default) over every couch layout. With
+         the effect off it is normally idle — the in-place host (GamepadShelfInlineScene) draws the
+         shelf — and comes up only as the fallback when that host cannot bring up GL: there it presents
+         flat (CouchCrt → Flat) on the shelf so the models stay 3D. ShowCouchScene carries exactly that
+         condition (effect on, or effect-off shelf with the in-place host ruled out). Its own GL
+         support is tracked separately (TubeSceneSupported), so the in-place host failing never
+         disables it — the bug behind the Steam Deck blackout. See DECISIONS 2026-08-16.
+
          It is opaque and covers the window, which is what hides the un-warped original: the couch
          UI still lays out and animates normally underneath, it is simply never the thing you see.
          Non-hit-testable so the window's resize edges below still work.
          See docs/couch-physical-media-shelf.md. -->
     <controls:MediaShelf3DHost x:Name="GamepadShelfScene"
                                IsHitTestVisible="False"
-                               IsVisible="{Binding ShowCouchTube}"
-                               IsActive="{Binding ShowCouchTube}"
-                               IsSceneSupported="{Binding ShelfSceneSupported}"
+                               IsVisible="{Binding ShowCouchScene}"
+                               IsActive="{Binding ShowCouchScene}"
+                               IsSceneSupported="{Binding TubeSceneSupported}"
                                Crt="{Binding CouchCrt}"
                                ChromeSource="{Binding #GamepadRoot}"
                                Items="{Binding ShelfSceneItems}"

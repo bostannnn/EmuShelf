@@ -423,10 +423,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         if (!_isAttached || !Crt.IsActive || ChromeSource is null
             || _observedWindow?.WindowState == WindowState.Minimized)
         {
-            // Switching the effect off has to stop the timer, not merely stop using its output: the
-            // capture is a full-window offscreen render on the UI thread, and leaving it ticking is
-            // most of what the setting is meant to reclaim. A scene with no chrome source — the
-            // in-place shelf, which draws no couch UI into itself — never starts one to begin with.
+            // A non-active presentation stops the timer, not merely stops using its output: the
+            // capture is a full-window offscreen render on the UI thread. This fires on the grid and
+            // spotlight with the effect off, where the one renderer idles entirely, and while the
+            // window is minimised. On the effect-off shelf the presentation is Flat (active), so the
+            // capture keeps running — the price of one renderer compositing the couch chrome (rail,
+            // title, overlays, toasts) over the flat media there. A scene with no chrome source never
+            // starts a capture at all.
             _chromeSnapshot?.Dispose();
             _chromeSnapshot = null;
             return;
@@ -437,8 +440,29 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return;
         }
 
-        _chromeSnapshot = new ChromeSnapshot(() => ChromeSource, TimeSpan.FromMilliseconds(33));
+        _chromeSnapshot = new ChromeSnapshot(
+            () => ChromeSource, TimeSpan.FromMilliseconds(33), OnChromeCaptured);
         _chromeSnapshot.Start();
+    }
+
+    /// <summary>
+    /// Runs on the UI thread after each chrome capture; keeps the couch chrome live behind a still
+    /// scene.
+    /// </summary>
+    /// <remarks>
+    /// The animated tube already requests a frame every render, so its captures upload on their own
+    /// and this does nothing for it. A Flat presentation redraws only on demand, so nothing would
+    /// upload a capture taken while the shelf sits still — and the chrome it carries is the whole
+    /// couch UI, including overlays and toasts that appear without moving the shelf. Requesting a
+    /// frame per capture is what keeps those visible, at the capture's own 30Hz rather than the
+    /// tube's 60Hz. When the capture stops — off the shelf, or minimised — so do these redraws.
+    /// </remarks>
+    private void OnChromeCaptured()
+    {
+        if (Crt.IsActive && !Crt.IsAnimated)
+        {
+            RequestNextFrameRendering();
+        }
     }
 
     protected override void OnOpenGlInit(GlInterface gl)

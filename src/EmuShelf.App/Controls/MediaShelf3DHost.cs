@@ -15,6 +15,20 @@ public sealed class MediaShelf3DHost : ContentControl
 {
     private static readonly TimeSpan InitializationTimeout = TimeSpan.FromSeconds(4);
 
+    /// <summary>
+    /// How many times a fresh scene is given to bring up a GL context before the flat-cover fallback
+    /// is taken as the real answer.
+    /// </summary>
+    /// <remarks>
+    /// A single silent timeout is not proof the platform cannot render: some drivers (the Steam
+    /// Deck's Mesa stack among them) are simply slow to hand out a context the first time it is
+    /// asked for. Rebuilding the scene once and waiting again turns that slow first start into a
+    /// working shelf instead of a whole session of flat covers. Only a timeout that repeats across
+    /// every attempt is treated as an unsupported GPU — the mirror of the render loop, which already
+    /// keeps drawing through a transient fault and gives up only when it repeats every frame.
+    /// </remarks>
+    private const int MaxInitializationAttempts = 2;
+
     public static readonly StyledProperty<bool> IsActiveProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, bool>(nameof(IsActive));
 
@@ -56,6 +70,7 @@ public sealed class MediaShelf3DHost : ContentControl
     private readonly DispatcherTimer _initializationWatchdog;
     private MediaShelf3DControl? _scene;
     private bool _failedForActivation;
+    private int _initializationAttempts;
 
     public MediaShelf3DHost()
     {
@@ -188,6 +203,7 @@ public sealed class MediaShelf3DHost : ContentControl
         if (!IsActive || !IsSceneSupported)
         {
             _failedForActivation = false;
+            _initializationAttempts = 0;
             RemoveScene();
             return;
         }
@@ -229,6 +245,9 @@ public sealed class MediaShelf3DHost : ContentControl
             if (ReferenceEquals(sender, _scene))
             {
                 _initializationWatchdog.Stop();
+                // A clean start clears the retry budget so a context lost and rebuilt later gets its
+                // own full run of attempts rather than inheriting a spent count.
+                _initializationAttempts = 0;
             }
         });
 
@@ -252,9 +271,23 @@ public sealed class MediaShelf3DHost : ContentControl
         });
     }
 
-    private void OnInitializationTimedOut(object? sender, EventArgs e) =>
+    private void OnInitializationTimedOut(object? sender, EventArgs e)
+    {
+        // A slow first start is not a broken GPU. Rebuild the scene and wait again until the retry
+        // budget is spent; only a timeout that repeats across every attempt is taken as an
+        // unsupported platform and handed to the flat-cover fallback.
+        if (_initializationAttempts + 1 < MaxInitializationAttempts)
+        {
+            _initializationAttempts++;
+            RemoveScene();
+            UpdateSceneAttachment();
+            return;
+        }
+
         Fail(new TimeoutException(
-            "The OpenGL shelf did not initialize. The platform may not support Avalonia's shared GL surface."));
+            "The OpenGL shelf did not initialize across "
+            + $"{MaxInitializationAttempts} attempts. The platform may not support Avalonia's shared GL surface."));
+    }
 
     private void RestartWatchdog()
     {
@@ -293,4 +326,12 @@ public sealed class MediaShelf3DHost : ContentControl
     internal bool HasAttachedScene => _scene is not null;
 
     internal void ExpireInitializationForTests() => OnInitializationTimedOut(this, EventArgs.Empty);
+
+    // Mirrors a clean GL start synchronously: the real handler defers to the dispatcher, which a
+    // headless test does not pump, so tests drive the reset directly.
+    internal void SignalInitializationSucceededForTests()
+    {
+        _initializationWatchdog.Stop();
+        _initializationAttempts = 0;
+    }
 }
