@@ -11,7 +11,10 @@ public enum LibraryColumnKey
     Title,
     Console,
     Format,
+    // The softcore column keeps the historical `Achievements` name so persisted layouts still map to
+    // it; it is shown to the user as "Softcore". HardcoreAchievements is the paired gold column.
     Achievements,
+    HardcoreAchievements,
     Textures,
     Status,
     LastPlayed,

@@ -4493,6 +4493,7 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Console => By(g => g.SystemName, text),
             LibrarySortColumn.Format => By(g => g.FormatLabel, text),
             LibrarySortColumn.Achievements => By(g => g.AchievementSortKey),
+            LibrarySortColumn.HardcoreAchievements => By(g => g.HardcoreSortKey),
             LibrarySortColumn.Textures => By(g => g.TextureSortKey),
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
             LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),

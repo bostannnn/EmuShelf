@@ -7,6 +7,7 @@ public enum LibrarySortColumn
     Console,
     Format,
     Achievements,
+    HardcoreAchievements,
     Textures,
     Status,
     LastPlayed,

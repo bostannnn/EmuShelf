@@ -41,6 +41,90 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
+    public void AchievementProgress_PrefersTheDisplayCounts_OverTheColumnText()
+    {
+        var viewModel = CreateGame();
+
+        // Real counts are supplied; the count/ratio come from them, not from re-parsing the text.
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true,
+            ColumnText: "ignored",
+            Tooltip: "5 of 20 unlocked.",
+            Awarded: 5,
+            Total: 20));
+
+        Assert.Equal("5/20", viewModel.GamepadAchievementCountText);
+        Assert.Equal(5d / 20d, viewModel.GamepadAchievementProgressRatio, 8);
+    }
+
+    [Fact]
+    public void AchievementWidget_ExposesSoftcoreAndHardcoreReadoutsAtOnce()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: "7/20", Tooltip: "",
+            Awarded: 7, AwardedHardcore: 4, Total: 20));
+
+        // Softcore (silver) readout.
+        Assert.Equal("7/20", viewModel.GamepadAchievementCountText);
+        Assert.Equal(7d / 20d, viewModel.GamepadAchievementProgressRatio, 8);
+        // Hardcore (gold) readout, shown alongside.
+        Assert.Equal("4/20", viewModel.GamepadHardcoreCountText);
+        Assert.Equal(4d / 20d, viewModel.GamepadHardcoreProgressRatio, 8);
+        Assert.True(viewModel.HasHardcoreAchievementProgress);
+    }
+
+    [Fact]
+    public void AchievementColumns_SplitSoftcoreAndHardcoreFractionsAndSortKeys()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: "7/20", Tooltip: "",
+            Awarded: 7, AwardedHardcore: 4, Total: 20));
+
+        Assert.Equal("7/20", viewModel.AchievementsColumnText);
+        Assert.Equal("4/20", viewModel.HardcoreColumnText);
+        Assert.Equal(7, viewModel.AchievementSortKey);
+        Assert.Equal(4, viewModel.HardcoreSortKey);
+    }
+
+    [Fact]
+    public void AchievementColumns_AreEmDashesUntilProgressLoads_AndSortBelowLoadedGames()
+    {
+        var viewModel = CreateGame();
+
+        // Matched set, but progress hasn't loaded (no counts): both columns dash, both sort at 0.
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: RetroAchievementsDisplay.Dash, Tooltip: ""));
+        Assert.Equal(RetroAchievementsDisplay.Dash, viewModel.AchievementsColumnText);
+        Assert.Equal(RetroAchievementsDisplay.Dash, viewModel.HardcoreColumnText);
+        Assert.Equal(0, viewModel.AchievementSortKey);
+        Assert.Equal(0, viewModel.HardcoreSortKey);
+
+        // No achievement set at all: both sort below every game that has one.
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: false, ColumnText: RetroAchievementsDisplay.Dash, Tooltip: ""));
+        Assert.Equal(-1, viewModel.AchievementSortKey);
+        Assert.Equal(-1, viewModel.HardcoreSortKey);
+    }
+
+    [Fact]
+    public void AchievementWidget_HidesTheHardcoreReadoutWhenNoHardcoreUnlocks()
+    {
+        var viewModel = CreateGame();
+
+        viewModel.ApplyAchievementsDisplay(new RetroAchievementsDisplay(
+            ShowMark: true, ColumnText: "7/20", Tooltip: "",
+            Awarded: 7, AwardedHardcore: 0, Total: 20));
+
+        Assert.Equal("7/20", viewModel.GamepadAchievementCountText);
+        Assert.Equal("0/20", viewModel.GamepadHardcoreCountText);
+        Assert.False(viewModel.HasHardcoreAchievementProgress);
+    }
+
+    [Fact]
     public void DisplayTitle_PrefersTheScrapedName_ButFallsBackToTitleAndTracksRenames()
     {
         var viewModel = CreateGame();

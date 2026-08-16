@@ -8627,3 +8627,51 @@ exists to catch. Rescaling the kept band back to the original extent bakes the t
 mesh instead, so coincident merged walls stay coincident, the shell stays boxy, and its depth ratio
 still agrees with its profile (D/H back to 0.072). The case renders identically either way; only the
 mesh-vs-profile agreement differs, and that is worth keeping honest rather than excepting.
+
+## 2026-08-16 — RetroAchievements shows softcore and hardcore side by side, not as an app mode
+
+The 2026-07-18 detail decision treated hardcore as a per-row *marker* and always showed the
+softcore-inclusive count. This decision surfaces hardcore progress properly, but keeps a hard
+constraint: **hardcore vs softcore is the emulator's runtime mode, not an EmuShelf setting.**
+EmuShelf is a read-only display; it must never present an app-wide "mode" that implies it controls
+which mode the player is in. (An earlier attempt at exactly that — a library-wide `ShowHardcoreAchievements`
+switch that recoloured and recounted every tile — was built and then removed as conceptually wrong.)
+Nothing about the read-only data model changes: both counts are already fetched (`NumAwarded`,
+`NumAwardedHardcore`) and stored; emulators remain the only unlockers.
+
+**The focused-game widget shows both readouts at once.** `RetroAchievementsDisplay` carries both the
+softcore total (`Awarded`) and the hardcore subset (`AwardedHardcore`), and `GameViewModel` exposes a
+silver softcore readout and a gold hardcore readout. The gamepad dock pill and the spotlight hero each
+stack two labelled bars — softcore (`EmuAchievementSoftcoreBrush`, silver) over hardcore
+(`EmuAchievementBrush`, gold) — both formatted `n/total` (never a bare hardcore number, which read as
+inconsistent UX). A hardcore unlock always implies the softcore one, so the gold bar can only trail the
+silver bar; they never cross.
+
+**The grid tile mark is unchanged** (the single gold trophy). The desktop **list view splits the old
+`Achievements` column into two**: a silver **Softcore** column (`n/total`) and a gold **Hardcore**
+column (`hardcore/total`), both shown by default and each independently sortable and hideable. The
+softcore column keeps the `LibraryColumnKey.Achievements` enum name so persisted layouts still map to
+it; the new `HardcoreAchievements` column appends for existing users (unknown-key tolerance). Adding a
+default-visible column widened the default footprint, which is why the flex-column view-state test now
+uses a wider viewport.
+
+**The achievements menu stays the standard RA softcore list; hardcore unlocks get a gold border.** No
+mode switch and no lens: the list shows every unlocked achievement as before, and a badge unlocked in
+hardcore is ringed in gold (`AchievementRowViewModel.IsHardcore`) on the desktop window and both the
+gamepad list tiles and the focused-achievement preview. Because a hardcore unlock implies the softcore
+one, an achievement is simply locked / softcore / hardcore, and the ring marks the last case — no
+separate hardcore view can hide a softcore unlock. The **header** breaks out both counts too, in strict
+parity so neither is labelled "unlocked" while the other is labelled by mode. Both the desktop window
+and the gamepad overlay use the **same** two-row stat block — `n / total softcore` (silver) over
+`n / total hardcore` (gold), each with its own bar and its own points in shared, right-aligned columns.
+(An interim gamepad build crammed this into a single `7 / 24 softcore · 3 hardcore · 95 / 300 pts` pill;
+that was replaced by the two-row block for parity with the desktop card.) The hardcore figures are
+genuine RA data end to end —
+`API_GetGameInfoAndUserProgress?a=1` returns `NumAwardedToUserHardcore` and per-achievement
+`DateEarnedHardcore`, the SQLite detail/progress tables persist both, and the read path returns them.
+
+**Silver is a single neutral pair, defined once in the base theme (`EmuShelfTheme` Light/Dark) and the
+artwork-ambient generator, not per palette.** The ~30 palette files each redefine gold to harmonise,
+but they don't list the new silver token; `DynamicResource` resolves it from the base theme by the
+palette's active variant. This survives palette regeneration from `themes.json` and avoids editing
+every palette by hand.

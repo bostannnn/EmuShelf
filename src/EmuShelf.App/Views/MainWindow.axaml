@@ -954,6 +954,14 @@
         <Style Selector="Grid.gamepad-achievement-badge.locked">
             <Setter Property="Opacity" Value="0.48" />
         </Style>
+        <!-- Hardcore unlock: a gold ring around the badge, matching the desktop achievements list. -->
+        <Style Selector="Border.gamepad-achievement.hardcore">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAchievementBrush}" />
+        </Style>
+        <Style Selector="Border.gamepad-achievement-badge-frame.hardcore">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAchievementBrush}" />
+            <Setter Property="BorderThickness" Value="3" />
+        </Style>
         <!-- Fluent scrollbars overlay their content. Gamepad cards reserve a gutter so the
              thumb reads as scrolling chrome instead of a broken right-hand card border. -->
         <Style Selector="ScrollViewer.gamepad-scroll /template/ ScrollBar:vertical">
@@ -1888,8 +1896,25 @@
                                                             <PathIcon IsVisible="{Binding ShowAchievementMark}"
                                                                       Width="11" Height="11"
                                                                       Data="{StaticResource AchievementTrophyGeometry}"
-                                                                      Foreground="{DynamicResource EmuAchievementBrush}" />
+                                                                      Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
                                                             <TextBlock Text="{Binding AchievementsColumnText}"
+                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </vm:LibraryColumnCellTemplate>
+                                            <vm:LibraryColumnCellTemplate Key="HardcoreAchievements">
+                                                <DataTemplate x:DataType="vm:LibraryColumn">
+                                                    <Border Width="{Binding Width}" VerticalAlignment="Stretch">
+                                                        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                                                                    x:DataType="vm:GameViewModel"
+                                                                    DataContext="{Binding $parent[ListBoxItem].((vm:GameViewModel)DataContext)}"
+                                                                    ToolTip.Tip="{Binding AchievementsTooltip}">
+                                                            <PathIcon IsVisible="{Binding ShowAchievementMark}"
+                                                                      Width="11" Height="11"
+                                                                      Data="{StaticResource AchievementTrophyGeometry}"
+                                                                      Foreground="{DynamicResource EmuAchievementBrush}" />
+                                                            <TextBlock Text="{Binding HardcoreColumnText}"
                                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                         </StackPanel>
                                                     </Border>
@@ -2686,25 +2711,49 @@
                                 VerticalAlignment="Center">
                             <PathIcon Width="18" Height="18"
                                       Data="{StaticResource AchievementTrophyGeometry}"
-                                      Foreground="{DynamicResource EmuAchievementBrush}" />
+                                      Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                         </Border>
-                        <Grid Grid.Column="1" RowDefinitions="Auto,4" RowSpacing="5"
-                              VerticalAlignment="Center">
-                            <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
-                                       FontSize="15" FontWeight="Bold" />
-                            <Border x:Name="GamepadAchievementTrack" Grid.Row="1"
-                                    Width="122" Height="4" CornerRadius="2"
-                                    HorizontalAlignment="Left" ClipToBounds="True"
-                                    Background="{DynamicResource EmuFormatPillBrush}">
-                                <Border x:Name="GamepadAchievementFill"
-                                        Background="{DynamicResource EmuAchievementBrush}"
-                                        RenderTransformOrigin="0%,50%">
-                                    <Border.RenderTransform>
-                                        <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
-                                    </Border.RenderTransform>
+                        <!-- Both RA modes at once: softcore (silver) over hardcore (gold). A hardcore
+                             unlock always implies the softcore one, so the gold bar can only trail the
+                             silver one. -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
+                                           FontSize="12" FontWeight="Bold" MinWidth="42"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                                <Border x:Name="GamepadAchievementTrack" Grid.Column="1"
+                                        Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                        ClipToBounds="True"
+                                        Background="{DynamicResource EmuFormatPillBrush}">
+                                    <Border x:Name="GamepadAchievementFill"
+                                            Background="{DynamicResource EmuAchievementSoftcoreBrush}"
+                                            RenderTransformOrigin="0%,50%">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
+                                        </Border.RenderTransform>
+                                    </Border>
                                 </Border>
-                            </Border>
-                        </Grid>
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding FocusedGame.GamepadHardcoreCountText}"
+                                           FontSize="12" FontWeight="Bold" MinWidth="42"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource EmuAchievementBrush}" />
+                                <Border x:Name="GamepadHardcoreTrack" Grid.Column="1"
+                                        Height="4" CornerRadius="2" VerticalAlignment="Center"
+                                        ClipToBounds="True"
+                                        Background="{DynamicResource EmuFormatPillBrush}">
+                                    <Border x:Name="GamepadHardcoreFill"
+                                            Background="{DynamicResource EmuAchievementBrush}"
+                                            RenderTransformOrigin="0%,50%">
+                                        <Border.RenderTransform>
+                                            <ScaleTransform ScaleX="{Binding FocusedGame.GamepadHardcoreProgressRatio}" />
+                                        </Border.RenderTransform>
+                                    </Border>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
                     </Grid>
                 </Border>
 
@@ -2971,21 +3020,42 @@
                                                     Background="{DynamicResource EmuFormatPillBrush}">
                                                 <PathIcon Width="17" Height="17"
                                                           Data="{StaticResource AchievementTrophyGeometry}"
-                                                          Foreground="{DynamicResource EmuAchievementBrush}" />
+                                                          Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             </Border>
-                                            <StackPanel VerticalAlignment="Center" Spacing="5">
-                                                <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
-                                                           FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" />
-                                                <Border Width="132" Height="4" CornerRadius="2" ClipToBounds="True"
-                                                        Background="{DynamicResource EmuFormatPillBrush}">
-                                                    <Border Background="{DynamicResource EmuAchievementBrush}"
-                                                            RenderTransformOrigin="0%,50%">
-                                                        <Border.RenderTransform>
-                                                            <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
-                                                        </Border.RenderTransform>
+                                            <!-- Softcore (silver) over hardcore (gold), both shown at once. -->
+                                            <StackPanel VerticalAlignment="Center" Spacing="6">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
+                                                               FontSize="13" FontWeight="Bold" MinWidth="48"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                                                    <Border Width="120" Height="4" CornerRadius="2" ClipToBounds="True"
+                                                            VerticalAlignment="Center"
+                                                            Background="{DynamicResource EmuFormatPillBrush}">
+                                                        <Border Background="{DynamicResource EmuAchievementSoftcoreBrush}"
+                                                                RenderTransformOrigin="0%,50%">
+                                                            <Border.RenderTransform>
+                                                                <ScaleTransform ScaleX="{Binding FocusedGame.GamepadAchievementProgressRatio}" />
+                                                            </Border.RenderTransform>
+                                                        </Border>
                                                     </Border>
-                                                </Border>
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <TextBlock Text="{Binding FocusedGame.GamepadHardcoreCountText}"
+                                                               FontSize="13" FontWeight="Bold" MinWidth="48"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource EmuAchievementBrush}" />
+                                                    <Border Width="120" Height="4" CornerRadius="2" ClipToBounds="True"
+                                                            VerticalAlignment="Center"
+                                                            Background="{DynamicResource EmuFormatPillBrush}">
+                                                        <Border Background="{DynamicResource EmuAchievementBrush}"
+                                                                RenderTransformOrigin="0%,50%">
+                                                            <Border.RenderTransform>
+                                                                <ScaleTransform ScaleX="{Binding FocusedGame.GamepadHardcoreProgressRatio}" />
+                                                            </Border.RenderTransform>
+                                                        </Border>
+                                                    </Border>
+                                                </StackPanel>
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -3193,31 +3263,52 @@
                 <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
                     <Grid>
                         <Grid IsVisible="{Binding IsGamepadAchievementsOpen}"
-                              ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                              ColumnDefinitions="*,Auto" ColumnSpacing="12">
                             <StackPanel VerticalAlignment="Center" Spacing="2">
                                 <TextBlock Text="Achievements" FontSize="26" FontWeight="Bold" />
                                 <TextBlock Text="{Binding GamepadAchievementDetails.GameTitle}"
                                            FontSize="14" TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
-                            <Border Grid.Column="1" Padding="16,9" CornerRadius="21"
+                            <!-- Same two-row stat block as the desktop card: softcore (silver) over
+                                 hardcore (gold), each with count, bar, and its own points aligned in
+                                 shared columns. -->
+                            <Border Grid.Column="1" Padding="18,14" CornerRadius="14"
                                     VerticalAlignment="Center"
                                     Background="{DynamicResource EmuFormatPillBrush}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <PathIcon Width="17" Height="17"
-                                              Data="{StaticResource AchievementTrophyGeometry}"
-                                              Foreground="{DynamicResource EmuAchievementBrush}" />
-                                    <TextBlock Text="{Binding GamepadAchievementDetails.ProgressAndPointsText}"
-                                               VerticalAlignment="Center" FontWeight="SemiBold" />
-                                </StackPanel>
+                                <Grid ColumnDefinitions="Auto,200,Auto" RowDefinitions="Auto,Auto"
+                                      ColumnSpacing="16" RowSpacing="10">
+                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                               Text="{Binding GamepadAchievementDetails.ProgressText}"
+                                               FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                                    <ProgressBar Grid.Row="0" Grid.Column="1" Minimum="0"
+                                                 Maximum="{Binding GamepadAchievementDetails.ProgressMaximum}"
+                                                 Value="{Binding GamepadAchievementDetails.UnlockedCount}"
+                                                 Height="7" VerticalAlignment="Center"
+                                                 Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="2" MinWidth="110"
+                                               Text="{Binding GamepadAchievementDetails.PointsText}"
+                                               FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               TextAlignment="Right"
+                                               Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+
+                                    <TextBlock Grid.Row="1" Grid.Column="0"
+                                               Text="{Binding GamepadAchievementDetails.HardcoreProgressText}"
+                                               FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource EmuAchievementBrush}" />
+                                    <ProgressBar Grid.Row="1" Grid.Column="1" Minimum="0"
+                                                 Maximum="{Binding GamepadAchievementDetails.ProgressMaximum}"
+                                                 Value="{Binding GamepadAchievementDetails.HardcoreUnlockedCount}"
+                                                 Height="7" VerticalAlignment="Center"
+                                                 Foreground="{DynamicResource EmuAchievementBrush}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="2" MinWidth="110"
+                                               Text="{Binding GamepadAchievementDetails.HardcorePointsText}"
+                                               FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               TextAlignment="Right"
+                                               Foreground="{DynamicResource EmuAchievementBrush}" />
+                                </Grid>
                             </Border>
-                            <Button Grid.Column="2" Classes="gamepad-achievement-command"
-                                    Command="{Binding GamepadAchievementDetails.RefreshCommand}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Border Classes="gamepad-key action-x"><TextBlock Text="X" /></Border>
-                                    <TextBlock Text="Refresh" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
                         </Grid>
                         <TextBlock IsVisible="{Binding ShowsGamepadOverlayChromeTitle}" Text="{Binding GamepadOverlayTitle}"
                                    FontSize="24" FontWeight="Bold" TextWrapping="Wrap"
@@ -3385,16 +3476,27 @@
                                             Content="{Binding GamepadAchievementDetails.UnlockedFilterText}"
                                             Command="{Binding GamepadAchievementDetails.ShowUnlockedAchievementsCommand}" />
                                 </StackPanel>
-                                <Button Grid.Column="2" Classes="gamepad-achievement-command"
-                                        Command="{Binding CycleGamepadAchievementSortCommand}">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <Border Classes="gamepad-key action-y"><TextBlock Text="Y" /></Border>
-                                        <TextBlock Text="Sort:" VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                        <TextBlock Text="{Binding GamepadAchievementDetails.SortText}"
-                                                   VerticalAlignment="Center" FontWeight="Bold" />
-                                    </StackPanel>
-                                </Button>
+                                <!-- Sort and Refresh sit together on the right of the filter row so the
+                                     two commands read as one group instead of floating on separate rows. -->
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+                                    <Button Classes="gamepad-achievement-command"
+                                            Command="{Binding CycleGamepadAchievementSortCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Border Classes="gamepad-key action-y"><TextBlock Text="Y" /></Border>
+                                            <TextBlock Text="Sort:" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding GamepadAchievementDetails.SortText}"
+                                                       VerticalAlignment="Center" FontWeight="Bold" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Classes="gamepad-achievement-command"
+                                            Command="{Binding GamepadAchievementDetails.RefreshCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Border Classes="gamepad-key action-x"><TextBlock Text="X" /></Border>
+                                            <TextBlock Text="Refresh" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
                             </Grid>
 
                             <Grid Grid.Row="1" ColumnDefinitions="330,*" ColumnSpacing="24"
@@ -3413,6 +3515,8 @@
                                                  the badge that ellipsized both. -->
                                             <Grid ColumnDefinitions="96,*" ColumnSpacing="14">
                                                 <Border Width="96" Height="96" CornerRadius="15"
+                                                        Classes="gamepad-achievement-badge-frame"
+                                                        Classes.hardcore="{Binding FocusedGamepadAchievement.IsHardcore}"
                                                         HorizontalAlignment="Left"
                                                         Background="{DynamicResource EmuCoverWellBrush}">
                                                     <Grid Classes="gamepad-achievement-badge"
@@ -3536,7 +3640,8 @@
                                                                     Margin="-6" CornerRadius="20"
                                                                     Background="{DynamicResource EmuAccentBrush}"
                                                                     BoxShadow="{DynamicResource EmuFocusGlow}" />
-                                                            <Border Classes="gamepad-achievement">
+                                                            <Border Classes="gamepad-achievement"
+                                                                    Classes.hardcore="{Binding IsHardcore}">
                                                                 <Grid Classes="gamepad-achievement-badge"
                                                                       Classes.locked="{Binding IsLocked}">
                                                                     <PathIcon Width="30" Height="30"

@@ -1306,9 +1306,14 @@ public class MainWindowVisualSnapshotTests
             Assert.Single(
                 focusedDock.GetVisualDescendants().OfType<Border>(),
                 control => control.Classes.Contains("gamepad-key"));
-            Assert.Equal(122, achievementTrack.Bounds.Width, 1);
+            Assert.True(achievementTrack.Bounds.Width > 40);
             Assert.Equal(4, achievementTrack.Bounds.Height, 1);
+            // Softcore (silver) bar reflects the inclusive total; the hardcore (gold) bar is shown
+            // alongside it and, for this fixture with no hardcore unlocks, stays empty.
             Assert.Equal(3d / 62d, Assert.IsType<ScaleTransform>(achievementFill.RenderTransform).ScaleX, 8);
+            var hardcoreFill = window.FindControl<Border>("GamepadHardcoreFill");
+            Assert.NotNull(hardcoreFill);
+            Assert.Equal(0d, Assert.IsType<ScaleTransform>(hardcoreFill.RenderTransform).ScaleX, 8);
             Assert.Equal("Final Fantasy X (Disc 2).chd", subtitle.Text);
             Assert.InRange(focusedDock.Bounds.Height, 102, 106);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);

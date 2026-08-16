@@ -66,6 +66,15 @@ public class AchievementDetailsWindowTests
             Assert.Equal("Softcore", viewModel.Achievements[1].UnlockStateText);
             Assert.Equal("Locked", viewModel.Achievements[2].UnlockStateText);
             Assert.Equal("15 / 18 points", viewModel.PointsText);
+            // The header also breaks out the hardcore subset (gold), so no view shows a lone softcore count.
+            Assert.Equal(1, viewModel.HardcoreUnlockedCount);
+            Assert.Equal("2 / 3 softcore", viewModel.ProgressText);
+            Assert.Equal("1 / 3 hardcore", viewModel.HardcoreProgressText);
+            Assert.Equal("5 / 18 points", viewModel.HardcorePointsText);
+            var hardcoreProgress = window.FindControl<ProgressBar>("AchievementHardcoreProgress");
+            Assert.NotNull(hardcoreProgress);
+            Assert.Equal(1d, hardcoreProgress.Value);
+            Assert.Equal(3d, hardcoreProgress.Maximum);
             Assert.Contains("Last refreshed", viewModel.LastRefreshText);
             var cards = window.GetVisualDescendants()
                 .OfType<Border>()
@@ -210,6 +219,33 @@ public class AchievementDetailsWindowTests
         viewModel.CycleFilterCommand.Execute(1);
         Assert.True(viewModel.IsUnlockedFilterSelected);
         Assert.Equal(["First", "Third"], viewModel.VisibleAchievements.Select(row => row.Title));
+
+        viewModel.Dispose();
+    }
+
+    [Fact]
+    public void Rows_MarkHardcoreUnlocksWhileTheListStaysTheSoftcoreView()
+    {
+        var earnedAt = new DateTimeOffset(2026, 7, 20, 12, 0, 0, TimeSpan.Zero);
+        var viewModel = CreateFilterAndSortViewModel(earnedAt);
+
+        // The list is the standard softcore view: First (softcore) and Third (hardcore) both count.
+        Assert.Equal(2, viewModel.UnlockedCount);
+        Assert.Equal(4, viewModel.TotalCount);
+        Assert.Equal("15 / 50 points", viewModel.PointsText);
+
+        var first = viewModel.Achievements.Single(r => r.Title == "First");
+        var third = viewModel.Achievements.Single(r => r.Title == "Third");
+        var second = viewModel.Achievements.Single(r => r.Title == "Second");
+
+        // A hardcore unlock is flagged (drives the gold border); a softcore-only one is not.
+        Assert.True(third.IsHardcore);
+        Assert.Equal("Hardcore", third.UnlockStateText);
+        Assert.False(first.IsHardcore);
+        Assert.Equal("Softcore", first.UnlockStateText);
+        Assert.True(first.IsUnlocked);
+        Assert.False(second.IsUnlocked);
+        Assert.False(second.IsHardcore);
 
         viewModel.Dispose();
     }
