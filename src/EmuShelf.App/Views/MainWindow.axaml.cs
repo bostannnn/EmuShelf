@@ -18,6 +18,7 @@ public partial class MainWindow : Window
 {
     private MainViewModel? _gamepadViewModel;
     private GamepadScraperViewModel? _gamepadScraper;
+    private GamepadCoverSearchViewModel? _gamepadCoverSearch;
     private GamepadHotkeysViewModel? _gamepadHotkeys;
     private int _requestedSettingsTextEntryRevision = -1;
     // False until the sliding rail pill has been snapped onto the active tab once; the first placement
@@ -123,6 +124,7 @@ public partial class MainWindow : Window
             _gamepadViewModel.PropertyChanged -= OnGamepadViewModelPropertyChanged;
 
         SyncGamepadScraperSubscription(null);
+        SyncGamepadCoverSearchSubscription(null);
         SyncGamepadHotkeysSubscription(null);
 
         _gamepadViewModel = DataContext as MainViewModel;
@@ -150,6 +152,30 @@ public partial class MainWindow : Window
             nameof(GamepadScraperViewModel.FocusedKind))
         {
             Dispatcher.UIThread.Post(RevealGamepadScraperFocus, DispatcherPriority.Input);
+        }
+    }
+
+    // Mirrors the scraper: the window observes the wrapped cover-search view model directly so the
+    // query field takes real keyboard focus (for the Steam/OS on-screen keyboard) and the focused
+    // cover tile scrolls into view.
+    private void SyncGamepadCoverSearchSubscription(GamepadCoverSearchViewModel? coverSearch)
+    {
+        if (ReferenceEquals(_gamepadCoverSearch, coverSearch))
+            return;
+
+        if (_gamepadCoverSearch is not null)
+            _gamepadCoverSearch.PropertyChanged -= OnGamepadCoverSearchPropertyChanged;
+        _gamepadCoverSearch = coverSearch;
+        if (_gamepadCoverSearch is not null)
+            _gamepadCoverSearch.PropertyChanged += OnGamepadCoverSearchPropertyChanged;
+    }
+
+    private void OnGamepadCoverSearchPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(GamepadCoverSearchViewModel.FocusIndex) or
+            nameof(GamepadCoverSearchViewModel.FocusedKind))
+        {
+            Dispatcher.UIThread.Post(RevealGamepadCoverSearchFocus, DispatcherPriority.Input);
         }
     }
 
@@ -212,6 +238,13 @@ public partial class MainWindow : Window
         {
             SyncGamepadScraperSubscription(_gamepadViewModel?.GamepadScraperDetails);
             Dispatcher.UIThread.Post(RevealGamepadScraperFocus, DispatcherPriority.Input);
+            return;
+        }
+
+        if (e.PropertyName is nameof(MainViewModel.GamepadCoverSearchDetails))
+        {
+            SyncGamepadCoverSearchSubscription(_gamepadViewModel?.GamepadCoverSearchDetails);
+            Dispatcher.UIThread.Post(RevealGamepadCoverSearchFocus, DispatcherPriority.Input);
             return;
         }
 
@@ -834,6 +867,35 @@ public partial class MainWindow : Window
                 (control is Button || control.Classes.Contains("gamepad-scraper-row")) &&
                 control.Classes.Contains("focused"));
 
+    private void RevealGamepadCoverSearchFocus()
+    {
+        if (_gamepadViewModel is not { IsGamepadMode: true, IsGamepadCoverSearchOpen: true } viewModel ||
+            viewModel.GamepadCoverSearchDetails is not { } coverSearch)
+        {
+            return;
+        }
+
+        // The query field takes real keyboard focus so the Steam on-screen keyboard types into it.
+        if (coverSearch.FocusedKind == GamepadCoverSearchTargetKind.SearchField)
+        {
+            GamepadCoverSearchBox.BringIntoView();
+            GamepadCoverSearchBox.Focus();
+            return;
+        }
+
+        // Search, cover tiles, and "Choose a file" carry the .focused class: scroll into view, and
+        // give buttons real focus so the ring reads correctly under directional navigation.
+        var focused = GamepadOverlayHost.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.IsEffectivelyVisible && button.Classes.Contains("focused"));
+        if (focused is null)
+            return;
+
+        focused.BringIntoView();
+        if (viewModel.IsGamepadControllerInputActive)
+            FocusManager?.Focus(focused, NavigationMethod.Directional);
+    }
+
     // Steam Input delivers controller buttons as keys; while a scraper text box holds focus they
     // reach it here (the window-level tunnel ignores TextBox sources). Route D-pad/A/B to the same
     // scraper navigation the native pad drives, and let plain typing fall through to the box.
@@ -861,6 +923,38 @@ public partial class MainWindow : Window
                 break;
             case Key.Enter:
                 scraper.Activate();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    // Steam Input delivers controller buttons as keys; while the cover-search query box holds focus
+    // they reach it here. Route D-pad/A/B to the same navigation the native pad drives, and let plain
+    // typing fall through to the box.
+    private void OnGamepadCoverSearchTextKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (DataContext is not MainViewModel { IsGamepadMode: true } viewModel ||
+            viewModel.GamepadCoverSearchDetails is not { } coverSearch)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Escape:
+                viewModel.BackFromGamepadOverlayCommand.Execute(null);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                coverSearch.MoveFocus(-1);
+                e.Handled = true;
+                break;
+            case Key.Down:
+                coverSearch.MoveFocus(1);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                coverSearch.Activate();
                 e.Handled = true;
                 break;
         }

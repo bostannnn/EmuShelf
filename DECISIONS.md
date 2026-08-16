@@ -8801,3 +8801,31 @@ So `IsBlockingLaunchSaveSync` now tracks the pre-launch phase alone, and only it
 panel / suppresses the couch corner toast. The post-exit pass keeps `IsSyncingSavesForLaunch` true
 (the lifecycle flag, still used for input suspension and the shelf toast) but leaves the grid visible,
 reporting progress through the ordinary non-modal status toast instead.
+
+## 2026-08-16 — The web cover search is now controller-native, reversing the Set-cover handoff
+
+The previous entry deferred making the DuckDuckGo cover search controller-native; that is now done, so
+in Gamepad mode "Set cover" no longer hands off to Desktop for the search. Choosing a game's cover
+opens `GamepadOverlayKind.CoverSearch`, a controller-native overlay that reuses the shared
+`CoverSearchViewModel` behind a thin D-pad focus wrapper (`GamepadCoverSearchViewModel`) — the same
+pattern the ScreenScraper scraper overlay uses. Up/Down move a ring across the query field, Search,
+the cover tiles, and "Choose a file"; A activates the focused one; B backs out to the game Actions.
+The query field takes real keyboard focus so the Steam/OS on-screen keyboard types into it, mirroring
+the scraper's Search field. On open the overlay auto-searches with the game's title, so the common
+case (accept a good cover) is a couple of presses.
+
+`MainViewModel` builds the picker from the injected `IGameArtworkSearchProvider` (the same
+`DuckDuckGoArtworkSearchProvider` instance the Desktop dialog uses) and the artwork downloader, routes
+controller input through a dedicated `DispatchCoverSearchOverlayAction`, and imports the chosen cover
+through the extracted `ImportPickedCoverAsync` that the Desktop "Set cover" path also now calls. The
+picker is disposed on close; the downloaded staging file it hands back survives until the import
+consumes and deletes it. `CoverSearchViewModel.Dispose` is now idempotent because the wrapper is a
+second owner in this flow.
+
+Two things deliberately still hand off to Desktop: choosing a **local file** (the OS file picker is
+genuinely not controller-safe — the overlay's "Choose a file" target opens the existing
+`CoverDesktopHandoff`), and the whole flow when web image search is turned off in Settings (there is
+nothing to search, so "Set cover" goes straight to the handoff). As with the rest of the Gamepad
+shell, the final controller *feel* (focus hand-off to the Steam keyboard, tile scrolling on a real
+Deck) needs on-device acceptance that the headless view-model and snapshot tests cannot cover; those
+tests exercise the focus model, the open/back/import routing, and the enabled/disabled fork.

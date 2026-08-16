@@ -113,6 +113,11 @@ public partial class App : Application
                 _webArtworkHttpClient,
                 Bootstrapper.Logger,
                 publicArtworkPolicy);
+            // One provider instance, shared by the Desktop "Set cover" dialog and the Gamepad
+            // controller-native cover search.
+            var webArtworkSearch = new DuckDuckGoArtworkSearchProvider(
+                _metadataHttpClient,
+                publicArtworkPolicy);
             // ScreenScraper media are fetched through the SSRF-checked public downloader, then
             // imported atomically under Data/Media/ by the provider-neutral apply service.
             var scrapeApply = new GameScrapeApplicationService(
@@ -214,9 +219,7 @@ public partial class App : Application
                     retroAchievementsDetails,
                     retroAchievementsAccount,
                     retroAchievementsBadges,
-                    new DuckDuckGoArtworkSearchProvider(
-                        _metadataHttpClient,
-                        publicArtworkPolicy),
+                    webArtworkSearch,
                     webArtworkDownloader,
                     Bootstrapper.ScreenScraperPreview,
                     scrapeApply,
@@ -252,6 +255,7 @@ public partial class App : Application
                 scrapeApply: scrapeApply,
                 scrapeBatch: scrapeBatch,
                 artworkDownloader: webArtworkDownloader,
+                artworkSearch: webArtworkSearch,
                 settingsService: Bootstrapper.SettingsService,
                 onScreenKeyboard: new PlatformOnScreenKeyboardService(),
                 gameDetails: Bootstrapper.GameDetailsStore,
