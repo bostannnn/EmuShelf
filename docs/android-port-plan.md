@@ -503,12 +503,19 @@ when the build ships an OAuth client), a managed connect flow that opens the bro
 the refresh token, a transport-aware connected summary, and the switch-time warning. A code-review
 pass on the transport found and fixed five further defects (403 rate-limiting mis-read as a fatal
 reconnect; non-deterministic duplicate-blob resolution; an unbounded resumable-upload loop; a
-date-form `Retry-After` dropped; a pre-cancelled sign-in reported as a failure). **Still not done:**
-one real sign-in against Google's API — every test to date runs against an in-memory fake Drive.
+date-form `Retry-After` dropped; a pre-cancelled sign-in reported as a failure).
 
-**Remaining, desktop:** make that first real sign-in, and (optional) mirror the transport chooser into
-the **gamepad** Saves rows, which are still rclone-shaped — the same rebuild the Android head needs,
-folded into the Android work below. The gamepad shell shares the one `EmulatorSettingsViewModel` and
+**NOT DONE — stated loudly, not buried:**
+- **Gamepad mode cannot connect the built-in transport at all.** It is suppressed there
+  (`allowManagedTransport: false`) and shows only the rclone flow. Since the Thor is gamepad-only,
+  **the built-in transport is unreachable on Android as written** — the gamepad Saves section needs a
+  full rebuild (transport chooser + controller-native connect). This is a required Android-phase task,
+  not an optional desktop nicety.
+- **No sign-in has ever hit Google's real API** — every test uses an in-memory fake Drive.
+- **Built and tested on macOS only**; Windows and Linux are unverified for this change.
+
+**Remaining, desktop:** make that first real sign-in. (Mirroring the chooser into the gamepad rows is
+the Android-phase rebuild above, not desktop work.) The gamepad shell shares the one `EmulatorSettingsViewModel` and
 its connect command, so it currently constructs it with `allowManagedTransport: false` to keep a
 client-embedded build from silently running the browser OAuth behind that rclone UI.
 

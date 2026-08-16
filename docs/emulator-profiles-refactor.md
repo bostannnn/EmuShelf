@@ -3,7 +3,8 @@
 This documents the incremental "multiple emulators per console" work (see the 2026-08-05 entry in
 `DECISIONS.md`) and the concrete steps to reach the full LaunchBox-style "profile owns everything"
 end state in later passes. Read this before adding another alternative emulator or generalising the
-model.
+model. The Android port adds a dimension none of the desktop sections below model — the operating
+system — so read "OS-aware profiles and Android" before touching launch or saves for Android.
 
 ## What a "profile" is today
 
@@ -85,6 +86,94 @@ Suggested shape:
    with its existing tests still green.
 5. Consider a **per-game** emulator override on top of per-system selection (LaunchBox allows this).
    That needs a per-game column and launch/menu UI and is a separate feature, not part of unification.
+
+## OS-aware profiles and Android — the end state
+
+The sections above are desktop-shaped. Android forces a dimension none of them model — the
+**operating system** — and clears up one thing that turns out to be a non-issue.
+
+**Already solved, do not re-plan it: saves are per-emulator.** Cloud unit ids are namespaced by
+emulator, not system — `duckstation/`, `pcsx2/`, `rpcs3/`, `ppsspp/`, `azahar/`,
+`dolphin/gc/` · `dolphin/wii/`, and `retroarch/{systemId}/`. PS1 on DuckStation (`duckstation/…`) and
+PS1 on RetroArch (`retroarch/playstation/…`) occupy separate cloud namespaces and never collide. So
+each emulator already owns its own save scope; there is no cross-emulator save mixing to design around
+and no "canonical card per platform" to build. If a user wants two format-compatible emulators to
+share a card (e.g. the PCSX2 family's `.ps2` images), the mechanism is the per-emulator folder
+override below, pointing both at one folder — EmuShelf never converts save formats.
+
+### The real gaps for the end state
+
+1. **Profiles must become OS-aware.** `EmulatorDefinition.SupportedSystemIds` is a flat, OS-agnostic
+   list and launch is code that assumes one emulator serves an OS. On Android a platform's emulators
+   are *different apps* than on desktop (PS2 → ARMSX2 / AetherSX2 / NetherSX2 / a PCSX2-Android build,
+   not desktop PCSX2), launched by intent, not an executable. A profile needs a **per-OS launch
+   block**: desktop = executable + args (+ Linux flatpak); Android = package/activity + intent
+   template + **handoff strategy** (plain path / content-URI / SAF tree) + **maintenance status**.
+   This layer is pure data and should be data-driven (see the open decision below).
+
+2. **The save-folder *override* must move from per-system to per-`(system, emulator)`.** The per-
+   emulator save *scope* is already right, but the user's folder override is keyed by `systemId`
+   (`CloudSaveSyncSettings.SaveLocations`), looked up as `GetOverride(systemId)` and handed to whichever
+   emulator is active — so two emulators on one system share one override folder. Harmless on desktop;
+   wrong on Android, where each emulator hides its saves in its own `Android/data/<pkg>` and needs its
+   own granted folder. Re-key the override by `(system, emulator)`. (This is exactly NeoStation's
+   `user_custom_save_folders` table, keyed by `(system_folder_name, emulator_slug)`.)
+
+3. **Android save/launch providers do not exist.** Every current provider (DuckStation, PCSX2, RPCS3,
+   Dolphin, PPSSPP, Azahar, RetroArch) is a desktop resolver. Android needs its own per-
+   `(system, emulator)` providers whose save resolution **probes known `Android/data` locations, then
+   falls back to the per-`(system, emulator)` override** — because on Android 11+ those folders are
+   often unreadable and cannot be derived from the emulator's own config the way the desktop providers
+   do. The per-emulator *scheme* is right; the Android *members* of it are missing.
+
+4. **The registry still branches per system.** `SaveProviderRegistry` is one descriptor per system with
+   the PS1 `if (IsRetroArch(context.ActiveEmulatorId))` inside it. Generalise to `(system, emulator)`
+   descriptors derived from one emulator registration, with `Resolve(system, activeEmulatorId)` for
+   presentation — the cleanup already noted under "Known limitations," now also required to hold N
+   Android emulators per platform.
+
+### Prior art — NeoStation
+
+`misobadev/neostation-frontend` (full source, Flutter/Dart) makes exactly this split: the *declarative*
+half is data (one JSON per system: metadata, an `emulators[]` array with per-OS launch strings +
+default/RetroAchievements flags, and a `neosync` block of per-OS save-folder tokens), and the
+*procedural* half is code (a path resolver expands tokens like `{PCSX2_MEMCARDS}` by probing known
+paths; per-`(system, emulator)` user folders live in SQLite; Switch saves get a titleId-aware
+resolver). Its cloud layout is `saves|states/<system>/<emulator-slug>/…` — per-emulator, same as ours.
+Worth copying for the launch catalog; its token → probe → user-override pattern is the model for
+Android saves.
+
+### The open decision — how data-driven to go (record it, do not pre-decide)
+
+- **Data-driven launch catalog + code resolvers (recommended).** Move launch to data (JSON or a table),
+  keep save/texture/detection as code resolvers selected by the profile. Gets the "add an emulator = a
+  data edit" win where it matters (Android launch, the long tail of cores) without rewriting working,
+  tested desktop detection.
+- **Full JSON system defs (NeoStation-style).** Everything declarative in JSON, code only behind
+  tokens. Cleanest long-term and proven cross-platform, but it is a migration of a working desktop
+  product (schema v16, migrations, precise config-derived save paths → probe-and-ask) — desktop
+  regression risk for a mostly-Android benefit.
+
+Either way the *procedural* logic (save-folder derivation, texture inventory, compatibility keys) stays
+code. JSON only moves the declaration, not the procedure.
+
+### UI end state
+
+One row per console, with an emulator picker **and** a transport chooser in **both** desktop and
+gamepad. The gamepad Saves rebuild (today `allowManagedTransport: false`, rclone-only — see
+`docs/cloud-sync-portability-plan.md`) lands here, since the Thor is gamepad-only and needs both the
+emulator picker and the built-in transport.
+
+### Litmus test for "done"
+
+Adding a new Android PS2 emulator is: add one catalog entry (its intent + handoff strategy), point its
+saves at a probe or a folder, register once — and it appears on the Thor with launch and per-emulator
+save-sync working, with no code spread across two projects.
+
+### Where this sits in the port
+
+This refactor is a prerequisite for `docs/android-port-plan.md` Milestone B (launching games) and
+E-android (reaching the saves). Do it before, or as the first part of, those.
 
 ## Guardrails to preserve (do not regress)
 

@@ -9,6 +9,24 @@ Keystore token store, and the SAF save endpoint). See "Relationship to the decis
 This is the save-sync half of the Android port. The master plan is `docs/android-port-plan.md`, where
 this work is Milestone E; the detail lives here rather than being duplicated there.
 
+## NOT DONE YET — do not treat as finished
+
+Stated plainly so it is not mistaken for shipped:
+
+1. **Gamepad mode does not support the built-in transport.** The gamepad Saves section is rclone-shaped
+   and is built with `allowManagedTransport: false`, so in gamepad mode the built-in Google Drive
+   transport cannot be *connected* at all — the user only sees the rclone flow. An existing built-in
+   connection made in Desktop mode keeps syncing (launch/exit sync and "Sync all now" are
+   transport-agnostic), but you cannot set one up, and you cannot reconnect after a token revocation,
+   without Desktop mode. **The gamepad Saves section needs a full rebuild** (a transport chooser + a
+   controller-native connect flow). This is the same rebuild the Android head requires, and the Thor is
+   gamepad-only — so on Android today, as written, the built-in transport would be *unreachable*. This
+   must be done. Tracked as Phase 3 below and Milestone E-android in the master plan.
+2. **No real Google API call has ever happened.** Every test runs against an in-memory fake Drive.
+3. **Built and tested on macOS only.** Windows and Linux are shipped targets but were not exercised for
+   this change; the browser launch and the refresh-token-at-rest path differ per OS and are unverified.
+4. **All of Phase 3 (Android) and Phase 4 (SAF save endpoint) are unstarted.**
+
 ## Why
 
 Save sync currently runs through an external rclone binary. That is fine on Windows, macOS, and
