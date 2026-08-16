@@ -210,10 +210,15 @@ public sealed record CloudSaveSyncSettings
     {
         ArgumentNullException.ThrowIfNull(activeEmulatorBySystem);
         var locations = new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal);
+        var systemsWithComposite = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (key, location) in SafeSaveLocations)
         {
-            if (!string.IsNullOrWhiteSpace(key) && location is not null)
-                locations[key] = location;
+            if (string.IsNullOrWhiteSpace(key) || location is null)
+                continue;
+            locations[key] = location;
+            var slash = key.IndexOf('/');
+            if (slash > 0)
+                systemsWithComposite.Add(key[..slash]);
         }
 
         foreach (var (systemId, location) in SafeSaveLocations)
@@ -221,15 +226,17 @@ public sealed record CloudSaveSyncSettings
             // Only bare system-id entries migrate; a composite key already contains the delimiter.
             if (string.IsNullOrWhiteSpace(systemId) || location is null || systemId.Contains('/'))
                 continue;
+            // Once any emulator has a per-emulator entry for this system the feature is already active
+            // for it, so a bare entry here is a rollback mirror, not a legacy override — never re-key
+            // it. Doing so would let switching the active emulator silently inherit another's folder.
+            if (systemsWithComposite.Contains(systemId))
+                continue;
             if (!activeEmulatorBySystem.TryGetValue(systemId, out var emulatorId) ||
                 string.IsNullOrWhiteSpace(emulatorId))
             {
                 continue;
             }
-            var composite = Key(systemId, emulatorId);
-            // Presence wins: an explicit composite choice is never overwritten by a legacy one.
-            if (!locations.ContainsKey(composite))
-                locations[composite] = location;
+            locations[Key(systemId, emulatorId)] = location;
         }
 
         return this with { SaveLocations = locations };

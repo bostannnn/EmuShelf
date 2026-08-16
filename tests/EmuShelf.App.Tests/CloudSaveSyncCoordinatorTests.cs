@@ -431,6 +431,69 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public void UpdateOverride_KeysByTheActiveEmulator_AndMirrorsToTheBareKeyForRollback()
+    {
+        var settings = new FakeSettingsService();
+        var coordinator = CreateCoordinator(
+            settings,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/retroarch", false, EmulatorId: "retroarch")
+                : null);
+
+        coordinator.UpdateOverride("playstation", "/ra/saves");
+
+        // Stored under the active emulator, not the other emulator on the same system.
+        Assert.Equal("/ra/saves", coordinator.Current.GetOverride("playstation", "retroarch"));
+        Assert.Null(coordinator.Current.GetOverride("playstation", "duckstation"));
+        // Mirrored onto the bare key so an older build still reads the active emulator's choice.
+        Assert.Equal("/ra/saves", coordinator.Current.GetOverride("playstation"));
+    }
+
+    [Fact]
+    public void SwitchingTheActiveEmulator_DoesNotInheritTheOtherEmulatorsOverride()
+    {
+        var settings = new FakeSettingsService();
+        CreateCoordinator(
+                settings,
+                emulators: systemId => systemId == "playstation"
+                    ? new SaveEmulatorInstallation("/app/duckstation", false, EmulatorId: "duckstation")
+                    : null)
+            .UpdateOverride("playstation", "/duck/saves");
+
+        // Re-open with RetroArch active (the previous coordinator persisted into the shared settings).
+        var retroArch = CreateCoordinator(
+            settings,
+            settings.Current,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/retroarch", false, EmulatorId: "retroarch")
+                : null);
+
+        Assert.Null(retroArch.Current.GetOverride("playstation", "retroarch"));
+        Assert.Equal("/duck/saves", retroArch.Current.GetOverride("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void LegacyBareOverride_IsReKeyedToTheActiveEmulatorOnLoad()
+    {
+        var legacy = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings { Enabled = true, RemoteName = "gdrive" }
+                .WithOverride("playstation", "/legacy/ps1"),
+        };
+
+        var coordinator = CreateCoordinator(
+            new FakeSettingsService(),
+            legacy,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/retroarch", false, EmulatorId: "retroarch")
+                : null);
+
+        Assert.Equal("/legacy/ps1", coordinator.Current.GetOverride("playstation", "retroarch"));
+        // The legacy bare entry is retained for rollback.
+        Assert.Equal("/legacy/ps1", coordinator.Current.GetOverride("playstation"));
+    }
+
+    [Fact]
     public async Task Connect_WithPpssppOverride_DoesNotRequirePcsx2Directory()
     {
         var result = await CreateCoordinator(new FakeSettingsService())

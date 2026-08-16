@@ -298,6 +298,22 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void MigrateOverridesToPerEmulator_DoesNotReKeyABareMirrorOnceTheSystemHasAPerEmulatorEntry()
+    {
+        // Once a system has a per-emulator entry the feature is active, so its bare entry is a
+        // rollback mirror — switching the active emulator must not inherit the other's folder.
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "duckstation", "/duck")
+            .WithOverride("playstation", "/duck");
+
+        var migrated = configuration.MigrateOverridesToPerEmulator(
+            new Dictionary<string, string> { ["playstation"] = "retroarch" });
+
+        Assert.Null(migrated.GetOverride("playstation", "retroarch"));
+        Assert.Equal("/duck", migrated.GetOverride("playstation", "duckstation"));
+    }
+
+    [Fact]
     public void MigrateOverridesToPerEmulator_IsIdempotent()
     {
         var mapping = new Dictionary<string, string> { ["psp"] = "ppsspp" };

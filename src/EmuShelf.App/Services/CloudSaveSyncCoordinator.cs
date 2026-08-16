@@ -61,12 +61,19 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         _gamesForSystem = gamesForSystem;
         _paths = paths;
         _settingsService = settingsService;
-        // Fold the legacy per-emulator fields into the per-system dictionary once, up front, so
-        // every read below sees one shape regardless of how old the settings file is.
-        _settings = settings with { CloudSaveSync = settings.CloudSaveSync.NormalizeSaveLocations() };
         _logger = logger;
         _rclonePath = rclonePath;
         _emulatorInstallations = emulatorInstallations;
+        // Fold the legacy per-emulator fields into the per-system dictionary, then re-key each
+        // per-system override to the system's active emulator — once, up front, so every read below
+        // sees one (system, emulator) shape regardless of how old the settings file is. Ordered after
+        // _emulatorInstallations so the migration can resolve each system's active emulator.
+        _settings = settings with
+        {
+            CloudSaveSync = settings.CloudSaveSync
+                .NormalizeSaveLocations()
+                .MigrateOverridesToPerEmulator(ActiveEmulatorBySystem()),
+        };
         _syncLog = new FileSaveSyncLog(paths);
     }
 
@@ -203,7 +210,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
     /// <summary>Persists one system's save-location override without changing the connection state.</summary>
     public void UpdateOverride(string systemId, string? directory) =>
-        Persist(_settings.CloudSaveSync.WithOverride(systemId, directory));
+        Persist(WithOverrideFor(_settings.CloudSaveSync, systemId, directory));
 
     /// <summary>Persists all edited platform overrides in one settings transaction.</summary>
     public void UpdateOverrides(IReadOnlyDictionary<string, string?> overrides)
@@ -211,17 +218,17 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         ArgumentNullException.ThrowIfNull(overrides);
         var configuration = _settings.CloudSaveSync;
         foreach (var (systemId, directory) in overrides)
-            configuration = configuration.WithOverride(systemId, directory);
+            configuration = WithOverrideFor(configuration, systemId, directory);
         Persist(configuration);
     }
 
     /// <summary>Persists one platform's opt-in save-state choice.</summary>
     public void UpdateOptionalContent(string systemId, bool syncSaveStates) =>
-        Persist(_settings.CloudSaveSync.WithOptionalContent(systemId, syncSaveStates));
+        Persist(WithOptionalContentFor(_settings.CloudSaveSync, systemId, syncSaveStates));
 
     /// <summary>Persists one system's save-state folder override without changing the connection state.</summary>
     public void UpdateStateOverride(string systemId, string? directory) =>
-        Persist(_settings.CloudSaveSync.WithStateOverride(systemId, directory));
+        Persist(WithStateOverrideFor(_settings.CloudSaveSync, systemId, directory));
 
     /// <summary>
     /// Runs rclone's Google Drive OAuth (opening the browser), ensures the cloud folder exists, and
@@ -246,7 +253,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         // otherwise connecting would leave the user with a remote and nothing to sync into it.
         var candidate = _settings.CloudSaveSync;
         foreach (var (systemId, directory) in overrides)
-            candidate = candidate.WithOverride(systemId, directory);
+            candidate = WithOverrideFor(candidate, systemId, directory);
         if (!SaveProviderRegistry.SystemIds.Any(systemId => CreateBaseProvider(systemId, candidate) is not null))
             return CloudSaveSyncConnectResult.InvalidInput;
 
@@ -324,7 +331,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         // build capability below because this is the half the user can actually act on.
         var candidate = _settings.CloudSaveSync;
         foreach (var (systemId, directory) in overrides)
-            candidate = candidate.WithOverride(systemId, directory);
+            candidate = WithOverrideFor(candidate, systemId, directory);
         if (!SaveProviderRegistry.SystemIds.Any(systemId => CreateBaseProvider(systemId, candidate) is not null))
             return CloudSaveSyncConnectResult.InvalidInput;
 
@@ -498,7 +505,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
         try
         {
-            var syncStates = _settings.CloudSaveSync.GetLocation(systemId).SyncSaveStates;
+            var syncStates = LocationFor(_settings.CloudSaveSync, systemId).SyncSaveStates;
             var supportsStates = SaveProviderRegistry.Find(systemId)?.SupportsSaveStates == true;
             // Name the resolved state folder before the pass so a later "nothing matched" is readable.
             if (syncStates && supportsStates)
@@ -653,7 +660,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private IReadOnlyList<CloudSaveSyncPlatformContext> DescribePlatforms() =>
         SaveProviderRegistry.All.Select(descriptor =>
         {
-            var location = _settings.CloudSaveSync.GetLocation(descriptor.SystemId);
+            var location = LocationFor(_settings.CloudSaveSync, descriptor.SystemId);
             return new CloudSaveSyncPlatformContext(
                 descriptor.SystemId,
                 descriptor.DisplayName,
@@ -959,7 +966,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             saves,
             context,
             contentScope != SyncContentScope.SavesOnly &&
-                configuration.GetLocation(systemId).SyncSaveStates,
+                LocationFor(configuration, systemId).SyncSaveStates,
             includeBaseSaves: contentScope != SyncContentScope.SaveStatesOnly,
             gameStateKeys: stateGameKeys);
     }
@@ -989,7 +996,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         var installation = _emulatorInstallations?.Invoke(systemId);
         var corePath = ResolvePortablePath(installation?.CorePath);
         return new SaveProviderContext(
-            ResolvePortablePath(configuration.GetOverride(systemId)),
+            ResolvePortablePath(OverrideFor(configuration, systemId)),
             ResolvePortablePath(installation?.Directory),
             installation?.IsFlatpak == true,
             _paths,
@@ -998,10 +1005,75 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             installation?.LaunchArguments,
             ResolvePortablePath(installation?.ExecutablePath),
             installation?.FlatpakApplicationId,
-            ResolvePortablePath(configuration.GetStateOverride(systemId)),
+            ResolvePortablePath(StateOverrideFor(configuration, systemId)),
             installation?.EmulatorId,
             CoreSharedAcrossSystems: IsCoreSharedAcrossSystems(systemId, corePath));
     }
+
+    // The active emulator for a system — the installation's configured emulator, or the default
+    // profile's emulator when nothing is installed yet. Save locations are keyed by (system, this),
+    // so every read/write below routes through it rather than touching a bare system-id key directly.
+    // Routed through Resolve (as provider resolution is) so the key always names the profile that
+    // actually runs: an installation id with no matching profile falls back to the system's default,
+    // keeping the override key and the running provider in lock-step.
+    private string? ActiveEmulatorFor(string systemId) =>
+        SaveProviderRegistry.Resolve(systemId, _emulatorInstallations?.Invoke(systemId)?.EmulatorId)?.EmulatorId;
+
+    // Every system's active emulator, for the one-time legacy-override migration on load.
+    private IReadOnlyDictionary<string, string> ActiveEmulatorBySystem()
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var systemId in SaveProviderRegistry.SystemIds)
+        {
+            if (ActiveEmulatorFor(systemId) is { } emulatorId)
+                map[systemId] = emulatorId;
+        }
+        return map;
+    }
+
+    private SaveLocationSettings LocationFor(CloudSaveSyncSettings configuration, string systemId) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.GetLocation(systemId, emulatorId)
+            : configuration.GetLocation(systemId);
+
+    private string? OverrideFor(CloudSaveSyncSettings configuration, string systemId) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.GetOverride(systemId, emulatorId)
+            : configuration.GetOverride(systemId);
+
+    private string? StateOverrideFor(CloudSaveSyncSettings configuration, string systemId) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.GetStateOverride(systemId, emulatorId)
+            : configuration.GetStateOverride(systemId);
+
+    // Writes go to the active emulator's (system, emulator) entry and are mirrored onto the bare
+    // system-id key (and, for the two legacy systems, their fields) so an older EmuShelf build can
+    // still read the active emulator's choice after a downgrade.
+    private CloudSaveSyncSettings WithOverrideFor(CloudSaveSyncSettings configuration, string systemId, string? directory) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.WithOverride(systemId, emulatorId, directory).WithOverride(systemId, directory)
+            : configuration.WithOverride(systemId, directory);
+
+    private CloudSaveSyncSettings WithStateOverrideFor(CloudSaveSyncSettings configuration, string systemId, string? directory) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.WithStateOverride(systemId, emulatorId, directory).WithStateOverride(systemId, directory)
+            : configuration.WithStateOverride(systemId, directory);
+
+    private CloudSaveSyncSettings WithOptionalContentFor(CloudSaveSyncSettings configuration, string systemId, bool syncSaveStates) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.WithOptionalContent(systemId, emulatorId, syncSaveStates).WithOptionalContent(systemId, syncSaveStates)
+            : configuration.WithOptionalContent(systemId, syncSaveStates);
+
+    private CloudSaveSyncSettings WithSyncSuccessFor(
+        CloudSaveSyncSettings configuration, string systemId, DateTimeOffset completedUtc, string? notice) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.WithSyncSuccess(systemId, emulatorId, completedUtc, notice).WithSyncSuccess(systemId, completedUtc, notice)
+            : configuration.WithSyncSuccess(systemId, completedUtc, notice);
+
+    private CloudSaveSyncSettings WithSyncFailureFor(CloudSaveSyncSettings configuration, string systemId, string message) =>
+        ActiveEmulatorFor(systemId) is { } emulatorId
+            ? configuration.WithSyncFailure(systemId, emulatorId, message).WithSyncFailure(systemId, message)
+            : configuration.WithSyncFailure(systemId, message);
 
     // True when another EmuShelf system is configured with the same libretro core file, so both
     // resolve to the same per-core save/state folder (e.g. mGBA set for both Game Boy Advance and
@@ -1106,8 +1178,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             foreach (var systemId in systemIds)
             {
                 configuration = error is null
-                    ? configuration.WithSyncSuccess(systemId, completedUtc, DescribeSkipped(systemId, report))
-                    : configuration.WithSyncFailure(systemId, error);
+                    ? WithSyncSuccessFor(configuration, systemId, completedUtc, DescribeSkipped(systemId, report))
+                    : WithSyncFailureFor(configuration, systemId, error);
             }
 
             Persist(configuration);
