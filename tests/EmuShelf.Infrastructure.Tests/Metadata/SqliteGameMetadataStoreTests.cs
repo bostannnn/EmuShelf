@@ -74,6 +74,44 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void DownloadedCover_ReplacesScannedCover_WhichIsNotUserOwned()
+    {
+        // Art discovered during scanning keeps origin None; a scrape must be able to replace it.
+        var game = AddGameWithCover("Scanned.iso", "scanned-boxart.png");
+        Assert.Equal(GameCoverOrigin.None, _metadata.GetGame(game.Id)!.CoverOrigin);
+
+        var downloaded = Path.Combine(AppPaths.CoversDirectory, "downloaded.jpg");
+        Assert.True(_metadata.TryApplyDownloadedCover(
+            game.Id,
+            downloaded,
+            "provider",
+            "https://example.test/cover.jpg"));
+
+        Assert.Equal(downloaded, _metadata.GetGame(game.Id)!.CoverPath);
+        Assert.Equal(GameCoverOrigin.Downloaded, _metadata.GetGame(game.Id)!.CoverOrigin);
+    }
+
+    [Fact]
+    public void DownloadedCover_OverwritesManualCover_WhenExplicitlyRequested()
+    {
+        // The single-game scraper's ticked row asks to override even a hand-picked cover.
+        var game = AddGame("Override.iso", GameTitleOrigin.Filename);
+        var manual = Path.Combine(AppPaths.CoversDirectory, "manual.png");
+        var downloaded = Path.Combine(AppPaths.CoversDirectory, "downloaded.jpg");
+        _library.UpdateCoverPath(game.Id, manual);
+
+        Assert.True(_metadata.TryApplyDownloadedCover(
+            game.Id,
+            downloaded,
+            "provider",
+            "https://example.test/cover.jpg",
+            overwriteUserCover: true));
+
+        Assert.Equal(downloaded, _metadata.GetGame(game.Id)!.CoverPath);
+        Assert.Equal(GameCoverOrigin.Downloaded, _metadata.GetGame(game.Id)!.CoverOrigin);
+    }
+
+    [Fact]
     public void GetIdentifiers_RoundTripsStoredEvidence_PrimaryFirst()
     {
         var game = AddGame("Serialized.iso", GameTitleOrigin.Filename);
@@ -255,6 +293,25 @@ public class SqliteGameMetadataStoreTests : TempAppDirectoryTestBase
                 Path = path,
                 Title = Path.GetFileNameWithoutExtension(path),
                 TitleOrigin = origin,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+        ]);
+        return _library.GetGames().Single(game => game.Path == path);
+    }
+
+    private Game AddGameWithCover(string filename, string coverFilename)
+    {
+        var path = Path.Combine(BaseDirectory, "Games", filename);
+        var coverPath = Path.Combine(AppPaths.CoversDirectory, coverFilename);
+        _library.AddGames([
+            new Game
+            {
+                SystemId = "playstation2",
+                Path = path,
+                Title = Path.GetFileNameWithoutExtension(path),
+                TitleOrigin = GameTitleOrigin.Filename,
+                CoverPath = coverPath,
+                CoverOrigin = GameCoverOrigin.None,
                 DateAdded = DateTimeOffset.UtcNow,
             },
         ]);

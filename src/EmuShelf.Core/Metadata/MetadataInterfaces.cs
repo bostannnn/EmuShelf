@@ -100,11 +100,17 @@ public interface IGameMetadataStore
 
     bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle);
 
+    /// <summary>
+    /// Projects a downloaded cover onto the game's shelf art. A cover the user hand-picked
+    /// (<see cref="GameCoverOrigin.User"/>) is left alone unless <paramref name="overwriteUserCover"/>
+    /// is set, which the single-game scraper does so an explicit media-row tick truly replaces it.
+    /// </summary>
     bool TryApplyDownloadedCover(
         long gameId,
         string coverPath,
         string providerId,
-        string sourceUri);
+        string sourceUri,
+        bool overwriteUserCover = false);
 
     void RecordAttempt(GameMetadataAttempt attempt);
 }
@@ -132,7 +138,12 @@ public interface IGameDetailsStore
 
     bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode);
 
-    GameMediaAsset SaveMedia(GameMediaAsset media);
+    /// <summary>
+    /// Persists a media asset. Provider media never steals a kind's active slot from an asset the
+    /// user hand-selected — unless <paramref name="overrideUserSelection"/> is set, which the
+    /// single-game scraper does so an explicit tick makes the new art the selected one.
+    /// </summary>
+    GameMediaAsset SaveMedia(GameMediaAsset media, bool overrideUserSelection = false);
 
     bool SelectMedia(long gameId, GameMediaKind kind, long mediaId);
 

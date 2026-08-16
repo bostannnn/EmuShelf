@@ -445,10 +445,9 @@ public sealed class GameLibrary : IGameLibrary
             coverPath.Value = game.CoverPath is null
                 ? DBNull.Value
                 : _pathResolver.ToStorablePath(game.CoverPath);
-            coverOrigin.Value = (int)(game.CoverPath is not null &&
-                game.CoverOrigin == GameCoverOrigin.None
-                    ? GameCoverOrigin.User
-                    : game.CoverOrigin);
+            // Art discovered while scanning/importing keeps its origin (None) so a later scrape may
+            // replace it. Only a cover the user hand-picks (UpdateCoverPath) is stamped User.
+            coverOrigin.Value = (int)game.CoverOrigin;
             isAvailable.Value = game.IsAvailable ? 1 : 0;
             dateAdded.Value = game.DateAdded.ToString("O", CultureInfo.InvariantCulture);
             dateAddedUnixMilliseconds.Value = game.DateAdded.ToUnixTimeMilliseconds();

@@ -438,7 +438,7 @@ public sealed class TexturePackRegressionTests : IDisposable
         public Game? GetGame(long gameId) => null;
         public IReadOnlyList<Game> GetGamesMissingMetadata(string? systemId = null) => [];
         public bool TryApplyCatalogTitle(long gameId, string canonicalTitle, string filenameTitle) => false;
-        public bool TryApplyDownloadedCover(long gameId, string coverPath, string providerId, string sourceUri) => false;
+        public bool TryApplyDownloadedCover(long gameId, string coverPath, string providerId, string sourceUri, bool overwriteUserCover = false) => false;
         public void RecordAttempt(GameMetadataAttempt attempt) { }
     }
 
