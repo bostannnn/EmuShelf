@@ -8672,3 +8672,18 @@ date-form `Retry-After` was ignored; and a pre-cancelled sign-in surfaced as a c
 Still outstanding, and stated so it is not mistaken for done: **no sign-in has touched Google's real
 API** — every test runs against an in-memory fake Drive — so the first real sign-in should be treated
 as a test event, not a formality.
+
+## 2026-08-16 — Save overrides are keyed per (system, emulator)
+
+The user's save-folder override moved from per-system to per-`(system, emulator)` (`CloudSaveSyncSettings`,
+composite `"{systemId}/{emulatorId}"` key). Two emulators on one console (PS1: DuckStation vs RetroArch)
+now keep independent override folders — required for Android, where each emulator app hides its saves in
+its own storage. The whole `SaveLocationSettings` record (override, state override, save-state opt-in,
+sync outcome) moves per emulator; the single Saves row shows the active profile's. Migration re-keys
+genuinely-legacy per-system overrides to the system's active emulator on load, and each write is mirrored
+back onto the bare system-id key (and the legacy PCSX2/PPSSPP fields) so an older build still reads the
+active emulator's choice. A system-level guard stops a bare rollback mirror from being re-keyed once the
+feature is active, so switching the active emulator never inherits another's folder. User-visible only for
+multi-emulator consoles; single-emulator consoles are unchanged. Coordinator resolves the active emulator
+via the same `SaveProviderRegistry.Resolve` the provider uses, so the stored key always names the profile
+that runs. See docs/emulator-profiles-refactor.md (Increment 2).

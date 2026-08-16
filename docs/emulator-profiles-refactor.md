@@ -208,13 +208,13 @@ PlayStation is two profiles (DuckStation default, RetroArch) and the `IsRetroArc
 row per console, so no user-visible change (App 858/858 Release incl. snapshots + Infra 1136/1136 green,
 independently reviewed). Closes the save side of gap #4 / Known-limitations #1.
 
-**Increment 2 — re-key the save-folder override to `(system, emulator)` (gap #2). Not started.**
-Key insight that keeps it small: a Saves row always acts on the *active* emulator, and the coordinator
+**Increment 2 — re-key the save-folder override to `(system, emulator)` (gap #2) — LANDED (2026-08-16).**
+Key insight that kept it small: a Saves row always acts on the *active* emulator, and the coordinator
 already knows it (`_emulatorInstallations(systemId)?.EmulatorId`), so storage keys by
 `(system, emulator)` while every public/UI signature stays `systemId`-only. This one *is* intentionally
 user-visible (PS1 overrides split per emulator); "one row per console" still holds.
 
-Decisions to lock first (recommended option first):
+Decisions (locked as recommended — see DECISIONS.md 2026-08-16):
 
 - **Key shape** — composite string key `"{systemId}/{emulatorId}"` in the existing dictionary
   (delimiter-safe: ids are simple lowercase tokens). Alt: nested dict — cleaner JSON, more churn.
@@ -225,31 +225,23 @@ Decisions to lock first (recommended option first):
   the `Pcsx2ConfigDirectory` / `PpssppMemoryStickDirectory` fields so an older build still loads. Alt:
   one-way migration + a settings-version bump.
 
-Checklist:
+Delivered in two green, reviewed steps:
 
-- [ ] `CloudSaveSyncSettings` (Core): add `(systemId, emulatorId)` overloads of `GetOverride`,
-  `GetStateOverride`, `GetLocation`, `WithOverride`, `WithStateOverride`, `WithOptionalContent`,
-  `WithSyncSuccess`, `WithSyncFailure`, and the private `With`; add a `Key(systemId, emulatorId)` helper;
-  fix `Equals`/`GetHashCode` for the new keyspace. Keep the old `systemId`-only methods as internal
-  shims until callers move, then delete.
-- [ ] Migration `MigrateOverridesToPerEmulator(activeEmulatorBySystem)`: re-key each legacy `systemId`
-  entry to `(system, active-or-default emulator)`, "presence wins" (never overwrite a new-shape entry),
-  re-point the two legacy fields. Idempotent — it runs every startup.
-- [ ] Run it in the coordinator ctor (where `NormalizeSaveLocations` already runs): build
-  `activeEmulatorBySystem` from `_emulatorInstallations(systemId)?.EmulatorId ?? Resolve(systemId,
-  null)?.EmulatorId` over `SaveProviderRegistry.SystemIds`; persist once.
-- [ ] Coordinator: add `ActiveEmulatorFor(systemId)`; route `CreateProviderContext`, `UpdateOverride`,
-  `UpdateOverrides`, `UpdateStateOverride`, `RecordOutcome`, `DescribePlatforms`, and the two connect
-  capability checks through it. Public signatures stay `systemId`-only.
-- [ ] Verify the view models are unchanged (`CloudSavePlatformRowViewModel`, `EmulatorSettingsViewModel`
-  call `UpdateOverride(SystemId, …)`; the coordinator injects the emulator). Checkpoint, not a change.
-- [ ] Rollback mirror in the settings `With(...)` path (per the decision above).
-- [ ] Tests: per-`(system, emulator)` isolation (PS1 DuckStation vs RetroArch don't share an override);
-  migration from an old-shape `settings.json` fixture; "presence wins"; legacy-field fold; JSON
-  round-trip equality; single-emulator systems byte-identical to today.
-- [ ] Verify: build clean, App suite in **Release** (snapshots) + Infrastructure green; one review agent
-  on migration correctness + rollback + no leaked UI signature; commit as its own increment; add a
-  `DECISIONS.md` line for the user-visible per-emulator override.
+- **Step 1 (`12b183c`)** — additive Core support: `(systemId, emulatorId)` overloads +
+  `MigrateOverridesToPerEmulator`, composite `"{systemId}/{emulatorId}"` key, a key-based `WithKey`
+  primitive. Every bare-system-id method was kept (still used for the rollback mirror and the legacy
+  fold), so the build stayed green with no caller changes. `Equals`/`GetHashCode` already compare the
+  dictionary structurally, so the new keys needed no change there.
+- **Step 2 (`1007aef`)** — coordinator cutover: every override / location / outcome read and write
+  routes through `ActiveEmulatorFor(systemId)` (resolved via `SaveProviderRegistry.Resolve`, matching
+  provider resolution); the migration runs on construction; writes mirror onto the bare key for
+  rollback; a system-level migration guard stops a bare mirror from being re-keyed, so switching the
+  active emulator never inherits another's folder. View models unchanged (public signatures stayed
+  `systemId`-only). No dead code to remove — the bare methods remain in use.
+
+Result: per-emulator overrides isolated (PS1 DuckStation vs RetroArch), single-emulator consoles
+byte-identical, one row per console preserved. App 861/861 Release (incl. snapshots) + Infra 1143/1143
+green; independently reviewed with no blockers.
 
 **Later increments (no Android work yet):** Android save/launch providers (gap #3), the OS-aware profile
 model + third `EmulatorLaunchTarget` subtype (gap #1), and the shared-card cloud bridge for the
