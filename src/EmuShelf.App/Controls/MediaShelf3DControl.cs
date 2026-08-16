@@ -888,20 +888,11 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     continue;
                 }
 
-                TextureImage? texture;
-                try
+                if (!TryBuildFaceTexture(artwork, out var texture))
                 {
-                    texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
-                }
-                catch (Exception)
-                {
-                    // The snapshot holds a live reference to this bitmap, but the UI thread can still
-                    // dispose it — an eviction, a path change, a detach — between the frame being
-                    // published and this upload reading its pixels. That throws here. Keep whatever is
-                    // already on the GPU for this face and do not record the upload, so a later clean
-                    // frame retries. This is deliberately a per-face skip rather than failing the whole
-                    // draw: one racing bitmap must not drop the entire shelf toward the flat-cover
-                    // fallback via the consecutive-failure counter.
+                    // The artwork raced disposal — see TryBuildFaceTexture. Keep whatever is already
+                    // on the GPU for this face and do not record the upload, so a later clean frame
+                    // retries. A per-face skip, never the whole draw.
                     continue;
                 }
 
@@ -1601,6 +1592,35 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
     private static Vector3 ToLinear(Color colour) =>
         MediaShellRenderer.ToLinear(colour.R / 255f, colour.G / 255f, colour.B / 255f);
+
+    /// <summary>
+    /// Builds one shell face's GPU texture from its artwork, or reports that the artwork raced
+    /// disposal and the face should be skipped.
+    /// </summary>
+    /// <remarks>
+    /// The frame snapshot holds a live reference to the bitmap, but the UI thread can still dispose it
+    /// — an eviction, a path change, a detach, or (the reported case) a scrape swapping the cover —
+    /// between the frame being published and this upload reading its pixels. Reading a disposed bitmap
+    /// throws, and this contains that throw to the single face: it returns <c>false</c> so the caller
+    /// keeps whatever is on the GPU and retries on a later clean frame, rather than letting the
+    /// exception escape into <see cref="OnOpenGlRender"/> and march the whole shelf toward the
+    /// flat-cover fallback via the consecutive-failure counter — which is exactly how a scrape could
+    /// blank the CRT and every model. Extracted so this invariant can be tested without a GL context;
+    /// a returned <c>true</c> with a null texture is the normal no-artwork face.
+    /// </remarks>
+    internal static bool TryBuildFaceTexture(object? artwork, out TextureImage? texture)
+    {
+        try
+        {
+            texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
+            return true;
+        }
+        catch (Exception)
+        {
+            texture = null;
+            return false;
+        }
+    }
 
     private static TextureImage? ToTextureImage(Bitmap bitmap)
     {
