@@ -93,6 +93,33 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void PlayStationSavesRow_FollowsTheEmulatorPicker()
+    {
+        // Each emulator keeps its own save override; the bare key mirrors the active (DuckStation) one
+        // so the row starts on DuckStation's folder, exactly as the coordinator persists it.
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "duckstation", "/saves/duck")
+            .WithOverride("playstation", "/saves/duck")
+            .WithOverride("playstation", "retroarch", "/saves/retro");
+        var cloudSaves = CreateCloudContext(
+            current: configuration,
+            describePlatformForEmulator: DescribePlatformForEmulatorFrom(configuration));
+        var viewModel = CreateViewModel(cloudSaves: cloudSaves);
+        var ps1 = viewModel.Rows.Single(row => row.SystemId == "playstation");
+        var savesRow = Row(viewModel, "playstation");
+
+        Assert.Equal("/saves/duck", savesRow.OverrideDirectory);
+
+        // Switching the picker (without saving) must show RetroArch's own folder, not DuckStation's.
+        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "retroarch");
+        Assert.Equal("/saves/retro", savesRow.OverrideDirectory);
+
+        // Switching back shows DuckStation's folder again — neither override leaked onto the other.
+        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "duckstation");
+        Assert.Equal("/saves/duck", savesRow.OverrideDirectory);
+    }
+
+    [AvaloniaFact]
     public void DataFolder_IsSurfacedFromMaintenance_WhenProvided()
     {
         var maintenance = new LibraryMaintenanceActions(
@@ -1567,7 +1594,8 @@ public class EmulatorSettingsViewModelTests
         Func<IReadOnlyList<CloudSaveSyncPlatformContext>>? getPlatforms = null,
         Func<string, CancellationToken, Task<SaveProviderDetection?>>? getDetection = null,
         bool managedAvailable = false,
-        Func<string, IReadOnlyDictionary<string, string?>, Action<Uri>, CancellationToken, Task<CloudSaveSyncConnectResult>>? connectManaged = null)
+        Func<string, IReadOnlyDictionary<string, string?>, Action<Uri>, CancellationToken, Task<CloudSaveSyncConnectResult>>? connectManaged = null,
+        Func<string, string, CloudSaveSyncPlatformContext?>? describePlatformForEmulator = null)
     {
         var configuration = current ?? new CloudSaveSyncSettings();
         var platforms = SaveProviderRegistry.All.Select(descriptor =>
@@ -1599,8 +1627,37 @@ public class EmulatorSettingsViewModelTests
             downloadRclone ?? (_ => Task.FromResult(true)),
             getDetection,
             IsManagedTransportAvailable: managedAvailable,
-            ConnectGoogleDriveManagedAsync: connectManaged);
+            ConnectGoogleDriveManagedAsync: connectManaged,
+            DescribePlatformForEmulator: describePlatformForEmulator);
     }
+
+    // Mirrors the coordinator's own DescribePlatformForEmulator: reads the (system, emulator) location
+    // out of the given settings so a fake context can exercise the Saves row following the picker.
+    private static Func<string, string, CloudSaveSyncPlatformContext?> DescribePlatformForEmulatorFrom(
+        CloudSaveSyncSettings configuration) =>
+        (systemId, emulatorId) =>
+        {
+            var descriptor = SaveProviderRegistry.Find(systemId);
+            if (descriptor is null)
+                return null;
+            var resolved = SaveProviderRegistry.Resolve(systemId, emulatorId)?.EmulatorId;
+            var location = resolved is { } id
+                ? configuration.GetLocation(systemId, id)
+                : configuration.GetLocation(systemId);
+            return new CloudSaveSyncPlatformContext(
+                descriptor.SystemId,
+                descriptor.DisplayName,
+                descriptor.SaveShapeDescription,
+                descriptor.OverridePlaceholder,
+                location.DirectoryOverride,
+                location.LastSuccessUtc,
+                location.LastError,
+                location.LastNotice,
+                descriptor.SupportsSaveStates,
+                location.SyncSaveStates,
+                location.StateDirectoryOverride,
+                descriptor.SaveStatesLabel);
+        };
 
     private static CloudSavePlatformRowViewModel Row(EmulatorSettingsViewModel viewModel, string systemId) =>
         viewModel.CloudPlatforms.Single(row => row.SystemId == systemId);

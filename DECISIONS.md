@@ -9007,6 +9007,31 @@ desktop-GL darkness (Mesa is a different driver; the "nothing" could still be a 
 GLES won't touch). Not verified on a Deck. But the round is self-settling: the next log shows the dialect,
 the frame size, and whether the shelf finally draws.
 
+## 2026-08-17 — Saves override display follows the emulator picker; SaveAsync order kept
+
+Save overrides are keyed per `(system, emulator)` (see the 2026-08-16 per-emulator entry). The
+Settings → Saves row was built once from the system's *persisted* active emulator, and switching the
+emulator picker in the Emulators section never rebuilt it, so the shown override kept reflecting the
+emulator that was active when Settings opened. Fixed by having `EmulatorSettingsViewModel.OnRowProfileChanged`
+re-read the newly-selected emulator's stored override — via a new
+`CloudSaveSyncCoordinator.DescribePlatformForEmulator(systemId, emulatorId)` that resolves the emulator
+through `SaveProviderRegistry.Resolve` and reads its `(system, emulator)` key directly — and apply it to
+the matching `CloudSavePlatformRowViewModel` (`ApplyEmulatorSwitch`). The picker switch is not persisted
+until Save, so this read cannot go through the coordinator's persisted-active-emulator lookup; it reads the
+selected emulator's key explicitly.
+
+`SaveAsync` intentionally keeps its existing order — `SetActiveEmulator` first, then
+`PersistCloudSaveLocations` — because with the display now following the picker, the override box always
+holds the currently-selected emulator's value, so persisting after the active-emulator write files it under
+the right emulator. PR #145 (reorder to persist overrides *before* `SetActiveEmulator`) is therefore
+rejected: it was a band-aid for the missing display refresh, and combined with this fix it would file the
+newly-selected emulator's edited value under the *previous* emulator. #145 is closed, not merged.
+
+Known limitation: the Saves override box has no per-emulator in-session draft (unlike the Emulators row's
+editable fields), so an *unsaved* edit is replaced by the picked emulator's stored value when switching away
+and back. The detected-path line is cleared on switch rather than re-detected, because detection still
+resolves against the persisted (pre-switch) emulator; it re-derives on the next sync or the next time
+Settings opens.
 ## 2026-08-16 — ScreenScraper couldn't replace box art it didn't put there: narrow "protected" to genuinely hand-picked covers
 
 A user's box art that "didn't come from ScreenScraper" could not be replaced by a scrape. The shelf cover

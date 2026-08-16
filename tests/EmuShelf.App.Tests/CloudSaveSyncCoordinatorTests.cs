@@ -473,6 +473,30 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public void DescribePlatformForEmulator_ReadsEachEmulatorsOwnOverride_RegardlessOfActive()
+    {
+        var settings = new FakeSettingsService();
+        // DuckStation is the active emulator; its override is filed under (playstation, duckstation).
+        var coordinator = CreateCoordinator(
+            settings,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/duckstation", false, EmulatorId: "duckstation")
+                : null);
+        coordinator.UpdateOverride("playstation", "/duck/saves");
+        // Give RetroArch its own stored override without making it the active emulator.
+        coordinator.UpdateConfiguration(coordinator.Current.WithOverride("playstation", "retroarch", "/ra/saves"));
+
+        // The picker-driven read returns each emulator's own folder even though DuckStation is active,
+        // which is what lets the Saves row follow the picker before the switch is saved.
+        Assert.Equal("/duck/saves", coordinator.DescribePlatformForEmulator("playstation", "duckstation")?.Override);
+        Assert.Equal("/ra/saves", coordinator.DescribePlatformForEmulator("playstation", "retroarch")?.Override);
+        // An unknown emulator id falls back to the system's default profile (DuckStation), matching launch.
+        Assert.Equal("/duck/saves", coordinator.DescribePlatformForEmulator("playstation", "nonsense")?.Override);
+        // A system with no save platform yields null rather than throwing.
+        Assert.Null(coordinator.DescribePlatformForEmulator("no-such-system", "x"));
+    }
+
+    [Fact]
     public void LegacyBareOverride_IsReKeyedToTheActiveEmulatorOnLoad()
     {
         var legacy = new AppSettings
