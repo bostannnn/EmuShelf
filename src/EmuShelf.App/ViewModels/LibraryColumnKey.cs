@@ -18,6 +18,8 @@ public enum LibraryColumnKey
     Textures,
     Status,
     LastPlayed,
+    Playtime,
+    PlayCount,
     DateAdded,
     Completeness,
     ArtworkCover,

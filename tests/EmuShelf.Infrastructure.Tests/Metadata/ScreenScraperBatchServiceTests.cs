@@ -15,6 +15,7 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
     private readonly LibraryDatabase _database;
     private readonly GameLibrary _library;
     private readonly SqliteGameMetadataStore _games;
+    private readonly SqliteGameDetailsStore _details;
     private readonly FakePreview _preview = new();
     private readonly FakeApply _apply = new();
     private readonly ScreenScraperBatchService _batch;
@@ -27,7 +28,8 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
         var resolver = new RelativePathResolver(AppPaths);
         _library = new GameLibrary(_database, resolver);
         _games = new SqliteGameMetadataStore(_database, resolver);
-        _batch = new ScreenScraperBatchService(_preview, _apply, _games);
+        _details = new SqliteGameDetailsStore(_database, resolver);
+        _batch = new ScreenScraperBatchService(_preview, _apply, _games, _details);
     }
 
     [Fact]
@@ -96,6 +98,78 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Run_MatchedButAllDownloadsFailed_IsReportedAsFailed_NotAlreadyComplete()
+    {
+        // Regression: a match whose selected images all fail to download writes nothing, but it is NOT
+        // "already complete" — it must read as failed, and must not be silently counted as done.
+        var ids = AddGames("NoNet.iso");
+        _preview.Results[ids[0]] = Success(ids[0]);
+        _apply.Results[ids[0]] = new GameScrapeApplyResult(
+            ids[0], 0, 0,
+            [new GameMediaApplyResult(GameMediaKind.BoxFront, GameMediaApplyOutcome.DownloadFailed)],
+            false);
+
+        var summary = await _batch.RunAsync(
+            ids, Enabled(), GameMetadataApplyMode.FillMissing, null, null, null);
+
+        Assert.Equal(GameScrapeBatchOutcome.Failed, Assert.Single(summary.Results).Outcome);
+        Assert.Equal(1, summary.Failed);
+        Assert.Equal(0, summary.AlreadyComplete);
+        Assert.Equal(0, summary.Applied);
+    }
+
+    [Fact]
+    public async Task Run_FillMissing_SkipsCoverageCompleteGames_WithoutContactingProvider()
+    {
+        var ids = AddGames("Done.iso", "Fresh.iso");
+        RecordScreenScraperMatch(ids[0], coverageComplete: true);
+        _preview.Results[ids[1]] = Success(ids[1]);
+
+        var summary = await _batch.RunAsync(
+            ids, Enabled(), GameMetadataApplyMode.FillMissing, null, null, null);
+
+        // The coverage-complete game is skipped up front: no preview request, reported as already scraped.
+        Assert.DoesNotContain(ids[0], _preview.PreviewedGameIds);
+        Assert.Contains(ids[1], _preview.PreviewedGameIds);
+        Assert.Equal(GameScrapeBatchOutcome.AlreadyScraped, summary.Results.Single(r => r.GameId == ids[0]).Outcome);
+        Assert.Equal(GameScrapeBatchOutcome.Applied, summary.Results.Single(r => r.GameId == ids[1]).Outcome);
+        Assert.Equal(1, summary.Applied);
+        Assert.Equal(1, summary.AlreadyComplete);
+        Assert.Equal(1, _apply.Calls); // only the fresh game reached apply
+    }
+
+    [Fact]
+    public async Task Run_FillMissing_DoesNotSkip_WhenPriorScrapeWasIncomplete()
+    {
+        // A match exists but only part of the offering was applied last time (e.g. the 2/9-fields case),
+        // so the game is NOT coverage-complete and must be re-queried to fill the rest.
+        var ids = AddGames("Partial.iso");
+        RecordScreenScraperMatch(ids[0], coverageComplete: false);
+        _preview.Results[ids[0]] = Success(ids[0]);
+
+        var summary = await _batch.RunAsync(
+            ids, Enabled(), GameMetadataApplyMode.FillMissing, null, null, null);
+
+        Assert.Contains(ids[0], _preview.PreviewedGameIds);
+        Assert.Equal(GameScrapeBatchOutcome.Applied, Assert.Single(summary.Results).Outcome);
+    }
+
+    [Fact]
+    public async Task Run_RefreshOwnedValues_ReQueriesAlreadyMatchedGames()
+    {
+        var ids = AddGames("Done.iso");
+        RecordScreenScraperMatch(ids[0], coverageComplete: true);
+        _preview.Results[ids[0]] = Success(ids[0]);
+
+        var summary = await _batch.RunAsync(
+            ids, Enabled(), GameMetadataApplyMode.RefreshProviderOwned, null, null, null);
+
+        // A refresh run is an explicit re-pull, so the recorded match must not short-circuit it.
+        Assert.Contains(ids[0], _preview.PreviewedGameIds);
+        Assert.Equal(GameScrapeBatchOutcome.Applied, Assert.Single(summary.Results).Outcome);
+    }
+
+    [Fact]
     public async Task Run_HonorsCancellation()
     {
         var ids = AddGames("One.iso", "Two.iso");
@@ -127,6 +201,12 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
             .ToArray();
     }
 
+    private void RecordScreenScraperMatch(long gameId, bool coverageComplete = true) =>
+        _details.UpsertProviderMatch(new GameProviderMatch(
+            gameId, ScreenScraperProvider.Id, "58", 1, "100", null,
+            GameProviderMatchMethod.Serial, "SLUS-1", GameMetadataStatus.Matched, DateTimeOffset.UtcNow, null,
+            coverageComplete));
+
     private static ScreenScraperSettings Enabled() => new() { Enabled = true };
 
     private static ScreenScraperPreviewResult Success(long gameId)
@@ -156,16 +236,21 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
     {
         public Dictionary<long, ScreenScraperPreviewResult> Results { get; } = new();
 
+        public List<long> PreviewedGameIds { get; } = new();
+
         public int SearchCalls { get; private set; }
 
         public Task<ScreenScraperPreviewResult> PreviewAsync(
             long gameId,
             ScreenScraperSettings settings,
             bool allowFingerprinting,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(Results.TryGetValue(gameId, out var result)
+            CancellationToken cancellationToken = default)
+        {
+            PreviewedGameIds.Add(gameId);
+            return Task.FromResult(Results.TryGetValue(gameId, out var result)
                 ? result
                 : Failure(ScreenScraperPreviewStatus.ProviderFailure, ScreenScraperRequestStatus.NotFound));
+        }
 
         public Task<ScreenScraperResult<IReadOnlyList<ScreenScraperGameMatch>>> SearchAsync(
             long gameId,

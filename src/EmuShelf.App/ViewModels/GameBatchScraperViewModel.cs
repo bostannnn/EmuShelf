@@ -222,7 +222,13 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
             GameScrapeBatchStopReason.ProviderDisabled => "Stopped — ScreenScraper is disabled. ",
             _ => string.Empty,
         };
-        var parts = new List<string> { $"{summary.Applied} scraped" };
+        // Only name buckets that actually have games, so a run doesn't lead with an alarming "0 scraped"
+        // when everything was already complete (or failed). "N scraped" appears only when N > 0.
+        var parts = new List<string>();
+        if (summary.Applied > 0)
+            parts.Add($"{summary.Applied} scraped");
+        if (summary.AlreadyComplete > 0)
+            parts.Add($"{summary.AlreadyComplete} already complete");
         if (summary.NoMatch > 0)
             parts.Add($"{summary.NoMatch} no match");
         if (summary.Unsupported > 0)
@@ -231,6 +237,8 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
             parts.Add($"{summary.Failed} failed");
         if (summary.NotProcessed > 0)
             parts.Add($"{summary.NotProcessed} not reached");
+        if (parts.Count == 0)
+            parts.Add("nothing to scrape");
         return prefix + string.Join(", ", parts) + ".";
     }
 

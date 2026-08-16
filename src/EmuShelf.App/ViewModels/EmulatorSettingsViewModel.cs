@@ -18,7 +18,7 @@ public enum SettingsSection
     Emulators,
     Hotkeys,
     RetroAchievements,
-    ScreenScraper,
+    ArtworkMetadata,
     Saves,
     TexturePacks,
     Themes,
@@ -60,7 +60,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsEmulatorsSection))]
     [NotifyPropertyChangedFor(nameof(IsHotkeysSection))]
     [NotifyPropertyChangedFor(nameof(IsRetroAchievementsSection))]
-    [NotifyPropertyChangedFor(nameof(IsScreenScraperSection))]
+    [NotifyPropertyChangedFor(nameof(IsArtworkMetadataSection))]
     [NotifyPropertyChangedFor(nameof(IsSavesSection))]
     [NotifyPropertyChangedFor(nameof(IsTexturePacksSection))]
     [NotifyPropertyChangedFor(nameof(IsThemesSection))]
@@ -72,11 +72,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// only described a couple of sections.</summary>
     public string SectionSubtitle => SelectedSection switch
     {
-        SettingsSection.General => "Library upkeep, metadata, and where EmuShelf keeps its data.",
+        SettingsSection.General => "Library visibility, maintenance, and where EmuShelf keeps its data.",
         SettingsSection.Emulators => "Point each system at its emulator and set how it launches.",
         SettingsSection.Hotkeys => "Write one keyboard-hotkey scheme into each emulator's own settings.",
         SettingsSection.RetroAchievements => "Connect your RetroAchievements account to track progress.",
-        SettingsSection.ScreenScraper => "Connect ScreenScraper to fetch game metadata and artwork.",
+        SettingsSection.ArtworkMetadata => "Fetch titles, covers, and artwork from the built-in catalogue, ScreenScraper, or web image search.",
         SettingsSection.Saves => "Sync in-game saves between machines through your own Google Drive.",
         SettingsSection.TexturePacks => "See the replacement-texture packs your emulators already have.",
         SettingsSection.Themes => "Choose how EmuShelf looks.",
@@ -88,7 +88,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public bool IsEmulatorsSection => SelectedSection == SettingsSection.Emulators;
     public bool IsHotkeysSection => SelectedSection == SettingsSection.Hotkeys;
     public bool IsRetroAchievementsSection => SelectedSection == SettingsSection.RetroAchievements;
-    public bool IsScreenScraperSection => SelectedSection == SettingsSection.ScreenScraper;
+    public bool IsArtworkMetadataSection => SelectedSection == SettingsSection.ArtworkMetadata;
     public bool IsSavesSection => SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => SelectedSection == SettingsSection.TexturePacks;
     public bool IsThemesSection => SelectedSection == SettingsSection.Themes;
@@ -303,6 +303,11 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool AutomaticallyFetchMetadataAfterImport { get; set; }
 
+    /// <summary>Whether the manual "Set cover" picker offers unverified web image search (DuckDuckGo).
+    /// Unverified results are never applied automatically; this only toggles the manual picker.</summary>
+    [ObservableProperty]
+    public partial bool WebImageSearchEnabled { get; set; } = true;
+
     [ObservableProperty]
     public partial bool ShowEmptyPlatforms { get; set; }
 
@@ -508,7 +513,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         if (retroAchievements is not null)
             sections.Add(SettingsSection.RetroAchievements);
         if (screenScraper is not null)
-            sections.Add(SettingsSection.ScreenScraper);
+            sections.Add(SettingsSection.ArtworkMetadata);
         if (cloudSaves is not null)
             sections.Add(SettingsSection.Saves);
         if (texturePacks is not null)
@@ -625,6 +630,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         RecomputeSharedInstallations();
         AutomaticallyFetchMetadataAfterImport =
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
+        WebImageSearchEnabled = metadataPreferences?.WebImageSearchEnabled ?? true;
         ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
     }
 
@@ -921,6 +927,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             {
                 await _metadataPreferences.SaveAutomaticFetchAsync(
                     AutomaticallyFetchMetadataAfterImport);
+                await _metadataPreferences.SaveWebImageSearchAsync(WebImageSearchEnabled);
             }
             if (_maintenance?.SetShowEmptyPlatforms is not null)
                 await _maintenance.SetShowEmptyPlatforms(ShowEmptyPlatforms);

@@ -8675,3 +8675,240 @@ artwork-ambient generator, not per palette.** The ~30 palette files each redefin
 but they don't list the new silver token; `DynamicResource` resolves it from the base theme by the
 palette's active variant. This survives palette regeneration from `themes.json` and avoids editing
 every palette by hand.
+## 2026-08-16 — Scraping is one "Artwork & Metadata" surface; the settings model tells the truth
+
+The three artwork/metadata sources (built-in catalogue, authenticated ScreenScraper, and the manual
+DuckDuckGo cover search) were surfaced through unrelated menus on top of a settings model that was
+mostly dead: `ScrapeProviderSettings.BuiltInCatalog.Enabled`, `DuckDuckGoArtwork.Enabled`, and
+`ScreenScraperSettings.AutomaticallyScrapeAfterImport` were serialized but never read or written, and
+the ScreenScraper language/region/field/media lists were code-owned defaults masquerading as user
+settings (with a `WithCatalogDefaultsEnsured` migration to repair frozen copies). That is the
+"half-baked" seam.
+
+`ScrapingSettings` is now honest: `{ ScreenScraper: { Enabled }, WebImageSearchEnabled }`. The dead
+`Enabled` flags, the duplicate auto-scrape toggle, `ScrapeProviderSettings`, and the whole media/field
+config are removed from the persisted model. The media/field/region/language defaults move to a
+code-owned `ScreenScraperMediaProfile` constant read by the mapper and preview service, so the
+serialized file no longer carries them and the migration hack is deleted. `ScreenScraper.Enabled`
+stays but is documented as a connection mirror (set on connect, cleared on disconnect), not an
+independent preference. Old `settings.json` files keep loading — the removed members are simply
+ignored (System.Text.Json skips unknown members), so a legacy `DuckDuckGoArtwork.Enabled: false` no
+longer suppresses the picker; `WebImageSearchEnabled` defaults on.
+
+The desktop `SettingsSection.ScreenScraper` becomes `SettingsSection.ArtworkMetadata` ("Artwork &
+Metadata") and gathers all three providers: the built-in auto-fetch toggle and "Fetch missing
+metadata" action move out of General into a Built-in catalogue card, the ScreenScraper connect card
+stays, and a new Web image search toggle (`metadata.web-image-search`) is added. The toggle is real:
+`DialogService.PickGameCoverAsync` reads `WebImageSearchEnabled` and, when off, the "Set cover" picker
+is a plain local-file pick with no web results. The gamepad settings projection mirrors the move —
+the built-in and web-toggle rows now live in the Artwork & Metadata section, and its status pill
+surfaces metadata-fetch progress. Desktop/gamepad field-id parity is preserved for the `scraper.*`
+prefix; the moved built-in ids keep their `general.*` prefix on both surfaces.
+
+Still open (next slice): the manual DuckDuckGo cover search is desktop-only in Gamepad mode (the
+`CoverDesktopHandoff` overlay), against the 2026-08-01 intent that it be controller-native. Making the
+web cover picker a controller-native overlay (reusing `CoverSearchViewModel` behind a D-pad focus
+wrapper like the ScreenScraper scraper overlay, with local-file "choose a file" still handing off to
+Desktop for the OS picker) reverses that handoff and is deferred to its own focused pass, since the
+controller *feel* needs real Deck/controller acceptance that headless tests cannot cover.
+## 2026-08-16 — Playtime is two running totals stamped at different moments (M43)
+
+M38 stored one play fact — `LastPlayedAt` — and deliberately deferred play time and play count to
+"a later, deliberate addition." M43 is that addition. Two questions had non-obvious answers.
+
+**Aggregate columns, not a session-history table.** Play time and play count are two `NOT NULL
+DEFAULT 0` columns on `Games` (`PlaytimeSeconds`, `PlayCount`, schema v18), not a row-per-session
+log. This continues the M38 line ("a single column, not a play-history table"): every recency and
+column read stays a plain field read off the `Game` record with no join, and it covers every surface
+the product has — a total-hours column, a plays column, and a gamepad "12h 34m • 5 plays" caption. A
+per-session table is only worth its weight once something needs dated history (a "played 2h on Aug
+12" list, a playtime graph); that stays a future migration, not speculative schema now.
+
+**The two totals are stamped at different moments, and that asymmetry is intentional.** `PlayCount`
+is incremented together with `LastPlayedAt` in the launch `beforeStart` callback — after preflight
+passes, immediately *before* `Process.Start` — in one atomic `RecordLaunchStarted` update (the method
+M38's `SetLastPlayed` became), so it survives an app kill mid-session for the same reason last-played
+does: the play is recorded before the game can take over the machine. This inherits M38's exact
+`LastPlayed` placement, including its one imprecision — a launch that clears preflight but then fails
+at `Process.Start` itself (a File.Exists-passing binary that can't be exec'd: bad permissions, corrupt
+image, AV block) is still counted, because the stamp already ran. Moving the stamp to just after a
+confirmed start would need an "onStarted" hook the tracked-process interface doesn't have, and the
+over-count is a rare exec-time failure worth one stray play, not that plumbing. Play time, by
+contrast, can only be known at a clean *exit*, so it accrues then: `EmulatorLaunchService` times a
+`Stopwatch` around the tracked `RunAsync` (the process runtime only — not preflight, save sync, or the
+launch animation), returns it on `GameLaunchResult.PlayDuration`, and the App persists it with
+`AddPlaytime` after the launch returns. The consequence is honest but slightly asymmetric: a session
+ended by an app kill counts as one play with zero added time. Recording play time at start instead
+would be wrong (no duration exists yet); recording the count at exit instead would drop killed
+sessions from the count. We keep last-played and play count consistent with each other, and let play
+time be the one number that requires a clean exit.
+
+**Known undercount: hand-off launchers.** EmuShelf times the process it starts. An emulator (or
+wrapper) that spawns the real game process and returns immediately reports a runtime far shorter than
+the actual session. This is the best signal available without per-emulator hooks, so the tracked
+process's runtime is what we record; the count is unaffected because it does not depend on runtime.
+
+## 2026-08-16 — Batch scrape skips already-matched games in fill-missing mode
+
+A ScreenScraper batch (including "Scrape all in view") now checks each game's stored provider matches
+before contacting the API: in **fill-missing** mode, a game that already carries a recorded
+ScreenScraper match is reported as `AlreadyScraped` without spending a request, because a fill-missing
+pass could only re-fill gaps the earlier scrape already filled. A **refresh** run (replace owned
+values) is an explicit re-pull and still re-queries every game. The check is a local detail-store read,
+far cheaper than the per-game API call it avoids, which matters against ScreenScraper's daily quota.
+
+Trade-off: if the earlier run deselected some fields/media, or the provider has since added data, the
+skip can leave a real gap unfilled. The escape is the "Replace values ScreenScraper already owns"
+toggle (re-queries everything) or the per-game scraper. This is deliberate — the common re-run case is
+"I clicked scrape all again," where every skip is correct and the quota saved is real.
+
+Paired UI fix: the batch summary now counts these matched-but-nothing-written games as
+"N already complete" (`GameScrapeBatchSummary.AlreadyComplete`, covering both `AlreadyScraped` and the
+API's `NothingToApply`). Previously they fell into no bucket, so a re-run over a complete library read
+as a bare "0 scraped." even though many games matched.
+
+## 2026-08-16 — Batch skip is gated on coverage-complete, not mere match presence
+
+Refines the earlier same-day decision. The batch fill-missing skip no longer fires on "a ScreenScraper
+match exists" — that coarsely skipped games whose earlier scrape was only *partial* (a narrowed media
+pick, a metadata-off run, or a per-field single-game scrape), so "get the other 7 of 9 fields later"
+silently did nothing.
+
+Instead, `GameProviderMatch` gains a persisted `CoverageComplete` flag (schema v17, added to
+`GameProviderMatches`). The apply service — the one choke point both the batch and single-game scraper
+pass through — stamps it after applying, by comparing the provider's **full offering** (passed on
+`GameScrapeApplyRequest.OfferedFields`/`OfferedMediaKinds`, not the narrowed selection) against what the
+game holds afterwards. It is true only when every offered field and every offered media kind is present.
+A narrowed pick or a failed media download therefore leaves it false, so a later run re-queries and fills
+the gap. The batch skips only coverage-complete matches; a refresh (replace owned values) run still never
+skips. Determined post-apply (from this run's media outcomes) so a failed download is never mistaken for
+coverage.
+
+Consequences: field-level narrowing means field-level coverage equals locale-level coverage (a field the
+run includes brings all its offered locales), so no locale false-skip within one offering. Coverage is
+measured against the *settings-filtered* offering, and video is excluded from it entirely — video is opt-in
+with no in-app player and the batch never fetches it, so requiring it would keep such games permanently
+incomplete and re-queried. Two unavoidable residuals leave a coverage-complete game skipped when more is
+actually available: provider-side growth (new data added upstream after a complete scrape), and a user
+later *broadening* their ScreenScraper media/language settings. Neither is detectable locally; the escape
+for both stays the Replace toggle or the single-game scraper. Existing matches migrate to
+CoverageComplete=0, so the first batch after upgrade re-checks each once and re-stamps it.
+## 2026-08-16 — Scoped couch-shelf GL failure: keep the two renderers, stop one from killing the other
+
+v1.3.7 (`5d92607`, "draw the effect-off shelf in place") split the couch shelf into two OpenGL
+renderers: the window-covering tube for the CRT-on case, and a separate in-place scene for the
+CRT-off case, stood up lazily the moment the effect was switched off. That split is *correct* — the
+in-place scene keeps the rail, overlays and toasts as live Avalonia around it, so effect-off needs no
+full-window capture and idles when the shelf is still. The bug was never "two renderers." A dynamic
+review reproduced it: both hosts bound `IsSceneSupported` to one shared flag (`_shelfHeroSupported`),
+so when the in-place host failed to bring up GL on the Steam Deck, `DisableShelfHero` flipped that one
+flag and the effect-on tube died with it — every 3D model flat, for the session, unrecoverable
+without a restart. `Program.cs` already documents the trigger's shape: `OpenGlControlBase` can
+silently get no GL context (no init, no throw), and only the watchdog notices.
+
+Fix keeps both renderers and scopes the failure:
+
+- Two support flags. `_shelfHeroSupported`/`TubeSceneSupported` is the tube's; `_inlineShelfSupported`/
+  `InlineSceneSupported` is the in-place host's. `DisableShelfHero` rules out only the tube;
+  `DisableInlineShelf` rules out only the in-place host. Neither touches the other. Wired to two view
+  handlers (`OnGamepadShelfHeroFailed`, `OnGamepadInlineShelfFailed`).
+- Effect-off degrades instead of blacking out. `ShowInlineShelfScene` prefers the in-place host; if it
+  is ruled out, `ShowCouchScene` brings the tube up on the shelf drawn flat (`CouchCrt` → `Flat`,
+  which composites the captured chrome, unlike `Off`'s bare resolve). So on the Deck the effect-off
+  shelf still shows 3D via the tube fallback, and the tube (effect-on) is never disabled by the
+  in-place host's failure.
+- `ShelfSceneSupported` is now mode-aware — effect-on needs the tube, effect-off takes the in-place
+  host *or* the tube fallback — and drives the flat-covers fallback. `IsShelfTubeActive` (the couch
+  root's transparent-background gate) is true only when the tube actually draws the shelf: effect-on,
+  or the effect-off fallback. The in-place host sits in the slot and does not capture the root.
+
+Also hardened the init watchdog (`MediaShelf3DHost`): a single 4-second timeout is no longer taken as
+proof the platform cannot render. The scene is rebuilt and given another attempt
+(`MaxInitializationAttempts`), and only a timeout that repeats across the whole budget reports the
+failure. This mirrors the render loop's existing transient-fault handling (see 2026-08-15) on the
+initialization path, and covers a driver that is merely slow to hand out its first context.
+
+Not verified on the Deck (no device here). Residual risk: switching modes creates/destroys a GL
+context (the two hosts are mutually exclusive), so if the Deck's failure is that *any* second context
+in a session cannot come up — not just the in-place host — the tube fallback would also fail and
+effect-off would show flat covers there. Distinguishing that needs the Deck's log line
+("could not start; falling back…"); if it shows a hard second-context limit, the single-renderer
+merge (never recreates a context) is the fallback design.
+
+## 2026-08-16 — The post-exit save sync is non-blocking
+
+The launch flow syncs saves twice: once before the emulator starts (download the newest save so you
+play the right one) and once after it exits (upload what you just played). Both raised the same modal
+grid-covering panel (`ShowBlockingLaunchSaveSync`), so on exit the whole desktop library was hidden
+behind a scrim until the upload finished — the covers appeared to "drop" every time you closed a game.
+
+Only the pre-launch pass genuinely blocks: the emulator cannot start until the download lands. On
+exit the player is back in the library and free to browse while the upload runs in the background.
+So `IsBlockingLaunchSaveSync` now tracks the pre-launch phase alone, and only it raises the modal
+panel / suppresses the couch corner toast. The post-exit pass keeps `IsSyncingSavesForLaunch` true
+(the lifecycle flag, still used for input suspension and the shelf toast) but leaves the grid visible,
+reporting progress through the ordinary non-modal status toast instead.
+
+## 2026-08-16 — Steam Deck "no 3D/CRT": make the failure diagnosable, and stop the watchdog defeating a slow cold start
+
+The couch shelf shows no 3D models and no CRT effect on the Steam Deck while Windows works. `CrtScreenEffect`
+defaults on and the Deck boots into Gamepad mode, so at launch only the *tube* renderer runs — a single GL
+context. "No 3D at all" therefore means the tube's very first GL init is not completing, and the flat-cover
+fallback makes it look intentional. An adversarial review left three live causes that the code could not tell
+apart: **(a)** Avalonia's default X11 backend is GLX-first (`X11Platform` selects `[Glx, Software]`, EGL never
+tried) and a GLX/shared-context failure under gamescope can leave `OpenGlControlBase` with no context, silently
+(the macOS-Metal shape, `Program.cs`); **(b)** a slow Mesa cold start — `MediaShellRenderer.Create` links five
+shader programs and bakes a six-face environment cubemap synchronously inside `OnOpenGlInit` — overrunning the
+4s watchdog; **(g)** the desktop-GLSL path (only exercised on macOS today) failing to compile on Mesa. The
+proposed X11 EGL fix addresses (a)/(g) but not (b), and the app's own log could not distinguish (a) from (b),
+because on the silent path `OnOpenGlInit` is never called and only the watchdog reacts.
+
+Rather than guess, this change makes the next Deck launch decide it, and fixes the one cause we could confirm:
+
+- **Bridge Avalonia's framework log into `Logs/`** (`AvaloniaFileLogSink`, installed in `App` right after the
+  bootstrapper). `.LogToTrace()` writes to `System.Diagnostics.Trace`, which has *no listener* in a Steam Game
+  Mode AppImage — so Avalonia's own GL-init diagnosis was being discarded on the exact device we needed it from.
+  Filtered to Error-anywhere plus Information+ for rendering/platform areas to keep the file readable.
+- **Instrument the shelf's GL init** (`MediaShelf3DControl.OnOpenGlInit`): an entry line proves the framework
+  handed the control a context (its absence ⇒ candidate (a)), the elapsed ms to build the renderer separates a
+  slow cold start (b) from an unsupported surface, and the GL vendor/renderer/version/GLSL strings identify the
+  stack (Mesa/RADV vs ANGLE) and settle (g).
+- **Replace the watchdog's retry-by-teardown with one generous 10s deadline** (`MediaShelf3DHost`). PR #132's
+  retry rebuilt the scene on a 4s timeout (`MaxInitializationAttempts=2`), which *restarts* the same cold GL
+  start from zero — splitting the budget into short windows that must each independently beat 4s can only fail a
+  slow-but-capable driver that one long wait would have rendered. The render-loop analogy it cited is wrong: the
+  render loop keeps the *same* context; teardown discards it. A single long deadline covers a slow Mesa cold
+  start and still expires (later, not wrongly) if the context genuinely never comes.
+
+Deliberately **not** done here: forcing EGL on X11. It is the likely fix for candidate (a) and would need
+`X11PlatformOptions { RenderingMode = [Egl, Glx, Software] }`, but it migrates the whole Linux fleet onto the
+GLES/`Es300` shader path and does nothing for (b). Gated on a Deck log from the instrumentation above — if it
+shows no "Shelf GL context acquired" line, EGL is next; if it shows a slow-but-successful init, the 10s deadline
+already fixed it; if it shows a shader-compile throw, that is (g). Not verified on a Deck (no device here).
+## 2026-08-16 — The web cover search is now controller-native, reversing the Set-cover handoff
+
+The previous entry deferred making the DuckDuckGo cover search controller-native; that is now done, so
+in Gamepad mode "Set cover" no longer hands off to Desktop for the search. Choosing a game's cover
+opens `GamepadOverlayKind.CoverSearch`, a controller-native overlay that reuses the shared
+`CoverSearchViewModel` behind a thin D-pad focus wrapper (`GamepadCoverSearchViewModel`) — the same
+pattern the ScreenScraper scraper overlay uses. Up/Down move a ring across the query field, Search,
+the cover tiles, and "Choose a file"; A activates the focused one; B backs out to the game Actions.
+The query field takes real keyboard focus so the Steam/OS on-screen keyboard types into it, mirroring
+the scraper's Search field. On open the overlay auto-searches with the game's title, so the common
+case (accept a good cover) is a couple of presses.
+
+`MainViewModel` builds the picker from the injected `IGameArtworkSearchProvider` (the same
+`DuckDuckGoArtworkSearchProvider` instance the Desktop dialog uses) and the artwork downloader, routes
+controller input through a dedicated `DispatchCoverSearchOverlayAction`, and imports the chosen cover
+through the extracted `ImportPickedCoverAsync` that the Desktop "Set cover" path also now calls. The
+picker is disposed on close; the downloaded staging file it hands back survives until the import
+consumes and deletes it. `CoverSearchViewModel.Dispose` is now idempotent because the wrapper is a
+second owner in this flow.
+
+Two things deliberately still hand off to Desktop: choosing a **local file** (the OS file picker is
+genuinely not controller-safe — the overlay's "Choose a file" target opens the existing
+`CoverDesktopHandoff`), and the whole flow when web image search is turned off in Settings (there is
+nothing to search, so "Set cover" goes straight to the handoff). As with the rest of the Gamepad
+shell, the final controller *feel* (focus hand-off to the Steam keyboard, tile scrolling on a real
+Deck) needs on-device acceptance that the headless view-model and snapshot tests cannot cover; those
+tests exercise the focus model, the open/back/import routing, and the enabled/disabled fork.

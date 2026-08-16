@@ -72,7 +72,7 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
                 Path.GetFileName(game.Path),
                 RomSize: 0,
                 Serial: serial,
-                Language: settings.PreferredLanguage);
+                Language: ScreenScraperMediaProfile.PreferredLanguage);
             matchMethod = GameProviderMatchMethod.Serial;
             evidenceValue = serial;
             fingerprintStatus = null;
@@ -87,7 +87,7 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
                 profile.ProviderSystemId,
                 fileName,
                 RomSize: 0,
-                Language: settings.PreferredLanguage,
+                Language: ScreenScraperMediaProfile.PreferredLanguage,
                 AllowFileNameMatch: true);
             matchMethod = GameProviderMatchMethod.FileName;
             evidenceValue = fileName;
@@ -111,7 +111,7 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
                 evidence.Crc32,
                 evidence.Md5,
                 evidence.Sha1,
-                Language: settings.PreferredLanguage);
+                Language: ScreenScraperMediaProfile.PreferredLanguage);
             matchMethod = GameProviderMatchMethod.Sha1;
             evidenceValue = evidence.Sha1;
             fingerprintStatus = fingerprint.Status;
@@ -128,7 +128,7 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         }
 
         return await BuildPreviewAsync(
-            game, profile, response.Data!, settings, matchMethod, evidenceValue, fingerprintStatus,
+            game, profile, response.Data!, matchMethod, evidenceValue, fingerprintStatus,
             response.Quota, cancellationToken);
     }
 
@@ -181,7 +181,7 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
                 Path.GetFileName(game.Path),
                 RomSize: 0,
                 ProviderGameId: providerGameId,
-                Language: settings.PreferredLanguage),
+                Language: ScreenScraperMediaProfile.PreferredLanguage),
             cancellationToken);
         if (!response.IsSuccess)
         {
@@ -190,7 +190,7 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         }
 
         return await BuildPreviewAsync(
-            game, profile, response.Data!, settings, GameProviderMatchMethod.UserSelectedTitleSearch,
+            game, profile, response.Data!, GameProviderMatchMethod.UserSelectedTitleSearch,
             providerGameId, fingerprintStatus: null, response.Quota, cancellationToken);
     }
 
@@ -198,7 +198,6 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         Game game,
         ScreenScraperSystemProfile profile,
         ScreenScraperGameInfo providerGame,
-        ScreenScraperSettings settings,
         GameProviderMatchMethod matchMethod,
         string? evidenceValue,
         ScreenScraperFingerprintStatus? fingerprintStatus,
@@ -219,8 +218,8 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
             fetchedAt,
             null);
         var metadata = ScreenScraperMetadataMapper.MapMetadata(
-            game.Id, profile.ProviderSystemId, providerGame, settings, fetchedAt);
-        var media = ScreenScraperMetadataMapper.SelectMedia(providerGame, settings);
+            game.Id, profile.ProviderSystemId, providerGame, fetchedAt);
+        var media = ScreenScraperMetadataMapper.SelectMedia(providerGame);
         var existingDetails = await Task.Run(() => _details.GetDetails(game.Id), cancellationToken);
         return new ScreenScraperPreviewResult(
             ScreenScraperPreviewStatus.Success,

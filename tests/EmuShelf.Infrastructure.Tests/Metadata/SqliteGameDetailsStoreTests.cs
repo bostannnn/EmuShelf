@@ -244,6 +244,34 @@ public class SqliteGameDetailsStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void ProviderMatch_RoundTripsCoverageComplete_AndDefaultsToFalse()
+    {
+        var game = AddGame("Coverage.iso");
+
+        // Default (omitted) is incomplete, so an upgraded database never skips existing matches.
+        _details.UpsertProviderMatch(MatchWithCoverage(game.Id, null));
+        Assert.False(Assert.Single(_details.GetDetails(game.Id).ProviderMatches).CoverageComplete);
+
+        // A coverage-complete scrape persists and reads back true.
+        _details.UpsertProviderMatch(MatchWithCoverage(game.Id, true));
+        Assert.True(Assert.Single(_details.GetDetails(game.Id).ProviderMatches).CoverageComplete);
+
+        // A later partial scrape can drop it back to false (the game gained a newly-offered gap).
+        _details.UpsertProviderMatch(MatchWithCoverage(game.Id, false));
+        Assert.False(Assert.Single(_details.GetDetails(game.Id).ProviderMatches).CoverageComplete);
+    }
+
+    private static GameProviderMatch MatchWithCoverage(long gameId, bool? coverageComplete) =>
+        coverageComplete is null
+            ? new GameProviderMatch(
+                gameId, "screenscraper", "58", 1, "100", "200",
+                GameProviderMatchMethod.Sha1, "ABC123", GameMetadataStatus.Matched, DateTimeOffset.UtcNow, null)
+            : new GameProviderMatch(
+                gameId, "screenscraper", "58", 1, "100", "200",
+                GameProviderMatchMethod.Sha1, "ABC123", GameMetadataStatus.Matched, DateTimeOffset.UtcNow, null,
+                coverageComplete.Value);
+
+    [Fact]
     public void RichDetails_CascadeWhenLibraryRowIsRemoved()
     {
         var game = AddGame("Cascade.iso");

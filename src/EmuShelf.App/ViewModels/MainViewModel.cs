@@ -85,6 +85,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IGameScrapeApplicationService? _scrapeApply;
     private readonly IScreenScraperBatchService? _scrapeBatch;
     private readonly IRemoteArtworkDownloader? _artworkDownloader;
+    private readonly IGameArtworkSearchProvider? _artworkSearch;
     private readonly ISettingsService? _settingsService;
     private readonly IRetroAchievementsMatchingService? _retroMatching;
     private readonly IRetroAchievementsProgressService? _retroProgress;
@@ -163,21 +164,46 @@ public partial class MainViewModel : ViewModelBase
     public BulkObservableCollection<GameViewModel> Games { get; } = [];
 
     /// <summary>
-    /// True until the couch shelf's shared 3D scene is ruled out, after which every game keeps its
-    /// flat cover. Latches once per session: a GL context that failed to come up will not come up later.
-    /// </summary>
-    private bool _shelfHeroSupported = true;
-
-    /// <summary>Whether the shared OpenGL shelf scene is available for this session.</summary>
-    public bool ShelfSceneSupported => _shelfHeroSupported;
-
-    /// <summary>
-    /// Sends the shelf back to flat covers for the rest of the session.
+    /// Whether the effect-on tube renderer can bring up GL this session. Latches off once ruled out:
+    /// a context that failed to come up will not come up later.
     /// </summary>
     /// <remarks>
-    /// Called by the view when <c>MediaShelf3DControl</c> reports it could not bring up a GL context.
-    /// Games realized later pick this up through <see cref="ApplyShelfHeroSupport"/>, so a scope
-    /// switch after the failure does not quietly re-enable a hero that cannot render.
+    /// Kept separate from the effect-off in-place host's support (<see cref="InlineSceneSupported"/>)
+    /// so one path's GL failure never disables the other. Collapsing the two onto one flag is the bug
+    /// that turned an effect-off failure into a whole shelf of flat covers for the session, tube
+    /// included — see DECISIONS 2026-08-16.
+    /// </remarks>
+    private bool _shelfHeroSupported = true;
+
+    /// <summary>
+    /// Whether the effect-off in-place host can bring up GL this session. Independent of the tube:
+    /// when it fails, the effect-off shelf falls back to the tube drawn flat, not to flat covers.
+    /// </summary>
+    private bool _inlineShelfSupported = true;
+
+    /// <summary>The effect-on/full-bleed tube renderer's own GL support (its host's IsSceneSupported).</summary>
+    public bool TubeSceneSupported => _shelfHeroSupported;
+
+    /// <summary>The effect-off in-place host's own GL support (its host's IsSceneSupported).</summary>
+    public bool InlineSceneSupported => _inlineShelfSupported;
+
+    /// <summary>
+    /// Whether a 3D renderer draws the shelf in the current mode; the flat 2D fallback shows when it
+    /// does not. Mode-aware: effect-on needs the tube, effect-off takes the in-place host or, if that
+    /// could not start, the tube drawn flat.
+    /// </summary>
+    public bool ShelfSceneSupported =>
+        CrtScreenEffect ? _shelfHeroSupported : (_inlineShelfSupported || _shelfHeroSupported);
+
+    /// <summary>
+    /// Rules out the effect-on tube renderer for the session.
+    /// </summary>
+    /// <remarks>
+    /// Called by the view when the tube's <c>MediaShelf3DControl</c> reports it could not bring up a
+    /// GL context. Games realized later pick this up through <see cref="ApplyShelfHeroSupport"/>, so a
+    /// scope switch after the failure does not quietly re-enable a hero that cannot render. Does not
+    /// touch the in-place host's support — if only the tube is gone, the effect-off shelf can still
+    /// render 3D through the in-place host.
     /// </remarks>
     /// <param name="reason">Why the GPU path is unavailable, for the log. A silent revert to flat
     /// covers is indistinguishable from the feature never having been built, and on a machine we
@@ -191,19 +217,49 @@ public partial class MainViewModel : ViewModelBase
         }
 
         _logger.Warning(
-            "The couch shelf's 3D scene could not start; falling back to flat covers.", reason);
+            "The couch shelf's effect-on tube could not start; falling back for that mode.", reason);
 
         _shelfHeroSupported = false;
         OnPropertyChanged(nameof(ShelfSceneSupported));
-        // Neither the tube nor the in-place scene can run, so the flat 2D fallback has to take the
-        // backdrop back and the in-place host has to disappear.
+        OnPropertyChanged(nameof(TubeSceneSupported));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
-        OnPropertyChanged(nameof(ShowInlineShelfScene));
-        OnPropertyChanged(nameof(IsShelfTubeActive));
+        // Only games flip to flat covers, and only when the current mode has no 3D renderer left; the
+        // per-game flag itself is keyed on the tube, which is correct because the flat strip only
+        // shows once the tube is gone (effect-on) or both renderers are gone (effect-off).
         foreach (var game in Games)
         {
             game.ShelfHeroSupported = false;
         }
+    }
+
+    /// <summary>
+    /// Rules out the effect-off in-place host for the session, leaving the tube untouched.
+    /// </summary>
+    /// <remarks>
+    /// Called by the view when the in-place host reports it could not bring up a GL context — the
+    /// case that, collapsed onto the tube's flag, produced the Steam Deck blackout. The effect-off
+    /// shelf now falls back to the tube drawn flat (<see cref="ShowCouchScene"/> takes the shelf when
+    /// the in-place host is out), so the models stay 3D; the tube, and therefore the effect-on mode,
+    /// is never disabled by this.
+    /// </remarks>
+    public void DisableInlineShelf(Exception? reason = null)
+    {
+        if (!_inlineShelfSupported)
+        {
+            return;
+        }
+
+        _logger.Warning(
+            "The couch shelf's effect-off in-place scene could not start; using the tube drawn flat.",
+            reason);
+
+        _inlineShelfSupported = false;
+        OnPropertyChanged(nameof(InlineSceneSupported));
+        OnPropertyChanged(nameof(ShowInlineShelfScene));
+        OnPropertyChanged(nameof(ShowCouchScene));
+        OnPropertyChanged(nameof(IsShelfTubeActive));
+        OnPropertyChanged(nameof(ShelfSceneSupported));
+        OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
     }
 
     /// <summary>Applies the session's hero support to a freshly built game list.</summary>
@@ -338,7 +394,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(ShowShelfTube));
-        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowCouchScene));
         OnPropertyChanged(nameof(ShowInlineShelfScene));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         OnPropertyChanged(nameof(IsShelfTubeActive));
@@ -743,7 +799,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(ShowShelfTube));
-        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowCouchScene));
         OnPropertyChanged(nameof(ShowInlineShelfScene));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         OnPropertyChanged(nameof(IsShelfTubeActive));
@@ -765,10 +821,17 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    // True only while a launch/exit cloud save sync is actually running. Grid/spotlight show the
-    // large centered panel; physical-shelf mode keeps the scene visible and uses its progress toast.
+    // True only while a launch/exit cloud save sync is actually running. Physical-shelf mode keeps
+    // the scene visible and uses its progress toast in both phases.
     [ObservableProperty]
     public partial bool IsSyncingSavesForLaunch { get; set; }
+
+    // True only for the pre-launch phase of that sync — the one that must finish before the emulator
+    // starts, so it holds the grid behind the large centered panel. The post-exit phase leaves this
+    // false: the player is back in the library and free to browse while the upload finishes in the
+    // background, with only the ordinary status toast to say so.
+    [ObservableProperty]
+    public partial bool IsBlockingLaunchSaveSync { get; set; }
 
     [ObservableProperty]
     public partial ThemePreference CurrentTheme { get; set; }
@@ -783,46 +846,55 @@ public partial class MainViewModel : ViewModelBase
     public partial bool CrtScreenEffect { get; set; }
 
     /// <summary>
-    /// The presentation the couch screen is handed, or <see cref="CrtPresentation.Off"/>.
+    /// The presentation the one couch renderer is handed: the tube when the effect is on, a flat
+    /// compositor when it is off.
     /// </summary>
     /// <remarks>
     /// The individual parameters are fixed at the shipped defaults; this property is only the on/off
     /// switch over the top of them. If per-parameter controls are ever wanted, this is where a tuned
     /// presentation would come from instead.
+    ///
+    /// Off maps to <see cref="CrtPresentation.Flat"/>, not <see cref="CrtPresentation.Off"/>: the
+    /// shelf keeps a single GL renderer across the toggle rather than standing up a second one, so an
+    /// effect-off shelf still has to composite the captured rail, title and overlays over the media —
+    /// which <see cref="CrtPresentation.Flat"/> does (an exact composite with every curve and scanline
+    /// at zero) and <see cref="CrtPresentation.Off"/>'s bare resolve blit does not. Reusing the one
+    /// context is what survives a driver (the Steam Deck's) that refuses to bring up a second — see
+    /// DECISIONS 2026-08-16.
     /// </remarks>
     public CrtPresentation CouchCrt =>
-        CrtScreenEffect ? CrtPresentation.Default : CrtPresentation.Off;
+        CrtScreenEffect ? CrtPresentation.Default : CrtPresentation.Flat;
 
     /// <summary>
-    /// The full-bleed capture tube is on screen. Every couch layout, not just the shelf.
+    /// The full-bleed capture tube is on screen.
     /// </summary>
     /// <remarks>
-    /// The CRT is a property of the television the couch UI is being shown on, not of one layout
-    /// inside it — the grid and the spotlight are just as much "a console menu on a TV" as the shelf
-    /// is. Desktop mode is deliberately excluded: it is a mouse-driven library window, and a warped,
-    /// scanned one would be unusable rather than nostalgic.
+    /// The tube is up over every couch layout when the effect is on, because the CRT is a property of
+    /// the television the couch UI is shown on, not of one layout inside it — the grid and the spotlight
+    /// are just as much "a console menu on a TV" as the shelf is. Desktop mode is deliberately
+    /// excluded: it is a mouse-driven library window, and a warped, scanned one would be unusable.
     ///
-    /// This is now purely the CRT switch. The window-covering tube exists to capture the couch UI
-    /// and warp it, which is only wanted when the effect is on; with it off the shelf is drawn by an
-    /// in-place scene (<see cref="ShowInlineShelfScene"/>) that the couch UI lays out around normally,
-    /// so nothing has to be captured or composited and the scene idles when the shelf is still.
+    /// With the effect off the tube is normally idle — the effect-off shelf is drawn by the in-place
+    /// host (<see cref="ShowInlineShelfScene"/>), which keeps the rail, overlays and toasts as live
+    /// Avalonia around it. The one exception is the fallback: if that in-place host cannot bring up GL
+    /// (the Steam Deck), the tube takes the effect-off shelf drawn flat (<see cref="CouchCrt"/>), so
+    /// the models stay 3D instead of dropping to flat covers. See DECISIONS 2026-08-16.
     /// </remarks>
-    public bool ShowCouchTube => IsGamepadMode && CrtScreenEffect;
+    public bool ShowCouchScene =>
+        IsGamepadMode && (CrtScreenEffect || (IsGamepadShelfView && !_inlineShelfSupported));
 
     /// <summary>
-    /// The in-place 3D shelf, drawn only when the effect is off.
+    /// The in-place 3D shelf is on screen: the preferred effect-off renderer.
     /// </summary>
     /// <remarks>
-    /// With the tube off the shelf cannot be the window-covering, self-compositing scene the tube is:
-    /// there is nothing to paint the rail, title and overlays back over it, so full-bleed it would
-    /// float on top of them. This host instead sits inside the shelf's own slot in the couch layout,
-    /// where Avalonia stacks the rail above it, the title below it and any overlay over it for free —
-    /// no capture, and a redraw only when the shelf itself changes. It renders opaque over its own
-    /// resolved backdrop so it does not depend on the GL surface being alpha-composited, which is the
-    /// assumption the full-bleed path made and the one that differs across platforms.
+    /// It sits inside the shelf's own slot rather than covering the window, so the couch UI stacks
+    /// around it — rail above, title below, any overlay over it — as live Avalonia, with no capture and
+    /// a redraw only when the shelf itself moves. That is why the effect-off shelf prefers it over the
+    /// tube drawn flat. If it cannot bring up GL its support latches off (<see cref="DisableInlineShelf"/>)
+    /// and <see cref="ShowCouchScene"/> takes over with the tube.
     /// </remarks>
     public bool ShowInlineShelfScene =>
-        IsGamepadMode && IsGamepadShelfView && ShelfSceneSupported && !CrtScreenEffect;
+        IsGamepadMode && IsGamepadShelfView && !CrtScreenEffect && _inlineShelfSupported;
 
     /// <summary>The presentation the in-place shelf is handed: a flat, opaque compositor — no capture,
     /// no distortion — so the effect-off shelf is a genuine hard-off rather than a quieter tube.</summary>
@@ -840,28 +912,31 @@ public partial class MainViewModel : ViewModelBase
     public IReadOnlyList<GameViewModel>? ShelfSceneItems => IsGamepadShelfView ? Games : null;
 
     /// <summary>
-    /// The tube is both on screen and actually distorting.
+    /// The full-bleed tube is drawing over the shelf.
     /// </summary>
     /// <remarks>
-    /// Gates the couch root's transparent background: only when the tube captures that root and
-    /// composites it back over the scene must the root stop painting its own opaque fill, or the
-    /// capture returns a solid sheet with the shelf hidden behind it. The in-place effect-off scene
-    /// does not capture the root, so the root keeps its ordinary background there.
+    /// Gates the couch root's transparent background: the tube captures that root and composites it
+    /// back over the 3D media, so the root must stop painting its own opaque fill or the capture
+    /// returns a solid sheet with the shelf hidden behind it. True on the shelf when the effect is on,
+    /// and in the effect-off fallback where the tube stands in for the in-place host. False for the
+    /// in-place host, which sits in the slot and does not capture the root — there the root keeps its
+    /// ordinary opaque background, which is also what the flat fallback draws on.
     /// </remarks>
     public bool IsShelfTubeActive =>
-        IsGamepadMode && CrtScreenEffect && GamepadLayout == GamepadLibraryLayout.Shelf;
+        IsGamepadMode && IsGamepadShelfView && (CrtScreenEffect || !_inlineShelfSupported);
 
-    /// <summary>The shelf paints its own flat backdrop only when there is no GPU scene at all; both
-    /// the tube and the effect-off in-place scene resolve the couch backdrop themselves and draw
-    /// opaque over it, and the couch root's own library fill covers the bands around the media.</summary>
+    /// <summary>The shelf paints its own flat backdrop only when the current mode has no 3D renderer.
+    /// When one is up — the tube, or the in-place host — it resolves the couch backdrop itself and
+    /// draws opaque over it, and the couch root's own library fill covers the bands around the media.</summary>
     public bool ShowShelfFlatBackdrop => !ShelfSceneSupported;
 
     partial void OnCrtScreenEffectChanged(bool value)
     {
         OnPropertyChanged(nameof(CouchCrt));
-        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowCouchScene));
         OnPropertyChanged(nameof(ShowInlineShelfScene));
         OnPropertyChanged(nameof(IsShelfTubeActive));
+        OnPropertyChanged(nameof(ShelfSceneSupported));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         _ = _themeService.SetCrtScreenEffectAsync(value);
     }
@@ -923,6 +998,9 @@ public partial class MainViewModel : ViewModelBase
     public partial GamepadScraperViewModel? GamepadScraperDetails { get; set; }
 
     [ObservableProperty]
+    public partial GamepadCoverSearchViewModel? GamepadCoverSearchDetails { get; set; }
+
+    [ObservableProperty]
     public partial GamepadBatchScraperViewModel? GamepadBatchScraperDetails { get; set; }
 
     [ObservableProperty]
@@ -936,6 +1014,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadRenameOpen => GamepadOverlay == GamepadOverlayKind.Rename;
     public bool IsGamepadRemoveOpen => GamepadOverlay == GamepadOverlayKind.RemoveConfirmation;
     public bool IsGamepadCoverHandoffOpen => GamepadOverlay == GamepadOverlayKind.CoverDesktopHandoff;
+    public bool IsGamepadCoverSearchOpen => GamepadOverlay == GamepadOverlayKind.CoverSearch;
     public bool IsGamepadScraperOpen => GamepadOverlay == GamepadOverlayKind.Scraper;
     public bool IsGamepadBatchScraperOpen => GamepadOverlay == GamepadOverlayKind.BatchScraper;
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
@@ -970,13 +1049,13 @@ public partial class MainViewModel : ViewModelBase
     public bool UsesGamepadDefaultOverlayHints => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
+         GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
          GamepadOverlayKind.RemoveConfirmation or GamepadOverlayKind.DesktopModeConfirmation or
          GamepadOverlayKind.QuitConfirmation);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
          GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.Hotkeys or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Hotkeys or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     // Confirmations render their own centred title inside the dialog card, so the chrome header title
     // is suppressed for them (it would otherwise pin a second title to the top-left of the sheet).
@@ -992,6 +1071,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
         GamepadOverlayKind.RemoveConfirmation => "Remove game?",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
+        GamepadOverlayKind.CoverSearch => FocusedGame is null ? "Set cover" : $"Set cover — {FocusedGame.DisplayTitle}",
         GamepadOverlayKind.Scraper => "Scrape with ScreenScraper",
         GamepadOverlayKind.BatchScraper => "Scrape games with ScreenScraper",
         GamepadOverlayKind.SystemMenu => "Menu",
@@ -1197,12 +1277,14 @@ public partial class MainViewModel : ViewModelBase
     public bool IsRecentlyPlayedSelected => CurrentLibraryScope == LibraryScope.RecentlyPlayed;
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusText);
 
-    /// <summary>Drives the Gamepad corner toast. Physical-shelf launch sync stays non-modal so the
-    /// cartridge choreography remains visible; the other couch layouts retain their large panel.</summary>
+    /// <summary>Drives the Gamepad corner toast. Only the blocking pre-launch sync trades the toast
+    /// for the large centered panel, and only off the physical shelf — the shelf keeps the toast so
+    /// the cartridge choreography stays visible, and the non-blocking post-exit sync keeps it too so
+    /// the player can browse while the upload finishes.</summary>
     public bool ShowGamepadStatusToast =>
-        HasStatusMessage && (!IsSyncingSavesForLaunch || ShowGamepadShelf);
+        HasStatusMessage && (!IsBlockingLaunchSaveSync || ShowGamepadShelf);
 
-    public bool ShowBlockingLaunchSaveSync => IsSyncingSavesForLaunch && !ShowGamepadShelf;
+    public bool ShowBlockingLaunchSaveSync => IsBlockingLaunchSaveSync && !ShowGamepadShelf;
 
     /// <summary>Lets the toast mark a failure without the text having to say "failed".</summary>
     public bool IsStatusError => StatusSeverity == StatusSeverity.Error;
@@ -1298,6 +1380,7 @@ public partial class MainViewModel : ViewModelBase
         IGameScrapeApplicationService? scrapeApply = null,
         IScreenScraperBatchService? scrapeBatch = null,
         IRemoteArtworkDownloader? artworkDownloader = null,
+        IGameArtworkSearchProvider? artworkSearch = null,
         ISettingsService? settingsService = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
         IGameDetailsStore? gameDetails = null,
@@ -1314,6 +1397,7 @@ public partial class MainViewModel : ViewModelBase
         _scrapeApply = scrapeApply;
         _scrapeBatch = scrapeBatch;
         _artworkDownloader = artworkDownloader;
+        _artworkSearch = artworkSearch;
         _settingsService = settingsService;
         _library = library;
         _scanner = scanner;
@@ -1711,6 +1795,9 @@ public partial class MainViewModel : ViewModelBase
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
         NotifySaveSyncPresentationChanged();
 
+    partial void OnIsBlockingLaunchSaveSyncChanged(bool value) =>
+        NotifySaveSyncPresentationChanged();
+
     private void NotifySaveSyncPresentationChanged()
     {
         OnPropertyChanged(nameof(ShowGamepadStatusToast));
@@ -1898,11 +1985,63 @@ public partial class MainViewModel : ViewModelBase
     {
         if (IsGamepadMode)
         {
+            // Web cover search is controller-native; a local-file pick still needs the OS picker, so it
+            // hands off to Desktop. When web search is off (or unavailable) there is nothing to search,
+            // so go straight to the handoff.
+            if (FocusedGame is { } game && CanGamepadCoverSearch)
+                return OpenGamepadCoverSearchAsync(game);
+
             OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff);
             return Task.CompletedTask;
         }
 
         return SetGameCoverAsync(FocusedGame);
+    }
+
+    /// <summary>Whether the controller-native web cover search can open: a search provider and
+    /// downloader are wired, and the user has left web image search on in Settings.</summary>
+    private bool CanGamepadCoverSearch =>
+        _artworkSearch is not null &&
+        _artworkDownloader is not null &&
+        (_settingsService?.Load().Scraping.WebImageSearchEnabled ?? true);
+
+    private Task OpenGamepadCoverSearchAsync(GameViewModel game)
+    {
+        if (_artworkSearch is null || _artworkDownloader is null)
+        {
+            OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff);
+            return Task.CompletedTask;
+        }
+
+        var preferredAspectRatio = _systemsById.TryGetValue(game.SystemId, out var system)
+            ? system.CoverAspectRatio
+            : game.CoverAspectRatio;
+        // The local-file pick is not passed through here: choosing a file needs the OS picker, so the
+        // overlay's "Choose a file" target hands off to Desktop instead of calling this.
+        var search = new CoverSearchViewModel(
+            new GameCoverPickerContext(game.DisplayTitle, game.SystemName, preferredAspectRatio),
+            _artworkSearch,
+            _artworkDownloader,
+            () => Task.FromResult<string?>(null),
+            _logger);
+        search.CloseRequested += picked => OnGamepadCoverPicked(game, picked);
+        var details = new GamepadCoverSearchViewModel(
+            search,
+            () => OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff));
+
+        OpenGamepadOverlay(GamepadOverlayKind.CoverSearch);
+        GamepadCoverSearchDetails = details;
+        return details.LoadAsync();
+    }
+
+    // Raised when the wrapped picker resolves — either a downloaded web cover (import it) or a cancel
+    // (null). Closing the overlay disposes the picker; the downloaded staging file it handed us
+    // survives until ImportPickedCoverAsync consumes and deletes it.
+    private void OnGamepadCoverPicked(GameViewModel game, PickedGameCover? picked)
+    {
+        CloseGamepadOverlay();
+        if (picked is not null)
+            _ = ImportPickedCoverAsync(game, picked);
     }
 
     [RelayCommand]
@@ -2165,6 +2304,7 @@ public partial class MainViewModel : ViewModelBase
         }
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
         if (closingOverlay == GamepadOverlayKind.Settings)
@@ -2226,7 +2366,8 @@ public partial class MainViewModel : ViewModelBase
             GamepadOverlayKind.Rename or
             GamepadOverlayKind.DiscSelection or
             GamepadOverlayKind.RemoveConfirmation or
-            GamepadOverlayKind.CoverDesktopHandoff => GamepadOverlayKind.Actions,
+            GamepadOverlayKind.CoverDesktopHandoff or
+            GamepadOverlayKind.CoverSearch => GamepadOverlayKind.Actions,
             // Desktop-mode confirm returns to whichever overlay opened it, not always the System Menu.
             GamepadOverlayKind.DesktopModeConfirmation => _desktopModeConfirmationParent,
             GamepadOverlayKind.QuitConfirmation => GamepadOverlayKind.SystemMenu,
@@ -2470,6 +2611,9 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadScraperOpen)
             return DispatchScraperOverlayAction(action);
 
+        if (IsGamepadCoverSearchOpen)
+            return DispatchCoverSearchOverlayAction(action);
+
         if (IsGamepadBatchScraperOpen)
             return DispatchBatchScraperOverlayAction(action);
 
@@ -2544,6 +2688,31 @@ public partial class MainViewModel : ViewModelBase
                 return true;
             case GamepadAction.Confirm:
                 GamepadScraperDetails?.Activate();
+                return true;
+            case GamepadAction.Cancel:
+                BackFromGamepadOverlayCommand.Execute(null);
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    private bool DispatchCoverSearchOverlayAction(GamepadAction action)
+    {
+        // Modal like the scraper: Up/Down move the ring across the query field, Search, the cover
+        // tiles, and "Choose a file"; A activates the focused one; B backs out. The query field takes
+        // real keyboard focus (via the view) so the Steam/OS on-screen keyboard types into it. Every
+        // other action is swallowed so it cannot leak to the library beneath.
+        switch (action)
+        {
+            case GamepadAction.NavigateUp:
+                GamepadCoverSearchDetails?.MoveFocus(-1);
+                return true;
+            case GamepadAction.NavigateDown:
+                GamepadCoverSearchDetails?.MoveFocus(1);
+                return true;
+            case GamepadAction.Confirm:
+                GamepadCoverSearchDetails?.Activate();
                 return true;
             case GamepadAction.Cancel:
                 BackFromGamepadOverlayCommand.Execute(null);
@@ -2735,6 +2904,7 @@ public partial class MainViewModel : ViewModelBase
 
         DisposeGamepadAchievementDetails();
         DisposeGamepadScraperDetails();
+        DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
         FocusedGamepadAchievement = null;
@@ -2767,6 +2937,7 @@ public partial class MainViewModel : ViewModelBase
                 break;
             case GamepadOverlayKind.Scraper:
             case GamepadOverlayKind.BatchScraper:
+            case GamepadOverlayKind.CoverSearch:
                 // These overlays render their own body and own their D-pad focus; no option list.
                 break;
             case GamepadOverlayKind.SystemMenu:
@@ -2929,6 +3100,17 @@ public partial class MainViewModel : ViewModelBase
             _ = ReloadGamesAsync();
     }
 
+    private void DisposeGamepadCoverSearchDetails()
+    {
+        if (GamepadCoverSearchDetails is not { } details)
+            return;
+
+        // The picked cover is imported by OnGamepadCoverPicked (which drives the grid tile update
+        // itself), so there is nothing to reload here — just tear down the wrapped picker.
+        details.Dispose();
+        GamepadCoverSearchDetails = null;
+    }
+
     private void DisposeGamepadBatchScraperDetails()
     {
         if (GamepadBatchScraperDetails is not { } details)
@@ -2963,6 +3145,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadRenameOpen));
         OnPropertyChanged(nameof(IsGamepadRemoveOpen));
         OnPropertyChanged(nameof(IsGamepadCoverHandoffOpen));
+        OnPropertyChanged(nameof(IsGamepadCoverSearchOpen));
         OnPropertyChanged(nameof(IsGamepadScraperOpen));
         OnPropertyChanged(nameof(IsGamepadBatchScraperOpen));
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
@@ -3524,7 +3707,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(ShowGamepadSpotlight));
         OnPropertyChanged(nameof(ShowGamepadShelf));
         OnPropertyChanged(nameof(ShowShelfTube));
-        OnPropertyChanged(nameof(ShowCouchTube));
+        OnPropertyChanged(nameof(ShowCouchScene));
         OnPropertyChanged(nameof(ShowInlineShelfScene));
         OnPropertyChanged(nameof(ShowShelfFlatBackdrop));
         OnPropertyChanged(nameof(IsShelfTubeActive));
@@ -4497,6 +4680,8 @@ public partial class MainViewModel : ViewModelBase
             LibrarySortColumn.Textures => By(g => g.TextureSortKey),
             LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
             LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),
+            LibrarySortColumn.Playtime => By(g => g.PlaytimeSortKey),
+            LibrarySortColumn.PlayCount => By(g => g.PlayCountSortKey),
             LibrarySortColumn.DateAdded => By(g => g.DateAddedSortKey),
             LibrarySortColumn.MetadataCompleteness => By(g => g.MetadataCompletenessSortKey),
             LibrarySortColumn.ArtworkCover => By(g => g.HasScrapedCover),
@@ -5404,8 +5589,9 @@ public partial class MainViewModel : ViewModelBase
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
+                    // Stamps last-played and increments the play count in one write.
                     await Task.Run(
-                        () => _library.SetLastPlayed(launchGame.Id, DateTimeOffset.UtcNow),
+                        () => _library.RecordLaunchStarted(launchGame.Id, DateTimeOffset.UtcNow),
                         cancellationToken);
                     recordedPlay = true;
                 });
@@ -5419,6 +5605,20 @@ public partial class MainViewModel : ViewModelBase
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
                 _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
+            // A tracked exit reports the emulator's runtime; accrue it as play time. Guarded and off the
+            // UI thread so a write failure can never turn a completed launch into a reported error. The
+            // Recently Played refresh in the finally then rebuilds the collection with the new total.
+            if (result is { ProcessExited: true, PlayDuration: { } playDuration })
+            {
+                try
+                {
+                    await Task.Run(() => _library.AddPlaytime(launchGame.Id, playDuration));
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error("Could not record playtime after a launch.", ex);
+                }
+            }
 
             CloudSaveSyncOutcome? afterSync = null;
             try
@@ -5529,6 +5729,9 @@ public partial class MainViewModel : ViewModelBase
             return null;
 
         IsSyncingSavesForLaunch = true;
+        // Only the pre-launch pass blocks the grid: the emulator cannot start until it finishes. The
+        // post-exit pass runs while the player browses, so it stays off the modal panel.
+        IsBlockingLaunchSaveSync = !afterExit;
         SetStatus(
             afterExit
                 ? $"{displayTitle} finished. Syncing saves…"
@@ -5581,6 +5784,7 @@ public partial class MainViewModel : ViewModelBase
         finally
         {
             IsSyncingSavesForLaunch = false;
+            IsBlockingLaunchSaveSync = false;
         }
     }
 
@@ -5893,6 +6097,16 @@ public partial class MainViewModel : ViewModelBase
         if (pickedCover is null)
             return;
 
+        await ImportPickedCoverAsync(game, pickedCover);
+    }
+
+    /// <summary>
+    /// Imports a chosen cover (a local file or a downloaded web image) into EmuShelf's own Covers/
+    /// store, refreshes the grid tile and cover projection, and removes the previous EmuShelf-owned
+    /// cover. Shared by the Desktop "Set cover" dialog and the Gamepad controller-native cover search.
+    /// </summary>
+    private async Task ImportPickedCoverAsync(GameViewModel game, PickedGameCover pickedCover)
+    {
         IsBusy = true;
         SetStatus($"Preparing cover for {game.DisplayTitle}…", StatusSeverity.Progress);
         var previousCoverPath = game.CoverPath;

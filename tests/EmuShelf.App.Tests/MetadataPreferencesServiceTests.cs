@@ -31,6 +31,25 @@ public class MetadataPreferencesServiceTests : IDisposable
         Assert.True(saved.AutomaticallyFetchMetadataAfterImport);
     }
 
+    [Fact]
+    public async Task WebImageSearch_DefaultsOn_AndPersistsWhenTurnedOff()
+    {
+        var paths = new AppPaths(_directory);
+        paths.EnsureDirectoriesExist();
+        var settings = new JsonSettingsService(paths);
+        var service = new MetadataPreferencesService(settings, settings.Load());
+
+        // Defaults on so the manual "Set cover" picker offers web search out of the box.
+        Assert.True(service.WebImageSearchEnabled);
+
+        await service.SaveWebImageSearchAsync(false, TestContext.Current.CancellationToken);
+
+        Assert.False(service.WebImageSearchEnabled);
+        Assert.False(settings.Load().Scraping.WebImageSearchEnabled);
+        // Turning web search off must not disturb the ScreenScraper connection flag.
+        Assert.False(settings.Load().Scraping.ScreenScraper.Enabled);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))
