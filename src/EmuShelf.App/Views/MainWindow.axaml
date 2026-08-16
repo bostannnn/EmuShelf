@@ -4520,6 +4520,84 @@
                                 </Panel>
                             </Grid>
                         </Grid>
+                        <!-- Controller-native web cover search: the shared CoverSearchViewModel behind a
+                             D-pad focus wrapper. Search web images and pick one; "Choose a file" hands
+                             off to Desktop for the OS file picker, which is not controller-safe. -->
+                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadCoverSearchOpen}">
+                            <Grid DataContext="{Binding GamepadCoverSearchDetails}"
+                                  x:DataType="vm:GamepadCoverSearchViewModel"
+                                  RowDefinitions="Auto,Auto,*,Auto">
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="0,0,0,10">
+                                    <TextBox Grid.Column="0" x:Name="GamepadCoverSearchBox"
+                                             Classes="gamepad-scraper-field"
+                                             Classes.focused="{Binding IsSearchFieldFocused}" FontSize="18"
+                                             Text="{Binding Search.SearchText, Mode=TwoWay}"
+                                             PlaceholderText="Game title" KeyDown="OnGamepadCoverSearchTextKeyDown" />
+                                    <Button Grid.Column="1" Classes="gamepad-modal-option" MinWidth="130"
+                                            Classes.focused="{Binding IsSearchFocused}"
+                                            HorizontalContentAlignment="Center"
+                                            Command="{Binding Search.SearchCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                            <TextBlock Text="Search" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+
+                                <StackPanel Grid.Row="1" Spacing="6" Margin="0,0,0,8">
+                                    <ProgressBar Height="2" IsIndeterminate="True" IsVisible="{Binding Search.IsBusy}" />
+                                    <TextBlock Text="{Binding Search.StatusText}" TextWrapping="Wrap"
+                                               IsVisible="{Binding Search.StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+
+                                <ScrollViewer Grid.Row="2" Classes="gamepad-scroll" VerticalScrollBarVisibility="Auto"
+                                              x:Name="GamepadCoverSearchScroller">
+                                    <ItemsControl ItemsSource="{Binding Search.Results}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:CoverSearchResultViewModel">
+                                                <Button Classes="gamepad-modal-option" Margin="6" Padding="6"
+                                                        Classes.focused="{Binding IsFocused}"
+                                                        Command="{Binding SelectCommand}">
+                                                    <StackPanel Spacing="4" Width="150">
+                                                        <Image Source="{Binding Preview}" Height="200" Stretch="Uniform" />
+                                                        <TextBlock Text="{Binding ResolutionText}" FontSize="11"
+                                                                   HorizontalAlignment="Center"
+                                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                        <TextBlock Text="{Binding SourceText}" FontSize="11"
+                                                                   HorizontalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <StackPanel Grid.Row="3" Spacing="10" Margin="0,10,0,0">
+                                    <Button Classes="gamepad-modal-option" HorizontalContentAlignment="Center"
+                                            Classes.focused="{Binding IsChooseLocalFocused}"
+                                            Command="{Binding ChooseLocalCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                            <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                            <TextBlock Text="Choose a file on Desktop instead" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                    <StackPanel Classes="gamepad-hint" Orientation="Horizontal" HorizontalAlignment="Center">
+                                        <Border Classes="gamepad-key action-a"><TextBlock Text="A" /></Border>
+                                        <TextBlock Text="Choose cover" Margin="0,0,14,0" />
+                                        <Border Classes="gamepad-key action-b"><TextBlock Text="B" /></Border>
+                                        <TextBlock Text="Back" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
                         <!-- Controller-native batch scraper: the shared GameBatchScraperViewModel with a
                              linear D-pad focus model. Configuring → determinate progress → summary. -->
                         <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadBatchScraperOpen}">
