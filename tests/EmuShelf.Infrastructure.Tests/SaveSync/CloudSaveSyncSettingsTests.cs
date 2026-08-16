@@ -238,4 +238,88 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         Assert.NotEqual(rclone, managed);
         Assert.Equal(rclone, rclone with { TransportKind = CloudTransportKind.Rclone });
     }
+
+    [Fact]
+    public void PerEmulatorOverride_IsIsolatedFromOtherEmulatorsOnTheSameSystem()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "duckstation", "/saves/duck")
+            .WithOverride("playstation", "retroarch", "/saves/ra");
+
+        Assert.Equal("/saves/duck", configuration.GetOverride("playstation", "duckstation"));
+        Assert.Equal("/saves/ra", configuration.GetOverride("playstation", "retroarch"));
+        // A per-emulator write never leaks onto the bare system-id key.
+        Assert.Null(configuration.GetOverride("playstation"));
+    }
+
+    [Fact]
+    public void PerEmulatorLocation_MovesTheWholeRecordTogether()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "retroarch", "/ra/saves")
+            .WithStateOverride("playstation", "retroarch", "/ra/states")
+            .WithOptionalContent("playstation", "retroarch", syncSaveStates: true)
+            .WithSyncFailure("playstation", "retroarch", "boom");
+
+        var location = configuration.GetLocation("playstation", "retroarch");
+        Assert.Equal("/ra/saves", location.DirectoryOverride);
+        Assert.Equal("/ra/states", location.StateDirectoryOverride);
+        Assert.True(location.SyncSaveStates);
+        Assert.Equal("boom", location.LastError);
+        // The other emulator on the same system is untouched.
+        Assert.Equal(new SaveLocationSettings(), configuration.GetLocation("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_ReKeysLegacyOverrideToTheActiveEmulatorAndKeepsTheLegacyEntry()
+    {
+        var legacy = new CloudSaveSyncSettings().WithOverride("playstation", "/saves/ps1");
+
+        var migrated = legacy.MigrateOverridesToPerEmulator(
+            new Dictionary<string, string> { ["playstation"] = "duckstation" });
+
+        Assert.Equal("/saves/ps1", migrated.GetOverride("playstation", "duckstation"));
+        Assert.Null(migrated.GetOverride("playstation", "retroarch"));
+        // The bare entry is retained so an older build still reads it (rollback safety).
+        Assert.Equal("/saves/ps1", migrated.GetOverride("playstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_PresenceWins_DoesNotOverwriteAnExplicitCompositeEntry()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "/legacy/ps1")
+            .WithOverride("playstation", "duckstation", "/explicit/duck");
+
+        var migrated = configuration.MigrateOverridesToPerEmulator(
+            new Dictionary<string, string> { ["playstation"] = "duckstation" });
+
+        Assert.Equal("/explicit/duck", migrated.GetOverride("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_IsIdempotent()
+    {
+        var mapping = new Dictionary<string, string> { ["psp"] = "ppsspp" };
+        var once = new CloudSaveSyncSettings()
+            .WithOverride("psp", "/saves/psp")
+            .MigrateOverridesToPerEmulator(mapping);
+
+        Assert.Equal(once, once.MigrateOverridesToPerEmulator(mapping));
+    }
+
+    [Fact]
+    public void PerEmulatorOverride_RoundTripsThroughPortableSettingsFile()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+        var configuration = new CloudSaveSyncSettings { Enabled = true, RemoteName = "gdrive" }
+            .WithOverride("playstation", "retroarch", "/ra/saves");
+
+        service.Save(new AppSettings { CloudSaveSync = configuration });
+        var loaded = service.Load().CloudSaveSync;
+
+        Assert.Equal(configuration, loaded);
+        Assert.Equal("/ra/saves", loaded.GetOverride("playstation", "retroarch"));
+    }
 }
