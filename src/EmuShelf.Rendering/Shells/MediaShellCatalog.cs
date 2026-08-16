@@ -616,12 +616,17 @@ public static class MediaShellCatalog
             MaxTextureSize: 1,
             // A pressed disc's printed area runs from the hub out to near the rim, so the label is
             // a circle rather than a rectangle — a corner radius of half the panel's shorter edge
-            // rounds the square away entirely. It stays inscribed in the disc: the far corner of a
-            // 0.7 square sits at 0.495 of the radius, just inside the edge, so no part of the
-            // printed sheet hangs off the medium it is printed on.
+            // rounds the square away entirely, leaving a circle whose radius is half the panel's
+            // width. The extent is a fraction of the disc's half-width, so 0.94 is a label circle of
+            // radius 0.47 on a disc of radius 0.5 — 94% of the way to the rim, a full pressed face
+            // with a hair of bare edge. The square's own corners fall at 0.94·√2 ≈ 1.33 of the
+            // half-width, past the rim, but the full corner-round clips them off before they get
+            // there, so nothing printed hangs off the medium. An earlier 0.7 inscribed the *square*
+            // in the disc and so shrank the printed circle to 0.35 of the radius — half a disc, half
+            // a bare mirror, which is how it was reported.
             CoverPanel: new ArtPanel(
-                ArtFace.Front, -0.7f, 0.7f, -0.7f, 0.7f, CornerRadius: 0.5f, ArtFit: ArtFit.Contain,
-                MaxSurfaceDepth: DiscLabelDepth),
+                ArtFace.Front, -0.94f, 0.94f, -0.94f, 0.94f, CornerRadius: 0.5f,
+                ArtFit: ArtFit.Contain, MaxSurfaceDepth: DiscLabelDepth),
             ExtraPanels: [],
             // Screen-printed ink on lacquer: flatter than a keep case's sleeve under its clear
             // overlay, and nowhere near the mirror of the data side beneath it.
