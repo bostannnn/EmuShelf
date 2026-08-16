@@ -9063,3 +9063,43 @@ The fix (chosen: "both" — stop the mislabeling *and* honor the explicit tick):
   column/table), matching the v17 healing pattern. Edge case left as-is: a cover that was downloaded and
   *then* manually overridden keeps its provenance row, so v19 would treat it as auto-acquired — rare, and
   the only cost is that a later scrape may replace it.
+
+## 2026-08-17 — Doubled platform row on desktop→gamepad: hold the switch for the full-screen resize, and instrument the geometry
+
+Symptom (Steam Deck, reported): launching in Desktop mode and then switching to Gamepad shows the
+platform rail twice; launching straight into Gamepad is fine.
+
+Ruled out first, so the fix targets the right layer. A headless render test that reproduces the exact
+Desktop→Gamepad switch shows `GamepadPlatforms` holds one entry per system and the visual tree
+realizes exactly one set of rail-tab buttons. So the second rail is not a control — it is painted by
+the CRT tube. In couch mode a full-window GL scene captures `GamepadRoot` (the opaque rail included)
+into a texture and draws it warped over the top; the live rail is meant to sit hidden behind the
+opaque tube (2026-08-15 "captured into the tube, not composited over it"). You see the double when the
+tube fails to fully cover the live rail.
+
+Why only Desktop-first: it is the one path that resizes the window. Straight-to-Gamepad is full screen
+from birth (`WindowInterfaceModeService` ctor), so the tube's GL surface and its chrome capture are
+built at final geometry and stay pixel-aligned with the live rail. Switching from Desktop flips the
+window to `FullScreen` *around* the moment the tube first becomes visible, and on Linux/gamescope that
+resize is applied asynchronously — so the tube can come up at the old desktop geometry and not cover
+the now-full-screen live rail.
+
+Fix (unverified on-device; no Deck here): `WindowInterfaceModeService.SetModeAsync`, when entering
+Gamepad from a non-full-screen window, now holds the `ModeChanged` notification until the window's
+`ClientSize` actually changes (the resize landed) or a 400 ms timeout elapses — whichever first. It
+waits on the resize itself, not `WindowState`, because Avalonia flips `WindowState` to `FullScreen`
+synchronously while the real resize trails it. The timeout keeps a window that never resizes (a
+maximized window already at full-screen size, or a WM that never reports it) from stalling the switch.
+Because the couch UI (and thus the tube) is gated on `IsGamepadMode`, which the VM sets from
+`ModeChanged`, deferring that event stands the tube up only after the window is full screen — matching
+the gamepad-first path. Headless windows resize synchronously, so the wait is a no-op there and the
+existing service tests are unaffected.
+
+Instrumentation (kept, per the Deck-diagnosis pattern of 2026-08-16): three Info-level lines land in
+`Logs/` (area starts with `EmuShelf`, so `AvaloniaFileLogSink` keeps them). `MediaShelf3DControl` now
+logs every *change* of its rendered surface size, not just the first frame, so a surface that stays
+smaller than the window after the switch (the tube not covering) is visible rather than inferred.
+`ChromeSnapshot` logs each change of the captured source bounds, so a rail captured at desktop size
+while the tube is full screen (or vice versa) shows up. `WindowInterfaceModeService` logs the client
+size before/after the gamepad-entry wait and why the wait ended. If the fix is only partial, these
+lines say whether the residual is a stuck surface, a mismatched capture, or a resize that never fired.
