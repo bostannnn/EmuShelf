@@ -8628,6 +8628,65 @@ mesh instead, so coincident merged walls stay coincident, the shell stays boxy, 
 still agrees with its profile (D/H back to 0.072). The case renders identically either way; only the
 mesh-vs-profile agreement differs, and that is worth keeping honest rather than excepting.
 
+## 2026-08-16 — A built-in Google Drive transport, reachable from the desktop Settings
+
+Save sync has always signed in through an external rclone binary. That works on Windows, macOS and
+Linux and cannot work on Android at all — the OS refuses to execute a binary downloaded at runtime —
+so the port needs a transport that talks to the provider over HTTP from inside the app. That managed
+transport (a hand-written Drive v3 client, PKCE OAuth with a loopback redirect, refresh token in the
+same protected blob the RetroAchievements key uses) plus its coordinator wiring were already written
+on a side branch but never merged and never reachable from any UI. This change brings them onto the
+shipping product and makes them usable: the desktop Saves section now offers a **connection method**
+choice — *Built-in (recommended)*, which signs in directly with no external binary, or *Advanced*,
+which keeps the rclone remote for anyone who wants a backend other than Drive. Detail:
+[docs/cloud-sync-portability-plan.md](docs/cloud-sync-portability-plan.md).
+
+Three decisions worth recording:
+
+- **The built-in client requests `drive.file`, not full `drive`** (inherited from the transport's
+  design). It is least-privilege — EmuShelf can only ever see files it created — but it cannot see a
+  folder rclone made under the wider scope. Switching transports therefore shows an empty remote and
+  re-uploads each machine's saves. Nothing is deleted (the transport is copy-only and backs up
+  conflicts), but the user has to be told, so the built-in connect panel states it at connect time
+  rather than letting it be discovered.
+- **The chooser appears only when the build embeds an OAuth client** (`GoogleOAuthClientSource.IsConfigured`)
+  *and* the coordinator handed the view-model a connect delegate. A build with neither shows the
+  rclone path alone, exactly as before, so an existing `settings.json` — which defaults `TransportKind`
+  to `Rclone` — is untouched until the user explicitly connects the built-in transport. The new
+  controls are gated on that flag, which is also why the desktop parity and visual-snapshot tests,
+  built with the flag off, keep passing without a gamepad-side rebuild.
+- **The gamepad Saves section is deliberately left rclone-shaped for now.** Rebuilding it is the same
+  work the Android head needs, so it is folded into the Android milestone rather than duplicated here.
+  The gamepad shell is a controller projection over the *same* `EmulatorSettingsViewModel` and shares
+  its connect command, so it constructs the view-model with `allowManagedTransport: false` — otherwise
+  a client-embedded build would silently run the browser OAuth behind the rclone-looking gamepad UI
+  (a regression a merge-time review caught and this flag closes).
+
+A review of the transport during this merge found and fixed five defects, each with a failing test
+first: Drive answers 403 for rate-limiting as well as authorization, and only the error *reason*
+tells them apart — the old code read every 403 as a fatal "reconnect your account", so a large
+`Sync all` that merely tripped the rate limit failed with a misleading message and no retry; the
+tree walk resolved a duplicated blob name by listing order rather than oldest-wins, so two machines
+could disagree forever; a resumable upload whose `308` stopped advancing looped without a cap; a
+date-form `Retry-After` was ignored; and a pre-cancelled sign-in surfaced as a connect failure.
+Still outstanding, and stated so it is not mistaken for done: **no sign-in has touched Google's real
+API** — every test runs against an in-memory fake Drive — so the first real sign-in should be treated
+as a test event, not a formality.
+
+## 2026-08-16 — Save overrides are keyed per (system, emulator)
+
+The user's save-folder override moved from per-system to per-`(system, emulator)` (`CloudSaveSyncSettings`,
+composite `"{systemId}/{emulatorId}"` key). Two emulators on one console (PS1: DuckStation vs RetroArch)
+now keep independent override folders — required for Android, where each emulator app hides its saves in
+its own storage. The whole `SaveLocationSettings` record (override, state override, save-state opt-in,
+sync outcome) moves per emulator; the single Saves row shows the active profile's. Migration re-keys
+genuinely-legacy per-system overrides to the system's active emulator on load, and each write is mirrored
+back onto the bare system-id key (and the legacy PCSX2/PPSSPP fields) so an older build still reads the
+active emulator's choice. A system-level guard stops a bare rollback mirror from being re-keyed once the
+feature is active, so switching the active emulator never inherits another's folder. User-visible only for
+multi-emulator consoles; single-emulator consoles are unchanged. Coordinator resolves the active emulator
+via the same `SaveProviderRegistry.Resolve` the provider uses, so the stored key always names the profile
+that runs. See docs/emulator-profiles-refactor.md (Increment 2).
 ## 2026-08-16 — RetroAchievements shows softcore and hardcore side by side, not as an app mode
 
 The 2026-07-18 detail decision treated hardcore as a per-row *marker* and always showed the

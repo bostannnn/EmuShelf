@@ -626,7 +626,7 @@
                                     <TextBlock Classes="section-eyebrow" Text="CLOUD SAVE SYNC" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
-                                               Text="Sync in-game saves between machines through your own Google Drive. Sign-in is handled by rclone — EmuShelf never sees your Google password or token." />
+                                               Text="Sync in-game saves between machines through your own Google Drive. You sign in through your browser — EmuShelf never sees your Google password or token." />
                                     <Expander Header="How save sync works" Padding="0" Margin="0,2,0,0">
                                         <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
                                                    Foreground="{DynamicResource EmuTextTertiaryBrush}"
@@ -634,7 +634,7 @@
                                     </Expander>
                                 </StackPanel>
 
-                                <Border IsVisible="{Binding IsRcloneMissing}"
+                                <Border IsVisible="{Binding ShowRcloneMissingBanner}"
                                         Background="{DynamicResource EmuInputBrush}"
                                         BorderBrush="{DynamicResource EmuDangerBrush}"
                                         BorderThickness="1" CornerRadius="6" Padding="12">
@@ -661,23 +661,59 @@
                                      the remote summary + Sync all now) sits above the per-platform
                                      folder list, which is detail you set up once sync is on. -->
                                 <StackPanel IsVisible="{Binding IsCloudDisconnected}" Spacing="9">
-                                    <TextBlock Text="RCLONE REMOTE NAME" Classes="field-label" />
-                                    <TextBox Text="{Binding CloudRemoteName, Mode=TwoWay}"
-                                             AutomationProperties.AutomationId="saves.remote"
-                                             Background="{DynamicResource EmuInputBrush}"
-                                             BorderBrush="{DynamicResource EmuBorderBrush}"
-                                             PlaceholderText="emushelf-gdrive" />
-                                    <TextBlock Text="CLOUD FOLDER" Classes="field-label" />
-                                    <TextBox Text="{Binding CloudFolder, Mode=TwoWay}"
-                                             AutomationProperties.AutomationId="saves.cloud-folder"
-                                             Background="{DynamicResource EmuInputBrush}"
-                                             BorderBrush="{DynamicResource EmuBorderBrush}"
-                                             PlaceholderText="EmuShelf/Saves" />
-                                    <Button Content="Connect Google Drive" Classes="accent"
-                                            AutomationProperties.AutomationId="saves.connect"
-                                            HorizontalAlignment="Left"
-                                            Command="{Binding ConnectCloudCommand}"
-                                            IsEnabled="{Binding !IsCloudBusy}" />
+                                    <!-- Transport choice, only when this build ships a managed client.
+                                         When it does not, the rclone fields are the sole path and this
+                                         chooser stays hidden. -->
+                                    <StackPanel IsVisible="{Binding ShowTransportChoice}" Spacing="6">
+                                        <TextBlock Text="CONNECTION METHOD" Classes="field-label" />
+                                        <RadioButton GroupName="saves-transport"
+                                                     Content="Built-in (recommended) — EmuShelf signs in to Google Drive directly"
+                                                     IsChecked="{Binding UseManagedTransport, Mode=TwoWay}" />
+                                        <RadioButton GroupName="saves-transport"
+                                                     Content="Advanced — connect any rclone remote"
+                                                     IsChecked="{Binding !UseManagedTransport}" />
+                                    </StackPanel>
+
+                                    <!-- Built-in Google Drive: no remote name, no external binary. -->
+                                    <StackPanel IsVisible="{Binding ShowManagedConnectFields}" Spacing="9">
+                                        <TextBlock Text="CLOUD FOLDER" Classes="field-label" />
+                                        <TextBox Text="{Binding CloudFolder, Mode=TwoWay}"
+                                                 AutomationProperties.AutomationId="saves.cloud-folder-builtin"
+                                                 Background="{DynamicResource EmuInputBrush}"
+                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                 PlaceholderText="EmuShelf/Saves" />
+                                        <TextBlock TextWrapping="Wrap" FontSize="11"
+                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}"
+                                                   Text="The built-in client can only see files it creates. If you previously synced this folder through rclone, those saves aren't visible here — each machine re-uploads its own on the first sync. Nothing in the cloud is deleted." />
+                                        <Button Content="Connect Google Drive" Classes="accent"
+                                                AutomationProperties.AutomationId="saves.connect-builtin"
+                                                HorizontalAlignment="Left"
+                                                Command="{Binding ConnectCloudCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                    </StackPanel>
+
+                                    <!-- Advanced: an rclone remote, which reaches any backend rclone
+                                         supports and is the only path on the desktop targets when the
+                                         build ships no managed client. -->
+                                    <StackPanel IsVisible="{Binding ShowRcloneConnectFields}" Spacing="9">
+                                        <TextBlock Text="RCLONE REMOTE NAME" Classes="field-label" />
+                                        <TextBox Text="{Binding CloudRemoteName, Mode=TwoWay}"
+                                                 AutomationProperties.AutomationId="saves.remote"
+                                                 Background="{DynamicResource EmuInputBrush}"
+                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                 PlaceholderText="emushelf-gdrive" />
+                                        <TextBlock Text="CLOUD FOLDER" Classes="field-label" />
+                                        <TextBox Text="{Binding CloudFolder, Mode=TwoWay}"
+                                                 AutomationProperties.AutomationId="saves.cloud-folder"
+                                                 Background="{DynamicResource EmuInputBrush}"
+                                                 BorderBrush="{DynamicResource EmuBorderBrush}"
+                                                 PlaceholderText="EmuShelf/Saves" />
+                                        <Button Content="Connect Google Drive" Classes="accent"
+                                                AutomationProperties.AutomationId="saves.connect"
+                                                HorizontalAlignment="Left"
+                                                Command="{Binding ConnectCloudCommand}"
+                                                IsEnabled="{Binding !IsCloudBusy}" />
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <StackPanel IsVisible="{Binding IsCloudConnected}" Spacing="10">
@@ -685,7 +721,7 @@
                                         <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="Connected" FontWeight="SemiBold"
                                                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                                            <TextBlock Text="{Binding CloudRemoteName, StringFormat='Remote: {0}'}"
+                                            <TextBlock Text="{Binding CloudConnectionSummary}"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         </StackPanel>
                                         <Button Grid.Column="1" Content="Disconnect" VerticalAlignment="Center"

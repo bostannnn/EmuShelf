@@ -91,6 +91,191 @@ public class CloudSaveSyncCoordinatorTests
     }
 
     [Fact]
+    public void CanSyncSystem_ManagedTransportNeedsNoRemoteName()
+    {
+        // The managed client authenticates as the connected account, so there is no named remote to
+        // require. Demanding one would leave a correctly connected user silently unable to sync.
+        var settings = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                RemoteName = null,
+                CloudFolder = "EmuShelf/Saves",
+                Pcsx2ConfigDirectory = "/portable/pcsx2",
+            },
+        };
+
+        Assert.True(CreateCoordinator(new FakeSettingsService(), settings).CanSyncSystem("playstation2"));
+    }
+
+    [Fact]
+    public void CanSyncSystem_ManagedTransportStillNeedsAFolder()
+    {
+        var settings = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                CloudFolder = null,
+                Pcsx2ConfigDirectory = "/portable/pcsx2",
+            },
+        };
+
+        Assert.False(CreateCoordinator(new FakeSettingsService(), settings).CanSyncSystem("playstation2"));
+    }
+
+    [Fact]
+    public void CanSyncSystem_RcloneTransportStillRequiresItsRemoteName()
+    {
+        var settings = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.Rclone,
+                RemoteName = null,
+                CloudFolder = "EmuShelf/Saves",
+                Pcsx2ConfigDirectory = "/portable/pcsx2",
+            },
+        };
+
+        Assert.False(CreateCoordinator(new FakeSettingsService(), settings).CanSyncSystem("playstation2"));
+    }
+
+    [Fact]
+    public async Task ConnectManaged_WithNoFolderReportsInvalidInput()
+    {
+        var result = await CreateCoordinator(new FakeSettingsService()).ConnectGoogleDriveManagedAsync(
+            string.Empty,
+            Overrides(("playstation2", "/pcsx2")),
+            _ => { },
+            CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
+    }
+
+    [Fact]
+    public async Task ConnectManaged_OnABuildWithNoEmbeddedClientSaysSoDistinctly()
+    {
+        // A build with no baked-in OAuth client — an unconfigured local build, as here — cannot offer
+        // this transport at all. Reporting it as a generic failure would send the user looking at
+        // their network or their Google account for something neither can fix.
+        var browserOpened = false;
+
+        var result = await CreateCoordinator(new FakeSettingsService()).ConnectGoogleDriveManagedAsync(
+            "EmuShelf/Saves",
+            Overrides(("playstation2", "/pcsx2")),
+            _ => browserOpened = true,
+            CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.ManagedTransportUnavailable, result);
+        Assert.False(browserOpened);
+    }
+
+    [Fact]
+    public async Task ConnectManaged_WithNoUsablePlatformReportsInvalidInputBeforeOpeningABrowser()
+    {
+        // Sending the user through a Google consent screen only to find there is nothing to sync is
+        // the wrong order; the cheap local check comes first.
+        var browserOpened = false;
+
+        var result = await CreateCoordinator(new FakeSettingsService()).ConnectGoogleDriveManagedAsync(
+            "EmuShelf/Saves",
+            Overrides(),
+            _ => browserOpened = true,
+            CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.InvalidInput, result);
+        Assert.False(browserOpened);
+    }
+
+    [Fact]
+    public async Task ConnectRclone_WhenItCannotProceed_LeavesTheExistingConnectionUntouched()
+    {
+        // A connect that fails must not half-apply. Moving the transport kind before rclone is known
+        // to work would point a working Drive connection at a remote that was never created.
+        //
+        // The successful branch — where the kind is set to Rclone — cannot be covered here: it needs
+        // both an rclone binary (opt-in, EMUSHELF_TEST_RCLONE_PATH) and an interactive Google
+        // consent screen. That branch is verified by inspection only.
+        var settings = new FakeSettingsService
+        {
+            Current = new AppSettings
+            {
+                CloudSaveSync = new CloudSaveSyncSettings
+                {
+                    Enabled = true,
+                    TransportKind = CloudTransportKind.GoogleDrive,
+                    CloudFolder = "EmuShelf/Saves",
+                    CloudFolderId = "folder-abc",
+                    Pcsx2ConfigDirectory = "/portable/pcsx2",
+                },
+            },
+        };
+        var coordinator = CreateCoordinator(settings, settings.Current);
+
+        var result = await coordinator.ConnectGoogleDriveAsync(
+            "gdrive", "EmuShelf/Saves", Overrides(("playstation2", "/pcsx2")), CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncConnectResult.RcloneMissing, result);
+        Assert.Equal(CloudTransportKind.GoogleDrive, settings.Current.CloudSaveSync.TransportKind);
+        Assert.Equal("folder-abc", settings.Current.CloudSaveSync.CloudFolderId);
+        Assert.True(settings.Current.CloudSaveSync.Enabled);
+    }
+
+    [Fact]
+    public async Task SyncNow_WhenTheManagedTransportCannotBeBuilt_FailsInsteadOfThrowing()
+    {
+        // Configured for a transport this build cannot construct (no embedded OAuth client). An
+        // automatic sync runs on the launch path, so an escaping exception here would surface as an
+        // unhandled failure while starting a game rather than as a reported sync problem.
+        var settings = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                CloudFolder = "EmuShelf/Saves",
+                Pcsx2ConfigDirectory = "/portable/pcsx2",
+            },
+        };
+
+        var outcome = await CreateCoordinator(new FakeSettingsService(), settings)
+            .SyncNowAsync(cancellationToken: CancellationToken.None);
+
+        Assert.Equal(CloudSaveSyncStatus.Failed, outcome.Status);
+    }
+
+    [Fact]
+    public async Task Disconnect_ClearsTheCachedCloudFolderId()
+    {
+        // A folder id belongs to the connection that resolved it. Carrying it into the next connect
+        // would address the previous account's folder.
+        var settings = new FakeSettingsService
+        {
+            Current = new AppSettings
+            {
+                CloudSaveSync = new CloudSaveSyncSettings
+                {
+                    Enabled = true,
+                    RemoteName = "gdrive",
+                    CloudFolder = "EmuShelf/Saves",
+                    CloudFolderId = "folder-abc",
+                },
+            },
+        };
+        var coordinator = CreateCoordinator(settings, settings.Current);
+
+        await coordinator.DisconnectAsync(CancellationToken.None);
+
+        Assert.Null(settings.Current.CloudSaveSync.CloudFolderId);
+        Assert.False(settings.Current.CloudSaveSync.Enabled);
+    }
+
+    [Fact]
     public void UpdateOverride_PersistsPathWithoutChangingConnection()
     {
         var settings = new FakeSettingsService
@@ -243,6 +428,69 @@ public class CloudSaveSyncCoordinatorTests
         Assert.Equal("/legacy/ppsspp", coordinator.Current.GetOverride("psp"));
         Assert.True(coordinator.CanSyncSystem("playstation2"));
         Assert.True(coordinator.CanSyncSystem("psp"));
+    }
+
+    [Fact]
+    public void UpdateOverride_KeysByTheActiveEmulator_AndMirrorsToTheBareKeyForRollback()
+    {
+        var settings = new FakeSettingsService();
+        var coordinator = CreateCoordinator(
+            settings,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/retroarch", false, EmulatorId: "retroarch")
+                : null);
+
+        coordinator.UpdateOverride("playstation", "/ra/saves");
+
+        // Stored under the active emulator, not the other emulator on the same system.
+        Assert.Equal("/ra/saves", coordinator.Current.GetOverride("playstation", "retroarch"));
+        Assert.Null(coordinator.Current.GetOverride("playstation", "duckstation"));
+        // Mirrored onto the bare key so an older build still reads the active emulator's choice.
+        Assert.Equal("/ra/saves", coordinator.Current.GetOverride("playstation"));
+    }
+
+    [Fact]
+    public void SwitchingTheActiveEmulator_DoesNotInheritTheOtherEmulatorsOverride()
+    {
+        var settings = new FakeSettingsService();
+        CreateCoordinator(
+                settings,
+                emulators: systemId => systemId == "playstation"
+                    ? new SaveEmulatorInstallation("/app/duckstation", false, EmulatorId: "duckstation")
+                    : null)
+            .UpdateOverride("playstation", "/duck/saves");
+
+        // Re-open with RetroArch active (the previous coordinator persisted into the shared settings).
+        var retroArch = CreateCoordinator(
+            settings,
+            settings.Current,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/retroarch", false, EmulatorId: "retroarch")
+                : null);
+
+        Assert.Null(retroArch.Current.GetOverride("playstation", "retroarch"));
+        Assert.Equal("/duck/saves", retroArch.Current.GetOverride("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void LegacyBareOverride_IsReKeyedToTheActiveEmulatorOnLoad()
+    {
+        var legacy = new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings { Enabled = true, RemoteName = "gdrive" }
+                .WithOverride("playstation", "/legacy/ps1"),
+        };
+
+        var coordinator = CreateCoordinator(
+            new FakeSettingsService(),
+            legacy,
+            emulators: systemId => systemId == "playstation"
+                ? new SaveEmulatorInstallation("/app/retroarch", false, EmulatorId: "retroarch")
+                : null);
+
+        Assert.Equal("/legacy/ps1", coordinator.Current.GetOverride("playstation", "retroarch"));
+        // The legacy bare entry is retained for rollback.
+        Assert.Equal("/legacy/ps1", coordinator.Current.GetOverride("playstation"));
     }
 
     [Fact]

@@ -3,7 +3,8 @@
 This documents the incremental "multiple emulators per console" work (see the 2026-08-05 entry in
 `DECISIONS.md`) and the concrete steps to reach the full LaunchBox-style "profile owns everything"
 end state in later passes. Read this before adding another alternative emulator or generalising the
-model.
+model. The Android port adds a dimension none of the desktop sections below model — the operating
+system — so read "OS-aware profiles and Android" before touching launch or saves for Android.
 
 ## What a "profile" is today
 
@@ -16,7 +17,7 @@ are inventoried. The pieces:
 | Which emulators can serve a system | `EmulatorDefinition.SupportedSystemIds` (`Integrations`) |
 | Stored per-profile config | `EmulatorConfigs (SystemId, EmulatorId)` + `SystemEmulatorSelection` (schema v16) |
 | Active-profile resolution | `IEmulatorConfigurationStore.Get` returns the active profile; `GetProfiles`/`GetAllProfiles`/`SetActiveEmulator` for the rest |
-| Launch | `EmulatorLaunchService.ResolveEmulator` picks the emulator from `config.EmulatorId` |
+| Launch | `EmulatorLaunchService.ResolveEmulator` picks the emulator from `config.EmulatorId`; the launch *kind* is the polymorphic `EmulatorLaunchTarget` (`DirectExecutableTarget` vs `FlatpakApplicationTarget`) |
 | Saves | `SaveProviderRegistry` — one descriptor per system; PS1 branches on `SaveProviderContext.ActiveEmulatorId` |
 | Textures | `TexturePackProviderRegistry` — one descriptor per (system, emulator); `TexturePackCoordinator` sits out non-active emulators |
 | UI | `EmulatorSettingsRowViewModel` per-row emulator picker (Desktop only) |
@@ -37,11 +38,16 @@ are inventoried. The pieces:
    `Resolve(systemId, activeEmulatorId)` that presentation iterates over `SystemIds` (not `All`). That
    touches `CloudSaveSyncCoordinator.DescribePlatforms`, the test `CreateCloudContext`, and any `All`
    consumer, so it was left out of the incremental pass.
-2. **Profile *selection* is Desktop-only.** `GamepadSettingsViewModel` excludes
-   `SettingsSection.Emulators` (pre-existing decision). The Gamepad Saves/Texture sections already
-   reflect the active profile because they project the shared `CloudPlatforms`/`TexturePlatforms`,
-   but a controller user cannot yet *switch* a console's emulator. Add a Gamepad-projected emulator
-   picker when the Emulators section is brought to Gamepad mode.
+   **Update (2026-08-16): landed** as Increment 1 (see "Incremental work plan" below). A flat
+   `Profiles` table + `Resolve(systemId, activeEmulatorId)` replaced both branches; public
+   `All`/`SystemIds` still yield one row per console, so no user-visible change.
+2. **Profile *selection* is Desktop-only.** Gamepad ships a *reduced* Emulators section, not no section:
+   `GamepadSettingsViewModel` excludes only `SettingsSection.Themes`, and its Emulators rows project
+   per-platform library actions (sync/rescan/folder) — never the executable/args/core editor or an
+   emulator picker, which stay Desktop-only. The Gamepad Saves/Texture sections already reflect the
+   active profile because they project the shared `CloudPlatforms`/`TexturePlatforms`, but a controller
+   user cannot yet *switch* a console's emulator. Add a Gamepad-projected emulator picker to that
+   reduced section.
 3. **PS1 textures are DuckStation-only** (verified against the libretro/DuckStation docs, Aug 2026).
    Among RetroArch PS1 cores, **only Beetle PSX HW** (`mednafen_psx_hw`, Vulkan renderer) supports
    texture replacement — SwanStation and PCSX ReARMed do not. So when RetroArch is the active PS1
@@ -85,6 +91,235 @@ Suggested shape:
    with its existing tests still green.
 5. Consider a **per-game** emulator override on top of per-system selection (LaunchBox allows this).
    That needs a per-game column and launch/menu UI and is a separate feature, not part of unification.
+
+## OS-aware profiles and Android — the end state
+
+The sections above are desktop-shaped. Android forces a dimension none of them model — the
+**operating system** — and clears up one thing that turns out to be a non-issue.
+
+**Already solved, do not re-plan it: saves are per-emulator.** Cloud unit ids lead with the emulator,
+not the system — `duckstation/`, `pcsx2/`, `rpcs3/`, `ppsspp/`, `azahar/`,
+`dolphin/gc/` · `dolphin/wii/`, and `retroarch/{systemId}/` (RetroArch is the one that then sub-keys by
+system under a shared `retroarch/` root — still emulator-first, so no collision). PS1 on DuckStation
+(`duckstation/…`) and
+PS1 on RetroArch (`retroarch/playstation/…`) occupy separate cloud namespaces and never collide. So
+each emulator already owns its own save scope; there is no cross-emulator save mixing to design around
+and no "canonical card per platform" to build. If a user wants two format-compatible emulators to
+share a card (e.g. the PCSX2 family's `.ps2` images), the mechanism is the per-emulator folder
+override below, pointing both at one folder — EmuShelf never converts save formats.
+
+### Save continuity across OSes — the other half of "saves are per-emulator"
+
+Per-emulator namespacing does more than prevent collisions: it is exactly what lets a save cross
+devices — or blocks it. The rule is one question: **is the emulator the same app on both OSes, or a
+different app?**
+
+- **Same app on both (carries across, both directions).** The cloud folder *and* the per-game key are
+  identical, so a PC save lands on the same cloud unit Android reads. The per-game key is a portable,
+  emulator-native id, not a local filename — PPSSPP keys by the `PSP/SAVEDATA/<gameSaveId>` folder name,
+  DuckStation by PlayStation disc serial, Dolphin by title id — so it matches across devices. This
+  covers **PSP (PPSSPP), GameCube/Wii (Dolphin), 3DS (Azahar), PS1 (if Android also uses DuckStation),
+  and every RetroArch retro system** (same core, standard `.srm`).
+- **Different apps for one console (does not carry today).** The save *format* can be compatible, but
+  the two apps live under different cloud folders and never meet. This is essentially **PS2** — desktop
+  PCSX2 vs Android AetherSX2 / NetherSX2 (PCSX2-lineage `.ps2` cards, format-compatible, different
+  emulator id). PS3 is moot (no real Android RPCS3).
+
+Two hard limits, independent of the above:
+
+- **Save states never cross platforms.** A state is bound to one emulator build and CPU (x86 desktop vs
+  ARM Android); it will not load across devices, often not across versions. Only in-game / memory-card
+  saves are portable. Sync states within a platform only.
+- **EmuShelf never converts formats.** Where two apps' formats disagree there is no bridge, by design.
+
+What this demands of the refactor:
+
+1. **Layout parity is a hard requirement, not a nicety.** Each Android save provider must emit the
+   *identical* `UnitId` and on-disk layout as its desktop twin, or same-app continuity fails silently.
+   Add a cross-provider test that a given (system, emulator, game) yields the same unit id on both OSes.
+2. **The different-app case needs a real shared-card bridge, and there isn't one.** The only mechanism
+   today is the per-`(system, emulator)` *local folder* override "point both at one folder" — that does
+   not reconcile at the cloud layer, so each emulator still syncs its own copy and they drift. Making
+   PC↔Android PS2 actually continue needs a declared "these emulators are card-compatible → sync them as
+   one cloud unit" concept. This is *more* necessary under "OS as identity" (NetherSX2 is its own
+   emulator id, its own `nethersx2/` scope), not less — decide whether to build the bridge or to
+   document PS2 cross-OS continuity as unsupported.
+
+### The real gaps for the end state
+
+1. **Profiles must become OS-aware.** `EmulatorDefinition.SupportedSystemIds` is a flat, OS-agnostic
+   list. Desktop launch is *not* OS-blind — it already resolves macOS `.app` bundles and runs Linux
+   Flatpaks — but that OS-awareness lives imperatively in `EmulatorLaunchService` and the polymorphic
+   `EmulatorLaunchTarget` (`DirectExecutableTarget` vs `FlatpakApplicationTarget`), not as a declared
+   dimension, and nothing models Android. On Android a platform's emulators are *different apps* than
+   on desktop (PS2 → ARMSX2 / AetherSX2 / NetherSX2 / a PCSX2-Android build, not desktop PCSX2),
+   launched by intent, not an executable. The clean move is a **third `EmulatorLaunchTarget` subtype**
+   (an Android intent/package target) selected per OS, carrying package/activity + intent template +
+   **handoff strategy** (plain path / content-URI / SAF tree) + **maintenance status** — not a fresh
+   data block bolted onto `EmulatorDefinition`. Mind the layer: today's launch data already lives on
+   the stored `EmulatorConfiguration` (schema v16) and its `EmulatorLaunchTarget`, not on the
+   Definition, so "pure data on the profile" is off by a layer and the migration is not free (see the
+   open decisions below).
+
+2. **The save-folder *override* must move from per-system to per-`(system, emulator)`.** The per-
+   emulator save *scope* is already right, but the user's folder override is keyed by `systemId`
+   (`CloudSaveSyncSettings.SaveLocations`), looked up as `GetOverride(systemId)` and handed to whichever
+   emulator is active — so two emulators on one system share one override folder. Harmless on desktop;
+   wrong on Android, where each emulator hides its saves in its own `Android/data/<pkg>` and needs its
+   own granted folder. Re-key the override by `(system, emulator)`. (This is exactly NeoStation's
+   `user_custom_save_folders` table, keyed by `(system_folder_name, emulator_slug)`.)
+   **Two migration subtleties this hides.** (a) The re-key is *cross-store*: the overrides live in
+   `settings.json` (`CloudSaveSyncSettings.SaveLocations`, System.Text.Json), but the emulator each
+   existing `systemId` override should map to is the system's *active* emulator, which lives in **SQLite
+   `SystemEmulatorSelection` (schema v16)** — so the settings migration has to read the DB to place a
+   legacy override. (b) `SaveLocationSettings` bundles the override *with* per-system result metadata
+   (`LastSuccessUtc`, `LastError`, `SyncSaveStates`, `StateDirectoryOverride`) under one `systemId` key;
+   moving just the override to `(system, emulator)` either splits that record or moves all of it
+   per-emulator — which then changes the per-system state the one-row-per-console Saves UI reads. Decide
+   which, and follow the existing `NormalizeSaveLocations` legacy-fold pattern (and the
+   `Pcsx2ConfigDirectory` / `PpssppMemoryStickDirectory` back-compat fields) so an older build still
+   loads the file.
+
+3. **Android save/launch providers do not exist.** Every current provider (DuckStation, PCSX2, RPCS3,
+   Dolphin, PPSSPP, Azahar, RetroArch) is a desktop resolver. Android needs its own per-
+   `(system, emulator)` providers whose save resolution **probes known `Android/data` locations, then
+   falls back to the per-`(system, emulator)` override** — because on Android 11+ those folders are
+   often unreadable and cannot be derived from the emulator's own config the way the desktop providers
+   do. The per-emulator *scheme* is right; the Android *members* of it are missing.
+
+4. **The registry still branches per system.** `SaveProviderRegistry` is one descriptor per system with
+   the PS1 RetroArch-vs-DuckStation split in **two** places inside the descriptor — the `CreateProvider`
+   ternary (`IsRetroArch(context.ActiveEmulatorId)`) and a parallel type-check in `DetectAsync` — both
+   of which have to be generalised. Move to `(system, emulator)` descriptors derived from one emulator
+   registration, with `Resolve(system, activeEmulatorId)` for presentation — the cleanup already noted
+   under "Known limitations," now also required to hold N Android emulators per platform.
+   **Update (2026-08-16): the save side is done** (Increment 1 below) — an Android emulator now just
+   adds a `Profiles` entry. The Android *members* of the scheme (gap #3) still don't exist.
+
+### Incremental work plan
+
+This end state lands as small, reviewed, one-at-a-time increments — each a build + full-suite-green
+step, not one big change.
+
+**Increment 1 — save providers resolve per `(system, emulator)` — LANDED (2026-08-16).**
+`SaveProviderRegistry` now exposes a flat `Profiles` table + `Resolve(systemId, activeEmulatorId)`;
+PlayStation is two profiles (DuckStation default, RetroArch) and the `IsRetroArch` ternary and the
+`provider is RetroArchSaveLocationProvider` type-check are both gone. Public `All`/`SystemIds` stay one
+row per console, so no user-visible change (App 858/858 Release incl. snapshots + Infra 1136/1136 green,
+independently reviewed). Closes the save side of gap #4 / Known-limitations #1.
+
+**Increment 2 — re-key the save-folder override to `(system, emulator)` (gap #2) — LANDED (2026-08-16).**
+Key insight that kept it small: a Saves row always acts on the *active* emulator, and the coordinator
+already knows it (`_emulatorInstallations(systemId)?.EmulatorId`), so storage keys by
+`(system, emulator)` while every public/UI signature stays `systemId`-only. This one *is* intentionally
+user-visible (PS1 overrides split per emulator); "one row per console" still holds.
+
+Decisions (locked as recommended — see DECISIONS.md 2026-08-16):
+
+- **Key shape** — composite string key `"{systemId}/{emulatorId}"` in the existing dictionary
+  (delimiter-safe: ids are simple lowercase tokens). Alt: nested dict — cleaner JSON, more churn.
+- **What moves per-emulator** — the whole `SaveLocationSettings` record (override + state override +
+  `SyncSaveStates` + result metadata); the row shows the active profile's outcome. Alt: split
+  override-per-emulator vs outcome-per-system.
+- **Rollback** — keep mirroring the active emulator's override back to the legacy `systemId` key and
+  the `Pcsx2ConfigDirectory` / `PpssppMemoryStickDirectory` fields so an older build still loads. Alt:
+  one-way migration + a settings-version bump.
+
+Delivered in two green, reviewed steps:
+
+- **Step 1 (`12b183c`)** — additive Core support: `(systemId, emulatorId)` overloads +
+  `MigrateOverridesToPerEmulator`, composite `"{systemId}/{emulatorId}"` key, a key-based `WithKey`
+  primitive. Every bare-system-id method was kept (still used for the rollback mirror and the legacy
+  fold), so the build stayed green with no caller changes. `Equals`/`GetHashCode` already compare the
+  dictionary structurally, so the new keys needed no change there.
+- **Step 2 (`1007aef`)** — coordinator cutover: every override / location / outcome read and write
+  routes through `ActiveEmulatorFor(systemId)` (resolved via `SaveProviderRegistry.Resolve`, matching
+  provider resolution); the migration runs on construction; writes mirror onto the bare key for
+  rollback; a system-level migration guard stops a bare mirror from being re-keyed, so switching the
+  active emulator never inherits another's folder. View models unchanged (public signatures stayed
+  `systemId`-only). No dead code to remove — the bare methods remain in use.
+
+Result: per-emulator overrides isolated (PS1 DuckStation vs RetroArch), single-emulator consoles
+byte-identical, one row per console preserved. App 861/861 Release (incl. snapshots) + Infra 1143/1143
+green; independently reviewed with no blockers.
+
+**Later increments (no Android work yet):** Android save/launch providers (gap #3), the OS-aware profile
+model + third `EmulatorLaunchTarget` subtype (gap #1), and the shared-card cloud bridge for the
+different-app case (PS2, per "Save continuity across OSes"). These wait for the Android head and device.
+
+### Prior art — NeoStation
+
+`misobadev/neostation-frontend` (full source, Flutter/Dart) makes exactly this split: the *declarative*
+half is data (one JSON per system: metadata, an `emulators[]` array with per-OS launch strings +
+default/RetroAchievements flags, and a `neosync` block of per-OS save-folder tokens), and the
+*procedural* half is code (a path resolver expands tokens like `{PCSX2_MEMCARDS}` by probing known
+paths; per-`(system, emulator)` user folders live in SQLite; Switch saves get a titleId-aware
+resolver). Its cloud layout is `saves|states/<system>/<emulator-slug>/…` — per-emulator, same as ours.
+Worth copying for the launch catalog; its token → probe → user-override pattern is the model for
+Android saves.
+
+### The first decision — is OS a launch *kind* or an emulator *identity*? (settle this before "how data-driven")
+
+The gaps above straddle two different data models, and which one is right must be settled first — it
+decides what a "catalog entry" even is:
+
+- **OS as a launch kind (one emulator, per-OS launch blocks).** A single profile — say PS2/PCSX2 —
+  carries a desktop launch (executable) and an Android launch (intent). Fewer entries; fits emulators
+  that genuinely span OSes (RetroArch, Dolphin, PPSSPP, DuckStation's Android build). Breaks down where
+  the Android app is a *different program* with a different save format and different RetroAchievements
+  support (NetherSX2 / AetherSX2 are not "PCSX2"), and where one OS offers *several* choices for a
+  system — you cannot hang three Android PS2 apps off one PCSX2 profile.
+- **OS as identity (Android emulators are their own profiles) — recommended.** NetherSX2, AetherSX2, an
+  ARMSX2 build, etc. are distinct `EmulatorId`s that *declare which OS(es) they run on*; the shared
+  RetroArch / Dolphin / PPSSPP builds declare multiple OSes. This keeps save format, RA capability, and
+  maintenance status attached to the thing they belong to, and lets a system offer N emulators per OS.
+  Cost: more catalog entries, a `SupportedOperatingSystems` (or per-OS `EmulatorLaunchTarget`) on the
+  profile, and active-profile selection that filters by the current OS.
+
+The "per-OS launch block on one profile" model only fits the cross-OS emulators; it cannot express the
+Android-only long tail, which is the whole point of the port. Recommend **OS as identity** and record
+the choice in `DECISIONS.md` before writing any catalog.
+
+### The second decision — how data-driven to go (record it, do not pre-decide)
+
+- **Data-driven launch catalog + code resolvers (recommended).** Move launch to data (JSON or a table),
+  keep save/texture/detection as code resolvers selected by the profile. Gets the "add an emulator = a
+  data edit" win where it matters (Android launch, the long tail of cores) without rewriting working,
+  tested desktop detection.
+- **Full JSON system defs (NeoStation-style).** Everything declarative in JSON, code only behind
+  tokens. Cleanest long-term and proven cross-platform, but it is a migration of a working desktop
+  product (schema v16, migrations, precise config-derived save paths → probe-and-ask) — desktop
+  regression risk for a mostly-Android benefit.
+
+Either way the *procedural* logic (save-folder derivation, texture inventory, compatibility keys) stays
+code. JSON only moves the declaration, not the procedure.
+
+### Out of scope: texture packs on Android
+
+The end state above is launch + saves only. Texture packs are **desktop-only** and stay that way:
+Android emulator builds do not expose the DuckStation / PCSX2 / Dolphin / PPSSPP replacement-texture
+inputs the desktop providers inventory, and `TexturePackProviderRegistry` is desktop directory finders
+end to end. So an OS-aware profile marks its texture-pack factory **desktop-only** (no Android member,
+no probe) rather than leaving it unmodeled — the "profile owns everything" registration must not imply
+a texture row on the Thor. Revisit only if an Android core ships a real texture-replacement path.
+
+### UI end state
+
+One row per console, with an emulator picker **and** a transport chooser in **both** desktop and
+gamepad. The gamepad Saves rebuild (today `allowManagedTransport: false`, rclone-only — see
+`docs/cloud-sync-portability-plan.md`) lands here, since the Thor is gamepad-only and needs both the
+emulator picker and the built-in transport.
+
+### Litmus test for "done"
+
+Adding a new Android PS2 emulator is: add one catalog entry (its intent + handoff strategy), point its
+saves at a probe or a folder, register once — and it appears on the Thor with launch and per-emulator
+save-sync working, with no code spread across two projects.
+
+### Where this sits in the port
+
+This refactor is a prerequisite for `docs/android-port-plan.md` Milestone B (launching games) and
+E-android (reaching the saves). Do it before, or as the first part of, those.
 
 ## Guardrails to preserve (do not regress)
 

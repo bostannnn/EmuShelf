@@ -190,4 +190,152 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
         service.Save(loaded);
         Assert.DoesNotContain("SaveStateRetention", File.ReadAllText(AppPaths.SettingsFilePath), StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void TransportKind_DefaultsToRcloneForASettingsFileWrittenBeforeTheChoiceExisted()
+    {
+        // An already-connected user must keep syncing against the remote they are connected to.
+        // Defaulting the other way would silently point them at an empty folder under a new scope.
+        AppPaths.EnsureDirectoriesExist();
+        File.WriteAllText(
+            AppPaths.SettingsFilePath,
+            "{\"CloudSaveSync\":{\"Enabled\":true,\"RemoteName\":\"emushelf-gdrive\",\"CloudFolder\":\"EmuShelf/Saves\"}}");
+
+        var loaded = new JsonSettingsService(AppPaths).Load();
+
+        Assert.Equal(CloudTransportKind.Rclone, loaded.CloudSaveSync.TransportKind);
+        Assert.Equal("emushelf-gdrive", loaded.CloudSaveSync.RemoteName);
+    }
+
+    [Fact]
+    public void TransportKind_SurvivesARoundTripThroughSettingsJson()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths);
+        var saved = service.Load() with
+        {
+            CloudSaveSync = new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                CloudFolder = "EmuShelf/Saves",
+            },
+        };
+
+        service.Save(saved);
+
+        Assert.Equal(CloudTransportKind.GoogleDrive, service.Load().CloudSaveSync.TransportKind);
+    }
+
+    [Fact]
+    public void TransportKind_ParticipatesInEquality()
+    {
+        // The hand-written Equals exists so a round-trip compares equal. A field left out of it
+        // reads as "nothing changed" for a change that matters.
+        var rclone = new CloudSaveSyncSettings { Enabled = true, CloudFolder = "EmuShelf/Saves" };
+        var managed = rclone with { TransportKind = CloudTransportKind.GoogleDrive };
+
+        Assert.NotEqual(rclone, managed);
+        Assert.Equal(rclone, rclone with { TransportKind = CloudTransportKind.Rclone });
+    }
+
+    [Fact]
+    public void PerEmulatorOverride_IsIsolatedFromOtherEmulatorsOnTheSameSystem()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "duckstation", "/saves/duck")
+            .WithOverride("playstation", "retroarch", "/saves/ra");
+
+        Assert.Equal("/saves/duck", configuration.GetOverride("playstation", "duckstation"));
+        Assert.Equal("/saves/ra", configuration.GetOverride("playstation", "retroarch"));
+        // A per-emulator write never leaks onto the bare system-id key.
+        Assert.Null(configuration.GetOverride("playstation"));
+    }
+
+    [Fact]
+    public void PerEmulatorLocation_MovesTheWholeRecordTogether()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "retroarch", "/ra/saves")
+            .WithStateOverride("playstation", "retroarch", "/ra/states")
+            .WithOptionalContent("playstation", "retroarch", syncSaveStates: true)
+            .WithSyncFailure("playstation", "retroarch", "boom");
+
+        var location = configuration.GetLocation("playstation", "retroarch");
+        Assert.Equal("/ra/saves", location.DirectoryOverride);
+        Assert.Equal("/ra/states", location.StateDirectoryOverride);
+        Assert.True(location.SyncSaveStates);
+        Assert.Equal("boom", location.LastError);
+        // The other emulator on the same system is untouched.
+        Assert.Equal(new SaveLocationSettings(), configuration.GetLocation("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_ReKeysLegacyOverrideToTheActiveEmulatorAndKeepsTheLegacyEntry()
+    {
+        var legacy = new CloudSaveSyncSettings().WithOverride("playstation", "/saves/ps1");
+
+        var migrated = legacy.MigrateOverridesToPerEmulator(
+            new Dictionary<string, string> { ["playstation"] = "duckstation" });
+
+        Assert.Equal("/saves/ps1", migrated.GetOverride("playstation", "duckstation"));
+        Assert.Null(migrated.GetOverride("playstation", "retroarch"));
+        // The bare entry is retained so an older build still reads it (rollback safety).
+        Assert.Equal("/saves/ps1", migrated.GetOverride("playstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_PresenceWins_DoesNotOverwriteAnExplicitCompositeEntry()
+    {
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "/legacy/ps1")
+            .WithOverride("playstation", "duckstation", "/explicit/duck");
+
+        var migrated = configuration.MigrateOverridesToPerEmulator(
+            new Dictionary<string, string> { ["playstation"] = "duckstation" });
+
+        Assert.Equal("/explicit/duck", migrated.GetOverride("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_DoesNotReKeyABareMirrorOnceTheSystemHasAPerEmulatorEntry()
+    {
+        // Once a system has a per-emulator entry the feature is active, so its bare entry is a
+        // rollback mirror — switching the active emulator must not inherit the other's folder.
+        var configuration = new CloudSaveSyncSettings()
+            .WithOverride("playstation", "duckstation", "/duck")
+            .WithOverride("playstation", "/duck");
+
+        var migrated = configuration.MigrateOverridesToPerEmulator(
+            new Dictionary<string, string> { ["playstation"] = "retroarch" });
+
+        Assert.Null(migrated.GetOverride("playstation", "retroarch"));
+        Assert.Equal("/duck", migrated.GetOverride("playstation", "duckstation"));
+    }
+
+    [Fact]
+    public void MigrateOverridesToPerEmulator_IsIdempotent()
+    {
+        var mapping = new Dictionary<string, string> { ["psp"] = "ppsspp" };
+        var once = new CloudSaveSyncSettings()
+            .WithOverride("psp", "/saves/psp")
+            .MigrateOverridesToPerEmulator(mapping);
+
+        Assert.Equal(once, once.MigrateOverridesToPerEmulator(mapping));
+    }
+
+    [Fact]
+    public void PerEmulatorOverride_RoundTripsThroughPortableSettingsFile()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+        var configuration = new CloudSaveSyncSettings { Enabled = true, RemoteName = "gdrive" }
+            .WithOverride("playstation", "retroarch", "/ra/saves");
+
+        service.Save(new AppSettings { CloudSaveSync = configuration });
+        var loaded = service.Load().CloudSaveSync;
+
+        Assert.Equal(configuration, loaded);
+        Assert.Equal("/ra/saves", loaded.GetOverride("playstation", "retroarch"));
+    }
 }

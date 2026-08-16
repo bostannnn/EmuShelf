@@ -933,6 +933,265 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void CloudSaves_ManagedUnavailable_OffersOnlyRclone()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(managedAvailable: false));
+
+        Assert.False(viewModel.IsManagedTransportAvailable);
+        Assert.False(viewModel.ShowTransportChoice);
+        Assert.False(viewModel.UseManagedTransport);
+        Assert.False(viewModel.ShowManagedConnectFields);
+        Assert.True(viewModel.ShowRcloneConnectFields);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_ManagedAvailableAndDisconnected_DefaultsToBuiltInTransport()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)));
+
+        Assert.True(viewModel.IsManagedTransportAvailable);
+        Assert.True(viewModel.ShowTransportChoice);
+        Assert.True(viewModel.UseManagedTransport);
+        Assert.True(viewModel.ShowManagedConnectFields);
+        Assert.False(viewModel.ShowRcloneConnectFields);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_ManagedAvailableButDelegateMissing_FallsBackToRclone()
+    {
+        // The build says it ships a client but no delegate came through: the UI must not offer a
+        // path it cannot drive.
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connectManaged: null));
+
+        Assert.False(viewModel.IsManagedTransportAvailable);
+        Assert.False(viewModel.ShowTransportChoice);
+        Assert.True(viewModel.ShowRcloneConnectFields);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_ManagedSelected_SuppressesRcloneMissingBanner()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            rcloneAvailable: false,
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)));
+
+        // rclone is missing, but the built-in transport is the active choice, so there is nothing to nag about.
+        Assert.True(viewModel.IsRcloneMissing);
+        Assert.False(viewModel.ShowRcloneMissingBanner);
+
+        // Switching to the advanced path surfaces the banner again.
+        viewModel.UseManagedTransport = false;
+        Assert.True(viewModel.ShowRcloneMissingBanner);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_BuiltInChosen_CallsManagedDelegateWithFolderAndOverrides()
+    {
+        var managedCalls = new List<(string Folder, IReadOnlyDictionary<string, string?> Overrides)>();
+        var rcloneCalled = false;
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connect: (_, _, _, _) =>
+            {
+                rcloneCalled = true;
+                return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+            },
+            connectManaged: (folder, overrides, _, _) =>
+            {
+                managedCalls.Add((folder, overrides));
+                return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+            }));
+        viewModel.CloudFolder = "EmuShelf/Saves";
+        Row(viewModel, "playstation2").OverrideDirectory = "/pcsx2";
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        var call = Assert.Single(managedCalls);
+        Assert.Equal("EmuShelf/Saves", call.Folder);
+        Assert.Equal("/pcsx2", call.Overrides["playstation2"]);
+        Assert.False(rcloneCalled);
+        Assert.True(viewModel.IsCloudConnected);
+        Assert.Contains("Google Drive", viewModel.CloudConnectionSummary);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_AdvancedChosen_CallsRcloneDelegate()
+    {
+        var managedCalled = false;
+        var rcloneCalls = new List<string>();
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connect: (remote, _, _, _) =>
+            {
+                rcloneCalls.Add(remote);
+                return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+            },
+            connectManaged: (_, _, _, _) =>
+            {
+                managedCalled = true;
+                return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+            }));
+        viewModel.UseManagedTransport = false;
+        viewModel.CloudRemoteName = "my-drive";
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        Assert.Equal("my-drive", Assert.Single(rcloneCalls));
+        Assert.False(managedCalled);
+        Assert.True(viewModel.IsCloudConnected);
+        Assert.Contains("rclone", viewModel.CloudConnectionSummary);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_SeededManagedConnection_ShowsConnectedStateWithoutRemoteName()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                TransportKind = CloudTransportKind.GoogleDrive,
+                CloudFolder = "EmuShelf/Saves",
+            },
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)));
+
+        Assert.True(viewModel.IsCloudConnected);
+        Assert.True(viewModel.UseManagedTransport);
+        Assert.Contains("Google Drive", viewModel.CloudConnectionSummary);
+    }
+
+    [AvaloniaFact]
+    public void CloudSaves_SeededRcloneConnection_SelectsAdvancedTransport()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            new CloudSaveSyncSettings
+            {
+                Enabled = true,
+                RemoteName = "my-drive",
+                CloudFolder = "Saves",
+            },
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)));
+
+        Assert.True(viewModel.IsCloudConnected);
+        // A connection already made through rclone must not silently flip to the built-in client.
+        Assert.False(viewModel.UseManagedTransport);
+        Assert.Contains("my-drive", viewModel.CloudConnectionSummary);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_HostDisallowsManagedTransport_UsesRcloneEvenWhenAvailable()
+    {
+        // The gamepad shell shares this view model's ConnectCloudCommand but shows rclone-only UI, so
+        // it constructs with allowManagedTransport:false. The managed path must be fully suppressed —
+        // otherwise a client-embedded build would silently run the browser OAuth behind rclone UI.
+        var managedCalled = false;
+        var rcloneCalled = false;
+        var viewModel = CreateViewModel(
+            allowManagedTransport: false,
+            cloudSaves: CreateCloudContext(
+                managedAvailable: true,
+                connect: (_, _, _, _) =>
+                {
+                    rcloneCalled = true;
+                    return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+                },
+                connectManaged: (_, _, _, _) =>
+                {
+                    managedCalled = true;
+                    return Task.FromResult(CloudSaveSyncConnectResult.Connected);
+                }));
+
+        Assert.False(viewModel.IsManagedTransportAvailable);
+        Assert.False(viewModel.ShowTransportChoice);
+        Assert.False(viewModel.UseManagedTransport);
+        Assert.True(viewModel.ShowRcloneConnectFields);
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        Assert.True(rcloneCalled);
+        Assert.False(managedCalled);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_DisconnectManaged_ResetsStateAndReoffersBuiltIn()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.Connected)));
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsCloudConnected);
+
+        await viewModel.DisconnectCloudCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsCloudConnected);
+        Assert.Equal(string.Empty, viewModel.CloudConnectionSummary);
+        // The next connection defaults back to the built-in client where it is available.
+        Assert.True(viewModel.UseManagedTransport);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_ManagedUnavailableResult_PointsAtRclone()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) =>
+                Task.FromResult(CloudSaveSyncConnectResult.ManagedTransportUnavailable)));
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsCloudConnected);
+        Assert.Contains("rclone", viewModel.CloudStatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_SignInDeclined_AsksToTryAgain()
+    {
+        var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
+            managedAvailable: true,
+            connectManaged: (_, _, _, _) => Task.FromResult(CloudSaveSyncConnectResult.SignInDeclined)));
+
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsCloudConnected);
+        Assert.Contains("Try again", viewModel.CloudStatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [AvaloniaFact]
+    public async Task CloudSaves_Connect_BrowserFailsToOpen_CancelsPromptlyAndReleasesBusy()
+    {
+        // If the browser can't be launched, the sign-in can never complete. The connect must cancel
+        // rather than hang on the loopback redirect, which would wedge IsCloudBusy (and the sync gate).
+        var viewModel = CreateViewModel(
+            openSignInUri: _ => throw new InvalidOperationException("launch blocked in test host"),
+            cloudSaves: CreateCloudContext(
+                managedAvailable: true,
+                connectManaged: async (_, _, openBrowser, token) =>
+                {
+                    openBrowser(new Uri("https://accounts.google.example/o/oauth2/auth"));
+                    // Model the coordinator waiting on the loopback redirect; the failed launch must
+                    // cancel this rather than let it wait indefinitely.
+                    await Task.Delay(System.Threading.Timeout.Infinite, token);
+                    return CloudSaveSyncConnectResult.Connected;
+                }));
+
+        // Bounded well under ManagedConnectTimeout (5 min): a regression that dropped the
+        // cancel-on-launch-failure would block for the full timeout and fail here instead of passing.
+        await viewModel.ConnectCloudCommand.ExecuteAsync(null).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.False(viewModel.IsCloudBusy);
+        Assert.False(viewModel.IsCloudConnected);
+        // The cancellation branch's wording, distinct from the generic "Couldn't connect: …" catch,
+        // so the test can't pass via the wrong path.
+        Assert.Contains("Try again", viewModel.CloudStatusText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [AvaloniaFact]
     public async Task CloudSaves_SyncNow_ReportsCompletedSummary()
     {
         var report = new SaveSyncReport(
@@ -1277,7 +1536,9 @@ public class EmulatorSettingsViewModelTests
         IReadOnlyDictionary<string, EmulatorConfiguration?>? configured = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        FakeDialogService? dialogs = null) => new(
+        FakeDialogService? dialogs = null,
+        bool allowManagedTransport = true,
+        Action<Uri>? openSignInUri = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         configured ?? KnownSystems.All.ToDictionary(
@@ -1290,7 +1551,9 @@ public class EmulatorSettingsViewModelTests
         retroAchievements: retroAchievements,
         cloudSaves: cloudSaves,
         texturePacks: texturePacks,
-        screenScraper: screenScraper);
+        screenScraper: screenScraper,
+        allowManagedTransport: allowManagedTransport,
+        openSignInUri: openSignInUri);
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,
@@ -1302,7 +1565,9 @@ public class EmulatorSettingsViewModelTests
         Func<CancellationToken, Task<bool>>? downloadRclone = null,
         string? syncLogPath = null,
         Func<IReadOnlyList<CloudSaveSyncPlatformContext>>? getPlatforms = null,
-        Func<string, CancellationToken, Task<SaveProviderDetection?>>? getDetection = null)
+        Func<string, CancellationToken, Task<SaveProviderDetection?>>? getDetection = null,
+        bool managedAvailable = false,
+        Func<string, IReadOnlyDictionary<string, string?>, Action<Uri>, CancellationToken, Task<CloudSaveSyncConnectResult>>? connectManaged = null)
     {
         var configuration = current ?? new CloudSaveSyncSettings();
         var platforms = SaveProviderRegistry.All.Select(descriptor =>
@@ -1332,7 +1597,9 @@ public class EmulatorSettingsViewModelTests
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             updateOverride ?? ((_, _) => { }),
             downloadRclone ?? (_ => Task.FromResult(true)),
-            getDetection);
+            getDetection,
+            IsManagedTransportAvailable: managedAvailable,
+            ConnectGoogleDriveManagedAsync: connectManaged);
     }
 
     private static CloudSavePlatformRowViewModel Row(EmulatorSettingsViewModel viewModel, string systemId) =>

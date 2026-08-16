@@ -6375,7 +6375,12 @@ public partial class MainViewModel : ViewModelBase
             crtShelfEffect: CrtScreenEffect,
             profiles: profiles,
             updates: Updates,
-            libraryFolders: libraryFolders);
+            libraryFolders: libraryFolders,
+            // The gamepad Saves rows are rclone-shaped and share this view model's ConnectCloudCommand.
+            // Suppress the built-in transport here so a client-embedded build does not silently run the
+            // browser OAuth flow behind that rclone UI; the managed path returns with the gamepad
+            // Saves rebuild (see docs/cloud-sync-portability-plan.md, Phase 3).
+            allowManagedTransport: false);
     }
 
     private Task SetAmbientThemeFromArtworkAsync(bool value)

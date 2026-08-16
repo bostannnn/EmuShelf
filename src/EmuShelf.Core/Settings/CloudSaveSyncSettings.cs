@@ -33,9 +33,27 @@ public sealed record SaveLocationSettings
     public bool SyncSaveStates { get; init; }
 }
 
+/// <summary>How EmuShelf reaches the cloud.</summary>
+public enum CloudTransportKind
+{
+    /// <summary>
+    /// The external rclone binary. The original transport, and the only one that can address a
+    /// backend other than Google Drive — a user who hand-writes <c>Settings/rclone.conf</c> can point
+    /// <see cref="CloudSaveSyncSettings.RemoteName"/> at any remote rclone supports.
+    /// </summary>
+    Rclone,
+
+    /// <summary>
+    /// EmuShelf's own Google Drive client, talking to the API directly. Needs no external binary,
+    /// which is what makes it the only option on Android.
+    /// </summary>
+    GoogleDrive,
+}
+
 /// <summary>
-/// Portable cloud save-sync configuration. Holds no secret: the OAuth token lives only in rclone's
-/// own config file, never here. Empty until the user connects a remote.
+/// Portable cloud save-sync configuration. Holds no secret: under rclone the OAuth token lives only
+/// in rclone's own config file, and under the managed transport it lives in a protected blob beside
+/// it — never here. Empty until the user connects a remote.
 /// </summary>
 public sealed record CloudSaveSyncSettings
 {
@@ -50,6 +68,13 @@ public sealed record CloudSaveSyncSettings
 
     /// <summary>Whether save sync is turned on.</summary>
     public bool Enabled { get; init; }
+
+    /// <summary>
+    /// Which transport carries the saves. Defaults to <see cref="CloudTransportKind.Rclone"/> so an
+    /// existing settings.json — written before there was a choice — keeps working exactly as it did,
+    /// against the remote it is already connected to. Only an explicit connect changes it.
+    /// </summary>
+    public CloudTransportKind TransportKind { get; init; } = CloudTransportKind.Rclone;
 
     /// <summary>The rclone remote name (e.g. <c>emushelf-gdrive</c>). Not a secret. Null until connected.</summary>
     public string? RemoteName { get; init; }
@@ -81,26 +106,33 @@ public sealed record CloudSaveSyncSettings
         new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal);
 
     /// <summary>The explicit save-location override for one system, or null when none is set.</summary>
-    public string? GetOverride(string systemId) =>
-        SafeSaveLocations.TryGetValue(systemId, out var location) &&
-        location is not null &&
-        !string.IsNullOrWhiteSpace(location.DirectoryOverride)
-            ? location.DirectoryOverride
-            : null;
+    public string? GetOverride(string systemId) => OverrideOf(GetLocationByKey(systemId));
+
+    /// <summary>The explicit save-location override for one system's emulator, or null when none is set.</summary>
+    public string? GetOverride(string systemId, string emulatorId) => OverrideOf(GetLocationByKey(Key(systemId, emulatorId)));
 
     /// <summary>The explicit save-state folder override for one system, or null when none is set.</summary>
-    public string? GetStateOverride(string systemId) =>
-        SafeSaveLocations.TryGetValue(systemId, out var location) &&
-        location is not null &&
-        !string.IsNullOrWhiteSpace(location.StateDirectoryOverride)
-            ? location.StateDirectoryOverride
-            : null;
+    public string? GetStateOverride(string systemId) => StateOverrideOf(GetLocationByKey(systemId));
+
+    /// <summary>The explicit save-state folder override for one system's emulator, or null when none is set.</summary>
+    public string? GetStateOverride(string systemId, string emulatorId) => StateOverrideOf(GetLocationByKey(Key(systemId, emulatorId)));
 
     /// <summary>The stored state for one system, or an empty record when it has none yet.</summary>
-    public SaveLocationSettings GetLocation(string systemId) =>
-        SafeSaveLocations.TryGetValue(systemId, out var location) && location is not null
+    public SaveLocationSettings GetLocation(string systemId) => GetLocationByKey(systemId);
+
+    /// <summary>The stored state for one system's emulator, or an empty record when it has none yet.</summary>
+    public SaveLocationSettings GetLocation(string systemId, string emulatorId) => GetLocationByKey(Key(systemId, emulatorId));
+
+    private SaveLocationSettings GetLocationByKey(string key) =>
+        SafeSaveLocations.TryGetValue(key, out var location) && location is not null
             ? location
             : new SaveLocationSettings();
+
+    private static string? OverrideOf(SaveLocationSettings location) =>
+        string.IsNullOrWhiteSpace(location.DirectoryOverride) ? null : location.DirectoryOverride;
+
+    private static string? StateOverrideOf(SaveLocationSettings location) =>
+        string.IsNullOrWhiteSpace(location.StateDirectoryOverride) ? null : location.StateDirectoryOverride;
 
     /// <summary>Replaces one system's override, leaving its recorded sync outcome intact.</summary>
     public CloudSaveSyncSettings WithOverride(string systemId, string? directory)
@@ -133,6 +165,82 @@ public sealed record CloudSaveSyncSettings
     /// <summary>Records a failure for one system without discarding its last known success.</summary>
     public CloudSaveSyncSettings WithSyncFailure(string systemId, string message) =>
         With(systemId, location => location with { LastError = message });
+
+    /// <summary>Replaces one system emulator's override, leaving its recorded sync outcome intact.</summary>
+    public CloudSaveSyncSettings WithOverride(string systemId, string emulatorId, string? directory)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim();
+        return WithKey(Key(systemId, emulatorId), location => location with { DirectoryOverride = trimmed });
+    }
+
+    /// <summary>Replaces one system emulator's save-state folder override, leaving its other state intact.</summary>
+    public CloudSaveSyncSettings WithStateOverride(string systemId, string emulatorId, string? directory)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(directory) ? null : directory.Trim();
+        return WithKey(Key(systemId, emulatorId), location => location with { StateDirectoryOverride = trimmed });
+    }
+
+    /// <summary>Updates optional content for one system emulator without changing its location or result.</summary>
+    public CloudSaveSyncSettings WithOptionalContent(string systemId, string emulatorId, bool syncSaveStates) =>
+        WithKey(Key(systemId, emulatorId), location => location with { SyncSaveStates = syncSaveStates });
+
+    /// <summary>Records a successful sync for one system emulator and clears its last error.</summary>
+    public CloudSaveSyncSettings WithSyncSuccess(
+        string systemId, string emulatorId, DateTimeOffset completedUtc, string? notice = null) =>
+        WithKey(Key(systemId, emulatorId), location => location with
+        {
+            LastSuccessUtc = completedUtc,
+            LastError = null,
+            LastNotice = string.IsNullOrWhiteSpace(notice) ? null : notice,
+        });
+
+    /// <summary>Records a failure for one system emulator without discarding its last known success.</summary>
+    public CloudSaveSyncSettings WithSyncFailure(string systemId, string emulatorId, string message) =>
+        WithKey(Key(systemId, emulatorId), location => location with { LastError = message });
+
+    /// <summary>
+    /// Re-keys legacy per-system overrides to per-(system, emulator) using each system's active
+    /// emulator (the caller supplies the mapping). Existing composite entries always win
+    /// ("presence wins"), and the legacy per-system entries are retained so an older build still
+    /// reads them. Idempotent — safe to run on every load.
+    /// </summary>
+    /// <param name="activeEmulatorBySystem">The emulator to attribute each system's legacy override to.</param>
+    public CloudSaveSyncSettings MigrateOverridesToPerEmulator(
+        IReadOnlyDictionary<string, string> activeEmulatorBySystem)
+    {
+        ArgumentNullException.ThrowIfNull(activeEmulatorBySystem);
+        var locations = new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal);
+        var systemsWithComposite = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (key, location) in SafeSaveLocations)
+        {
+            if (string.IsNullOrWhiteSpace(key) || location is null)
+                continue;
+            locations[key] = location;
+            var slash = key.IndexOf('/');
+            if (slash > 0)
+                systemsWithComposite.Add(key[..slash]);
+        }
+
+        foreach (var (systemId, location) in SafeSaveLocations)
+        {
+            // Only bare system-id entries migrate; a composite key already contains the delimiter.
+            if (string.IsNullOrWhiteSpace(systemId) || location is null || systemId.Contains('/'))
+                continue;
+            // Once any emulator has a per-emulator entry for this system the feature is already active
+            // for it, so a bare entry here is a rollback mirror, not a legacy override — never re-key
+            // it. Doing so would let switching the active emulator silently inherit another's folder.
+            if (systemsWithComposite.Contains(systemId))
+                continue;
+            if (!activeEmulatorBySystem.TryGetValue(systemId, out var emulatorId) ||
+                string.IsNullOrWhiteSpace(emulatorId))
+            {
+                continue;
+            }
+            locations[Key(systemId, emulatorId)] = location;
+        }
+
+        return this with { SaveLocations = locations };
+    }
 
     /// <summary>
     /// Folds the legacy single-emulator fields into <see cref="SaveLocations"/>. Runs on load; an
@@ -169,6 +277,7 @@ public sealed record CloudSaveSyncSettings
     {
         if (other is null ||
             Enabled != other.Enabled ||
+            TransportKind != other.TransportKind ||
             RemoteName != other.RemoteName ||
             CloudFolder != other.CloudFolder ||
             Pcsx2ConfigDirectory != other.Pcsx2ConfigDirectory ||
@@ -185,6 +294,7 @@ public sealed record CloudSaveSyncSettings
 
     public override int GetHashCode() => HashCode.Combine(
         Enabled,
+        TransportKind,
         RemoteName,
         CloudFolder,
         Pcsx2ConfigDirectory,
@@ -193,16 +303,7 @@ public sealed record CloudSaveSyncSettings
 
     private CloudSaveSyncSettings With(string systemId, Func<SaveLocationSettings, SaveLocationSettings> update)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
-        var locations = new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal);
-        foreach (var (existingSystemId, location) in SafeSaveLocations)
-        {
-            if (!string.IsNullOrWhiteSpace(existingSystemId) && location is not null)
-                locations[existingSystemId] = location;
-        }
-        locations[systemId] = update(GetLocation(systemId));
-
-        var updated = this with { SaveLocations = locations };
+        var updated = WithKey(systemId, update);
         // Mirror the two originally supported systems back onto their legacy fields so writing a
         // newer settings.json cannot strand a user who rolls back to an older build.
         return updated with
@@ -210,6 +311,29 @@ public sealed record CloudSaveSyncSettings
             Pcsx2ConfigDirectory = updated.GetOverride(Pcsx2SystemId),
             PpssppMemoryStickDirectory = updated.GetOverride(PpssppSystemId),
         };
+    }
+
+    private CloudSaveSyncSettings WithKey(string key, Func<SaveLocationSettings, SaveLocationSettings> update)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        var locations = new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal);
+        foreach (var (existingKey, location) in SafeSaveLocations)
+        {
+            if (!string.IsNullOrWhiteSpace(existingKey) && location is not null)
+                locations[existingKey] = location;
+        }
+        locations[key] = update(GetLocationByKey(key));
+        return this with { SaveLocations = locations };
+    }
+
+    // The composite key a per-(system, emulator) save location is stored under. System and emulator
+    // ids are simple lowercase tokens with no delimiter, so a single "/" separates them unambiguously
+    // and never collides with a bare system-id key.
+    private static string Key(string systemId, string emulatorId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(emulatorId);
+        return $"{systemId}/{emulatorId}";
     }
 
     private IReadOnlyDictionary<string, SaveLocationSettings> SafeSaveLocations =>

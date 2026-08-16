@@ -1,5 +1,6 @@
 using EmuShelf.Infrastructure.Metadata.ScreenScraper;
 using EmuShelf.Infrastructure.SaveSync;
+using EmuShelf.Infrastructure.SaveSync.GoogleDrive;
 
 namespace EmuShelf.Infrastructure.Tests.Build;
 
@@ -84,5 +85,27 @@ public class EmbeddedCredentialResolutionTests
             embeddedClientSecret: null);
 
         Assert.Null(resolved);
+    }
+
+    [Fact]
+    public void ManagedGoogleClient_UsesTheSameEmbeddedValuesAndTrims()
+    {
+        var resolved = GoogleOAuthClientSource.Resolve(" embedded-id ", " embedded-secret ");
+
+        Assert.Equal("embedded-id", resolved!.ClientId);
+        Assert.Equal("embedded-secret", resolved.ClientSecret);
+        Assert.False(resolved.IsPublicClient);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("embedded-id", null)]
+    [InlineData(null, "embedded-secret")]
+    [InlineData("  ", "embedded-secret")]
+    public void ManagedGoogleClient_ReturnsNullUnlessBothHalvesArePresent(string? id, string? secret)
+    {
+        // There is no shared fallback client for the managed transport, so a build that embeds
+        // nothing usable must report that rather than attempt a sign-in that cannot succeed.
+        Assert.Null(GoogleOAuthClientSource.Resolve(id, secret));
     }
 }

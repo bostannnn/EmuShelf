@@ -24,11 +24,15 @@ public class SaveProviderRegistryTests
     {
         // One PlayStation row (so the Saves section stays one-per-system), whose provider is chosen by
         // the active emulator profile: DuckStation by default, RetroArch when it is made active.
+        // One presentation row for PlayStation, but two (system, emulator) profiles behind it.
         Assert.Single(SaveProviderRegistry.All, descriptor => descriptor.SystemId == "playstation");
-        var descriptor = SaveProviderRegistry.Find("playstation");
-        Assert.NotNull(descriptor);
+        Assert.Equal(2, SaveProviderRegistry.Profiles.Count(descriptor => descriptor.SystemId == "playstation"));
 
-        var duckStation = descriptor!.CreateProvider(new SaveProviderContext(
+        // Resolve picks the profile for the active emulator; each profile builds only its own provider.
+        var duckStationProfile = SaveProviderRegistry.Resolve("playstation", "duckstation");
+        Assert.NotNull(duckStationProfile);
+        Assert.Equal("duckstation", duckStationProfile!.EmulatorId);
+        var duckStation = duckStationProfile.CreateProvider(new SaveProviderContext(
             DirectoryOverride: null,
             EmulatorDirectory: "/emu/duckstation",
             IsFlatpak: false,
@@ -36,7 +40,10 @@ public class SaveProviderRegistryTests
             ActiveEmulatorId: "duckstation"));
         Assert.IsType<DuckStationSaveLocationProvider>(duckStation);
 
-        var retroArch = descriptor.CreateProvider(new SaveProviderContext(
+        var retroArchProfile = SaveProviderRegistry.Resolve("playstation", "retroarch");
+        Assert.NotNull(retroArchProfile);
+        Assert.Equal("retroarch", retroArchProfile!.EmulatorId);
+        var retroArch = retroArchProfile.CreateProvider(new SaveProviderContext(
             DirectoryOverride: null,
             EmulatorDirectory: "/emu/retroarch",
             IsFlatpak: false,
@@ -45,6 +52,9 @@ public class SaveProviderRegistryTests
             ActiveEmulatorId: "retroarch"));
         Assert.IsType<RetroArchSaveLocationProvider>(retroArch);
         Assert.Equal("playstation", ((RetroArchSaveLocationProvider)retroArch!).SystemId);
+
+        // With no active emulator the default profile (DuckStation) is used.
+        Assert.Equal("duckstation", SaveProviderRegistry.Resolve("playstation", null)!.EmulatorId);
     }
 
     [Fact]
