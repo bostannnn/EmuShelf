@@ -132,14 +132,15 @@ public static class MediaShellMap
         // The only profile that is not a measurement of a real object, and deliberately so. Cut
         // under its control panel the shell is the head of an upright cabinet, whose real
         // dimensions are about 660 x 930 x 1030mm — nearly five keep cases tall, and since the
-        // shelf camera frames the tallest medium in the library view, one arcade game would shrink
-        // every cartridge beside it to a chip. So it is sized as the bartop machine it now looks
-        // like, 480mm tall, and takes the asset's own width and depth ratios from there. That keeps
-        // it undistorted and plainly the biggest thing on the shelf — a machine among boxes — at
-        // two and a half keep cases rather than five. The ratios are the chopped upright's, not a
-        // real bartop's: deeper than it is wide, which is exactly what the geometry is.
+        // shelf camera frames the tallest medium in the library view, a life-sized cabinet would
+        // shrink every cartridge beside it to a chip. It shipped for a while at a bartop's 480mm —
+        // two and a half keep cases — but that still read as oversized next to the boxes in the
+        // all-games row, so it is brought down to 209mm: a keep case's 190mm plus a tenth, enough
+        // to stay the tallest thing on the shelf and read as a machine among boxes without towering
+        // over them. Width and depth take the asset's own ratios from that height, so the shell
+        // stays undistorted — deeper than it is wide, which is exactly what the chopped upright is.
         ["arcade"] = new(
-            MediaShell.ArcadeCabinet, new(341f, 480f, 533f), PhysicalArtworkSlots.Front,
+            MediaShell.ArcadeCabinet, new(148.5f, 209f, 232.1f), PhysicalArtworkSlots.Front,
             "arcade-cabinet", "cartridge-vertical"),
         // The four keep-case profiles take "disc-from-case": their launch opens the case and sends the
         // disc on alone, because nobody has ever turned a DVD case over and pushed it into a
