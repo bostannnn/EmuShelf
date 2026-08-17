@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Text;
 using EmuShelf.Infrastructure.SaveSync.GoogleDrive;
@@ -11,13 +12,27 @@ namespace EmuShelf.Infrastructure.Tests.SaveSync.GoogleDrive;
 /// </summary>
 internal sealed class ScriptedHttpHandler : HttpMessageHandler
 {
-    private readonly Queue<Func<HttpRequestMessage, HttpResponseMessage>> _responses = new();
+    private readonly Queue<Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>>> _responses = new();
 
     public List<RecordedRequest> Requests { get; } = [];
 
     public ScriptedHttpHandler Respond(HttpStatusCode status, string? json = null)
     {
-        _responses.Enqueue(_ => Json(status, json));
+        _responses.Enqueue((_, _) => Task.FromResult(Json(status, json)));
+        return this;
+    }
+
+    /// <summary>
+    /// A request that never answers: it blocks until its own cancellation token trips, modelling a
+    /// connection that has gone silent. The client's per-attempt timeout is what cancels it.
+    /// </summary>
+    public ScriptedHttpHandler Stall()
+    {
+        _responses.Enqueue(async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            throw new UnreachableException();
+        });
         return this;
     }
 
@@ -25,20 +40,34 @@ internal sealed class ScriptedHttpHandler : HttpMessageHandler
 
     public ScriptedHttpHandler RespondBytes(byte[] content)
     {
-        _responses.Enqueue(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        _responses.Enqueue((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
         {
             Content = new ByteArrayContent(content),
-        });
+        }));
+        return this;
+    }
+
+    /// <summary>
+    /// A 200 whose body hands back <paramref name="prefix"/> and then goes silent — every later read
+    /// blocks until cancelled. Models a download that stalls mid-stream, which only the read-side idle
+    /// timeout can break: the response headers already arrived, so no request-level timeout covers it.
+    /// </summary>
+    public ScriptedHttpHandler RespondStreamThenStall(byte[] prefix)
+    {
+        _responses.Enqueue((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new StallAfterPrefixStream(prefix)),
+        }));
         return this;
     }
 
     public ScriptedHttpHandler RespondResumableSession(string location)
     {
-        _responses.Enqueue(_ =>
+        _responses.Enqueue((_, _) =>
         {
             var response = new HttpResponseMessage(HttpStatusCode.OK);
             response.Headers.Location = new Uri(location, UriKind.Absolute);
-            return response;
+            return Task.FromResult(response);
         });
         return this;
     }
@@ -49,24 +78,24 @@ internal sealed class ScriptedHttpHandler : HttpMessageHandler
     /// </summary>
     public ScriptedHttpHandler RespondResumeIncomplete(long? persistedBytes = null)
     {
-        _responses.Enqueue(_ =>
+        _responses.Enqueue((_, _) =>
         {
             var response = new HttpResponseMessage((HttpStatusCode)308);
             if (persistedBytes is { } stored)
                 response.Headers.TryAddWithoutValidation("Range", $"bytes=0-{stored - 1}");
-            return response;
+            return Task.FromResult(response);
         });
         return this;
     }
 
     public ScriptedHttpHandler RespondRetryable(HttpStatusCode status, TimeSpan? retryAfter = null)
     {
-        _responses.Enqueue(_ =>
+        _responses.Enqueue((_, _) =>
         {
             var response = new HttpResponseMessage(status);
             if (retryAfter is { } delta)
                 response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(delta);
-            return response;
+            return Task.FromResult(response);
         });
         return this;
     }
@@ -74,18 +103,18 @@ internal sealed class ScriptedHttpHandler : HttpMessageHandler
     /// <summary>A retryable response whose <c>Retry-After</c> is an absolute HTTP-date rather than a delta.</summary>
     public ScriptedHttpHandler RespondRetryableAt(HttpStatusCode status, DateTimeOffset retryAfter)
     {
-        _responses.Enqueue(_ =>
+        _responses.Enqueue((_, _) =>
         {
             var response = new HttpResponseMessage(status);
             response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(retryAfter);
-            return response;
+            return Task.FromResult(response);
         });
         return this;
     }
 
     public ScriptedHttpHandler Throw(Exception exception)
     {
-        _responses.Enqueue(_ => throw exception);
+        _responses.Enqueue((_, _) => throw exception);
         return this;
     }
 
@@ -106,7 +135,7 @@ internal sealed class ScriptedHttpHandler : HttpMessageHandler
         if (_responses.Count == 0)
             throw new InvalidOperationException($"No scripted response for {request.Method} {request.RequestUri}");
 
-        return _responses.Dequeue()(request);
+        return await _responses.Dequeue()(request, cancellationToken);
     }
 
     private static HttpResponseMessage Json(HttpStatusCode status, string? json) =>
@@ -114,6 +143,48 @@ internal sealed class ScriptedHttpHandler : HttpMessageHandler
         {
             Content = new StringContent(json ?? "{}", Encoding.UTF8, "application/json"),
         };
+
+    /// <summary>Yields a fixed prefix once, then blocks every read until the read's token is cancelled.</summary>
+    private sealed class StallAfterPrefixStream(byte[] prefix) : Stream
+    {
+        private int _offset;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_offset < prefix.Length)
+            {
+                var count = Math.Min(buffer.Length, prefix.Length - _offset);
+                prefix.AsMemory(_offset, count).CopyTo(buffer);
+                _offset += count;
+                return count;
+            }
+
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new UnreachableException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_offset >= prefix.Length)
+                throw new NotSupportedException("The async read path is what the idle timeout guards.");
+
+            var n = Math.Min(count, prefix.Length - _offset);
+            Array.Copy(prefix, _offset, buffer, offset, n);
+            _offset += n;
+            return n;
+        }
+
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 
     internal sealed record RecordedRequest(
         HttpMethod Method,
