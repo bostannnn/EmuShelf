@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The single-view (Android) head. DELIBERATELY NOT in EmuShelf.slnx: .slnx has no Condition
+    support and the android workload error fires at restore, so listing this project would fail
+    `dotnet build`/`test`/`restore` for the whole solution on the macOS dev loop. Build it from its
+    own path instead — see docs/android-port-plan.md (Milestone A1, "Build gating — one option").
+
+    TFM is not a choice: Avalonia.Android 12.1.0 ships exactly one asset, lib/net10.0-android36.0,
+    so this pins Android SDK platform 36 and JDK 21 (Development setup table in the plan).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android36.0</TargetFramework>
+    <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationId>com.emushelf.app</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <!-- Reflection {Binding} is used throughout the shared XAML (x:CompileBindings appears zero
+         times), so cap the link mode at SdkOnly for Release — raising it further silently blanks
+         bindings rather than failing the build (the plan's "Compiled bindings are the trimming trap").
+         Debug keeps linking off so fast deployment works without the XA0119 warning. -->
+    <AndroidLinkMode Condition="'$(Configuration)' == 'Release'">SdkOnly</AndroidLinkMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avalonia.Android only. Avalonia.Desktop must NOT reach the head: it has no android asset but
+         restores via lib/net10.0 and would silently ship Win32/X11/Native backends into the APK. -->
+    <PackageReference Include="Avalonia.Android" Version="12.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmuShelf.UI\EmuShelf.UI.csproj" />
+  </ItemGroup>
+</Project>

@@ -27,7 +27,7 @@ the plan, so they are not re-litigated:
 | "New App.Android referencing the existing App" | The composition root lives inside `if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime)` — ~265 of 314 lines of `App.axaml.cs`. The head would link, launch, and show nothing |
 | The solution pins 12.1.0 throughout | `Avalonia.Controls.ItemsRepeater` is 12.0.0 and no 12.1.x exists. It backs the gamepad grid |
 | Milestone E is "Done (Phases 1–2)" | It is one unmerged 28-file commit on a side branch, never on `main`, and **this plan document lives in that same commit** |
-| Fold in as M41+ | M41 and M42 are taken ([ROADMAP.md:1665](../ROADMAP.md:1665), [:1736](../ROADMAP.md:1736)). Android is **M43+** |
+| Fold in as M41+ | M41–M43 are taken (M43 is Playtime tracking, [ROADMAP.md:1849](../ROADMAP.md:1849)). Android is **M44+** — the ROADMAP umbrella is M44 |
 | "~1,936 tests" | 1,826 |
 | `GamepadRoot` at `MainWindow.axaml:2252` | 2267 |
 
@@ -449,9 +449,74 @@ A `net10.0-android36.0` head, `ISingleViewApplicationLifetime`, Gamepad UI brows
   `EmuShelf.slnx` and build it from its own path**, with a dedicated CI job. The macOS dev loop is
   then untouched. `EmuShelf.slnx` lists eight projects, not the seven the first draft counted.
 
+**Gamepad mode's desktop escape hatches — close each, don't port desktop.** The right mental model:
+Android runs *the gamepad shell made self-sufficient*, not an adaptation of desktop mode. Desktop mode
+does not exist on Android — the desktop head (`MainWindow`, the 9 dialog `Window`s, the grid,
+`SteamInputTemplateInstaller`) never links into the Android head; A0 already put all of it behind
+`App.DesktopShellFactory`/`IPlatformShell`, so the Android head simply registers its own single-view
+shell and omits them. The gamepad view-model already lives in shared `EmuShelf.UI` and comes along for
+free. The catch is that the gamepad view-model is **not self-sufficient today** — in several flows it
+does not implement the action, it hands off to Desktop mode. Every one of those hatches must be
+replaced by a gamepad-native flow or an honest "unavailable here"; none is dead code, all of it runs on
+Android. Checklist:
+
+- **Import** — `AddGamesCommand`/`AddFolderCommand` are bound only in the desktop head's
+  [MainWindow.axaml](../src/EmuShelf.App/Views/MainWindow.axaml); on Android there is no binding at all.
+  This is the same item as "Gamepad-native library import" above.
+- **Cover setting** — "Set cover" opens the `CoverDesktopHandoff` overlay
+  ([MainViewModel.cs:2006](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:2006)) whose whole job is to
+  route the user to Desktop mode. Needs a gamepad-native cover picker or a clean "not here".
+- **Switch to Desktop** — the system menu offers `RequestDesktopModeFromGamepadCommand` /
+  `SwitchToDesktopModeCommand` ([:2961](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:2961)); on
+  Android this option must not appear, and the `DesktopModeConfirmation` overlay path is unreachable.
+- **Search / rename text entry** — routes through `IOnScreenKeyboardService`, whose only implementation
+  is Windows osk; on Android it falls back to a hardware keyboard. This is Milestone C's IME work; until
+  it lands, gamepad search is unusable.
+- **Saves** — the gamepad Saves rows are built with `allowManagedTransport: false` (rclone-only) and
+  the built-in transport is suppressed; the Thor is gamepad-only, so this is a required rebuild. This is
+  Milestone E-android, not A1, but it is the same class of hatch.
+- **Sort columns** — the couch Sort row offers only `GamepadSortColumns`; any column "set on the
+  desktop" ([:1895](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:1895)) falls back. Verify the
+  fallback is sane when no desktop ever set one.
+
+A1 owns the first three (they gate a usable first run); C owns search IME; E-android owns Saves. The
+rule for all of them: make the `InterfaceMode.Desktop`-aware branches in shared `EmuShelf.UI` degrade
+sensibly when desktop is unreachable, rather than assuming they are dead code.
+
 **Answers:** does Avalonia render, does the GLES shelf draw, does SQLite work (it does — 
 `SQLitePCLRaw.bundle_e_sqlite3` 3.0.3 ships `runtimes/android-arm64/native/libe_sqlite3.so`).
 **Done when:** the app launches on device, imports a folder without a keyboard, and shows the library.
+
+**Skeleton verified on the AVD, 2026-08-17.** The real head now boots the shared `App` composition
+root on `emushelf-api33` (Android 13, arm64) and answers all three questions affirmatively, in one
+frame:
+- **Avalonia renders** — the header/status/footer chrome paints.
+- **The GLES context is real, and asserted rather than eyeballed** — `MediaShelf3DControl`'s
+  `InitializationSucceeded` fired ("GL: OpenGL ES context OK"), and logcat shows the shelf's
+  `eglCreateContext maj 3 min 0` (ES 3.0, the exact profile `ShaderLibrary` targets). EGL is pinned
+  with `Software` dropped, so a fallback could not have masqueraded as success.
+- **SQLite works** — `Data/library.db` (204 KB) was created and initialised in app-private storage,
+  and the portable `Data/Covers/Cache/Logs/Saves/Settings` layout exists; the log runs cleanly from
+  `EmuShelf startup began` to `startup services initialized`.
+
+Structure that landed: a new out-of-solution `src/EmuShelf.App.Android` head (`EmuShelfAndroidApplication :
+AvaloniaAndroidApplication<App>` + a thin `AvaloniaMainActivity`), plugging into a new
+`App.SingleViewShellFactory`/`ISingleViewApplicationLifetime` branch that mirrors the desktop
+`DesktopShellFactory`. `AppBootstrapper` gained a base-directory override (the head injects
+`FilesDir`), and the Android shell supplies `AndroidInterfaceModeService` (Gamepad-locked),
+`AndroidFrontendController`, `SingleViewApplicationLifetimeService` and a stub `SingleViewDialogService`.
+Full desktop Release suite still green (1128 + 889). Build/run traps hit and resolved, plus two
+findings, are in DECISIONS 2026-08-17.
+
+**Remaining in A1** (the walking skeleton is up; the milestone is not done):
+- **Extract the gamepad tree from the desktop `MainWindow.axaml`** (still the largest pole) so the
+  Android head hosts the *real* gamepad shell instead of the current probe `MainView`. This is the A0
+  deferred item and is unchanged.
+- **Gamepad-native library import** — the head currently shows an empty library because there is no
+  keyboard-free import path yet; `SingleViewDialogService` stubs the pickers. This is A1's largest
+  feature item.
+- **The `AppPaths`/`OperatingSystem.Is*` ladder audit** (53 sites) beyond the base-directory branch.
+- Close the gamepad "Switch to Desktop" / cover-handoff escape hatches (see the checklist above).
 
 ### D — Storage and permissions (before B, not after)
 
@@ -501,6 +566,14 @@ varies by API level guarantees rework of every launch definition.
   search and rename do not work.
 - Back-gesture vs B-button arbitration.
 - Map the Thor's controls against the existing navigation model.
+- **Drop the SDL2 native payload from the APK.** `ppy.SDL2-CS` (an Infrastructure dependency behind
+  `SdlGamepadReader`, the desktop pad path) packs `runtimes/linux-x64/native/libSDL2.so` into the
+  Android build — wrong architecture, unused, and it trips build warning **XA0141** (16 KB page size).
+  Once Android input reads `InputDevice`/`MotionEvent` here, SDL is dead weight on this head, so exclude
+  the SDL native runtime from the Android APK (e.g. trim `runtimes/**/libSDL2.so` from
+  `@(AndroidNativeLibrary)`, or `ExcludeAssets` the transitive package as seen by the head — without
+  touching the desktop `EmuShelf.App`, which legitimately ships SDL2). Verify the warning clears and no
+  `libSDL2.so` remains in the APK. (Spotted during A1; see DECISIONS 2026-08-17.)
 
 **Cannot be validated off-device** — and per the project's own notes there is no pad on the dev
 machine at all, so the SDL path has never been hand-verified either. This is why C's probe is folded
@@ -723,10 +796,11 @@ which matters more than the emulator.
 
 ## Roadmap integration
 
-M41 and M42 are taken; there are already two M40s. Android is **M43+**, one milestone per section
-above, once Milestone 0 has reported. Note that [ROADMAP.md:522](../ROADMAP.md:522) states M24 is a
-product-hardening gate to be completed "before adding new end-user features" and its Phase 0 is
-entirely unchecked — starting Android is a decision to set that aside, which is fine if made
-knowingly.
+M41–M43 are taken (M43 is Playtime tracking); there are already two M40s. Android is the **M44**
+umbrella in [ROADMAP.md](../ROADMAP.md), with the plan's sections (0a, A0, A1, D, B, C, E, F) as its
+phases. Note that [ROADMAP.md:522](../ROADMAP.md:522) states M24 is a product-hardening gate to be
+completed "before adding new end-user features" and its Phase 0 is entirely unchecked — starting
+Android is a decision to set that aside, which is fine if made knowingly.
 
-A DECISIONS entry lands when Milestone 0 reports, not now.
+Milestone 0 has reported (0a) and A0/A1-skeleton have landed, so DECISIONS now carries the
+2026-08-15 (0a), 2026-08-17 (A0) and 2026-08-17 (A1 skeleton) entries.

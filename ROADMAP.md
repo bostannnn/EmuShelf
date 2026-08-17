@@ -1873,3 +1873,35 @@ many times it was launched. Two aggregate totals on the game row, not a session-
       `dotnet build`/`dotnet test` green on macOS.
 - [ ] On real Windows, launch and exit a game and confirm the play time and count increment, persist
       across restart, and that no game file or emulator data was modified.
+
+## M44 — Android port (AYN Thor) 🚧
+
+The Gamepad shell on an Android handheld, firing intents at Android emulator apps. Master plan and
+per-phase detail live in [docs/android-port-plan.md](docs/android-port-plan.md); non-obvious choices
+are in `DECISIONS.md`. Shipped as an experimental sideload APK, not a fourth supported release target.
+The head (`src/EmuShelf.App.Android`) is deliberately **outside `EmuShelf.slnx`** so the workload never
+breaks the whole-solution macOS build/test loop.
+
+- [x] **0a — AVD spike** (2026-08-15). Toolchain from zero, five emulators installed, the file-handoff
+      matrix measured on an arm64 AVD. Settled the per-emulator handoff design and passed the multi-disc
+      kill criterion via RetroArch/SwanStation. See the plan's "Milestone 0a — results".
+- [x] **A0 — split the App project** (2026-08-17). `EmuShelf.App` split into a shared `EmuShelf.UI`
+      library + a thin desktop head, with a lifetime-agnostic composition root behind
+      `App.DesktopShellFactory`/`IPlatformShell`. Full desktop Release suite green.
+- [ ] **A1 — walking skeleton** 🚧. Skeleton verified on the AVD (2026-08-17): the real head boots the
+      shared composition root, Avalonia renders, the GLES 3D shelf gets a real OpenGL ES 3.0 context
+      (asserted via `InitializationSucceeded`, EGL pinned with Software dropped), and SQLite creates
+      `Data/library.db` in app-private storage. Desktop suite still green (1128 + 889).
+  - [x] Single-view seam: `App.SingleViewShellFactory` + `ISingleViewApplicationLifetime` branch;
+        `AppBootstrapper` base-directory injection; Android shell services (`AndroidInterfaceModeService`
+        Gamepad-locked, frontend controller, lifetime service, stub `SingleViewDialogService`).
+  - [x] `net10.0-android36.0` head boots on device, EGL-pinned, `Avalonia.Desktop` kept out.
+  - [ ] Extract the gamepad tree from the desktop `MainWindow.axaml` so the head hosts the real Gamepad
+        shell instead of the probe `MainView` (the A0-deferred item; still the largest single pole).
+  - [ ] Gamepad-native library import (folder pick → picker → metadata consent → scan as gamepad
+        overlays) — the library is empty until this lands; the dialog pickers are stubbed.
+  - [ ] `AppPaths`/`OperatingSystem.Is*` ladder audit (53 sites) beyond the base-directory branch, and
+        close the gamepad "Switch to Desktop" / cover-handoff escape hatches.
+- [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
+      sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
+      touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.

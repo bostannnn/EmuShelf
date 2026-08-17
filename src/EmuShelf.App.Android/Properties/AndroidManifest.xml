@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          android:versionCode="1"
+          android:versionName="0.1.0"
+          package="com.emushelf.app">
+  <!-- Milestone A1 skeleton: no storage permission yet. All-files access for the scanner/readers
+       and SAF folder grants for launching are Milestone D (docs/android-port-plan.md). INTERNET is
+       harmless and lets the metadata/achievement HttpClients that the shared composition root builds
+       exist without a runtime surprise later. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <application android:label="EmuShelf"
+               android:allowBackup="false"
+               android:hardwareAccelerated="true" />
+</manifest>

@@ -9287,3 +9287,79 @@ deferring that scene until the first load settles. Separately fixed the cheap ha
 no longer re-enumerates joysticks every 16 ms poll when no controller is attached (throttled to 1 Hz),
 which was 60 native controller-open scans/sec on the UI thread during the load on a Deck driven by
 Steam Input rather than a raw SDL pad.
+
+## 2026-08-17 — Android A1 walking skeleton: real head boots on the AVD
+
+The Android head (`src/EmuShelf.App.Android`) now boots the shared `App` composition root on an
+arm64 AVD (API 33) and answers Milestone A1's three questions: Avalonia renders, the GLES 3D shelf
+gets a real OpenGL ES 3.0 context (asserted via `MediaShelf3DControl.InitializationSucceeded`, not by
+eye), and SQLite creates/initialises `Data/library.db` in app-private storage. Full desktop Release
+suite stayed green (1128 + 889). Non-obvious choices and traps this locks in:
+
+- **The head stays out of `EmuShelf.slnx` and is built from its own path.** Confirmed necessary as the
+  plan predicted — the android workload restore/build would otherwise break the whole-solution macOS
+  dev loop. `dotnet test EmuShelf.slnx` never sees it.
+- **Single-view seam mirrors the desktop one.** Added `App.SingleViewShellFactory` +
+  `App.BaseDirectoryOverride` and an `ISingleViewApplicationLifetime` branch beside the existing
+  `DesktopShellFactory`. `AppBootstrapper` takes an optional base directory; the head injects the
+  Android `FilesDir` (the only reliably writable portable root — Infrastructure cannot resolve it
+  without the Android context).
+- **Avalonia 12's Android entry point is application-based, not the v11 generic activity.**
+  `EmuShelfAndroidApplication : AvaloniaAndroidApplication<App>` owns `CustomizeAppBuilder` (EGL pin,
+  font, factory/base-dir wiring); `MainActivity : AvaloniaMainActivity` is thin. The activity theme
+  MUST be a `Theme.AppCompat` descendant (`AvaloniaActivity` extends `AppCompatActivity`) — a plain
+  `@android` Material theme aborts at `setContentView`. The launcher activity has an explicit
+  `Name=` so .NET's `crc64…` mangling can't rename it out from under the manifest.
+- **`adb install` of a Debug APK needs `-p:EmbedAssembliesIntoApk=true`.** Fast deployment expects the
+  assemblies pushed to `.__override__` via the deploy target; a bare `adb install` otherwise aborts
+  with "No assemblies found". Embedding produces a self-contained ~135 MB Debug APK that installs
+  standalone.
+- **Avalonia dev-tools (`AvaloniaUI.DiagnosticsSupport`) must not attach on Android.** It ships no
+  Android asset and threw `FileNotFound` during `AppBuilder` setup. `App.Initialize` now calls
+  `AttachDeveloperTools()` from a separate method guarded by `!OperatingSystem.IsAndroid()`, so JITting
+  `Initialize` on Android never resolves the assembly. Desktop behaviour is unchanged.
+
+Two findings surfaced, both matching risks the plan flagged, both deferred:
+- **The IBL cube map errors on the AVD's GLES translator.** `glFramebufferTexture2D` on the `Rgba16f`
+  cube target logs `GL error 0x502` — the "ES 3.0 does not guarantee `Rgba16f` is colour-renderable"
+  concern from "What cannot be verified without hardware." The shelf still reported init success and
+  did not crash; whether real Adreno hardware (the Thor) hits this is a 0b/A1 question. With 0 games
+  the shelf draws nothing anyway, so it did not affect the skeleton.
+- **The SDL2 native `.so` leaks into the APK.** `ppy.SDL2-CS` (a desktop-only gamepad dependency in
+  Infrastructure) packs `runtimes/linux-x64/native/libSDL2.so` into the Android build (XA0141, wrong
+  arch and useless there). Android input is Milestone C; exclude the SDL native runtime from the
+  Android head then.
+
+## 2026-08-17 — Android A1: two-agent code review + fixes
+
+The A1 skeleton was reviewed by two independent agents (shared `EmuShelf.UI` seam; the Android head).
+Both verified the design is sound and desktop is unregressed; between them they found five real items,
+of which four were fixed and one documented. Fixes (desktop Release suite still green 1128 + 889, and
+the head still boots/renders/opens SQLite on the AVD):
+
+- **`Opened` was mapped onto a recurring event.** `SingleViewShell` ran the shared post-open startup
+  pass on `MainView.AttachedToVisualTree`, which re-fires on activity recreation / "Don't keep
+  activities" / split-screen / process-death restore — re-running the availability rescan, the
+  RetroAchievements network refresh, the update check and overlapping grid rebuilds each time. Now
+  guarded to run exactly once, matching desktop's `Window.Opened`.
+- **The durable-save signal was wrong, and the disposal path was dead code.** Save-flush was wired to
+  `DetachedFromVisualTree` (fires on transient re-attach) and disposal to an
+  `IControlledApplicationLifetime` cast that is *always false* on Android (Avalonia's Android lifetime
+  does not implement it — confirmed from assembly metadata). Flush now fires on
+  `IActivatableLifetime.Deactivated(ActivationKind.Background)` (onPause), the real Android durable
+  point; the dead Exit cast is removed with a comment that teardown/persistence-across-process-death is
+  Milestone B.
+- **`AppBootstrapper` base-dir fallback could crash unlogged on Android.** A null/blank
+  `BaseDirectoryOverride` fell through to the read-only `AppContext.BaseDirectory` and threw from
+  `Directory.CreateDirectory` one line before the logger existed. Now fails fast on Android with an
+  actionable message.
+- **A missing shell factory produced a silent blank window.** `App.OnFrameworkInitializationCompleted`
+  now logs an error when no shell is composed.
+- **Documented-only:** `SingleViewApplicationLifetimeService.Shutdown()`'s no-op also makes the
+  in-app-update "exit to unlock files" path a no-op — moot on Android, which has no in-app update path.
+
+Verified non-issues the review cleared (so they are not re-litigated): the `MainView` bindings all
+resolve (incl. `Games.Count` OneWay via `BulkObservableCollection`), the forced-Gamepad mode
+initialises correctly through the VM constructor (not `ModeChanged`), `SingleViewDialogService` is
+complete and cannot wedge the VM, no `Avalonia.Desktop` backend reaches the APK (inspected payload),
+and the `FilesDir`/startup ordering and duplicate `<application>` merge are correct.
