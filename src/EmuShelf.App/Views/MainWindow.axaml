@@ -4315,7 +4315,7 @@
                             <TextBlock Text="{Binding FocusedGame.Title}" FontSize="16" TextWrapping="Wrap"
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             <TextBox x:Name="GamepadRenameBox" Text="{Binding FocusedGame.DraftTitle, Mode=TwoWay}" FontSize="24"
-                                     PlaceholderText="Steam + X opens the on-screen keyboard" KeyDown="OnGamepadTextInputKeyDown" />
+                                     PlaceholderText="Enter a new title" KeyDown="OnGamepadTextInputKeyDown" />
                         </StackPanel>
                         <!-- Self-contained confirmation dialog (Remove / Desktop switch / Quit). Spans both
                              body rows and centres the whole group — title, explanation, then an equal-halves
@@ -4425,7 +4425,7 @@
                                                 HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
                                         <TextBlock Text="Connect your ScreenScraper account" FontSize="18"
                                                    FontWeight="SemiBold" HorizontalAlignment="Center" />
-                                        <TextBlock Text="Sign in with your screenscraper.fr username and password. Press Steam + X for the on-screen keyboard."
+                                        <TextBlock Text="Sign in with your screenscraper.fr username and password."
                                                    TextWrapping="Wrap" TextAlignment="Center"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <TextBox x:Name="GamepadScraperUsernameBox" Classes="gamepad-scraper-field"
@@ -4986,9 +4986,7 @@
                         </StackPanel>
                         <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
                                     IsVisible="{Binding IsGamepadSearchOpen}">
-                            <Border Classes="gamepad-key"><TextBlock Text="Steam+X" /></Border>
-                            <TextBlock Text="Keyboard" />
-                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <Border Classes="gamepad-key action-b"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
                         </StackPanel>
                         <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
@@ -5004,8 +5002,6 @@
                             <TextBlock Text="Move" />
                             <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
                             <TextBlock Text="Select" />
-                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="Steam+X" /></Border>
-                            <TextBlock Text="Keyboard" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
                         </StackPanel>

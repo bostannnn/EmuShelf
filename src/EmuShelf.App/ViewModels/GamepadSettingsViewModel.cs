@@ -331,7 +331,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     public string KeyboardHint => IsAutomaticKeyboardAvailable
         ? "The on-screen keyboard will open automatically. A keyboard also works."
-        : "Use Steam + X for the Steam keyboard, or type with a hardware keyboard.";
+        : "Type with a keyboard.";
 
     public GamepadSettingsRowViewModel? FocusedRow => Rows.Count == 0
         ? null
