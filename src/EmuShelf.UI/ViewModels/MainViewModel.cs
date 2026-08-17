@@ -96,6 +96,13 @@ public partial class MainViewModel : ViewModelBase
     // serialize their own work, but this prevents an import finishing halfway through a connect
     // and leaving newly hashed games unmatched.
     private readonly SemaphoreSlim _retroAchievementsPipeline = new(1, 1);
+    // Cover loads run with AllowConcurrentExecutions, so a screenful of tiles realizing at once (or a
+    // startup rebuild) would otherwise launch dozens of decode+thumbnail Task.Run items simultaneously
+    // and starve the thread pool — covers popped in staggered and the whole app felt choppy. Cap the
+    // fleet to a few in-flight decodes; the rest queue and finish smoothly. Scaled to the machine so a
+    // dual-core box is not over-subscribed and a Deck (or bigger) still fills quickly.
+    private readonly SemaphoreSlim _coverDecodeGate =
+        new(Math.Clamp(Environment.ProcessorCount / 2, 2, 4));
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -1610,10 +1617,7 @@ public partial class MainViewModel : ViewModelBase
                     ? system
                     : NavigationSystems.FirstOrDefault();
                 if (SelectedSystem is null)
-                {
                     CurrentLibraryScope = LibraryScope.AllGames;
-                    _selectedSystemLoad = ReloadGamesAsync();
-                }
             }
             else
             {
@@ -1622,8 +1626,13 @@ public partial class MainViewModel : ViewModelBase
                 CurrentLibraryScope = IsGamepadMode && scope is (LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed)
                     ? LibraryScope.AllGames
                     : scope;
-                _selectedSystemLoad = ReloadGamesAsync();
             }
+
+            // One immediate initial load for whatever scope the restore settled on. The SelectedSystem
+            // setter's debounce is suppressed during restore, so this is the sole first build — no
+            // 180 ms dead time before the first DB read, and nothing left pending to race the
+            // post-open refresh passes.
+            _selectedSystemLoad = ReloadGamesAsync();
         }
         finally
         {
@@ -1757,9 +1766,12 @@ public partial class MainViewModel : ViewModelBase
         NotifyLibraryPresentationChanged();
         UpdateGamepadPlatformState();
         ScheduleLibraryViewStateSave();
-        // Debounced: the rail highlight and title above move immediately, but the heavy grid reload is
-        // coalesced so holding/tapping LB/RB does not rebuild the library on every press.
-        _selectedSystemLoad = RequestLibraryReload();
+        // During startup restore the setter only establishes the rail/title; RestoreLibraryViewState
+        // kicks the single initial load itself (immediately, without the debounce below). Debouncing
+        // is for live LB/RB cycling: the highlight and title move at once, but the heavy grid reload is
+        // coalesced so holding/tapping does not rebuild the library on every press.
+        if (!_isRestoringViewState)
+            _selectedSystemLoad = RequestLibraryReload();
     }
 
     partial void OnCurrentLibraryScopeChanged(LibraryScope value)
@@ -4587,6 +4599,9 @@ public partial class MainViewModel : ViewModelBase
         var coverPath = game.CoverPath;
         var coverRevision = game.CoverRevision;
         game.IsCoverLoading = true;
+        // Bound how many covers decode at once. Acquired after the cheap guards above so queued tiles
+        // still show their loading state while they wait their turn.
+        await _coverDecodeGate.WaitAsync();
         try
         {
             var thumbnailPath = await _covers.GetThumbnailAsync(game.Id, coverPath);
@@ -4637,6 +4652,7 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
+            _coverDecodeGate.Release();
             game.IsCoverLoading = false;
         }
     }
@@ -5351,6 +5367,44 @@ public partial class MainViewModel : ViewModelBase
             SelectedSystem = system;
             await _selectedSystemLoad;
         }
+    }
+
+    /// <summary>
+    /// The post-open background passes, run in a controlled order so they stop stampeding the initial
+    /// library load. Previously all four were launched at once from <c>MainWindow.Opened</c>: two of
+    /// them (availability, RetroAchievements) each trigger a full <see cref="ReloadGamesAsync"/> that
+    /// disposes and rebuilds every tile, so with the initial load still in flight the grid was built,
+    /// discarded and rebuilt two or three times over — the visible flicker and "background races" at
+    /// startup. Here the two grid-rebuilding passes wait for the first load to settle and then run one
+    /// after another, so the library is built once and refreshed at most twice, in sequence. Texture
+    /// marks and the update check never rebuild the grid, so they run alongside.
+    /// </summary>
+    public async Task RunStartupBackgroundTasksAsync()
+    {
+        // Independent of the library rebuild — start them now and let them run concurrently.
+        var texturePacks = LoadTexturePacksAtStartupAsync();
+        var updateCheck = Updates?.CheckOnLaunchAsync() ?? Task.CompletedTask;
+
+        // Let the initial build finish before the refresh passes so they can't clear its scope cache
+        // or bump its load generation mid-flight. The load path logs its own failures.
+        try
+        {
+            await _selectedSystemLoad;
+        }
+        catch
+        {
+            // Swallowed: a failed initial load already reported itself; the refresh passes below still
+            // run so a transient first-load error doesn't strand availability/achievement refreshes.
+        }
+
+        // Sequential, not concurrent: each can rebuild the grid, and overlapping them just rebuilds
+        // the same view twice for nothing.
+        await RefreshAvailabilityAsync();
+        await RefreshRetroAchievementsProgressAtStartupAsync();
+
+        // Fold the independent passes back in so a caller awaiting startup sees them through, and any
+        // exception is observed rather than surfacing later as an unobserved-task fault.
+        await Task.WhenAll(texturePacks, updateCheck);
     }
 
     /// <summary>

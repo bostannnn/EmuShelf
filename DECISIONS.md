@@ -9248,3 +9248,42 @@ Decisions that are not obvious from the diff:
 Verified: full Release suite green (1128 + 888), desktop and gamepad launches clean, `EmuShelf
 --version` correct. Deferred to A1: splitting the 5,119-line `MainWindow.axaml` so `GamepadRoot` can be
 hosted in a single view.
+
+## 2026-08-17 — Startup was several background passes racing the first library load
+
+A review of the "sluggish and choppy" cold start (worst in gamepad/Steam Deck mode) found the
+startup did not do one slow thing so much as several jobs contending in the first second. Four
+targeted changes, no behavior change once settled:
+
+- **The post-open passes no longer stampede the initial load.** `MainWindow.Opened` used to fire
+  four fire-and-forget tasks at once; two of them (availability, RetroAchievements) each call a
+  full non-cached `ReloadGamesAsync` that disposes and rebuilds every tile, so with the initial
+  load still in flight the grid was built, discarded and rebuilt two or three times over — the
+  visible flicker. Replaced with one `RunStartupBackgroundTasksAsync`: the two grid-rebuilding
+  passes await the initial load and then run sequentially; texture marks and the update check
+  (which never touch the grid) run alongside. The reload path stays generation-guarded, so
+  correctness never depended on this ordering — only the wasted rebuilds did.
+- **The first library load is immediate, not debounced.** Restoring the saved view set
+  `SelectedSystem`, whose setter debounces the reload 180 ms for LB/RB cycling — dead time before
+  the first DB read at startup, where there is exactly one selection. `OnSelectedSystemChanged`
+  now suppresses that scheduling while `_isRestoringViewState`, and `RestoreLibraryViewState`
+  kicks one immediate `ReloadGamesAsync` for whatever scope it settled on.
+- **Cover decoding is bounded.** `LoadGameCoverAsync` runs with `AllowConcurrentExecutions`, so a
+  screenful of tiles (or a rebuild) launched dozens of decode `Task.Run` items at once and starved
+  the thread pool; covers popped in staggered. A `SemaphoreSlim` sized `Clamp(ProcessorCount/2,2,4)`
+  caps the in-flight decodes; the rest queue and still show their loading state.
+- **CloudSaveSyncCoordinator stopped opening one SQLite connection per system.** Its ctor's
+  one-time legacy-override migration resolved every save system through a per-system delegate that
+  each opened a fresh (unpooled) connection — 15+ opens on the UI thread before the first frame.
+  It now takes an optional batched resolver (`ResolveConfiguredEmulators` → one `GetAll`) used only
+  for that migration; runtime resolution keeps the per-system delegate so a config the user changes
+  mid-session is still read fresh.
+
+Not changed here (reported in the same review, deferred as higher-risk on a render path that can't
+be hand-verified on the macOS dev box): in gamepad mode the CRT tube is on by default, which runs a
+30 Hz full-window `ChromeSnapshot` composite on the UI thread plus a 60 Hz GL loop from first paint
+over every layout — the dominant Deck-side drag. Also isolated but left as a follow-up would be
+deferring that scene until the first load settles. Separately fixed the cheap half: `SdlGamepadReader`
+no longer re-enumerates joysticks every 16 ms poll when no controller is attached (throttled to 1 Hz),
+which was 60 native controller-open scans/sec on the UI thread during the load on a Deck driven by
+Steam Input rather than a raw SDL pad.

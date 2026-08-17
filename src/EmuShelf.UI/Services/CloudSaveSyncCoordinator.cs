@@ -37,6 +37,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private readonly ISettingsService _settingsService;
     private readonly IAppLogger _logger;
     private readonly Func<string, SaveEmulatorInstallation?>? _emulatorInstallations;
+    // Optional batched form of the resolver above: resolves every requested system's installation in
+    // one database read. Used only for the one-time startup migration, which would otherwise open one
+    // connection per system (15+) on the UI thread before the first frame. Runtime resolution keeps
+    // using the per-system delegate so a config the user changes mid-session is always read fresh.
+    private readonly Func<IReadOnlyList<string>, IReadOnlyDictionary<string, SaveEmulatorInstallation?>>?
+        _emulatorInstallationsBatch;
     private readonly Func<string, IReadOnlyList<Game>>? _gamesForSystem;
     private readonly FileSaveSyncLog _syncLog;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -54,13 +60,16 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         AppSettings settings,
         IAppLogger logger,
         Func<string, SaveEmulatorInstallation?>? emulatorInstallations = null,
-        Func<string, IReadOnlyList<Game>>? gamesForSystem = null)
+        Func<string, IReadOnlyList<Game>>? gamesForSystem = null,
+        Func<IReadOnlyList<string>, IReadOnlyDictionary<string, SaveEmulatorInstallation?>>?
+            emulatorInstallationsBatch = null)
     {
         _gamesForSystem = gamesForSystem;
         _paths = paths;
         _settingsService = settingsService;
         _logger = logger;
         _emulatorInstallations = emulatorInstallations;
+        _emulatorInstallationsBatch = emulatorInstallationsBatch;
         // Fold the legacy per-emulator fields into the per-system dictionary, then re-key each
         // per-system override to the system's active emulator — once, up front, so every read below
         // sees one (system, emulator) shape regardless of how old the settings file is. Ordered after
@@ -920,13 +929,22 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     private string? ActiveEmulatorFor(string systemId) =>
         SaveProviderRegistry.Resolve(systemId, _emulatorInstallations?.Invoke(systemId)?.EmulatorId)?.EmulatorId;
 
-    // Every system's active emulator, for the one-time legacy-override migration on load.
+    // Every system's active emulator, for the one-time legacy-override migration on load. Prefers the
+    // batched resolver (one database read for all systems) and falls back to the per-system delegate
+    // for callers/tests that supply only that one.
     private IReadOnlyDictionary<string, string> ActiveEmulatorBySystem()
     {
+        var systemIds = SaveProviderRegistry.SystemIds;
+        var installations = _emulatorInstallationsBatch?.Invoke(systemIds);
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var systemId in SaveProviderRegistry.SystemIds)
+        foreach (var systemId in systemIds)
         {
-            if (ActiveEmulatorFor(systemId) is { } emulatorId)
+            var activeEmulatorId = installations is not null
+                ? SaveProviderRegistry.Resolve(
+                    systemId,
+                    installations.GetValueOrDefault(systemId)?.EmulatorId)?.EmulatorId
+                : ActiveEmulatorFor(systemId);
+            if (activeEmulatorId is { } emulatorId)
                 map[systemId] = emulatorId;
         }
         return map;

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using EmuShelf.Core.Input;
@@ -41,7 +42,14 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
     private const int AxisRightY = 3;
     private const float AxisRange = 32767f;
 
+    // When no controller is attached, re-scanning the joystick list on every 16 ms poll is a wasteful
+    // 60 Hz native enumeration on the UI thread — pure overhead during a busy startup on a Deck that
+    // is driven by Steam Input's keyboard mapping rather than a raw SDL pad. Throttle the open scan to
+    // this interval; a controller plugged in mid-session still connects within a second.
+    private static readonly TimeSpan ControllerScanInterval = TimeSpan.FromSeconds(1);
+
     private nint _controller;
+    private long _lastControllerScanTimestamp;
     private bool _initialized;
     private bool _initializationFailed;
     private bool _disposed;
@@ -62,7 +70,14 @@ public sealed class SdlGamepadReader : IGamepadReader, IDisposable
 
             if (_controller == 0 || SDL_GameControllerGetAttached(_controller) == 0)
             {
+                // A controller that was here and left is closed immediately; only the (re)open scan
+                // is throttled, so a disconnected pad no longer enumerates joysticks every tick.
                 CloseController();
+                var now = Stopwatch.GetTimestamp();
+                if (_lastControllerScanTimestamp != 0 &&
+                    Stopwatch.GetElapsedTime(_lastControllerScanTimestamp, now) < ControllerScanInterval)
+                    return GamepadReading.Disconnected;
+                _lastControllerScanTimestamp = now;
                 TryOpenController();
                 if (_controller == 0)
                     return GamepadReading.Disconnected;

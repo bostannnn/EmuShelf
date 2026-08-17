@@ -176,7 +176,10 @@ public sealed class AppBootstrapper
             emulatorInstallations: ResolveConfiguredEmulator,
             // RetroArch writes every core's saves into one folder unless the user turns on
             // per-core sorting, so the save providers need the library to tell whose save is whose.
-            gamesForSystem: systemId => Library.GetGames(systemId));
+            gamesForSystem: systemId => Library.GetGames(systemId),
+            // The startup legacy-override migration resolves every system at once; this reads them all
+            // in one query instead of opening one SQLite connection per system before the first frame.
+            emulatorInstallationsBatch: ResolveConfiguredEmulators);
         TexturePacks = new TexturePackCoordinator(
             Paths,
             MetadataStore,
@@ -203,9 +206,23 @@ public sealed class AppBootstrapper
     // folder containing the configured executable — used to pre-fill cloud save sync so the user
     // does not select the same emulator twice. Flatpak targets have no local executable path, so
     // they report a null directory and rely on the provider's documented Flatpak layout instead.
-    private SaveEmulatorInstallation? ResolveConfiguredEmulator(string systemId)
+    private SaveEmulatorInstallation? ResolveConfiguredEmulator(string systemId) =>
+        BuildInstallation(EmulatorConfigurations.Get(systemId));
+
+    // Batched form of the above: one database read for every requested system, used by the cloud-sync
+    // startup migration so it does not open a connection per system on the pre-first-frame path.
+    private IReadOnlyDictionary<string, SaveEmulatorInstallation?> ResolveConfiguredEmulators(
+        IReadOnlyList<string> systemIds)
     {
-        var configuration = EmulatorConfigurations.Get(systemId);
+        var configurations = EmulatorConfigurations.GetAll(systemIds);
+        var result = new Dictionary<string, SaveEmulatorInstallation?>(StringComparer.Ordinal);
+        foreach (var systemId in systemIds)
+            result[systemId] = BuildInstallation(configurations.GetValueOrDefault(systemId));
+        return result;
+    }
+
+    private static SaveEmulatorInstallation? BuildInstallation(EmulatorConfiguration? configuration)
+    {
         if (configuration is null)
             return null;
 

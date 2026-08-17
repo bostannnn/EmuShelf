@@ -303,13 +303,11 @@ public partial class App : Application
             Bootstrapper.Logger);
 
         shell.Show(viewModel, new ShellCallbacks(
-            Opened: () =>
-            {
-                _ = viewModel.RefreshAvailabilityAsync();
-                _ = viewModel.RefreshRetroAchievementsProgressAtStartupAsync();
-                _ = viewModel.LoadTexturePacksAtStartupAsync();
-                _ = viewModel.Updates?.CheckOnLaunchAsync();
-            },
+            // Post-open background work runs after the UI paints — no discovery scan. The view model
+            // orders these internally: the two passes that rebuild the grid (availability,
+            // RetroAchievements) wait for the initial load and run sequentially instead of racing it,
+            // so the library is built once rather than stampeded into two or three overlapping rebuilds.
+            Opened: () => _ = viewModel.RunStartupBackgroundTasksAsync(),
             Closing: viewModel.FlushPendingLibraryViewStateSave,
             Exit: () =>
             {

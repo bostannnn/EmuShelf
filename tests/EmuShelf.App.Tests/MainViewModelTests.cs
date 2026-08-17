@@ -595,6 +595,26 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task RunStartupBackgroundTasks_WaitsForTheInitialLoadThenAppliesAvailability()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        // The startup orchestrator awaits the initial library load and then runs the availability pass
+        // (rather than firing them concurrently). A file that has gone missing must therefore be marked
+        // unavailable by the time the single orchestrating call completes.
+        File.Delete(Path.Combine(folder, "Alpha.cue"));
+        await vm.RunStartupBackgroundTasksAsync();
+
+        var alpha = vm.Games.Single(g => g.Title == "Alpha");
+        Assert.False(alpha.IsAvailable);
+        Assert.True(vm.Games.Single(g => g.Title == "Beta").IsAvailable);
+    }
+
+    [AvaloniaFact]
     public async Task ShowGameInFolder_RevealsTheSelectedLaunchSource()
     {
         var folder = MakeRomsFolder();
