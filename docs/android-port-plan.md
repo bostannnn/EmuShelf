@@ -400,6 +400,21 @@ product regardless of whether Android proceeds, and it fails fast on the avares/
 problems before a single line of Android exists.
 **Done when:** the full Release suite is green and the desktop app is unchanged by eye.
 
+**Done, 2026-08-17.** `EmuShelf.App` was split into a shared `EmuShelf.UI` library (assembly
+`EmuShelf.UI`, Avalonia-core only) and a thin desktop head that keeps the `EmuShelf` assembly name
+(so the executable, launch scripts and `.app` are unchanged). The composition root is now
+lifetime-agnostic: `App.Compose(...)` in the shared library builds the whole service graph and hands
+the window-typed subset to an `IPlatformShell`, which the desktop head registers via
+`App.DesktopShellFactory` — **this is where the A1 single-view (Android) head plugs in.** The window
+services already sat behind interfaces (`IInterfaceModeService`, `IFrontendController`,
+`IApplicationLifetimeService`, `IDialogService`), so only their `Window`-touching implementations moved
+to the head. `DialogService`'s owner was re-typed `Window` → `TopLevel` (pickers are now host-agnostic;
+the modal `ShowDialog` sites stay desktop-only behind a `Window` cast). The 19 `avares://EmuShelf/`
+URIs became `avares://EmuShelf.UI/`. Full Release suite green (1128 + 888). **One item deferred to
+A1:** splitting the 5,119-line `MainWindow.axaml` so the `GamepadRoot` can host in a single view —
+A0's done-criterion holds with `MainWindow` moved whole to the head, and the XAML split's only consumer
+is A1's single-view hosting. See DECISIONS 2026-08-17.
+
 ### A1 — Walking skeleton
 
 A `net10.0-android36.0` head, `ISingleViewApplicationLifetime`, Gamepad UI browsing a library.
@@ -619,7 +634,7 @@ the same way: in agent sessions, not person-weeks.
 | Milestone | Sessions | What could stretch it |
 |---|---|---|
 | 0a — toolchain + AVD spike | done | — |
-| A0 — desktop split | 1–2 | 17 snapshot baselines and 19 `avares://` URIs have to come out green |
+| A0 — desktop split | done | 17 snapshot baselines and 19 `avares://` URIs came out green; MainWindow.axaml internal split moved to A1 |
 | A1 — head + skeleton + gamepad import | 2–3 | Gamepad import is a real feature; GL may not initialise |
 | D — storage & permissions | 1–2 | Grows if the SAF-only emulators need EmuShelf-side SAF readers |
 | B — launching | 1–2 | Mostly per-emulator definitions, and Cocoon's configs are a working reference |

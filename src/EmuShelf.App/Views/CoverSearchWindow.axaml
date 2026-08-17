@@ -4,7 +4,7 @@
         x:Class="EmuShelf.App.Views.CoverSearchWindow"
         x:DataType="vm:CoverSearchViewModel"
         Title="{Binding WindowTitle}"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="940" Height="700" MinWidth="700" MinHeight="520"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
         WindowStartupLocation="CenterOwner">

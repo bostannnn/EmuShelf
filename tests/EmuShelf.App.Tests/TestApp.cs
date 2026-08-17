@@ -16,9 +16,9 @@ public class TestApp : Application
     public override void Initialize()
     {
         Resources.MergedDictionaries.Add(new ResourceInclude(
-            new Uri("avares://EmuShelf/"))
+            new Uri("avares://EmuShelf.UI/"))
         {
-            Source = new Uri("avares://EmuShelf/Styles/EmuShelfTheme.axaml"),
+            Source = new Uri("avares://EmuShelf.UI/Styles/EmuShelfTheme.axaml"),
         });
         var fluent = new FluentTheme();
         fluent.Palettes.Add(

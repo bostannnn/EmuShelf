@@ -1404,7 +1404,7 @@ public class MainWindowVisualSnapshotTests
             for (var index = 0; index < viewModel.GamepadAchievementDetails.Achievements.Count; index++)
             {
                 using var stream = AssetLoader.Open(new Uri(
-                    $"avares://EmuShelf/Assets/PlatformConsoleArt/{badgePaths[index % badgePaths.Length]}"));
+                    $"avares://EmuShelf.UI/Assets/PlatformConsoleArt/{badgePaths[index % badgePaths.Length]}"));
                 viewModel.GamepadAchievementDetails.Achievements[index].Badge = new Bitmap(stream);
             }
             viewModel.GamepadOverlay = GamepadOverlayKind.Achievements;
@@ -1763,7 +1763,7 @@ public class MainWindowVisualSnapshotTests
             for (var index = 0; index < viewModel.GamepadAchievementDetails!.Achievements.Count; index++)
             {
                 using var stream = AssetLoader.Open(new Uri(
-                    $"avares://EmuShelf/Assets/PlatformConsoleArt/{badgePaths[index % badgePaths.Length]}"));
+                    $"avares://EmuShelf.UI/Assets/PlatformConsoleArt/{badgePaths[index % badgePaths.Length]}"));
                 viewModel.GamepadAchievementDetails.Achievements[index].Badge = new Bitmap(stream);
             }
             await PumpAsync();

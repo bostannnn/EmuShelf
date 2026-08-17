@@ -11,7 +11,7 @@
         x:Name="MainHostWindow"
         x:DataType="vm:MainViewModel"
         Title="EmuShelf"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="1240" Height="800"
         MinWidth="900" MinHeight="560"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
@@ -1301,7 +1301,7 @@
                                     Command="{Binding ShowAllGamesCommand}">
                                 <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
                                     <Border Classes="nav-icon-well">
-                                        <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-simple@2x.png"
+                                        <Image Source="avares://EmuShelf.UI/Assets/ThirdParty/OpenEmu/LibraryUi/collection-simple@2x.png"
                                                RenderOptions.BitmapInterpolationMode="HighQuality" />
                                     </Border>
                                     <TextBlock Grid.Column="1" Text="All Games" FontSize="13.5"
@@ -1314,7 +1314,7 @@
                                     Command="{Binding ShowRecentlyPlayedCommand}">
                                 <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
                                     <Border Classes="nav-icon-well">
-                                        <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
+                                        <Image Source="avares://EmuShelf.UI/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
                                                RenderOptions.BitmapInterpolationMode="HighQuality" />
                                     </Border>
                                     <TextBlock Grid.Column="1" Text="Recently Played" FontSize="13.5"
@@ -1327,7 +1327,7 @@
                                     Command="{Binding ShowRecentlyAddedCommand}">
                                 <Grid ColumnDefinitions="30,*" ColumnSpacing="10">
                                     <Border Classes="nav-icon-well">
-                                        <Image Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
+                                        <Image Source="avares://EmuShelf.UI/Assets/ThirdParty/OpenEmu/LibraryUi/collection-smart@2x.png"
                                                RenderOptions.BitmapInterpolationMode="HighQuality" />
                                     </Border>
                                     <TextBlock Grid.Column="1" Text="Recently Added" FontSize="13.5"
@@ -2231,7 +2231,7 @@
                             Background="{DynamicResource EmuPlaceholderMedallionBrush}"
                             BorderBrush="{DynamicResource EmuCoverBorderBrush}" BorderThickness="1">
                         <Image Width="76" Height="76"
-                               Source="avares://EmuShelf/Assets/ThirdParty/OpenEmu/LibraryUi/missing-metadata@2x.png"
+                               Source="avares://EmuShelf.UI/Assets/ThirdParty/OpenEmu/LibraryUi/missing-metadata@2x.png"
                                RenderOptions.BitmapInterpolationMode="None" />
                     </Border>
                 </Panel>

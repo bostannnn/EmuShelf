@@ -21,6 +21,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EmuShelf.App\EmuShelf.App.csproj" />
+    <!-- The shared UI library (App, view models, controls, rendering). The desktop head above pulls
+         it in transitively, but most tests target these types directly, so reference it explicitly. -->
+    <ProjectReference Include="..\..\src\EmuShelf.UI\EmuShelf.UI.csproj" />
     <!-- The headless preview tool keeps a hand-copy of MediaShellMap's profiles, because it cannot
          reference the app. This project can see both, so it is the only place the two tables can be
          compared — see MediaShellTests.PreviewShelf_RendersTheSameProfilesTheAppDoes. Referencing

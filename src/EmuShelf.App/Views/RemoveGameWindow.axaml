@@ -4,7 +4,7 @@
         x:Class="EmuShelf.App.Views.RemoveGameWindow"
         x:DataType="vm:RemoveGameViewModel"
         Title="Remove game"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="430" SizeToContent="Height"
         CanResize="False"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
