@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
@@ -17,12 +16,14 @@ using EmuShelf.Core.Systems;
 namespace EmuShelf.App.Services;
 
 /// <summary>
-/// Avalonia implementation of <see cref="IDialogService"/>. Resolves the main window
-/// from the desktop lifetime so it doesn't need to be wired up after construction.
+/// Avalonia implementation of <see cref="IDialogService"/>. Owned by a <see cref="TopLevel"/> — the
+/// desktop head passes its main window — so the file/folder pickers work under any Avalonia host,
+/// including a future single-view (Android) surface. The modal dialogs still need a
+/// <see cref="Window"/> parent and so remain desktop-only.
 /// </summary>
 public sealed class DialogService : IDialogService
 {
-    private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
+    private readonly TopLevel _owner;
     private readonly IAppLogger _logger;
     private readonly IRetroAchievementsDetailsService? _retroAchievementsDetails;
     private readonly IRetroAchievementsAccountService? _retroAchievementsAccount;
@@ -36,7 +37,7 @@ public sealed class DialogService : IDialogService
     private readonly ISettingsService? _settingsService;
 
     public DialogService(
-        IClassicDesktopStyleApplicationLifetime lifetime,
+        TopLevel owner,
         IAppLogger? logger = null,
         IRetroAchievementsDetailsService? retroAchievementsDetails = null,
         IRetroAchievementsAccountService? retroAchievementsAccount = null,
@@ -49,7 +50,7 @@ public sealed class DialogService : IDialogService
         IScreenScraperBatchService? batchScraper = null,
         ISettingsService? settingsService = null)
     {
-        _lifetime = lifetime;
+        _owner = owner;
         _logger = logger ?? NullAppLogger.Instance;
         _retroAchievementsDetails = retroAchievementsDetails;
         _retroAchievementsAccount = retroAchievementsAccount;
@@ -63,14 +64,20 @@ public sealed class DialogService : IDialogService
         _settingsService = settingsService;
     }
 
-    private Window? Owner => _lifetime.MainWindow;
     private Window? _activeDialog;
 
-    private TopLevel? PickerOwner => _activeDialog ?? Owner;
+    /// <summary>Top level that owns the file/folder pickers — an active modal if one is open,
+    /// otherwise the surface's top level. A <see cref="TopLevel"/> so a single-view host can drive
+    /// the same pickers as a window.</summary>
+    private TopLevel? PickerOwner => (TopLevel?)_activeDialog ?? _owner;
+
+    /// <summary>Window that parents the modal dialogs. Desktop-only: null when the host is not a
+    /// window, in which case the modal-dialog methods no-op (their existing null guard).</summary>
+    private Window? DialogOwner => _activeDialog ?? _owner as Window;
 
     public async Task<IReadOnlyList<string>> PickGameFilesAsync()
     {
-        var owner = Owner;
+        var owner = PickerOwner;
         if (owner is null)
             return [];
 
@@ -89,7 +96,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<string?> PickFolderAsync()
     {
-        var owner = Owner;
+        var owner = PickerOwner;
         if (owner is null)
             return null;
 
@@ -189,7 +196,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<PickedGameCover?> PickGameCoverAsync(GameCoverPickerContext context)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null)
             return null;
         // When web image search is turned off (Settings → Artwork & Metadata), or no search provider is
@@ -223,7 +230,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<bool> ConfirmRemoveGameAsync(string gameTitle)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null)
             return false;
 
@@ -235,7 +242,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<bool> ConfirmRemoveGamesAsync(int gameCount)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null)
             return false;
 
@@ -247,7 +254,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null)
             return MetadataConsentChoice.NotNow;
 
@@ -259,7 +266,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null)
             return null;
 
@@ -283,7 +290,7 @@ public sealed class DialogService : IDialogService
         AppUpdateCoordinator? updates = null,
         Func<HotkeySettingsContext?>? createHotkeyContext = null)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null)
             return;
 
@@ -333,7 +340,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<bool> ShowScraperAsync(long gameId, string gameTitle)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null || _screenScraperPreview is null || _scrapeApply is null ||
             _screenScraperAccount is null || _settingsService is null)
         {
@@ -362,7 +369,7 @@ public sealed class DialogService : IDialogService
 
     public async Task<bool> ShowBatchScraperAsync(IReadOnlyList<long> gameIds, string systemName)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null || _batchScraper is null || _settingsService is null || gameIds.Count == 0)
             return false;
 
@@ -384,7 +391,7 @@ public sealed class DialogService : IDialogService
 
     public async Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId)
     {
-        var owner = Owner;
+        var owner = DialogOwner;
         if (owner is null || _retroAchievementsDetails is null || _retroAchievementsAccount is null)
             return;
 

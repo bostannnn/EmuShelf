@@ -7,7 +7,7 @@
         x:Class="EmuShelf.App.Views.EmulatorSettingsWindow"
         x:DataType="vm:EmulatorSettingsViewModel"
         Title="Settings"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="880" Height="700"
         MinWidth="760" MinHeight="540"
         CanResize="True"

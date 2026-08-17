@@ -4,7 +4,7 @@
         x:Class="EmuShelf.App.Views.MetadataConsentWindow"
         x:DataType="vm:MetadataConsentViewModel"
         Title="Download metadata"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="500" SizeToContent="Height"
         CanResize="False"
         Background="{DynamicResource EmuWindowBackgroundBrush}"

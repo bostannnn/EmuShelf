@@ -1,0 +1,121 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>EmuShelf.UI</AssemblyName>
+    <!-- Fallback product version. The real number comes from the newest `vX.Y.Z` git tag at build
+         time (see the StampGitVersion target below), so this is only used when building without git
+         history/tags — e.g. a source tarball. Tagging a release on GitHub is the source of truth.
+         AppBuildInfo reads these attributes off this assembly, so the stamp lives here, beside it. -->
+    <Version>0.1.0</Version>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- `dotnet restore` has no configuration unless a caller supplies one. Defaulting it here
+       keeps the Debug-only diagnostics compile asset available to a clean local Debug build. -->
+  <PropertyGroup Condition="'$(Configuration)' == ''">
+    <Configuration>Debug</Configuration>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+    <None Update="Assets\ThirdParty\OpenEmu\LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\OpenEmu\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\RetroAchievements\LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\RetroAchievements\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\ZstdSharp-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\ZstdSharp\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\Shamisen.Codecs.Flac-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\Shamisen.Codecs.Flac\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\YamlDotNet-LICENSE.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\YamlDotNet\LICENSE.txt" />
+    <None Update="Assets\ThirdParty\Exo2-OFL.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\Fonts\Exo2-OFL.txt" />
+    <None Include="..\..\THIRD-PARTY-NOTICES.md"
+          Link="THIRD-PARTY-NOTICES.md"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="THIRD-PARTY-NOTICES.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The desktop head (assembly "EmuShelf") hosts the shared shell: its Program, DialogService
+         and window services reach shared internals (AppLaunchOptions, view models, services), the
+         same way the head and this library were one project before the split. -->
+    <InternalsVisibleTo Include="EmuShelf" />
+    <InternalsVisibleTo Include="EmuShelf.App.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Controls.ItemsRepeater" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.0" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3"
+                      PrivateAssets="All">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EmuShelf.Core\EmuShelf.Core.csproj" />
+    <ProjectReference Include="..\EmuShelf.Infrastructure\EmuShelf.Infrastructure.csproj" />
+    <ProjectReference Include="..\EmuShelf.Integrations\EmuShelf.Integrations.csproj" />
+    <ProjectReference Include="..\EmuShelf.Rendering\EmuShelf.Rendering.csproj" />
+  </ItemGroup>
+
+  <!--
+    Stamp the build with the version and commit taken from git so Settings, About always matches
+    GitHub. `git describe` (nearest tag) gives the newest reachable `vX.Y.Z` tag, which becomes the
+    assembly version, so publishing a tag on GitHub is the only place the version number lives, with
+    no separate csproj bump. The short commit hash and its date pin the exact build the binary was
+    compiled from. AppBuildInfo reads these attributes off this (EmuShelf.UI) assembly.
+
+    Best-effort by design: no git on PATH, no tags, or a source tarball with no .git simply falls
+    back to the <Version> above and stamps no commit, and the build never fails on this. CI must
+    check out with fetch-depth 0 so the tags are present (see .github/workflows/build.yml). Runs
+    before GetAssemblyVersion so the values it sets flow into AssemblyVersion/FileVersion and the
+    generated assembly-info attributes. Set EmuShelfSkipGitStamp=true to opt out.
+  -->
+  <Target Name="StampGitVersion"
+          BeforeTargets="GetAssemblyVersion"
+          Condition="'$(EmuShelfSkipGitStamp)' != 'true'">
+    <Exec Command="git -C &quot;$(MSBuildProjectDirectory)&quot; rev-parse --short=9 HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExit" />
+    </Exec>
+    <!-- The rest is meaningless without a commit, so gate it on the cheap rev-parse succeeding. -->
+    <Exec Condition="'$(_GitExit)' == '0'"
+          Command="git -C &quot;$(MSBuildProjectDirectory)&quot; show -s --format=%cI HEAD"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitDate" />
+    </Exec>
+    <Exec Condition="'$(_GitExit)' == '0'"
+          Command="git -C &quot;$(MSBuildProjectDirectory)&quot; describe --tags --abbrev=0"
+          ConsoleToMSBuild="true" ContinueOnError="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitTag" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitTagExit" />
+    </Exec>
+    <PropertyGroup>
+      <!-- `vX.Y.Z` tag -> X.Y.Z assembly version. Untagged builds keep the csproj <Version>. -->
+      <Version Condition="'$(_GitTagExit)' == '0' and '$(_GitTag)' != ''">$(_GitTag.Trim().TrimStart('v'))</Version>
+      <!-- Append the commit so two builds of the same tag are still distinguishable. -->
+      <InformationalVersion Condition="'$(_GitCommit)' != ''">$(Version)+$(_GitCommit.Trim())</InformationalVersion>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(_GitCommit)' != ''">
+      <AssemblyMetadata Include="CommitHash" Value="$(_GitCommit.Trim())" />
+      <AssemblyMetadata Include="CommitDate" Value="$(_GitCommitDate.Trim())"
+                        Condition="'$(_GitCommitDate)' != ''" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -5,7 +5,7 @@
         x:DataType="vm:GameScraperViewModel"
         x:Name="ScraperRoot"
         Title="Scrape with ScreenScraper"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="1040" Height="840" MinWidth="760" MinHeight="580"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
         WindowStartupLocation="CenterOwner">

@@ -115,5 +115,5 @@ public sealed class SteamInputTemplateInstaller
     }
 
     private static Stream DefaultOpenBundledTemplate() =>
-        AssetLoader.Open(new Uri($"avares://EmuShelf/Assets/SteamInput/{TemplateFileName}"));
+        AssetLoader.Open(new Uri($"avares://EmuShelf.UI/Assets/SteamInput/{TemplateFileName}"));
 }

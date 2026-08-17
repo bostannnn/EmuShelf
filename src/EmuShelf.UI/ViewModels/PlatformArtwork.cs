@@ -13,9 +13,9 @@ namespace EmuShelf.App.ViewModels;
 public static class PlatformArtwork
 {
     private const string AssetRoot =
-        "avares://EmuShelf/Assets/ThirdParty/OpenEmu/PlatformIcons/";
+        "avares://EmuShelf.UI/Assets/ThirdParty/OpenEmu/PlatformIcons/";
     private const string ConsoleAssetRoot =
-        "avares://EmuShelf/Assets/PlatformConsoleArt/";
+        "avares://EmuShelf.UI/Assets/PlatformConsoleArt/";
 
     private static readonly IReadOnlyDictionary<string, string> ConsoleAssets =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

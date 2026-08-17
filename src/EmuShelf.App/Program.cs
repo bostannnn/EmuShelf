@@ -1,6 +1,7 @@
 ﻿using Avalonia;
 using System;
 using System.Linq;
+using EmuShelf.App.Services;
 using EmuShelf.App.Startup;
 using EmuShelf.Core.Settings;
 
@@ -25,6 +26,9 @@ sealed class Program
                 : args.Contains("--desktop-ui", StringComparer.OrdinalIgnoreCase)
                     ? InterfaceMode.Desktop
                     : null;
+        // The shared composition root builds everything but the window-typed collaborators; the
+        // desktop head supplies those through this factory before Avalonia starts.
+        App.DesktopShellFactory = (desktop, boot, deps) => new DesktopShell(desktop, boot, deps);
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

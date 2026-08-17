@@ -9209,6 +9209,46 @@ shell stays undistorted and the deeper-than-wide footprint the geometry actually
 The profile lives in two mirrored copies — MediaShellMap and the preview tool's PreviewShelf,
 held identical by MediaShellTests.PreviewShelf_RendersTheSameProfilesTheAppDoes — both updated.
 
+## 2026-08-17 — Android port A0: split EmuShelf.App into a shared UI library and a thin desktop head
+
+First engineering milestone of the Android port (`docs/android-port-plan.md`). The single
+`EmuShelf.App` project became two: `src/EmuShelf.UI` (shared class library, assembly `EmuShelf.UI`,
+references Avalonia **core** only) holding `App`, view models, controls, styles, assets, rendering and
+the non-window services; and `src/EmuShelf.App` (thin desktop head) holding `Program`, the `Window`s,
+`app.manifest`, and the seven window-coupled services. The shared library deliberately does **not**
+reference `Avalonia.Desktop`, so the future Android head can reuse it without pulling Win32/X11/Native
+backends into the APK.
+
+Decisions that are not obvious from the diff:
+
+- **The head keeps the `EmuShelf` assembly name; the shared library takes the new name.** This
+  preserves the executable name, launch scripts and the macOS `.app`, and is why the 19
+  `avares://EmuShelf/` URIs were rewritten to `avares://EmuShelf.UI/` rather than the reverse. Avalonia
+  XAML uses `using:` (not `clr-namespace;assembly=`), so type references resolved across the split for
+  free — only the assembly-qualified `avares://` resource URIs had to change.
+- **The composition root is lifetime-agnostic.** `App.Compose(...)` builds the whole shared graph and
+  hands the window-typed subset to an `IPlatformShell`; the desktop head registers a `DesktopShell`
+  factory via `App.DesktopShellFactory` before Avalonia starts. The A1 Android head registers a
+  single-view shell against the same seam. The window services already implemented lifetime-agnostic
+  interfaces (`IInterfaceModeService`, `IFrontendController`, `IApplicationLifetimeService`,
+  `IDialogService`), so only their `Window`-touching implementations moved to the head.
+- **`EmuShelf.UI` grants `InternalsVisibleTo("EmuShelf")`** (plus the test project). The head reaches
+  shared internals (`AppLaunchOptions`, view models, services) exactly as when it was one project.
+- **The `StampGitVersion` target moved to `EmuShelf.UI.csproj`**, because `AppBuildInfo` reads its own
+  assembly's attributes. The user-visible version (About, `--version`, logs) is correct on the shared
+  assembly; a consequence is that the desktop `.exe`'s own PE file-version falls back to the csproj
+  `<Version>` unless separately stamped — accepted as cosmetic.
+- **`DialogService`'s owner re-typed `Window` → `TopLevel`.** The six file/folder pickers now work under
+  any Avalonia host (what Milestone D needs); the nine modal `ShowDialog` sites remain desktop-only
+  behind a `_owner as Window` cast with the existing null guard.
+- **`SteamInputTemplateInstaller` stays in the shared library**, not the head — despite being
+  desktop-flavoured — because a shared view model depends on the concrete type and the class only uses
+  `AssetLoader` + `OperatingSystem.IsWindows()`, with no window/desktop coupling.
+
+Verified: full Release suite green (1128 + 888), desktop and gamepad launches clean, `EmuShelf
+--version` correct. Deferred to A1: splitting the 5,119-line `MainWindow.axaml` so `GamepadRoot` can be
+hosted in a single view.
+
 ## 2026-08-17 — Startup was several background passes racing the first library load
 
 A review of the "sluggish and choppy" cold start (worst in gamepad/Steam Deck mode) found the

@@ -4,7 +4,7 @@
         x:Class="EmuShelf.App.Views.AchievementDetailsWindow"
         x:DataType="vm:AchievementDetailsViewModel"
         Title="Achievements"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="660" Height="590"
         MinWidth="470" MinHeight="390"
         Background="{DynamicResource EmuWindowBackgroundBrush}"

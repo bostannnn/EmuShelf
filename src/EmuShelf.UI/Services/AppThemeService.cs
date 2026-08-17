@@ -227,6 +227,6 @@ public sealed class AppThemeService : IAppThemeService
         ThemePreference.System or ThemePreference.Light or ThemePreference.Dark => null,
         // Every other theme is a flat override whose file is named for the enum member, so a new theme
         // needs only its enum value and a matching Styles/Palettes/<Name>.axaml — no edit here.
-        _ => new Uri($"avares://EmuShelf/Styles/Palettes/{preference}.axaml"),
+        _ => new Uri($"avares://EmuShelf.UI/Styles/Palettes/{preference}.axaml"),
     };
 }

@@ -4,7 +4,7 @@
         x:Class="EmuShelf.App.Views.BatchScraperWindow"
         x:DataType="vm:GameBatchScraperViewModel"
         Title="Batch scrape with ScreenScraper"
-        Icon="avares://EmuShelf/Assets/emushelf.ico"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
         Width="560" Height="560" MinWidth="460" MinHeight="440"
         Background="{DynamicResource EmuWindowBackgroundBrush}"
         WindowStartupLocation="CenterOwner">
