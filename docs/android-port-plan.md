@@ -510,42 +510,46 @@ into Milestone 0.
 
 Detail in `docs/cloud-sync-portability-plan.md`.
 
-**Status.** The managed Drive transport (Phase 1) and its coordinator wiring plus the **desktop
-settings UI** (Phase 2) are now on this branch, brought over from the unmerged
-`claude/android-port-feasibility-6013e5` commit and reviewed. The desktop path is reachable end to
-end: the Saves section offers a connection-method chooser (built-in vs advanced rclone, shown only
-when the build ships an OAuth client), a managed connect flow that opens the browser and stores only
-the refresh token, a transport-aware connected summary, and the switch-time warning. A code-review
-pass on the transport found and fixed five further defects (403 rate-limiting mis-read as a fatal
-reconnect; non-deterministic duplicate-blob resolution; an unbounded resumable-upload loop; a
-date-form `Retry-After` dropped; a pre-cancelled sign-in reported as a failure).
+**Status — E-desktop is done (updated 2026-08-17; supersedes the "NOT DONE" list this section
+carried at planning time).** Google Drive is now the **sole** cloud transport: rclone was removed
+entirely (`10cdc4e refactor(save-sync): remove rclone`), so there is no connection-method chooser —
+`CloudTransportKind.Rclone` survives only as a legacy "not connected" marker for a stale pre-existing
+connection. The managed Drive transport, its coordinator wiring, the desktop settings UI **and** a
+controller-native gamepad connect flow are all on `main`. Reachable end to end on desktop and in
+gamepad mode: a "Connect Google Drive" action opens Google's sign-in in the browser and stores only
+the refresh token, with a transport-aware connected summary and disconnect. A code-review pass fixed
+five transport defects (403 rate-limiting mis-read as a fatal reconnect; non-deterministic
+duplicate-blob resolution; an unbounded resumable-upload loop; a date-form `Retry-After` dropped; a
+pre-cancelled sign-in reported as a failure), and later work bounded **real** Google Drive stalls so a
+flaky sync fails fast instead of hanging (`1a91040`, PR #148 `gdrive-save-sync-debug`, PR #149
+`gamepad-save-sync-steamdeck`) — flaky-stall behaviour is only observable against the live API, so the
+planning-time "no sign-in has ever hit Google's real API" no longer holds.
 
-**NOT DONE — stated loudly, not buried:**
-- **Gamepad mode cannot connect the built-in transport at all.** It is suppressed there
-  (`allowManagedTransport: false`) and shows only the rclone flow. Since the Thor is gamepad-only,
-  **the built-in transport is unreachable on Android as written** — the gamepad Saves section needs a
-  full rebuild (transport chooser + controller-native connect). This is a required Android-phase task,
-  not an optional desktop nicety.
-- **No sign-in has ever hit Google's real API** — every test uses an in-memory fake Drive.
-- **Built and tested on macOS only**; Windows and Linux are unverified for this change.
+**Resolved since the first draft (this section's old "NOT DONE" list):**
+- **Gamepad mode connects the built-in transport.** `GamepadSettingsViewModel` renders a
+  controller-native "Connect Google Drive" / "Disconnect Google Drive" pair (PR #149). The
+  `allowManagedTransport` suppression flag is gone from the codebase. The planned "the gamepad Saves
+  section needs a full rebuild" is done.
+- **The rclone chooser is removed** — Google Drive is the only transport, so there is nothing to
+  choose, on desktop or in gamepad mode.
+- **A real Google Drive sign-in path is exercised** (see the debug/hardening commits above), not just
+  the in-memory fake used by tests.
 
-**Remaining, desktop:** make that first real sign-in. (Mirroring the chooser into the gamepad rows is
-the Android-phase rebuild above, not desktop work.) The gamepad shell shares the one `EmulatorSettingsViewModel` and
-its connect command, so it currently constructs it with `allowManagedTransport: false` to keep a
-client-embedded build from silently running the browser OAuth behind that rclone UI.
+**Remaining, desktop (verification, not code):** confirm the production OAuth client
+(`EMUSHELF_GOOGLE_OAUTH_CLIENT_ID` / `EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET`) is provisioned in the
+release build — the plumbing (`EmbeddedSecrets`, `GoogleOAuthClient`, `LoopbackOAuthRedirectHandler`)
+is complete; and Windows/Linux remain unverified for the sync path (macOS-tested).
 
 **Remaining, Android:**
 
-1. A second OAuth client (public, no secret, custom-scheme redirect). `GoogleOAuthClientCredentials`
-   already models this — one embedded field, one branch, verified.
+1. A second OAuth client (public, no secret, custom-scheme redirect). `EmbeddedSecrets` already models
+   the client id/secret; the Android client is a public variant of it.
 2. A custom-scheme `IOAuthRedirectHandler`. The interface exists; only the loopback implementation
    does.
-3. Force `TransportKind` to `GoogleDrive` — and note that "hide the rclone UI" is a **real rebuild of
-   the gamepad Saves rows**. There is one shared `EmulatorSettingsViewModel`; the desktop dialog
-   builds it with the transport chooser on, while the gamepad shell (`GamepadSettingsViewModel`, a
-   controller projection over the same view-model) builds it with `allowManagedTransport: false` and
-   renders rclone-only rows. The Android head flips that flag on and adds the chooser to the gamepad
-   rows. The connection state is `RemoteName` in Core (`CloudRemoteName` is only the App view-models'
+3. Force `TransportKind` to `GoogleDrive` on the Android head. Google Drive is already the only
+   transport and the gamepad connect flow already exists (that rebuild is done, above), so this is now
+   just the head defaulting the transport — not the "rclone UI rebuild" the first draft anticipated.
+   The connection state is `RemoteName` in Core (`CloudRemoteName` is only the App view-models'
    editable field).
 4. An Android `IProtectedTextStore` (Keystore / EncryptedSharedPreferences). The Windows
    implementation P/Invokes `crypt32.dll` and the fallback is obfuscation, neither of which is right
@@ -579,15 +583,17 @@ client-embedded build from silently running the browser OAuth behind that rclone
 
 ## Sequencing
 
-**0a → A0 → 0b → A1 → D → B → C → E-android → F**, with E-desktop parallel throughout.
+**0a → A0 → 0b → A1 → D → B → C → E-android → F**, with E-desktop parallel throughout. **E-desktop is
+now complete** (rclone removed, built-in Google Drive is the sole transport with desktop and gamepad
+connect flows); only the Android half (E-android) and the OAuth-client provisioning check remain.
 
 Changes from the first draft: A0 is new and comes first among the engineering work; **D moves before
 B** because D produces B's input; the GL and pad probes move into Milestone 0, because each can end
 the project and both are nearly free once a device is booted; and Milestone 0 splits at the delivery
 date.
 
-E-desktop is genuinely parallel and improves the shipping product either way — it deletes three rclone
-download steps from `build.yml` and a bundled binary from all three artifacts.
+E-desktop was genuinely parallel and improved the shipping product either way — removing rclone deleted
+its download steps from `build.yml` and a bundled binary from all three artifacts.
 
 ### While the Thor is in transit
 
@@ -639,7 +645,7 @@ the same way: in agent sessions, not person-weeks.
 | D — storage & permissions | 1–2 | Grows if the SAF-only emulators need EmuShelf-side SAF readers |
 | B — launching | 1–2 | Mostly per-emulator definitions, and Cocoon's configs are a working reference |
 | C — controller + IME | 1–2 | Pad behaviour is unverifiable until the Thor is here |
-| E — desktop remainder | 1 | Merge the Drive commit, settings UI, one real sign-in |
+| E — desktop remainder | done | Drive transport, desktop + gamepad connect flows, real-API hardening all landed; rclone removed. Only remaining: confirm the production OAuth client ships in the release build |
 | E — Android | 2–3 | SAF save endpoint is the one genuine rewrite |
 | F — packaging | 1 | Keystore and CI job |
 

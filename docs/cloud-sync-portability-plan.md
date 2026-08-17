@@ -1,31 +1,37 @@
 # Cloud save sync without rclone — portability plan
 
-Status: Phase 1 (managed transport) and Phase 2 (coordinator wiring + desktop settings UI) built.
-The desktop path is now reachable end to end: a user can choose the built-in Google Drive transport,
-sign in, and sync, with the scope-migration warning shown at connect time. Not yet done: the first
-sign-in against Google's real API, and all of Phase 3/4 (the Android head, its custom-scheme redirect,
-Keystore token store, and the SAF save endpoint). See "Relationship to the decision log".
+Status (updated 2026-08-17): **E-desktop is done.** rclone was removed entirely and built-in Google
+Drive is the sole transport, reachable end to end **on desktop and in gamepad mode** (`10cdc4e`,
+PR #149 `gamepad-save-sync-steamdeck`): a "Connect Google Drive" action opens the browser sign-in,
+stores only the refresh token, and syncs; real-API stall/flakiness was found and hardened
+(PR #148 `gdrive-save-sync-debug`, `1a91040`), which the earlier "only an in-memory fake" note
+predates. Remaining: confirm the production OAuth client is provisioned in the release build, and all
+of Phase 3/4 (the Android head, its custom-scheme redirect, Keystore token store, and the SAF save
+endpoint). See "Relationship to the decision log".
 
 This is the save-sync half of the Android port. The master plan is `docs/android-port-plan.md`, where
 this work is Milestone E; the detail lives here rather than being duplicated there.
 
-## NOT DONE YET — do not treat as finished
+## Status of the planning-time "NOT DONE" list
 
-Stated plainly so it is not mistaken for shipped:
+The four items below were the open risks at planning time. Their current state (2026-08-17):
 
-1. **Gamepad mode does not support the built-in transport.** The gamepad Saves section is rclone-shaped
-   and is built with `allowManagedTransport: false`, so in gamepad mode the built-in Google Drive
-   transport cannot be *connected* at all — the user only sees the rclone flow. An existing built-in
-   connection made in Desktop mode keeps syncing (launch/exit sync and "Sync all now" are
-   transport-agnostic), but you cannot set one up, and you cannot reconnect after a token revocation,
-   without Desktop mode. **The gamepad Saves section needs a full rebuild** (a transport chooser + a
-   controller-native connect flow). This is the same rebuild the Android head requires, and the Thor is
-   gamepad-only — so on Android today, as written, the built-in transport would be *unreachable*. This
-   must be done. Tracked as Phase 3 below and Milestone E-android in the master plan.
-2. **No real Google API call has ever happened.** Every test runs against an in-memory fake Drive.
-3. **Built and tested on macOS only.** Windows and Linux are shipped targets but were not exercised for
-   this change; the browser launch and the refresh-token-at-rest path differ per OS and are unverified.
-4. **All of Phase 3 (Android) and Phase 4 (SAF save endpoint) are unstarted.**
+1. ~~**Gamepad mode does not support the built-in transport.**~~ **Done.** rclone was removed and the
+   `allowManagedTransport` flag no longer exists; `GamepadSettingsViewModel` renders a controller-native
+   "Connect Google Drive" / "Disconnect Google Drive" pair (PR #149 `gamepad-save-sync-steamdeck`). The
+   built-in transport is now reachable in gamepad mode — which was the blocker for a gamepad-only Thor.
+2. ~~**No real Google API call has ever happened.**~~ **Superseded.** The stall/flakiness hardening
+   (PR #148 `gdrive-save-sync-debug`, `1a91040`) is behaviour only observable against the live API. The
+   in-memory fake is still what the automated tests use.
+3. **Built and tested on macOS only** — still true. Windows and Linux are shipped targets but the
+   browser launch and refresh-token-at-rest path were not exercised for this change and remain
+   unverified.
+4. **Phase 3 (Android head) and Phase 4 (SAF save endpoint) are unstarted** — still true; these are
+   Milestone E-android.
+
+One residual desktop item: confirm the production OAuth client
+(`EMUSHELF_GOOGLE_OAUTH_CLIENT_ID`/`_SECRET`) is provisioned in the release build. The plumbing is
+complete; only the provisioning is a deployment fact this document cannot assert.
 
 ## Why
 
