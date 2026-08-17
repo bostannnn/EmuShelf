@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -44,13 +45,36 @@ public sealed class GoogleDriveApiClient
     /// <summary>Injected so tests can drive the backoff without actually sleeping.</summary>
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
+    /// <summary>
+    /// How long a metadata request — a listing, a folder create, a download's headers, the token mint —
+    /// may run before it is treated as stalled and retried, and the idle budget each read of a streamed
+    /// download is given to make progress. Kept short so a stalled listing in a Sync-all tree walk gives
+    /// up quickly; uploads get their own, longer budget (<see cref="_uploadTimeout"/>) because they are
+    /// the one request that is legitimately slow rather than stalled. The old client relied only on the
+    /// 5-minute <see cref="HttpClient.Timeout"/>, so a silent connection hung for the full five minutes;
+    /// the rclone transport this replaced got that protection from rclone's own <c>--timeout</c> plus
+    /// low-level retries. Injected small in tests so a stall need not be waited out.
+    /// </summary>
+    private readonly TimeSpan _networkTimeout;
+
+    /// <summary>
+    /// The per-attempt budget for an upload request — a simple upload or one resumable chunk. Larger
+    /// than <see cref="_networkTimeout"/> because a chunk (capped at <see cref="ResumableChunkBytes"/> =
+    /// 8 MiB) is slow-but-progressing on weak wifi, not stalled: a metadata-length timeout would fail a
+    /// perfectly good upload every attempt. One value covers even a 179 MB save, since it is sent one
+    /// bounded chunk at a time.
+    /// </summary>
+    private readonly TimeSpan _uploadTimeout;
+
     public GoogleDriveApiClient(
         HttpClient httpClient,
         IGoogleAccessTokenSource tokens,
         IAppLogger? logger = null,
         string apiBaseAddress = DefaultApiBaseAddress,
         string uploadBaseAddress = DefaultUploadBaseAddress,
-        Func<TimeSpan, CancellationToken, Task>? delay = null)
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        TimeSpan? networkTimeout = null,
+        TimeSpan? uploadTimeout = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _tokens = tokens ?? throw new ArgumentNullException(nameof(tokens));
@@ -58,6 +82,8 @@ public sealed class GoogleDriveApiClient
         _apiBase = new Uri(apiBaseAddress, UriKind.Absolute);
         _uploadBase = new Uri(uploadBaseAddress, UriKind.Absolute);
         _delay = delay ?? ((duration, token) => Task.Delay(duration, token));
+        _networkTimeout = networkTimeout ?? TimeSpan.FromSeconds(45);
+        _uploadTimeout = uploadTimeout ?? TimeSpan.FromSeconds(120);
     }
 
     /// <summary>Lists one folder's immediate children, following Drive's paging to the end.</summary>
@@ -193,10 +219,16 @@ public sealed class GoogleDriveApiClient
             }
 
             await ThrowIfFailedAsync(response, "download a cloud save", cancellationToken);
-            // The stream owns the response: disposing it releases the connection.
+            // The stream owns the response: disposing it releases the connection. The body is read
+            // after the headers under ResponseHeadersRead, so neither the per-attempt timeout above
+            // nor HttpClient.Timeout bounds it — the idle wrapper is what stops a download that goes
+            // silent mid-body from hanging forever, the way rclone's --timeout used to.
             return new HttpResponseStream(
                 response,
-                await response.Content.ReadAsStreamAsync(cancellationToken));
+                new IdleTimeoutStream(
+                    await response.Content.ReadAsStreamAsync(cancellationToken),
+                    _networkTimeout,
+                    cancellationToken));
         }
         catch
         {
@@ -267,7 +299,8 @@ public sealed class GoogleDriveApiClient
                     Content = multipart,
                 };
             },
-            cancellationToken);
+            cancellationToken,
+            attemptTimeout: _uploadTimeout);
         await ThrowIfFailedAsync(response, $"upload '{name}'", cancellationToken);
 
         bytesUploaded?.Report(length);
@@ -317,7 +350,8 @@ public sealed class GoogleDriveApiClient
                 cancellationToken,
                 // 308 "Resume Incomplete" is Drive saying the chunk landed and it wants the next one.
                 // It is a success here, so it must not be retried as a redirect or an error.
-                isSuccess: response => response.IsSuccessStatusCode || (int)response.StatusCode == 308);
+                isSuccess: response => response.IsSuccessStatusCode || (int)response.StatusCode == 308,
+                attemptTimeout: _uploadTimeout);
 
             if ((int)response.StatusCode != 308)
             {
@@ -400,8 +434,10 @@ public sealed class GoogleDriveApiClient
         Func<HttpRequestMessage> createRequest,
         CancellationToken cancellationToken,
         HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
-        Func<HttpResponseMessage, bool>? isSuccess = null)
+        Func<HttpResponseMessage, bool>? isSuccess = null,
+        TimeSpan? attemptTimeout = null)
     {
+        var budget = attemptTimeout ?? _networkTimeout;
         var refreshed = false;
         HttpResponseMessage? response = null;
 
@@ -409,14 +445,39 @@ public sealed class GoogleDriveApiClient
         {
             response?.Dispose();
 
-            var request = createRequest();
-            request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Bearer",
-                await _tokens.GetAccessTokenAsync(forceRefresh: false, cancellationToken));
+            // Each attempt gets its own budget layered on the caller's cancellation, so a request — or
+            // the access-token mint that precedes it, which shares this HttpClient and was historically
+            // the one call with no stall bound of its own — is abandoned and retried rather than parking
+            // on the 5-minute HttpClient ceiling. The linked token trips for either reason; the catch
+            // below tells them apart, since only the caller's own token is a real cancel.
+            using var attemptCts = new CancellationTokenSource(budget);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, attemptCts.Token);
 
+            var request = createRequest();
             try
             {
-                response = await _httpClient.SendAsync(request, completionOption, cancellationToken);
+                request.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    await _tokens.GetAccessTokenAsync(forceRefresh: false, linked.Token));
+                response = await _httpClient.SendAsync(request, completionOption, linked.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A stalled request, not a user stop: the caller's token has not fired, so the trip
+                // was our own per-attempt timeout. Retry it exactly as a transport failure, and once
+                // the retries are spent surface an IOException — never a bare cancellation, which the
+                // pipeline would mistake for the user pressing Stop and skip its failure handling.
+                if (attempt < MaxAttempts)
+                {
+                    _logger.Warning(
+                        $"Google Drive did not respond within {budget.TotalSeconds:0}s; " +
+                        $"retrying (attempt {attempt} of {MaxAttempts}).");
+                    await _delay(BackoffFor(attempt, null), cancellationToken);
+                    continue;
+                }
+
+                throw new IOException(
+                    $"Google Drive stopped responding (no reply within {budget.TotalSeconds:0} seconds).");
             }
             catch (HttpRequestException) when (attempt < MaxAttempts)
             {
@@ -716,6 +777,114 @@ public sealed class GoogleDriveApiClient
     /// </summary>
     internal static string EscapeQueryLiteral(string value) =>
         value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("'", "\\'", StringComparison.Ordinal);
+
+    /// <summary>
+    /// A read-side idle timeout for a streamed body: each read is given <paramref name="idleTimeout"/>
+    /// to return, the clock restarting on every read so a slow-but-moving download is never punished. A
+    /// download whose connection falls silent mid-body is abandoned as an <see cref="IOException"/>
+    /// instead of blocking indefinitely — the protection a
+    /// <see cref="HttpCompletionOption.ResponseHeadersRead"/> body read otherwise has none of.
+    /// </summary>
+    /// <remarks>
+    /// The guard is applied to the synchronous <see cref="Read(byte[],int,int)"/> overloads too, not
+    /// just <see cref="ReadAsync(Memory{byte},CancellationToken)"/>: the save-restore path reads the
+    /// body synchronously (<c>FileSystemLocalSaveEndpoint</c> copies and unzips on a
+    /// <see cref="Task.Run(Action)"/> thread), so guarding only the async path would leave the very
+    /// large-restore hang this class exists to close still unbounded. <paramref name="streamCancellation"/>
+    /// is the download's own token, linked into every read so a user Stop can break a blocked read that
+    /// the synchronous <see cref="Stream.Read(byte[],int,int)"/> API has no token of its own to carry.
+    /// </remarks>
+    private sealed class IdleTimeoutStream(Stream inner, TimeSpan idleTimeout, CancellationToken streamCancellation) : Stream
+    {
+        public override bool CanRead => inner.CanRead;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            using var idle = new CancellationTokenSource(idleTimeout);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                streamCancellation, cancellationToken, idle.Token);
+            try
+            {
+                return await inner.ReadAsync(buffer, linked.Token);
+            }
+            catch (OperationCanceledException) when (IsIdleTrip(idle, cancellationToken))
+            {
+                throw StalledDownload();
+            }
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) => ReadSync(buffer.AsMemory(offset, count));
+
+        public override int Read(Span<byte> buffer)
+        {
+            // Span cannot cross the await the timeout needs, so bounce through a pooled array.
+            var rented = ArrayPool<byte>.Shared.Rent(buffer.Length);
+            try
+            {
+                var read = ReadSync(rented.AsMemory(0, buffer.Length));
+                rented.AsSpan(0, read).CopyTo(buffer);
+                return read;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        // The synchronous read path, run through the async read so the same idle timeout applies. This
+        // blocks the calling thread, which is a Task.Run thread-pool thread here (never the UI thread),
+        // so there is no synchronization context to dead-lock against.
+        private int ReadSync(Memory<byte> buffer)
+        {
+            using var idle = new CancellationTokenSource(idleTimeout);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(streamCancellation, idle.Token);
+            try
+            {
+                return inner.ReadAsync(buffer, linked.Token).AsTask().GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException) when (IsIdleTrip(idle, CancellationToken.None))
+            {
+                throw StalledDownload();
+            }
+        }
+
+        // True when the trip was our idle timer and not either token the caller supplied — the only
+        // case that is a stall rather than a real cancellation to propagate untouched.
+        private bool IsIdleTrip(CancellationTokenSource idle, CancellationToken readCancellation) =>
+            idle.IsCancellationRequested &&
+            !streamCancellation.IsCancellationRequested &&
+            !readCancellation.IsCancellationRequested;
+
+        private IOException StalledDownload() => new(
+            $"Google Drive stopped sending the save (no data for {idleTimeout.TotalSeconds:0} seconds).");
+
+        public override void Flush() => inner.Flush();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
 
     /// <summary>Keeps the HTTP response alive for exactly as long as the caller reads its body.</summary>
     private sealed class HttpResponseStream(HttpResponseMessage response, Stream inner) : Stream

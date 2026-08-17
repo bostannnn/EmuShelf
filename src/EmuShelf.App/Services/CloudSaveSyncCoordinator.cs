@@ -94,7 +94,17 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     public bool IsManagedTransportAvailable => GoogleOAuthClientSource.IsConfigured;
 
     private HttpClient GoogleHttpClient =>
-        _googleHttpClient ??= new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        _googleHttpClient ??= new HttpClient(new SocketsHttpHandler
+        {
+            // Fail a dead connection quickly instead of letting it eat the whole request budget —
+            // rclone's --contimeout did the same. The per-request stall timeout lives in the Drive
+            // client; this is only the TCP/TLS handshake. HttpClient.Timeout stays as a coarse backstop.
+            ConnectTimeout = TimeSpan.FromSeconds(30),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+        })
+        {
+            Timeout = TimeSpan.FromMinutes(5),
+        };
 
     private GoogleAccessTokenSource AccessTokens =>
         _accessTokens ??= new GoogleAccessTokenSource(
@@ -630,13 +640,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             RecordOutcome([systemId], error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Only the user pressing Stop rethrows as cancellation. A cancellation whose token is not
+            // the caller's is a stalled request that slipped past the Drive client (e.g. a token mint
+            // that hit HttpClient.Timeout); the next catch lists OperationCanceledException so it is
+            // recorded as a per-platform failure rather than escaping uncaught or re-raised as a stop.
             throw;
         }
         catch (Exception ex) when (
             ex is IOException or InvalidDataException or System.Text.Json.JsonException or
-                InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
+                InvalidOperationException or ArgumentException or SaveProviderConfigurationException or
+                HttpRequestException or OperationCanceledException)
         {
             _logger.Error("Cloud save sync failed.", ex);
             ForgetCloudFolderIdAfterOperationalFailure(ex);
@@ -731,13 +746,18 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
                 RecordOutcome(synced, error: null, report);
             return CloudSaveSyncOutcome.Completed(report);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Only the user pressing Stop rethrows as cancellation. A cancellation whose token is not
+            // the caller's is a stalled request that slipped past the Drive client (e.g. a token mint
+            // that hit HttpClient.Timeout); the next catch lists OperationCanceledException so it is
+            // recorded as a per-platform failure rather than escaping uncaught or re-raised as a stop.
             throw;
         }
         catch (Exception ex) when (
             ex is IOException or InvalidDataException or System.Text.Json.JsonException or
-                InvalidOperationException or ArgumentException or SaveProviderConfigurationException)
+                InvalidOperationException or ArgumentException or SaveProviderConfigurationException or
+                HttpRequestException or OperationCanceledException)
         {
             _logger.Error("Cloud save sync failed.", ex);
             ForgetCloudFolderIdAfterOperationalFailure(ex);

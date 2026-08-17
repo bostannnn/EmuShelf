@@ -9146,3 +9146,53 @@ smaller than the window after the switch (the tube not covering) is visible rath
 while the tube is full screen (or vice versa) shows up. `WindowInterfaceModeService` logs the client
 size before/after the gamepad-entry wait and why the wait ended. If the fix is only partial, these
 lines say whether the residual is a stuck surface, a mismatched capture, or a resize that never fired.
+
+## 2026-08-17 — Google Drive save-sync: stall timeouts and retry, restoring what rclone gave for free
+
+The built-in Drive client (2026-07-24, which replaced the rclone transport) protected requests only
+with a single 5-minute `HttpClient.Timeout`. rclone had carried more than we noticed: its defaults gave
+an *idle* timeout (`--timeout`, resets on data flow), a connect timeout (`--contimeout`), and low-level
+retries. Without those, a Steam Deck on flaky wifi could stall one request for the full five minutes,
+commit nothing (uploads land per batch), show an empty Drive, and then surface the timeout as
+`TaskCanceledException` — which the pipeline's `catch (OperationCanceledException)` mistook for the user
+pressing Stop, skipping the recorded-failure path entirely.
+
+Restored, in `GoogleDriveApiClient`/`CloudSaveSyncCoordinator`:
+
+- **Per-attempt stall timeout** on every request via a linked CTS — and it wraps the access-token mint
+  too, not just the Drive call, since that shared-`HttpClient` POST was the one request with no stall
+  bound of its own. A stall is retried like a transport failure; an exhausted stall throws `IOException`,
+  never a bare cancellation. Split into two budgets, because one value cannot serve both jobs: metadata
+  (listings, folder creates, download headers, the token mint) and the download idle-read use
+  `networkTimeout` = **45s** so a stalled Sync-all tree walk gives up fast; an **upload** request (a
+  simple upload or one 8 MiB resumable chunk) uses `uploadTimeout` = **120s**, because a chunk is
+  slow-but-progressing on weak wifi rather than stalled, and a metadata-length cap would fail a good
+  upload every attempt. One upload value covers even a 179 MB save, sent one bounded chunk at a time.
+  (Started as a single 100s value; split after review flagged that it made stalled *reads* wait far
+  longer than they should.)
+- **Read-side idle timeout on download bodies** (`IdleTimeoutStream`). Under `ResponseHeadersRead` the
+  body is read after the headers, so neither the per-attempt timeout nor `HttpClient.Timeout` covers a
+  download that goes silent mid-stream; the idle wrapper is the only thing that does. This was the
+  worse latent hole — an unbounded hang on a large restore. The guard is applied to the **synchronous**
+  `Read` overloads as well as `ReadAsync`, because the restore path (`FileSystemLocalSaveEndpoint`
+  copies/unzips on a `Task.Run` thread) reads the body synchronously — guarding only the async path
+  left the very hang this closes still open (caught in adversarial review). The download's own token is
+  linked into every read so a user Stop can break a blocked synchronous read.
+- **Connect timeout** (30s) via `SocketsHttpHandler`, matching `--contimeout`.
+- The pipeline's cancellation catch is guarded by `cancellationToken.IsCancellationRequested`, so only
+  a real user Stop rethrows as cancellation. The following catch was widened to also record
+  `OperationCanceledException` and `HttpRequestException` as per-platform failures, so a non-caller
+  timeout or a terminal transport error cannot escape the pipeline uncaught.
+
+Known limitation (accepted): the upload timeout is a wall-clock cap, not a true idle timeout, so a
+resumable **upload** chunk (8 MiB) on a link below ~0.55 Mbps (8 MiB / 120s) can trip it every attempt
+and fail the transfer even while bytes are moving. rclone's `--timeout` was idle-based; matching that on the upload
+*send* side is hard with `HttpClient` (it pulls from the content stream, so a stalled socket is not
+observable as a content-read gap). Failing loudly and retryably beats the old five-minute hang, so this
+is left as-is; revisit with a write-progress-reset timer if slow-link uploads prove common.
+
+Scoping choice: a fully-stalled large *download* is idle-bounded and then fails that unit, which the
+next sync re-fetches — rather than buffering the whole payload to a temp file inside the client to
+retry it in-session (a clean mirror of the upload staging, but a double disk write for a 179 MB unit).
+Batch-commit semantics already make "fail this unit, resume next pass" correct, so in-session download
+retry was not worth the extra I/O. Revisit if restores of very large single units prove common.
