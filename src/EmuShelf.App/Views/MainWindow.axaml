@@ -3268,6 +3268,31 @@
                         <TextBlock Text="{Binding FocusedGame.DisplayTitle}" HorizontalAlignment="Center"
                                    FontSize="{DynamicResource EmuGpTitleSize}" FontWeight="Bold"
                                    MaxLines="1" TextTrimming="CharacterEllipsis" />
+                        <!-- Achievements whisper line: a silver (softcore) then gold (hardcore) trophy,
+                             each with its unlock count. No bars — the shelf keeps the calm, so this is the
+                             glyph-and-count reduction of the spotlight dock. Collapses whole for games with
+                             no RetroAchievements support, so non-RA titles add no third line. -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="18"
+                                    Margin="0,2,0,0" IsVisible="{Binding FocusedGame.ShowAchievementMark}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <PathIcon Width="14" Height="14" VerticalAlignment="Center"
+                                          Data="{StaticResource AchievementTrophyGeometry}"
+                                          Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                                <TextBlock Text="{Binding FocusedGame.GamepadAchievementCountText}"
+                                           FontSize="{DynamicResource EmuGpCaptionSize}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <PathIcon Width="14" Height="14" VerticalAlignment="Center"
+                                          Data="{StaticResource AchievementTrophyGeometry}"
+                                          Foreground="{DynamicResource EmuAchievementBrush}" />
+                                <TextBlock Text="{Binding FocusedGame.GamepadHardcoreCountText}"
+                                           FontSize="{DynamicResource EmuGpCaptionSize}" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource EmuAchievementBrush}" />
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Panel>
