@@ -69,7 +69,7 @@ public static class PreviewShelf
         // row also keeps it near the cases, which is the pairing worth checking by eye: the metric
         // contract is the only thing keeping a machine and a box in one scene at honest sizes.
         new("arcade", new PhysicalMediaProfile(
-            MediaShell.ArcadeCabinet, new Vector3(341f, 480f, 533f),
+            MediaShell.ArcadeCabinet, new Vector3(148.5f, 209f, 232.1f),
             PhysicalArtworkSlots.Front, "arcade-cabinet", "cartridge-vertical")),
         // Immediately before the DS card, and for the reason PSP sits beside the PS2 case: these two
         // cards are one footprint to a millimetre, so the entire claim being reviewed is that the

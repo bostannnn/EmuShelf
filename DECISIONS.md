@@ -9196,3 +9196,15 @@ next sync re-fetches — rather than buffering the whole payload to a temp file 
 retry it in-session (a clean mirror of the upload staging, but a double disk write for a 179 MB unit).
 Batch-commit semantics already make "fail this unit, resume next pass" correct, so in-session download
 retry was not worth the extra I/O. Revisit if restores of very large single units prove common.
+
+## 2026-08-17 — Arcade cabinet resized from 480mm to 209mm
+
+The bartop sizing (480mm, ~2.5 keep cases) recorded in the entry above still read as
+oversized in the gamepad all-games row — the machine dominated a shelf of boxes. Brought
+down to 209mm: a PS2/keep-case 190mm plus a tenth, chosen so the cabinet stays the tallest
+medium (the shelf camera frames the tallest, and it still wins over 190mm) while sitting
+in line with the boxes rather than towering over them. Width and depth take the asset's own
+ratios from the new height (341x480x533 -> 148.5x209x232.1, a uniform 0.4354 scale), so the
+shell stays undistorted and the deeper-than-wide footprint the geometry actually has is kept.
+The profile lives in two mirrored copies — MediaShellMap and the preview tool's PreviewShelf,
+held identical by MediaShellTests.PreviewShelf_RendersTheSameProfilesTheAppDoes — both updated.
