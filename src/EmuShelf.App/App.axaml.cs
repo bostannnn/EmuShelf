@@ -285,15 +285,14 @@ public partial class App : Application
                 interfaceModeService,
                 Bootstrapper.Logger);
 
-            // Availability check runs after the UI paints — background, no discovery scan.
+            // Post-open background work runs after the UI paints — no discovery scan. The view model
+            // orders these internally: the two passes that rebuild the grid (availability,
+            // RetroAchievements) wait for the initial load and run sequentially instead of racing it,
+            // so the library is built once rather than stampeded into two or three overlapping rebuilds.
             desktop.MainWindow.Opened += (_, _) =>
-                Dispatcher.UIThread.Post(() =>
-                {
-                    _ = viewModel.RefreshAvailabilityAsync();
-                    _ = viewModel.RefreshRetroAchievementsProgressAtStartupAsync();
-                    _ = viewModel.LoadTexturePacksAtStartupAsync();
-                    _ = viewModel.Updates?.CheckOnLaunchAsync();
-                }, DispatcherPriority.Background);
+                Dispatcher.UIThread.Post(
+                    () => _ = viewModel.RunStartupBackgroundTasksAsync(),
+                    DispatcherPriority.Background);
             desktop.Exit += (_, _) =>
             {
                 _gamepadInput?.Dispose();
