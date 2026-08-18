@@ -1912,8 +1912,14 @@ breaks the whole-solution macOS build/test loop.
         live crash risk (`FileRevealService`'s `xdg-open` fall-through vs Android W^X); the rest are
         correct-as-Linux, degrade safely, already Android-aware, or dormant until a later milestone.
         See DECISIONS 2026-08-18.
-  - [ ] Gamepad-native library import (folder pick → picker → metadata consent → scan as gamepad
-        overlays) — the library is empty until this lands; the dialog pickers are stubbed.
+  - [x] Gamepad-native library import: folder pick via `IDialogService` (Android head drives the SAF
+        picker through `TopLevel.StorageProvider`, returns a local path with all-files access) → a
+        controller-native `ImportSystem` overlay chooser → the existing scan. "Add games" shows in the
+        couch menu only where Desktop mode is absent. Shared MainViewModel tests cover it; builds/boots
+        on the AVD and the new empty-library copy renders on-device.
+  - [ ] **On-device input to drive the couch UI** (menu/D-pad/A-B) — `DispatchGamepadAction` is wired
+        only in the desktop window, so nothing opens the menu on Android yet. This is Milestone C, but a
+        slice of it now gates A1's "imports without a keyboard" done-criterion. See DECISIONS 2026-08-18.
 - [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
       sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
       touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.

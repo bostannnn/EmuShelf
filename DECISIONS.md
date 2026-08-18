@@ -9496,3 +9496,37 @@ ladders misfire" trap. Disposition, so it is not re-derived:
 
 The rule recorded for later milestones: a ladder that runs on Android must fail safe or clear, never
 silently take the Linux branch.
+
+## 2026-08-18 — Android A1: gamepad-native import + on-device findings
+
+Built the keyboard-free import the empty-library copy now points at. The desktop scan/reconcile path
+is reused unchanged; only its two modal pickers are replaced by controller-native steps — a new
+`GamepadOverlayKind.ImportSystem` overlay lists importable systems (PS3 excluded, it is RPCS3-sync
+only), and the one step that genuinely needs the platform picker (the folder pick) stays behind
+`IDialogService`. The Android `SingleViewDialogService.PickFolderAsync` drives the SAF folder picker via
+`TopLevel.StorageProvider` and returns a real local path (null, logged, for a SAF-only URI — that
+fallback is Milestone D); the manifest now declares `MANAGE_EXTERNAL_STORAGE` so the picked tree is
+readable by the shared scanner. The "Add games" menu item appears only where Desktop mode is absent
+(`!SupportsDesktopMode`), so the desktop couch menu and its snapshots are unchanged.
+
+Verified on the `emushelf-api33` AVD (Android 13, arm64), with the code committed:
+- The head boots, the GLES shelf gets a real ES 3.0 context (`glsl = OpenGL ES GLSL ES 3.00`), and
+  SQLite initialises `Data/library.db` in app-private storage — the A1 skeleton, still green after all
+  the shared-UI changes.
+- With the CRT effect off, the couch shell renders correctly and the empty-library screen shows the new
+  Android copy verbatim: *"No games are available in this view. Press Menu, then Add games, to pick a
+  folder to import."* — the escape-hatch change confirmed on-device by eye.
+
+Two findings, both honest boundaries rather than regressions:
+- **The import flow cannot be *driven* on-device yet.** `DispatchGamepadAction` (menu / D-pad / A-B)
+  is wired only in the desktop `MainWindow.axaml.cs`; the shared `GamepadShellView` carries no
+  menu/navigation input, and the tap-to-focus/tap-to-launch touch seam (decision 2) is not built. So
+  neither key events, a pad, nor a tap opens the couch menu on Android. Wiring input into the shared
+  shell is **Milestone C**, and A1's "imports a folder without a keyboard" done-criterion is therefore
+  gated on it. The import flow itself is fully covered by shared MainViewModel tests; what is missing is
+  the on-device *invocation*, not the logic.
+- **With the CRT effect on (the shipping default), the shelf draws at 1×1 px on this AVD**
+  (`Shelf first frame drawn at 1x1 px (viewportReported=True)`), so the couch chrome is hidden behind an
+  almost-empty tube. This predates these changes (the same line appears in the first boot) and is a
+  device/surface-size issue for the CRT tube on the emulator's ANGLE/SwiftShader stack — a 0b question on
+  real Adreno hardware, not part of this work.

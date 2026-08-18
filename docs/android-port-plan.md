@@ -533,10 +533,20 @@ findings, are in DECISIONS 2026-08-17.
   already Android-aware, or are dormant until the later milestone that supplies an Android
   implementation. Full disposition in DECISIONS 2026-08-18.
 
+- **Gamepad-native library import is built.** The couch shell can import a folder without a keyboard:
+  a folder pick via `IDialogService` (the Android head drives the SAF picker through
+  `TopLevel.StorageProvider` and returns a real local path with all-files access; SAF-only URIs are
+  Milestone D), then a controller-native `GamepadOverlayKind.ImportSystem` chooser, then the existing
+  scan. "Add games" appears in the couch menu only where Desktop mode is absent. Covered by shared
+  MainViewModel tests and verified to build/boot on the AVD. See DECISIONS 2026-08-18.
+
 **Remaining in A1** (the milestone is not done):
-- **Gamepad-native library import** — the head still shows an empty library because there is no
-  keyboard-free import path yet; `SingleViewDialogService` stubs the pickers. This is A1's largest
-  remaining feature item, and it is what the empty-library copy now points at.
+- **On-device input to *drive* the import** (and every other couch action). `DispatchGamepadAction` is
+  wired only in the desktop `MainWindow.axaml.cs`; the shared `GamepadShellView` has no menu/navigation
+  input and the tap-to-focus/tap-to-launch touch seam is not built, so nothing opens the couch menu on
+  Android yet. This is **Milestone C**, and A1's "imports a folder without a keyboard" done-criterion is
+  gated on it — the import *logic* is done and tested; the on-device *invocation* is not. This finding
+  moves a slice of C onto A1's critical path; see DECISIONS 2026-08-18.
 
 ### D — Storage and permissions (before B, not after)
 
