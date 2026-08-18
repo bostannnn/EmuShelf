@@ -1888,20 +1888,28 @@ breaks the whole-solution macOS build/test loop.
 - [x] **A0 — split the App project** (2026-08-17). `EmuShelf.App` split into a shared `EmuShelf.UI`
       library + a thin desktop head, with a lifetime-agnostic composition root behind
       `App.DesktopShellFactory`/`IPlatformShell`. Full desktop Release suite green.
-- [ ] **A1 — walking skeleton** 🚧. Skeleton verified on the AVD (2026-08-17): the real head boots the
-      shared composition root, Avalonia renders, the GLES 3D shelf gets a real OpenGL ES 3.0 context
-      (asserted via `InitializationSucceeded`, EGL pinned with Software dropped), and SQLite creates
-      `Data/library.db` in app-private storage. Desktop suite still green (1128 + 889).
+- [ ] **A1 — walking skeleton** 🚧. Verified on the AVD: the real head boots the shared composition
+      root, Avalonia renders, the GLES 3D shelf gets a real OpenGL ES 3.0 context (asserted via
+      `InitializationSucceeded`, EGL pinned with Software dropped), and SQLite creates `Data/library.db`
+      in app-private storage. **As of 2026-08-18 the head hosts the real gamepad shell** (extracted
+      `GamepadShellView`) — the couch rail and empty-library state render on device, not the probe.
+      Desktop suite green (1128 + 889). Remaining: gamepad-native import, the escape hatches, the ladder
+      audit.
   - [x] Single-view seam: `App.SingleViewShellFactory` + `ISingleViewApplicationLifetime` branch;
         `AppBootstrapper` base-directory injection; Android shell services (`AndroidInterfaceModeService`
         Gamepad-locked, frontend controller, lifetime service, stub `SingleViewDialogService`).
   - [x] `net10.0-android36.0` head boots on device, EGL-pinned, `Avalonia.Desktop` kept out.
-  - [ ] Extract the gamepad tree from the desktop `MainWindow.axaml` so the head hosts the real Gamepad
-        shell instead of the probe `MainView` (the A0-deferred item; still the largest single pole).
+  - [x] Extract the gamepad tree from the desktop `MainWindow.axaml` into a shared `EmuShelf.UI`
+        `GamepadShellView` (couch UI + CRT tube + ~40 gamepad code-behind methods; the A0-deferred item).
+        Both heads host it: desktop `MainWindow` and the Android `MainView`. Done in gated stages —
+        shared styles to app scope, shared cover-interaction helper, then the view+code-behind
+        partition. Desktop suite green (1128 + 889); the real gamepad shell renders on the AVD.
   - [ ] Gamepad-native library import (folder pick → picker → metadata consent → scan as gamepad
         overlays) — the library is empty until this lands; the dialog pickers are stubbed.
   - [ ] `AppPaths`/`OperatingSystem.Is*` ladder audit (53 sites) beyond the base-directory branch, and
-        close the gamepad "Switch to Desktop" / cover-handoff escape hatches.
+        close the gamepad escape hatches: the system-menu "Switch to Desktop" and cover handoff, plus
+        the hardcoded empty-library copy in `GamepadShellView.axaml` that tells the user to "switch to
+        Desktop mode and add games" (no Desktop mode on Android — it is the literal first-run screen).
 - [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
       sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
       touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.

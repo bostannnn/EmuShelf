@@ -9363,3 +9363,41 @@ resolve (incl. `Games.Count` OneWay via `BulkObservableCollection`), the forced-
 initialises correctly through the VM constructor (not `ModeChanged`), `SingleViewDialogService` is
 complete and cannot wedge the VM, no `Avalonia.Desktop` backend reaches the APK (inspected payload),
 and the `FilesDir`/startup ordering and duplicate `<application>` merge are correct.
+
+## 2026-08-18 — Android A1: extract the gamepad shell into a shared view so both heads host it
+
+The A1-deferred, largest single pole: the couch UI lived in the desktop-only `MainWindow.axaml`
+(4,700-line window, gamepad tree interleaved with desktop chrome), so the Android head could only show
+a probe. Extracted the whole gamepad tree — `GamepadRoot` + the CRT tube host + ~40 gamepad
+code-behind methods — into a shared `EmuShelf.UI/Views/GamepadShellView` (`UserControl`). The desktop
+`MainWindow` and the Android `MainView` now both host `<views:GamepadShellView/>`; the real couch shell
+renders on the AVD (rail, empty-library state, GLES 3.0 context). Done in gated stages so the desktop
+suite caught any regression at each step, and committed as three commits:
+
+- **Shared styles to application scope** (`EmuShelf.UI/Styles/EmuShelfStyles.axaml`, `StyleInclude`d by
+  both `App.axaml` and the headless `TestApp`). The Android head has no `Window`, so styles that used
+  to travel inside `MainWindow.axaml`'s `Window.Styles` had to live where both heads and the render
+  tests resolve them. No selector targets the `Window` type, so application scope is behaviour-identical
+  (verified: 724 Style+Setter lines byte-identical to the baseline). Two `#GamepadOverlayHost`-bound
+  styles follow the overlay host into the view's own `UserControl.Styles`.
+- **Shared cover-interaction helper** (`GameCoverInteractions`) for the one behaviour both trees share
+  (double-tap launch, cover realize/recycle), so the extraction is a clean cut, not a fork.
+- **The view + code-behind partition.** Window-only concerns stay on the window (chrome, marquee
+  selection, `OnWindowKeyDown` + keyboard rotation — which drive the VM, so the gamepad view reacts
+  through it). `FocusManager` and `RenderScaling` are `TopLevel` concerns the window exposed directly;
+  the `UserControl` reaches them via `TopLevel.GetTopLevel(this)`, so the moved method bodies are
+  unchanged. `ApplyCellWidth` (window `RenderScaling` + desktop `LibraryRepeater`) stays on the window;
+  the couch grid, a `UniformGrid` with no layout width to push, gets a `CoverRenderScale`-only variant.
+
+Two seams this creates, recorded so they are not surprises: (1) the gamepad control names now live in
+the view's own namescope, so `Window.FindControl` can no longer see them — the snapshot tests use a
+`FindNamed` helper that checks the window then the shell, reproducing the old single-namescope lookup
+(no name collisions: 26 desktop / 52 gamepad, zero overlap). (2) The empty-library copy is now shared
+XAML that still reads "switch to Desktop mode and add games" — correct on the desktop couch, wrong on
+Android; tracked as an A1 escape hatch to close with gamepad-native import.
+
+Verified: the gamepad XAML region moved byte-identical (2,737 lines, empty diff, tube included); the
+code-behind partition is lossless (every delta is the scaffold, the shared delegators duplicated by
+design, or the two renamed `ApplyCellWidth` calls); full desktop Release suite green (1128 + 889,
+snapshot tests included); the Android head builds and renders the real shell. Still open under A1:
+gamepad-native import, closing the escape hatches, and the `OperatingSystem.Is*` ladder audit.

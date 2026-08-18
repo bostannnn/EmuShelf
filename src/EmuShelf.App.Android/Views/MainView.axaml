@@ -1,66 +1,21 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:controls="using:EmuShelf.App.Controls"
+             xmlns:views="using:EmuShelf.App.Views"
              xmlns:vm="using:EmuShelf.App.ViewModels"
-             mc:Ignorable="d"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              x:Class="EmuShelf.App.Android.Views.MainView"
              x:DataType="vm:MainViewModel"
              Background="#0b0d12">
 
     <!--
-      A1 walking skeleton, NOT the final gamepad shell. Its job is to answer three questions on the
-      real head with the real composition root, visibly, in one frame:
-        1. Does Avalonia render on Avalonia.Android?      -> this control tree draws
-        2. Does the GLES 3D shelf get a context and draw?  -> MediaShelf3DControl + the GL status line
-        3. Does SQLite load the library?                   -> the bound game list and count
-      The full gamepad tree (extracted from the desktop MainWindow) and gamepad-native import replace
-      this view in the remainder of A1.
+      The Android single-view head hosts the real gamepad shell — the same GamepadShellView extracted
+      from the desktop MainWindow (couch UI subtree + GLES CRT tube). The head forces Gamepad mode, so
+      GamepadShellView's GamepadRoot (IsVisible=IsGamepadMode) is always shown and its shelf renders
+      through the same OpenGlControlBase path proven on the AVD. GamepadShellView inherits this view's
+      DataContext (the shared MainViewModel the composition root builds), so it wires its own couch
+      subscriptions exactly as it does inside the desktop window.
+
+      Not yet wired here: controller input and text entry (Milestone C) and gamepad-native import
+      (remaining A1) — so the shell renders and animates but is not yet interactive on device.
     -->
-    <Grid RowDefinitions="Auto,*,Auto">
-
-        <!-- The GLES probe. Flat CRT so it needs no window-chrome capture source; it renders the
-             physical-media shelf models straight from the library. InitializationFailed is wired so a
-             silent Software fallback cannot masquerade as success (the macOS/Metal failure mode). -->
-        <controls:MediaShelf3DControl x:Name="ShelfProbe"
-                                      Grid.Row="0" Grid.RowSpan="3"
-                                      IsHitTestVisible="False"
-                                      Crt="{Binding InlineShelfCrt}"
-                                      Items="{Binding Games}"
-                                      FocusedItem="{Binding FocusedGame}" />
-
-        <Border Grid.Row="0" Background="#cc11141c" Padding="18,14">
-            <StackPanel Spacing="2">
-                <TextBlock Text="EmuShelf — Android (A1 skeleton)"
-                           FontSize="20" FontWeight="SemiBold" Foreground="#f2f4f8" />
-                <TextBlock x:Name="StatusLine"
-                           Text="GL: initializing…"
-                           FontSize="13" Foreground="#8fa0b6" />
-            </StackPanel>
-        </Border>
-
-        <!-- Library list: proves the shared library loaded from SQLite and data-binds. Kept legible on
-             top of the shelf so both answers are visible even if one path is degraded. -->
-        <Border Grid.Row="1" Margin="14" Padding="10"
-                HorizontalAlignment="Left" VerticalAlignment="Stretch"
-                Width="360" CornerRadius="10" Background="#b30b0d12">
-            <ListBox ItemsSource="{Binding Games}" Background="Transparent" BorderThickness="0">
-                <ListBox.ItemTemplate>
-                    <DataTemplate x:DataType="vm:GameViewModel">
-                        <TextBlock Text="{Binding DisplayTitle}" Foreground="#e6ebf2"
-                                   FontSize="14" Padding="4,6" />
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
-        </Border>
-
-        <Border Grid.Row="2" Background="#cc11141c" Padding="18,10">
-            <TextBlock FontSize="13" Foreground="#8fa0b6">
-                <Run Text="Library: " />
-                <Run Text="{Binding Games.Count, Mode=OneWay}" />
-                <Run Text=" games · Gamepad mode forced" />
-            </TextBlock>
-        </Border>
-    </Grid>
+    <views:GamepadShellView />
 </UserControl>

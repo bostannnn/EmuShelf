@@ -463,6 +463,11 @@ Android. Checklist:
 - **Import** — `AddGamesCommand`/`AddFolderCommand` are bound only in the desktop head's
   [MainWindow.axaml](../src/EmuShelf.App/Views/MainWindow.axaml); on Android there is no binding at all.
   This is the same item as "Gamepad-native library import" above.
+- **Empty-library copy** — the couch empty state hardcodes *"No games are available in this view. Use
+  Menu to switch to Desktop mode and add games."* ([GamepadShellView.axaml](../src/EmuShelf.UI/Views/GamepadShellView.axaml)).
+  On Android that is the literal first-run screen and it points at a mode that does not exist. It must
+  read as a gamepad-native call to import once import lands. Distinct from the system-menu "Switch to
+  Desktop" hatch below because it is static copy, not a command — easy to miss.
 - **Cover setting** — "Set cover" opens the `CoverDesktopHandoff` overlay
   ([MainViewModel.cs:2006](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:2006)) whose whole job is to
   route the user to Desktop mode. Needs a gamepad-native cover picker or a clean "not here".
