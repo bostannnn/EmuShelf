@@ -83,4 +83,32 @@
     <SolidColorBrush x:Key="EmuGamepadXButtonBrush" Color="#66A8FF" />
     <SolidColorBrush x:Key="EmuGamepadYButtonBrush" Color="#F0BD55" />
     <SolidColorBrush x:Key="EmuGamepadButtonTextBrush" Color="#101217" />
+
+    <!-- App icon geometries and the content-only gamepad game-button ControlTheme. Moved here
+         from MainWindow.axaml's Window.Resources during the A1 extraction so both heads and the
+         render tests resolve them at Application scope. -->
+        <!-- Neutral trophy glyph (mdi-trophy) for the achievement mark; not RA branding. -->
+        <!-- mdi-layers: a neutral "replacement images" mark. Not emulator or vendor branding. -->
+        <StreamGeometry x:Key="TexturePackLayersGeometry">M12,16L19.36,10.27L21,9L12,2L3,9L4.63,10.27M12,18.54L4.62,12.81L3,14.07L12,21.07L21,14.07L19.37,12.8L12,18.54Z</StreamGeometry>
+        <!-- mdi-alert: marks a failed operation in the status toast. -->
+        <StreamGeometry x:Key="StatusWarningGeometry">M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16</StreamGeometry>
+        <!-- mdi-sync: circular arrows, the Gamepad save-sync panel's "transferring" mark. -->
+        <StreamGeometry x:Key="CloudSyncGeometry">M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z</StreamGeometry>
+        <StreamGeometry x:Key="AchievementTrophyGeometry">M18,2H6V4H2V9C2,11.21 3.79,13 6,13V13.5C6,15.43 7.5,17 9.34,17.15L9,18H7V20H17V18H15L14.66,17.15C16.5,17 18,15.43 18,13.5V13C20.21,13 22,11.21 22,9V4H18V2M6,11C4.9,11 4,10.1 4,9V6H6V11M20,9C20,10.1 19.1,11 18,11V6H20V9Z</StreamGeometry>
+        <!-- The Fluent Button theme paints its internal presenter on pointer/pressed states even
+             when Button.Background is transparent. Game tiles provide cover-sized hover/focus
+             overlays, so their button template is deliberately content-only. -->
+        <ControlTheme x:Key="GamepadGameButtonTheme" TargetType="Button">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter x:Name="PART_ContentPresenter"
+                                      Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      Padding="{TemplateBinding Padding}"
+                                      ClipToBounds="False"
+                                      HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                      VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                </ControlTemplate>
+            </Setter>
+        </ControlTheme>
 </ResourceDictionary>

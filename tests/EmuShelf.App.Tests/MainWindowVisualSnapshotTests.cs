@@ -49,16 +49,16 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(WindowDecorations.None, window.WindowDecorations);
             Assert.True(window.ExtendClientAreaToDecorationsHint);
 
-            var search = window.FindControl<Button>("SearchTrigger");
-            var navigation = window.FindControl<Button>("NavigationToggle");
-            var grid = window.FindControl<ToggleButton>("GridViewToggle");
-            var list = window.FindControl<ToggleButton>("ListViewToggle");
-            var gamepad = window.FindControl<Button>("GamepadModeButton");
-            var settings = window.FindControl<Button>("SettingsButton");
-            var captions = window.FindControl<StackPanel>("CaptionButtons");
-            var minimize = window.FindControl<Button>("MinimizeWindowButton");
-            var maximize = window.FindControl<Button>("MaximizeWindowButton");
-            var close = window.FindControl<Button>("CloseWindowButton");
+            var search = window.FindNamed<Button>("SearchTrigger");
+            var navigation = window.FindNamed<Button>("NavigationToggle");
+            var grid = window.FindNamed<ToggleButton>("GridViewToggle");
+            var list = window.FindNamed<ToggleButton>("ListViewToggle");
+            var gamepad = window.FindNamed<Button>("GamepadModeButton");
+            var settings = window.FindNamed<Button>("SettingsButton");
+            var captions = window.FindNamed<StackPanel>("CaptionButtons");
+            var minimize = window.FindNamed<Button>("MinimizeWindowButton");
+            var maximize = window.FindNamed<Button>("MaximizeWindowButton");
+            var close = window.FindNamed<Button>("CloseWindowButton");
             Assert.NotNull(search);
             Assert.NotNull(navigation);
             Assert.NotNull(grid);
@@ -116,7 +116,7 @@ public class MainWindowVisualSnapshotTests
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-            var scroller = window.FindControl<ScrollViewer>("SidebarScroller");
+            var scroller = window.FindNamed<ScrollViewer>("SidebarScroller");
             Assert.NotNull(scroller);
             Assert.True(scroller.Extent.Height > scroller.Viewport.Height,
                 "Sidebar consoles + collections must overflow into a scroll region.");
@@ -183,7 +183,7 @@ public class MainWindowVisualSnapshotTests
     {
         AssertAchievementDetailTextIsWhole(window, title, description);
         var card = AchievementDetailCard(window);
-        var grid = window.FindControl<ListBox>("GamepadAchievementRowList");
+        var grid = window.FindNamed<ListBox>("GamepadAchievementRowList");
         Assert.NotNull(grid);
         Assert.True(
             card.Bounds.Height <= grid.Bounds.Height,
@@ -233,9 +233,9 @@ public class MainWindowVisualSnapshotTests
         window.Show();
         try
         {
-            var trigger = window.FindControl<Button>("SearchTrigger");
-            var expanded = window.FindControl<Border>("ExpandedSearch");
-            var close = window.FindControl<Button>("CloseSearchButton");
+            var trigger = window.FindNamed<Button>("SearchTrigger");
+            var expanded = window.FindNamed<Border>("ExpandedSearch");
+            var close = window.FindNamed<Button>("CloseSearchButton");
             Assert.NotNull(trigger);
             Assert.NotNull(expanded);
             Assert.NotNull(close);
@@ -306,8 +306,8 @@ public class MainWindowVisualSnapshotTests
             Click(window, tiles[1], RawInputModifiers.Control | RawInputModifiers.Shift);
             Assert.Equal(["Game 1", "Game 2", "Game 3"], SelectedTitles(viewModel));
 
-            var selectionBar = window.FindControl<Border>("SelectionBar");
-            var removeButton = window.FindControl<Button>("RemoveSelectionButton");
+            var selectionBar = window.FindNamed<Border>("SelectionBar");
+            var removeButton = window.FindNamed<Button>("RemoveSelectionButton");
             Assert.NotNull(selectionBar);
             Assert.NotNull(removeButton);
             Assert.True(selectionBar.IsVisible);
@@ -419,7 +419,7 @@ public class MainWindowVisualSnapshotTests
                 .Where(control => control.Classes.Contains("game-tile"))
                 .ToArray();
             Assert.Equal(3, tiles.Length);
-            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            var marqueeBox = window.FindNamed<Border>("MarqueeBox");
             Assert.NotNull(marqueeBox);
             Assert.False(marqueeBox.IsVisible);
 
@@ -509,7 +509,7 @@ public class MainWindowVisualSnapshotTests
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-            var list = window.FindControl<ListBox>("LibraryList");
+            var list = window.FindNamed<ListBox>("LibraryList");
             Assert.NotNull(list);
             var scroller = list!.GetVisualDescendants().OfType<ScrollViewer>().First();
             scroller.Offset = new Vector(400, scroller.Offset.Y); // scroll the columns sideways
@@ -520,7 +520,7 @@ public class MainWindowVisualSnapshotTests
                 .Where(control => control.Classes.Contains("game-row"))
                 .ToArray();
             Assert.Equal(3, rows.Length);
-            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            var marqueeBox = window.FindNamed<Border>("MarqueeBox");
             Assert.NotNull(marqueeBox);
 
             // Drag within the visible viewport (rows are shifted left off-screen by the scroll), from
@@ -584,7 +584,7 @@ public class MainWindowVisualSnapshotTests
                 .Where(control => control.Classes.Contains("game-row"))
                 .ToArray();
             Assert.Equal(3, rows.Length);
-            var marqueeBox = window.FindControl<Border>("MarqueeBox");
+            var marqueeBox = window.FindNamed<Border>("MarqueeBox");
             Assert.NotNull(marqueeBox);
 
             // Start in the empty space below the last row and drag up into the first row so the box
@@ -678,7 +678,7 @@ public class MainWindowVisualSnapshotTests
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-            var scroller = window.FindControl<ScrollViewer>("LibraryGridScroller");
+            var scroller = window.FindNamed<ScrollViewer>("LibraryGridScroller");
             Assert.NotNull(scroller);
             Assert.True(scroller.Extent.Height > scroller.Viewport.Height, "Library must overflow to scroll.");
 
@@ -762,7 +762,7 @@ public class MainWindowVisualSnapshotTests
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-            var list = window.FindControl<ListBox>("LibraryList");
+            var list = window.FindNamed<ListBox>("LibraryList");
             var row = window.GetVisualDescendants()
                 .OfType<Grid>()
                 .Single(control => control.Classes.Contains("game-row"));
@@ -891,7 +891,7 @@ public class MainWindowVisualSnapshotTests
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
-            var list = window.FindControl<ListBox>("LibraryList");
+            var list = window.FindNamed<ListBox>("LibraryList");
             var row = window.GetVisualDescendants()
                 .OfType<Grid>()
                 .Single(control => control.Classes.Contains("game-row"));
@@ -1183,7 +1183,7 @@ public class MainWindowVisualSnapshotTests
         try
         {
             await PumpAsync();
-            var menuButton = window.FindControl<Button>("GamepadEmptyMenuButton");
+            var menuButton = window.FindNamed<Button>("GamepadEmptyMenuButton");
             Assert.NotNull(menuButton);
             Assert.True(menuButton.IsVisible);
 
@@ -1288,12 +1288,12 @@ public class MainWindowVisualSnapshotTests
                 .ToArray();
             Assert.DoesNotContain(titleBaselines, value => value is null);
             Assert.InRange(titleBaselines.Max()!.Value - titleBaselines.Min()!.Value, 0, 1);
-            var focusedDock = window.FindControl<Border>("GamepadFocusedDock");
-            var achievementWidget = window.FindControl<Border>("GamepadAchievementWidget");
-            var achievementTrack = window.FindControl<Border>("GamepadAchievementTrack");
-            var achievementFill = window.FindControl<Border>("GamepadAchievementFill");
-            var playButton = window.FindControl<Button>("GamepadPlayButton");
-            var subtitle = window.FindControl<TextBlock>("GamepadFocusedSubtitle");
+            var focusedDock = window.FindNamed<Border>("GamepadFocusedDock");
+            var achievementWidget = window.FindNamed<Border>("GamepadAchievementWidget");
+            var achievementTrack = window.FindNamed<Border>("GamepadAchievementTrack");
+            var achievementFill = window.FindNamed<Border>("GamepadAchievementFill");
+            var playButton = window.FindNamed<Button>("GamepadPlayButton");
+            var subtitle = window.FindNamed<TextBlock>("GamepadFocusedSubtitle");
             Assert.NotNull(focusedDock);
             Assert.NotNull(achievementWidget);
             Assert.NotNull(achievementTrack);
@@ -1311,7 +1311,7 @@ public class MainWindowVisualSnapshotTests
             // Softcore (silver) bar reflects the inclusive total; the hardcore (gold) bar is shown
             // alongside it and, for this fixture with no hardcore unlocks, stays empty.
             Assert.Equal(3d / 62d, Assert.IsType<ScaleTransform>(achievementFill.RenderTransform).ScaleX, 8);
-            var hardcoreFill = window.FindControl<Border>("GamepadHardcoreFill");
+            var hardcoreFill = window.FindNamed<Border>("GamepadHardcoreFill");
             Assert.NotNull(hardcoreFill);
             Assert.Equal(0d, Assert.IsType<ScaleTransform>(hardcoreFill.RenderTransform).ScaleX, 8);
             Assert.Equal("Final Fantasy X (Disc 2).chd", subtitle.Text);
@@ -1458,7 +1458,7 @@ public class MainWindowVisualSnapshotTests
             // of stretching down the whole column, which left a card-sized well of dead space.
             AssertAchievementDetailFits(window, longAchievementTitle, longAchievementDescription);
             var detailCard = AchievementDetailCard(window);
-            var achievementList = window.FindControl<ListBox>("GamepadAchievementRowList");
+            var achievementList = window.FindNamed<ListBox>("GamepadAchievementRowList");
             Assert.NotNull(achievementList);
             // The margin is deliberately loose. A stretched card matches the column exactly, so any
             // clear gap proves the fix; how large the gap is depends on font metrics and so differs
@@ -1582,7 +1582,7 @@ public class MainWindowVisualSnapshotTests
             // Regression guard for the overlap that shipped once (the picker and a shortcut bar were both
             // dropped into row 0 and drew on top of each other): both picker rows must sit entirely above
             // the option list, not on top of it.
-            var optionsScroller = window.FindControl<ScrollViewer>("GamepadOverlayOptionsScroller");
+            var optionsScroller = window.FindNamed<ScrollViewer>("GamepadOverlayOptionsScroller");
             Assert.NotNull(optionsScroller);
             var pickerBottom = pickerCards
                 .Max(card => card.TranslatePoint(new Point(0, card.Bounds.Height), window)!.Value.Y);
@@ -1667,10 +1667,10 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(systems.Length + 1, platformButtons.Length);
             Assert.All(platformButtons, button => Assert.InRange(button.Bounds.Height, 53, 55));
 
-            var achievementWidget = window.FindControl<Border>("GamepadAchievementWidget");
-            var playButton = window.FindControl<Button>("GamepadPlayButton");
-            var focusedDock = window.FindControl<Border>("GamepadFocusedDock");
-            var rowList = window.FindControl<ListBox>("GamepadRowList");
+            var achievementWidget = window.FindNamed<Border>("GamepadAchievementWidget");
+            var playButton = window.FindNamed<Button>("GamepadPlayButton");
+            var focusedDock = window.FindNamed<Border>("GamepadFocusedDock");
+            var rowList = window.FindNamed<ListBox>("GamepadRowList");
             Assert.NotNull(achievementWidget);
             Assert.NotNull(playButton);
             Assert.NotNull(focusedDock);
@@ -1903,9 +1903,9 @@ public class MainWindowVisualSnapshotTests
         try
         {
             await PumpAsync();
-            var host = window.FindControl<Panel>("GamepadOverlayHost");
-            var hints = window.FindControl<StackPanel>("GamepadOverlayHints");
-            var rowList = window.FindControl<ListBox>("GamepadAchievementRowList");
+            var host = window.FindNamed<Panel>("GamepadOverlayHost");
+            var hints = window.FindNamed<StackPanel>("GamepadOverlayHints");
+            var rowList = window.FindNamed<ListBox>("GamepadAchievementRowList");
             var overlay = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(control => control.Classes.Contains("gamepad-overlay"));
@@ -1992,7 +1992,7 @@ public class MainWindowVisualSnapshotTests
         {
             viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
             await PumpAsync();
-            var scroller = window.FindControl<ScrollViewer>("GamepadOverlayOptionsScroller");
+            var scroller = window.FindNamed<ScrollViewer>("GamepadOverlayOptionsScroller");
             Assert.NotNull(scroller);
             var initialOffset = scroller.Offset.Y;
 
@@ -2047,7 +2047,7 @@ public class MainWindowVisualSnapshotTests
             await PumpAsync();
 
             // The virtualized row list owns the scroller inside its template.
-            var rowList = window.FindControl<ListBox>("GamepadRowList");
+            var rowList = window.FindNamed<ListBox>("GamepadRowList");
             Assert.NotNull(rowList);
             var scroller = rowList.GetVisualDescendants().OfType<ScrollViewer>().First();
             var initialOffset = scroller.Offset.Y;
@@ -2102,8 +2102,8 @@ public class MainWindowVisualSnapshotTests
             await viewModel.RemoveFocusedGameCommand.ExecuteAsync(null);
             await PumpAsync();
 
-            var body = window.FindControl<StackPanel>("GamepadRemoveBody");
-            var actions = window.FindControl<ItemsControl>("GamepadConfirmationActions");
+            var body = window.FindNamed<StackPanel>("GamepadRemoveBody");
+            var actions = window.FindNamed<ItemsControl>("GamepadConfirmationActions");
             Assert.NotNull(body);
             Assert.NotNull(actions);
             // Confirmations use the dedicated Cancel/action row, not the picker overlays' vertical list.
@@ -2167,7 +2167,7 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(GamepadOverlayKind.Actions, viewModel.GamepadOverlay);
             Assert.NotEmpty(viewModel.GamepadOverlayOptions);
             await PumpAsync();
-            var overlayOptions = window.FindControl<ItemsControl>("GamepadOverlayOptions");
+            var overlayOptions = window.FindNamed<ItemsControl>("GamepadOverlayOptions");
             Assert.NotNull(overlayOptions);
             var overlayFocusSurfaces = overlayOptions.GetVisualDescendants().OfType<Button>().ToArray();
             Assert.NotEmpty(overlayFocusSurfaces);
@@ -2548,9 +2548,9 @@ public class MainWindowVisualSnapshotTests
             var overlay = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(control => control.Classes.Contains("gamepad-overlay"));
-            var host = window.FindControl<Panel>("GamepadOverlayHost");
-            var scroller = window.FindControl<ScrollViewer>("GamepadSettingsScroller");
-            var repeater = window.FindControl<ItemsRepeater>("GamepadSettingsRows");
+            var host = window.FindNamed<Panel>("GamepadOverlayHost");
+            var scroller = window.FindNamed<ScrollViewer>("GamepadSettingsScroller");
+            var repeater = window.FindNamed<ItemsRepeater>("GamepadSettingsRows");
             Assert.NotNull(host);
             Assert.NotNull(scroller);
             Assert.NotNull(repeater);
@@ -2580,7 +2580,7 @@ public class MainWindowVisualSnapshotTests
             Assert.All(
                 navigationButtons,
                 button => Assert.Equal(navigationButtons[0].Bounds.Width, button.Bounds.Width, 1));
-            var saveButton = window.FindControl<Button>("GamepadSettingsSaveButton");
+            var saveButton = window.FindNamed<Button>("GamepadSettingsSaveButton");
             Assert.NotNull(saveButton);
             Assert.Equal(navigationButtons[0].Bounds.Width, saveButton.Bounds.Width, 1);
 
@@ -2696,8 +2696,8 @@ public class MainWindowVisualSnapshotTests
                 row.Key.EndsWith("replace-local", StringComparison.Ordinal));
             await replaceLocal.SelectCommand.ExecuteAsync(null);
             await PumpAsync();
-            var keep = window.FindControl<Button>("GamepadSettingsKeepButton");
-            var confirm = window.FindControl<Button>("GamepadSettingsConfirmButton");
+            var keep = window.FindNamed<Button>("GamepadSettingsKeepButton");
+            var confirm = window.FindNamed<Button>("GamepadSettingsConfirmButton");
             Assert.NotNull(keep);
             Assert.NotNull(confirm);
             Assert.True(keep.IsVisible);
@@ -3051,7 +3051,7 @@ public class MainWindowVisualSnapshotTests
             var overlay = window.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(control => control.Classes.Contains("gamepad-overlay"));
-            var host = window.FindControl<Panel>("GamepadOverlayHost");
+            var host = window.FindNamed<Panel>("GamepadOverlayHost");
             Assert.NotNull(host);
             Assert.Equal(host.Bounds.Width, overlay.Bounds.Width, 1);
             Assert.Equal(host.Bounds.Height, overlay.Bounds.Height, 1);
@@ -3107,7 +3107,7 @@ public class MainWindowVisualSnapshotTests
             viewModel.GamepadHotkeys = gamepadHotkeys;
             await PumpAsync();
 
-            var scroller = window.FindControl<ScrollViewer>("GamepadHotkeysScroller");
+            var scroller = window.FindNamed<ScrollViewer>("GamepadHotkeysScroller");
             Assert.NotNull(scroller);
             // The seven-row matrix overflows the viewport at 1280x800, so the last emulator starts off-screen —
             // which is exactly why scroll-to-focus has to work for a controller-only user.
@@ -3246,7 +3246,7 @@ public class MainWindowVisualSnapshotTests
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
-            var refresh = window.FindControl<Button>("RefreshRetroAchievementsMatchesButton");
+            var refresh = window.FindNamed<Button>("RefreshRetroAchievementsMatchesButton");
             Assert.NotNull(refresh);
             Assert.True(refresh.IsVisible);
             Assert.True(refresh.IsEnabled);
@@ -3398,12 +3398,12 @@ public class MainWindowVisualSnapshotTests
 
             // Both washes live inside the shelf host, so assert it is on screen — otherwise this only
             // proves a binding flips on a control nobody can see.
-            var shelf = window.FindControl<Border>("GamepadShelf");
+            var shelf = window.FindNamed<Border>("GamepadShelf");
             Assert.NotNull(shelf);
             Assert.True(shelf.IsVisible);
 
-            var platformWash = window.FindControl<Border>("ShelfPlatformAccentWash");
-            var themeWash = window.FindControl<Border>("ShelfThemeAccentWash");
+            var platformWash = window.FindNamed<Border>("ShelfPlatformAccentWash");
+            var themeWash = window.FindNamed<Border>("ShelfThemeAccentWash");
             Assert.NotNull(platformWash);
             Assert.NotNull(themeWash);
             Assert.True(platformWash.IsVisible);
@@ -3469,7 +3469,7 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(primaryCentre, clusterCentre, 2.0);
 
             // The list card's lower edge lines up with the action pills (Play), not hanging below them.
-            var list = window.FindControl<ListBox>("GamepadSpotlightList");
+            var list = window.FindNamed<ListBox>("GamepadSpotlightList");
             Assert.NotNull(list);
             var card = list!.GetVisualAncestors().OfType<Border>().First();
             Assert.Equal(BottomEdge(card, window), BottomEdge(play, window), 1.5);

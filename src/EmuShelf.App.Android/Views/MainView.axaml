@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:views="using:EmuShelf.App.Views"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Android.Views.MainView"
+             x:DataType="vm:MainViewModel"
+             Background="#0b0d12">
+
+    <!--
+      The Android single-view head hosts the real gamepad shell — the same GamepadShellView extracted
+      from the desktop MainWindow (couch UI subtree + GLES CRT tube). The head forces Gamepad mode, so
+      GamepadShellView's GamepadRoot (IsVisible=IsGamepadMode) is always shown and its shelf renders
+      through the same OpenGlControlBase path proven on the AVD. GamepadShellView inherits this view's
+      DataContext (the shared MainViewModel the composition root builds), so it wires its own couch
+      subscriptions exactly as it does inside the desktop window.
+
+      Not yet wired here: controller input and text entry (Milestone C) and gamepad-native import
+      (remaining A1) — so the shell renders and animates but is not yet interactive on device.
+    -->
+    <views:GamepadShellView />
+</UserControl>

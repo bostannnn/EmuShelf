@@ -14,3 +14,14 @@ public sealed class ApplicationLifetimeService(
 {
     public void Shutdown() => lifetime.Shutdown();
 }
+
+/// <summary>
+/// Single-view (Android) equivalent. A mobile app has no desktop lifetime to shut down — the OS owns
+/// the process — so a view-model "quit" runs an optional host-supplied action (e.g. finishing the
+/// Activity) and otherwise no-ops rather than tearing the process down under Android's back.
+/// </summary>
+public sealed class SingleViewApplicationLifetimeService(
+    Action? requestClose = null) : IApplicationLifetimeService
+{
+    public void Shutdown() => requestClose?.Invoke();
+}
