@@ -176,37 +176,15 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // Steam Input delivers controller buttons as these keys; map them to the same logical
-            // actions native pad input produces and route both through the one view-model dispatcher.
-            if (MapKeyToGamepadAction(e) is { } action)
+            // Steam Input delivers controller buttons as these keys; map them (via the shared contract
+            // both heads use) to the same logical actions native pad input produces and route both
+            // through the one view-model dispatcher.
+            if (GamepadKeyMap.Map(e.Key, e.KeyModifiers) is { } action)
             {
                 if (viewModel.DispatchGamepadAction(action))
                     e.Handled = true;
             }
             return;
-        }
-
-        // Steam Input keyboard contract: LB/RB map to Ctrl+PageUp/Ctrl+PageDown for platform switching.
-        static GamepadAction? MapKeyToGamepadAction(KeyEventArgs key)
-        {
-            if (key.KeyModifiers.HasFlag(KeyModifiers.Control) && key.Key == Key.PageUp)
-                return GamepadAction.PreviousPlatform;
-            if (key.KeyModifiers.HasFlag(KeyModifiers.Control) && key.Key == Key.PageDown)
-                return GamepadAction.NextPlatform;
-
-            return key.Key switch
-            {
-                Key.Enter => GamepadAction.Confirm,
-                Key.Escape => GamepadAction.Cancel,
-                Key.X => GamepadAction.Search,
-                Key.Y => GamepadAction.Actions,
-                Key.F10 => GamepadAction.Menu,
-                Key.Left => GamepadAction.NavigateLeft,
-                Key.Right => GamepadAction.NavigateRight,
-                Key.Up => GamepadAction.NavigateUp,
-                Key.Down => GamepadAction.NavigateDown,
-                _ => null,
-            };
         }
 
         // Fullscreen toggle for Desktop mode. The window has no title bar, so there is no green

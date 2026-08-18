@@ -14,8 +14,9 @@
       DataContext (the shared MainViewModel the composition root builds), so it wires its own couch
       subscriptions exactly as it does inside the desktop window.
 
-      Not yet wired here: controller input and text entry (Milestone C) and gamepad-native import
-      (remaining A1) — so the shell renders and animates but is not yet interactive on device.
+      Couch input is handled at the Activity level (MainActivity.DispatchKeyEvent), because Android
+      gamepad buttons arrive as Activity key events that Avalonia's own KeyDown does not surface. Full
+      native analog-stick reading and IME are the rest of Milestone C.
     -->
     <views:GamepadShellView />
 </UserControl>

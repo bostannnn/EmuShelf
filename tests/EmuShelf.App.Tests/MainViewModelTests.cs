@@ -1780,6 +1780,9 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
         Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == Ps1.Name);
         Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Cancel");
+        // A list-picker overlay must be top-aligned, or its options collapse to an invisible zero-height
+        // row in the auto-sized card (the bug that hid the whole system list on-device).
+        Assert.True(vm.AreGamepadOverlayOptionsTopAligned);
 
         // Choosing the system runs the scan; the games land and the overlay closes back to the shelf.
         var pickPs1 = vm.GamepadOverlayOptions.First(option => option.Label == Ps1.Name);

@@ -1,6 +1,8 @@
 using Android.App;
 using Android.Content.PM;
+using Android.Views;
 using Avalonia.Android;
+using EmuShelf.App.Android.Services;
 
 namespace EmuShelf.App.Android;
 
@@ -27,4 +29,22 @@ namespace EmuShelf.App.Android;
         | ConfigChanges.Density)]
 public class MainActivity : AvaloniaMainActivity
 {
+    /// <summary>
+    /// The head's couch input surface. Gamepad buttons and the D-pad arrive here as Android key events
+    /// even though Avalonia reports them as <c>Key.None</c>, so this is where they are mapped to logical
+    /// couch actions and routed to the shared view model. Only key-down is dispatched (repeats included,
+    /// so held D-pad still scrolls); unmapped keys and key-up fall through to Avalonia and the system, so
+    /// text fields, the Back gesture, and volume keys behave normally.
+    /// </summary>
+    public override bool DispatchKeyEvent(KeyEvent e)
+    {
+        if (e.Action == KeyEventActions.Down &&
+            AndroidGamepadInput.Map(e.KeyCode) is { } action &&
+            AndroidGamepadInput.Dispatch?.Invoke(action) == true)
+        {
+            return true;
+        }
+
+        return base.DispatchKeyEvent(e);
+    }
 }

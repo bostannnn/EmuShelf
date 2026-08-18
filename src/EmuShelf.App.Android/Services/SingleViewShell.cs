@@ -47,6 +47,11 @@ public sealed class SingleViewShell : IPlatformShell
         _mainView.DataContext = viewModel;
         _singleView.MainView = _mainView;
 
+        // Point the Activity's couch key-event bridge at this view model's dispatcher. The Activity
+        // owns the key events (Android gamepad buttons never reach Avalonia's KeyDown), so this is how
+        // Menu / D-pad / A-B reach the shared UI on device.
+        AndroidGamepadInput.Dispatch = viewModel.DispatchGamepadAction;
+
         // Opened must run exactly ONCE — the shared contract, honoured on desktop by Window.Opened.
         // AttachedToVisualTree is a *recurring* event: it re-fires on activity recreation (any config
         // change outside the declared ConfigurationChanges set), the "Don't keep activities" developer

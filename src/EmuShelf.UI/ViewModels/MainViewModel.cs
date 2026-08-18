@@ -1052,7 +1052,8 @@ public partial class MainViewModel : ViewModelBase
     public bool ShowsGamepadConfirmationActions => IsGamepadConfirmationOverlay;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or
-        GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
+        GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
+        GamepadOverlayKind.ImportSystem;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
     // bodies and footers, so the shared option-button list and default hint legend are hidden for them.
     // (Hotkeys keeps the chrome title — it just needs its own body and hints, not a fresh header.)

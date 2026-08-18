@@ -33,11 +33,13 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
 
     /// <summary>
     /// Opens the Android system folder picker (SAF <c>ACTION_OPEN_DOCUMENT_TREE</c>, surfaced by
-    /// Avalonia through <c>TopLevel.StorageProvider</c>) and returns a real filesystem path. With
-    /// all-files access granted, the picked tree resolves to a local path the shared
-    /// <c>FolderScanner</c> reads unchanged; without it the pick is a content URI with no local path,
-    /// which needs the SAF-backed readers of Milestone D — so we log and return null (the shared import
-    /// flow drops back to the shelf) rather than handing the scanner a path it cannot open.
+    /// Avalonia through <c>TopLevel.StorageProvider</c>) and returns a real filesystem path the shared
+    /// <c>FolderScanner</c> can read. Avalonia's <c>TryGetLocalPath()</c> is null for a SAF tree URI, so
+    /// with all-files access held we translate an <c>externalstorage</c> tree URI to its
+    /// <c>/storage/…</c> path ourselves (the plan's sanctioned all-files fast-path). If neither yields a
+    /// readable local path — a provider we cannot translate, or no all-files grant — we log and return
+    /// null (the shared import flow drops back to the shelf); a SAF-backed reader for that case is
+    /// Milestone D.
     /// </summary>
     public async Task<string?> PickFolderAsync()
     {
@@ -57,15 +59,55 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
         if (folders.Count == 0)
             return null;
 
-        var localPath = folders[0].TryGetLocalPath();
+        var folder = folders[0];
+        var localPath = folder.TryGetLocalPath();
         if (string.IsNullOrEmpty(localPath))
+            localPath = TryResolveExternalStorageTreePath(folder.Path);
+
+        if (string.IsNullOrEmpty(localPath) || !Directory.Exists(localPath))
         {
             logger.Information(
-                "Folder picker returned a non-local (SAF) URI; SAF-backed scanning is Milestone D.");
+                $"Folder picker returned a non-local URI we cannot read ('{folder.Path}'); " +
+                "SAF-backed scanning is Milestone D.");
             return null;
         }
 
+        logger.Information($"Import folder resolved to '{localPath}'.");
         return localPath;
+    }
+
+    /// <summary>
+    /// Translates a SAF tree URI from the platform "external storage" documents provider into its raw
+    /// filesystem path — e.g.
+    /// <c>content://com.android.externalstorage.documents/tree/primary%3AEmuShelfRoms</c> →
+    /// <c>/storage/emulated/0/EmuShelfRoms</c>. Only valid because EmuShelf holds all-files access, and
+    /// only for that one provider; anything else returns null and routes to the Milestone D fallback.
+    /// </summary>
+    private static string? TryResolveExternalStorageTreePath(Uri? treeUri)
+    {
+        if (treeUri is null || !treeUri.Host.Equals("com.android.externalstorage.documents", StringComparison.Ordinal))
+            return null;
+
+        // The document id is the segment after "/tree/", e.g. "primary:EmuShelfRoms".
+        var segments = treeUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var treeIndex = Array.IndexOf(segments, "tree");
+        if (treeIndex < 0 || treeIndex + 1 >= segments.Length)
+            return null;
+
+        var documentId = Uri.UnescapeDataString(segments[treeIndex + 1]);
+        var parts = documentId.Split(':', 2);
+        var volume = parts[0];
+        var relative = parts.Length > 1 ? parts[1] : string.Empty;
+
+        // "primary" is the built-in shared storage; a named volume is an SD card / USB drive at
+        // /storage/<id>. Reject an empty volume (the "root of all storage" pick SAF also blocks).
+        if (string.IsNullOrEmpty(volume))
+            return null;
+        var root = volume.Equals("primary", StringComparison.Ordinal)
+            ? "/storage/emulated/0"
+            : $"/storage/{volume}";
+
+        return string.IsNullOrEmpty(relative) ? root : Path.Combine(root, relative);
     }
 
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName)
