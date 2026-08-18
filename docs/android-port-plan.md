@@ -513,15 +513,22 @@ AvaloniaAndroidApplication<App>` + a thin `AvaloniaMainActivity`), plugging into
 Full desktop Release suite still green (1128 + 889). Build/run traps hit and resolved, plus two
 findings, are in DECISIONS 2026-08-17.
 
-**Remaining in A1** (the walking skeleton is up; the milestone is not done):
-- **Extract the gamepad tree from the desktop `MainWindow.axaml`** (still the largest pole) so the
-  Android head hosts the *real* gamepad shell instead of the current probe `MainView`. This is the A0
-  deferred item and is unchanged.
-- **Gamepad-native library import** — the head currently shows an empty library because there is no
+**Done in A1 so far:**
+- **The walking-skeleton head boots** the shared `App` composition root on the AVD (Avalonia renders,
+  real GLES 3.0 context asserted, SQLite in app-private storage). See "Skeleton verified on the AVD"
+  above and DECISIONS 2026-08-17.
+- **The gamepad tree was extracted from `MainWindow.axaml`** into a shared
+  `EmuShelf.UI/Views/GamepadShellView` `UserControl`, so the desktop `MainWindow` and the Android
+  `MainView` now both host the *real* couch shell rather than a probe (this was the A0-deferred largest
+  pole). Done in gated stages behind the desktop suite; see DECISIONS 2026-08-18.
+
+**Remaining in A1** (the milestone is not done):
+- **Gamepad-native library import** — the head still shows an empty library because there is no
   keyboard-free import path yet; `SingleViewDialogService` stubs the pickers. This is A1's largest
-  feature item.
+  remaining feature item.
 - **The `AppPaths`/`OperatingSystem.Is*` ladder audit** (53 sites) beyond the base-directory branch.
-- Close the gamepad "Switch to Desktop" / cover-handoff escape hatches (see the checklist above).
+- Close the gamepad "Switch to Desktop" / cover-handoff escape hatches (see the checklist above),
+  including the shared empty-library copy that still points at Desktop mode.
 
 ### D — Storage and permissions (before B, not after)
 
