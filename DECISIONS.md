@@ -9444,3 +9444,55 @@ backdrop before drawing its viewport, so in the sub-150 ms window before a rebui
 where the computed size briefly trails the framebuffer — the uncovered margin reads as the tube's
 own surround rather than letting the live rail show through. It is a no-op once the viewport covers
 the target (every settled frame), so the visual-snapshot suite is unchanged (App suite 889 green).
+
+## 2026-08-18 — Android A1: close the gamepad "switch to Desktop" escape hatches
+
+Android has no desktop window shell, so the gamepad shell (shared `EmuShelf.UI`) must be
+self-sufficient rather than routing to a mode that does not exist. Rather than scatter
+`OperatingSystem.IsAndroid()` through the view-model, added a platform capability
+`IInterfaceModeService.SupportsDesktopMode` — desktop returns **true even under a forced-Gamepad
+command-line override** (Steam Gaming Mode: the shell still exists and is reachable), Android returns
+**false** (the shell is absent, not merely locked). `MainViewModel` exposes it and words three hatches
+off it, all defaulting to the desktop wording when no mode service is injected (design-time / existing
+tests unchanged, so the visual snapshots are byte-identical):
+
+- The gamepad **system menu** omits "Switch to Desktop mode" when unsupported.
+- The **Set-cover handoff** overlay becomes a plain "Set cover unavailable here" acknowledgement
+  (single "OK", A/B closes) instead of "Continue to Desktop mode", and its body points at web image
+  search rather than the file picker.
+- The **empty-library** prompt stops telling the user to switch to Desktop and points at
+  Menu → Add games (the gamepad-native import, landing next). This is the couch first-run screen on
+  Android, so it must not name a mode that does not exist.
+
+## 2026-08-18 — Android A1: OperatingSystem.Is* ladder audit
+
+Audited all 50 `OperatingSystem.Is*` sites for the "IsLinux() is false on Android, so else-Linux
+ladders misfire" trap. Disposition, so it is not re-derived:
+
+- **One live crash risk, fixed:** `FileRevealService` (constructed unconditionally in shared
+  `App.Compose`) would fall through to the Linux `xdg-open` branch and trip Android's W^X exec
+  restriction if reveal were invoked. Now throws a clear, catchable `PlatformNotSupportedException`
+  on Android at both entry points; both callers already catch and surface it as a status message, so
+  it degrades instead of crashing.
+- **Correct-as-Linux on Android (no change):** `FilePathComparison` (Android ext4/f2fs is
+  case-sensitive, so falling out of the Win/mac case-insensitive branch is right — the NOCASE-DB
+  mismatch is the same one already documented for Linux); `DefaultLaunchTargetInspector`'s unix-mode
+  check.
+- **Degrades safely (no change):** `UpdatePlatform.CurrentAssetName()` → null (updater stays quiet);
+  `UpdateApplierFactory` → `UnsupportedUpdateApplier`; `PlatformOnScreenKeyboardService` → null/
+  unsupported (Milestone C owns the Android IME); the four credential/token stores → obfuscated
+  fallback (functional; a Keystore-backed `IProtectedTextStore` is Milestone E).
+- **Already Android-aware:** `App.axaml.cs` (the `IsAndroid()` compose branch), `AppBootstrapper`
+  (fails fast if the base-dir override is missing on Android, so `AppPaths.ResolveBaseDirectory`'s
+  macOS/`AppContext.BaseDirectory` branches are never reached on Android).
+- **Dormant until a later milestone that supplies an Android implementation (left as-is,
+  deliberately, rather than writing speculative branches now):** the seven per-emulator
+  `*SaveLocationProvider`s and `DolphinHotkeyConfigurator` (Milestone E-android / B — they already
+  take injected `isWindows`/`isMacOS`, so the Android head substitutes behaviour there);
+  `EmulatorLaunchService`/`DefaultLaunchTargetInspector` desktop-launch branches (Milestone B routes
+  through `AndroidIntentLauncher`); `SdlGamepadReader` (Milestone C, and the SDL native lib is
+  excluded from the APK). `GameViewModel`/`EmulatorSettingsRowViewModel` OS-worded labels are cosmetic
+  on Android and harmless.
+
+The rule recorded for later milestones: a ladder that runs on Android must fail safe or clear, never
+silently take the Linux branch.

@@ -1904,12 +1904,16 @@ breaks the whole-solution macOS build/test loop.
         Both heads host it: desktop `MainWindow` and the Android `MainView`. Done in gated stages —
         shared styles to app scope, shared cover-interaction helper, then the view+code-behind
         partition. Desktop suite green (1128 + 889); the real gamepad shell renders on the AVD.
+  - [x] Close the gamepad escape hatches via `IInterfaceModeService.SupportsDesktopMode` (desktop true,
+        Android false): the system-menu "Switch to Desktop" and the cover handoff disappear/reword, and
+        the empty-library copy in `GamepadShellView.axaml` points at Menu → Add games instead of a
+        Desktop mode that does not exist. Desktop wording (and snapshots) unchanged.
+  - [x] `OperatingSystem.Is*` ladder audit (50 sites) beyond the base-directory branch: fixed the one
+        live crash risk (`FileRevealService`'s `xdg-open` fall-through vs Android W^X); the rest are
+        correct-as-Linux, degrade safely, already Android-aware, or dormant until a later milestone.
+        See DECISIONS 2026-08-18.
   - [ ] Gamepad-native library import (folder pick → picker → metadata consent → scan as gamepad
         overlays) — the library is empty until this lands; the dialog pickers are stubbed.
-  - [ ] `AppPaths`/`OperatingSystem.Is*` ladder audit (53 sites) beyond the base-directory branch, and
-        close the gamepad escape hatches: the system-menu "Switch to Desktop" and cover handoff, plus
-        the hardcoded empty-library copy in `GamepadShellView.axaml` that tells the user to "switch to
-        Desktop mode and add games" (no Desktop mode on Android — it is the literal first-run screen).
 - [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
       sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
       touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.

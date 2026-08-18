@@ -521,14 +521,22 @@ findings, are in DECISIONS 2026-08-17.
   `EmuShelf.UI/Views/GamepadShellView` `UserControl`, so the desktop `MainWindow` and the Android
   `MainView` now both host the *real* couch shell rather than a probe (this was the A0-deferred largest
   pole). Done in gated stages behind the desktop suite; see DECISIONS 2026-08-18.
+- **The "switch to Desktop" escape hatches are closed.** A platform capability
+  `IInterfaceModeService.SupportsDesktopMode` (desktop true even under a forced-Gamepad override;
+  Android false) gates all three of the checklist items A1 owns — the system-menu "Switch to Desktop"
+  option, the Set-cover handoff (now an honest "unavailable here"), and the empty-library first-run copy
+  (now points at Menu → Add games, not a mode that does not exist). Desktop wording is unchanged, so the
+  snapshots are byte-identical. See DECISIONS 2026-08-18.
+- **The `OperatingSystem.Is*` ladder audit is done.** All 50 sites triaged: one live crash risk fixed
+  (`FileRevealService`'s `xdg-open` fall-through would trip Android's W^X restriction — now throws a
+  clear, catchable `PlatformNotSupportedException`); the rest are correct-as-Linux, degrade safely, are
+  already Android-aware, or are dormant until the later milestone that supplies an Android
+  implementation. Full disposition in DECISIONS 2026-08-18.
 
 **Remaining in A1** (the milestone is not done):
 - **Gamepad-native library import** — the head still shows an empty library because there is no
   keyboard-free import path yet; `SingleViewDialogService` stubs the pickers. This is A1's largest
-  remaining feature item.
-- **The `AppPaths`/`OperatingSystem.Is*` ladder audit** (53 sites) beyond the base-directory branch.
-- Close the gamepad "Switch to Desktop" / cover-handoff escape hatches (see the checklist above),
-  including the shared empty-library copy that still points at Desktop mode.
+  remaining feature item, and it is what the empty-library copy now points at.
 
 ### D — Storage and permissions (before B, not after)
 
