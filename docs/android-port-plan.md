@@ -343,11 +343,22 @@ case): handed `-e bootPath /sdcard/EmuShelfTest/game.m3u` on its `MainActivity`,
 plain-path handoff** and showed "No games were found — Add Game Directory". `appops set … MANAGE_EXTERNAL_STORAGE
 allow` was a no-op — **DuckStation declares no all-files access**, so a bare path is unreadable; it needs a
 content URI backed by its **own persisted directory grant** (strategy 4). So the per-emulator setup
-checklist is a hard gate on the device, exactly as on the AVD. Continuing 0b for DuckStation/PPSSPP/Dolphin
-requires either the owner granting the test folder inside each emulator, or EmuShelf's own `FileProvider`
-(Milestone B) to serve a content URI. RetroArch (plain-path) needs its core `.so` name, which is in
-app-private storage (`run-as` is blocked on the release build) — capture it from the owner's RetroArch or a
-granted path.
+checklist is a hard gate on the device, exactly as on the AVD.
+
+**RetroArch (plain-path) confirmed on the Thor.** `am start … RetroActivityFuture -e ROM
+/sdcard/EmuShelfTest/game.m3u -e LIBRETRO …/swanstation_libretro_android.so`: RetroArch logged `[ENV]
+Auto-start game "…/game.m3u"`, loaded the SwanStation core, and went to a fullscreen running state — the
+plain-path `.m3u` handoff is accepted, matching the AVD's byte-for-byte sibling-resolution result.
+RetroArch's targetSdk 28 gives it all-files, so no grant was needed and no core `.so` had to be named by
+us beyond the standard filename. (Its cores live in app-private storage, unreadable without root.)
+
+**Corpus limitation — the synthetic-zeros trick only carries the open-then-read emulators.** RetroArch
+opens the file regardless of content, so zeros suffice. **DuckStation validates the disc image before it
+will list or boot it**, so the zero-filled corpus is rejected ("No games were found" even after the folder
+was granted) and it cannot be driven to the sibling-resolution step this way. So the content-URI /
+validating emulators (DuckStation, PPSSPP, Dolphin, AetherSX2, Azahar) need **at least one valid small disc
+image** — and BIOS for a real boot — neither of which is on the device yet. That is the gate on the rest of
+0b. Continuing also needs either per-emulator folder grants or EmuShelf's own `FileProvider` (Milestone B).
 
 **Post-A1 UI findings on the Thor (2026-08-18), and where they belong.** Two things real hardware
 surfaced that A1's done-criterion did not cover; both are "judged by hand on the device" items the plan
