@@ -685,6 +685,27 @@ public sealed class MediaShellRenderer : IDisposable
         }
 
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, targetFramebuffer);
+
+        // Clear the whole target to the tube's backdrop before the pass draws into its viewport.
+        //
+        // The pass fills viewport (0,0,width,height), and normally that is the entire framebuffer, so
+        // the tube writes every pixel and this clear is overwritten and invisible. But when the couch
+        // window is taken full screen the resize is applied asynchronously on several paths (a launch
+        // straight into Gamepad, a return from a launched game; MacFullScreenController on macOS, a
+        // late gamescope resize on the Steam Deck), and only the in-session Desktop->Gamepad switch
+        // waits for it to land. On the others this size can be computed a frame or more before the
+        // framebuffer actually grows, so the viewport covers only part of the now-larger target and
+        // the margin outside it is left exactly as Avalonia handed the framebuffer over — transparent,
+        // through which the live GamepadRoot behind this control shows as an un-warped second copy of
+        // the platform rail: the "doubled top row". Clearing the whole target to the backdrop first
+        // makes any such margin read as the tube's own surround instead, so the live rail can never
+        // show through in the brief window before the scene is rebuilt at the settled size (see
+        // MediaShelf3DHost's resize-settle rebuild). Scissor is force-disabled so the clear is not
+        // confined to a leftover scene rectangle.
+        _gl.Disable(EnableCap.ScissorTest);
+        _gl.ClearColor(Crt.Backdrop.X, Crt.Backdrop.Y, Crt.Backdrop.Z, 1f);
+        _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+
         _gl.Viewport(0, 0, width, height);
 
         // The tube writes an opaque image over the full surface, including where the scene was

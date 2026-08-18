@@ -70,14 +70,37 @@ public sealed class MediaShelf3DHost : ContentControl
         AvaloniaProperty.Register<MediaShelf3DHost, bool>(
             nameof(TintBackdropWithAccent), true);
 
+    /// <summary>
+    /// How long the host waits for the surface size to stop changing before it rebuilds the scene at
+    /// the settled size. Long enough to coalesce a burst of resize events (a window manager applying a
+    /// full-screen grow over several frames) into a single rebuild, short enough that the correction is
+    /// not perceptible as a separate step.
+    /// </summary>
+    private static readonly TimeSpan ResizeSettleDelay = TimeSpan.FromMilliseconds(150);
+
     private readonly DispatcherTimer _initializationWatchdog;
+    private readonly DispatcherTimer _resizeSettleTimer;
     private MediaShelf3DControl? _scene;
     private bool _failedForActivation;
+    // The host's own size when the current scene was built. The scene is an OpenGlControlBase whose GL
+    // surface is fixed at the size it is first laid out at, so a scene stood up before the window
+    // finished an asynchronous full-screen grow stays pinned at the pre-grow size and never re-covers
+    // the window — the "doubled top row" / black-margin couch bug. Comparing against this tells the
+    // settle handler whether a rebuild is actually needed.
+    private Size _sceneBuiltAtSize;
+    // Whether the current scene has reported a ready GL context. A resize-driven rebuild is held until
+    // this is set: tearing the scene down mid-init would restart a cold start from zero, which the
+    // initialization watchdog deliberately avoids (some drivers — the Steam Deck's Mesa stack — are
+    // slow to hand out a first context). Init success re-checks the size, so a grow that landed during
+    // the cold start is still corrected, just after the context is up rather than by interrupting it.
+    private bool _sceneInitialized;
 
     public MediaShelf3DHost()
     {
         _initializationWatchdog = new DispatcherTimer { Interval = InitializationTimeout };
         _initializationWatchdog.Tick += OnInitializationTimedOut;
+        _resizeSettleTimer = new DispatcherTimer { Interval = ResizeSettleDelay };
+        _resizeSettleTimer.Tick += OnResizeSettled;
     }
 
     public event EventHandler<Exception>? InitializationFailed;
@@ -167,6 +190,21 @@ public sealed class MediaShelf3DHost : ContentControl
             return;
         }
 
+        if (change.Property == BoundsProperty)
+        {
+            // The host fills the window, so its Bounds track the window's client size — including the
+            // full-screen grow that trails a launch straight into Gamepad or a return from a launched
+            // game, applied asynchronously (MacFullScreenController on macOS; a late gamescope resize
+            // on the Steam Deck). A scene stood up before that grow lands is an OpenGlControlBase whose
+            // GL surface is fixed at the pre-grow size: it renders into the lower-left of the now-larger
+            // window and leaves the live GamepadRoot rail (or a black band) around it — the doubled top
+            // row. Coalesce the resize burst and rebuild once it settles; OnResizeSettled checks the
+            // size actually changed so a settled window never rebuilds.
+            if (_scene is not null)
+                RestartResizeSettle();
+            return;
+        }
+
         if (_scene is not { } scene)
         {
             return;
@@ -234,7 +272,42 @@ public sealed class MediaShelf3DHost : ContentControl
         scene.ContextLost += OnSceneContextLost;
         scene.AttachedToVisualTree += OnSceneAttachedToVisualTree;
         _scene = scene;
+        _sceneBuiltAtSize = Bounds.Size;
+        _sceneInitialized = false;
         Content = scene;
+    }
+
+    private void RestartResizeSettle()
+    {
+        _resizeSettleTimer.Stop();
+        _resizeSettleTimer.Start();
+    }
+
+    private void OnResizeSettled(object? sender, EventArgs e)
+    {
+        _resizeSettleTimer.Stop();
+
+        // Only a live, healthy scene whose size has genuinely moved needs rebuilding. Requiring the
+        // current bounds to be non-empty avoids ever rebuilding onto a zero-sized surface, and the
+        // size comparison means a settled full-screen window (the common case, and every desktop
+        // resize while the tube is inactive never reaches here) does no work.
+        if (_scene is null
+            || !IsActive
+            || !IsSceneSupported
+            || _failedForActivation
+            || !_sceneInitialized
+            || Bounds.Width <= 0
+            || Bounds.Height <= 0
+            || Bounds.Size == _sceneBuiltAtSize)
+        {
+            return;
+        }
+
+        // Rebuild the scene so its GL surface is created at the settled size — the same recovery the
+        // CRT on/off toggle performs by flipping IsActive, applied automatically when the window
+        // finishes resizing under a scene that was stood up too early.
+        RemoveScene();
+        UpdateSceneAttachment();
     }
 
     private void OnSceneAttachedToVisualTree(object? sender, Avalonia.VisualTreeAttachmentEventArgs e) =>
@@ -246,6 +319,10 @@ public sealed class MediaShelf3DHost : ContentControl
             if (ReferenceEquals(sender, _scene))
             {
                 _initializationWatchdog.Stop();
+                _sceneInitialized = true;
+                // Re-check the size now the context is up: if the window grew during the cold start,
+                // the rebuild was held off (see OnResizeSettled's guard) and this is where it lands.
+                RestartResizeSettle();
             }
         });
 
@@ -264,6 +341,9 @@ public sealed class MediaShelf3DHost : ContentControl
         {
             if (ReferenceEquals(sender, _scene) && IsActive && IsSceneSupported)
             {
+                // The context is being rebuilt, so the scene is no longer "ready": hold any
+                // resize-driven rebuild until it reports success again.
+                _sceneInitialized = false;
                 RestartWatchdog();
             }
         });
@@ -297,6 +377,9 @@ public sealed class MediaShelf3DHost : ContentControl
     private void RemoveScene()
     {
         _initializationWatchdog.Stop();
+        _resizeSettleTimer.Stop();
+        _sceneBuiltAtSize = default;
+        _sceneInitialized = false;
         if (_scene is not { } scene)
         {
             return;
