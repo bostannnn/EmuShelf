@@ -337,6 +337,24 @@ and `Android/data` capability probes, and BIOS-gated full boots (owner to supply
 Azahar). `/sdcard/ROMs` is currently empty — a test corpus is needed to see a populated shelf. None of
 this blocks A1, which is done.
 
+**Post-A1 UI findings on the Thor (2026-08-18), and where they belong.** Two things real hardware
+surfaced that A1's done-criterion did not cover; both are "judged by hand on the device" items the plan
+said would wait for delivery:
+
+- **The couch shell is oversized and vertical content overflows.** It is tuned for the Steam Deck's
+  1280×800; the Thor is 1920×1080 physical but ~833×468 **dip** at its ~2.31× density. Decision #2 ("do
+  not hard-code one aspect ratio, one DPI") anticipated this but scheduled no work — so it is a **new
+  A-phase item, "A2 — couch responsiveness"**, not part of A1. Size the couch shell from the effective
+  dip viewport rather than fixed Deck dimensions.
+- **Vertical gamepad menus do not scroll to follow the selector.** Focus moves but the `ScrollViewer`
+  does not `BringIntoView`, so the selection runs off-screen. Suspected: the Android
+  `DispatchKeyEvent`→`GamepadAction` path moves view-model selection without giving the item real
+  Avalonia keyboard focus. This is **Milestone C** (the navigation model on the Thor); check whether it
+  also reproduces on desktop gamepad (shared bug) or is Android-only.
+
+(Already fixed, separately: the dark-grey shelf backdrop and distorted couch text — two HiDPI/single-view
+rendering bugs, see DECISIONS 2026-08-18.)
+
 ## Prior art: what the shipping Android frontends do
 
 Checked because it is cheaper to read a working launcher's config than to rediscover it. Two are

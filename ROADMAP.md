@@ -1927,6 +1927,26 @@ breaks the whole-solution macOS build/test loop.
         maps Android gamepad keycodes (which never reach Avalonia's `KeyDown`) to `GamepadAction` and
         routes them to the shared `DispatchGamepadAction`; the desktop key contract is now a shared
         `GamepadKeyMap`. Menu/D-pad/A-B/L1-R1 work on device.
+- [x] **Shelf backdrop + chrome capture fixed on the Thor** (2026-08-18). Two HiDPI/single-view bugs the
+      device surfaced after A1: the couch shelf backdrop resolved a hardcoded dark-grey fallback because
+      the theme brush `TryFindResource` keys off a not-yet-settled `ActualThemeVariant` on the single-view
+      tree, and the couch chrome was captured in dip (833 px) then upscaled onto the 1920 px tube (blurred
+      text). Fixed in shared `EmuShelf.UI`; desktop App Release suite green (895/895). See DECISIONS 2026-08-18.
+- [ ] **A2 — couch responsiveness on dense/short panels** 🚧 (Thor, 2026-08-18). The couch shell is tuned
+      for the Steam Deck's 1280×800; the Thor is 1920×1080 physical but ~833×468 **dip** at its ~2.31×
+      density, so the UI is oversized and vertical content overflows. Plan Decision #2 ("do not hard-code
+      one aspect ratio, one DPI") anticipated this but scheduled no work for it. Make the couch shell fit an
+      arbitrary handheld viewport (size from the effective dip viewport, not fixed Deck dimensions).
+- [ ] **Vertical gamepad menus do not scroll to follow the selector** (Thor, 2026-08-18). The focus moves
+      down a vertical list (Settings, sort, system menu) but the `ScrollViewer` does not bring the focused
+      item into view, so the selection runs off-screen. Suspected: the Android `DispatchKeyEvent`→
+      `GamepadAction` path updates view-model selection without giving the item real Avalonia keyboard
+      focus, so focus-follow (`BringIntoView`) never fires. Verify whether it also reproduces on desktop
+      gamepad (shared bug) or is Android-only. **Milestone C** (navigation model on the Thor).
 - [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
       sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
       touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.
+  - [ ] **0b — on-device handoff matrix** (started 2026-08-18). Re-run the file-handoff matrix against the
+        Thor's real emulator builds (DuckStation first — its content-URI sibling resolution was unverifiable
+        on the AVD), plus the `Android/data` capability probe. BIOS-gated full boots wait on owner-supplied
+        BIOS. See the plan's "Milestone 0b".
