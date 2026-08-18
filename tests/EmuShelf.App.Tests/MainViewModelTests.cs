@@ -1747,11 +1747,11 @@ public class MainViewModelTests : IDisposable
         Assert.DoesNotContain("Desktop", vm.GamepadEmptyLibraryPrompt);
         Assert.Equal("Set cover unavailable here", vm.GamepadCoverHandoffTitle);
 
-        // System menu omits "Switch to Desktop mode".
+        // System menu omits "Switch to Desktop mode" and offers gamepad-native "Add games" instead.
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Settings", "Quit EmuShelf"],
+            ["Search", "Add games", "Settings", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Switch to Desktop mode");
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
@@ -1761,6 +1761,51 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
         Assert.Equal(["OK"], vm.GamepadOverlayOptions.Select(option => option.Label));
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Continue to Desktop mode");
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_PicksFolderThenChoosesSystemInOverlay_ScansAndAddsGames()
+    {
+        // The keyboard-free import path: Menu → Add games → OS folder pick → controller-native system
+        // chooser → scan. This is the Android first-run flow the empty-library copy now points at.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        var addGames = Assert.Single(vm.GamepadOverlayOptions, option => option.Label == "Add games");
+        await ((IAsyncRelayCommand)addGames.Command).ExecuteAsync(null);
+
+        // The folder is remembered and the system chooser is up, listing importable consoles plus Cancel.
+        Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == Ps1.Name);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Cancel");
+
+        // Choosing the system runs the scan; the games land and the overlay closes back to the shelf.
+        var pickPs1 = vm.GamepadOverlayOptions.First(option => option.Label == Ps1.Name);
+        await ((IAsyncRelayCommand)pickPs1.Command).ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Equal(
+            ["Alpha", "Beta"],
+            _library.GetGames(Ps1.Id).Select(game => game.Title).OrderBy(title => title).ToArray());
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_CancelledSystemChooser_LeavesNoPendingImport()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
+
+        // Cancel the chooser: nothing is imported and the shelf is clean.
+        var cancel = vm.GamepadOverlayOptions.First(option => option.Label == "Cancel");
+        cancel.Command.Execute(null);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Empty(_library.GetGames(Ps1.Id));
     }
 
     [AvaloniaFact]

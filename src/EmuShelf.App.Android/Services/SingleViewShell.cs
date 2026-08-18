@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using EmuShelf.App.Android.Views;
@@ -31,7 +32,9 @@ public sealed class SingleViewShell : IPlatformShell
         InterfaceMode = new AndroidInterfaceModeService();
         Frontend = new AndroidFrontendController();
         Lifetime = new SingleViewApplicationLifetimeService();
-        Dialog = new SingleViewDialogService(boot.Logger);
+        // The dialog service needs the live TopLevel for the SAF folder picker; resolve it lazily each
+        // call since it only exists once the view is attached to the Activity's visual tree.
+        Dialog = new SingleViewDialogService(boot.Logger, () => TopLevel.GetTopLevel(_mainView));
     }
 
     public IInterfaceModeService InterfaceMode { get; }
