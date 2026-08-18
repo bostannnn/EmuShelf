@@ -10,6 +10,7 @@ using Avalonia.Logging;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using EmuShelf.App.Rendering;
@@ -293,12 +294,74 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// applying the same accent wash the XAML would have keeps the two paths matching, which is what
     /// stops the scene's rectangle from showing as a seam against the screen around it.
     /// </remarks>
+    // The last backdrop-resolution diagnostic emitted, so the trace lands once per distinct state
+    // instead of every published frame.
+    private string? _lastBackdropDiagnostic;
+
     private Vector3 ResolveBackdrop(Color accent)
     {
-        var library = this.TryFindResource("EmuLibraryBrush", out var resource)
-            && resource is ISolidColorBrush { } brush
-            ? brush.Color
-            : Color.FromRgb(22, 23, 27);
+        // The couch shelf is hosted in a Window on desktop but in a plain view on the Android
+        // single-view head, where this control's ActualThemeVariant can settle at Default. A theme
+        // brush lives in a ThemeDictionary keyed Light/Dark only, so an imperative TryFindResource
+        // against a Default variant matches nothing and drops to the dark fallback below — the
+        // "dark grey shelf" bug, visible only here because the flat presentations paint an opaque
+        // chrome capture over the backdrop while the 3D shelf clears to it. Resolve against a
+        // concrete variant instead (the control's, else the application's, else Light), and consult
+        // the application resources when the local walk comes up short — which is what the flat
+        // views get from {DynamicResource} for free.
+        // Candidate variants in preference order: the control's own, then the application's, then an
+        // explicit Light backstop. During the first frames on the Android head the control's
+        // ActualThemeVariant is briefly an uninitialised value that is neither Default nor a real
+        // variant and so matches no ThemeDictionary; falling through to the application's concrete
+        // variant (and Light as a last resort) is what stops the backdrop flashing the dark fallback.
+        var candidates = new ThemeVariant?[]
+        {
+            ActualThemeVariant,
+            Application.Current?.ActualThemeVariant,
+            ThemeVariant.Light,
+        };
+
+        var library = Color.FromRgb(22, 23, 27);
+        var resolved = false;
+        ThemeVariant? usedVariant = null;
+        foreach (var candidate in candidates)
+        {
+            if (candidate is null || candidate == ThemeVariant.Default)
+            {
+                continue;
+            }
+
+            ISolidColorBrush? found = null;
+            if (this.TryFindResource("EmuLibraryBrush", candidate, out var local)
+                && local is ISolidColorBrush localBrush)
+            {
+                found = localBrush;
+            }
+            else if (Application.Current is { } app
+                && app.TryFindResource("EmuLibraryBrush", candidate, out var global)
+                && global is ISolidColorBrush globalBrush)
+            {
+                found = globalBrush;
+            }
+
+            if (found is not null)
+            {
+                library = found.Color;
+                resolved = true;
+                usedVariant = candidate;
+                break;
+            }
+        }
+
+        var diagnostic =
+            $"used={usedVariant} control={ActualThemeVariant} app={Application.Current?.ActualThemeVariant} "
+            + $"resolved={resolved} library=#{library.R:X2}{library.G:X2}{library.B:X2}";
+        if (diagnostic != _lastBackdropDiagnostic)
+        {
+            _lastBackdropDiagnostic = diagnostic;
+            Logger.TryGet(LogEventLevel.Information, ShelfLogArea)?.Log(
+                this, "Shelf backdrop resolve: {Diagnostic}", diagnostic);
+        }
 
         // The in-place shelf wants exactly the couch root's own fill, with no wash to seam against it.
         if (!TintBackdropWithAccent)

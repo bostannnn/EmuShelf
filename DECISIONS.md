@@ -9565,3 +9565,35 @@ folder picker → choose PlayStation from the couch system list → scan importe
 games, with the "Added 2 games from folder" toast and both cards on the shelf. Desktop Release suite green
 (1128 + 892). Note the CRT tube's 1×1 render on this AVD (a pre-existing 0b issue) means this was observed
 with the CRT effect off; the shelf itself renders correctly.
+
+## 2026-08-18 — Android couch shelf on HiDPI: theme brush and chrome capture both misbehave on the single-view head
+
+Once A1 ran on the Thor (real Adreno GL, ~2.31x density) the couch 3D shelf showed a **dark-grey backdrop
+with distorted text**; grid/list were fine. Two independent bugs, both rooted in the shared `EmuShelf.UI`
+being hosted in a plain `MainView` rather than a `Window`, both fixed and verified on the device.
+
+**1 — the theme brush never resolved, so the backdrop fell back to a hardcoded dark.**
+`MediaShelf3DControl.ResolveBackdrop` read `EmuLibraryBrush` via `this.TryFindResource(key, out v)`, which
+keys off the control's `ActualThemeVariant`. On the single-view tree that variant is briefly an
+uninitialised value (neither `Default` nor a real variant) and settles late, so the ThemeDictionary
+(Light/Dark keys only) matched nothing and the code dropped to its `Color.FromRgb(22,23,27)` fallback. On
+the device log the pre-fix lookup was `oldFound=False` on **every** frame — it had never worked on Android.
+Only the 3D shelf exposed it: the flat grid/list presentations warp an *opaque* full-screen chrome capture
+over the backdrop, while the shelf *clears* to it and lets it show through the transparent chrome. Fix:
+resolve against an ordered candidate list of concrete variants — the control's, then
+`Application.Current.ActualThemeVariant`, then a `Light` backstop — checking control then application
+resources, so it tracks the theme like every `{DynamicResource}` does and never flashes the fallback. A
+one-time-per-change `[EmuShelf.Shelf3D] Shelf backdrop resolve:` line records `used/control/app/resolved/
+library` (kept, per the Deck-diagnosis instrument-and-keep pattern).
+
+**2 — the couch chrome was captured in dip, not pixels.** `ChromeSnapshot` sized the capture from
+`visual.Bounds` (dip) capped at `MaximumEdge=1280`; at 2.31x that is 833 px, upscaled onto the 1920 px
+tube → blurred, warped text. Fix: `scale = Math.Min(RenderScaling, MaximumEdge / maxBoundsDip)` (was
+`Math.Min(1.0, …)`), i.e. size from `bounds * RenderScaling`, now 1280 px — matching what desktop already
+captured for a 1920 px window. A no-op on desktop (RenderScaling 1.0). RenderScaling is reliable on Android
+(unlike the Mac GL-surface case, 2026-08-14), so it is the right factor here.
+
+Verified on the Thor: `resolved=True` with the correct theme colour and no flash, chrome captured at
+`1280x647`, text crisp. Desktop App Release suite green (895/895), so the shared-UI change does not regress
+the desktop shelf or its visual snapshots. The general lesson: shared `EmuShelf.UI` code that resolves
+theme resources imperatively or sizes from dip will silently misbehave on the Android single-view head.

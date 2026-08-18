@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Logging;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -111,7 +112,14 @@ internal sealed class ChromeSnapshot : IDisposable
             return;
         }
 
-        var scale = Math.Min(1.0, MaximumEdge / Math.Max(bounds.Width, bounds.Height));
+        // Capture in *pixels*, not dip. bounds is in device-independent units, so on a HiDPI panel
+        // (the Thor is ~2.3x) a capture sized straight from dip is that many times smaller than the
+        // surface it is upscaled onto inside the tube — the couch text came out blurred and warped.
+        // Sizing from bounds * RenderScaling makes the capture track the real pixel resolution, still
+        // capped at MaximumEdge so the softening the tube wants (and the memory cost) stay bounded.
+        // On desktop RenderScaling is 1.0, so this is a no-op there.
+        var renderScaling = TopLevel.GetTopLevel(visual)?.RenderScaling ?? 1.0;
+        var scale = Math.Min(renderScaling, MaximumEdge / Math.Max(bounds.Width, bounds.Height));
         var size = new PixelSize(
             Math.Max(1, (int)Math.Round(bounds.Width * scale)),
             Math.Max(1, (int)Math.Round(bounds.Height * scale)));
