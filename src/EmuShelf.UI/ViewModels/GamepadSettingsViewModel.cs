@@ -1629,6 +1629,24 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             }
         }
 
+        // Export mirrors Desktop's always-present buttons: the device export needs no connection, the
+        // cloud export is enabled only while connected. Both rows are always projected so field parity
+        // with Desktop holds regardless of connection state.
+        yield return ActionRow(
+            "saves.export.device",
+            "Export saves (this device)",
+            "Save a portable .zip of this machine's saves — save states included — to use on another device.",
+            "A EXPORT",
+            _settings.ExportDeviceSavesCommand,
+            _settings.ExportDeviceSavesCommand.CanExecute(null));
+        yield return ActionRow(
+            "saves.export.cloud",
+            "Export saves (this device + cloud)",
+            "Also include saves that live only in your connected Google Drive. Connect first to enable this.",
+            "A EXPORT",
+            _settings.ExportDeviceAndCloudSavesCommand,
+            _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null));
+
         if (_settings.HasSyncLog)
         {
             // Actionable (opens the log in the OS viewer) rather than a dead read-only row where A

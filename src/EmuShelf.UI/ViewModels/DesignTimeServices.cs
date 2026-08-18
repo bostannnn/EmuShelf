@@ -134,6 +134,8 @@ internal sealed class NullDialogService : IDialogService
 {
     public Task<IReadOnlyList<string>> PickGameFilesAsync() => Task.FromResult<IReadOnlyList<string>>([]);
     public Task<string?> PickFolderAsync() => Task.FromResult<string?>(null);
+
+    public Task<string?> PickSaveArchiveAsync(string suggestedFileName) => Task.FromResult<string?>(null);
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName) =>
         Task.FromResult<string?>(null);
 

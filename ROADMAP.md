@@ -890,6 +890,16 @@ generalized.
 - [ ] Expose rclone's other backends (Dropbox, OneDrive, S3, WebDAV/SFTP, self-hosted Nextcloud)
       through the same connect flow — the transport is already provider-agnostic.
 
+### Phase 4 — Portable export (2026-08-18)
+
+- [x] Export saves to a single portable `.zip` for use on a platform EmuShelf isn't on. Two scopes —
+      **This device** and **This device + cloud** (a union; device copy wins on conflict, cloud adds
+      only what is missing locally). Save states are always included. Read-only over save/game data.
+      `SaveExportService` (Infrastructure, unit-tested with the in-memory sync fakes) +
+      `ZipSaveExportSink` (temp-then-move) + `CloudSaveSyncCoordinator.ExportSavesAsync` sharing the
+      sync gate; two buttons under Settings → Saves. See DECISIONS 2026-08-18. Real-hardware check of
+      the produced archive on a second machine remains the manual gate.
+
 ## M30 — Dreamcast library (planned)
 
 - [x] Add strict `.gdi` descriptor discovery for complete, read-only Dreamcast track sets. The

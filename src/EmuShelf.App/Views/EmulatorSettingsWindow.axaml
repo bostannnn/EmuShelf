@@ -802,6 +802,31 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
 
+                                <!-- One-off export to a portable .zip for taking saves to a device
+                                     EmuShelf isn't on. The device export needs no cloud connection;
+                                     the cloud export is disabled until Google Drive is connected. -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource EmuBorderBrush}"
+                                        Padding="0,12,0,0" Margin="0,4,0,0">
+                                    <StackPanel Spacing="7">
+                                        <TextBlock Text="EXPORT SAVES" FontSize="10" FontWeight="SemiBold"
+                                                   LetterSpacing="0.7"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        <TextBlock TextWrapping="Wrap" FontSize="11"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                                   Text="Save a portable .zip of your saves (save states included), grouped by platform, to use on another device. Your saves and game files are left untouched." />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="This device"
+                                                    AutomationProperties.AutomationId="saves.export.device"
+                                                    Command="{Binding ExportDeviceSavesCommand}"
+                                                    ToolTip.Tip="Export the saves currently on this machine" />
+                                            <Button Content="This device + cloud"
+                                                    AutomationProperties.AutomationId="saves.export.cloud"
+                                                    Command="{Binding ExportDeviceAndCloudSavesCommand}"
+                                                    ToolTip.Tip="Also include saves that live only in your connected Google Drive" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
                                 <StackPanel IsVisible="{Binding HasCloudSyncProgress}" Spacing="5">
                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                         <TextBlock Grid.Column="0" Text="{Binding CloudSyncProgressText}"

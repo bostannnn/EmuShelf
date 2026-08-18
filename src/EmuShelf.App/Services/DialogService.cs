@@ -109,6 +109,32 @@ public sealed class DialogService : IDialogService
         return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
     }
 
+    public async Task<string?> PickSaveArchiveAsync(string suggestedFileName)
+    {
+        var owner = PickerOwner;
+        if (owner is null)
+            return null;
+
+        var file = await owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export saves",
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = "zip",
+            ShowOverwritePrompt = true,
+            FileTypeChoices =
+            [
+                new FilePickerFileType("Zip archive")
+                {
+                    Patterns = ["*.zip"],
+                    AppleUniformTypeIdentifiers = ["public.zip-archive"],
+                    MimeTypes = ["application/zip"],
+                },
+            ],
+        });
+
+        return file?.TryGetLocalPath();
+    }
+
     public async Task<string?> PickEmulatorExecutableAsync(string emulatorName)
     {
         var owner = PickerOwner;

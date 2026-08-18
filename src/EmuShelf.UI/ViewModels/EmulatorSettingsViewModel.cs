@@ -389,6 +389,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCloudDisconnected))]
+    [NotifyCanExecuteChangedFor(nameof(ExportDeviceAndCloudSavesCommand))]
     public partial bool IsCloudConnected { get; set; }
 
     [ObservableProperty]
@@ -398,6 +399,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCloudSyncProgress))]
     [NotifyPropertyChangedFor(nameof(IsBusy))]
+    [NotifyCanExecuteChangedFor(nameof(ExportDeviceSavesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportDeviceAndCloudSavesCommand))]
     public partial bool IsCloudBusy { get; set; }
 
     [ObservableProperty]
@@ -1597,6 +1600,82 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasSyncLog));
             RefreshPlatformResults();
         }
+    }
+
+    /// <summary>Exports the saves present on this machine into a portable <c>.zip</c>.</summary>
+    [RelayCommand(CanExecute = nameof(CanExportDeviceSaves))]
+    private Task ExportDeviceSavesAsync() => RunExportAsync(SaveExportScope.Device);
+
+    /// <summary>
+    /// Exports this machine's saves plus any that live only in the connected cloud remote. Gated on a
+    /// live connection, so a build that cannot reach the cloud only offers the device export.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanExportDeviceAndCloudSaves))]
+    private Task ExportDeviceAndCloudSavesAsync() => RunExportAsync(SaveExportScope.DeviceAndCloud);
+
+    private bool CanExportDeviceSaves() => !IsCloudBusy && _cloudSaves?.ExportSavesAsync is not null;
+
+    private bool CanExportDeviceAndCloudSaves() =>
+        !IsCloudBusy && IsCloudConnected && _cloudSaves?.ExportSavesAsync is not null;
+
+    private async Task RunExportAsync(SaveExportScope scope)
+    {
+        if (_cloudSaves?.ExportSavesAsync is not { } export || IsCloudBusy)
+            return;
+
+        var suggestedName = $"EmuShelf-saves-{DateTime.Now:yyyyMMdd-HHmm}.zip";
+        var destination = await _dialogs.PickSaveArchiveAsync(suggestedName);
+        if (string.IsNullOrWhiteSpace(destination))
+            return; // The user cancelled the save dialog; leave the last status alone.
+
+        using var cancellation = new CancellationTokenSource();
+        _cloudCancellation = cancellation;
+        IsCloudBusy = true;
+        CancelCloudSyncCommand.NotifyCanExecuteChanged();
+        CloudStatusText = scope == SaveExportScope.DeviceAndCloud
+            ? "Exporting device and cloud saves…"
+            : "Exporting saves on this device…";
+        CloudSyncProgressText = string.Empty;
+        var progress = new Progress<SaveTransferProgress>(reported =>
+            CloudSyncProgressText = $"Gathered {reported.CompletedUnits} save(s)…");
+        try
+        {
+            var result = await export(destination, scope, progress, cancellation.Token);
+            CloudStatusText = DescribeExportResult(result);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            CloudStatusText = "Export stopped. No archive was written.";
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Save export failed from Settings.", ex);
+            CloudStatusText = $"Export failed: {ex.Message}";
+        }
+        finally
+        {
+            _cloudCancellation = null;
+            IsCloudBusy = false;
+            ResetCloudProgress();
+            CancelCloudSyncCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    private static string DescribeExportResult(SaveExportResult result) => result.Status switch
+    {
+        SaveExportStatus.Completed => DescribeCompletedExport(result),
+        SaveExportStatus.NothingToExport => "No saves were found to export.",
+        SaveExportStatus.NotConfigured => "Connect Google Drive first to include cloud saves.",
+        _ => result.Message is null ? "Export failed." : $"Export failed: {result.Message}",
+    };
+
+    private static string DescribeCompletedExport(SaveExportResult result)
+    {
+        var cloudPart = result.FromCloud > 0 ? $" ({result.FromCloud} from the cloud)" : string.Empty;
+        var message = $"Exported {result.SavesExported} save(s){cloudPart} to {result.DestinationPath}.";
+        if (result.Skipped.Count > 0)
+            message += $" {result.Skipped.Count} cloud item(s) could not be included.";
+        return message;
     }
 
     // Each row shows its own last result, which the coordinator has just rewritten. Re-read it so

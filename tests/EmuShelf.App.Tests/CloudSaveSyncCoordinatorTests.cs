@@ -1,5 +1,6 @@
 using EmuShelf.App.Services;
 using EmuShelf.Core.Diagnostics;
+using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Storage;
 
@@ -14,6 +15,30 @@ public class CloudSaveSyncCoordinatorTests
             .SyncNowAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(CloudSaveSyncStatus.NotConfigured, outcome.Status);
+    }
+
+    [Fact]
+    public async Task ExportSaves_DeviceAndCloud_WhenNotConnected_ReturnsNotConfigured()
+    {
+        var destination = Path.Combine(Path.GetTempPath(), "emushelf-export-" + Guid.NewGuid().ToString("N") + ".zip");
+
+        var result = await CreateCoordinator(new FakeSettingsService()).ExportSavesAsync(
+            destination, SaveExportScope.DeviceAndCloud, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(SaveExportStatus.NotConfigured, result.Status);
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    public async Task ExportSaves_Device_WithNoConfiguredPlatforms_ExportsNothing()
+    {
+        var destination = Path.Combine(Path.GetTempPath(), "emushelf-export-" + Guid.NewGuid().ToString("N") + ".zip");
+
+        var result = await CreateCoordinator(new FakeSettingsService()).ExportSavesAsync(
+            destination, SaveExportScope.Device, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(SaveExportStatus.NothingToExport, result.Status);
+        Assert.False(File.Exists(destination));
     }
 
     [Fact]

@@ -9330,3 +9330,28 @@ backdrop before drawing its viewport, so in the sub-150 ms window before a rebui
 where the computed size briefly trails the framebuffer — the uncovered margin reads as the tube's
 own surround rather than letting the live rail show through. It is a no-op once the viewport covers
 the target (every settled frame), so the visual-snapshot suite is unchanged (App suite 889 green).
+
+## 2026-08-18 — Saves export is a read-only, copy-only one-off .zip
+
+Cloud sync gets saves onto Google Drive, but a user moving to a platform EmuShelf does not run
+(a phone, a friend's PC, stock handheld firmware) had no way to take their saves with them.
+Added an **export**: one portable `.zip`, grouped by platform, each save under its own name, so
+the files can be dropped into another emulator. Two scopes: **Device** (whatever is on this
+machine) and **Device + cloud** (a union — the device copy wins for a save present on both sides;
+the cloud contributes only what is missing locally). A cloud export needs a live connection.
+
+- **Save states are always included.** The user opted into them for export; unlike automatic sync,
+  export does not consult each platform's "Automatically sync save states" toggle. States land under
+  a `states/` sub-folder per platform and only reload on a compatible emulator build (noted in the
+  bundled `EXPORT-README.txt`).
+- **Read-only over user data.** Export never writes to a save, game file, or emulator config. It
+  reuses the same providers/endpoints/transport as sync, so it inherits their symlink-safety and
+  copy-only cloud transport (no delete).
+- **Testable core + thin wiring**, mirroring `SaveSyncService`: `SaveExportService` (Infrastructure,
+  network-free, unit-tested with the existing in-memory fakes) does the orchestration;
+  `CloudSaveSyncCoordinator.ExportSavesAsync` wires real providers, a `FileSystemLocalSaveEndpoint`,
+  the Google Drive transport, and a `ZipSaveExportSink`, sharing the sync gate so an export and a
+  sync can never overlap.
+- **Temp-then-move sink.** `ZipSaveExportSink` builds the archive at `*.zip.emushelf-tmp` and moves
+  it onto the chosen path only on `Complete()`, so a failed or "nothing to export" run leaves no
+  half-written file where the user picked to save.

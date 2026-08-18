@@ -20,8 +20,19 @@ internal sealed class FakeSaveLocationProvider : ISaveLocationProvider
 
     public string UnitIdPrefix => _unitIdPrefix;
 
+    /// <summary>
+    /// Units this provider can materialize on request, keyed by unit id, with the kind
+    /// <see cref="ResolveUnit"/> reports. A cloud-only unit must be listed here (and owned by the
+    /// prefix) to be exported; anything absent resolves to null, standing in for an unresolvable
+    /// remote save.
+    /// </summary>
+    public Dictionary<string, SaveUnitKind> ResolvableUnitKinds { get; } = new(StringComparer.Ordinal);
+
     public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(_units);
 
-    public SaveUnitLocation? ResolveUnit(string unitId) => null;
+    public SaveUnitLocation? ResolveUnit(string unitId) =>
+        ResolvableUnitKinds.TryGetValue(unitId, out var kind)
+            ? new SaveUnitLocation(unitId, unitId, kind)
+            : null;
 }

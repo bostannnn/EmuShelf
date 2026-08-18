@@ -373,7 +373,8 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         UpdateStateOverride,
         IsManagedTransportAvailable,
         ConnectGoogleDriveManagedAsync,
-        DescribePlatformForEmulator);
+        DescribePlatformForEmulator,
+        ExportSavesAsync);
 
     /// <summary>Reconciles every participating platform against the cloud in one pass.</summary>
     public Task<CloudSaveSyncOutcome> SyncNowAsync(
@@ -568,6 +569,90 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         IProgress<SaveSyncProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
         RunForcePipelineAsync(systemId, direction, progress, cancellationToken);
+
+    /// <summary>
+    /// Exports every platform's saves — save states included — into a single portable <c>.zip</c> at
+    /// <paramref name="destinationZipPath"/>. With <see cref="SaveExportScope.DeviceAndCloud"/> it also
+    /// pulls down any save that lives only in the connected remote. Read-only over save data: it never
+    /// writes to a save, game file, or emulator configuration. Shares the sync gate so an export and a
+    /// sync can never run over each other.
+    /// </summary>
+    public async Task<SaveExportResult> ExportSavesAsync(
+        string destinationZipPath,
+        SaveExportScope scope,
+        IProgress<SaveTransferProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationZipPath);
+        var includeCloud = scope == SaveExportScope.DeviceAndCloud;
+        if (includeCloud && !IsConfigured)
+            return SaveExportResult.NotConfigured();
+
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            // Provider construction reads emulator config, version resources and binary architecture,
+            // and on a cold cache can shell out to flatpak — keep it off the caller's (UI) thread, as
+            // the sync pipeline does.
+            var targets = await Task.Run(BuildExportTargets, cancellationToken);
+            if (targets.Count == 0 && !includeCloud)
+                return SaveExportResult.NothingToExport();
+
+            using var sink = new ZipSaveExportSink(destinationZipPath);
+            IVerifiableCloudSyncTransport? transport =
+                includeCloud ? await CreateTransportAsync(cancellationToken) : null;
+
+            var result = await new SaveExportService().ExportAsync(
+                targets, transport, sink, progress, cancellationToken);
+            if (transport is not null)
+                BankCloudFolderId(transport);
+
+            if (result.Status != SaveExportStatus.Completed)
+                return result; // The sink is disposed without Complete, so no archive is left behind.
+
+            sink.Complete();
+            return result with { DestinationPath = destinationZipPath };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (
+            ex is IOException or UnauthorizedAccessException or HttpRequestException or
+                InvalidOperationException or InvalidDataException or ArgumentException or
+                SaveProviderConfigurationException)
+        {
+            _logger.Error("Save export failed.", ex);
+            return SaveExportResult.Failed(ex.Message);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    // One export target per configured platform, each provider wrapped so it also enumerates, owns,
+    // and resolves save states. The per-platform "Automatically sync save states" toggle is not
+    // consulted: it governs automatic sync, whereas a one-off export always carries states (the user
+    // opted in to including them).
+    private IReadOnlyList<SaveExportTarget> BuildExportTargets()
+    {
+        var configuration = _settings.CloudSaveSync;
+        var targets = new List<SaveExportTarget>();
+        foreach (var systemId in SaveProviderRegistry.SystemIds)
+        {
+            if (ResolveActiveProvider(systemId, configuration) is not { } active)
+                continue;
+            var (context, descriptor, saves) = active;
+            var provider = SaveProviderRegistry.WithOptionalContent(
+                descriptor, saves, context, includeSaveStates: true);
+            var platformName = SaveProviderRegistry.Find(systemId)?.DisplayName ?? systemId;
+            targets.Add(new SaveExportTarget(
+                provider, new FileSystemLocalSaveEndpoint(provider, _paths), platformName));
+        }
+
+        return targets;
+    }
 
     private IReadOnlyList<CloudSaveSyncPlatformContext> DescribePlatforms() =>
         SaveProviderRegistry.All
@@ -1301,4 +1386,10 @@ public sealed record CloudSaveSyncSettingsContext(
     /// Saves row can follow the emulator picker before the switch is saved. Null in a test context
     /// that does not exercise it.
     /// </summary>
-    Func<string, string, CloudSaveSyncPlatformContext?>? DescribePlatformForEmulator = null);
+    Func<string, string, CloudSaveSyncPlatformContext?>? DescribePlatformForEmulator = null,
+    /// <summary>
+    /// Exports every platform's saves into a portable <c>.zip</c> at the given path, optionally
+    /// including cloud-only saves. Null in a test context that does not exercise it.
+    /// </summary>
+    Func<string, SaveExportScope, IProgress<SaveTransferProgress>?, CancellationToken, Task<SaveExportResult>>?
+        ExportSavesAsync = null);
