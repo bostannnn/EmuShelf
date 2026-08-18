@@ -1892,9 +1892,12 @@ breaks the whole-solution macOS build/test loop.
       root, Avalonia renders, the GLES 3D shelf gets a real OpenGL ES 3.0 context (asserted via
       `InitializationSucceeded`, EGL pinned with Software dropped), and SQLite creates `Data/library.db`
       in app-private storage. **As of 2026-08-18 the head hosts the real gamepad shell** (extracted
-      `GamepadShellView`) — the couch rail and empty-library state render on device, not the probe.
-      Desktop suite green (1128 + 889). Remaining: gamepad-native import, the escape hatches, the ladder
-      audit.
+      `GamepadShellView`), and the gamepad-native import, escape hatches, ladder audit, and an on-device
+      couch-input slice (Menu/D-pad/A-B) are all done and verified on the AVD — the keyboard-free import
+      runs end to end, driven entirely by the gamepad. Desktop suite green (1128 + 895). A1's
+      done-criterion ("imports a folder without a keyboard, shows the library") is **met**. The only open
+      A1 item is the CRT tube rendering at 1×1 px on the AVD's software GL (screen is grey with the CRT
+      effect on; fine with it off) — a 0b question to settle on real Adreno hardware, not a shell defect.
   - [x] Single-view seam: `App.SingleViewShellFactory` + `ISingleViewApplicationLifetime` branch;
         `AppBootstrapper` base-directory injection; Android shell services (`AndroidInterfaceModeService`
         Gamepad-locked, frontend controller, lifetime service, stub `SingleViewDialogService`).
