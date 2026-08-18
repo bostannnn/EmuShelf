@@ -40,6 +40,7 @@ public class WindowFrontendControllerTests
     {
         public InterfaceMode Current { get; } = current;
         public bool IsCommandLineOverride => false;
+        public bool SupportsDesktopMode => true;
         public event EventHandler<InterfaceMode>? ModeChanged { add { } remove { } }
         public Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;

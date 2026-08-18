@@ -36,6 +36,11 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
 
     public InterfaceMode Current { get; private set; }
     public bool IsCommandLineOverride { get; }
+
+    // Desktop always has a window shell — even under a forced-Gamepad command-line override (Steam
+    // Gaming Mode), the desktop shell exists and is reachable, so "switch to Desktop" stays offered.
+    public bool SupportsDesktopMode => true;
+
     public event EventHandler<InterfaceMode>? ModeChanged;
 
     public WindowInterfaceModeService(

@@ -275,7 +275,7 @@
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="520">
             <TextBlock Text="{Binding EmptyLibraryTitle}" FontSize="30" FontWeight="Bold"
                        TextAlignment="Center" />
-            <TextBlock Text="No games are available in this view. Use Menu to switch to Desktop mode and add games."
+            <TextBlock Text="{Binding GamepadEmptyLibraryPrompt}"
                        FontSize="17" TextWrapping="Wrap" TextAlignment="Center"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
             <Button x:Name="GamepadEmptyMenuButton"
@@ -2036,8 +2036,8 @@
                             </ItemsControl>
                         </StackPanel>
                         <StackPanel IsVisible="{Binding IsGamepadCoverHandoffOpen}" Spacing="12">
-                            <TextBlock Text="Set cover in Desktop mode" FontSize="20" FontWeight="Bold" />
-                            <TextBlock Text="Choosing an image needs the platform file picker, which is not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
+                            <TextBlock Text="{Binding GamepadCoverHandoffTitle}" FontSize="20" FontWeight="Bold" />
+                            <TextBlock Text="{Binding GamepadCoverHandoffDescription}"
                                        TextWrapping="Wrap" Foreground="{DynamicResource EmuTextSecondaryBrush}" FontSize="16" />
                         </StackPanel>
                         <!-- Controller-native ScreenScraper scraper: the shared GameScraperViewModel

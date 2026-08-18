@@ -1731,6 +1731,39 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadShell_WithoutDesktopMode_HidesSwitchToDesktopAndWordsHandoffsHonestly()
+    {
+        // Android: the mode service reports no Desktop shell exists. Every "switch to Desktop"
+        // affordance must disappear and the desktop-only handoffs must read as "not available here".
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        var path = Path.Combine(_baseDirectory, "NoDesktop.cue");
+        File.WriteAllText(path, "FILE \"NoDesktop.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "No desktop", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        Assert.False(vm.SupportsDesktopMode);
+        Assert.DoesNotContain("Desktop", vm.GamepadEmptyLibraryPrompt);
+        Assert.Equal("Set cover unavailable here", vm.GamepadCoverHandoffTitle);
+
+        // System menu omits "Switch to Desktop mode".
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal(
+            ["Search", "Settings", "Quit EmuShelf"],
+            vm.GamepadOverlayOptions.Select(option => option.Label));
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Switch to Desktop mode");
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+
+        // The Set-cover handoff becomes a plain acknowledgement, not a route to Desktop.
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+        Assert.Equal(["OK"], vm.GamepadOverlayOptions.Select(option => option.Label));
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Continue to Desktop mode");
+    }
+
+    [AvaloniaFact]
     public async Task GamepadDesktopModeConfirm_BacksOutToTheOverlayThatOpenedIt()
     {
         var path = Path.Combine(_baseDirectory, "DesktopConfirm.cue");
@@ -3999,6 +4032,7 @@ public class MainViewModelTests : IDisposable
     {
         public InterfaceMode Current { get; private set; } = initial;
         public bool IsCommandLineOverride => false;
+        public bool SupportsDesktopMode { get; init; } = true;
         public event EventHandler<InterfaceMode>? ModeChanged;
 
         public Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default)

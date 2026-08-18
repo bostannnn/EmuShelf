@@ -16,6 +16,9 @@ public sealed class AndroidInterfaceModeService : IInterfaceModeService
 
     public bool IsCommandLineOverride => true;
 
+    // Android has no window shell at all, so Desktop mode is absent rather than merely locked.
+    public bool SupportsDesktopMode => false;
+
     public event EventHandler<InterfaceMode>? ModeChanged;
 
     public Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default)

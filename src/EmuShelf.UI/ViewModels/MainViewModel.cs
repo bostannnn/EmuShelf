@@ -1335,6 +1335,31 @@ public partial class MainViewModel : ViewModelBase
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
             : "Add game files or a dedicated folder to begin building this shelf.",
     };
+
+    /// <summary>
+    /// Whether this platform has a Desktop window shell to switch to. False on Android, where the
+    /// gamepad shell is the whole app; used to hide every "switch to Desktop" affordance and to word
+    /// the desktop-only handoffs honestly. Defaults to true when no mode service is injected, so
+    /// design-time and existing desktop tests are unchanged. Constant for the session (the platform
+    /// does not change), so it needs no change notification.
+    /// </summary>
+    public bool SupportsDesktopMode => _interfaceModeService?.SupportsDesktopMode ?? true;
+
+    /// <summary>Gamepad empty-library prompt, worded for whether a Desktop mode exists to import from.</summary>
+    public string GamepadEmptyLibraryPrompt => SupportsDesktopMode
+        ? "No games are available in this view. Use Menu to switch to Desktop mode and add games."
+        : "No games are available in this view. Press Menu, then Add games, to pick a folder to import.";
+
+    /// <summary>Title of the Set-cover handoff overlay: a route to Desktop, or an honest not-here.</summary>
+    public string GamepadCoverHandoffTitle => SupportsDesktopMode
+        ? "Set cover in Desktop mode"
+        : "Set cover unavailable here";
+
+    /// <summary>Body of the Set-cover handoff overlay, matching <see cref="GamepadCoverHandoffTitle"/>.</summary>
+    public string GamepadCoverHandoffDescription => SupportsDesktopMode
+        ? "Choosing an image needs the platform file picker, which is not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
+        : "Choosing a cover image from a file isn't available on this device yet. Turn on web image search in Settings to set covers with the controller.";
+
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -2942,7 +2967,12 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Remove", ConfirmGamepadRemoveCommand, true);
                 break;
             case GamepadOverlayKind.CoverDesktopHandoff:
-                AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                // Where Desktop exists, offer the route to it; where it does not (Android), the overlay
+                // is a plain acknowledgement of "not available here" and A/B just closes it.
+                if (SupportsDesktopMode)
+                    AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                else
+                    AddOption("OK", BackFromGamepadOverlayCommand, isCancel: true);
                 break;
             case GamepadOverlayKind.Achievements:
                 FocusFirstAchievement();
@@ -2958,7 +2988,8 @@ public partial class MainViewModel : ViewModelBase
                 if (CanScrapeAllInView)
                     AddOption("Scrape all in view", ScrapeAllInViewCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
-                AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                if (SupportsDesktopMode)
+                    AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
                 break;
             case GamepadOverlayKind.Settings:
