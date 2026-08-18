@@ -9287,3 +9287,46 @@ deferring that scene until the first load settles. Separately fixed the cheap ha
 no longer re-enumerates joysticks every 16 ms poll when no controller is attached (throttled to 1 Hz),
 which was 60 native controller-open scans/sec on the UI thread during the load on a Deck driven by
 Steam Input rather than a raw SDL pad.
+
+## 2026-08-18 — Couch CRT tube rebuilds itself when the window settles at a new size
+
+The "doubled top row" in gamepad + CRT mode was the couch tube failing to cover the window: the
+live `GamepadRoot` platform rail (and, on macOS, a black band) showed above and beside the tube,
+which also painted its own warped copy of the rail. Confirmed on the macOS dev box by launching
+`--gamepad-ui` with the effect on and reading the shelf geometry log — a tube stood up while the
+window was still at its pre-full-screen size drew its first frame at 2480×1600 and stayed pinned
+there, rendering into the lower-left of the now-2940×1846 window, while a tube stood up into an
+already-full-screen window drew 2940 and was correct. Toggling the CRT effect off/on cleared it
+because that flips `ShowCouchScene`/`IsActive` and rebuilds the control from scratch at the settled
+size.
+
+Root cause: `MediaShelf3DControl` is an `OpenGlControlBase` whose GL surface is fixed at the size it
+is first laid out at, and several full-screen entry paths apply the window resize *asynchronously*
+after the tube is already up — a launch straight into Gamepad and a return from a launched game,
+via `MacFullScreenController` on macOS and a late gamescope resize on the Steam Deck. Only the
+in-session Desktop→Gamepad switch (see the 3f500af decision) waited for that resize; the others let
+the tube bind at the wrong geometry with nothing to correct it.
+
+Fix, chosen to match the recovery that already works (the toggle) rather than fight Avalonia's
+surface lifecycle: `MediaShelf3DHost` watches its own `Bounds` (it fills the window, so they track
+the client size), and 150 ms after the size stops changing it rebuilds the scene if the current
+size differs from the one the scene was built at — `RemoveScene()` + `UpdateSceneAttachment()`, the
+same pair `IsActive` false→true runs. The debounce coalesces a multi-step grow; the size-changed
+guard means a settled window (and every desktop resize while the tube is inactive) rebuilds nothing.
+Verified: the launch-into-gamepad path now logs a rebuild to 2940×1846 and the tube fills the
+window. Cost is a GL re-init (shader link + cubemap bake) on couch entry when the window grows late,
+i.e. a brief flash — acceptable for a one-time entry, and the alternative (gating tube stand-up on
+the window settling, generalising 3f500af to every entry path) is more invasive and spread across
+the window services.
+
+To stay clear of the init watchdog's deliberate "do not rebuild mid-cold-start" rule (see the
+2026-08-16 decision — the Deck's Mesa stack is slow to hand out a first context), the rebuild is
+held while the scene is still initializing: a resize that lands during the cold start does not
+interrupt it. Init success then re-checks the size, so a grow that arrived mid-init is still
+corrected, just after the context is ready rather than by tearing it down.
+
+Defence in depth: `MediaShellRenderer`'s CRT present now clears the whole target to the tube's
+backdrop before drawing its viewport, so in the sub-150 ms window before a rebuild — or on any path
+where the computed size briefly trails the framebuffer — the uncovered margin reads as the tube's
+own surround rather than letting the live rail show through. It is a no-op once the viewport covers
+the target (every settled frame), so the visual-snapshot suite is unchanged (App suite 889 green).
