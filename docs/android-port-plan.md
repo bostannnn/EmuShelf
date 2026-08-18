@@ -1,9 +1,11 @@
 # Android port plan
 
-Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned, on order,
-not yet delivered. Architecture targets Android arm64 handhelds generally; every acceptance gate is
-the Thor. Status: planning, revised 2026-08-15 after an adversarial review of the first draft.
-Nothing Android-specific has been built.
+Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned; **delivered and
+driven over USB ADB as of 2026-08-18** (`adb -s 2fd555f4`; see "Milestone 0b — first device facts").
+Architecture targets Android arm64 handhelds generally; every acceptance gate is the Thor. Status:
+planning, revised 2026-08-15 after an adversarial review of the first draft, with first on-device facts
+folded in 2026-08-18. A0 (desktop split) and A1 (walking skeleton) are built and verified — A1 on the
+Thor itself.
 
 This is the master plan. `docs/cloud-sync-portability-plan.md` holds the detail for the save-sync
 half and is referenced rather than repeated.
@@ -19,7 +21,7 @@ the plan, so they are not re-litigated:
 | Real file paths + all-files access is "what ES-DE and Daijishō do"; the expected answer | **Backwards.** Both ship SAF/content URIs for almost everything and plain paths only for RetroArch. Per-emulator handoff is the ecosystem's steady state, not a fallback |
 | Milestone 0 decides whether the port proceeds | It decides *which* handoff per emulator. It is a measurement, not a kill gate — and it was aimed at DuckStation, whose Android build was abandoned in 2026 |
 | "PS3 support ends. No RPCS3 for Android" | aPS3e exists (GitHub + Play, releases through 2026) with a documented intent. Low compatibility, but launching is possible. Only the M13 *library sync* has no counterpart |
-| Everything lost shares one cause: `Android/data` | Three different causes. And on the Thor specifically, root is one documented Settings toggle ("Run script as Root"), so most of the list is capability-gated, not dead |
+| Everything lost shares one cause: `Android/data` | Three different causes. ~~And on the Thor root is one documented Settings toggle~~ — **corrected 0b (2026-08-18): "Run script as Root" is a one-shot `.sh` runner, not a persistent grant; there is no ambient `su`. v1 is strictly no-root. The list stays capability-gated, but the free root path this row assumed does not exist on firmware 1.0.0.377** |
 | "Launching is behind one interface" | 17 `Process.Start` sites across 12 files; one is `TrackedProcessRunner` |
 | "Core and Integrations are portable as-is" | They compile. 53 OS-branch sites across 29 files, **including Core**, and `OperatingSystem.IsLinux()` returns *false* on Android, so every `IsWindows/IsMacOS/else-Linux` ladder takes a wrong branch |
 | "Descriptor trees are already resolved" | `GameLaunchDependencyResolver` runs on the Flatpak branch only ([EmulatorLaunchService.cs:182](../src/EmuShelf.Core/Launching/EmulatorLaunchService.cs:182)) and hard-throws on a missing reference |
@@ -63,7 +65,10 @@ The plan proceeds on these defaults. Change any of them and the shape changes.
 Open and genuinely undecided: what the Thor's **second screen** does. It is a standard Android
 `Presentation` display and AYN's own software uses it. Shipping a forced-single-view app leaves half
 the hardware black on the device the port exists for. Decide before A1: nothing / cover art /
-now-playing. "Nothing" is an acceptable answer, stated.
+now-playing. "Nothing" is an acceptable answer, stated. **(0b, 2026-08-18: the `Presentation` surface is
+confirmed present and available to third-party apps on-device — `displayId=4`, `FLAG_PRESENTATION`,
+1240×1080, 120 Hz. Now a pure product choice, not gated on a hardware unknown. A0/A1 shipped before this
+was decided, so the second screen is currently unused — revisit as its own item.)**
 
 ## What Android v1 is, and when to stop
 
@@ -285,6 +290,53 @@ whether a game boots.
 needs 3DS system files. Those are yours to supply on the Thor; the AVD can prove the file handoff but
 not a full boot.
 
+## Milestone 0b — first device facts (2026-08-18)
+
+The Thor arrived and is driven over USB ADB (`adb -s 2fd555f4`). This is the day-one pass: the device
+questions answered, the installed-emulator set recorded, the handoff matrix not yet re-run. A1 was also
+installed and verified here (see the A1 section). What 0b establishes:
+
+**Confirmed as assumed.** Android 13 / SDK 33, arm64-v8a, firmware `Thor_V1.0.0.377_20260206` — no OTA
+past 13, so the foreground-service and notification-permission escalations in B and E stay dormant.
+Main screen 1920×1080 landscape, 120 Hz, density 369.
+
+**The second screen is available to third-party apps.** Live standard display (`displayId=4`,
+"Screen-2", 1240×1080 landscape, 120 Hz) carrying `FLAG_PRESENTATION`, so a `Presentation` can target
+it. AYN's own `com.odin.dualscreen.assistant` drives it. The open second-screen decision is now a pure
+product choice.
+
+**Root is not one toggle** — no ambient `su`; "Run script as Root" is a one-shot `.sh` runner. v1 is
+strictly no-root (capability model corrected above).
+
+**The CRT tube renders on real Adreno GL.** A1's one open item (1×1-px tube on the AVD's software GL) is
+resolved: on the Thor the tube paints full-screen (phosphor/scanline sheen across 1920×1080). A
+software-GL artifact, not a shell defect.
+
+**Installed emulator set differs from the AVD — build-sensitivity confirmed:**
+
+| System | Thor build | vs. 0a AVD |
+|---|---|---|
+| PS1 | **DuckStation** `com.github.stenzek.duckstation` (from Play) | Absent on the AVD; its content-URI sibling resolution — listed unverifiable-without-hardware — is now testable |
+| PS2 | **AetherSX2** `xyz.aethersx2.android` | AVD used the ARMSX2 fork; different build, own intent/BIOS-gate behavior |
+| GC/Wii | Dolphin `org.dolphinemu.dolphinemu` | same package (rejected FileProvider, wants a SAF tree URI) |
+| PSP | PPSSPP `org.ppsspp.ppsspp` | same (content URI works, path refused) |
+| 3DS | Azahar `org.azahar_emu.azahar` | same (first-run wizard gate) |
+| multi | RetroArch `com.retroarch.aarch64` | same (targetSdk 28, plain-path) |
+| PS3 | — (aPS3e not installed) | supply if PS3 handoff is to be measured |
+
+Reference frontends installed on-device: `com.neogamelab.neostation` (NeoStation) and
+`rip.moth.cocoonshell` (Cocoon) — both studied in "Prior art"; their real launch intents can be
+observed live.
+
+**OLED burn-in is a shipped concern, not hypothetical.** Thor settings exposes "OLED Screen
+Protection", and a "Burn-in Protection Refresher" window was observed firing; a static 3D shelf should
+respect it.
+
+**Still to run on-device:** the handoff matrix against these real builds (DuckStation first), the pad
+and `Android/data` capability probes, and BIOS-gated full boots (owner to supply BIOS for AetherSX2 /
+Azahar). `/sdcard/ROMs` is currently empty — a test corpus is needed to see a populated shelf. None of
+this blocks A1, which is done.
+
 ## Prior art: what the shipping Android frontends do
 
 Checked because it is cheaper to read a working launcher's config than to rediscover it. Two are
@@ -321,10 +373,14 @@ Neither publishes anything that changes the plan's architecture. They confirm it
 ## Capability model — replacing the static loss list
 
 The first draft listed features that "end" under one cause. There are three causes, they bite
-differently, and on the Thor root is one documented Settings toggle away. Replace the static list
+differently. **The earlier claim that "on the Thor root is one documented Settings toggle away" is wrong
+(0b, 2026-08-18):** no ambient `su`, and AYN's "Run script as Root" is a one-shot `.sh` runner, not a
+persistent grant — so **treat v1 as strictly no-root**, which is the base capability model anyway; the
+root-gated extras below simply do not get a free ambient path on this firmware. Replace the static list
 with a **runtime capability probe** ("can I read `Android/data/<pkg>`?") feeding the existing
 "not possible here, and why" channels. That is less code than deleting three features, and it keeps
-them alive for rooted and Shizuku users — a large fraction on a handheld.
+them alive for rooted and Shizuku users — a large fraction on a handheld. A probe `.sh` fed to "Run
+script as Root" can still measure what one-shot root buys, if E ever needs it.
 
 **Cause 1 — `Android/data` is unreadable (capability-gated, not dead).** Confirmed for Android 12+
 even with all-files access. Gates M40 uniform hotkeys, M32 texture-pack inventory, M33 auxiliary
@@ -547,10 +603,14 @@ findings, are in DECISIONS 2026-08-17.
   window's key contract is now the shared `GamepadKeyMap` it calls. This is what makes the couch menu and
   import driveable on device; full native analog-stick reading + IME remain Milestone C.
 
-**Remaining in A1** (the milestone is not done):
-- The A1 skeleton's remaining polish is small now; the substantive open items are Milestone C proper
-  (analog sticks, IME, back-vs-B arbitration) and the CRT tube's 1×1 render on the AVD (a 0b question on
-  real Adreno hardware). A1's "imports a folder without a keyboard" done-criterion is **met** on the AVD.
+**A1 is done (2026-08-18), verified on the Thor.** The one open item — the CRT tube rendering at 1×1 px
+on the AVD's *software* GL — is resolved on real hardware: installed to the Thor via the Debug
+`-t:Install` loop, the head boots, the gamepad shell renders, and the CRT tube renders **full-screen on
+Adreno GL** (the phosphor/scanline sheen paints across the whole 1920×1080; a backdrop patch measures
+real per-pixel variance, not the AVD's flat grey). So the 1×1 tube was a software-GL artifact, not a
+shell defect. What remains is Milestone C proper (native analog-stick reading, IME, back-vs-B
+arbitration) — a separate milestone, not A1. A1's "imports a folder without a keyboard, shows the
+library" done-criterion is met.
 
 ### D — Storage and permissions (before B, not after)
 
@@ -715,22 +775,21 @@ starting. In rough priority:
 
 ### Day one on the Thor
 
-Answer these before writing Android code against assumptions:
+Answer these before writing Android code against assumptions. **Most are answered in Milestone 0b
+(2026-08-18); status annotated.**
 
-- **Android version.** The plan assumes 13 (all firmware notes through Feb 2026 are 1.0.0.x on
-  Android 13). If an OTA has moved it to 14+, the foreground-service and notification-permission
-  notes in B and E become live.
-- **Which emulator builds are actually installed**, and their versions — the intent APIs in this plan
-  were observed against specific builds.
-- **Whether "Run script as Root" is present** in Thor settings. It decides whether the capability
-  probe finds `Android/data` readable, and therefore whether M40 hotkeys, M32 texture packs, M33 and
-  full save sync survive.
-- **Wireless ADB pairing**, so the `adb install` / `logcat` / `screencap` loop works from the dev
-  machine.
-- **The second screen**: what it does by default, and whether a `Presentation` surface is available to
-  a third-party app.
-- **How the ROM library gets onto the device**, in practice, at size. This is the real first-run
-  experience and nothing in the plan substitutes for trying it.
+- ✅ **Android version** — 13 / SDK 33, firmware `Thor_V1.0.0.377`. No OTA past 13; the B/E
+  foreground-service and notification-permission notes stay dormant.
+- ✅ **Which emulator builds are installed** — recorded in the 0b table (DuckStation, AetherSX2,
+  Dolphin, PPSSPP, Azahar, RetroArch; no aPS3e). Exact per-emulator versions still to capture.
+- ✅ **"Run script as Root"** — present, but a one-shot script runner, not a persistent grant. v1 is
+  no-root; capability model corrected.
+- ✅ **The second screen** — a live `Presentation` display available to third-party apps
+  (`FLAG_PRESENTATION`); default behavior is AYN's own dual-screen assistant.
+- ⬜ **Wireless ADB pairing**, so the `adb install` / `logcat` / `screencap` loop survives unplugging.
+  Currently on USB. Still to set up.
+- ⬜ **How the ROM library gets onto the device**, in practice, at size. `/sdcard/ROMs` is empty today.
+  This is the real first-run experience and nothing in the plan substitutes for trying it. Still to do.
 
 ## Effort
 
