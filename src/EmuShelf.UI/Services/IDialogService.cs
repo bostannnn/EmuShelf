@@ -26,6 +26,12 @@ public interface IDialogService
     /// <summary>Absolute path of the picked folder, or null if cancelled.</summary>
     Task<string?> PickFolderAsync();
 
+    /// <summary>
+    /// Absolute path where the user wants to write an export archive (a <c>.zip</c>), or null if
+    /// cancelled. <paramref name="suggestedFileName"/> pre-fills the save dialog's name field.
+    /// </summary>
+    Task<string?> PickSaveArchiveAsync(string suggestedFileName);
+
     /// <summary>Absolute path of a manually selected emulator executable, or null if cancelled.</summary>
     Task<string?> PickEmulatorExecutableAsync(string emulatorName);
     Task<string?> PickLibretroCoreAsync(string systemName);
