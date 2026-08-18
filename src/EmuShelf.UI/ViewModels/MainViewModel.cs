@@ -2953,6 +2953,11 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
         FocusedGamepadAchievement = null;
+        // A pending import folder is only meaningful while the ImportSystem chooser is up. Transitioning
+        // to any other overlay (e.g. Menu from the chooser) abandons the import, so drop it here — the
+        // one place every overlay transition funnels through — not only on CloseGamepadOverlay.
+        if (overlay != GamepadOverlayKind.ImportSystem)
+            _pendingImportFolder = null;
         GamepadOverlayOptions.Clear();
         MenuFocusRegion = GamepadMenuFocusRegion.Options; // every open lands on the option list, not a selector row
         GamepadOverlay = overlay;

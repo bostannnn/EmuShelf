@@ -67,8 +67,8 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
         if (string.IsNullOrEmpty(localPath) || !Directory.Exists(localPath))
         {
             logger.Information(
-                $"Folder picker returned a non-local URI we cannot read ('{folder.Path}'); " +
-                "SAF-backed scanning is Milestone D.");
+                $"Picked folder '{folder.Path}' did not resolve to a readable local path (no all-files " +
+                "access, or a provider with no local path); SAF-backed scanning is Milestone D.");
             return null;
         }
 
@@ -100,14 +100,25 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
         var relative = parts.Length > 1 ? parts[1] : string.Empty;
 
         // "primary" is the built-in shared storage; a named volume is an SD card / USB drive at
-        // /storage/<id>. Reject an empty volume (the "root of all storage" pick SAF also blocks).
-        if (string.IsNullOrEmpty(volume))
+        // /storage/<id>. Reject an empty volume (the "root of all storage" pick SAF also blocks). A
+        // volume id must be a single path segment — a '/' or '\' in it would itself let the root escape.
+        if (string.IsNullOrEmpty(volume) || volume.AsSpan().IndexOfAny('/', '\\') >= 0)
             return null;
         var root = volume.Equals("primary", StringComparison.Ordinal)
             ? "/storage/emulated/0"
             : $"/storage/{volume}";
 
-        return string.IsNullOrEmpty(relative) ? root : Path.Combine(root, relative);
+        if (string.IsNullOrEmpty(relative))
+            return root;
+
+        // Defense in depth: the system document picker never emits a rooted or parent-traversing
+        // document id, but this translation runs with all-files access, so verify the combined path
+        // stays inside the chosen volume before handing it to the scanner (a rooted 'relative' would
+        // make Path.Combine discard the root, and '..' segments would climb out of it).
+        var combined = Path.GetFullPath(Path.Combine(root, relative));
+        return combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            ? combined
+            : null;
     }
 
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName)

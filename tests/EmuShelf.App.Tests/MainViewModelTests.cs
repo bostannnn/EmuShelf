@@ -1812,6 +1812,55 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadImport_SystemChooser_ExcludesPlayStation3()
+    {
+        // PS3 is RPCS3-sync-only and cannot be folder-scanned, so it must not appear as an import
+        // target in the controller list (the shared scan guard blocks it too, but a UX regression that
+        // simply lists it would otherwise slip through).
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        // Guard: PS3 is a system the view model actually knows about, so excluding it is meaningful.
+        Assert.Contains(vm.Systems, system => system.Id == "playstation3");
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == Ps3.Name);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_CancelledFolderPicker_OpensNoChooser()
+    {
+        // The OS folder picker was cancelled (FolderToReturn is null); the flow must drop back to the
+        // shelf rather than open an empty system chooser.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = null;
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_WhileBusy_DoesNotStartASecondImport()
+    {
+        // A scan already in flight (IsBusy) must swallow a second Add games: the picker is never opened
+        // and no chooser appears, so two imports cannot run concurrently.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.IsBusy = true;
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+
+        // Had the guard failed, the non-null folder would have opened the ImportSystem chooser.
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadDesktopModeConfirm_BacksOutToTheOverlayThatOpenedIt()
     {
         var path = Path.Combine(_baseDirectory, "DesktopConfirm.cue");
