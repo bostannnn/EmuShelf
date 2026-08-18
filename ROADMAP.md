@@ -1913,13 +1913,15 @@ breaks the whole-solution macOS build/test loop.
         correct-as-Linux, degrade safely, already Android-aware, or dormant until a later milestone.
         See DECISIONS 2026-08-18.
   - [x] Gamepad-native library import: folder pick via `IDialogService` (Android head drives the SAF
-        picker through `TopLevel.StorageProvider`, returns a local path with all-files access) → a
-        controller-native `ImportSystem` overlay chooser → the existing scan. "Add games" shows in the
-        couch menu only where Desktop mode is absent. Shared MainViewModel tests cover it; builds/boots
-        on the AVD and the new empty-library copy renders on-device.
-  - [ ] **On-device input to drive the couch UI** (menu/D-pad/A-B) — `DispatchGamepadAction` is wired
-        only in the desktop window, so nothing opens the menu on Android yet. This is Milestone C, but a
-        slice of it now gates A1's "imports without a keyboard" done-criterion. See DECISIONS 2026-08-18.
+        picker through `TopLevel.StorageProvider`; translates the `externalstorage` tree URI to a real
+        path with all-files access) → a controller-native `ImportSystem` overlay chooser → the existing
+        scan. "Add games" shows in the couch menu only where Desktop mode is absent. **Verified on the
+        AVD, driven entirely by the gamepad**: Start → Add games → SAF pick → PlayStation → Alpha + Beta
+        imported. See DECISIONS 2026-08-18.
+  - [x] On-device couch input (a Milestone C slice, pulled forward): `MainActivity.DispatchKeyEvent`
+        maps Android gamepad keycodes (which never reach Avalonia's `KeyDown`) to `GamepadAction` and
+        routes them to the shared `DispatchGamepadAction`; the desktop key contract is now a shared
+        `GamepadKeyMap`. Menu/D-pad/A-B/L1-R1 work on device.
 - [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
       sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
       touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.

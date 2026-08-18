@@ -9530,3 +9530,38 @@ Two findings, both honest boundaries rather than regressions:
   almost-empty tube. This predates these changes (the same line appears in the first boot) and is a
   device/surface-size issue for the CRT tube on the emulator's ANGLE/SwiftShader stack — a 0b question on
   real Adreno hardware, not part of this work.
+
+## 2026-08-18 — Android A1: on-device couch input, and gamepad-native import verified end-to-end
+
+Pulled the Milestone C input slice forward so the couch UI — and the just-built gamepad-native import —
+is actually driveable on device, then closed the two gaps that only showed up when driving it on the AVD.
+
+**Android gamepad buttons never reach Avalonia's `KeyDown`.** Measured on the AVD: injected
+`KEYCODE_BUTTON_A/B/X/Y/START` arrive at the Activity but Avalonia reports them as `Key.None` (only
+keyboard keys like the arrows/Enter/Escape translate, and even those differ from the desktop Steam-Input
+contract — `KEYCODE_F10` came through as `Key.F11`). So a control-level `KeyDown` handler is the wrong
+surface. `MainActivity.DispatchKeyEvent` is the right one: it overrides the Activity, maps Android
+keycodes (D-pad, A/B/X/Y, Start/Menu, L1/R1) to `GamepadAction` in `AndroidGamepadInput`, and routes them
+to the shared `DispatchGamepadAction` through a static bridge `SingleViewShell` points at the live view
+model. Android BACK is deliberately left to the system (back-vs-B arbitration is the rest of C). The
+desktop window's Steam-Input key contract was extracted to a shared `GamepadKeyMap` it now calls, so the
+one mapping is shared; the *event source* stays per-head (desktop window vs Android Activity), which is
+correct because it is inherently platform-specific.
+
+**SAF tree URIs need translating to a real path.** Avalonia's `TryGetLocalPath()` is null for a SAF
+folder pick, so with all-files access held `SingleViewDialogService` translates an `externalstorage` tree
+URI (`content://com.android.externalstorage.documents/tree/primary%3AFoo`) to `/storage/emulated/0/Foo`
+so the shared `FolderScanner` reads it unchanged. A provider it cannot translate still returns null and
+routes to the Milestone D SAF-reader fallback.
+
+**A list-picker overlay must be top-aligned.** `ImportSystem`'s options were invisible on device: the
+shared `gamepad-overlay-options` list defaults to `VerticalAlignment=Bottom`, which collapses to a
+zero-height row inside the auto-sized overlay card. Adding `ImportSystem` to
+`AreGamepadOverlayOptionsTopAligned` (with `DiscSelection`/`SystemMenu`) fixes it. A regression assertion
+guards it.
+
+Verified on the `emushelf-api33` AVD, driven **entirely by the gamepad**: Start → Add games → the SAF
+folder picker → choose PlayStation from the couch system list → scan imported Alpha + Beta as PlayStation
+games, with the "Added 2 games from folder" toast and both cards on the shelf. Desktop Release suite green
+(1128 + 892). Note the CRT tube's 1×1 render on this AVD (a pre-existing 0b issue) means this was observed
+with the CRT effect off; the shelf itself renders correctly.

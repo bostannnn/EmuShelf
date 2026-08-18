@@ -533,20 +533,24 @@ findings, are in DECISIONS 2026-08-17.
   already Android-aware, or are dormant until the later milestone that supplies an Android
   implementation. Full disposition in DECISIONS 2026-08-18.
 
-- **Gamepad-native library import is built.** The couch shell can import a folder without a keyboard:
-  a folder pick via `IDialogService` (the Android head drives the SAF picker through
-  `TopLevel.StorageProvider` and returns a real local path with all-files access; SAF-only URIs are
+- **Gamepad-native library import is built and verified on device.** The couch shell imports a folder
+  without a keyboard: a folder pick via `IDialogService` (the Android head drives the SAF picker through
+  `TopLevel.StorageProvider`; with all-files access it translates the `externalstorage` tree URI to a
+  real path so the shared `FolderScanner` reads it — SAF-reader fallback for other providers is
   Milestone D), then a controller-native `GamepadOverlayKind.ImportSystem` chooser, then the existing
-  scan. "Add games" appears in the couch menu only where Desktop mode is absent. Covered by shared
-  MainViewModel tests and verified to build/boot on the AVD. See DECISIONS 2026-08-18.
+  scan. "Add games" appears in the couch menu only where Desktop mode is absent. **Verified end-to-end
+  on the AVD, driven entirely by the gamepad**: Start → Add games → SAF pick → PlayStation → 2 games
+  imported. See DECISIONS 2026-08-18.
+- **On-device couch input is wired (a Milestone C slice, pulled forward).** Android gamepad buttons do
+  not reach Avalonia's `KeyDown` (they report `Key.None`), so `MainActivity.DispatchKeyEvent` maps
+  Android keycodes to `GamepadAction` and routes them to the shared `DispatchGamepadAction`. The desktop
+  window's key contract is now the shared `GamepadKeyMap` it calls. This is what makes the couch menu and
+  import driveable on device; full native analog-stick reading + IME remain Milestone C.
 
 **Remaining in A1** (the milestone is not done):
-- **On-device input to *drive* the import** (and every other couch action). `DispatchGamepadAction` is
-  wired only in the desktop `MainWindow.axaml.cs`; the shared `GamepadShellView` has no menu/navigation
-  input and the tap-to-focus/tap-to-launch touch seam is not built, so nothing opens the couch menu on
-  Android yet. This is **Milestone C**, and A1's "imports a folder without a keyboard" done-criterion is
-  gated on it — the import *logic* is done and tested; the on-device *invocation* is not. This finding
-  moves a slice of C onto A1's critical path; see DECISIONS 2026-08-18.
+- The A1 skeleton's remaining polish is small now; the substantive open items are Milestone C proper
+  (analog sticks, IME, back-vs-B arbitration) and the CRT tube's 1×1 render on the AVD (a 0b question on
+  real Adreno hardware). A1's "imports a folder without a keyboard" done-criterion is **met** on the AVD.
 
 ### D — Storage and permissions (before B, not after)
 
