@@ -337,6 +337,18 @@ and `Android/data` capability probes, and BIOS-gated full boots (owner to supply
 Azahar). `/sdcard/ROMs` is currently empty — a test corpus is needed to see a populated shelf. None of
 this blocks A1, which is done.
 
+**0b progress (2026-08-18).** Synthetic corpus pushed to `/sdcard/EmuShelfTest/` (single `.iso`; two
+`.bin`+`.cue` pairs; an `.m3u` over both). First measurement, **DuckStation** (PS1, the AVD-unverifiable
+case): handed `-e bootPath /sdcard/EmuShelfTest/game.m3u` on its `MainActivity`, it **ignored the
+plain-path handoff** and showed "No games were found — Add Game Directory". `appops set … MANAGE_EXTERNAL_STORAGE
+allow` was a no-op — **DuckStation declares no all-files access**, so a bare path is unreadable; it needs a
+content URI backed by its **own persisted directory grant** (strategy 4). So the per-emulator setup
+checklist is a hard gate on the device, exactly as on the AVD. Continuing 0b for DuckStation/PPSSPP/Dolphin
+requires either the owner granting the test folder inside each emulator, or EmuShelf's own `FileProvider`
+(Milestone B) to serve a content URI. RetroArch (plain-path) needs its core `.so` name, which is in
+app-private storage (`run-as` is blocked on the release build) — capture it from the owner's RetroArch or a
+granted path.
+
 **Post-A1 UI findings on the Thor (2026-08-18), and where they belong.** Two things real hardware
 surfaced that A1's done-criterion did not cover; both are "judged by hand on the device" items the plan
 said would wait for delivery:
