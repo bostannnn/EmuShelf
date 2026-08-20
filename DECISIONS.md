@@ -9789,6 +9789,44 @@ Once the secrets exist, the next tagged release ships a release-signed APK; inst
 in place. (The APK on/before v1.4.9 is debug-signed, so the *first* release-signed build still needs a
 one-time uninstall/reinstall — unavoidable when moving off the debug key.)
 
+## 2026-08-20 — Dolphin Android save sync reuses the desktop provider through a fixed user root
+
+Dolphin's Android external-files directory is already the same logical user tree the desktop provider
+models: `Config/`, `GC/<region>/Card <slot>/`, and `Wii/title/00010000/<title>/data` live directly below
+`Android/data/org.dolphinemu.dolphinemu/files`. Android therefore does **not** get a second Dolphin save
+provider. `AppBootstrapper` synthesises that package-derived directory for both GameCube and Wii, and
+`SaveProviderRegistry` passes it through `DolphinSaveLocationProvider`'s existing explicit-user-directory
+seam when `OperatingSystem.IsAndroid()`.
+
+This keeps one implementation responsible for GCI header validation, stable sibling identities, configured
+Card A/Card B handling, region mapping (`JPN` unit ids ↔ `JAP` on disk), safe remote restore paths, and the
+Wii NAND allow-list. An Android-only copy would create two parsers and two cloud-id implementations that
+could drift and silently break desktop↔Android restores. The public unit ids remain exactly
+`dolphin/gc/gci/<slot>/<game-id>[/<identity>]` and
+`dolphin/wii/title/00010000/<title-id>`.
+
+Verification is deterministic and cross-platform: Android-layout fixtures cover the default
+`GC/USA/Card A`, a configured `GC/EUR/Card B`, Wii per-title data, and remote restore placement; pure
+composition tests pin both systems to Dolphin's package-derived root and keep folder-configurable emulators
+unresolved until the user supplies an override. The full Release suite is green (902 App + 1,191
+Infrastructure = 2,093). ADB and the Android SDK are not installed on the current host, so a real Thor
+export/restore remains the hardware acceptance gate and is not claimed complete here.
+
+## 2026-08-20 — Android RetroArch cores use a curated selector, not filesystem discovery
+
+RetroArch's Android cores live under its app-private
+`/data/data/com.retroarch.aarch64/cores` directory. EmuShelf cannot enumerate that directory and should not
+ask the user to navigate to it, so Android controller Settings offers a curated list of compatible core
+filenames per system and constructs the exact `*_libretro_android.so` path expected by RetroArch's
+`LIBRETRO` intent extra. This is selection only: the user installs the core in RetroArch, and EmuShelf never
+reads or changes RetroArch's files.
+
+The path is stored in the existing per-system `CorePath` field. Choosing a core also makes the shared
+`retroarch` profile active for that system. Android translates shared emulator ids to Android launch-profile
+ids and tries the explicit selection first, followed by its maintained-first fallbacks; this matters for DS
+and PS1, where RetroArch shares a system with WatermelonDS or DuckStation. Unknown previously stored paths
+remain visible and are not silently replaced.
+
 ## 2026-08-20 — Android: features first to a working core, then repeated stabilization passes
 
 Owner strategy for the Android port (Milestone M44). The lettered milestones (A0…F) deliberately build the

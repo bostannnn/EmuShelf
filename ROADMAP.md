@@ -1977,6 +1977,9 @@ breaks the whole-solution macOS build/test loop.
         `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
         (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
+        Controller Settings now selects a compatible RetroArch core per system without trying to read
+        RetroArch's app-private core directory; the saved choice activates RetroArch and is passed as the
+        exact `LIBRETRO` path, while unavailable choices can still fall through to standalone emulators.
         Remaining: per-emulator setup checklist (+ nested-tree verification), dependency-resolver promotion.
   - [~] **E-android — cloud sync (started, 2026-08-20)**. The auto-sync path was already wired; this adds
         the actual save data. **Capability finding that reshaped the milestone:** a runtime probe from the
@@ -1988,12 +1991,17 @@ breaks the whole-solution macOS build/test loop.
         6 tests) reads the fixed `…/files/memcards` and emits the same `duckstation/per-game/{title|serial}`
         unit ids as desktop; `AppBootstrapper` synthesises the fixed-location install from the package name;
         `SaveProviderRegistry` builds it under `IsAndroid()`. A device-only export enumerated 10 real
-        memcards. Provider split: folder-configurable emulators (PPSSPP/Azahar/WatermelonDS/RetroArch) reuse
-        the desktop providers via a one-time manual folder pick (per-system override); fixed-location ones
-        (DuckStation done, Dolphin/PS2 next) get Android providers. See DECISIONS 2026-08-20. Remaining:
-        Dolphin + folder-configurable wiring, then the transport half (Android OAuth client + custom-scheme
-        redirect, Keystore token store, gamepad Saves rebuild). PS2 folder-card→`.ps2` / cross-emulator
-        save sync is a separate deferred feature.
+        memcards. **Dolphin (GameCube + Wii) fixed-root wiring also landed**: both systems resolve the
+        package-derived external `files/` user root, then reuse `DolphinSaveLocationProvider` through its
+        explicit-user-directory seam, preserving desktop-compatible GCI/Wii unit ids without duplicating
+        parsing or restore logic. Android-layout fixtures cover default Card A, configured Card B and Wii
+        title data; package-root resolver checks cover both systems. Full Release suite: 2,093 tests green.
+        Thor export/restore is still the hardware gate. Provider split: folder-configurable emulators
+        (PPSSPP/Azahar/WatermelonDS/RetroArch) reuse the desktop providers via a one-time manual folder pick
+        (per-system override). See DECISIONS 2026-08-20. Remaining: that folder-picker/override plumbing,
+        then the transport half (Android OAuth client + custom-scheme redirect, Keystore token store,
+        gamepad Saves rebuild). PS2 folder-card→`.ps2` / cross-emulator save sync is a separate deferred
+        feature.
   - [x] **F — Android APK CI job + release signing wired (2026-08-20)**. `package-android` in
         `.github/workflows/build.yml` builds the out-of-solution head (JDK 21 + SDK 36 + android workload) as
         a PR build floor and **attaches the APK to tagged releases** (in the `release` job's `needs`, but its

@@ -268,14 +268,20 @@ public sealed class AppBootstrapper
     // synthesised from the package name here — no user pick. The folder-configurable emulators (PPSSPP,
     // Azahar, WatermelonDS, RetroArch) store their save folder wherever the user chose, in the emulator's
     // own unreadable private config, so they cannot be auto-located: they return null and rely on the
-    // per-system save-location override the user sets once. First slice: DuckStation (PS1) only.
-    private static SaveEmulatorInstallation? ResolveAndroidEmulator(string systemId) => systemId switch
+    // per-system save-location override the user sets once. DuckStation and Dolphin are fixed-root
+    // emulators; the registry adapts each root to the provider's on-disk layout.
+    internal static SaveEmulatorInstallation? ResolveAndroidEmulator(string systemId) => systemId switch
     {
         "playstation" => new SaveEmulatorInstallation(
             AndroidExternalStorageUri.ExternalAppFilesDirectory(
                 AndroidEmulatorLaunchProfiles.DuckStation.PackageName),
             IsFlatpak: false,
             EmulatorId: "duckstation"),
+        "gamecube" or "wii" => new SaveEmulatorInstallation(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.Dolphin.PackageName),
+            IsFlatpak: false,
+            EmulatorId: "dolphin"),
         _ => null,
     };
 

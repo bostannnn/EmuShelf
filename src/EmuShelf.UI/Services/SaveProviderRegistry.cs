@@ -325,10 +325,27 @@ public static class SaveProviderRegistry
         .Select(group => group.First())
         .ToArray();
 
-    private static ISaveLocationProvider? CreateDolphinProvider(
+    internal static ISaveLocationProvider? CreateDolphinProvider(
         string systemId,
-        SaveProviderContext context)
+        SaveProviderContext context,
+        bool? isAndroid = null)
     {
+        // Dolphin Android's external files directory is its user directory: Config/, GC/, and Wii/
+        // live directly below it. Feed that fixed package-derived root through the existing explicit
+        // user-directory seam so the battle-tested desktop provider keeps owning GCI parsing, stable
+        // unit ids, configured slot handling, and Wii NAND allow-listing. This also makes a manual
+        // override useful on Android without teaching the provider about Android APIs.
+        if (isAndroid ?? OperatingSystem.IsAndroid())
+        {
+            var userDirectory = context.DirectoryOverride ?? context.EmulatorDirectory;
+            return string.IsNullOrWhiteSpace(userDirectory)
+                ? null
+                : new DolphinSaveLocationProvider(
+                    systemId,
+                    userDirectory,
+                    userDirectoryOverride: userDirectory);
+        }
+
         if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
             string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
             !context.IsFlatpak)

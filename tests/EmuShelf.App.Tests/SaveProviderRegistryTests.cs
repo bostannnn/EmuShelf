@@ -1,6 +1,9 @@
 using EmuShelf.App.Services;
+using EmuShelf.App.Startup;
 using EmuShelf.Core.Storage;
+using EmuShelf.Core.Storage.Android;
 using EmuShelf.Integrations.Emulators.DuckStation;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Integrations.Emulators.RetroArch;
 
 namespace EmuShelf.App.Tests;
@@ -74,6 +77,47 @@ public class SaveProviderRegistryTests
 
         Assert.False(wii!.SupportsSaveStates);
         Assert.Null(wii.SaveStatesLabel);
+    }
+
+    [Theory]
+    [InlineData("gamecube")]
+    [InlineData("wii")]
+    public void AndroidDolphinSystems_ResolveTheSamePackageDerivedFilesRoot(string systemId)
+    {
+        var installation = AppBootstrapper.ResolveAndroidEmulator(systemId);
+
+        Assert.NotNull(installation);
+        Assert.Equal("dolphin", installation!.EmulatorId);
+        Assert.False(installation.IsFlatpak);
+        Assert.Equal(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.Dolphin.PackageName),
+            installation.Directory);
+    }
+
+    [Fact]
+    public void AndroidFolderConfigurableEmulator_StillRequiresAUserOverride()
+    {
+        Assert.Null(AppBootstrapper.ResolveAndroidEmulator("psp"));
+    }
+
+    [Fact]
+    public async Task AndroidDolphinProvider_TreatsThePackageFilesRootAsItsUserDirectory()
+    {
+        const string filesRoot = "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files";
+        var provider = SaveProviderRegistry.CreateDolphinProvider(
+            "gamecube",
+            new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: filesRoot,
+                IsFlatpak: false,
+                Paths: new StubPaths()),
+            isAndroid: true);
+
+        var dolphin = Assert.IsType<EmuShelf.Integrations.Emulators.Dolphin.DolphinSaveLocationProvider>(provider);
+        Assert.Equal(
+            filesRoot,
+            await dolphin.GetUserDirectoryAsync(TestContext.Current.CancellationToken));
     }
 
     private sealed class StubPaths : IAppPaths

@@ -31,6 +31,31 @@ public class AndroidEmulatorLaunchProfilesTests
     }
 
     [Fact]
+    public void ForSystem_PutsTheExplicitSharedProfileBeforeMaintainedFallbacks()
+    {
+        var playstation = AndroidEmulatorLaunchProfiles.ForSystem("playstation", "duckstation");
+        var nds = AndroidEmulatorLaunchProfiles.ForSystem("nds", "retroarch");
+
+        Assert.Equal(AndroidEmulatorLaunchProfiles.DuckStation.Id, playstation[0].Id);
+        Assert.Equal(AndroidEmulatorLaunchProfiles.RetroArch.Id, nds[0].Id);
+    }
+
+    [Fact]
+    public void RetroArchCoreCatalog_CoversEveryRetroArchSystemWithAndroidCorePaths()
+    {
+        foreach (var systemId in AndroidEmulatorLaunchProfiles.RetroArch.SupportedSystemIds)
+        {
+            var cores = Assert.Contains(systemId, AndroidRetroArchCoreCatalog.BySystem);
+            Assert.NotEmpty(cores);
+            Assert.All(cores, core =>
+            {
+                Assert.StartsWith(AndroidRetroArchCoreCatalog.CoreDirectory + "/", core.Path, StringComparison.Ordinal);
+                Assert.EndsWith("_libretro_android.so", core.Path, StringComparison.Ordinal);
+            });
+        }
+    }
+
+    [Fact]
     public void AllPackageNames_AreDistinct_ForTheManifestQueriesBlock()
     {
         var packages = AndroidEmulatorLaunchProfiles.AllPackageNames;

@@ -83,7 +83,7 @@ saying honestly why the rest are not. Shipped as a sideload APK from a GitHub re
 experimental.
 
 **Android v1 is not:** feature parity with desktop, Play Store distribution, phone or tablet support,
-RetroArch-backed systems, or any feature that writes an emulator's configuration.
+automatic RetroArch core installation, or any feature that writes an emulator's configuration.
 
 **Per-milestone exit criteria** — each is a point where stopping leaves the desktop product no worse
 than before, which is the property that makes them real rather than decorative:
@@ -970,16 +970,20 @@ client-embedded build from silently running the browser OAuth behind that rclone
 6. Per-emulator Android save providers, and the capability probe from the section above. **Split
    confirmed (2026-08-20):** the folder-configurable emulators (PPSSPP, Azahar, RetroArch, WatermelonDS —
    the "pick any folder" set) **reuse the existing desktop providers**, handed the user's chosen folder as
-   the pipeline's existing per-system `DirectoryOverride`; only the fixed-location, config-parsing
-   emulators (DuckStation, Dolphin) need new Android providers, because their save root is a fixed
-   `Android/data/<pkg>/…` path and their desktop config files do not exist on Android.
+   the pipeline's existing per-system `DirectoryOverride`. Fixed-location emulators get package-derived
+   roots from the Android composition root.
    **`DuckStationAndroidSaveLocationProvider` landed** (pure, in `EmuShelf.Integrations`, 6 unit tests):
    it reads the fixed `…/files/memcards` folder, classifies each per-game card by name, and emits the
    *same* `duckstation/per-game/{serial|title}/…` unit ids as the desktop provider, so a card syncs 1:1
    between desktop and Android DuckStation when both use DuckStation's default `PerGameTitle` card type.
-   Remaining: shared/global cards (`memorycard.mcd`), the Dolphin Android provider (region→region+slot),
-   and wiring an Android emulator-installations source into the coordinator (points each provider at its
-   on-device root; folder-configurable ones take the override).
+   **Dolphin fixed-root wiring landed (2026-08-20):** both GameCube and Wii resolve
+   `Android/data/org.dolphinemu.dolphinemu/files` from the package id and pass it as the existing
+   `DolphinSaveLocationProvider`'s explicit user directory. That provider already maps
+   `GC/<region>/Card <slot>` and `Wii/title/00010000/<title>/data` to the desktop-compatible unit ids,
+   including configured Card B layouts, so a second Android-only provider would only duplicate its
+   security and GCI-header logic. Three Android-layout tests plus three resolver/registry checks are green;
+   Thor export/restore remains the acceptance gate. Remaining: DuckStation shared/global cards and the
+   folder-configurable override picker/wiring.
 
 **Per-emulator save mapping — on-device findings (2026-08-19).** Reached via **CX File Manager with NO
 root** (the Thor is not rooted); do not read these rows as requiring root. Battery/memory-card
@@ -994,15 +998,16 @@ carry format constraints the desktop providers do not:
 | PS2 (NetherSX2 / AetherSX2 / ARMSX2) | `Android/data/<pkg>` | **format conversion** | **Folder memory cards are not accepted — Android wants a single-file `.ps2` card.** Desktop `Pcsx2SaveLocationProvider` is built around folder cards, so this is a real conversion step, not a copy. **Confirmed working on hardware (2026-08-20).** |
 | Azahar (3DS) | any chosen folder | 1:1 | Reachable without root |
 | WatermelonDS (DS) | any chosen folder | 1:1 | **Requires the "use `.srm` not `.sav`" toggle enabled** so the on-device filename matches what the provider syncs |
-| Dolphin (GC/Wii) | `Android/data/<pkg>` | **path reshape** | Reached via CX File Manager, no root; **confirmed working on hardware (2026-08-20)**. GameCube saves sit under a deeper path than desktop: Windows uses just the region folder (`USA/`), Android nests a card-slot folder inside it (`USA/Card A/` — exact slot name TBD). The Android provider maps region ⇄ region+slot |
+| Dolphin (GC/Wii) | `Android/data/<pkg>` | **path reshape** | Reached via CX File Manager, no root; **confirmed working on hardware (2026-08-20)**. GameCube saves sit under a deeper path than desktop: Windows can be configured at the region folder while Android uses `USA/Card A/`. The existing Dolphin provider already models the standard region+slot tree; Android now supplies its fixed `files/` user root. Deterministic mapping is green; device export/restore remains |
 | PPSSPP (PSP) | any chosen folder | 1:1 | Reachable without root; PPSSPP records its memstick path in app-private storage, so it must be *asked for*, not discovered (see capability model) |
 | RetroArch | RetroArch saves folder | 1:1 | Plain-path case; the only emulator handed `{file.path}` |
 
 Three design items before implementation, all now hardware-confirmed: the **PS2 single-file `.ps2`
 conversion** (folder card ⇄ `.ps2`, which the desktop provider has no path for), the **Dolphin
 GameCube region ⇄ region+slot path reshape**, and the **WatermelonDS `.srm`/`.sav` extension
-constraint**. The three that aren't a plain copy — PS2, Dolphin GC, WatermelonDS — are where the
-Android providers diverge from their desktop counterparts.
+constraint**. PS2 still needs a format conversion and WatermelonDS needs an explicit setup check;
+Dolphin's physical-path difference is absorbed by the existing provider once Android supplies the correct
+user root, so it does not need a divergent parser or cloud-id model.
 
 ### F — Packaging and release
 
@@ -1092,16 +1097,20 @@ bugs the feature checklist does not track:
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
 | C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
-| E-android — cloud sync | 🟡 started (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) provider + coordinator wiring landed and verified on the Thor** (device-only export enumerated 10 real memcards with desktop-compatible ids); remaining: Dolphin/PS2/DS providers, folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
+| E-android — cloud sync | 🟡 local-save wiring in progress (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) landed and is verified on the Thor; Dolphin (GC/Wii) fixed-root wiring landed with desktop-compatible ids and deterministic tests, with device export/restore still pending**; remaining: folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
 | F — packaging & release | 🟡 in progress | APK CI job **done** and attached to releases; release-signing **wired** (activates once the owner runs the keystore setup — DECISIONS 2026-08-20); remaining: owner runs keystore setup, developer-verification/install docs |
 | **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: analog-stick input (blocks 3D rotation), 3D covers resize on scroll, "many others" TBD — see "Milestone S" above |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
-signal + deferred post-play completion (survives process death). Still open: (1) the **per-emulator setup
-checklist** — does the emulator hold a SAF tree grant covering the game's folder? — which also fixes (2)
-the **nested-multi-disc tree** question (a game in a subfolder below the grant folder; single-file games on
-the grant folder are verified); (3) promoting `GameLaunchDependencyResolver` to a primary path with a
-softened failure mode; (4) an API-<29 `OnResume` fallback for the return signal (the Thor is 33).
+signal + deferred post-play completion (survives process death). RetroArch-backed systems now have a
+controller-native per-system selector: it offers compatible known core filenames, persists the selected
+app-private path, activates RetroArch for that system, and makes the launcher honor that choice before its
+fallbacks. EmuShelf does not install or inspect cores; the matching core must already be installed in
+RetroArch. Still open: (1) the **per-emulator setup checklist** — does the emulator hold a SAF tree grant
+covering the game's folder? — which also fixes (2) the **nested-multi-disc tree** question (a game in a
+subfolder below the grant folder; single-file games on the grant folder are verified); (3) promoting
+`GameLaunchDependencyResolver` to a primary path with a softened failure mode; (4) an API-<29 `OnResume`
+fallback for the return signal (the Thor is 33).
 
 **What E-android needs (the biggest remaining body of work):** the auto-sync path is *wired* (the exit
 signal calls it) but no-ops because Android has nothing to sync yet. **The single biggest item shrank on
@@ -1110,10 +1119,14 @@ all-files access **reads and writes `Android/data/<pkg>` over real paths** (Duck
 GC, including `Directory.Move`) — so the SAF-backed `ILocalSaveEndpoint`, budgeted as the one genuine
 rewrite, is **not needed for the Thor**; the existing `FileSystemLocalSaveEndpoint` serves all seven
 emulators over real paths, and the "no-root `Android/data` access mechanism" open question is answered
-(plain all-files works here). See DECISIONS 2026-08-20. Landing E-android now means: the per-emulator
-Android save providers (DuckStation 1:1, Dolphin region→region+slot, WatermelonDS `.srm`, and the
-normal-folder emulators — all mapped in the E section; **PS2 folder-card→`.ps2` and cross-emulator save
-sync are deferred to their own feature, owner's call**), a second public OAuth client + custom-scheme
+(plain all-files works here). See DECISIONS 2026-08-20. DuckStation and Dolphin are now wired: Dolphin's
+package-derived external-files root is the same `Config/` + `GC/` + `Wii/` user tree the existing desktop
+provider already understands, so Android feeds that root through its explicit-user-directory seam instead
+of duplicating GCI parsing and stable unit-id logic. The deterministic Card A/Card B/Wii fixtures are green;
+an on-device export/restore is still required. Landing the rest of E-android means plumbing the one-time
+save-folder override for PPSSPP, Azahar, WatermelonDS and RetroArch (including WatermelonDS's `.srm`
+constraint; **PS2 folder-card→`.ps2` and cross-emulator save sync are deferred to their own feature,
+owner's call**), a second public OAuth client + custom-scheme
 redirect, an Android `IProtectedTextStore` for the refresh token, and rebuilding the gamepad Saves rows to
 offer the managed transport (currently rclone-only there). The SAF endpoint reverts to a portability
 concern for a hypothetical second device, not v1 work.

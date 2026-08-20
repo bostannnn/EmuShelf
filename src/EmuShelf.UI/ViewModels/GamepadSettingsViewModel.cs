@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Input;
 using EmuShelf.Core.Settings;
+using EmuShelf.Integrations.Emulators.Android;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -196,6 +197,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly IReadOnlyList<ThemeChoiceViewModel> _themeChoices;
     private readonly Func<ThemePreference, Task>? _applyTheme;
     private readonly Func<Task>? _openHotkeys;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>> _androidRetroArchCores;
     private Func<Task>? _pendingConfirmation;
     private Action<string>? _commitText;
     private bool _synchronizingSection;
@@ -355,6 +357,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         ? "Personalize EmuShelf's colors. A theme applies instantly and is shared with Desktop mode."
         : SelectedSection switch
     {
+        SettingsSection.Emulators when _androidRetroArchCores.Count > 0 =>
+            "Choose Android RetroArch cores, import games, and manage each system's folders.",
         SettingsSection.Emulators =>
             "Import games and manage each system's folders. Edit emulator paths, arguments, and cores in Desktop Settings.",
         SettingsSection.Hotkeys =>
@@ -446,19 +450,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         IOnScreenKeyboardService? onScreenKeyboard = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         Func<ThemePreference, Task>? applyTheme = null,
-        Func<Task>? openHotkeys = null)
+        Func<Task>? openHotkeys = null,
+        IReadOnlyDictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>>? androidRetroArchCores = null)
     {
         _settings = settings;
         _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         _themeChoices = themeChoices ?? [];
         _applyTheme = applyTheme;
         _openHotkeys = openHotkeys;
+        _androidRetroArchCores = androidRetroArchCores
+            ?? new Dictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>>(StringComparer.Ordinal);
         // Both modes present the same section list, in the same order, so the couch surface mirrors
         // Desktop's structure. Only Themes is excluded here: appearance is not part of the settings
         // model, so it is a dedicated gamepad gallery page rather than a projected row section. The rail
         // and LB/RB paging still show Themes in Desktop's slot — right before About — by splicing it back
         // into the ordered page list (see Pages), not by appending it after every section. Emulators
-        // projects per-platform library actions (paths/args/cores stay Desktop-only); Hotkeys is a
+        // projects per-platform library actions plus Android's app-private RetroArch core choices;
+        // executable paths and launch arguments stay Desktop-only. Hotkeys is a
         // per-emulator × per-action matrix that a controller can't navigate as a flat list, so its
         // section row opens the controller-native GamepadHotkeysViewModel overlay; About projects
         // read-only build info plus the in-place update actions.
@@ -1188,11 +1196,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Per-platform library actions, grouped under each platform's header. Editing an emulator's
-    /// executable, launch arguments, and RetroArch core stays Desktop-only for now, so this projects
-    /// only the operations a controller-only player needs: PS3 sync (the one platform "Rescan all"
-    /// skips), per-platform rescan, and remembered-folder management. The sync/rescan/folder rows reuse
-    /// the same commands and stable field ids as Desktop's Emulators cards.
+    /// Per-platform Android core choices and library actions, grouped under each platform's header.
+    /// Executable paths and launch arguments stay Desktop-only. Android RetroArch core paths are the
+    /// exception: the Android head has no Desktop mode and cannot enumerate RetroArch's private core
+    /// folder, so it projects the known compatible filenames supplied by the Android composition path.
+    /// The remaining rows cover PS3 sync (the one platform "Rescan all" skips), per-platform rescan,
+    /// and remembered-folder management.
     /// </summary>
     private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
     {
@@ -1203,6 +1212,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         foreach (var row in _settings.Rows)
         {
             yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
+            if (_androidRetroArchCores.TryGetValue(row.SystemId, out var cores) && cores.Count > 0)
+                yield return AndroidRetroArchCoreRow(row, cores);
             if (row.HasSyncLibrary)
             {
                 // Same command and stable id as Desktop's PS3-row "Sync RPCS3 library" button. PS3 is
@@ -1260,6 +1271,61 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 }
             }
         }
+    }
+
+    private GamepadSettingsRowSpec AndroidRetroArchCoreRow(
+        EmulatorSettingsRowViewModel row,
+        IReadOnlyList<AndroidRetroArchCoreOption> cores)
+    {
+        const string notSelected = "Not selected";
+        var currentPath = row.CorePath.Trim();
+        var current = cores.FirstOrDefault(core =>
+            string.Equals(core.Path, currentPath, StringComparison.Ordinal));
+
+        var choices = new List<string> { notSelected };
+        choices.AddRange(cores.Select(core => core.DisplayName));
+
+        // Preserve a path written by an older build or another compatible frontend. Android cannot
+        // inspect RetroArch's private directory to validate it, so silently replacing an unknown value
+        // would be worse than keeping it as an explicit choice until the user changes it.
+        string? customLabel = null;
+        if (current is null && currentPath.Length > 0)
+        {
+            customLabel = $"Current: {Path.GetFileName(currentPath)}";
+            choices.Add(customLabel);
+        }
+
+        var value = current?.DisplayName ?? customLabel ?? notSelected;
+        return ChoiceRow(
+            $"emulators.{row.SystemId}.retroarch-core",
+            "RetroArch core",
+            "Install the same core in RetroArch first. Android keeps cores private, so EmuShelf selects its known filename without reading or changing RetroArch.",
+            value,
+            choices,
+            selected =>
+            {
+                if (selected == notSelected)
+                {
+                    row.CorePath = string.Empty;
+                    return;
+                }
+
+                if (selected == customLabel)
+                    return;
+
+                var option = cores.First(core => core.DisplayName == selected);
+                var retroArchProfile = row.AvailableProfiles.FirstOrDefault(profile =>
+                    string.Equals(profile.EmulatorId, "retroarch", StringComparison.Ordinal));
+                if (retroArchProfile is not null &&
+                    !string.Equals(row.EmulatorId, retroArchProfile.EmulatorId, StringComparison.Ordinal))
+                {
+                    row.SelectedProfile = retroArchProfile;
+                }
+                row.CorePath = option.Path;
+            },
+            isGrouped: true,
+            systemId: row.SystemId,
+            excludeFromParity: true);
     }
 
     /// <summary>
@@ -1835,7 +1901,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         string description,
         string value,
         IReadOnlyList<string> choices,
-        Action<string> set)
+        Action<string> set,
+        bool isGrouped = false,
+        string? systemId = null,
+        bool excludeFromParity = false)
     {
         void Move(int delta)
         {
@@ -1861,7 +1930,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 Move(1);
                 return Task.CompletedTask;
             },
-            Adjust: Move);
+            Adjust: Move,
+            SystemId: systemId,
+            IsGrouped: isGrouped,
+            ExcludeFromParity: excludeFromParity);
     }
 
     private GamepadSettingsRowSpec ActionRow(
