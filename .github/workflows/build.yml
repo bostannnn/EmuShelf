@@ -304,8 +304,20 @@ jobs:
               -p:AndroidSigningKeyPass=env:ANDROID_SIGNING_KEY_PASS
             )
           fi
+          # Derive the version from git so a new tag alone bumps the app — no csproj edit per release.
+          # versionCode (the integer Android compares for "is this an upgrade") is the commit count, which
+          # increases monotonically with every commit, so it is always higher than the last release's.
+          # versionName (the human string) is the tag on a tag build (v1.5.0 -> 1.5.0), else `git describe`.
+          # The checkout above uses fetch-depth: 0, so full history/tags are present. These override the
+          # csproj defaults (which only matter for local dev builds).
+          version_code="$(git rev-list --count HEAD)"
+          version_name="$(git describe --tags --always 2>/dev/null | sed 's/^v//')"
+          [ -n "$version_name" ] || version_name="0.0.0"
+          echo "Android version: code=$version_code name=$version_name"
           dotnet publish src/EmuShelf.App.Android/EmuShelf.App.Android.csproj \
             -c Release \
+            -p:ApplicationVersion="$version_code" \
+            -p:ApplicationDisplayVersion="$version_name" \
             -p:AndroidPackageFormat=apk \
             -p:JavaSdkDirectory="$JAVA_HOME" \
             -p:AndroidSdkDirectory="$ANDROID_HOME" \
