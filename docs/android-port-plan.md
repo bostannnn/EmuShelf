@@ -2,10 +2,12 @@
 
 Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned; **delivered and
 driven over USB ADB as of 2026-08-18** (`adb -s 2fd555f4`; see "Milestone 0b — first device facts").
-Architecture targets Android arm64 handhelds generally; every acceptance gate is the Thor. Status:
-planning, revised 2026-08-15 after an adversarial review of the first draft, with first on-device facts
-folded in 2026-08-18. A0 (desktop split) and A1 (walking skeleton) are built and verified — A1 on the
-Thor itself.
+Architecture targets Android arm64 handhelds generally; every acceptance gate is the Thor. Status
+(2026-08-20): **0a, A0, 0b, A1/A2, and the core of D and B are built and verified on the Thor** — the app
+imports a library, launches real games in their emulators from the couch, and runs post-play completion on
+return (surviving process death). What remains is Android controller/IME polish (C), the save data to
+actually sync (E-android), one real desktop Google sign-in (E-desktop), and packaging (F). See
+**"Current status and what's next"** under Sequencing for the milestone-by-milestone checklist.
 
 This is the master plan. `docs/cloud-sync-portability-plan.md` holds the detail for the save-sync
 half and is referenced rather than repeated.
@@ -317,11 +319,12 @@ software-GL artifact, not a shell defect.
 | System | Thor build | vs. 0a AVD |
 |---|---|---|
 | PS1 | **DuckStation** `com.github.stenzek.duckstation` (from Play) | Absent on the AVD; its content-URI sibling resolution — listed unverifiable-without-hardware — is now testable |
-| PS2 | **AetherSX2** `xyz.aethersx2.android` | AVD used the ARMSX2 fork; different build, own intent/BIOS-gate behavior |
-| GC/Wii | Dolphin `org.dolphinemu.dolphinemu` | same package (rejected FileProvider, wants a SAF tree URI) |
-| PSP | PPSSPP `org.ppsspp.ppsspp` | same (content URI works, path refused) |
-| 3DS | Azahar `org.azahar_emu.azahar` | same (first-run wizard gate) |
-| multi | RetroArch `com.retroarch.aarch64` | same (targetSdk 28, plain-path) |
+| PS2 | **ARMSX2** `com.armsx2` 2.6.6.7 (targetSdk 37) | ~~AetherSX2~~ — corrected 2026-08-20: the installed PS2 build is the ARMSX2 fork, same family as the AVD |
+| DS | **WatermelonDS** `me.magnum.melondualds` 0.7.0.rc5 | added 2026-08-20; label is "WatermelonDS" (melonDS fork, kept melonDS's package id) |
+| GC/Wii | Dolphin `org.dolphinemu.dolphinemu` 2606a | same package (rejected FileProvider, wants a SAF tree URI) |
+| PSP | PPSSPP `org.ppsspp.ppsspp` v1.20.4 | same (content URI works, path refused) |
+| 3DS | Azahar `org.azahar_emu.azahar` 2126.0-vanilla | same (first-run wizard gate) |
+| multi | RetroArch `com.retroarch.aarch64` 1.22.2_GIT | same (targetSdk 28, plain-path) |
 | PS3 | — (aPS3e not installed) | supply if PS3 handoff is to be measured |
 
 Reference frontends installed on-device: `com.neogamelab.neostation` (NeoStation) and
@@ -359,6 +362,122 @@ was granted) and it cannot be driven to the sibling-resolution step this way. So
 validating emulators (DuckStation, PPSSPP, Dolphin, AetherSX2, Azahar) need **at least one valid small disc
 image** — and BIOS for a real boot — neither of which is on the device yet. That is the gate on the rest of
 0b. Continuing also needs either per-emulator folder grants or EmuShelf's own `FileProvider` (Milestone B).
+
+**0b progress (2026-08-20).** A pass of the on-device probes that need neither a valid disc image nor
+BIOS. What it settles, and what stays gated:
+
+- **Exact emulator versions captured** (the 0b table left these open): DuckStation
+  `0.1-8969-g611bb8fb4` (targetSdk 35), Dolphin `2606a` (36), PPSSPP `v1.20.4` (36), Azahar
+  `2126.0-vanilla` (35), RetroArch `1.22.2_GIT` (**28**), NeoStation `0.10.0`, Cocoon `3.04`.
+- **Two build drifts from the 0b table**, both build-sensitivity in action: **PS2 is now ARMSX2
+  `com.armsx2` 2.6.6.7 (targetSdk 37)**, not the AetherSX2 the table recorded; and the DS emulator
+  installed is **WatermelonDS** (package `me.magnum.melondualds`, aapt `application-label:'WatermelonDS'`,
+  0.7.0.rc5) — a melonDS fork that kept melonDS's package id, which is why the package string reads
+  "melondualds". The E save table's "WatermelonDS" naming was right. Table below corrected.
+- **The device is not rooted** — `su` is `inaccessible or not found`, and per the owner it never was. The
+  E-android per-emulator save findings (2026-08-19) were taken via the **CX File Manager app with no root**,
+  which reaches `Android/data` on this firmware without `su`. So the `Android/data` save cases (DuckStation
+  / PS2 / Dolphin) are *not* root-gated on the Thor; they are already mapped (see E). The open item is which
+  no-root mechanism EmuShelf itself can use to reach `Android/data`, not re-measuring with root.
+- **EmuShelf head's all-files grant is wiped** (`appops … MANAGE_EXTERNAL_STORAGE` → `Default mode:
+  default`), matching the `pm clear` during A2. It must be re-granted before any EmuShelf-side read test.
+- **Pad-probe surface confirmed present.** `dumpsys input` enumerates a `KEYBOARD | GAMEPAD | JOYSTICK`
+  device (`Xbox Wireless Controller`), plus `gpio-keys` and AYN's `ODIN Station Virtual Mouse`. A real
+  gamepad/joystick source exists to read for Milestone C; the full probe (events reaching the Activity)
+  is C's, and A1 already proved `DispatchKeyEvent` routing on device.
+- **The `Android/data` capability probe cannot be answered by adb.** `run-as com.emushelf.app ls
+  /sdcard/Android/data/<pkg>/…` *succeeds* (returned DuckStation's `bios/cheats/covers`), but this is a
+  **false positive**: `run-as` spawns a fresh process outside the app's runtime mount namespace and so
+  bypasses the FUSE `Android/data` restriction a real app hits. The honest probe is the app itself
+  attempting `File.Open` at runtime — i.e. the capability-probe feature the capability model calls for,
+  not an adb shortcut. Do not record "EmuShelf can read `Android/data`" off `run-as`.
+- **DuckStation's exported surface is `.MainActivity` only** (MAIN/LAUNCHER; no VIEW filter with a data
+  scheme). So its content-URI route is `-e bootPath <content://…>` into a tree DuckStation itself was
+  granted — which needs a valid disc it will list *and* driving its SAF folder-grant UI. Same gate.
+
+**The real library and BIOS are on the microSD, not internal storage** (corrected same day). `/sdcard`
+(internal) is empty of games — the earlier "no corpus, gated on owner files" reading was wrong because
+it only scanned internal storage. The owner's full collection is on the SD card mounted at
+`/storage/AE6A-1092`: **374 CHD, 98 RVZ, 125 NDS, 54 3DS, 23 `.m3u`**, real multi-disc PS1 sets (Metal
+Gear Solid, Parasite Eve I/II, Xenogears, Resident Evil 2, Koudelka) with `.m3u` playlists, plus **BIOS
+for PS2 (`SCPH50003` .bin/.mec/.nvm) and PSX (`SCPH-101`)**. Every emulator is pre-configured against this
+card. So 0b is *not* gated on owner-supplied inputs after all — they are present; the gate was that the
+files sit on a volume the first scan missed.
+
+**Strategy 4 is live, not hypothetical — the whole device is already wired this way.** The persisted-URI
+dump (`dumpsys activity permissions`) shows **each emulator holds its own persisted `com.android.externalstorage`
+tree grant, scoped to exactly its system folder** on the SD:
+
+| Emulator | Persisted SAF tree grant(s) |
+|---|---|
+| DuckStation (PS1) | `AE6A-1092:roms/psx`, `primary:ROMs` |
+| ARMSX2 (PS2) | `AE6A-1092:roms/ps2`, **`AE6A-1092:bios/ps2`**, `primary:User/ARMSX2` |
+| Dolphin (GC/Wii) | `AE6A-1092:roms/ngc`, `AE6A-1092:roms/wii` |
+| PPSSPP (PSP) | `AE6A-1092:roms/psp`, `primary:User/ppsspp` |
+| Azahar (3DS) | `AE6A-1092:roms/3ds`, `primary:User/Azahar` |
+| WatermelonDS (DS) | `AE6A-1092:roms/nds`, `AE6A-1092:saves/Nintendo DS` |
+
+This settles two things the plan flagged as open. (a) **Sibling resolution is covered by construction:**
+each grant is the *whole* `roms/<system>` subtree, so an `.m3u` and the sibling `.chd`s it names all fall
+under one grant — the "descriptors are impossible over content URIs" worry does not apply when the
+emulator holds a tree, not a single-file grant. (b) **The handoff shape is specific:** the URI EmuShelf
+hands must be the **tree-scoped** `…/tree/<TREE>/document/<DOC>` form matching the persisted prefix, not a
+bare `…/document/<DOC>`. The per-emulator "setup checklist" in Milestone B is therefore concretely: *does
+this emulator already hold a tree grant whose prefix covers the game's folder?* — and note an app can only
+enumerate its **own** grants, so EmuShelf cannot read another app's grant to pre-verify; it must hand the
+URI and treat failure as "walk the user through granting."
+
+**The exact per-emulator launch intents, recovered as ground truth from working frontends on this device.**
+Cocoon writes every intent it fires to `/sdcard/Cocoon/launch_debug.log`, and NeoStation stores its
+emulator table in `/sdcard/User/Neostation/data.sqlite` (`app_emulators` → `android_package_name` /
+`android_activity_name`). Between them, plus DuckStation's own manifest+dex, the real launch shapes are:
+
+| System / emulator | Component | Action | ROM payload |
+|---|---|---|---|
+| PS1 / DuckStation | `com.github.stenzek.duckstation/.EmulationActivity` (exported, no filter) | explicit | **extra `bootPath`** = tree-scoped content URI, `--ez isOneShot true` |
+| PS2 / ARMSX2 | `com.armsx2/com.armsx2.Main` (exported, VIEW filter, `content`/`file` schemes) | `VIEW` | content URI **as intent DATA** (no extra); also declares `MANAGE_EXTERNAL_STORAGE` so a `file` path works too |
+| GC·Wii / Dolphin | `org.dolphinemu.dolphinemu/.ui.main.MainActivity` | `MAIN` | **extra `AutoStartFile`** = content URI |
+| PSP / PPSSPP | `org.ppsspp.ppsspp/.PpssppActivity` | `VIEW` | content URI **as intent DATA** (no extra) |
+| 3DS / Azahar | `org.azahar_emu.azahar/org.citra.citra_emu.activities.EmulationActivity` | `VIEW` | content URI **as intent DATA** |
+| DS / WatermelonDS | `me.magnum.melondualds/me.magnum.melonds.ui.emulator.EmulatorActivity` | `me.magnum.melondualds.LAUNCH_ROM` | **extra `uri`** = content URI |
+| RetroArch | `com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture` | `VIEW` | extras `ROM` (path) + `LIBRETRO` (core `.so`) + DATADIR/SDCARD/… |
+
+Every URI is the tree-scoped `…/tree/<TREE>/document/<DOC>` form. Three distinct payload conventions
+(extra-named vs intent-DATA vs custom-action-plus-extra) confirm the plan's core thesis: **the handoff is
+per-emulator, and the Android launch definition must carry component + action + payload-slot + strategy,
+not just a path.** This *is* Milestone B's data model, now populated from live evidence rather than
+guessed. (Cocoon's log had no PS1/PS2 launch, so DuckStation's shape came from its manifest — exported
+`EmulationActivity` — and its dex string constants — `bootPath`, `gameTitle`, `isOneShot`, `getFullPathFromTreeUri`.)
+
+**DuckStation PS1 handoff confirmed working (2026-08-20).** The earlier failures were my error: I fired
+`bootPath` at **`MainActivity`** (the game list), which ignores it, and mis-read the resulting library scan
++ startup `BIOS is mapped` logs as a boot (a control launch with no `bootPath` emits those identically —
+they are *not* a boot signal). Firing the correct intent — `.EmulationActivity` + `-e bootPath <tree-scoped
+content URI to the real Metal Gear Solid `.m3u`>` + `--ez isOneShot true` — put **`EmulationActivity`** in the
+foreground (the in-game screen, not the menu) and opened a **non-standby audio output track** that stayed
+active, i.e. a running game producing sound; both signals were absent on every menu-only attempt. **The
+owner then visually confirmed MGS was running and manually exited it** — so this is eyes-on confirmed, not
+just inferred. So the
+AVD-unverifiable question is answered: **DuckStation resolves a multi-disc `.m3u` and its sibling `.chd`s
+from a tree-scoped content URI, and boots** — no copying, no derived descriptor needed for PS1 here.
+Confirmation method note: for this closed, GL-bypass emulator the reliable external signals are
+*foreground = `EmulationActivity`* and *an active (non-standby) audio track*, not screencap (GL surface
+unreadable), `gfxinfo` (HWUI bypassed), or FUSE/streaming logs (content-URI reads go through
+`openFileDescriptor`).
+
+**ARMSX2 PS2 handoff confirmed working (2026-08-20).** `am start -a android.intent.action.VIEW -d
+<tree-scoped content URI to a real `.chd`> -n com.armsx2/com.armsx2.Main` booted the disc: logcat shows the
+PS2 IOP disc modules loading (`RegisterLibraryEntries: cdvdman version 1.01` / `cdvdfsv version 1.01`) —
+an unambiguous disc-mount-and-boot signal, unlike DuckStation's opaque GL UI — alongside a non-standby
+audio track and `com.armsx2.Main` in the foreground. ARMSX2 reads via its own persisted `roms/ps2` +
+`bios/ps2` grants (BIOS `SCPH50003` present). So PS1 (DuckStation) and PS2 (ARMSX2) — the two systems the
+0a/0b exit criterion hinges on — both accept a constructible content-URI handoff and boot on the Thor.
+
+**Still genuinely gated:** nothing on the handoff question. Save-side, the `Android/data` cases are already
+mapped (owner, via CX File Manager, no root — see E); the remaining E work is finding the no-root
+`Android/data` access mechanism EmuShelf can use programmatically, not re-measuring. Optional: hands-on
+full-boot passes of the remaining BIOS-gated systems (3DS Azahar) — their launch *shapes* are already
+recovered above from Cocoon's live log.
 
 **Post-A1 UI findings on the Thor (2026-08-18), and where they belong.** Two things real hardware
 surfaced that A1's done-criterion did not cover; both are "judged by hand on the device" items the plan
@@ -438,15 +557,20 @@ with a **runtime capability probe** ("can I read `Android/data/<pkg>`?") feeding
 them alive for rooted and Shizuku users — a large fraction on a handheld. A probe `.sh` fed to "Run
 script as Root" can still measure what one-shot root buys, if E ever needs it.
 
-**Cause 1 — `Android/data` is unreadable (capability-gated, not dead).** Confirmed for Android 12+
-even with all-files access. Gates M40 uniform hotkeys, M32 texture-pack inventory, M33 auxiliary
-sync, and save sync for DuckStation / AetherSX2 / Dolphin. Reachable without root: PPSSPP, Azahar,
-RetroArch — note these are also the emulators with the cleanest handoff, which is an argument for
-choosing target emulators on the pair of properties. One trap: PPSSPP records its memstick path in
-app-private storage, so it must be *asked for*, not discovered. On-device the gated set was reached
-with root on: DuckStation syncs its `Android/data` save 1:1, Dolphin does too but reshapes the
-GameCube path (region+slot vs desktop's region-only), and PS2 needs a format conversion rather than a
-copy — all three confirmed on hardware. See the per-emulator save mapping under E — Cloud sync.
+**Cause 1 — `Android/data` is restricted, but reachable on the Thor without root.** The generic-app
+`File.Open` restriction is real for Android 12+ even with all-files access, and it gates M40 uniform
+hotkeys, M32 texture-pack inventory, M33 auxiliary sync, and save sync for DuckStation / AetherSX2 /
+Dolphin. Three emulators keep saves in a *normal* folder and are trivially reachable: PPSSPP, Azahar,
+RetroArch — also the cleanest-handoff emulators, an argument for choosing targets on both properties
+(one trap: PPSSPP records its memstick path in app-private storage, so it must be *asked for*, not
+discovered). **The important correction (owner, 2026-08-20): the `Android/data` save set was reached on
+the Thor with NO root — via the CX File Manager app, and the device is not rooted at all.** So the
+capability is not "root-only" here; some file-manager access path to `Android/data` exists on this
+firmware. The open question for E is therefore *which* mechanism EmuShelf can replicate programmatically
+(a SAF tree grant to `Android/data/<pkg>` on Thor firmware, a Shizuku/`ADB` path, or similar) — not
+"does root exist." Via that CX access the owner mapped all three gated cases: DuckStation syncs its
+`Android/data` save 1:1, Dolphin reshapes the GameCube path (region+slot vs desktop's region-only), and
+PS2 needs a format conversion rather than a copy. See the per-emulator save mapping under E — Cloud sync.
 
 **Cause 2 — no process to execute.** Android 10+ treats exec from the app's writable home as a W^X
 violation. Kills rclone (this is what forced the managed Drive transport), `FileRevealService`,
@@ -687,6 +811,17 @@ varies by API level guarantees rework of every launch definition.
 - **Use AVDs, not the device.** API 30/31/33/34 answer where each restriction bites; the Thor answers
   for one.
 
+**Landed 2026-08-20 (code review pending on device).** `allowBackup="false"` and `MANAGE_EXTERNAL_STORAGE`
+were already in the A1 manifest; this pass added the rest of the testable storage core:
+`AndroidExternalStorageUri` (Core, pure) now owns the SAF tree/document URI ↔ `/storage/…` translation —
+the head's private copy was deleted and `SingleViewDialogService` calls the shared one — with build/parse
+and containment tests; `RelativePathResolver` stores game paths **absolute** on Android via a new
+`IAppPaths.UsesPortableStorage` flag (false only on the Android head), fixing the fragile
+`../../../storage/…` anchoring, with a test; the `allowBackup`/app-private/absolute-path decisions are in
+DECISIONS 2026-08-20. **Still open:** the all-files runtime grant UX (directing the user to the Settings
+toggle), a SAF-backed reader fallback for providers with no local path, the per-API-level AVD matrix, and
+verifying `FolderScanner`/availability against real Android storage.
+
 ### B — Launching games
 
 - `AndroidIntentLauncher` behind `ITrackedProcessRunner`, plus honest handling for the other 16
@@ -709,6 +844,54 @@ varies by API level guarantees rework of every launch definition.
   persisted, not held in memory.
 
 **Done when:** a game launches in the right emulator and returning to EmuShelf syncs.
+
+**Launch wired and verified on the Thor (2026-08-20).** The couch launch path is connected end to end and
+proven on device: `IPlatformShell` gained an optional `LaunchService` (null on desktop → the shared
+process launcher; the Android head supplies its own), and `AndroidEmulatorLaunchService` turns a couch
+"play" into an intent via `AndroidLaunchResolver` + `AndroidGameLauncher`. It iterates the maintained-first
+candidates and falls through one it cannot satisfy (RetroArch with no core) to the next (DuckStation), so
+PS1 launches without a core configured. It is fire-and-forget by design (no process to await): the
+pre-launch save-pull hook still runs, but post-play sync is manual until the exit signal lands. **Proven:**
+installed to the Thor, all-files re-granted, a single-file PS1 game (Castlevania SotN) seeded into the
+library, and a gamepad Confirm from the couch produced `Launching DuckStation for Castlevania SotN` →
+DuckStation foreground in its `EmulationActivity`, then a clean return to EmuShelf (the `isOneShot` flag).
+This exercised the verified tree path (single-file game whose parent folder *is* the emulator's grant
+folder). The nested-multi-disc tree question (a game in a subfolder below the grant folder) is still the
+open on-device item — provide the emulator grant root via the setup checklist, or verify the parent-folder
+fallback boots.
+
+**Exit signal + deferred completion landed and verified on the Thor (2026-08-20).** Because the Android
+launch is fire-and-forget, the "returned from the game" work (play-time accrual, post-play save sync) is
+deferred: the launch service writes a durable single-slot `PendingPlaySession`
+(`FilePendingPlaySessionStore`, JSON in the app-private Settings dir) the moment the intent fires, and
+`MainActivity.OnTopResumedActivityChanged(true)` — the plan's chosen signal, correct on the Thor's
+multi-display Android 13 where several activities can be resumed at once — invokes
+`MainViewModel.CompleteDeferredPlaySessionAsync`, which accrues play time, runs the post-play save sync
+(a safe no-op until E-android configures it), refreshes Recently Played, and clears the record. Because
+the record is on disk and the signal also fires on cold start, a session interrupted by **process death**
+is completed on the next launch — the "must survive process death" requirement. **Verified on device:** a
+seeded pending session (start stamped 120 s earlier) was auto-completed on a cold start — playtime went
+0 → 133 s and the record was cleared, with no configured-sync noise. The duration is wall-clock
+launch→return (approximate; it over-counts time spent away before returning) and is **capped at 12 h** so a
+long-delayed post-death recovery cannot record a fake multi-day session — beyond the cap the duration is
+dropped, but the launch was already stamped last-played + play-count at start. Six store tests
+(round-trip across instances, overwrite, clear, corrupt-file tolerance) plus the desktop suite stay green.
+Still deferred: an API-<29 `OnResume` fallback (the Thor is 33), and the actual save data to push
+(E-android). Remaining B core below is the testable groundwork under this:
+
+The testable core of B is in and green in the desktop suite (41 new unit tests): `AndroidLaunchProfile` + `AndroidEmulatorLaunchProfiles` encode the
+measured per-emulator intents (DuckStation/ARMSX2/Dolphin/PPSSPP/Azahar/WatermelonDS/RetroArch);
+`AndroidIntentFactory` and `AndroidLaunchResolver` are pure functions turning (system, game path,
+selection) → a concrete `AndroidIntentRequest`, asserted against the exact shapes that booted MGS and Auto
+Modellista on the Thor; the `<queries>` manifest block lists every emulator package (kept in sync with the
+profiles by a test); `AndroidGameLauncher` in the head converts the request to a framework `Intent` and
+fires it (head compiles). **Still open, and a design choice to make together:** how the Android launch path
+plugs into `IEmulatorLaunchService` — the shared pipeline is built around a `ProcessStartSpec`
+(executable + args + exit code) that an intent does not fit, so either a dedicated Android
+`IEmulatorLaunchService` or an `ITrackedProcessRunner` that speaks intents. Also still open (device-gated):
+the **exit signal** (`onTopResumedActivityChanged`, surviving process death), the **per-emulator setup
+checklist** (does the emulator hold a tree grant covering the game's folder?), promoting
+`GameLaunchDependencyResolver` to a primary path, and dropping the SDL native payload from the APK.
 
 ### C — Controller input and text entry
 
@@ -784,7 +967,8 @@ client-embedded build from silently running the browser OAuth behind that rclone
    changes with it.
 6. Per-emulator Android save providers, and the capability probe from the section above.
 
-**Per-emulator save mapping — on-device findings (2026-08-19, rooted Thor).** Battery/memory-card
+**Per-emulator save mapping — on-device findings (2026-08-19).** Reached via **CX File Manager with NO
+root** (the Thor is not rooted); do not read these rows as requiring root. Battery/memory-card
 saves only; save states are out of scope and the providers already exclude the `states` namespace
 ([ISaveLocationProvider.cs:28](../src/EmuShelf.Core/SaveSync/ISaveLocationProvider.cs)). Each Android
 provider maps a title's save to the emulator's on-device location; most are a 1:1 directory copy, two
@@ -792,11 +976,11 @@ carry format constraints the desktop providers do not:
 
 | System / emulator | Android location | Mapping | Notes |
 |---|---|---|---|
-| DuckStation (PS1) | `Android/data/<pkg>` | 1:1 | Confirmed 1:1 on the rooted Thor — this is the capability-gated case from the section above, reachable because root is on |
+| DuckStation (PS1) | `Android/data/<pkg>` | 1:1 | Confirmed 1:1 via CX File Manager, no root — the `Android/data` case, reachable on this firmware without root |
 | PS2 (NetherSX2 / AetherSX2 / ARMSX2) | `Android/data/<pkg>` | **format conversion** | **Folder memory cards are not accepted — Android wants a single-file `.ps2` card.** Desktop `Pcsx2SaveLocationProvider` is built around folder cards, so this is a real conversion step, not a copy. **Confirmed working on hardware (2026-08-20).** |
 | Azahar (3DS) | any chosen folder | 1:1 | Reachable without root |
 | WatermelonDS (DS) | any chosen folder | 1:1 | **Requires the "use `.srm` not `.sav`" toggle enabled** so the on-device filename matches what the provider syncs |
-| Dolphin (GC/Wii) | `Android/data/<pkg>` | **path reshape** | Root-gated; **confirmed working on hardware (2026-08-20)**. GameCube saves sit under a deeper path than desktop: Windows uses just the region folder (`USA/`), Android nests a card-slot folder inside it (`USA/Card A/` — exact slot name TBD). The Android provider maps region ⇄ region+slot |
+| Dolphin (GC/Wii) | `Android/data/<pkg>` | **path reshape** | Reached via CX File Manager, no root; **confirmed working on hardware (2026-08-20)**. GameCube saves sit under a deeper path than desktop: Windows uses just the region folder (`USA/`), Android nests a card-slot folder inside it (`USA/Card A/` — exact slot name TBD). The Android provider maps region ⇄ region+slot |
 | PPSSPP (PSP) | any chosen folder | 1:1 | Reachable without root; PPSSPP records its memstick path in app-private storage, so it must be *asked for*, not discovered (see capability model) |
 | RetroArch | RetroArch saves folder | 1:1 | Plain-path case; the only emulator handed `{file.path}` |
 
@@ -833,6 +1017,43 @@ Changes from the first draft: A0 is new and comes first among the engineering wo
 B** because D produces B's input; the GL and pad probes move into Milestone 0, because each can end
 the project and both are nearly free once a device is booted; and Milestone 0 splits at the delivery
 date.
+
+### Current status and what's next (2026-08-20)
+
+| Milestone | State | What remains |
+|---|---|---|
+| 0a — AVD spike | ✅ done | — |
+| A0 — desktop split | ✅ done | — |
+| 0b — device facts + handoff matrix | ✅ done | PS3 (aPS3e) never measured — out of v1 scope |
+| A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density (cosmetic) |
+| **D — storage & permissions** | 🟡 core done | all-files runtime grant UX; SAF-backed reader fallback (providers with no local path); per-API-level AVD matrix; verify `FolderScanner`/availability on real Android storage |
+| **B — launching** | 🟡 core done + verified | see "What's left in B" below |
+| C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
+| E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
+| E-android — cloud sync | ⬜ not started | the substantive save half — see below |
+| F — packaging & release | ⬜ not started | signing keystore, dedicated CI job for the APK, developer-verification/install docs |
+
+**What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
+signal + deferred post-play completion (survives process death). Still open: (1) the **per-emulator setup
+checklist** — does the emulator hold a SAF tree grant covering the game's folder? — which also fixes (2)
+the **nested-multi-disc tree** question (a game in a subfolder below the grant folder; single-file games on
+the grant folder are verified); (3) promoting `GameLaunchDependencyResolver` to a primary path with a
+softened failure mode; (4) an API-<29 `OnResume` fallback for the return signal (the Thor is 33).
+
+**What E-android needs (the biggest remaining body of work):** the auto-sync path is *wired* (the exit
+signal calls it) but no-ops because Android has nothing to sync yet. Landing it means: the SAF-backed
+`ILocalSaveEndpoint` (budgeted as a rewrite, not a swap), the per-emulator Android save providers
+(DuckStation 1:1, PS2 folder-card→`.ps2`, Dolphin region→region+slot, WatermelonDS `.srm` — all mapped in
+the E section), a no-root `Android/data` access mechanism EmuShelf can use programmatically (the owner
+reached these via CX File Manager), a second public OAuth client + custom-scheme redirect, an Android
+`IProtectedTextStore` for the refresh token, and rebuilding the gamepad Saves rows to offer the managed
+transport (currently rclone-only there).
+
+**Recommended next step:** **E-android**, so post-play auto-sync actually moves saves — it is the milestone
+that turns "launches games" into "launches games and keeps your saves in the cloud", and the exit-signal
+plumbing it plugs into is already in place. If instead the goal is a shippable sideload build sooner, **C's
+IME** (so gamepad search/rename work) and **F** (packaging) are the shorter path to an experimental release
+that launches games without cloud saves.
 
 E-desktop is genuinely parallel and improves the shipping product either way — it deletes three rclone
 download steps from `build.yml` and a bundled binary from all three artifacts.

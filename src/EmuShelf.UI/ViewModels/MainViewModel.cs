@@ -5833,6 +5833,76 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    // The longest wall-clock gap between launch and return that is still credited as play time. Beyond
+    // this the number is almost certainly a session recovered long after process death, not real play.
+    private static readonly TimeSpan MaxDeferredPlaySession = TimeSpan.FromHours(12);
+
+    /// <summary>
+    /// Runs the deferred post-play work for a fire-and-forget launch (the Android path): accrues play
+    /// time, pushes saves after the session, and refreshes Recently Played. The desktop path does this
+    /// inline once the tracked process exits; Android has no process to await, so its platform return
+    /// signal calls this when EmuShelf comes back to the foreground — and once at startup, to complete a
+    /// session interrupted by process death. Must be called on the UI thread (it touches launch status and
+    /// grid state). The caller clears the pending-session record after this returns.
+    /// </summary>
+    public async Task CompleteDeferredPlaySessionAsync(long gameId, TimeSpan playDuration)
+    {
+        // Off the UI thread: this runs the instant the couch returns to the foreground, and the library
+        // read (a full-table query) would otherwise hitch that first frame on a large library.
+        var game = await Task.Run(() => _library.GetGames().FirstOrDefault(candidate => candidate.Id == gameId));
+        if (game is null)
+        {
+            _logger.Warning(
+                $"Deferred play session for game id {gameId} could not complete: it is no longer in the library.");
+            return;
+        }
+
+        // The duration is wall-clock from launch to this return, so it over-counts any time spent away
+        // from the game before coming back — and after process death, "coming back" may be hours or days
+        // later, which would otherwise accrue a wildly inflated session. Cap it: beyond a plausible single
+        // sitting the number is meaningless, so drop it rather than record a fake multi-day playtime. The
+        // launch itself was already stamped (last-played + play count) at start, so a dropped duration only
+        // loses the (approximate) minutes, not the "played" signal.
+        if (playDuration > TimeSpan.Zero && playDuration <= MaxDeferredPlaySession)
+        {
+            try
+            {
+                await Task.Run(() => _library.AddPlaytime(gameId, playDuration));
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("Could not record playtime after a deferred launch.", ex);
+            }
+        }
+        else if (playDuration > MaxDeferredPlaySession)
+        {
+            _logger.Information(
+                $"Skipped implausible deferred playtime of {playDuration:g} for {game.Title} " +
+                "(likely a session recovered long after process death).");
+        }
+
+        try
+        {
+            // No-op until Android save sync is configured (CanSyncSystem is false), so this safely wires
+            // the auto-sync path ahead of the Milestone E-android save providers that give it something to
+            // push. On desktop this class never reaches here.
+            await SyncSavesForLaunchAsync(game, game.Title, afterExit: true, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Post-play save sync failed for {game.Title}.", ex);
+        }
+
+        try
+        {
+            await RefreshAfterPlayRecordedAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not refresh Recently Played after {game.Title}: {ex.Message}");
+        }
+    }
+
     // A just-recorded play makes the Recently Played collection stale. If the user launched from
     // within it, rebuild it now so the game jumps to the front on return; otherwise just drop its
     // cached tiles so the next visit rebuilds from the DB — no reflow of the scope they returned to.

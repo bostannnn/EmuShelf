@@ -9676,3 +9676,41 @@ Two Android-facing changes landed together.
   `*` row with a dedicated scroller), so it was left as-is. Reproduced and guarded headlessly at
   833×468 with `MinHeight=0` (the Android head has no window minimum the way desktop's `MinHeight=560`
   does; both render the same `GamepadShellView`).
+
+## 2026-08-20 — Android storage: app-private, non-portable, backup off (Milestone D)
+
+Three related storage decisions for the Android head, all now reflected in code and the manifest:
+
+- **`android:allowBackup="false"`** (manifest). Android auto-backup is on by default and would silently
+  ship EmuShelf's SQLite library, `Settings/`, and the Google Drive refresh token to another install via
+  Google's cloud — a privacy and correctness hazard (a restored token on a second device). Cloud sync is
+  EmuShelf's own explicit, user-controlled feature; the OS backup is not.
+- **EmuShelf's own data is app-private and non-portable on Android.** The base directory is the app's
+  `FilesDir` (`/data/data/com.emushelf.app/files`), the only reliably writable root. This means *Clear
+  data* wipes the library and uninstall deletes scraped covers — the accepted trade for no-root operation.
+  It does **not** touch the user's game files, which live on shared storage / the SD card and are only
+  read.
+- **Game paths are stored absolute on Android, not relative.** `RelativePathResolver` relativizes a path
+  against the base directory only when `IAppPaths.UsesPortableStorage` is true (the desktop portable
+  targets, where app + emulators + games share one drive that moves as a unit). On Android the app-private
+  base (`/data/…`) and shared storage (`/storage/…`) both root at `/` but do not move together, so
+  relativizing would emit a fragile `../../../storage/…` string; absolute storage is correct there. The
+  flag is false only on the Android head (`AppBootstrapper` sets it from `OperatingSystem.IsAndroid()`).
+
+## 2026-08-20 — Android launch definitions are a separate, measured data set (Milestone B)
+
+The desktop launch model (`EmulatorDefinition` + an argument-template string → a `ProcessStartSpec` of
+executable/args) does not fit Android, where launching is component + action + payload-slot on an
+`Intent`. So Android gets its own launch data (`AndroidLaunchProfile`) and a pure intent builder
+(`AndroidIntentFactory`/`AndroidLaunchResolver`), populated from the intents measured first-hand on the
+Thor and corroborated against Cocoon's live launch log and NeoStation's emulator table (0b). Three payload
+conventions exist and are modelled explicitly: content URI as intent **data** (PPSSPP, Azahar, ARMSX2),
+content URI in a named **extra** (DuckStation `bootPath`+`isOneShot`, Dolphin `AutoStartFile`,
+WatermelonDS custom action + `uri`), and RetroArch's plain-path `ROM`+`LIBRETRO`. The Android emulator set
+is **not** the desktop set (ARMSX2 and WatermelonDS have no desktop entry; the desktop PS2 emulator is a
+different app), so the profiles are a distinct registry, not an overload. Every launch URI is the
+tree-scoped `…/tree/<tree>/document/<doc>` form that matched a persisted grant on-device; a bare
+`document/` URI does not. Adding an emulator now also requires a `<queries>` manifest entry
+(package visibility, API 30+), a deliberate regression from the desktop "definition is pure data" model.
+The intent-firing glue (`AndroidGameLauncher`) is built; wiring it into `IEmulatorLaunchService` and the
+return-from-game exit signal (which survives process death) is the remaining Milestone B integration.

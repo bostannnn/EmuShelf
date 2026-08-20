@@ -268,7 +268,9 @@ public partial class App : Application
                 screenScraperAccount,
                 scrapeBatch));
 
-        var launchService = new EmulatorLaunchService(
+        // The Android head supplies its own intent-based launch service; every desktop head leaves this
+        // null and gets the shared process-tracking launcher.
+        var launchService = shell.LaunchService ?? new EmulatorLaunchService(
             Bootstrapper.EmulatorConfigurations,
             Bootstrapper.ProcessRunner,
             shell.Frontend,

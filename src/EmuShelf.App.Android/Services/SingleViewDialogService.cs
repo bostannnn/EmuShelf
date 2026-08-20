@@ -4,6 +4,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Storage.Android;
 using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.Android.Services;
@@ -62,7 +63,7 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
         var folder = folders[0];
         var localPath = folder.TryGetLocalPath();
         if (string.IsNullOrEmpty(localPath))
-            localPath = TryResolveExternalStorageTreePath(folder.Path);
+            localPath = AndroidExternalStorageUri.TryResolveLocalPath(folder.Path);
 
         if (string.IsNullOrEmpty(localPath) || !Directory.Exists(localPath))
         {
@@ -74,51 +75,6 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
 
         logger.Information($"Import folder resolved to '{localPath}'.");
         return localPath;
-    }
-
-    /// <summary>
-    /// Translates a SAF tree URI from the platform "external storage" documents provider into its raw
-    /// filesystem path — e.g.
-    /// <c>content://com.android.externalstorage.documents/tree/primary%3AEmuShelfRoms</c> →
-    /// <c>/storage/emulated/0/EmuShelfRoms</c>. Only valid because EmuShelf holds all-files access, and
-    /// only for that one provider; anything else returns null and routes to the Milestone D fallback.
-    /// </summary>
-    private static string? TryResolveExternalStorageTreePath(Uri? treeUri)
-    {
-        if (treeUri is null || !treeUri.Host.Equals("com.android.externalstorage.documents", StringComparison.Ordinal))
-            return null;
-
-        // The document id is the segment after "/tree/", e.g. "primary:EmuShelfRoms".
-        var segments = treeUri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var treeIndex = Array.IndexOf(segments, "tree");
-        if (treeIndex < 0 || treeIndex + 1 >= segments.Length)
-            return null;
-
-        var documentId = Uri.UnescapeDataString(segments[treeIndex + 1]);
-        var parts = documentId.Split(':', 2);
-        var volume = parts[0];
-        var relative = parts.Length > 1 ? parts[1] : string.Empty;
-
-        // "primary" is the built-in shared storage; a named volume is an SD card / USB drive at
-        // /storage/<id>. Reject an empty volume (the "root of all storage" pick SAF also blocks). A
-        // volume id must be a single path segment — a '/' or '\' in it would itself let the root escape.
-        if (string.IsNullOrEmpty(volume) || volume.AsSpan().IndexOfAny('/', '\\') >= 0)
-            return null;
-        var root = volume.Equals("primary", StringComparison.Ordinal)
-            ? "/storage/emulated/0"
-            : $"/storage/{volume}";
-
-        if (string.IsNullOrEmpty(relative))
-            return root;
-
-        // Defense in depth: the system document picker never emits a rooted or parent-traversing
-        // document id, but this translation runs with all-files access, so verify the combined path
-        // stays inside the chosen volume before handing it to the scanner (a rooted 'relative' would
-        // make Path.Combine discard the root, and '..' segments would climb out of it).
-        var combined = Path.GetFullPath(Path.Combine(root, relative));
-        return combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-            ? combined
-            : null;
     }
 
     public Task<string?> PickEmulatorExecutableAsync(string emulatorName)

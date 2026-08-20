@@ -92,9 +92,11 @@ public sealed class AppBootstrapper
                 + "EmuShelfAndroidApplication.CustomizeAppBuilder sets it from FilesDir.");
         }
 
+        // Android relativization is meaningless (app-private and shared storage do not move together),
+        // so game paths are stored absolute there; the desktop targets keep portable relative paths.
         Paths = string.IsNullOrWhiteSpace(baseDirectoryOverride)
             ? new AppPaths()
-            : new AppPaths(baseDirectoryOverride);
+            : new AppPaths(baseDirectoryOverride, usesPortableStorage: !OperatingSystem.IsAndroid());
         Paths.EnsureDirectoriesExist();
         Logger = new FileAppLogger(Paths);
         Logger.Information("EmuShelf startup began.");

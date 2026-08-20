@@ -90,4 +90,18 @@ public class MainActivity : AvaloniaMainActivity
 
         return base.DispatchKeyEvent(e);
     }
+
+    /// <summary>
+    /// The head's return signal. Fires when EmuShelf gains (or loses) the single top-resumed activity
+    /// slot; on gaining it — i.e. the user came back from a launched emulator — the shell completes the
+    /// pending play session (play-time accrual, save sync). Preferred over <c>OnResume</c> because since
+    /// Android 10 multiple activities can be resumed at once (the Thor is multi-display), so this is the
+    /// accurate "EmuShelf is now in front" edge. Available on API 29+; the Thor is 33.
+    /// </summary>
+    public override void OnTopResumedActivityChanged(bool isTopResumedActivity)
+    {
+        base.OnTopResumedActivityChanged(isTopResumedActivity);
+        if (isTopResumedActivity)
+            AndroidActivityLifecycle.ReturnedToForeground?.Invoke();
+    }
 }
