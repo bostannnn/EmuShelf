@@ -220,6 +220,10 @@ public partial class GamepadShellView : UserControl
         if (e.PropertyName is not (nameof(MainViewModel.SelectedSystem) or
             nameof(MainViewModel.CurrentLibraryScope) or nameof(MainViewModel.GamepadOverlay) or
             nameof(MainViewModel.GamepadOverlaySelectionIndex) or nameof(MainViewModel.GamepadOverlayTitle) or
+            // The View mode / Sort picker rows share the option list's scroll region, so moving the ring
+            // onto them (which changes the region, not the option index) must re-run the reveal to keep
+            // them on-screen on a short couch panel.
+            nameof(MainViewModel.IsGamepadViewModeRowFocused) or nameof(MainViewModel.IsGamepadSortRowFocused) or
             nameof(MainViewModel.FocusedGamepadAchievement) or
             nameof(MainViewModel.GamepadAchievementLayoutRevision) or
             nameof(MainViewModel.GamepadSettingsFocusRevision) or
@@ -522,6 +526,17 @@ public partial class GamepadShellView : UserControl
     {
         if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
             return;
+
+        // The View mode / Sort picker shares the option list's scroll region (see GamepadShellView.axaml).
+        // On a short couch panel the picker can be scrolled off, so bring the focused row back into view
+        // when the ring lands on it — the option branch below only reveals option buttons.
+        if (viewModel.IsGamepadSystemMenuOpen)
+        {
+            if (viewModel.IsGamepadViewModeRowFocused)
+                GamepadViewModeRow.BringIntoView();
+            else if (viewModel.IsGamepadSortRowFocused)
+                GamepadSortRow.BringIntoView();
+        }
 
         // The section rail scrolls, so keep the selected section visible however the section changed
         // (LB/RB from the content column, or Up/Down while the rail itself is focused).

@@ -1019,11 +1019,23 @@
                     </Grid>
 
                     <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="18">
-                        <!-- Couch layout picker at the top of the start menu. Only the system menu uses
-                             this Auto row (Achievements/Settings own it when they are the open overlay), so
-                             it is gated on IsGamepadSystemMenuOpen. The active mode is filled; the pair
-                             lights up when the controller ring is on the row. -->
-                        <StackPanel Grid.Row="0" IsVisible="{Binding IsGamepadSystemMenuOpen}"
+                        <!-- System-menu body: the View mode / Sort picker and the option list share ONE
+                             scroll region so a short couch panel (e.g. the AYN Thor at ~396dip usable
+                             height) scrolls to every entry instead of starving the option row to zero and
+                             hiding Settings/Quit. The same scroller carries the options for the disc /
+                             actions / import overlays too — its header is gated to the system menu, so those
+                             overlays see just the option list. Kept on Grid.Row=1 so the disc/actions
+                             overlays stay pixel-for-pixel where they were (Row 0 is empty for them). -->
+                        <ScrollViewer x:Name="GamepadOverlayOptionsScroller" Grid.Row="1" Classes="gamepad-scroll"
+                                      VerticalScrollBarVisibility="Auto"
+                                      IsVisible="{Binding ShowsGamepadOverlayOptions}">
+                        <!-- Right inset reserves the scroll gutter for BOTH the picker and the options, so
+                             the thumb never overlaps the rightmost picker card when the menu scrolls. -->
+                        <StackPanel Spacing="18" Margin="0,0,18,0">
+                        <!-- Couch layout picker at the top of the start menu, gated to the system menu.
+                             The active mode is filled; the pair lights up when the controller ring is on
+                             the row. -->
+                        <StackPanel x:Name="GamepadSystemMenuPicker" IsVisible="{Binding IsGamepadSystemMenuOpen}"
                                     Spacing="12" Margin="0,0,0,4">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Text="View mode" FontSize="13" FontWeight="SemiBold"
@@ -1033,7 +1045,7 @@
                                            FontSize="13" VerticalAlignment="Center"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </Grid>
-                            <Border Classes="gamepad-viewmode-row"
+                            <Border x:Name="GamepadViewModeRow" Classes="gamepad-viewmode-row"
                                     Classes.focused="{Binding IsGamepadViewModeRowFocused}">
                                 <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
                                     <Button Grid.Column="0" Classes="gamepad-viewmode-card"
@@ -1123,7 +1135,7 @@
                                  drives the shared SortColumn via SelectGamepadSortCommand; the selected card
                                  is filled by the .selected accent wash. Labels are short so all four fit the
                                  row — the full name is on the tooltip / automation name. -->
-                            <Border Classes="gamepad-viewmode-row"
+                            <Border x:Name="GamepadSortRow" Classes="gamepad-viewmode-row"
                                     Classes.focused="{Binding IsGamepadSortRowFocused}">
                                 <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
                                     <Button Grid.Column="0" Classes="gamepad-viewmode-card"
@@ -1162,6 +1174,20 @@
                             </Border>
                             <Border Height="1" Background="{DynamicResource EmuBorderBrush}" />
                         </StackPanel>
+                            <ItemsControl x:Name="GamepadOverlayOptions" Classes="gamepad-overlay-options"
+                                          Classes.top-aligned="{Binding AreGamepadOverlayOptionsTopAligned}"
+                                          ItemsSource="{Binding GamepadOverlayOptions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
+                                        <Button Classes="gamepad-modal-option"
+                                                Classes.destructive="{Binding IsDestructive}"
+                                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
+                                                Classes.focused="{Binding IsFocused}" Content="{Binding Label}" Command="{Binding Command}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        </ScrollViewer>
                         <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadAchievementsOpen}"
                               RowDefinitions="Auto,*" RowSpacing="16">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
@@ -2599,25 +2625,6 @@
                             </Grid>
                         </Grid>
                         </Grid>
-
-                        <ScrollViewer x:Name="GamepadOverlayOptionsScroller" Classes="gamepad-scroll"
-                                      Grid.Row="1" MaxHeight="360"
-                                      VerticalScrollBarVisibility="Auto"
-                                      IsVisible="{Binding ShowsGamepadOverlayOptions}">
-                            <ItemsControl x:Name="GamepadOverlayOptions" Classes="gamepad-overlay-options"
-                                          Margin="0,0,18,0"
-                                          Classes.top-aligned="{Binding AreGamepadOverlayOptionsTopAligned}"
-                                          ItemsSource="{Binding GamepadOverlayOptions}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
-                                        <Button Classes="gamepad-modal-option"
-                                                Classes.destructive="{Binding IsDestructive}"
-                                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                                Classes.focused="{Binding IsFocused}" Content="{Binding Label}" Command="{Binding Command}" />
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
                     </Grid>
 
                     <StackPanel x:Name="GamepadOverlayHints" Grid.Row="2" Orientation="Horizontal" Spacing="18">

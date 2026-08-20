@@ -9643,3 +9643,36 @@ now confirmed on hardware, 2026-08-20):
 Detail and the full table live in [docs/android-port-plan.md](docs/android-port-plan.md) under
 E — Cloud sync; this entry records these constraints because they change a provider's contract or
 path shape rather than being a plain copy.
+
+## 2026-08-20 — Android A2: couch UI scaled to a Deck-class dip canvas; overlays fit short panels; CRT defaults off on Android
+
+Two Android-facing changes landed together.
+
+- **CRT tube defaults off on Android (first run only).** The simulated CRT presentation defaults on
+  everywhere else because the shelf's premise is physical media under a TV, but it holds the couch
+  screen at the compositor's frame rate and captures the UI on a timer — a cost not worth paying by
+  default on a handheld's battery/GPU. Seeded in `AppBootstrapper` in the existing first-run block
+  (`OperatingSystem.IsAndroid()`), so it only sets the initial default; the in-app toggle still
+  persists a later explicit choice, and desktop (including the 1280×800 visual snapshots) is untouched.
+
+- **The couch UI is scaled to a Deck-class dip canvas on Android (the primary responsiveness fix).**
+  The whole couch shell is laid out in device-independent pixels tuned for the Steam Deck's 1280×800.
+  The AYN Thor packs 1920×1080 physical pixels behind a ~2.31× display density, so Avalonia only saw
+  ~833×468 **dip** and the Deck-sized shell was far too big for the panel ("everything is huge"). The
+  Android head now overrides the activity's resource density in `MainActivity.AttachBaseContext`,
+  re-deriving it from a target dip width (`CouchTargetDipWidth = 1280`) to give the shell a Deck-class
+  canvas (~1280×720 dip, ~1.5× density on the Thor) so everything scales down to fit. Guarded to only
+  ever *lower* density (never enlarge on a low-dpi panel) and to no-op at/under the target width — a
+  pure Android-head change with no effect on the shared UI, desktop, or the visual snapshots. Avalonia
+  honours the overridden activity resource density even though the window-manager display config still
+  reports the panel's native 369dpi. Verified on the Thor.
+- **The couch system menu also shares one scroll region.** Complementary to the density fix: even on a
+  Deck-class canvas a long menu (populated library plus the View mode / Sort picker) can exceed a short
+  panel's height. The picker used to sit in an `Auto` grid row that starved the `*` option row to ~0px,
+  clipping Settings/Quit out of reach. The picker now lives inside
+  the shared `GamepadOverlayOptionsScroller` (kept on `Grid.Row=1`, so the disc/actions/import overlays
+  stay pixel-identical — their picker header is collapsed), and the picker rows join the option list's
+  scroll-follow (`RevealGamepadOverlayFocus`). The Settings overlay already fit (its content sits in a
+  `*` row with a dedicated scroller), so it was left as-is. Reproduced and guarded headlessly at
+  833×468 with `MinHeight=0` (the Android head has no window minimum the way desktop's `MinHeight=560`
+  does; both render the same `GamepadShellView`).

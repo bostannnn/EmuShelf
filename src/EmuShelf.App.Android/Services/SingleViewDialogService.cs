@@ -145,6 +145,12 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
         return Task.FromResult<string?>(null);
     }
 
+    public Task<string?> PickSaveArchiveAsync(string suggestedFileName)
+    {
+        logger.Information(NotYet + nameof(PickSaveArchiveAsync));
+        return Task.FromResult<string?>(null);
+    }
+
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle)
     {
         logger.Information(NotYet + nameof(ConfirmRemoveGameAsync));

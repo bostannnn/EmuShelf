@@ -106,6 +106,13 @@ public sealed class AppBootstrapper
         Settings = SettingsService.Load();
         if (isFirstRun)
         {
+            // The CRT tube defaults on because the shelf's premise is physical media under a TV, but on
+            // Android it defaults off: the effect holds the screen at the compositor's frame rate and
+            // captures the couch UI on a timer, a cost that isn't worth paying by default on a handheld's
+            // battery and GPU. This only seeds the first-run default — the in-app toggle still persists a
+            // later explicit choice either way.
+            if (OperatingSystem.IsAndroid())
+                Settings = Settings with { CrtScreenEffect = false };
             try
             {
                 SettingsService.Save(Settings);
