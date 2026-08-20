@@ -32,3 +32,9 @@ artifacts/
 
 # Raw 3D model source files — processed into src/EmuShelf.Rendering/Assets/*.glb, not shipped
 /models/
+
+# Android signing keystores — never commit these; they live only as GitHub secrets
+# and an offline backup (a committed signing key must be treated as compromised).
+*.keystore
+*.jks
+*.p12

@@ -1016,10 +1016,14 @@ Android providers diverge from their desktop counterparts.
   job's `if` only *requires* the three desktop packages to have succeeded — so a failing experimental APK
   build is left off the release rather than blocking the Windows/macOS/Linux release (the plan's original
   "don't let Android block a release" guarantee, kept while still shipping the APK when it builds). Still
-  to do here: a real signing keystore (its own DECISIONS entry) and the Android OAuth client id in
+  to do here: the owner runs the keystore one-time setup (below), and the Android OAuth client id in
   `EmbeddedSecrets`.
 - Signing keystore. This is a permanent, unrecoverable obligation — lose it and every user must
-  uninstall to upgrade. It deserves its own DECISIONS entry.
+  uninstall to upgrade. **CI signing is wired (2026-08-20):** `package-android` release-signs when the
+  `ANDROID_KEYSTORE_*` secrets are present and debug-signs otherwise, so nothing breaks before setup;
+  passwords pass to MSBuild as `env:VAR` (never on the command line). What remains is the owner running the
+  one-time keystore generation + `gh secret set` runbook and holding an offline backup — see the
+  DECISIONS 2026-08-20 "Android release signing keystore" entry for the exact commands.
 - `EmbeddedSecrets.targets` gains the Android OAuth client id — one `Append(...)` line plus one
   accessor, verified.
 - **Android developer verification.** Enforcement begins 30 September 2026 in Brazil, Indonesia,

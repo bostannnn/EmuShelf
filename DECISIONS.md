@@ -9755,3 +9755,36 @@ Verified on the Thor via a device-only save export: it enumerated **10 real memc
 (confirmed by a runtime read probe, not `run-as`), so the export skipped them and completed with the other ten. This is an
 unfixable-without-root edge (an app cannot chmod another app's files) and it degrades gracefully — the unreadable save is
 simply skipped, never crashing the pass. The capability model's "not possible here, and why" channel covers it.
+
+## 2026-08-20 — Android release signing keystore (Milestone F)
+
+The Android APK is signed with a **stable release keystore** so every build shares one signature and
+installs as an in-place upgrade (a debug key is regenerated per machine/run, which blocks upgrades). The
+keystore is a **permanent, unrecoverable obligation**: lose it and no future build can update an installed
+app — every user must uninstall and reinstall. It therefore lives in exactly two places, never in the repo:
+GitHub Actions secrets (for CI) and an offline backup the owner holds (password manager / encrypted drive).
+`*.keystore`/`*.jks`/`*.p12` are git-ignored.
+
+CI (`package-android` in `.github/workflows/build.yml`) signs only when the secrets are present; absent them
+(fork PRs, or before setup) it debug-key-signs as before, so nothing breaks in between. Signing passwords
+are passed to MSBuild as `env:VAR` so they never reach the command line or logs.
+
+**One-time setup runbook (owner runs these — the passwords and key are the owner's to hold):**
+
+```
+# 1. Generate the keystore (choose a strong store password + key password; keep the alias "emushelf").
+keytool -genkeypair -v -storetype PKCS12 -keystore emushelf-release.keystore \
+  -alias emushelf -keyalg RSA -keysize 4096 -validity 10000
+
+# 2. Store the four secrets in the repo (gh prompts for each password; base64 the keystore file):
+base64 -i emushelf-release.keystore | gh secret set ANDROID_KEYSTORE_BASE64 --repo bostannnn/EmuShelf
+gh secret set ANDROID_KEYSTORE_PASSWORD --repo bostannnn/EmuShelf   # the store password from step 1
+gh secret set ANDROID_KEY_PASSWORD      --repo bostannnn/EmuShelf   # the key password from step 1
+gh secret set ANDROID_KEY_ALIAS -b emushelf --repo bostannnn/EmuShelf
+
+# 3. Back up emushelf-release.keystore + both passwords offline. Then it may be deleted from the working dir.
+```
+
+Once the secrets exist, the next tagged release ships a release-signed APK; installs from that point upgrade
+in place. (The APK on/before v1.4.9 is debug-signed, so the *first* release-signed build still needs a
+one-time uninstall/reinstall — unavoidable when moving off the debug key.)

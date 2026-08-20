@@ -236,6 +236,11 @@ jobs:
     # `release` job's `needs`: the APK is an experimental sideload artifact and must never be able to fail
     # a tagged Windows/macOS/Linux release (that job runs with fail_on_unmatched_files: true).
     runs-on: ubuntu-latest
+    # Hoisted to job level so the decode/sign steps can gate on `env.ANDROID_KEYSTORE_BASE64 != ''`
+    # (a step cannot read `secrets.*` in its own `if`). Absent (fork PRs, or before the keystore is
+    # configured) the build simply debug-key-signs, exactly as before.
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -265,24 +270,47 @@ jobs:
         run: |
           yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
           "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Decode the release keystore
+        # Only when the keystore secret is configured. Written to RUNNER_TEMP (outside the workspace,
+        # never committable), and removed at job end with the runner.
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
       - name: Build the Android APK
         # Application-identity credentials are baked in via Build/EmbeddedSecrets.targets, exactly as the
-        # desktop package jobs do; absent secrets (fork PRs) just ship without them. Release Android builds
-        # are debug-key-signed when no release keystore is configured — installable via ADB / sideload,
-        # which is all v1 needs (a real signing keystore is a later Milestone F item, DECISIONS-tracked).
+        # desktop package jobs do; absent secrets (fork PRs) just ship without them.
+        #
+        # Signing: when the ANDROID_KEYSTORE_* secrets are configured the APK is signed with the stable
+        # release keystore, so every build shares one signature and installs as an in-place upgrade. The
+        # passwords are passed as `env:VAR` (a .NET Android feature) so they never appear on the command
+        # line or in logs. When the secret is absent the build debug-key-signs as before (installable via
+        # sideload, but the ephemeral key blocks in-place upgrades). Setup runbook: see DECISIONS 2026-08-20.
         env:
           SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
           SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
           SCREENSCRAPER_SOFTNAME: ${{ secrets.SCREENSCRAPER_SOFTNAME }}
           EMUSHELF_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_ID }}
           EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET }}
-        run: >-
-          dotnet publish src/EmuShelf.App.Android/EmuShelf.App.Android.csproj
-          -c Release
-          -p:AndroidPackageFormat=apk
-          -p:JavaSdkDirectory="${JAVA_HOME}"
-          -p:AndroidSdkDirectory="${ANDROID_HOME}"
-          -o publish/android
+          ANDROID_SIGNING_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          sign_args=()
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            sign_args=(
+              -p:AndroidKeyStore=true
+              -p:AndroidSigningKeyStore="$RUNNER_TEMP/release.keystore"
+              -p:AndroidSigningKeyAlias="$ANDROID_SIGNING_KEY_ALIAS"
+              -p:AndroidSigningStorePass=env:ANDROID_SIGNING_STORE_PASS
+              -p:AndroidSigningKeyPass=env:ANDROID_SIGNING_KEY_PASS
+            )
+          fi
+          dotnet publish src/EmuShelf.App.Android/EmuShelf.App.Android.csproj \
+            -c Release \
+            -p:AndroidPackageFormat=apk \
+            -p:JavaSdkDirectory="$JAVA_HOME" \
+            -p:AndroidSdkDirectory="$ANDROID_HOME" \
+            "${sign_args[@]}" \
+            -o publish/android
       - name: Collect the APK
         run: |
           mkdir -p artifacts
