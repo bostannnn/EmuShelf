@@ -46,10 +46,10 @@ public sealed class AndroidEmulatorLaunchService(
 
         var configuration = configurations.Get(game.SystemId);
 
-        // Try the maintained emulators first, falling through when one cannot be satisfied — e.g.
-        // RetroArch needs a core path, so on a system it shares with a standalone emulator (PS1: RetroArch
-        // + DuckStation) the standalone wins when no core is configured, rather than the launch failing.
-        var candidates = AndroidEmulatorLaunchProfiles.ForSystem(game.SystemId);
+        // Honor the emulator selected in shared settings first, then fall through to maintained
+        // alternatives when that choice cannot be satisfied. RetroArch needs a core path, so a missing
+        // core can still fall back to a standalone emulator instead of making the game unlaunchable.
+        var candidates = AndroidEmulatorLaunchProfiles.ForSystem(game.SystemId, configuration?.EmulatorId);
         if (candidates.Count == 0)
             return new GameLaunchResult(false, $"Cannot launch {title}: no Android emulator supports this system.");
 

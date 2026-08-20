@@ -30,6 +30,7 @@ using EmuShelf.Core.Systems;
 using EmuShelf.Core.TexturePacks;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Integrations.Emulators.Rpcs3;
 
 namespace EmuShelf.App.ViewModels;
@@ -2209,7 +2210,14 @@ public partial class MainViewModel : ViewModelBase
             CloseGamepadSettingsProjection();
             var settings = await CreateSettingsViewModelAsync();
             GamepadSettings = new GamepadSettingsViewModel(
-                settings, _onScreenKeyboard, ThemeChoices, SetThemeAsync, OpenGamepadHotkeysFromSettings);
+                settings,
+                _onScreenKeyboard,
+                ThemeChoices,
+                SetThemeAsync,
+                OpenGamepadHotkeysFromSettings,
+                androidRetroArchCores: OperatingSystem.IsAndroid()
+                    ? AndroidRetroArchCoreCatalog.BySystem
+                    : null);
             OpenGamepadOverlay(GamepadOverlayKind.Settings);
         }
         catch (Exception ex)

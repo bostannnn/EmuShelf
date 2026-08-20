@@ -1977,6 +1977,9 @@ breaks the whole-solution macOS build/test loop.
         `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
         (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
+        Controller Settings now selects a compatible RetroArch core per system without trying to read
+        RetroArch's app-private core directory; the saved choice activates RetroArch and is passed as the
+        exact `LIBRETRO` path, while unavailable choices can still fall through to standalone emulators.
         Remaining: per-emulator setup checklist (+ nested-tree verification), dependency-resolver promotion.
   - [~] **E-android — cloud sync (started, 2026-08-20)**. The auto-sync path was already wired; this adds
         the actual save data. **Capability finding that reshaped the milestone:** a runtime probe from the

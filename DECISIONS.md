@@ -9811,3 +9811,18 @@ composition tests pin both systems to Dolphin's package-derived root and keep fo
 unresolved until the user supplies an override. The full Release suite is green (902 App + 1,191
 Infrastructure = 2,093). ADB and the Android SDK are not installed on the current host, so a real Thor
 export/restore remains the hardware acceptance gate and is not claimed complete here.
+
+## 2026-08-20 — Android RetroArch cores use a curated selector, not filesystem discovery
+
+RetroArch's Android cores live under its app-private
+`/data/data/com.retroarch.aarch64/cores` directory. EmuShelf cannot enumerate that directory and should not
+ask the user to navigate to it, so Android controller Settings offers a curated list of compatible core
+filenames per system and constructs the exact `*_libretro_android.so` path expected by RetroArch's
+`LIBRETRO` intent extra. This is selection only: the user installs the core in RetroArch, and EmuShelf never
+reads or changes RetroArch's files.
+
+The path is stored in the existing per-system `CorePath` field. Choosing a core also makes the shared
+`retroarch` profile active for that system. Android translates shared emulator ids to Android launch-profile
+ids and tries the explicit selection first, followed by its maintained-first fallbacks; this matters for DS
+and PS1, where RetroArch shares a system with WatermelonDS or DuckStation. Unknown previously stored paths
+remain visible and are not silently replaced.

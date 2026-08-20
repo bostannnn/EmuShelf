@@ -83,7 +83,7 @@ saying honestly why the rest are not. Shipped as a sideload APK from a GitHub re
 experimental.
 
 **Android v1 is not:** feature parity with desktop, Play Store distribution, phone or tablet support,
-RetroArch-backed systems, or any feature that writes an emulator's configuration.
+automatic RetroArch core installation, or any feature that writes an emulator's configuration.
 
 **Per-milestone exit criteria** — each is a point where stopping leaves the desktop product no worse
 than before, which is the property that makes them real rather than decorative:
@@ -1067,11 +1067,15 @@ date.
 | F — packaging & release | 🟡 CI + signing path landed | owner must create/store the permanent keystore; developer-verification/install docs remain |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
-signal + deferred post-play completion (survives process death). Still open: (1) the **per-emulator setup
-checklist** — does the emulator hold a SAF tree grant covering the game's folder? — which also fixes (2)
-the **nested-multi-disc tree** question (a game in a subfolder below the grant folder; single-file games on
-the grant folder are verified); (3) promoting `GameLaunchDependencyResolver` to a primary path with a
-softened failure mode; (4) an API-<29 `OnResume` fallback for the return signal (the Thor is 33).
+signal + deferred post-play completion (survives process death). RetroArch-backed systems now have a
+controller-native per-system selector: it offers compatible known core filenames, persists the selected
+app-private path, activates RetroArch for that system, and makes the launcher honor that choice before its
+fallbacks. EmuShelf does not install or inspect cores; the matching core must already be installed in
+RetroArch. Still open: (1) the **per-emulator setup checklist** — does the emulator hold a SAF tree grant
+covering the game's folder? — which also fixes (2) the **nested-multi-disc tree** question (a game in a
+subfolder below the grant folder; single-file games on the grant folder are verified); (3) promoting
+`GameLaunchDependencyResolver` to a primary path with a softened failure mode; (4) an API-<29 `OnResume`
+fallback for the return signal (the Thor is 33).
 
 **What E-android needs (the biggest remaining body of work):** the auto-sync path is *wired* (the exit
 signal calls it) but no-ops because Android has nothing to sync yet. **The single biggest item shrank on

@@ -113,7 +113,31 @@ public static class AndroidEmulatorLaunchProfiles
 
     /// <summary>The launch profiles that can serve <paramref name="systemId"/>, maintained builds first.</summary>
     public static IReadOnlyList<AndroidLaunchProfile> ForSystem(string systemId) =>
-        All.Where(profile => profile.Supports(systemId))
-            .OrderBy(profile => profile.Maintenance)
+        ForSystem(systemId, preferredSharedEmulatorId: null);
+
+    /// <summary>
+    /// The launch profiles that can serve <paramref name="systemId"/>. A profile explicitly selected
+    /// in the shared emulator settings is tried first; remaining fallbacks retain the maintained-first
+    /// order. Shared ids are translated here because Android launch profiles deliberately have distinct
+    /// ids from their desktop configuration counterparts.
+    /// </summary>
+    public static IReadOnlyList<AndroidLaunchProfile> ForSystem(
+        string systemId,
+        string? preferredSharedEmulatorId)
+    {
+        var preferredAndroidId = preferredSharedEmulatorId switch
+        {
+            "retroarch" => RetroArch.Id,
+            "duckstation" => DuckStation.Id,
+            "dolphin" => Dolphin.Id,
+            "ppsspp" => Ppsspp.Id,
+            "azahar" => Azahar.Id,
+            _ => null,
+        };
+
+        return All.Where(profile => profile.Supports(systemId))
+            .OrderBy(profile => string.Equals(profile.Id, preferredAndroidId, StringComparison.Ordinal) ? 0 : 1)
+            .ThenBy(profile => profile.Maintenance)
             .ToList();
+    }
 }

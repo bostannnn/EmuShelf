@@ -10,6 +10,7 @@ using EmuShelf.Core.Settings;
 using EmuShelf.Core.TexturePacks;
 using EmuShelf.Core.Updates;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Integrations.Systems;
 
 namespace EmuShelf.App.Tests;
@@ -240,6 +241,50 @@ public sealed class GamepadSettingsViewModelTests
         viewModel.SelectedSection = SettingsSection.Emulators;
 
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "emulators.playstation3.sync");
+    }
+
+    [AvaloniaFact]
+    public async Task AndroidRetroArchCoreChoice_SelectsRetroArchAndPersistsLaunchableCorePath()
+    {
+        using var viewModel = CreateGamepadSettings(
+            androidRetroArchCores: AndroidRetroArchCoreCatalog.BySystem);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        var settingsRow = viewModel.Settings.Rows.Single(row => row.SystemId == "playstation");
+        Assert.Equal("duckstation", settingsRow.EmulatorId);
+        var coreRow = viewModel.Rows.Single(row => row.Key == "emulators.playstation.retroarch-core");
+        Assert.Equal("Not selected", coreRow.Value);
+
+        // A advances to the first compatible core. Selecting one also activates RetroArch for this
+        // system, so the Android launcher will prefer it over any standalone fallback.
+        await coreRow.SelectCommand.ExecuteAsync(null);
+        var expectedPath = AndroidRetroArchCoreCatalog.BySystem["playstation"][0].Path;
+        Assert.Equal("retroarch", settingsRow.EmulatorId);
+        Assert.Equal(expectedPath, settingsRow.CorePath);
+
+        await viewModel.Settings.SaveCommand.ExecuteAsync(null);
+        var saved = Assert.Single(
+            _configurations.SavedConfigurations,
+            configuration => configuration.SystemId == "playstation" && configuration.EmulatorId == "retroarch");
+        Assert.Equal(expectedPath, saved.CorePath);
+        Assert.Equal("retroarch", _configurations.ActiveEmulators["playstation"]);
+
+        var resolution = AndroidLaunchResolver.Resolve(
+            "playstation",
+            "/storage/emulated/0/ROMs/PS1/game.chd",
+            AndroidEmulatorLaunchProfiles.RetroArch.Id,
+            saved.CorePath);
+        Assert.True(resolution.Success, resolution.FailureReason);
+        Assert.Equal(expectedPath, resolution.Intent!.StringExtras["LIBRETRO"]);
+    }
+
+    [AvaloniaFact]
+    public void RetroArchCoreChoice_IsOnlyProjectedWhenAndroidSuppliesTheCatalog()
+    {
+        using var viewModel = CreateGamepadSettings();
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith(".retroarch-core", StringComparison.Ordinal));
     }
 
     [AvaloniaFact]
@@ -488,10 +533,12 @@ public sealed class GamepadSettingsViewModelTests
         ScreenScraperSettingsContext? screenScraper = null,
         IOnScreenKeyboardService? onScreenKeyboard = null,
         AppUpdateCoordinator? updates = null,
-        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null) => new(
+        IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
+        IReadOnlyDictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>>? androidRetroArchCores = null) => new(
             CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks, screenScraper, updates),
             onScreenKeyboard,
-            themeChoices);
+            themeChoices,
+            androidRetroArchCores: androidRetroArchCores);
 
     private EmulatorSettingsViewModel CreateSettings(
         LibraryMaintenanceActions? maintenance = null,
@@ -617,6 +664,8 @@ public sealed class GamepadSettingsViewModelTests
     private sealed class RecordingConfigurationStore : IEmulatorConfigurationStore
     {
         public int BatchSaveCalls { get; private set; }
+        public IReadOnlyList<EmulatorConfiguration> SavedConfigurations { get; private set; } = [];
+        public Dictionary<string, string> ActiveEmulators { get; } = new(StringComparer.Ordinal);
 
         public EmulatorConfiguration? Get(string systemId) => null;
 
@@ -624,7 +673,14 @@ public sealed class GamepadSettingsViewModelTests
         {
         }
 
-        public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations) => BatchSaveCalls++;
+        public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations)
+        {
+            BatchSaveCalls++;
+            SavedConfigurations = configurations.ToArray();
+        }
+
+        public void SetActiveEmulator(string systemId, string emulatorId) =>
+            ActiveEmulators[systemId] = emulatorId;
     }
 
     private sealed class RecordingMetadataPreferences : IMetadataPreferencesService
