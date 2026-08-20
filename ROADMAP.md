@@ -1942,17 +1942,27 @@ breaks the whole-solution macOS build/test loop.
       the theme brush `TryFindResource` keys off a not-yet-settled `ActualThemeVariant` on the single-view
       tree, and the couch chrome was captured in dip (833 px) then upscaled onto the 1920 px tube (blurred
       text). Fixed in shared `EmuShelf.UI`; desktop App Release suite green (895/895). See DECISIONS 2026-08-18.
-- [ ] **A2 — couch responsiveness on dense/short panels** 🚧 (Thor, 2026-08-18). The couch shell is tuned
-      for the Steam Deck's 1280×800; the Thor is 1920×1080 physical but ~833×468 **dip** at its ~2.31×
-      density, so the UI is oversized and vertical content overflows. Plan Decision #2 ("do not hard-code
-      one aspect ratio, one DPI") anticipated this but scheduled no work for it. Make the couch shell fit an
-      arbitrary handheld viewport (size from the effective dip viewport, not fixed Deck dimensions).
-- [ ] **Vertical gamepad menus do not scroll to follow the selector** (Thor, 2026-08-18). The focus moves
-      down a vertical list (Settings, sort, system menu) but the `ScrollViewer` does not bring the focused
-      item into view, so the selection runs off-screen. Suspected: the Android `DispatchKeyEvent`→
-      `GamepadAction` path updates view-model selection without giving the item real Avalonia keyboard
-      focus, so focus-follow (`BringIntoView`) never fires. Verify whether it also reproduces on desktop
-      gamepad (shared bug) or is Android-only. **Milestone C** (navigation model on the Thor).
+- [x] **A2 — couch responsiveness on dense/short panels** (Thor, 2026-08-18 → 2026-08-20, validated on
+      hardware). The couch shell is tuned for the Steam Deck's 1280×800; the Thor is 1920×1080 physical but
+      only ~833×468 **dip** at its ~2.31× density, so the whole couch UI was oversized ("everything is
+      huge"). **Primary fix:** the Android head overrides the activity resource density
+      (`MainActivity.AttachBaseContext`, `CouchTargetDipWidth = 1280`) to give the shell a Deck-class
+      ~1280×720 dip canvas, so everything scales down to fit — Android-only, no shared-UI/desktop/snapshot
+      impact. **Complementary fix:** the system menu's `Auto` View mode / Sort picker used to starve the
+      `*` option row to ~0px (Settings/Quit clipped); the picker now shares the option list's one
+      `GamepadOverlayOptionsScroller` scroll region. Verified on the Thor (menu, Settings, quit confirm all
+      Deck-proportioned and reachable) and guarded headlessly
+      (`GamepadSystemMenuOnShortPanel_ScrollsToReachSettings`); desktop App Release suite green (898/898).
+      See DECISIONS 2026-08-20. **Remaining confidence check** (not blocking — the density change is global
+      so these scale too): eyeball the *populated* views — grid / list / 3D shelf covers and the
+      achievements / scraper / hotkeys overlays — at the new density with real games. Gated on staging
+      ROMs on the Thor (the SAF all-files grant was wiped by a `pm clear` during testing).
+- [x] **Vertical gamepad menus scroll to follow the selector** (Thor, 2026-08-18 → 2026-08-20). Solved for
+      the system menu as part of A2: the picker rows now join the option list's scroll-follow, and the
+      shared merge means moving the ring down brings each entry into view (`RevealGamepadOverlayFocus`).
+      The Settings/achievements lists already had dedicated scroll-follow. The suspected Android
+      focus-vs-selection split (`DispatchKeyEvent`→`GamepadAction` without real Avalonia focus) was not the
+      cause here — `BringIntoView` fires off the view-model selection, verified headlessly on desktop.
 - [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
       sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
       touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.

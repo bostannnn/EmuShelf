@@ -1,5 +1,8 @@
+using System;
 using Android.App;
+using Android.Content;
 using Android.Content.PM;
+using Android.Content.Res;
 using Android.Views;
 using Avalonia.Android;
 using EmuShelf.App.Android.Services;
@@ -29,6 +32,46 @@ namespace EmuShelf.App.Android;
         | ConfigChanges.Density)]
 public class MainActivity : AvaloniaMainActivity
 {
+    // The couch shell is laid out in device-independent pixels tuned for the Steam Deck's 1280×800.
+    // A handheld like the AYN Thor packs 1920×1080 physical pixels behind a ~2.31× display density, so
+    // Avalonia only sees ~833×468 **dip** — and the Deck-sized shell is then far too big for the panel.
+    // We re-derive the effective density so the shell gets roughly this many dip across, i.e. a
+    // Deck-class canvas, and everything scales down to fit. Width, because the couch layout is landscape.
+    private const double CouchTargetDipWidth = 1280.0;
+
+    /// <summary>
+    /// Overrides the activity's resource density before Avalonia reads it, so a dense handheld panel
+    /// presents the couch shell at a comfortable Deck-class dip size instead of an oversized ~833 dip.
+    /// Guarded to only ever *lower* density (never enlarge the UI on an already low-dpi display), and to
+    /// no-op on panels that are already ≤ the target width.
+    /// </summary>
+    protected override void AttachBaseContext(Context? @base)
+    {
+        base.AttachBaseContext(WithCouchDensity(@base));
+    }
+
+    private static Context? WithCouchDensity(Context? context)
+    {
+        if (context?.Resources is not { Configuration: { } configuration, DisplayMetrics: { } metrics })
+            return context;
+
+        // Landscape couch UI: the long edge is the width regardless of the panel's reported orientation.
+        var widthPx = Math.Max(metrics.WidthPixels, metrics.HeightPixels);
+        if (widthPx <= 0)
+            return context;
+
+        var targetDensity = widthPx / CouchTargetDipWidth;
+        // Only shrink the UI: if the panel is already at/under the target dip width, leave it alone.
+        if (targetDensity >= metrics.Density)
+            return context;
+
+        // DisplayMetrics.DENSITY_DEFAULT: the dpi at which 1 dip == 1 px (a 1.0× density baseline).
+        const double DensityBaselineDpi = 160.0;
+        var densityDpi = (int)Math.Round(targetDensity * DensityBaselineDpi);
+        var overridden = new Configuration(configuration) { DensityDpi = densityDpi };
+        return context.CreateConfigurationContext(overridden);
+    }
+
     /// <summary>
     /// The head's couch input surface. Gamepad buttons and the D-pad arrive here as Android key events
     /// even though Avalonia reports them as <c>Key.None</c>, so this is where they are mapped to logical

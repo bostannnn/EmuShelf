@@ -1205,6 +1205,62 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task GamepadSystemMenuOnShortPanel_ScrollsToReachSettings()
+    {
+        // Regression (Android A2): the couch overlays are tuned for the Steam Deck's 1280x800. The AYN
+        // Thor is ~833x468 dip, and the system menu's View mode / Sort picker used to starve the option
+        // row (a separate "*" grid row) down to zero height, so Settings/Quit were clipped off and
+        // unreachable. The picker and options now share one scroll region. MinHeight=0 reproduces the
+        // handheld viewport — the Android head's SingleViewShell has no window minimum the way a desktop
+        // MainWindow (MinHeight=560) does, but both render the same GamepadShellView.
+        var viewModel = new MainViewModel
+        {
+            IsGamepadMode = true,
+            HasGames = false,
+            IsLibraryEmpty = true,
+        };
+        var window = new MainWindow { DataContext = viewModel, Width = 833, Height = 468, MinHeight = 0, MinWidth = 0 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            var menuButton = window.FindNamed<Button>("GamepadEmptyMenuButton");
+            menuButton!.Command!.Execute(menuButton.CommandParameter);
+            await PumpAsync();
+
+            var scroller = window.FindNamed<ScrollViewer>("GamepadOverlayOptionsScroller");
+            Assert.NotNull(scroller);
+            // The option list must keep a usable viewport instead of collapsing behind the picker.
+            Assert.True(
+                scroller.Bounds.Height > 120,
+                $"the option scroll region collapsed to {scroller.Bounds.Height:F0}px behind the picker");
+
+            // Walk the ring down to Settings (Search, Settings, Switch to Desktop, Quit).
+            GamepadOverlayOptionViewModel? focused = null;
+            for (var step = 0; step < 8 && focused?.Label != "Settings"; step++)
+            {
+                viewModel.MoveGamepadOverlayDownCommand.Execute(null);
+                await PumpAsync();
+                focused = viewModel.GamepadOverlayOptions.FirstOrDefault(option => option.IsFocused);
+            }
+            Assert.Equal("Settings", focused?.Label);
+
+            // The focused Settings button must be scrolled fully inside the viewport, not clipped.
+            var settingsButton = window.FindNamed<ItemsControl>("GamepadOverlayOptions")!
+                .GetVisualDescendants()
+                .OfType<Button>()
+                .Single(button => ReferenceEquals(button.DataContext, focused));
+            var top = settingsButton.TranslatePoint(new Point(0, 0), scroller)!.Value.Y;
+            Assert.InRange(top, 0, scroller.Bounds.Height - settingsButton.Bounds.Height);
+        }
+        finally
+        {
+            viewModel.CloseGamepadOverlayCommand.Execute(null);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public async Task RenderGamepadLibraryAtDeckResolution()
     {
         var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
@@ -1581,12 +1637,18 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(7, pickerCards.Count); // 3 view-mode (Grid/List/Shelf) + 4 sort
             // Regression guard for the overlap that shipped once (the picker and a shortcut bar were both
             // dropped into row 0 and drew on top of each other): both picker rows must sit entirely above
-            // the option list, not on top of it.
+            // the option buttons, not on top of them. The picker now shares the option list's scroll
+            // region (a short couch panel scrolls the two together — see Android A2), so the guard compares
+            // the picker against the first option button rather than the scroller's own top.
             var optionsScroller = window.FindNamed<ScrollViewer>("GamepadOverlayOptionsScroller");
             Assert.NotNull(optionsScroller);
             var pickerBottom = pickerCards
                 .Max(card => card.TranslatePoint(new Point(0, card.Bounds.Height), window)!.Value.Y);
-            var optionsTop = optionsScroller.TranslatePoint(default, window)!.Value.Y;
+            var firstOptionButton = window.FindNamed<ItemsControl>("GamepadOverlayOptions")!
+                .GetVisualDescendants()
+                .OfType<Button>()
+                .First(button => button.Classes.Contains("gamepad-modal-option"));
+            var optionsTop = firstOptionButton.TranslatePoint(default, window)!.Value.Y;
             Assert.True(pickerBottom <= optionsTop,
                 $"the menu picker rows (bottom {pickerBottom}) overlap the option list (top {optionsTop})");
             Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Quit EmuShelf").IsDestructive);
