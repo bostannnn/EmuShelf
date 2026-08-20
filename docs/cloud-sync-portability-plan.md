@@ -3,8 +3,10 @@
 Status: Phase 1 (managed transport) and Phase 2 (coordinator wiring + desktop settings UI) built.
 The desktop path is now reachable end to end: a user can choose the built-in Google Drive transport,
 sign in, and sync, with the scope-migration warning shown at connect time. Not yet done: the first
-sign-in against Google's real API, and all of Phase 3/4 (the Android head, its custom-scheme redirect,
-Keystore token store, and the SAF save endpoint). See "Relationship to the decision log".
+sign-in against Google's real API and the Android transport half (custom-scheme redirect, Keystore token
+store, and gamepad connect UI). The original Phase-4 SAF endpoint was ruled out for the Thor by an
+on-device real-path capability probe; DuckStation and Dolphin local-save wiring has started in its place.
+See "Relationship to the decision log" and the master Android plan's current-status section.
 
 This is the save-sync half of the Android port. The master plan is `docs/android-port-plan.md`, where
 this work is Milestone E; the detail lives here rather than being duplicated there.
@@ -25,7 +27,10 @@ Stated plainly so it is not mistaken for shipped:
 2. **No real Google API call has ever happened.** Every test runs against an in-memory fake Drive.
 3. **Built and tested on macOS only.** Windows and Linux are shipped targets but were not exercised for
    this change; the browser launch and the refresh-token-at-rest path differ per OS and are unverified.
-4. **All of Phase 3 (Android) and Phase 4 (SAF save endpoint) are unstarted.**
+4. **Phase 3's Android transport/UI work is unstarted. Phase 4 was reshaped by hardware:** the Thor can
+   use the filesystem endpoint inside `Android/data`; DuckStation is device-verified and Dolphin fixed-root
+   wiring is implemented/tested but still needs an on-device export/restore. Folder-configurable emulator
+   overrides remain.
 
 ## Why
 
@@ -161,10 +166,14 @@ rows is the Phase-3 rebuild, the same one the Android head needs — see the mas
 **Phase 3 — Android.** Android OAuth client in `EmbeddedSecrets`, custom-scheme redirect handler,
 force `TransportKind` to `GoogleDrive`, hide the rclone UI.
 
-**Phase 4 — reaching the saves on Android.** Independent of everything above and the genuinely hard
-part: a SAF-backed `ILocalSaveEndpoint`, per-emulator Android save providers, and honest
-"unreachable here" reasons through the existing `GetRemoteIncompatibilityReason` /
-`ResolveUnit`-returns-null channels for emulators locked inside `Android/data`.
+**Phase 4 — reaching the saves on Android. 🟡** The Thor's all-files implementation reaches
+`Android/data` with the real-path semantics `FileSystemLocalSaveEndpoint` needs, so v1 does not build a
+SAF endpoint. DuckStation's fixed provider is device-verified. Dolphin's package-derived `files/` root is
+wired for GameCube and Wii and deliberately reuses the existing provider's Card A/B, GCI identity, Wii
+title-folder and stable unit-id logic; deterministic Android-layout tests are green, with device
+export/restore pending. Next is the one-time gamepad folder override for PPSSPP, Azahar, WatermelonDS and
+RetroArch. Devices that enforce stock `Android/data` isolation still report honest "unreachable here"
+reasons through the existing `GetRemoteIncompatibilityReason` / `ResolveUnit`-returns-null channels.
 
 ## What Phase 1 actually built
 

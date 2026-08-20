@@ -9788,3 +9788,26 @@ gh secret set ANDROID_KEY_ALIAS -b emushelf --repo bostannnn/EmuShelf
 Once the secrets exist, the next tagged release ships a release-signed APK; installs from that point upgrade
 in place. (The APK on/before v1.4.9 is debug-signed, so the *first* release-signed build still needs a
 one-time uninstall/reinstall — unavoidable when moving off the debug key.)
+
+## 2026-08-20 — Dolphin Android save sync reuses the desktop provider through a fixed user root
+
+Dolphin's Android external-files directory is already the same logical user tree the desktop provider
+models: `Config/`, `GC/<region>/Card <slot>/`, and `Wii/title/00010000/<title>/data` live directly below
+`Android/data/org.dolphinemu.dolphinemu/files`. Android therefore does **not** get a second Dolphin save
+provider. `AppBootstrapper` synthesises that package-derived directory for both GameCube and Wii, and
+`SaveProviderRegistry` passes it through `DolphinSaveLocationProvider`'s existing explicit-user-directory
+seam when `OperatingSystem.IsAndroid()`.
+
+This keeps one implementation responsible for GCI header validation, stable sibling identities, configured
+Card A/Card B handling, region mapping (`JPN` unit ids ↔ `JAP` on disk), safe remote restore paths, and the
+Wii NAND allow-list. An Android-only copy would create two parsers and two cloud-id implementations that
+could drift and silently break desktop↔Android restores. The public unit ids remain exactly
+`dolphin/gc/gci/<slot>/<game-id>[/<identity>]` and
+`dolphin/wii/title/00010000/<title-id>`.
+
+Verification is deterministic and cross-platform: Android-layout fixtures cover the default
+`GC/USA/Card A`, a configured `GC/EUR/Card B`, Wii per-title data, and remote restore placement; pure
+composition tests pin both systems to Dolphin's package-derived root and keep folder-configurable emulators
+unresolved until the user supplies an override. The full Release suite is green (902 App + 1,191
+Infrastructure = 2,093). ADB and the Android SDK are not installed on the current host, so a real Thor
+export/restore remains the hardware acceptance gate and is not claimed complete here.
