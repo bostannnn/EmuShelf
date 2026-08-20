@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- versionCode/versionName are intentionally NOT set here: a hardcoded value in the manifest overrides
+     the ApplicationVersion/ApplicationDisplayVersion MSBuild properties (and the CI override that derives
+     them from git — commit count + tag). Omitting them lets those properties populate the manifest, so a
+     new tag alone bumps the shipped app. See package-android in .github/workflows/build.yml. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          android:versionCode="1"
-          android:versionName="0.1.0"
           package="com.emushelf.app">
   <!-- INTERNET is harmless and lets the metadata/achievement HttpClients that the shared composition
        root builds exist without a runtime surprise later. -->
