@@ -104,6 +104,12 @@ public class SaveProviderRegistryTests
     [Fact]
     public async Task AndroidDolphinProvider_TreatsThePackageFilesRootAsItsUserDirectory()
     {
+        // Unix-only: the provider runs the directory through Path.GetFullPath, which on Windows rebases a
+        // POSIX "/storage/…" path onto the current drive ("C:\storage\…"), so the exact-path assert can
+        // only hold where '/' is the separator. The Android host is always Unix, so this is host-agnostic
+        // in production; the test just cannot run on the Windows CI runner. Matches the repo's Unix-only
+        // path-test convention (see tests-home-redirect note / TexturePackRegressionTests).
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "POSIX Android path; Path.GetFullPath rebases it on Windows.");
         const string filesRoot = "/storage/emulated/0/Android/data/org.dolphinemu.dolphinemu/files";
         var provider = SaveProviderRegistry.CreateDolphinProvider(
             "gamecube",
