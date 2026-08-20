@@ -331,7 +331,10 @@ even with all-files access. Gates M40 uniform hotkeys, M32 texture-pack inventor
 sync, and save sync for DuckStation / AetherSX2 / Dolphin. Reachable without root: PPSSPP, Azahar,
 RetroArch — note these are also the emulators with the cleanest handoff, which is an argument for
 choosing target emulators on the pair of properties. One trap: PPSSPP records its memstick path in
-app-private storage, so it must be *asked for*, not discovered.
+app-private storage, so it must be *asked for*, not discovered. On-device the gated set was reached
+with root on: DuckStation syncs its `Android/data` save 1:1, Dolphin does too but reshapes the
+GameCube path (region+slot vs desktop's region-only), and PS2 needs a format conversion rather than a
+copy — all three confirmed on hardware. See the per-emulator save mapping under E — Cloud sync.
 
 **Cause 2 — no process to execute.** Android 10+ treats exec from the app's writable home as a W^X
 violation. Kills rclone (this is what forced the managed Drive transport), `FileRevealService`,
@@ -557,6 +560,28 @@ client-embedded build from silently running the browser OAuth behind that rclone
    rename, no settable mtime, and no path containment. `SaveUnitLocation` is a path record in Core and
    changes with it.
 6. Per-emulator Android save providers, and the capability probe from the section above.
+
+**Per-emulator save mapping — on-device findings (2026-08-19, rooted Thor).** Battery/memory-card
+saves only; save states are out of scope and the providers already exclude the `states` namespace
+([ISaveLocationProvider.cs:28](../src/EmuShelf.Core/SaveSync/ISaveLocationProvider.cs)). Each Android
+provider maps a title's save to the emulator's on-device location; most are a 1:1 directory copy, two
+carry format constraints the desktop providers do not:
+
+| System / emulator | Android location | Mapping | Notes |
+|---|---|---|---|
+| DuckStation (PS1) | `Android/data/<pkg>` | 1:1 | Confirmed 1:1 on the rooted Thor — this is the capability-gated case from the section above, reachable because root is on |
+| PS2 (NetherSX2 / AetherSX2 / ARMSX2) | `Android/data/<pkg>` | **format conversion** | **Folder memory cards are not accepted — Android wants a single-file `.ps2` card.** Desktop `Pcsx2SaveLocationProvider` is built around folder cards, so this is a real conversion step, not a copy. **Confirmed working on hardware (2026-08-20).** |
+| Azahar (3DS) | any chosen folder | 1:1 | Reachable without root |
+| WatermelonDS (DS) | any chosen folder | 1:1 | **Requires the "use `.srm` not `.sav`" toggle enabled** so the on-device filename matches what the provider syncs |
+| Dolphin (GC/Wii) | `Android/data/<pkg>` | **path reshape** | Root-gated; **confirmed working on hardware (2026-08-20)**. GameCube saves sit under a deeper path than desktop: Windows uses just the region folder (`USA/`), Android nests a card-slot folder inside it (`USA/Card A/` — exact slot name TBD). The Android provider maps region ⇄ region+slot |
+| PPSSPP (PSP) | any chosen folder | 1:1 | Reachable without root; PPSSPP records its memstick path in app-private storage, so it must be *asked for*, not discovered (see capability model) |
+| RetroArch | RetroArch saves folder | 1:1 | Plain-path case; the only emulator handed `{file.path}` |
+
+Three design items before implementation, all now hardware-confirmed: the **PS2 single-file `.ps2`
+conversion** (folder card ⇄ `.ps2`, which the desktop provider has no path for), the **Dolphin
+GameCube region ⇄ region+slot path reshape**, and the **WatermelonDS `.srm`/`.sav` extension
+constraint**. The three that aren't a plain copy — PS2, Dolphin GC, WatermelonDS — are where the
+Android providers diverge from their desktop counterparts.
 
 ### F — Packaging and release
 
