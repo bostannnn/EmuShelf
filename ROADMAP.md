@@ -1978,6 +1978,26 @@ breaks the whole-solution macOS build/test loop.
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
         (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
         Remaining: per-emulator setup checklist (+ nested-tree verification), dependency-resolver promotion.
-  - [ ] **C — controller + IME**, **E-android — cloud sync** (the save data to sync; auto-sync path already
-        wired), **E-desktop** (one real Google sign-in), **F — packaging & release**. Sized in the plan;
-        E-android is the largest remaining body of work. See the plan's "Current status and what's next".
+  - [~] **E-android — cloud sync (started, 2026-08-20)**. The auto-sync path was already wired; this adds
+        the actual save data. **Capability finding that reshaped the milestone:** a runtime probe from the
+        app's own process proved all-files access reads *and writes* `Android/data/<pkg>` on the Thor
+        (group-readable files; owner-only `-rw-------` files stay unreadable and are skipped gracefully) —
+        so the SAF-backed `ILocalSaveEndpoint` rewrite (the plan's stated long pole) is **not needed** for
+        the Thor; the existing `FileSystemLocalSaveEndpoint` serves every emulator over real paths.
+        **DuckStation (PS1) landed + verified on device**: `DuckStationAndroidSaveLocationProvider` (pure,
+        6 tests) reads the fixed `…/files/memcards` and emits the same `duckstation/per-game/{title|serial}`
+        unit ids as desktop; `AppBootstrapper` synthesises the fixed-location install from the package name;
+        `SaveProviderRegistry` builds it under `IsAndroid()`. A device-only export enumerated 10 real
+        memcards. Provider split: folder-configurable emulators (PPSSPP/Azahar/WatermelonDS/RetroArch) reuse
+        the desktop providers via a one-time manual folder pick (per-system override); fixed-location ones
+        (DuckStation done, Dolphin/PS2 next) get Android providers. See DECISIONS 2026-08-20. Remaining:
+        Dolphin + folder-configurable wiring, then the transport half (Android OAuth client + custom-scheme
+        redirect, Keystore token store, gamepad Saves rebuild). PS2 folder-card→`.ps2` / cross-emulator
+        save sync is a separate deferred feature.
+  - [x] **F — Android APK CI job (2026-08-20)**. `package-android` in `.github/workflows/build.yml` builds
+        the out-of-solution head (JDK 21 + SDK 36 + android workload) as a build floor on every PR and
+        uploads a debug-signed sideload APK on non-PR events; kept out of the `release` job's `needs` so it
+        can never block a tagged desktop release. Remaining F: a real signing keystore, developer-verification
+        install docs.
+  - [ ] **C — controller + IME**, **E-desktop** (one real Google sign-in), rest of **F — packaging &
+        release**. Sized in the plan. See "Current status and what's next".

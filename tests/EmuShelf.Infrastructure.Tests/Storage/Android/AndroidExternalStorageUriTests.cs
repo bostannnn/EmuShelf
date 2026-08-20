@@ -5,6 +5,14 @@ namespace EmuShelf.Infrastructure.Tests.Storage.Android;
 public class AndroidExternalStorageUriTests
 {
     [Fact]
+    public void ExternalAppFilesDirectory_IsThePackageDataFilesPathUnderPrimaryStorage()
+    {
+        Assert.Equal(
+            "/storage/emulated/0/Android/data/com.github.stenzek.duckstation/files",
+            AndroidExternalStorageUri.ExternalAppFilesDirectory("com.github.stenzek.duckstation"));
+    }
+
+    [Fact]
     public void BuildTreeDocumentUri_ReproducesTheUriMeasuredWorkingOnTheThor()
     {
         // The exact URI that launched Metal Gear Solid via DuckStation in Milestone 0b: tree scoped to

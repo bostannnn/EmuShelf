@@ -9714,3 +9714,44 @@ tree-scoped `…/tree/<tree>/document/<doc>` form that matched a persisted grant
 (package visibility, API 30+), a deliberate regression from the desktop "definition is pure data" model.
 The intent-firing glue (`AndroidGameLauncher`) is built; wiring it into `IEmulatorLaunchService` and the
 return-from-game exit signal (which survives process death) is the remaining Milestone B integration.
+
+## 2026-08-20 — Thor all-files reaches `Android/data`; SAF save-endpoint rewrite not needed for v1 (Milestone E-android)
+
+Measured on the Thor (firmware `Thor_V1.0.0.377`, Android 13) with a runtime capability probe fired from
+EmuShelf's **own** process (not `run-as`, whose separate mount namespace gives a false positive — plan §0b):
+with `MANAGE_EXTERNAL_STORAGE` granted, the app **reads and writes** saves inside `Android/data/<pkg>` over
+real `/storage/…` paths. Confirmed for DuckStation (`…/com.github.stenzek.duckstation/files/memcards`, read
++ list) and Dolphin (`…/org.dolphinemu.dolphinemu/files/GC`, read + list + file write + `Directory.Move` —
+the endpoint's atomic-swap primitive), plus shared-storage positive controls. This contradicts the general
+Android 12+ FUSE restriction the plan assumed; the Thor's firmware does not enforce it against all-files.
+
+Consequence: the SAF-backed `ILocalSaveEndpoint` — the cloud-sync plan's stated single "genuine rewrite"
+and E-android's long pole — is **not required for the Thor**. The existing `FileSystemLocalSaveEndpoint`
+works over real paths for all seven emulators, including the three the plan expected to be locked away
+(DuckStation, PS2, Dolphin). E-android's local save side therefore reuses existing infrastructure with
+Android path wiring, and the remaining E-android work is the transport/OAuth/keystore half plus the
+per-emulator Android providers — not an endpoint rewrite. The finding is Thor-specific: on stock Android
+13 / other handhelds all-files does not reach `Android/data`, so the runtime capability probe stays the
+right mechanism if the port ever targets a second device (it becomes a shipped "unavailable here, and why"
+feature there). The throwaway probe used to establish this was reverted after recording; `MainActivity` is
+unchanged.
+
+## 2026-08-20 — DuckStation Android save provider + coordinator wiring, verified on the Thor (Milestone E-android)
+
+First per-emulator Android save provider landed and proven end to end on-device. `DuckStationAndroidSaveLocationProvider`
+(pure, in `EmuShelf.Integrations`) reads DuckStation Android's fixed `Android/data/<pkg>/files/memcards` folder — which
+has no readable `settings.ini` (DuckStation's config is in app-private storage), so the desktop provider cannot serve it —
+and classifies each per-game card by name, emitting the **same** `duckstation/per-game/{serial|title}/<file>.mcd` unit ids
+the desktop provider emits. So a card syncs 1:1 between desktop and Android DuckStation when both use DuckStation's default
+`PerGameTitle` card type. Wiring: `AndroidExternalStorageUri.ExternalAppFilesDirectory(pkg)` derives the path; on Android
+`AppBootstrapper` synthesises the `SaveEmulatorInstallation` from the package name (no user pick for fixed-location
+emulators); `SaveProviderRegistry`'s DuckStation profile builds the Android provider under `OperatingSystem.IsAndroid()`.
+All Android branches are guarded by `IsAndroid()`, so desktop behaviour is unchanged (save-sync + App registry suites green).
+Verified on the Thor via a device-only save export: it enumerated **10 real memcards** with the exact `per-game/title` ids.
+
+**Refinement to the 2026-08-20 all-files/`Android/data` finding:** all-files reaches `Android/data/<pkg>` files that are
+**group-readable** (`-rw-rw----`, what DuckStation writes for most cards, via the `ext_data_rw` group) but **not owner-only**
+(`-rw-------`) files. Two of the owner's twelve memcards were owner-only; the app got `UnauthorizedAccessException` on both
+(confirmed by a runtime read probe, not `run-as`), so the export skipped them and completed with the other ten. This is an
+unfixable-without-root edge (an app cannot chmod another app's files) and it degrades gracefully — the unreadable save is
+simply skipped, never crashing the pass. The capability model's "not possible here, and why" channel covers it.

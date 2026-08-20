@@ -365,6 +365,22 @@ public static class SaveProviderRegistry
 
     private static ISaveLocationProvider? CreateDuckStationProvider(SaveProviderContext context)
     {
+        // On Android, DuckStation keeps no readable settings.ini (its config is in app-private storage),
+        // so the desktop provider cannot resolve it. The Android provider works off the fixed on-device
+        // memcards folder instead and emits the same unit ids. The root is DuckStation's app-data files
+        // directory (from the Android installation), or the user's chosen folder as an override.
+        if (OperatingSystem.IsAndroid())
+        {
+            var root = context.DirectoryOverride ?? context.EmulatorDirectory;
+            if (string.IsNullOrWhiteSpace(root))
+                return null;
+            var memcards = Path.GetFileName(Path.TrimEndingDirectorySeparator(root))
+                    .Equals("memcards", StringComparison.OrdinalIgnoreCase)
+                ? root
+                : Path.Combine(root, "memcards");
+            return new DuckStationAndroidSaveLocationProvider(memcards);
+        }
+
         if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
             string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
             !context.IsFlatpak)
@@ -382,6 +398,15 @@ public static class SaveProviderRegistry
         ISaveLocationProvider provider,
         CancellationToken cancellationToken)
     {
+        // The Android provider has no settings.ini to inspect; its memory-card folder is the whole story.
+        if (provider is DuckStationAndroidSaveLocationProvider android)
+        {
+            return new SaveProviderDetection(
+                android.MemoryCardsDirectory,
+                "Per-game memory cards are synced by file name. Another DuckStation only picks one up if it " +
+                "uses the same per-game card type (DuckStation's default) and the game has the same name.");
+        }
+
         var info = await ((DuckStationSaveLocationProvider)provider).GetMemoryCardInfoAsync(cancellationToken);
         return new SaveProviderDetection(
             info.Directory,
@@ -609,6 +634,7 @@ public static class SaveProviderRegistry
     private static string EmulatorId(ISaveLocationProvider provider) => provider switch
     {
         DuckStationSaveLocationProvider => "duckstation",
+        DuckStationAndroidSaveLocationProvider => "duckstation",
         Pcsx2SaveLocationProvider => "pcsx2",
         PpssppSaveLocationProvider => "ppsspp",
         DolphinSaveLocationProvider => "dolphin",

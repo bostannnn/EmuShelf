@@ -227,6 +227,78 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  package-android:
+    needs: build
+    # The Android head (src/EmuShelf.App.Android) is experimental and lives OUTSIDE EmuShelf.slnx, so
+    # `dotnet build`/`dotnet test` in the `build` job never compile it — this job is the build floor that
+    # keeps it from silently rotting (a shared-interface change that breaks the head fails here, not at
+    # deploy time). It runs on PRs too, but uploads the APK only on non-PR events. Deliberately NOT in the
+    # `release` job's `needs`: the APK is an experimental sideload artifact and must never be able to fail
+    # a tagged Windows/macOS/Linux release (that job runs with fail_on_unmatched_files: true).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        # JDK 21 is required by Avalonia.Android 12.1.0's AndroidX AppCompat/Window bindings (plan's
+        # Development-setup table). The runner's Temurin JDK has the `release` file the .NET Android SDK
+        # probes for, so no JavaSdkDirectory workaround is needed here (that trap is Homebrew-specific).
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-android-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-android-
+      - name: Install the Android workload
+        # Minutes on a cold cache, per the plan; the NuGet cache above does not cover the workload packs.
+        run: dotnet workload install android
+      - name: Install Android SDK platform 36 + build-tools
+        # Avalonia.Android 12.1.0 ships only lib/net10.0-android36.0, so platform 36 is the floor.
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+      - name: Build the Android APK
+        # Application-identity credentials are baked in via Build/EmbeddedSecrets.targets, exactly as the
+        # desktop package jobs do; absent secrets (fork PRs) just ship without them. Release Android builds
+        # are debug-key-signed when no release keystore is configured — installable via ADB / sideload,
+        # which is all v1 needs (a real signing keystore is a later Milestone F item, DECISIONS-tracked).
+        env:
+          SCREENSCRAPER_DEV_ID: ${{ secrets.SCREENSCRAPER_DEV_ID }}
+          SCREENSCRAPER_DEV_PASSWORD: ${{ secrets.SCREENSCRAPER_DEV_PASSWORD }}
+          SCREENSCRAPER_SOFTNAME: ${{ secrets.SCREENSCRAPER_SOFTNAME }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_ID }}
+          EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.EMUSHELF_GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: >-
+          dotnet publish src/EmuShelf.App.Android/EmuShelf.App.Android.csproj
+          -c Release
+          -p:AndroidPackageFormat=apk
+          -p:JavaSdkDirectory="${JAVA_HOME}"
+          -p:AndroidSdkDirectory="${ANDROID_HOME}"
+          -o publish/android
+      - name: Collect the APK
+        run: |
+          mkdir -p artifacts
+          apk="$(find publish/android -name '*-Signed.apk' -print -quit)"
+          if [ -z "$apk" ]; then apk="$(find publish/android bin -name '*.apk' -print -quit)"; fi
+          if [ -z "$apk" ]; then echo "No APK was produced"; exit 1; fi
+          cp "$apk" artifacts/EmuShelf-android-arm64.apk
+          sha256sum artifacts/EmuShelf-android-arm64.apk > artifacts/EmuShelf-android-arm64.sha256
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: EmuShelf-android
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
+
   release:
     # On a version tag (vX.Y.Z), collect every platform artifact and publish a
     # GitHub Release so builds are permanent and downloadable, not 14-day artifacts.

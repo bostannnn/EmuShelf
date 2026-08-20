@@ -959,13 +959,27 @@ client-embedded build from silently running the browser OAuth behind that rclone
 4. An Android `IProtectedTextStore` (Keystore / EncryptedSharedPreferences). The Windows
    implementation P/Invokes `crypt32.dll` and the fallback is obfuscation, neither of which is right
    for a refresh token.
-5. **A SAF-backed `ILocalSaveEndpoint` — budget this as a rewrite, not a swap.** The interface is
-   stream-shaped but the implementation is 448 lines of path work: cross-directory `Directory.Move`
-   for the atomic swap, `File.SetLastWriteTimeUtc` (which the manifest uses as the conflict
-   tie-breaker), recursive delete, and `Path.GetFullPath` containment. SAF has no cross-tree atomic
-   rename, no settable mtime, and no path containment. `SaveUnitLocation` is a path record in Core and
-   changes with it.
-6. Per-emulator Android save providers, and the capability probe from the section above.
+5. ~~**A SAF-backed `ILocalSaveEndpoint` — budget this as a rewrite, not a swap.**~~ **Not needed for the
+   Thor (2026-08-20).** A runtime probe from EmuShelf's own process showed all-files access reaches
+   `Android/data/<pkg>` for read *and* write on Thor firmware — including the `Directory.Move` atomic swap
+   the endpoint relies on — so the existing `FileSystemLocalSaveEndpoint` works over real `/storage/…`
+   paths for every emulator, with no SAF rewrite. The original concern (SAF has no cross-tree atomic
+   rename, no settable mtime, no path containment) only bites on a device that enforces the `Android/data`
+   FUSE restriction against all-files; the Thor does not. This item reverts to a portability concern for a
+   second device. See DECISIONS 2026-08-20.
+6. Per-emulator Android save providers, and the capability probe from the section above. **Split
+   confirmed (2026-08-20):** the folder-configurable emulators (PPSSPP, Azahar, RetroArch, WatermelonDS —
+   the "pick any folder" set) **reuse the existing desktop providers**, handed the user's chosen folder as
+   the pipeline's existing per-system `DirectoryOverride`; only the fixed-location, config-parsing
+   emulators (DuckStation, Dolphin) need new Android providers, because their save root is a fixed
+   `Android/data/<pkg>/…` path and their desktop config files do not exist on Android.
+   **`DuckStationAndroidSaveLocationProvider` landed** (pure, in `EmuShelf.Integrations`, 6 unit tests):
+   it reads the fixed `…/files/memcards` folder, classifies each per-game card by name, and emits the
+   *same* `duckstation/per-game/{serial|title}/…` unit ids as the desktop provider, so a card syncs 1:1
+   between desktop and Android DuckStation when both use DuckStation's default `PerGameTitle` card type.
+   Remaining: shared/global cards (`memorycard.mcd`), the Dolphin Android provider (region→region+slot),
+   and wiring an Android emulator-installations source into the coordinator (points each provider at its
+   on-device root; folder-configurable ones take the override).
 
 **Per-emulator save mapping — on-device findings (2026-08-19).** Reached via **CX File Manager with NO
 root** (the Thor is not rooted); do not read these rows as requiring root. Battery/memory-card
@@ -994,6 +1008,12 @@ Android providers diverge from their desktop counterparts.
 
 - APK/AAB from a **dedicated CI job** (the head is outside the solution, so the existing 3-OS matrix
   will not build it). Cache the workload; it is minutes per run on top of a JDK and SDK 36.
+  **Landed (2026-08-20):** `package-android` in [.github/workflows/build.yml](../.github/workflows/build.yml)
+  — JDK 21 + SDK platform 36 + `dotnet workload install android`, publishes a Release APK
+  (`-p:AndroidPackageFormat=apk`, debug-key-signed for sideload), runs on PRs as the build floor, uploads
+  the APK only on non-PR events, and is **deliberately absent from the `release` job's `needs`** so a
+  failing experimental APK can never block a tagged desktop release. Still to do here: a real signing
+  keystore (its own DECISIONS entry) and the Android OAuth client id in `EmbeddedSecrets`.
 - Signing keystore. This is a permanent, unrecoverable obligation — lose it and every user must
   uninstall to upgrade. It deserves its own DECISIONS entry.
 - `EmbeddedSecrets.targets` gains the Android OAuth client id — one `Append(...)` line plus one
@@ -1030,7 +1050,7 @@ date.
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
 | C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
-| E-android — cloud sync | ⬜ not started | the substantive save half — see below |
+| E-android — cloud sync | 🟡 started (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) provider + coordinator wiring landed and verified on the Thor** (device-only export enumerated 10 real memcards with desktop-compatible ids); remaining: Dolphin/PS2/DS providers, folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
 | F — packaging & release | ⬜ not started | signing keystore, dedicated CI job for the APK, developer-verification/install docs |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
@@ -1041,13 +1061,19 @@ the grant folder are verified); (3) promoting `GameLaunchDependencyResolver` to 
 softened failure mode; (4) an API-<29 `OnResume` fallback for the return signal (the Thor is 33).
 
 **What E-android needs (the biggest remaining body of work):** the auto-sync path is *wired* (the exit
-signal calls it) but no-ops because Android has nothing to sync yet. Landing it means: the SAF-backed
-`ILocalSaveEndpoint` (budgeted as a rewrite, not a swap), the per-emulator Android save providers
-(DuckStation 1:1, PS2 folder-card→`.ps2`, Dolphin region→region+slot, WatermelonDS `.srm` — all mapped in
-the E section), a no-root `Android/data` access mechanism EmuShelf can use programmatically (the owner
-reached these via CX File Manager), a second public OAuth client + custom-scheme redirect, an Android
-`IProtectedTextStore` for the refresh token, and rebuilding the gamepad Saves rows to offer the managed
-transport (currently rclone-only there).
+signal calls it) but no-ops because Android has nothing to sync yet. **The single biggest item shrank on
+2026-08-20:** a runtime capability probe fired from EmuShelf's own process proved that on the Thor,
+all-files access **reads and writes `Android/data/<pkg>` over real paths** (DuckStation memcards + Dolphin
+GC, including `Directory.Move`) — so the SAF-backed `ILocalSaveEndpoint`, budgeted as the one genuine
+rewrite, is **not needed for the Thor**; the existing `FileSystemLocalSaveEndpoint` serves all seven
+emulators over real paths, and the "no-root `Android/data` access mechanism" open question is answered
+(plain all-files works here). See DECISIONS 2026-08-20. Landing E-android now means: the per-emulator
+Android save providers (DuckStation 1:1, Dolphin region→region+slot, WatermelonDS `.srm`, and the
+normal-folder emulators — all mapped in the E section; **PS2 folder-card→`.ps2` and cross-emulator save
+sync are deferred to their own feature, owner's call**), a second public OAuth client + custom-scheme
+redirect, an Android `IProtectedTextStore` for the refresh token, and rebuilding the gamepad Saves rows to
+offer the managed transport (currently rclone-only there). The SAF endpoint reverts to a portability
+concern for a hypothetical second device, not v1 work.
 
 **Recommended next step:** **E-android**, so post-play auto-sync actually moves saves — it is the milestone
 that turns "launches games" into "launches games and keeps your saves in the cloud", and the exit-signal

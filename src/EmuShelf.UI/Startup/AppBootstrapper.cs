@@ -20,9 +20,11 @@ using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Metadata.ScreenScraper;
 using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Infrastructure.Storage;
+using EmuShelf.Core.Storage.Android;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Achievements;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Metadata;
 using EmuShelf.Integrations.Launching;
@@ -237,19 +239,45 @@ public sealed class AppBootstrapper
     // does not select the same emulator twice. Flatpak targets have no local executable path, so
     // they report a null directory and rely on the provider's documented Flatpak layout instead.
     private SaveEmulatorInstallation? ResolveConfiguredEmulator(string systemId) =>
-        BuildInstallation(EmulatorConfigurations.Get(systemId));
+        OperatingSystem.IsAndroid()
+            ? ResolveAndroidEmulator(systemId)
+            : BuildInstallation(EmulatorConfigurations.Get(systemId));
 
     // Batched form of the above: one database read for every requested system, used by the cloud-sync
     // startup migration so it does not open a connection per system on the pre-first-frame path.
     private IReadOnlyDictionary<string, SaveEmulatorInstallation?> ResolveConfiguredEmulators(
         IReadOnlyList<string> systemIds)
     {
-        var configurations = EmulatorConfigurations.GetAll(systemIds);
         var result = new Dictionary<string, SaveEmulatorInstallation?>(StringComparer.Ordinal);
+        if (OperatingSystem.IsAndroid())
+        {
+            foreach (var systemId in systemIds)
+                result[systemId] = ResolveAndroidEmulator(systemId);
+            return result;
+        }
+
+        var configurations = EmulatorConfigurations.GetAll(systemIds);
         foreach (var systemId in systemIds)
             result[systemId] = BuildInstallation(configurations.GetValueOrDefault(systemId));
         return result;
     }
+
+    // On Android there is no configured executable path to derive a save location from. The
+    // fixed-location emulators keep their saves at a package-derived path under Android/data, which
+    // EmuShelf reads directly under all-files access (DECISIONS 2026-08-20), so their installation is
+    // synthesised from the package name here — no user pick. The folder-configurable emulators (PPSSPP,
+    // Azahar, WatermelonDS, RetroArch) store their save folder wherever the user chose, in the emulator's
+    // own unreadable private config, so they cannot be auto-located: they return null and rely on the
+    // per-system save-location override the user sets once. First slice: DuckStation (PS1) only.
+    private static SaveEmulatorInstallation? ResolveAndroidEmulator(string systemId) => systemId switch
+    {
+        "playstation" => new SaveEmulatorInstallation(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.DuckStation.PackageName),
+            IsFlatpak: false,
+            EmulatorId: "duckstation"),
+        _ => null,
+    };
 
     private static SaveEmulatorInstallation? BuildInstallation(EmulatorConfiguration? configuration)
     {

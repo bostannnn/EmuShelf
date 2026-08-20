@@ -31,6 +31,19 @@ public static class AndroidExternalStorageUri
     public const string PrimaryVolume = "primary";
 
     /// <summary>
+    /// The external (shared-storage) app-data files directory for a package —
+    /// <c>/storage/emulated/0/Android/data/&lt;package&gt;/files</c>. Scoped-storage Android emulators keep
+    /// their data here; EmuShelf reads it directly as a path under all-files access, which reaches
+    /// <c>Android/data</c> on the Thor (DECISIONS 2026-08-20). Used to auto-locate the fixed-location
+    /// emulators' saves (DuckStation, Dolphin, …) without the user picking a folder.
+    /// </summary>
+    public static string ExternalAppFilesDirectory(string packageName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
+        return $"{PrimaryRoot}/Android/data/{packageName}/files";
+    }
+
+    /// <summary>
     /// Builds a document id (<c>&lt;volume&gt;:&lt;relative&gt;</c>) from a volume label and a
     /// forward-slashed path relative to that volume's root. The relative part is normalised to forward
     /// slashes and trimmed of leading/trailing slashes.
