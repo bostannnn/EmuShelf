@@ -9355,3 +9355,24 @@ the cloud contributes only what is missing locally). A cloud export needs a live
 - **Temp-then-move sink.** `ZipSaveExportSink` builds the archive at `*.zip.emushelf-tmp` and moves
   it onto the chosen path only on `Complete()`, so a failed or "nothing to export" run leaves no
   half-written file where the user picked to save.
+
+## 2026-08-19 — Android per-emulator save mapping is mostly 1:1, with two format constraints
+
+On-device probing on the rooted Thor established how each target emulator stores battery/memory-card
+saves on Android (save states remain out of scope for sync). Most are a 1:1 directory copy, which the
+existing `ISaveLocationProvider` design already fits: PPSSPP, Azahar, RetroArch (no root needed) and,
+with root on, DuckStation. Three do **not** copy 1:1 and shape the Android provider work (all three
+now confirmed on hardware, 2026-08-20):
+
+- **PS2 (NetherSX2 / AetherSX2 / ARMSX2) needs a single-file `.ps2` memory card**, not the folder
+  card the desktop `Pcsx2SaveLocationProvider` is built around — so the Android PS2 provider owns a
+  folder ⇄ `.ps2` conversion, not a move.
+- **Dolphin GameCube saves nest one level deeper on Android.** Desktop stores under the region folder
+  (`USA/`); Android adds a card-slot subfolder (`USA/Card A/` — exact slot name TBD). The Android
+  Dolphin provider reshapes region ⇄ region+slot. (Wii is a plain 1:1 copy.)
+- **WatermelonDS (DS) must be set to write `.srm`, not `.sav`**, so its on-device filename matches
+  what the provider syncs; the Android setup checklist has to surface that toggle.
+
+Detail and the full table live in [docs/android-port-plan.md](docs/android-port-plan.md) under
+E — Cloud sync; this entry records these constraints because they change a provider's contract or
+path shape rather than being a plain copy.
