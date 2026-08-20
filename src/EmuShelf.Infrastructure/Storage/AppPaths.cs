@@ -13,14 +13,16 @@ public sealed class AppPaths : IAppPaths
     public string SavesDirectory { get; }
     public string DatabaseFilePath { get; }
     public string SettingsFilePath { get; }
+    public bool UsesPortableStorage { get; }
 
     public AppPaths() : this(ResolveBaseDirectory())
     {
     }
 
-    public AppPaths(string baseDirectory)
+    public AppPaths(string baseDirectory, bool usesPortableStorage = true)
     {
         BaseDirectory = baseDirectory;
+        UsesPortableStorage = usesPortableStorage;
         DataDirectory = Path.Combine(baseDirectory, "Data");
         CoversDirectory = Path.Combine(baseDirectory, "Covers");
         CacheDirectory = Path.Combine(baseDirectory, "Cache");

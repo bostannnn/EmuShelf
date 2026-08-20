@@ -1963,10 +1963,21 @@ breaks the whole-solution macOS build/test loop.
       The Settings/achievements lists already had dedicated scroll-follow. The suspected Android
       focus-vs-selection split (`DispatchKeyEvent`→`GamepadAction` without real Avalonia focus) was not the
       cause here — `BringIntoView` fires off the view-model selection, verified headlessly on desktop.
-- [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
-      sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
-      touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.
-  - [ ] **0b — on-device handoff matrix** (started 2026-08-18). Re-run the file-handoff matrix against the
-        Thor's real emulator builds (DuckStation first — its content-URI sibling resolution was unverifiable
-        on the AVD), plus the `Android/data` capability probe. BIOS-gated full boots wait on owner-supplied
-        BIOS. See the plan's "Milestone 0b".
+  - [x] **0b — on-device handoff matrix** (2026-08-20). Every shipped system's handoff measured on the
+        Thor and captured as data: DuckStation (PS1) boots via `EmulationActivity`+`bootPath`, ARMSX2 (PS2)
+        via `VIEW`+data URI (both booted real games); Dolphin/PPSSPP/Azahar/WatermelonDS/RetroArch shapes
+        recovered from Cocoon's live launch log + NeoStation's DB. Strategy 4 (each emulator holds its own
+        SAF tree grant) confirmed live. `Android/data` saves reachable **without root** via CX File Manager;
+        per-emulator save mapping recorded. See the plan's "Milestone 0b" / E save table.
+  - [x] **D — storage & permissions (core)** (2026-08-20). `AndroidExternalStorageUri` (shared, tested)
+        owns SAF tree/document URI ↔ `/storage` translation; game paths stored absolute on Android
+        (`IAppPaths.UsesPortableStorage`); `allowBackup=false`. Remaining: all-files grant UX, SAF-reader
+        fallback, per-API-level AVD matrix (see plan).
+  - [x] **B — launching (core)** (2026-08-20, verified on Thor). Per-emulator intent data + pure
+        `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
+        wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
+        (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
+        Remaining: per-emulator setup checklist (+ nested-tree verification), dependency-resolver promotion.
+  - [ ] **C — controller + IME**, **E-android — cloud sync** (the save data to sync; auto-sync path already
+        wired), **E-desktop** (one real Google sign-in), **F — packaging & release**. Sized in the plan;
+        E-android is the largest remaining body of work. See the plan's "Current status and what's next".

@@ -16,6 +16,11 @@ public sealed class RelativePathResolver : IRelativePathResolver
         if (!Path.IsPathRooted(absolutePath))
             return absolutePath;
 
+        // On Android the app base and the game live on different mounts that both root at '/', so
+        // relativizing would emit a fragile '../../../storage/…' path — store the absolute path instead.
+        if (!_appPaths.UsesPortableStorage)
+            return absolutePath;
+
         var appRoot = Path.GetPathRoot(_appPaths.BaseDirectory);
         var pathRoot = Path.GetPathRoot(absolutePath);
         if (!string.Equals(appRoot, pathRoot, StringComparison.OrdinalIgnoreCase))

@@ -29,6 +29,13 @@ public interface IPlatformShell
     IDialogService Dialog { get; }
 
     /// <summary>
+    /// A platform-specific launch service, or null to use the shared desktop
+    /// <see cref="EmulatorLaunchService"/>. The Android head supplies its own (intents rather than a
+    /// tracked child process); every desktop head leaves this null.
+    /// </summary>
+    IEmulatorLaunchService? LaunchService => null;
+
+    /// <summary>
     /// Attaches the fully-built <paramref name="viewModel"/> to the surface and shows it. The shell
     /// wires <paramref name="callbacks"/> to its own surface lifecycle — on desktop that is the
     /// window's <c>Opened</c>/<c>Closing</c> events and the application's <c>Exit</c> event.

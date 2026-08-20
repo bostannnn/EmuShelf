@@ -15,6 +15,22 @@
   <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
                    android:maxSdkVersion="32" />
+  <!-- Package visibility (API 30+): without an explicit <queries> entry, PackageManager cannot see
+       another app, so EmuShelf's presence detection would report every emulator "not installed" and a
+       launch intent would fail to resolve. Each package here mirrors an AndroidEmulatorLaunchProfiles
+       entry (kept in sync by AndroidEmulatorLaunchProfilesTests). Declaring packages individually is
+       deliberately narrower than QUERY_ALL_PACKAGES, which is a Play policy-flagged permission. Adding a
+       new emulator is therefore a manifest change, not just data — the regression against the desktop
+       model the plan calls out (Milestone B). -->
+  <queries>
+    <package android:name="com.github.stenzek.duckstation" /> <!-- PS1  DuckStation -->
+    <package android:name="com.armsx2" />                     <!-- PS2  ARMSX2 -->
+    <package android:name="org.dolphinemu.dolphinemu" />      <!-- GC/Wii Dolphin -->
+    <package android:name="org.ppsspp.ppsspp" />              <!-- PSP  PPSSPP -->
+    <package android:name="org.azahar_emu.azahar" />          <!-- 3DS  Azahar -->
+    <package android:name="me.magnum.melondualds" />          <!-- DS   WatermelonDS -->
+    <package android:name="com.retroarch.aarch64" />          <!-- multi RetroArch -->
+  </queries>
   <application android:label="EmuShelf"
                android:allowBackup="false"
                android:hardwareAccelerated="true" />

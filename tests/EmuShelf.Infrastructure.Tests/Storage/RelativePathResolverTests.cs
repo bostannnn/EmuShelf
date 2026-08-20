@@ -82,6 +82,19 @@ public class RelativePathResolverTests
     }
 
     [Fact]
+    public void ToStorablePath_NonPortableStorage_ReturnsAbsoluteEvenOnSameRoot()
+    {
+        // Android case: app base is app-private, the game is on shared storage; both root at '/', but
+        // relativizing would emit a fragile '../../../storage/…' path. Non-portable storage stores absolute.
+        var resolver = new RelativePathResolver(
+            new AppPaths("/data/data/com.emushelf.app/files", usesPortableStorage: false));
+
+        var stored = resolver.ToStorablePath("/storage/AE6A-1092/roms/psx/game.m3u");
+
+        Assert.Equal("/storage/AE6A-1092/roms/psx/game.m3u", stored);
+    }
+
+    [Fact]
     public void ToStorablePath_DifferentWindowsDrive_ReturnsAbsolute()
     {
         if (!OperatingSystem.IsWindows())
