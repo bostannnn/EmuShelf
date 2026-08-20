@@ -2002,10 +2002,21 @@ breaks the whole-solution macOS build/test loop.
         then the transport half (Android OAuth client + custom-scheme redirect, Keystore token store,
         gamepad Saves rebuild). PS2 folder-card→`.ps2` / cross-emulator save sync is a separate deferred
         feature.
-  - [x] **F — Android APK CI job (2026-08-20)**. `package-android` in `.github/workflows/build.yml` builds
-        the out-of-solution head (JDK 21 + SDK 36 + android workload) as a build floor on every PR and
-        uploads a debug-signed sideload APK on non-PR events; kept out of the `release` job's `needs` so it
-        can never block a tagged desktop release. Remaining F: a real signing keystore, developer-verification
-        install docs.
-  - [ ] **C — controller + IME**, **E-desktop** (one real Google sign-in), rest of **F — packaging &
-        release**. Sized in the plan. See "Current status and what's next".
+  - [x] **F — Android APK CI job + release signing wired (2026-08-20)**. `package-android` in
+        `.github/workflows/build.yml` builds the out-of-solution head (JDK 21 + SDK 36 + android workload) as
+        a PR build floor and **attaches the APK to tagged releases** (in the `release` job's `needs`, but its
+        `if` only requires the desktop packages, so a broken APK can never block a desktop release).
+        Release-signing is **wired** and activates once the owner runs the keystore setup (DECISIONS
+        2026-08-20); until then it debug-signs. Remaining F: owner runs the keystore setup, developer-
+        verification install docs.
+  - [ ] **C — controller + IME** (native analog-stick reading — the sticks do nothing today — + IME),
+        **E-android** save providers/transport, **E-desktop** (one real Google sign-in). Land these to a
+        working core, then:
+  - [ ] **S — stabilization passes (features first, then iterate until solid)**. Owner strategy
+        (2026-08-20): the lettered milestones build features, each verified narrowly; they do not produce a
+        polished build. After the core imports/launches/returns/syncs end to end, switch to **repeated
+        on-device bug/polish rounds** with a full library, and keep repeating until it feels finished — a
+        first-class phase, not end-of-line cleanup. Seeded backlog: analog sticks unread on Android (blocks
+        rotating the 3D cover, and every stick interaction — really Milestone C), 3D shelf covers resize
+        while scrolling (A2 density × shelf geometry/virtualization), plus "many others" to catalogue in the
+        first pass. See the plan's "Milestone S — Stabilization passes".

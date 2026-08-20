@@ -1044,12 +1044,46 @@ user root, so it does not need a divergent parser or cloud-id model.
 
 ## Sequencing
 
-**0a → A0 → 0b → A1 → D → B → C → E-android → F**, with E-desktop parallel throughout.
+**0a → A0 → 0b → A1 → D → B → C → E-android → F → S (repeat)**, with E-desktop parallel throughout.
 
 Changes from the first draft: A0 is new and comes first among the engineering work; **D moves before
 B** because D produces B's input; the GL and pad probes move into Milestone 0, because each can end
 the project and both are nearly free once a device is booted; and Milestone 0 splits at the delivery
 date.
+
+### S — Stabilization passes (features first, then iterate until solid)
+
+**The strategy, decided 2026-08-20 (owner).** The lettered milestones deliberately build the *features* —
+they land and are each verified in a narrow way (empty library, headless snapshots, a targeted on-device
+check). They do **not** by themselves produce a polished, pleasant-to-use build: the first time the couch
+shell is driven with a **full library on the Thor**, a class of interaction and visual bugs surfaces that
+none of those checks catch. So the plan does not treat "all milestones checked" as "done." After the
+feature milestones give a **working core** (a build that imports, launches, and returns end to end), the
+work switches to **repeated stabilization passes** — and keeps repeating them until the build feels
+finished:
+
+1. Drive the real couch shell on the Thor with a populated library (grid / list / 3D shelf, every overlay).
+2. Catalogue every glitch and dead-end into the known-issues backlog below.
+3. Fix, re-verify on device, and go round again. Each pass should leave fewer, smaller issues than the last.
+
+This is a first-class phase, not cleanup tacked on the end — do not defer it indefinitely as "cosmetic,"
+which is how the density/populated-view bugs below went unnoticed until the app was actually played.
+
+**Known on-device issues (stabilization backlog).** Seeded from the owner's first real play session on the
+Thor (2026-08-20); expand it each pass. None is a feature gap in the milestone sense — they are quality
+bugs the feature checklist does not track:
+
+- **Analog sticks are not read on Android.** Only *digital* buttons/D-pad are wired (via
+  `MainActivity.DispatchKeyEvent`); the sticks emit `MotionEvent`s that nothing consumes. Consequence:
+  **the 3D cover/hero cannot be rotated from the gamepad**, and any stick-driven couch interaction is dead.
+  This is the core of **Milestone C** (native `InputDevice`/`MotionEvent` reading) and should be the first
+  stabilization fix — it clears a whole category of "the stick does nothing" reports at once.
+- **3D shelf covers change size while scrolling.** Almost certainly the A2 density override (which shrinks
+  the whole UI to fit the Thor's ~833×468 dip) interacting badly with `MediaShelf3DControl`'s geometry
+  and/or grid virtualization during a scroll animation. This is the "populated-library visual pass at the
+  new density" the A2 notes flagged as open and deferred as cosmetic — it is neither cosmetic nor optional.
+- **(more to catalogue.)** The owner reported "many others" not yet enumerated; the first stabilization
+  pass with a staged library is where they get written down.
 
 ### Current status and what's next (2026-08-20)
 
@@ -1058,13 +1092,14 @@ date.
 | 0a — AVD spike | ✅ done | — |
 | A0 — desktop split | ✅ done | — |
 | 0b — device facts + handoff matrix | ✅ done | PS3 (aPS3e) never measured — out of v1 scope |
-| A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density (cosmetic) |
+| A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density — **moved to Milestone S** (it is the "covers resize on scroll" bug, not cosmetic) |
 | **D — storage & permissions** | 🟡 core done | all-files runtime grant UX; SAF-backed reader fallback (providers with no local path); per-API-level AVD matrix; verify `FolderScanner`/availability on real Android storage |
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
 | C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
 | E-android — cloud sync | 🟡 local-save wiring in progress (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) landed and is verified on the Thor; Dolphin (GC/Wii) fixed-root wiring landed with desktop-compatible ids and deterministic tests, with device export/restore still pending**; remaining: folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
-| F — packaging & release | 🟡 CI + signing path landed | owner must create/store the permanent keystore; developer-verification/install docs remain |
+| F — packaging & release | 🟡 in progress | APK CI job **done** and attached to releases; release-signing **wired** (activates once the owner runs the keystore setup — DECISIONS 2026-08-20); remaining: owner runs keystore setup, developer-verification/install docs |
+| **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: analog-stick input (blocks 3D rotation), 3D covers resize on scroll, "many others" TBD — see "Milestone S" above |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
 signal + deferred post-play completion (survives process death). RetroArch-backed systems now have a
@@ -1096,12 +1131,19 @@ redirect, an Android `IProtectedTextStore` for the refresh token, and rebuilding
 offer the managed transport (currently rclone-only there). The SAF endpoint reverts to a portability
 concern for a hypothetical second device, not v1 work.
 
-**Recommended next step:** stay in **E-android** and wire the one-time gamepad save-folder picker/override
-for PPSSPP, Azahar, WatermelonDS and RetroArch, while closing Dolphin's on-device export/restore gate. That
-completes the local-save side before Android OAuth/Keystore/gamepad-Saves work makes the managed transport
-reachable. If instead the goal is a shippable sideload build sooner, **C's
-IME** (so gamepad search/rename work) and **F** (packaging) are the shorter path to an experimental release
-that launches games without cloud saves.
+**Strategy (owner, 2026-08-20): finish the feature milestones to a working core, *then* stabilize —
+repeatedly.** Do not interleave the on-device bug/polish work into the feature milestones; land the
+remaining features (C, E-android, F, and E-desktop in parallel) so the core imports, launches, returns and
+syncs end to end, then switch to **Milestone S** — the repeated stabilization passes above — and iterate
+until it feels finished. The known-issues backlog (analog-stick input, 3D-covers-resize-on-scroll, …) is
+deliberately parked for S rather than fixed piecemeal now.
+
+**Recommended next step among the features:** **E-android**, so post-play auto-sync actually moves saves —
+it is the milestone that turns "launches games" into "launches games and keeps your saves in the cloud",
+and the exit-signal plumbing it plugs into is already in place. **C** (native analog-stick input + IME) is
+the other high-value one — it is what makes the couch actually driveable (the sticks do nothing today) and
+its analog-input half is the first thing Milestone S would otherwise have to fix. Order C and E-android by
+whichever matters more for the "working core" bar; both must land before the first stabilization pass.
 
 E-desktop is genuinely parallel and improves the shipping product either way — it deletes three rclone
 download steps from `build.yml` and a bundled binary from all three artifacts.
