@@ -1883,3 +1883,80 @@ many times it was launched. Two aggregate totals on the game row, not a session-
       `dotnet build`/`dotnet test` green on macOS.
 - [ ] On real Windows, launch and exit a game and confirm the play time and count increment, persist
       across restart, and that no game file or emulator data was modified.
+
+## M44 — Android port (AYN Thor) 🚧
+
+The Gamepad shell on an Android handheld, firing intents at Android emulator apps. Master plan and
+per-phase detail live in [docs/android-port-plan.md](docs/android-port-plan.md); non-obvious choices
+are in `DECISIONS.md`. Shipped as an experimental sideload APK, not a fourth supported release target.
+The head (`src/EmuShelf.App.Android`) is deliberately **outside `EmuShelf.slnx`** so the workload never
+breaks the whole-solution macOS build/test loop.
+
+- [x] **0a — AVD spike** (2026-08-15). Toolchain from zero, five emulators installed, the file-handoff
+      matrix measured on an arm64 AVD. Settled the per-emulator handoff design and passed the multi-disc
+      kill criterion via RetroArch/SwanStation. See the plan's "Milestone 0a — results".
+- [x] **A0 — split the App project** (2026-08-17). `EmuShelf.App` split into a shared `EmuShelf.UI`
+      library + a thin desktop head, with a lifetime-agnostic composition root behind
+      `App.DesktopShellFactory`/`IPlatformShell`. Full desktop Release suite green.
+- [x] **A1 — walking skeleton** ✅ (2026-08-18). Verified on the AVD and then **on the Thor**: the real
+      head boots the shared composition root, Avalonia renders, the GLES 3D shelf gets a real OpenGL ES
+      3.0 context (asserted via `InitializationSucceeded`, EGL pinned with Software dropped), and SQLite
+      creates `Data/library.db` in app-private storage. The head hosts the real gamepad shell (extracted
+      `GamepadShellView`), and the gamepad-native import, escape hatches, ladder audit, and an on-device
+      couch-input slice (Menu/D-pad/A-B) are all done and verified — the keyboard-free import runs end to
+      end, driven entirely by the gamepad. Desktop suite green (1128 + 895). A1's done-criterion
+      ("imports a folder without a keyboard, shows the library") is **met**. **The one open item — the CRT
+      tube rendering at 1×1 px on the AVD's *software* GL — is resolved on real hardware: on the Thor's
+      Adreno GL the CRT tube renders full-screen (the phosphor/scanline sheen paints across 1920×1080),
+      so it was a software-GL artifact, not a shell defect.** Installed to the Thor via the Debug
+      `-t:Install` loop; the gamepad shell renders correctly against an empty library.
+  - [x] Single-view seam: `App.SingleViewShellFactory` + `ISingleViewApplicationLifetime` branch;
+        `AppBootstrapper` base-directory injection; Android shell services (`AndroidInterfaceModeService`
+        Gamepad-locked, frontend controller, lifetime service, stub `SingleViewDialogService`).
+  - [x] `net10.0-android36.0` head boots on device, EGL-pinned, `Avalonia.Desktop` kept out.
+  - [x] Extract the gamepad tree from the desktop `MainWindow.axaml` into a shared `EmuShelf.UI`
+        `GamepadShellView` (couch UI + CRT tube + ~40 gamepad code-behind methods; the A0-deferred item).
+        Both heads host it: desktop `MainWindow` and the Android `MainView`. Done in gated stages —
+        shared styles to app scope, shared cover-interaction helper, then the view+code-behind
+        partition. Desktop suite green (1128 + 889); the real gamepad shell renders on the AVD.
+  - [x] Close the gamepad escape hatches via `IInterfaceModeService.SupportsDesktopMode` (desktop true,
+        Android false): the system-menu "Switch to Desktop" and the cover handoff disappear/reword, and
+        the empty-library copy in `GamepadShellView.axaml` points at Menu → Add games instead of a
+        Desktop mode that does not exist. Desktop wording (and snapshots) unchanged.
+  - [x] `OperatingSystem.Is*` ladder audit (50 sites) beyond the base-directory branch: fixed the one
+        live crash risk (`FileRevealService`'s `xdg-open` fall-through vs Android W^X); the rest are
+        correct-as-Linux, degrade safely, already Android-aware, or dormant until a later milestone.
+        See DECISIONS 2026-08-18.
+  - [x] Gamepad-native library import: folder pick via `IDialogService` (Android head drives the SAF
+        picker through `TopLevel.StorageProvider`; translates the `externalstorage` tree URI to a real
+        path with all-files access) → a controller-native `ImportSystem` overlay chooser → the existing
+        scan. "Add games" shows in the couch menu only where Desktop mode is absent. **Verified on the
+        AVD, driven entirely by the gamepad**: Start → Add games → SAF pick → PlayStation → Alpha + Beta
+        imported. See DECISIONS 2026-08-18.
+  - [x] On-device couch input (a Milestone C slice, pulled forward): `MainActivity.DispatchKeyEvent`
+        maps Android gamepad keycodes (which never reach Avalonia's `KeyDown`) to `GamepadAction` and
+        routes them to the shared `DispatchGamepadAction`; the desktop key contract is now a shared
+        `GamepadKeyMap`. Menu/D-pad/A-B/L1-R1 work on device.
+- [x] **Shelf backdrop + chrome capture fixed on the Thor** (2026-08-18). Two HiDPI/single-view bugs the
+      device surfaced after A1: the couch shelf backdrop resolved a hardcoded dark-grey fallback because
+      the theme brush `TryFindResource` keys off a not-yet-settled `ActualThemeVariant` on the single-view
+      tree, and the couch chrome was captured in dip (833 px) then upscaled onto the 1920 px tube (blurred
+      text). Fixed in shared `EmuShelf.UI`; desktop App Release suite green (895/895). See DECISIONS 2026-08-18.
+- [ ] **A2 — couch responsiveness on dense/short panels** 🚧 (Thor, 2026-08-18). The couch shell is tuned
+      for the Steam Deck's 1280×800; the Thor is 1920×1080 physical but ~833×468 **dip** at its ~2.31×
+      density, so the UI is oversized and vertical content overflows. Plan Decision #2 ("do not hard-code
+      one aspect ratio, one DPI") anticipated this but scheduled no work for it. Make the couch shell fit an
+      arbitrary handheld viewport (size from the effective dip viewport, not fixed Deck dimensions).
+- [ ] **Vertical gamepad menus do not scroll to follow the selector** (Thor, 2026-08-18). The focus moves
+      down a vertical list (Settings, sort, system menu) but the `ScrollViewer` does not bring the focused
+      item into view, so the selection runs off-screen. Suspected: the Android `DispatchKeyEvent`→
+      `GamepadAction` path updates view-model selection without giving the item real Avalonia keyboard
+      focus, so focus-follow (`BringIntoView`) never fires. Verify whether it also reproduces on desktop
+      gamepad (shared bug) or is Android-only. **Milestone C** (navigation model on the Thor).
+- [ ] **D — storage & permissions**, **B — launching**, **C — controller + IME**, **E-android — cloud
+      sync**, **F — packaging & release**. Not started; sized in the plan. Everything after A1 that
+      touches the device is gated on the Thor's delivery (0b) and on BIOS/system files.
+  - [ ] **0b — on-device handoff matrix** (started 2026-08-18). Re-run the file-handoff matrix against the
+        Thor's real emulator builds (DuckStation first — its content-URI sibling resolution was unverifiable
+        on the AVD), plus the `Android/data` capability probe. BIOS-gated full boots wait on owner-supplied
+        BIOS. See the plan's "Milestone 0b".

@@ -27,6 +27,24 @@ public partial class App : Application
     public static Func<IClassicDesktopStyleApplicationLifetime, AppBootstrapper, PlatformShellDependencies, IPlatformShell>?
         DesktopShellFactory { get; set; }
 
+    /// <summary>
+    /// Builds the platform shell for a single-view lifetime. Registered by the Android head before
+    /// Avalonia starts; the mirror image of <see cref="DesktopShellFactory"/>. Only one of the two
+    /// factories is ever set in a given process, so the composition root below stays identical under
+    /// either lifetime and never names a concrete window or activity type.
+    /// </summary>
+    public static Func<ISingleViewApplicationLifetime, AppBootstrapper, PlatformShellDependencies, IPlatformShell>?
+        SingleViewShellFactory { get; set; }
+
+    /// <summary>
+    /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
+    /// cannot resolve it themselves. Desktop leaves this null and <see cref="AppBootstrapper"/> uses
+    /// <c>AppContext.BaseDirectory</c> / the per-user macOS location; the Android head sets it to the
+    /// app-private files directory (the only reliably writable path there), which it alone can obtain
+    /// through the Android context. Set before Avalonia starts.
+    /// </summary>
+    public static string? BaseDirectoryOverride { get; set; }
+
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
     private HttpClient? _metadataHttpClient;
     private HttpClient? _webArtworkHttpClient;
@@ -38,13 +56,26 @@ public partial class App : Application
     {
         AvaloniaXamlLoader.Load(this);
 #if DEBUG
-        this.AttachDeveloperTools();
+        // The Avalonia dev-tools (AvaloniaUI.DiagnosticsSupport) are a desktop-only debugging aid and
+        // ship no Android asset, so attaching them there throws FileNotFound during AppBuilder setup.
+        // Keep the reference in a separate method so JITting Initialize on Android never has to resolve
+        // that assembly — it is only ever loaded when the desktop branch actually calls in.
+        if (!OperatingSystem.IsAndroid())
+            AttachDesktopDeveloperTools();
 #endif
     }
 
+#if DEBUG
+    // NoInlining makes the guard robust even in a hypothetical future build where the diagnostics
+    // assembly *is* present on Android: the method (and thus its reference to that assembly) is only
+    // ever JITted when the desktop branch actually calls it, never when Initialize runs on Android.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private void AttachDesktopDeveloperTools() => this.AttachDeveloperTools();
+#endif
+
     public override void OnFrameworkInitializationCompleted()
     {
-        Bootstrapper = new AppBootstrapper();
+        Bootstrapper = new AppBootstrapper(BaseDirectoryOverride);
 
         // Route Avalonia's framework log into the portable Logs/ file. The default .LogToTrace() sink
         // (Program.cs) writes to System.Diagnostics.Trace, which has no listener in a Steam Game Mode
@@ -53,9 +84,23 @@ public partial class App : Application
         Avalonia.Logging.Logger.Sink = new Diagnostics.AvaloniaFileLogSink(Bootstrapper.Logger);
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
-            && DesktopShellFactory is { } createShell)
+            && DesktopShellFactory is { } createDesktopShell)
         {
-            Compose(deps => createShell(desktop, Bootstrapper, deps));
+            Compose(deps => createDesktopShell(desktop, Bootstrapper, deps));
+        }
+        else if (ApplicationLifetime is ISingleViewApplicationLifetime singleView
+            && SingleViewShellFactory is { } createSingleViewShell)
+        {
+            Compose(deps => createSingleViewShell(singleView, Bootstrapper, deps));
+        }
+        else
+        {
+            // No shell was composed — the surface will be blank. This only happens on a misconfigured
+            // or new head (the desktop head always sets DesktopShellFactory in Program.Main), so turn
+            // the otherwise silent blank-window mystery into a diagnosable log line.
+            Bootstrapper.Logger.Error(
+                $"No platform shell composed: lifetime is {ApplicationLifetime?.GetType().Name ?? "null"} "
+                + "and no matching shell factory was registered. The window/view will be blank.");
         }
 
         // Lifetime-agnostic: these fire regardless of which shell (or none) was built.

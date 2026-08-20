@@ -1,9 +1,11 @@
 # Android port plan
 
-Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned, on order,
-not yet delivered. Architecture targets Android arm64 handhelds generally; every acceptance gate is
-the Thor. Status: planning, revised 2026-08-15 after an adversarial review of the first draft.
-Nothing Android-specific has been built.
+Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned; **delivered and
+driven over USB ADB as of 2026-08-18** (`adb -s 2fd555f4`; see "Milestone 0b — first device facts").
+Architecture targets Android arm64 handhelds generally; every acceptance gate is the Thor. Status:
+planning, revised 2026-08-15 after an adversarial review of the first draft, with first on-device facts
+folded in 2026-08-18. A0 (desktop split) and A1 (walking skeleton) are built and verified — A1 on the
+Thor itself.
 
 This is the master plan. `docs/cloud-sync-portability-plan.md` holds the detail for the save-sync
 half and is referenced rather than repeated.
@@ -19,7 +21,7 @@ the plan, so they are not re-litigated:
 | Real file paths + all-files access is "what ES-DE and Daijishō do"; the expected answer | **Backwards.** Both ship SAF/content URIs for almost everything and plain paths only for RetroArch. Per-emulator handoff is the ecosystem's steady state, not a fallback |
 | Milestone 0 decides whether the port proceeds | It decides *which* handoff per emulator. It is a measurement, not a kill gate — and it was aimed at DuckStation, whose Android build was abandoned in 2026 |
 | "PS3 support ends. No RPCS3 for Android" | aPS3e exists (GitHub + Play, releases through 2026) with a documented intent. Low compatibility, but launching is possible. Only the M13 *library sync* has no counterpart |
-| Everything lost shares one cause: `Android/data` | Three different causes. And on the Thor specifically, root is one documented Settings toggle ("Run script as Root"), so most of the list is capability-gated, not dead |
+| Everything lost shares one cause: `Android/data` | Three different causes. ~~And on the Thor root is one documented Settings toggle~~ — **corrected 0b (2026-08-18): "Run script as Root" is a one-shot `.sh` runner, not a persistent grant; there is no ambient `su`. v1 is strictly no-root. The list stays capability-gated, but the free root path this row assumed does not exist on firmware 1.0.0.377** |
 | "Launching is behind one interface" | 17 `Process.Start` sites across 12 files; one is `TrackedProcessRunner` |
 | "Core and Integrations are portable as-is" | They compile. 53 OS-branch sites across 29 files, **including Core**, and `OperatingSystem.IsLinux()` returns *false* on Android, so every `IsWindows/IsMacOS/else-Linux` ladder takes a wrong branch |
 | "Descriptor trees are already resolved" | `GameLaunchDependencyResolver` runs on the Flatpak branch only ([EmulatorLaunchService.cs:182](../src/EmuShelf.Core/Launching/EmulatorLaunchService.cs:182)) and hard-throws on a missing reference |
@@ -27,7 +29,7 @@ the plan, so they are not re-litigated:
 | "New App.Android referencing the existing App" | The composition root lives inside `if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime)` — ~265 of 314 lines of `App.axaml.cs`. The head would link, launch, and show nothing |
 | The solution pins 12.1.0 throughout | `Avalonia.Controls.ItemsRepeater` is 12.0.0 and no 12.1.x exists. It backs the gamepad grid |
 | Milestone E is "Done (Phases 1–2)" | It is one unmerged 28-file commit on a side branch, never on `main`, and **this plan document lives in that same commit** |
-| Fold in as M41+ | M41 and M42 are taken ([ROADMAP.md:1665](../ROADMAP.md:1665), [:1736](../ROADMAP.md:1736)). Android is **M43+** |
+| Fold in as M41+ | M41–M43 are taken (M43 is Playtime tracking, [ROADMAP.md:1849](../ROADMAP.md:1849)). Android is **M44+** — the ROADMAP umbrella is M44 |
 | "~1,936 tests" | 1,826 |
 | `GamepadRoot` at `MainWindow.axaml:2252` | 2267 |
 
@@ -63,7 +65,10 @@ The plan proceeds on these defaults. Change any of them and the shape changes.
 Open and genuinely undecided: what the Thor's **second screen** does. It is a standard Android
 `Presentation` display and AYN's own software uses it. Shipping a forced-single-view app leaves half
 the hardware black on the device the port exists for. Decide before A1: nothing / cover art /
-now-playing. "Nothing" is an acceptable answer, stated.
+now-playing. "Nothing" is an acceptable answer, stated. **(0b, 2026-08-18: the `Presentation` surface is
+confirmed present and available to third-party apps on-device — `displayId=4`, `FLAG_PRESENTATION`,
+1240×1080, 120 Hz. Now a pure product choice, not gated on a hardware unknown. A0/A1 shipped before this
+was decided, so the second screen is currently unused — revisit as its own item.)**
 
 ## What Android v1 is, and when to stop
 
@@ -285,6 +290,94 @@ whether a game boots.
 needs 3DS system files. Those are yours to supply on the Thor; the AVD can prove the file handoff but
 not a full boot.
 
+## Milestone 0b — first device facts (2026-08-18)
+
+The Thor arrived and is driven over USB ADB (`adb -s 2fd555f4`). This is the day-one pass: the device
+questions answered, the installed-emulator set recorded, the handoff matrix not yet re-run. A1 was also
+installed and verified here (see the A1 section). What 0b establishes:
+
+**Confirmed as assumed.** Android 13 / SDK 33, arm64-v8a, firmware `Thor_V1.0.0.377_20260206` — no OTA
+past 13, so the foreground-service and notification-permission escalations in B and E stay dormant.
+Main screen 1920×1080 landscape, 120 Hz, density 369.
+
+**The second screen is available to third-party apps.** Live standard display (`displayId=4`,
+"Screen-2", 1240×1080 landscape, 120 Hz) carrying `FLAG_PRESENTATION`, so a `Presentation` can target
+it. AYN's own `com.odin.dualscreen.assistant` drives it. The open second-screen decision is now a pure
+product choice.
+
+**Root is not one toggle** — no ambient `su`; "Run script as Root" is a one-shot `.sh` runner. v1 is
+strictly no-root (capability model corrected above).
+
+**The CRT tube renders on real Adreno GL.** A1's one open item (1×1-px tube on the AVD's software GL) is
+resolved: on the Thor the tube paints full-screen (phosphor/scanline sheen across 1920×1080). A
+software-GL artifact, not a shell defect.
+
+**Installed emulator set differs from the AVD — build-sensitivity confirmed:**
+
+| System | Thor build | vs. 0a AVD |
+|---|---|---|
+| PS1 | **DuckStation** `com.github.stenzek.duckstation` (from Play) | Absent on the AVD; its content-URI sibling resolution — listed unverifiable-without-hardware — is now testable |
+| PS2 | **AetherSX2** `xyz.aethersx2.android` | AVD used the ARMSX2 fork; different build, own intent/BIOS-gate behavior |
+| GC/Wii | Dolphin `org.dolphinemu.dolphinemu` | same package (rejected FileProvider, wants a SAF tree URI) |
+| PSP | PPSSPP `org.ppsspp.ppsspp` | same (content URI works, path refused) |
+| 3DS | Azahar `org.azahar_emu.azahar` | same (first-run wizard gate) |
+| multi | RetroArch `com.retroarch.aarch64` | same (targetSdk 28, plain-path) |
+| PS3 | — (aPS3e not installed) | supply if PS3 handoff is to be measured |
+
+Reference frontends installed on-device: `com.neogamelab.neostation` (NeoStation) and
+`rip.moth.cocoonshell` (Cocoon) — both studied in "Prior art"; their real launch intents can be
+observed live.
+
+**OLED burn-in is a shipped concern, not hypothetical.** Thor settings exposes "OLED Screen
+Protection", and a "Burn-in Protection Refresher" window was observed firing; a static 3D shelf should
+respect it.
+
+**Still to run on-device:** the handoff matrix against these real builds (DuckStation first), the pad
+and `Android/data` capability probes, and BIOS-gated full boots (owner to supply BIOS for AetherSX2 /
+Azahar). `/sdcard/ROMs` is currently empty — a test corpus is needed to see a populated shelf. None of
+this blocks A1, which is done.
+
+**0b progress (2026-08-18).** Synthetic corpus pushed to `/sdcard/EmuShelfTest/` (single `.iso`; two
+`.bin`+`.cue` pairs; an `.m3u` over both). First measurement, **DuckStation** (PS1, the AVD-unverifiable
+case): handed `-e bootPath /sdcard/EmuShelfTest/game.m3u` on its `MainActivity`, it **ignored the
+plain-path handoff** and showed "No games were found — Add Game Directory". `appops set … MANAGE_EXTERNAL_STORAGE
+allow` was a no-op — **DuckStation declares no all-files access**, so a bare path is unreadable; it needs a
+content URI backed by its **own persisted directory grant** (strategy 4). So the per-emulator setup
+checklist is a hard gate on the device, exactly as on the AVD.
+
+**RetroArch (plain-path) confirmed on the Thor.** `am start … RetroActivityFuture -e ROM
+/sdcard/EmuShelfTest/game.m3u -e LIBRETRO …/swanstation_libretro_android.so`: RetroArch logged `[ENV]
+Auto-start game "…/game.m3u"`, loaded the SwanStation core, and went to a fullscreen running state — the
+plain-path `.m3u` handoff is accepted, matching the AVD's byte-for-byte sibling-resolution result.
+RetroArch's targetSdk 28 gives it all-files, so no grant was needed and no core `.so` had to be named by
+us beyond the standard filename. (Its cores live in app-private storage, unreadable without root.)
+
+**Corpus limitation — the synthetic-zeros trick only carries the open-then-read emulators.** RetroArch
+opens the file regardless of content, so zeros suffice. **DuckStation validates the disc image before it
+will list or boot it**, so the zero-filled corpus is rejected ("No games were found" even after the folder
+was granted) and it cannot be driven to the sibling-resolution step this way. So the content-URI /
+validating emulators (DuckStation, PPSSPP, Dolphin, AetherSX2, Azahar) need **at least one valid small disc
+image** — and BIOS for a real boot — neither of which is on the device yet. That is the gate on the rest of
+0b. Continuing also needs either per-emulator folder grants or EmuShelf's own `FileProvider` (Milestone B).
+
+**Post-A1 UI findings on the Thor (2026-08-18), and where they belong.** Two things real hardware
+surfaced that A1's done-criterion did not cover; both are "judged by hand on the device" items the plan
+said would wait for delivery:
+
+- **The couch shell is oversized and vertical content overflows.** It is tuned for the Steam Deck's
+  1280×800; the Thor is 1920×1080 physical but ~833×468 **dip** at its ~2.31× density. Decision #2 ("do
+  not hard-code one aspect ratio, one DPI") anticipated this but scheduled no work — so it is a **new
+  A-phase item, "A2 — couch responsiveness"**, not part of A1. Size the couch shell from the effective
+  dip viewport rather than fixed Deck dimensions.
+- **Vertical gamepad menus do not scroll to follow the selector.** Focus moves but the `ScrollViewer`
+  does not `BringIntoView`, so the selection runs off-screen. Suspected: the Android
+  `DispatchKeyEvent`→`GamepadAction` path moves view-model selection without giving the item real
+  Avalonia keyboard focus. This is **Milestone C** (the navigation model on the Thor); check whether it
+  also reproduces on desktop gamepad (shared bug) or is Android-only.
+
+(Already fixed, separately: the dark-grey shelf backdrop and distorted couch text — two HiDPI/single-view
+rendering bugs, see DECISIONS 2026-08-18.)
+
 ## Prior art: what the shipping Android frontends do
 
 Checked because it is cheaper to read a working launcher's config than to rediscover it. Two are
@@ -321,10 +414,14 @@ Neither publishes anything that changes the plan's architecture. They confirm it
 ## Capability model — replacing the static loss list
 
 The first draft listed features that "end" under one cause. There are three causes, they bite
-differently, and on the Thor root is one documented Settings toggle away. Replace the static list
+differently. **The earlier claim that "on the Thor root is one documented Settings toggle away" is wrong
+(0b, 2026-08-18):** no ambient `su`, and AYN's "Run script as Root" is a one-shot `.sh` runner, not a
+persistent grant — so **treat v1 as strictly no-root**, which is the base capability model anyway; the
+root-gated extras below simply do not get a free ambient path on this firmware. Replace the static list
 with a **runtime capability probe** ("can I read `Android/data/<pkg>`?") feeding the existing
 "not possible here, and why" channels. That is less code than deleting three features, and it keeps
-them alive for rooted and Shizuku users — a large fraction on a handheld.
+them alive for rooted and Shizuku users — a large fraction on a handheld. A probe `.sh` fed to "Run
+script as Root" can still measure what one-shot root buys, if E ever needs it.
 
 **Cause 1 — `Android/data` is unreadable (capability-gated, not dead).** Confirmed for Android 12+
 even with all-files access. Gates M40 uniform hotkeys, M32 texture-pack inventory, M33 auxiliary
@@ -449,9 +546,112 @@ A `net10.0-android36.0` head, `ISingleViewApplicationLifetime`, Gamepad UI brows
   `EmuShelf.slnx` and build it from its own path**, with a dedicated CI job. The macOS dev loop is
   then untouched. `EmuShelf.slnx` lists eight projects, not the seven the first draft counted.
 
+**Gamepad mode's desktop escape hatches — close each, don't port desktop.** The right mental model:
+Android runs *the gamepad shell made self-sufficient*, not an adaptation of desktop mode. Desktop mode
+does not exist on Android — the desktop head (`MainWindow`, the 9 dialog `Window`s, the grid,
+`SteamInputTemplateInstaller`) never links into the Android head; A0 already put all of it behind
+`App.DesktopShellFactory`/`IPlatformShell`, so the Android head simply registers its own single-view
+shell and omits them. The gamepad view-model already lives in shared `EmuShelf.UI` and comes along for
+free. The catch is that the gamepad view-model is **not self-sufficient today** — in several flows it
+does not implement the action, it hands off to Desktop mode. Every one of those hatches must be
+replaced by a gamepad-native flow or an honest "unavailable here"; none is dead code, all of it runs on
+Android. Checklist:
+
+- **Import** — `AddGamesCommand`/`AddFolderCommand` are bound only in the desktop head's
+  [MainWindow.axaml](../src/EmuShelf.App/Views/MainWindow.axaml); on Android there is no binding at all.
+  This is the same item as "Gamepad-native library import" above.
+- **Empty-library copy** — the couch empty state hardcodes *"No games are available in this view. Use
+  Menu to switch to Desktop mode and add games."* ([GamepadShellView.axaml](../src/EmuShelf.UI/Views/GamepadShellView.axaml)).
+  On Android that is the literal first-run screen and it points at a mode that does not exist. It must
+  read as a gamepad-native call to import once import lands. Distinct from the system-menu "Switch to
+  Desktop" hatch below because it is static copy, not a command — easy to miss.
+- **Cover setting** — "Set cover" opens the `CoverDesktopHandoff` overlay
+  ([MainViewModel.cs:2006](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:2006)) whose whole job is to
+  route the user to Desktop mode. Needs a gamepad-native cover picker or a clean "not here".
+- **Switch to Desktop** — the system menu offers `RequestDesktopModeFromGamepadCommand` /
+  `SwitchToDesktopModeCommand` ([:2961](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:2961)); on
+  Android this option must not appear, and the `DesktopModeConfirmation` overlay path is unreachable.
+- **Search / rename text entry** — routes through `IOnScreenKeyboardService`, whose only implementation
+  is Windows osk; on Android it falls back to a hardware keyboard. This is Milestone C's IME work; until
+  it lands, gamepad search is unusable.
+- **Saves** — the gamepad Saves rows are built with `allowManagedTransport: false` (rclone-only) and
+  the built-in transport is suppressed; the Thor is gamepad-only, so this is a required rebuild. This is
+  Milestone E-android, not A1, but it is the same class of hatch.
+- **Sort columns** — the couch Sort row offers only `GamepadSortColumns`; any column "set on the
+  desktop" ([:1895](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:1895)) falls back. Verify the
+  fallback is sane when no desktop ever set one.
+
+A1 owns the first three (they gate a usable first run); C owns search IME; E-android owns Saves. The
+rule for all of them: make the `InterfaceMode.Desktop`-aware branches in shared `EmuShelf.UI` degrade
+sensibly when desktop is unreachable, rather than assuming they are dead code.
+
 **Answers:** does Avalonia render, does the GLES shelf draw, does SQLite work (it does — 
 `SQLitePCLRaw.bundle_e_sqlite3` 3.0.3 ships `runtimes/android-arm64/native/libe_sqlite3.so`).
 **Done when:** the app launches on device, imports a folder without a keyboard, and shows the library.
+
+**Skeleton verified on the AVD, 2026-08-17.** The real head now boots the shared `App` composition
+root on `emushelf-api33` (Android 13, arm64) and answers all three questions affirmatively, in one
+frame:
+- **Avalonia renders** — the header/status/footer chrome paints.
+- **The GLES context is real, and asserted rather than eyeballed** — `MediaShelf3DControl`'s
+  `InitializationSucceeded` fired ("GL: OpenGL ES context OK"), and logcat shows the shelf's
+  `eglCreateContext maj 3 min 0` (ES 3.0, the exact profile `ShaderLibrary` targets). EGL is pinned
+  with `Software` dropped, so a fallback could not have masqueraded as success.
+- **SQLite works** — `Data/library.db` (204 KB) was created and initialised in app-private storage,
+  and the portable `Data/Covers/Cache/Logs/Saves/Settings` layout exists; the log runs cleanly from
+  `EmuShelf startup began` to `startup services initialized`.
+
+Structure that landed: a new out-of-solution `src/EmuShelf.App.Android` head (`EmuShelfAndroidApplication :
+AvaloniaAndroidApplication<App>` + a thin `AvaloniaMainActivity`), plugging into a new
+`App.SingleViewShellFactory`/`ISingleViewApplicationLifetime` branch that mirrors the desktop
+`DesktopShellFactory`. `AppBootstrapper` gained a base-directory override (the head injects
+`FilesDir`), and the Android shell supplies `AndroidInterfaceModeService` (Gamepad-locked),
+`AndroidFrontendController`, `SingleViewApplicationLifetimeService` and a stub `SingleViewDialogService`.
+Full desktop Release suite still green (1128 + 889). Build/run traps hit and resolved, plus two
+findings, are in DECISIONS 2026-08-17.
+
+**Done in A1 so far:**
+- **The walking-skeleton head boots** the shared `App` composition root on the AVD (Avalonia renders,
+  real GLES 3.0 context asserted, SQLite in app-private storage). See "Skeleton verified on the AVD"
+  above and DECISIONS 2026-08-17.
+- **The gamepad tree was extracted from `MainWindow.axaml`** into a shared
+  `EmuShelf.UI/Views/GamepadShellView` `UserControl`, so the desktop `MainWindow` and the Android
+  `MainView` now both host the *real* couch shell rather than a probe (this was the A0-deferred largest
+  pole). Done in gated stages behind the desktop suite; see DECISIONS 2026-08-18.
+- **The "switch to Desktop" escape hatches are closed.** A platform capability
+  `IInterfaceModeService.SupportsDesktopMode` (desktop true even under a forced-Gamepad override;
+  Android false) gates all three of the checklist items A1 owns — the system-menu "Switch to Desktop"
+  option, the Set-cover handoff (now an honest "unavailable here"), and the empty-library first-run copy
+  (now points at Menu → Add games, not a mode that does not exist). Desktop wording is unchanged, so the
+  snapshots are byte-identical. See DECISIONS 2026-08-18.
+- **The `OperatingSystem.Is*` ladder audit is done.** All 50 sites triaged: one live crash risk fixed
+  (`FileRevealService`'s `xdg-open` fall-through would trip Android's W^X restriction — now throws a
+  clear, catchable `PlatformNotSupportedException`); the rest are correct-as-Linux, degrade safely, are
+  already Android-aware, or are dormant until the later milestone that supplies an Android
+  implementation. Full disposition in DECISIONS 2026-08-18.
+
+- **Gamepad-native library import is built and verified on device.** The couch shell imports a folder
+  without a keyboard: a folder pick via `IDialogService` (the Android head drives the SAF picker through
+  `TopLevel.StorageProvider`; with all-files access it translates the `externalstorage` tree URI to a
+  real path so the shared `FolderScanner` reads it — SAF-reader fallback for other providers is
+  Milestone D), then a controller-native `GamepadOverlayKind.ImportSystem` chooser, then the existing
+  scan. "Add games" appears in the couch menu only where Desktop mode is absent. **Verified end-to-end
+  on the AVD, driven entirely by the gamepad**: Start → Add games → SAF pick → PlayStation → 2 games
+  imported. See DECISIONS 2026-08-18.
+- **On-device couch input is wired (a Milestone C slice, pulled forward).** Android gamepad buttons do
+  not reach Avalonia's `KeyDown` (they report `Key.None`), so `MainActivity.DispatchKeyEvent` maps
+  Android keycodes to `GamepadAction` and routes them to the shared `DispatchGamepadAction`. The desktop
+  window's key contract is now the shared `GamepadKeyMap` it calls. This is what makes the couch menu and
+  import driveable on device; full native analog-stick reading + IME remain Milestone C.
+
+**A1 is done (2026-08-18), verified on the Thor.** The one open item — the CRT tube rendering at 1×1 px
+on the AVD's *software* GL — is resolved on real hardware: installed to the Thor via the Debug
+`-t:Install` loop, the head boots, the gamepad shell renders, and the CRT tube renders **full-screen on
+Adreno GL** (the phosphor/scanline sheen paints across the whole 1920×1080; a backdrop patch measures
+real per-pixel variance, not the AVD's flat grey). So the 1×1 tube was a software-GL artifact, not a
+shell defect. What remains is Milestone C proper (native analog-stick reading, IME, back-vs-B
+arbitration) — a separate milestone, not A1. A1's "imports a folder without a keyboard, shows the
+library" done-criterion is met.
 
 ### D — Storage and permissions (before B, not after)
 
@@ -501,6 +701,14 @@ varies by API level guarantees rework of every launch definition.
   search and rename do not work.
 - Back-gesture vs B-button arbitration.
 - Map the Thor's controls against the existing navigation model.
+- **Drop the SDL2 native payload from the APK.** `ppy.SDL2-CS` (an Infrastructure dependency behind
+  `SdlGamepadReader`, the desktop pad path) packs `runtimes/linux-x64/native/libSDL2.so` into the
+  Android build — wrong architecture, unused, and it trips build warning **XA0141** (16 KB page size).
+  Once Android input reads `InputDevice`/`MotionEvent` here, SDL is dead weight on this head, so exclude
+  the SDL native runtime from the Android APK (e.g. trim `runtimes/**/libSDL2.so` from
+  `@(AndroidNativeLibrary)`, or `ExcludeAssets` the transitive package as seen by the head — without
+  touching the desktop `EmuShelf.App`, which legitimately ships SDL2). Verify the warning clears and no
+  `libSDL2.so` remains in the APK. (Spotted during A1; see DECISIONS 2026-08-17.)
 
 **Cannot be validated off-device** — and per the project's own notes there is no pad on the dev
 machine at all, so the SDL path has never been hand-verified either. This is why C's probe is folded
@@ -608,22 +816,21 @@ starting. In rough priority:
 
 ### Day one on the Thor
 
-Answer these before writing Android code against assumptions:
+Answer these before writing Android code against assumptions. **Most are answered in Milestone 0b
+(2026-08-18); status annotated.**
 
-- **Android version.** The plan assumes 13 (all firmware notes through Feb 2026 are 1.0.0.x on
-  Android 13). If an OTA has moved it to 14+, the foreground-service and notification-permission
-  notes in B and E become live.
-- **Which emulator builds are actually installed**, and their versions — the intent APIs in this plan
-  were observed against specific builds.
-- **Whether "Run script as Root" is present** in Thor settings. It decides whether the capability
-  probe finds `Android/data` readable, and therefore whether M40 hotkeys, M32 texture packs, M33 and
-  full save sync survive.
-- **Wireless ADB pairing**, so the `adb install` / `logcat` / `screencap` loop works from the dev
-  machine.
-- **The second screen**: what it does by default, and whether a `Presentation` surface is available to
-  a third-party app.
-- **How the ROM library gets onto the device**, in practice, at size. This is the real first-run
-  experience and nothing in the plan substitutes for trying it.
+- ✅ **Android version** — 13 / SDK 33, firmware `Thor_V1.0.0.377`. No OTA past 13; the B/E
+  foreground-service and notification-permission notes stay dormant.
+- ✅ **Which emulator builds are installed** — recorded in the 0b table (DuckStation, AetherSX2,
+  Dolphin, PPSSPP, Azahar, RetroArch; no aPS3e). Exact per-emulator versions still to capture.
+- ✅ **"Run script as Root"** — present, but a one-shot script runner, not a persistent grant. v1 is
+  no-root; capability model corrected.
+- ✅ **The second screen** — a live `Presentation` display available to third-party apps
+  (`FLAG_PRESENTATION`); default behavior is AYN's own dual-screen assistant.
+- ⬜ **Wireless ADB pairing**, so the `adb install` / `logcat` / `screencap` loop survives unplugging.
+  Currently on USB. Still to set up.
+- ⬜ **How the ROM library gets onto the device**, in practice, at size. `/sdcard/ROMs` is empty today.
+  This is the real first-run experience and nothing in the plan substitutes for trying it. Still to do.
 
 ## Effort
 
@@ -723,10 +930,11 @@ which matters more than the emulator.
 
 ## Roadmap integration
 
-M41 and M42 are taken; there are already two M40s. Android is **M43+**, one milestone per section
-above, once Milestone 0 has reported. Note that [ROADMAP.md:522](../ROADMAP.md:522) states M24 is a
-product-hardening gate to be completed "before adding new end-user features" and its Phase 0 is
-entirely unchecked — starting Android is a decision to set that aside, which is fine if made
-knowingly.
+M41–M43 are taken (M43 is Playtime tracking); there are already two M40s. Android is the **M44**
+umbrella in [ROADMAP.md](../ROADMAP.md), with the plan's sections (0a, A0, A1, D, B, C, E, F) as its
+phases. Note that [ROADMAP.md:522](../ROADMAP.md:522) states M24 is a product-hardening gate to be
+completed "before adding new end-user features" and its Phase 0 is entirely unchecked — starting
+Android is a decision to set that aside, which is fine if made knowingly.
 
-A DECISIONS entry lands when Milestone 0 reports, not now.
+Milestone 0 has reported (0a) and A0/A1-skeleton have landed, so DECISIONS now carries the
+2026-08-15 (0a), 2026-08-17 (A0) and 2026-08-17 (A1 skeleton) entries.

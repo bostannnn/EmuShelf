@@ -79,6 +79,7 @@ public class LibraryViewStateTests : IDisposable
     {
         public InterfaceMode Current { get; private set; } = InterfaceMode.Desktop;
         public bool IsCommandLineOverride => false;
+        public bool SupportsDesktopMode => true;
         public event EventHandler<InterfaceMode>? ModeChanged;
 
         public void Switch(InterfaceMode mode)

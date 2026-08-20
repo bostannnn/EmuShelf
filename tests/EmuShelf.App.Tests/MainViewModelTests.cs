@@ -1731,6 +1731,136 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task GamepadShell_WithoutDesktopMode_HidesSwitchToDesktopAndWordsHandoffsHonestly()
+    {
+        // Android: the mode service reports no Desktop shell exists. Every "switch to Desktop"
+        // affordance must disappear and the desktop-only handoffs must read as "not available here".
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        var path = Path.Combine(_baseDirectory, "NoDesktop.cue");
+        File.WriteAllText(path, "FILE \"NoDesktop.bin\" BINARY");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "No desktop", DateAdded = DateTimeOffset.UtcNow }]);
+        var vm = CreateViewModel(interfaceModeService: mode);
+        await vm.ReloadGamesAsync();
+        vm.FocusedGame = Assert.Single(vm.Games);
+
+        Assert.False(vm.SupportsDesktopMode);
+        Assert.DoesNotContain("Desktop", vm.GamepadEmptyLibraryPrompt);
+        Assert.Equal("Set cover unavailable here", vm.GamepadCoverHandoffTitle);
+
+        // System menu omits "Switch to Desktop mode" and offers gamepad-native "Add games" instead.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.Equal(
+            ["Search", "Add games", "Settings", "Quit EmuShelf"],
+            vm.GamepadOverlayOptions.Select(option => option.Label));
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Switch to Desktop mode");
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+
+        // The Set-cover handoff becomes a plain acknowledgement, not a route to Desktop.
+        await vm.SetFocusedCoverCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.CoverDesktopHandoff, vm.GamepadOverlay);
+        Assert.Equal(["OK"], vm.GamepadOverlayOptions.Select(option => option.Label));
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Continue to Desktop mode");
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_PicksFolderThenChoosesSystemInOverlay_ScansAndAddsGames()
+    {
+        // The keyboard-free import path: Menu → Add games → OS folder pick → controller-native system
+        // chooser → scan. This is the Android first-run flow the empty-library copy now points at.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        var addGames = Assert.Single(vm.GamepadOverlayOptions, option => option.Label == "Add games");
+        await ((IAsyncRelayCommand)addGames.Command).ExecuteAsync(null);
+
+        // The folder is remembered and the system chooser is up, listing importable consoles plus Cancel.
+        Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == Ps1.Name);
+        Assert.Contains(vm.GamepadOverlayOptions, option => option.Label == "Cancel");
+        // A list-picker overlay must be top-aligned, or its options collapse to an invisible zero-height
+        // row in the auto-sized card (the bug that hid the whole system list on-device).
+        Assert.True(vm.AreGamepadOverlayOptionsTopAligned);
+
+        // Choosing the system runs the scan; the games land and the overlay closes back to the shelf.
+        var pickPs1 = vm.GamepadOverlayOptions.First(option => option.Label == Ps1.Name);
+        await ((IAsyncRelayCommand)pickPs1.Command).ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Equal(
+            ["Alpha", "Beta"],
+            _library.GetGames(Ps1.Id).Select(game => game.Title).OrderBy(title => title).ToArray());
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_CancelledSystemChooser_LeavesNoPendingImport()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+        Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
+
+        // Cancel the chooser: nothing is imported and the shelf is clean.
+        var cancel = vm.GamepadOverlayOptions.First(option => option.Label == "Cancel");
+        cancel.Command.Execute(null);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Empty(_library.GetGames(Ps1.Id));
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_SystemChooser_ExcludesPlayStation3()
+    {
+        // PS3 is RPCS3-sync-only and cannot be folder-scanned, so it must not appear as an import
+        // target in the controller list (the shared scan guard blocks it too, but a UX regression that
+        // simply lists it would otherwise slip through).
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        // Guard: PS3 is a system the view model actually knows about, so excluding it is meaningful.
+        Assert.Contains(vm.Systems, system => system.Id == "playstation3");
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.ImportSystem, vm.GamepadOverlay);
+        Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == Ps3.Name);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_CancelledFolderPicker_OpensNoChooser()
+    {
+        // The OS folder picker was cancelled (FolderToReturn is null); the flow must drop back to the
+        // shelf rather than open an empty system chooser.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = null;
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadImport_WhileBusy_DoesNotStartASecondImport()
+    {
+        // A scan already in flight (IsBusy) must swallow a second Add games: the picker is never opened
+        // and no chooser appears, so two imports cannot run concurrently.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad) { SupportsDesktopMode = false };
+        _dialogs.FolderToReturn = MakeRomsFolder();
+        var vm = CreateViewModel(interfaceModeService: mode);
+        vm.IsBusy = true;
+
+        await vm.AddFolderFromGamepadCommand.ExecuteAsync(null);
+
+        // Had the guard failed, the non-null folder would have opened the ImportSystem chooser.
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
     public async Task GamepadDesktopModeConfirm_BacksOutToTheOverlayThatOpenedIt()
     {
         var path = Path.Combine(_baseDirectory, "DesktopConfirm.cue");
@@ -3999,6 +4129,7 @@ public class MainViewModelTests : IDisposable
     {
         public InterfaceMode Current { get; private set; } = initial;
         public bool IsCommandLineOverride => false;
+        public bool SupportsDesktopMode { get; init; } = true;
         public event EventHandler<InterfaceMode>? ModeChanged;
 
         public Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default)

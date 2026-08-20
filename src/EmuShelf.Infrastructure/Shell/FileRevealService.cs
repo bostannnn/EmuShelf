@@ -25,8 +25,20 @@ public sealed class FileRevealService : IFileRevealService
         _startProcess = startProcess;
     }
 
+    /// <summary>
+    /// Message thrown on platforms with no desktop file manager to reveal into (Android). Launching a
+    /// helper here would fall through to the Linux <c>xdg-open</c> branch, which does not exist on
+    /// Android and would trip the W^X exec restriction — so fail with a clear, catchable reason
+    /// instead. Callers surface it as a status message rather than crashing.
+    /// </summary>
+    private const string NoFileManagerMessage =
+        "Revealing files in a file manager is not available on this device.";
+
     public async Task RevealAsync(string path, CancellationToken cancellationToken = default)
     {
+        if (OperatingSystem.IsAndroid())
+            throw new PlatformNotSupportedException(NoFileManagerMessage);
+
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("A file path is required to reveal it.", nameof(path));
 
@@ -52,6 +64,9 @@ public sealed class FileRevealService : IFileRevealService
 
     public Task OpenDirectoryAsync(string path, CancellationToken cancellationToken = default)
     {
+        if (OperatingSystem.IsAndroid())
+            throw new PlatformNotSupportedException(NoFileManagerMessage);
+
         if (string.IsNullOrWhiteSpace(path))
             throw new ArgumentException("A folder path is required to open it.", nameof(path));
 

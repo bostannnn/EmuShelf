@@ -989,6 +989,10 @@ public partial class MainViewModel : ViewModelBase
     // handoff overlay — so B has to return to whichever one opened it rather than always the menu.
     private GamepadOverlayKind _desktopModeConfirmationParent = GamepadOverlayKind.SystemMenu;
 
+    // The folder chosen in the gamepad import flow, held between the OS folder pick and the system
+    // choice made in the ImportSystem overlay. Cleared once the import runs or the overlay is cancelled.
+    private string? _pendingImportFolder;
+
     [ObservableProperty]
     public partial GamepadSettingsViewModel? GamepadSettings { get; set; }
 
@@ -1048,7 +1052,8 @@ public partial class MainViewModel : ViewModelBase
     public bool ShowsGamepadConfirmationActions => IsGamepadConfirmationOverlay;
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or
-        GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu;
+        GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
+        GamepadOverlayKind.ImportSystem;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
     // bodies and footers, so the shared option-button list and default hint legend are hidden for them.
     // (Hotkeys keeps the chrome title — it just needs its own body and hints, not a fresh header.)
@@ -1076,6 +1081,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Rename => "Rename game",
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
+        GamepadOverlayKind.ImportSystem => "Add games — choose system",
         GamepadOverlayKind.RemoveConfirmation => "Remove game?",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
         GamepadOverlayKind.CoverSearch => FocusedGame is null ? "Set cover" : $"Set cover — {FocusedGame.DisplayTitle}",
@@ -1335,6 +1341,31 @@ public partial class MainViewModel : ViewModelBase
             ? "Sync the explicitly selected RPCS3 library from Settings to add PlayStation 3 games."
             : "Add game files or a dedicated folder to begin building this shelf.",
     };
+
+    /// <summary>
+    /// Whether this platform has a Desktop window shell to switch to. False on Android, where the
+    /// gamepad shell is the whole app; used to hide every "switch to Desktop" affordance and to word
+    /// the desktop-only handoffs honestly. Defaults to true when no mode service is injected, so
+    /// design-time and existing desktop tests are unchanged. Constant for the session (the platform
+    /// does not change), so it needs no change notification.
+    /// </summary>
+    public bool SupportsDesktopMode => _interfaceModeService?.SupportsDesktopMode ?? true;
+
+    /// <summary>Gamepad empty-library prompt, worded for whether a Desktop mode exists to import from.</summary>
+    public string GamepadEmptyLibraryPrompt => SupportsDesktopMode
+        ? "No games are available in this view. Use Menu to switch to Desktop mode and add games."
+        : "No games are available in this view. Press Menu, then Add games, to pick a folder to import.";
+
+    /// <summary>Title of the Set-cover handoff overlay: a route to Desktop, or an honest not-here.</summary>
+    public string GamepadCoverHandoffTitle => SupportsDesktopMode
+        ? "Set cover in Desktop mode"
+        : "Set cover unavailable here";
+
+    /// <summary>Body of the Set-cover handoff overlay, matching <see cref="GamepadCoverHandoffTitle"/>.</summary>
+    public string GamepadCoverHandoffDescription => SupportsDesktopMode
+        ? "Choosing an image needs the platform file picker, which is not controller-safe in Gamepad mode. Continue only if you want to leave Gamepad mode."
+        : "Choosing a cover image from a file isn't available on this device yet. Turn on web image search in Settings to set covers with the controller.";
+
     /// <summary>Design-time / fallback constructor. The real app injects services.</summary>
     private readonly CloudSaveSyncCoordinator? _cloudSaveSync;
     private readonly IGameSaveSyncService? _gameSaveSync;
@@ -2322,6 +2353,8 @@ public partial class MainViewModel : ViewModelBase
         if (closingOverlay == GamepadOverlayKind.Settings)
             CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
+        if (closingOverlay == GamepadOverlayKind.ImportSystem)
+            _pendingImportFolder = null; // a cancelled import must not leave a stale folder pending
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
         IsGameActionsOpen = false;
@@ -2920,6 +2953,11 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
         FocusedGamepadAchievement = null;
+        // A pending import folder is only meaningful while the ImportSystem chooser is up. Transitioning
+        // to any other overlay (e.g. Menu from the chooser) abandons the import, so drop it here — the
+        // one place every overlay transition funnels through — not only on CloseGamepadOverlay.
+        if (overlay != GamepadOverlayKind.ImportSystem)
+            _pendingImportFolder = null;
         GamepadOverlayOptions.Clear();
         MenuFocusRegion = GamepadMenuFocusRegion.Options; // every open lands on the option list, not a selector row
         GamepadOverlay = overlay;
@@ -2937,12 +2975,20 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.DiscSelection:
                 AddDiscSelectionOptions();
                 break;
+            case GamepadOverlayKind.ImportSystem:
+                AddImportSystemOptions();
+                break;
             case GamepadOverlayKind.RemoveConfirmation:
                 AddOption("Cancel", BackFromGamepadOverlayCommand, isCancel: true);
                 AddOption("Remove", ConfirmGamepadRemoveCommand, true);
                 break;
             case GamepadOverlayKind.CoverDesktopHandoff:
-                AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                // Where Desktop exists, offer the route to it; where it does not (Android), the overlay
+                // is a plain acknowledgement of "not available here" and A/B just closes it.
+                if (SupportsDesktopMode)
+                    AddOption("Continue to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                else
+                    AddOption("OK", BackFromGamepadOverlayCommand, isCancel: true);
                 break;
             case GamepadOverlayKind.Achievements:
                 FocusFirstAchievement();
@@ -2955,10 +3001,16 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.SystemMenu:
                 // The couch layout picker is the view-mode row at the top of the menu, not an option here.
                 AddOption("Search", OpenGamepadSearchCommand);
+                // Where Desktop mode is unreachable (Android), importing is controller-native from the
+                // menu; on desktop couch, "Switch to Desktop" below is the import route, so it is not
+                // duplicated here.
+                if (!SupportsDesktopMode)
+                    AddOption("Add games", AddFolderFromGamepadCommand);
                 if (CanScrapeAllInView)
                     AddOption("Scrape all in view", ScrapeAllInViewCommand);
                 AddOption("Settings", RequestSettingsFromGamepadCommand);
-                AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
+                if (SupportsDesktopMode)
+                    AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
                 break;
             case GamepadOverlayKind.Settings:
@@ -4873,6 +4925,56 @@ public partial class MainViewModel : ViewModelBase
         if (system is null)
             return;
 
+        await ImportFolderForSystemAsync(folder, system);
+    }
+
+    /// <summary>
+    /// Gamepad-native folder import: the desktop <see cref="AddFolderAsync"/> flow with the two modal
+    /// pickers replaced by controller-native steps. The OS folder picker still runs (it is the one
+    /// step that genuinely needs the platform picker — a SAF tree on Android), but the system choice
+    /// is a Gamepad overlay rather than a dialog <see cref="Window"/>. Bound into the couch system menu
+    /// only where Desktop mode is absent (Android); on desktop couch, "Switch to Desktop" is the import
+    /// route. See the plan's A1 gamepad-native import item.
+    /// </summary>
+    [RelayCommand]
+    private async Task AddFolderFromGamepadAsync()
+    {
+        if (IsBusy)
+            return;
+
+        var folder = await _dialogs.PickFolderAsync();
+        if (folder is null)
+        {
+            // The picker was cancelled or (on Android without all-files access) returned no usable
+            // path; drop back to the shelf rather than opening an empty system chooser.
+            CloseGamepadOverlay();
+            return;
+        }
+
+        _pendingImportFolder = folder;
+        OpenGamepadOverlay(GamepadOverlayKind.ImportSystem);
+    }
+
+    private void AddImportSystemOptions()
+    {
+        // The scanner imports a folder *for a chosen system*, so list every importable console (PS3 is
+        // RPCS3-sync-only and cannot be folder-scanned). Selecting one runs the scan; B cancels.
+        foreach (var system in Systems.Where(system => system.Id != "playstation3"))
+            AddOption(system.Name, new AsyncRelayCommand(() => ImportPendingFolderForSystemAsync(system)));
+        AddOption("Cancel", BackFromGamepadOverlayCommand, isCancel: true);
+    }
+
+    private async Task ImportPendingFolderForSystemAsync(GameSystem system)
+    {
+        var folder = _pendingImportFolder;
+        _pendingImportFolder = null;
+        CloseGamepadOverlay();
+        if (folder is not null)
+            await ImportFolderForSystemAsync(folder, system);
+    }
+
+    private async Task ImportFolderForSystemAsync(string folder, GameSystem system)
+    {
         if (system.Id == "playstation3")
         {
             SetStatus("PlayStation 3 games are imported only from RPCS3. Use Settings to sync its library.");

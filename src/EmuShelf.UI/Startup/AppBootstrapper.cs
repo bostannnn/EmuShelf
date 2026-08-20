@@ -71,9 +71,30 @@ public sealed class AppBootstrapper
     public TexturePackCoordinator TexturePacks { get; }
     public HotkeyCoordinator Hotkeys { get; }
 
-    public AppBootstrapper()
+    /// <param name="baseDirectoryOverride">
+    /// The portable-storage root, or null to resolve it from the environment. Desktop passes null and
+    /// <see cref="AppPaths"/> uses the executable directory (or the per-user macOS location); the
+    /// Android head passes its app-private files directory, which is the only reliably writable path
+    /// there and which Infrastructure cannot obtain without the Android context.
+    /// </param>
+    public AppBootstrapper(string? baseDirectoryOverride = null)
     {
-        Paths = new AppPaths();
+        // On Android a missing/blank override would otherwise silently fall through to
+        // AppContext.BaseDirectory (read-only there), and EnsureDirectoriesExist() below would then
+        // throw UnauthorizedAccessException from deep in Directory.CreateDirectory — one line before
+        // Logger exists, so with no log entry and no on-screen reason. Fail fast with an actionable
+        // message instead; the Android head must set App.BaseDirectoryOverride before composing.
+        if (OperatingSystem.IsAndroid() && string.IsNullOrWhiteSpace(baseDirectoryOverride))
+        {
+            throw new InvalidOperationException(
+                "On Android, App.BaseDirectoryOverride must be set to the app-private files directory "
+                + "before the composition root runs (AppContext.BaseDirectory is read-only there). "
+                + "EmuShelfAndroidApplication.CustomizeAppBuilder sets it from FilesDir.");
+        }
+
+        Paths = string.IsNullOrWhiteSpace(baseDirectoryOverride)
+            ? new AppPaths()
+            : new AppPaths(baseDirectoryOverride);
         Paths.EnsureDirectoriesExist();
         Logger = new FileAppLogger(Paths);
         Logger.Information("EmuShelf startup began.");

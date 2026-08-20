@@ -28,6 +28,14 @@ public class TestApp : Application
             ThemeVariant.Dark,
             new ColorPaletteResources { Accent = Color.Parse("#EF4855") });
         Styles.Add(fluent);
+        // The shared EmuShelf control/class styles used to live in MainWindow.axaml's Window.Styles,
+        // so instantiating MainWindow brought them along. They now live at Application scope (App.axaml
+        // StyleInclude); the render/snapshot tests build MainWindow under this stand-in Application, so
+        // it must include the same styles or the gamepad overlays and labels lose their sizing.
+        Styles.Add(new StyleInclude(new Uri("avares://EmuShelf.UI/"))
+        {
+            Source = new Uri("avares://EmuShelf.UI/Styles/EmuShelfStyles.axaml"),
+        });
     }
 }
 

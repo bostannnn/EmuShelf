@@ -13,6 +13,7 @@ public enum GamepadOverlayKind
     Search,
     Rename,
     DiscSelection,
+    ImportSystem,
     RemoveConfirmation,
     CoverDesktopHandoff,
     CoverSearch,

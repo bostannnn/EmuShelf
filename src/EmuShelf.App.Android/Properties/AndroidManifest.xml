@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          android:versionCode="1"
+          android:versionName="0.1.0"
+          package="com.emushelf.app">
+  <!-- INTERNET is harmless and lets the metadata/achievement HttpClients that the shared composition
+       root builds exist without a runtime surprise later. -->
+  <uses-permission android:name="android.permission.INTERNET" />
+  <!-- All-files access: the SAF folder picker resolves to a real path only when EmuShelf itself can
+       read it, and the shared FolderScanner/disc readers do random access over multi-gigabyte files by
+       absolute path. Declaring it is also what makes `appops set … MANAGE_EXTERNAL_STORAGE allow` stick
+       on the AVD (see the spike). The full grant UX — directing the user to the all-files Settings
+       screen — and the SAF-backed fallback for devices without it are Milestone D
+       (docs/android-port-plan.md). READ_EXTERNAL_STORAGE covers the legacy pre-scoped path on API ≤32. -->
+  <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+                   android:maxSdkVersion="32" />
+  <application android:label="EmuShelf"
+               android:allowBackup="false"
+               android:hardwareAccelerated="true" />
+</manifest>

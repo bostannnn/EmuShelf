@@ -37,5 +37,6 @@
                 <ColorPaletteResources x:Key="Dark" Accent="#5B58D9" />
             </FluentTheme.Palettes>
         </FluentTheme>
+        <StyleInclude Source="avares://EmuShelf.UI/Styles/EmuShelfStyles.axaml" />
     </Application.Styles>
 </Application>

@@ -9288,6 +9288,120 @@ no longer re-enumerates joysticks every 16 ms poll when no controller is attache
 which was 60 native controller-open scans/sec on the UI thread during the load on a Deck driven by
 Steam Input rather than a raw SDL pad.
 
+## 2026-08-17 — Android A1 walking skeleton: real head boots on the AVD
+
+The Android head (`src/EmuShelf.App.Android`) now boots the shared `App` composition root on an
+arm64 AVD (API 33) and answers Milestone A1's three questions: Avalonia renders, the GLES 3D shelf
+gets a real OpenGL ES 3.0 context (asserted via `MediaShelf3DControl.InitializationSucceeded`, not by
+eye), and SQLite creates/initialises `Data/library.db` in app-private storage. Full desktop Release
+suite stayed green (1128 + 889). Non-obvious choices and traps this locks in:
+
+- **The head stays out of `EmuShelf.slnx` and is built from its own path.** Confirmed necessary as the
+  plan predicted — the android workload restore/build would otherwise break the whole-solution macOS
+  dev loop. `dotnet test EmuShelf.slnx` never sees it.
+- **Single-view seam mirrors the desktop one.** Added `App.SingleViewShellFactory` +
+  `App.BaseDirectoryOverride` and an `ISingleViewApplicationLifetime` branch beside the existing
+  `DesktopShellFactory`. `AppBootstrapper` takes an optional base directory; the head injects the
+  Android `FilesDir` (the only reliably writable portable root — Infrastructure cannot resolve it
+  without the Android context).
+- **Avalonia 12's Android entry point is application-based, not the v11 generic activity.**
+  `EmuShelfAndroidApplication : AvaloniaAndroidApplication<App>` owns `CustomizeAppBuilder` (EGL pin,
+  font, factory/base-dir wiring); `MainActivity : AvaloniaMainActivity` is thin. The activity theme
+  MUST be a `Theme.AppCompat` descendant (`AvaloniaActivity` extends `AppCompatActivity`) — a plain
+  `@android` Material theme aborts at `setContentView`. The launcher activity has an explicit
+  `Name=` so .NET's `crc64…` mangling can't rename it out from under the manifest.
+- **`adb install` of a Debug APK needs `-p:EmbedAssembliesIntoApk=true`.** Fast deployment expects the
+  assemblies pushed to `.__override__` via the deploy target; a bare `adb install` otherwise aborts
+  with "No assemblies found". Embedding produces a self-contained ~135 MB Debug APK that installs
+  standalone.
+- **Avalonia dev-tools (`AvaloniaUI.DiagnosticsSupport`) must not attach on Android.** It ships no
+  Android asset and threw `FileNotFound` during `AppBuilder` setup. `App.Initialize` now calls
+  `AttachDeveloperTools()` from a separate method guarded by `!OperatingSystem.IsAndroid()`, so JITting
+  `Initialize` on Android never resolves the assembly. Desktop behaviour is unchanged.
+
+Two findings surfaced, both matching risks the plan flagged, both deferred:
+- **The IBL cube map errors on the AVD's GLES translator.** `glFramebufferTexture2D` on the `Rgba16f`
+  cube target logs `GL error 0x502` — the "ES 3.0 does not guarantee `Rgba16f` is colour-renderable"
+  concern from "What cannot be verified without hardware." The shelf still reported init success and
+  did not crash; whether real Adreno hardware (the Thor) hits this is a 0b/A1 question. With 0 games
+  the shelf draws nothing anyway, so it did not affect the skeleton.
+- **The SDL2 native `.so` leaks into the APK.** `ppy.SDL2-CS` (a desktop-only gamepad dependency in
+  Infrastructure) packs `runtimes/linux-x64/native/libSDL2.so` into the Android build (XA0141, wrong
+  arch and useless there). Android input is Milestone C; exclude the SDL native runtime from the
+  Android head then.
+
+## 2026-08-17 — Android A1: two-agent code review + fixes
+
+The A1 skeleton was reviewed by two independent agents (shared `EmuShelf.UI` seam; the Android head).
+Both verified the design is sound and desktop is unregressed; between them they found five real items,
+of which four were fixed and one documented. Fixes (desktop Release suite still green 1128 + 889, and
+the head still boots/renders/opens SQLite on the AVD):
+
+- **`Opened` was mapped onto a recurring event.** `SingleViewShell` ran the shared post-open startup
+  pass on `MainView.AttachedToVisualTree`, which re-fires on activity recreation / "Don't keep
+  activities" / split-screen / process-death restore — re-running the availability rescan, the
+  RetroAchievements network refresh, the update check and overlapping grid rebuilds each time. Now
+  guarded to run exactly once, matching desktop's `Window.Opened`.
+- **The durable-save signal was wrong, and the disposal path was dead code.** Save-flush was wired to
+  `DetachedFromVisualTree` (fires on transient re-attach) and disposal to an
+  `IControlledApplicationLifetime` cast that is *always false* on Android (Avalonia's Android lifetime
+  does not implement it — confirmed from assembly metadata). Flush now fires on
+  `IActivatableLifetime.Deactivated(ActivationKind.Background)` (onPause), the real Android durable
+  point; the dead Exit cast is removed with a comment that teardown/persistence-across-process-death is
+  Milestone B.
+- **`AppBootstrapper` base-dir fallback could crash unlogged on Android.** A null/blank
+  `BaseDirectoryOverride` fell through to the read-only `AppContext.BaseDirectory` and threw from
+  `Directory.CreateDirectory` one line before the logger existed. Now fails fast on Android with an
+  actionable message.
+- **A missing shell factory produced a silent blank window.** `App.OnFrameworkInitializationCompleted`
+  now logs an error when no shell is composed.
+- **Documented-only:** `SingleViewApplicationLifetimeService.Shutdown()`'s no-op also makes the
+  in-app-update "exit to unlock files" path a no-op — moot on Android, which has no in-app update path.
+
+Verified non-issues the review cleared (so they are not re-litigated): the `MainView` bindings all
+resolve (incl. `Games.Count` OneWay via `BulkObservableCollection`), the forced-Gamepad mode
+initialises correctly through the VM constructor (not `ModeChanged`), `SingleViewDialogService` is
+complete and cannot wedge the VM, no `Avalonia.Desktop` backend reaches the APK (inspected payload),
+and the `FilesDir`/startup ordering and duplicate `<application>` merge are correct.
+
+## 2026-08-18 — Android A1: extract the gamepad shell into a shared view so both heads host it
+
+The A1-deferred, largest single pole: the couch UI lived in the desktop-only `MainWindow.axaml`
+(4,700-line window, gamepad tree interleaved with desktop chrome), so the Android head could only show
+a probe. Extracted the whole gamepad tree — `GamepadRoot` + the CRT tube host + ~40 gamepad
+code-behind methods — into a shared `EmuShelf.UI/Views/GamepadShellView` (`UserControl`). The desktop
+`MainWindow` and the Android `MainView` now both host `<views:GamepadShellView/>`; the real couch shell
+renders on the AVD (rail, empty-library state, GLES 3.0 context). Done in gated stages so the desktop
+suite caught any regression at each step, and committed as three commits:
+
+- **Shared styles to application scope** (`EmuShelf.UI/Styles/EmuShelfStyles.axaml`, `StyleInclude`d by
+  both `App.axaml` and the headless `TestApp`). The Android head has no `Window`, so styles that used
+  to travel inside `MainWindow.axaml`'s `Window.Styles` had to live where both heads and the render
+  tests resolve them. No selector targets the `Window` type, so application scope is behaviour-identical
+  (verified: 724 Style+Setter lines byte-identical to the baseline). Two `#GamepadOverlayHost`-bound
+  styles follow the overlay host into the view's own `UserControl.Styles`.
+- **Shared cover-interaction helper** (`GameCoverInteractions`) for the one behaviour both trees share
+  (double-tap launch, cover realize/recycle), so the extraction is a clean cut, not a fork.
+- **The view + code-behind partition.** Window-only concerns stay on the window (chrome, marquee
+  selection, `OnWindowKeyDown` + keyboard rotation — which drive the VM, so the gamepad view reacts
+  through it). `FocusManager` and `RenderScaling` are `TopLevel` concerns the window exposed directly;
+  the `UserControl` reaches them via `TopLevel.GetTopLevel(this)`, so the moved method bodies are
+  unchanged. `ApplyCellWidth` (window `RenderScaling` + desktop `LibraryRepeater`) stays on the window;
+  the couch grid, a `UniformGrid` with no layout width to push, gets a `CoverRenderScale`-only variant.
+
+Two seams this creates, recorded so they are not surprises: (1) the gamepad control names now live in
+the view's own namescope, so `Window.FindControl` can no longer see them — the snapshot tests use a
+`FindNamed` helper that checks the window then the shell, reproducing the old single-namescope lookup
+(no name collisions: 26 desktop / 52 gamepad, zero overlap). (2) The empty-library copy is now shared
+XAML that still reads "switch to Desktop mode and add games" — correct on the desktop couch, wrong on
+Android; tracked as an A1 escape hatch to close with gamepad-native import.
+
+Verified: the gamepad XAML region moved byte-identical (2,737 lines, empty diff, tube included); the
+code-behind partition is lossless (every delta is the scaffold, the shared delegators duplicated by
+design, or the two renamed `ApplyCellWidth` calls); full desktop Release suite green (1128 + 889,
+snapshot tests included); the Android head builds and renders the real shell. Still open under A1:
+gamepad-native import, closing the escape hatches, and the `OperatingSystem.Is*` ladder audit.
+
 ## 2026-08-18 — Couch CRT tube rebuilds itself when the window settles at a new size
 
 The "doubled top row" in gamepad + CRT mode was the couch tube failing to cover the window: the
@@ -9355,3 +9469,156 @@ the cloud contributes only what is missing locally). A cloud export needs a live
 - **Temp-then-move sink.** `ZipSaveExportSink` builds the archive at `*.zip.emushelf-tmp` and moves
   it onto the chosen path only on `Complete()`, so a failed or "nothing to export" run leaves no
   half-written file where the user picked to save.
+
+## 2026-08-18 — Android A1: close the gamepad "switch to Desktop" escape hatches
+
+Android has no desktop window shell, so the gamepad shell (shared `EmuShelf.UI`) must be
+self-sufficient rather than routing to a mode that does not exist. Rather than scatter
+`OperatingSystem.IsAndroid()` through the view-model, added a platform capability
+`IInterfaceModeService.SupportsDesktopMode` — desktop returns **true even under a forced-Gamepad
+command-line override** (Steam Gaming Mode: the shell still exists and is reachable), Android returns
+**false** (the shell is absent, not merely locked). `MainViewModel` exposes it and words three hatches
+off it, all defaulting to the desktop wording when no mode service is injected (design-time / existing
+tests unchanged, so the visual snapshots are byte-identical):
+
+- The gamepad **system menu** omits "Switch to Desktop mode" when unsupported.
+- The **Set-cover handoff** overlay becomes a plain "Set cover unavailable here" acknowledgement
+  (single "OK", A/B closes) instead of "Continue to Desktop mode", and its body points at web image
+  search rather than the file picker.
+- The **empty-library** prompt stops telling the user to switch to Desktop and points at
+  Menu → Add games (the gamepad-native import, landing next). This is the couch first-run screen on
+  Android, so it must not name a mode that does not exist.
+
+## 2026-08-18 — Android A1: OperatingSystem.Is* ladder audit
+
+Audited all 50 `OperatingSystem.Is*` sites for the "IsLinux() is false on Android, so else-Linux
+ladders misfire" trap. Disposition, so it is not re-derived:
+
+- **One live crash risk, fixed:** `FileRevealService` (constructed unconditionally in shared
+  `App.Compose`) would fall through to the Linux `xdg-open` branch and trip Android's W^X exec
+  restriction if reveal were invoked. Now throws a clear, catchable `PlatformNotSupportedException`
+  on Android at both entry points; both callers already catch and surface it as a status message, so
+  it degrades instead of crashing.
+- **Correct-as-Linux on Android (no change):** `FilePathComparison` (Android ext4/f2fs is
+  case-sensitive, so falling out of the Win/mac case-insensitive branch is right — the NOCASE-DB
+  mismatch is the same one already documented for Linux); `DefaultLaunchTargetInspector`'s unix-mode
+  check.
+- **Degrades safely (no change):** `UpdatePlatform.CurrentAssetName()` → null (updater stays quiet);
+  `UpdateApplierFactory` → `UnsupportedUpdateApplier`; `PlatformOnScreenKeyboardService` → null/
+  unsupported (Milestone C owns the Android IME); the four credential/token stores → obfuscated
+  fallback (functional; a Keystore-backed `IProtectedTextStore` is Milestone E).
+- **Already Android-aware:** `App.axaml.cs` (the `IsAndroid()` compose branch), `AppBootstrapper`
+  (fails fast if the base-dir override is missing on Android, so `AppPaths.ResolveBaseDirectory`'s
+  macOS/`AppContext.BaseDirectory` branches are never reached on Android).
+- **Dormant until a later milestone that supplies an Android implementation (left as-is,
+  deliberately, rather than writing speculative branches now):** the seven per-emulator
+  `*SaveLocationProvider`s and `DolphinHotkeyConfigurator` (Milestone E-android / B — they already
+  take injected `isWindows`/`isMacOS`, so the Android head substitutes behaviour there);
+  `EmulatorLaunchService`/`DefaultLaunchTargetInspector` desktop-launch branches (Milestone B routes
+  through `AndroidIntentLauncher`); `SdlGamepadReader` (Milestone C, and the SDL native lib is
+  excluded from the APK). `GameViewModel`/`EmulatorSettingsRowViewModel` OS-worded labels are cosmetic
+  on Android and harmless.
+
+The rule recorded for later milestones: a ladder that runs on Android must fail safe or clear, never
+silently take the Linux branch.
+
+## 2026-08-18 — Android A1: gamepad-native import + on-device findings
+
+Built the keyboard-free import the empty-library copy now points at. The desktop scan/reconcile path
+is reused unchanged; only its two modal pickers are replaced by controller-native steps — a new
+`GamepadOverlayKind.ImportSystem` overlay lists importable systems (PS3 excluded, it is RPCS3-sync
+only), and the one step that genuinely needs the platform picker (the folder pick) stays behind
+`IDialogService`. The Android `SingleViewDialogService.PickFolderAsync` drives the SAF folder picker via
+`TopLevel.StorageProvider` and returns a real local path (null, logged, for a SAF-only URI — that
+fallback is Milestone D); the manifest now declares `MANAGE_EXTERNAL_STORAGE` so the picked tree is
+readable by the shared scanner. The "Add games" menu item appears only where Desktop mode is absent
+(`!SupportsDesktopMode`), so the desktop couch menu and its snapshots are unchanged.
+
+Verified on the `emushelf-api33` AVD (Android 13, arm64), with the code committed:
+- The head boots, the GLES shelf gets a real ES 3.0 context (`glsl = OpenGL ES GLSL ES 3.00`), and
+  SQLite initialises `Data/library.db` in app-private storage — the A1 skeleton, still green after all
+  the shared-UI changes.
+- With the CRT effect off, the couch shell renders correctly and the empty-library screen shows the new
+  Android copy verbatim: *"No games are available in this view. Press Menu, then Add games, to pick a
+  folder to import."* — the escape-hatch change confirmed on-device by eye.
+
+Two findings, both honest boundaries rather than regressions:
+- **The import flow cannot be *driven* on-device yet.** `DispatchGamepadAction` (menu / D-pad / A-B)
+  is wired only in the desktop `MainWindow.axaml.cs`; the shared `GamepadShellView` carries no
+  menu/navigation input, and the tap-to-focus/tap-to-launch touch seam (decision 2) is not built. So
+  neither key events, a pad, nor a tap opens the couch menu on Android. Wiring input into the shared
+  shell is **Milestone C**, and A1's "imports a folder without a keyboard" done-criterion is therefore
+  gated on it. The import flow itself is fully covered by shared MainViewModel tests; what is missing is
+  the on-device *invocation*, not the logic.
+- **With the CRT effect on (the shipping default), the shelf draws at 1×1 px on this AVD**
+  (`Shelf first frame drawn at 1x1 px (viewportReported=True)`), so the couch chrome is hidden behind an
+  almost-empty tube. This predates these changes (the same line appears in the first boot) and is a
+  device/surface-size issue for the CRT tube on the emulator's ANGLE/SwiftShader stack — a 0b question on
+  real Adreno hardware, not part of this work.
+
+## 2026-08-18 — Android A1: on-device couch input, and gamepad-native import verified end-to-end
+
+Pulled the Milestone C input slice forward so the couch UI — and the just-built gamepad-native import —
+is actually driveable on device, then closed the two gaps that only showed up when driving it on the AVD.
+
+**Android gamepad buttons never reach Avalonia's `KeyDown`.** Measured on the AVD: injected
+`KEYCODE_BUTTON_A/B/X/Y/START` arrive at the Activity but Avalonia reports them as `Key.None` (only
+keyboard keys like the arrows/Enter/Escape translate, and even those differ from the desktop Steam-Input
+contract — `KEYCODE_F10` came through as `Key.F11`). So a control-level `KeyDown` handler is the wrong
+surface. `MainActivity.DispatchKeyEvent` is the right one: it overrides the Activity, maps Android
+keycodes (D-pad, A/B/X/Y, Start/Menu, L1/R1) to `GamepadAction` in `AndroidGamepadInput`, and routes them
+to the shared `DispatchGamepadAction` through a static bridge `SingleViewShell` points at the live view
+model. Android BACK is deliberately left to the system (back-vs-B arbitration is the rest of C). The
+desktop window's Steam-Input key contract was extracted to a shared `GamepadKeyMap` it now calls, so the
+one mapping is shared; the *event source* stays per-head (desktop window vs Android Activity), which is
+correct because it is inherently platform-specific.
+
+**SAF tree URIs need translating to a real path.** Avalonia's `TryGetLocalPath()` is null for a SAF
+folder pick, so with all-files access held `SingleViewDialogService` translates an `externalstorage` tree
+URI (`content://com.android.externalstorage.documents/tree/primary%3AFoo`) to `/storage/emulated/0/Foo`
+so the shared `FolderScanner` reads it unchanged. A provider it cannot translate still returns null and
+routes to the Milestone D SAF-reader fallback.
+
+**A list-picker overlay must be top-aligned.** `ImportSystem`'s options were invisible on device: the
+shared `gamepad-overlay-options` list defaults to `VerticalAlignment=Bottom`, which collapses to a
+zero-height row inside the auto-sized overlay card. Adding `ImportSystem` to
+`AreGamepadOverlayOptionsTopAligned` (with `DiscSelection`/`SystemMenu`) fixes it. A regression assertion
+guards it.
+
+Verified on the `emushelf-api33` AVD, driven **entirely by the gamepad**: Start → Add games → the SAF
+folder picker → choose PlayStation from the couch system list → scan imported Alpha + Beta as PlayStation
+games, with the "Added 2 games from folder" toast and both cards on the shelf. Desktop Release suite green
+(1128 + 892). Note the CRT tube's 1×1 render on this AVD (a pre-existing 0b issue) means this was observed
+with the CRT effect off; the shelf itself renders correctly.
+
+## 2026-08-18 — Android couch shelf on HiDPI: theme brush and chrome capture both misbehave on the single-view head
+
+Once A1 ran on the Thor (real Adreno GL, ~2.31x density) the couch 3D shelf showed a **dark-grey backdrop
+with distorted text**; grid/list were fine. Two independent bugs, both rooted in the shared `EmuShelf.UI`
+being hosted in a plain `MainView` rather than a `Window`, both fixed and verified on the device.
+
+**1 — the theme brush never resolved, so the backdrop fell back to a hardcoded dark.**
+`MediaShelf3DControl.ResolveBackdrop` read `EmuLibraryBrush` via `this.TryFindResource(key, out v)`, which
+keys off the control's `ActualThemeVariant`. On the single-view tree that variant is briefly an
+uninitialised value (neither `Default` nor a real variant) and settles late, so the ThemeDictionary
+(Light/Dark keys only) matched nothing and the code dropped to its `Color.FromRgb(22,23,27)` fallback. On
+the device log the pre-fix lookup was `oldFound=False` on **every** frame — it had never worked on Android.
+Only the 3D shelf exposed it: the flat grid/list presentations warp an *opaque* full-screen chrome capture
+over the backdrop, while the shelf *clears* to it and lets it show through the transparent chrome. Fix:
+resolve against an ordered candidate list of concrete variants — the control's, then
+`Application.Current.ActualThemeVariant`, then a `Light` backstop — checking control then application
+resources, so it tracks the theme like every `{DynamicResource}` does and never flashes the fallback. A
+one-time-per-change `[EmuShelf.Shelf3D] Shelf backdrop resolve:` line records `used/control/app/resolved/
+library` (kept, per the Deck-diagnosis instrument-and-keep pattern).
+
+**2 — the couch chrome was captured in dip, not pixels.** `ChromeSnapshot` sized the capture from
+`visual.Bounds` (dip) capped at `MaximumEdge=1280`; at 2.31x that is 833 px, upscaled onto the 1920 px
+tube → blurred, warped text. Fix: `scale = Math.Min(RenderScaling, MaximumEdge / maxBoundsDip)` (was
+`Math.Min(1.0, …)`), i.e. size from `bounds * RenderScaling`, now 1280 px — matching what desktop already
+captured for a 1920 px window. A no-op on desktop (RenderScaling 1.0). RenderScaling is reliable on Android
+(unlike the Mac GL-surface case, 2026-08-14), so it is the right factor here.
+
+Verified on the Thor: `resolved=True` with the correct theme colour and no flash, chrome captured at
+`1280x647`, text crisp. Desktop App Release suite green (895/895), so the shared-UI change does not regress
+the desktop shelf or its visual snapshots. The general lesson: shared `EmuShelf.UI` code that resolves
+theme resources imperatively or sizes from dip will silently misbehave on the Android single-view head.
