@@ -302,8 +302,18 @@ jobs:
   release:
     # On a version tag (vX.Y.Z), collect every platform artifact and publish a
     # GitHub Release so builds are permanent and downloadable, not 14-day artifacts.
-    needs: [package, package-appimage, package-macos]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # package-android is in `needs` so the release WAITS for the APK and attaches it,
+    # but the `if` only *requires* the three desktop packages to have succeeded (plus
+    # !cancelled() to override the implicit success() gate). So a broken experimental
+    # APK build no longer blocks the desktop release — it is simply left off, while a
+    # successful one is included. This keeps the plan's "don't let Android block a
+    # release" guarantee while still shipping the APK when it builds.
+    needs: [package, package-appimage, package-macos, package-android]
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') && !cancelled() &&
+      needs.package.result == 'success' &&
+      needs.package-appimage.result == 'success' &&
+      needs.package-macos.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write

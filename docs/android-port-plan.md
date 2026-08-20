@@ -1010,10 +1010,14 @@ Android providers diverge from their desktop counterparts.
   will not build it). Cache the workload; it is minutes per run on top of a JDK and SDK 36.
   **Landed (2026-08-20):** `package-android` in [.github/workflows/build.yml](../.github/workflows/build.yml)
   — JDK 21 + SDK platform 36 + `dotnet workload install android`, publishes a Release APK
-  (`-p:AndroidPackageFormat=apk`, debug-key-signed for sideload), runs on PRs as the build floor, uploads
-  the APK only on non-PR events, and is **deliberately absent from the `release` job's `needs`** so a
-  failing experimental APK can never block a tagged desktop release. Still to do here: a real signing
-  keystore (its own DECISIONS entry) and the Android OAuth client id in `EmbeddedSecrets`.
+  (`-p:AndroidPackageFormat=apk`, debug-key-signed for sideload), runs on PRs as the build floor, and
+  uploads the APK on non-PR events. The tagged **release attaches the APK** alongside the desktop targets:
+  `package-android` is in the `release` job's `needs` (so the release waits for and includes it), but the
+  job's `if` only *requires* the three desktop packages to have succeeded — so a failing experimental APK
+  build is left off the release rather than blocking the Windows/macOS/Linux release (the plan's original
+  "don't let Android block a release" guarantee, kept while still shipping the APK when it builds). Still
+  to do here: a real signing keystore (its own DECISIONS entry) and the Android OAuth client id in
+  `EmbeddedSecrets`.
 - Signing keystore. This is a permanent, unrecoverable obligation — lose it and every user must
   uninstall to upgrade. It deserves its own DECISIONS entry.
 - `EmbeddedSecrets.targets` gains the Android OAuth client id — one `Append(...)` line plus one
