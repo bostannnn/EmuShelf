@@ -9788,3 +9788,20 @@ gh secret set ANDROID_KEY_ALIAS -b emushelf --repo bostannnn/EmuShelf
 Once the secrets exist, the next tagged release ships a release-signed APK; installs from that point upgrade
 in place. (The APK on/before v1.4.9 is debug-signed, so the *first* release-signed build still needs a
 one-time uninstall/reinstall — unavoidable when moving off the debug key.)
+
+## 2026-08-20 — Android: features first to a working core, then repeated stabilization passes
+
+Owner strategy for the Android port (Milestone M44). The lettered milestones (A0…F) deliberately build the
+*features*; each lands verified in a narrow way (empty library, headless snapshots, a targeted on-device
+check) and does **not** by itself produce a polished, pleasant build. The plan therefore does not treat "all
+milestones checked" as "done." Sequence: **finish the feature milestones to a working core** (imports,
+launches, returns, syncs end to end), **then** switch to **Milestone S — repeated on-device stabilization
+passes** with a full library on the Thor, and keep repeating S until the build feels finished.
+
+Do **not** interleave the interaction/visual bug-fixing into the feature milestones or pivot to it
+mid-feature — park quality bugs in the S backlog and hit them in a dedicated pass. S is a first-class,
+repeating phase, not end-of-line cleanup; treating populated-view/density bugs as "cosmetic" is exactly how
+they went unnoticed until the app was played. Seeded S backlog (owner's first Thor play session): analog
+sticks unread on Android (blocks 3D-cover rotation and every stick interaction — the core of Milestone C),
+3D shelf covers resize while scrolling (A2 density override × `MediaShelf3DControl` geometry/virtualization),
+plus "many others" to catalogue in the first pass. See docs/android-port-plan.md "Milestone S".
