@@ -15,8 +15,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationId>com.emushelf.app</ApplicationId>
-    <ApplicationVersion>1</ApplicationVersion>
-    <ApplicationDisplayVersion>0.1.0</ApplicationDisplayVersion>
+    <!-- ApplicationVersion is Android's integer versionCode; it MUST strictly increase for each build a
+         user installs over the previous one (an in-place update also requires the same signing key — see
+         the release keystore, DECISIONS 2026-08-20). Bump this on every release. -->
+    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1.1</ApplicationDisplayVersion>
     <!-- Reflection {Binding} is used throughout the shared XAML (x:CompileBindings appears zero
          times), so cap the link mode at SdkOnly for Release — raising it further silently blanks
          bindings rather than failing the build (the plan's "Compiled bindings are the trimming trap").
