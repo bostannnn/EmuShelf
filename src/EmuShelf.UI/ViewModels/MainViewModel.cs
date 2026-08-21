@@ -5922,16 +5922,29 @@ public partial class MainViewModel : ViewModelBase
                 "(likely a session recovered long after process death).");
         }
 
+        CloudSaveSyncOutcome? afterSync = null;
         try
         {
             // No-op until Android save sync is configured (CanSyncSystem is false), so this safely wires
             // the auto-sync path ahead of the Milestone E-android save providers that give it something to
             // push. On desktop this class never reaches here.
-            await SyncSavesForLaunchAsync(game, game.Title, afterExit: true, CancellationToken.None);
+            afterSync = await SyncSavesForLaunchAsync(game, game.Title, afterExit: true, CancellationToken.None);
         }
         catch (Exception ex)
         {
             _logger.Error($"Post-play save sync failed for {game.Title}.", ex);
+        }
+
+        // SyncSavesForLaunchAsync raised the "Syncing saves…" progress toast, which never auto-dismisses
+        // (StatusDismissDelay is zero for Progress) — the operation that raised it must replace it with a
+        // result. The desktop launch path does that via DescribeLaunchAndSaveSync; this Android deferred
+        // path forgot to, so the toast lingered on screen after the background sync had finished. A null
+        // outcome means the system does not participate, so no progress toast was raised — leave it be.
+        if (afterSync is not null)
+        {
+            SetStatus(
+                DescribeDeferredExitSaveSync(game.Title, afterSync),
+                afterSync.Status == CloudSaveSyncStatus.Failed ? StatusSeverity.Error : StatusSeverity.Info);
         }
 
         try
@@ -6106,6 +6119,27 @@ public partial class MainViewModel : ViewModelBase
             return launch.StatusText;
 
         return launch.StatusText.TrimEnd('.', ' ') + ". " + string.Join(". ", syncParts) + ".";
+    }
+
+    // The closing status for the Android deferred post-exit sync, which replaces the "Syncing saves…"
+    // progress toast SyncSavesForLaunchAsync raised. The desktop path folds the same information into
+    // DescribeLaunchAndSaveSync alongside the launch result; here only the sync outcome is available, so
+    // it stands on its own. AlreadyRunning/NotConfigured still raised the progress toast, so they too get
+    // a plain "finished" line rather than being left to hang.
+    private static string DescribeDeferredExitSaveSync(string title, CloudSaveSyncOutcome outcome)
+    {
+        var head = $"{title} finished";
+        return outcome.Status switch
+        {
+            CloudSaveSyncStatus.Completed =>
+                $"{head}. {DescribeCompletedSyncAfterExit(outcome.Report!)}" +
+                (outcome.SaveStatesSkipped
+                    ? ". Save-state sync is off for this platform (enable it in Settings to include save states)."
+                    : "."),
+            CloudSaveSyncStatus.Failed =>
+                $"{head}. Save sync after exit failed: {outcome.Message ?? "unknown error"}.",
+            _ => $"{head}.",
+        };
     }
 
     private static string DescribeCompletedSyncAfterExit(SaveSyncReport report)
