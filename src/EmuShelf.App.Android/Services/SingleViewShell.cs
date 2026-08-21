@@ -81,6 +81,11 @@ public sealed class SingleViewShell : IPlatformShell
         // Menu / D-pad / A-B reach the shared UI on device.
         AndroidGamepadInput.Dispatch = viewModel.DispatchGamepadAction;
 
+        // The Android system Back button / gesture: close an open couch overlay if one is open, otherwise
+        // let the Activity fall through to the platform (exit). Kept off the Dispatch path because the
+        // library-level Cancel swallows B, which would trap Back and make the app impossible to leave.
+        AndroidGamepadInput.DispatchBack = viewModel.DispatchBackButton;
+
         // Point the Activity's return signal at deferred play-session completion. This fires on every
         // return to the foreground (including the first, cold-start one), which is exactly what recovers a
         // session interrupted by process death: if a pending record exists, complete it; otherwise no-op.

@@ -2689,6 +2689,27 @@ public partial class MainViewModel : ViewModelBase
             : DispatchLibraryAction(action);
     }
 
+    /// <summary>
+    /// Answers a platform Back request (the Android system Back button / gesture). Back closes an open
+    /// couch overlay or menu — behaving exactly like B/Cancel — but at the root library it does
+    /// <em>nothing here</em> and returns false so the platform can act on it (on Android, exit the app).
+    /// This is the one place Back must diverge from <see cref="DispatchGamepadAction"/>: the library-level
+    /// Cancel deliberately swallows B/Escape (so it can't bubble), which would otherwise trap Back and make
+    /// the app impossible to leave. Returns true only when a modal was actually closed.
+    /// </summary>
+    public bool DispatchBackButton()
+    {
+        if (!IsGamepadMode)
+            return false;
+
+        // Nothing open to back out of → let the platform handle Back (Android exits). A soft keyboard, when
+        // showing, consumes Back before it reaches the activity, so dismissing the IME stays the OS's job.
+        if (!HasGamepadOverlay)
+            return false;
+
+        return DispatchGamepadAction(GamepadAction.Cancel);
+    }
+
     private bool DispatchHotkeysOverlayAction(GamepadAction action)
     {
         // Modal like the scraper: Up/Down move the ring through the global actions and the per-emulator

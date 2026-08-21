@@ -9905,3 +9905,62 @@ remains. Changing the folder in Settings re-points and restarts, leaving old dat
 Seams: `IStoragePermissionService`, `IDataLocationStore`/`JsonDataLocationStore`, `DataLocationResolver`,
 `IDataLocationBootstrap` + `App.DataLocation`/`App.RestartRequested` hooks — all inert on desktop. Verified
 end-to-end on the Thor 2026-08-21. See docs/android-port-plan.md "D2".
+
+## 2026-08-21 — Android Milestone C remainder: IME, Back arbitration, R3 (built, Thor verification pending)
+
+Closes the three C items PR #163 left open after analog sticks landed.
+
+**On-screen keyboard (IME).** `AndroidOnScreenKeyboardService` raises the system IME via
+`InputMethodManager.ShowSoftInput` on the focused view (Avalonia's own text-input target once a couch
+`TextBox` has focus, so typed characters route back into the field). Injected through a new
+`App.OnScreenKeyboardFactory` hook mirroring `GamepadReaderFactory`; desktop keeps
+`PlatformOnScreenKeyboardService` (Windows osk). The explicit request is needed because gamepad-driven
+(directional) focus does not auto-raise the IME the way a screen tap does; hiding it is left to Avalonia when
+the text client loses focus. The service reaches the live activity through a `MainActivity.Current` holder
+(set on resume, cleared on destroy) — the single-Activity app has only one.
+
+**Back-vs-B arbitration.** `Keycode.Back` is handled in `MainActivity.DispatchKeyEvent` on key-up,
+separately from the button map, and routed to a new `MainViewModel.DispatchBackButton`. It closes an open
+couch overlay/menu (consuming Back, like B) but returns false at the root library so the platform exits.
+Kept deliberately *off* the shared `DispatchGamepadAction` path: the library-level Cancel swallows B (so it
+can't bubble), which would otherwise trap Back and make the app impossible to leave. `HasGamepadOverlay`
+(any `GamepadOverlayKind != None`) is the exact "is a modal open" predicate. When the soft keyboard is
+showing, Android dismisses it on Back before the event reaches the activity, so IME dismissal stays the
+system's job. Desktop unit tests cover the close-overlay-yet-exit-at-root and not-in-gamepad-mode cases.
+
+**R3 → reset rotation (fixes an accidental-launch bug).** `Keycode.ButtonThumbr` maps to the existing
+`GamepadAction.ResetRotation` (the desktop native-pad mapping), so the right-stick click recentres the 3D
+hero. The stick click is a digital button, so it arrives on the `DispatchKeyEvent` path even though stick
+motion goes through the reader. This also closed a real defect found on the Thor: with R3 unmapped it fell
+through to Avalonia, which on a *gamepad-source* press activated the focused library item — so **R3 launched
+the focused game.** Reproduced with `input gamepad keyevent 107` (Dolphin booted "1080 Avalanche"); after
+the mapping the same injection is consumed. Source-sensitive: a keyboard-source `input keyevent 107` did not
+launch — only the gamepad source did — so pad-behaviour injection tests must use `input gamepad`.
+
+All three were verified end-to-end on the Thor 2026-08-21: opening Search raised Gboard
+(`dumpsys input_method` → `mInputShown=true`) and injected text landed in the field; Back closed an open
+overlay and stayed in EmuShelf, a second Back at the root dropped to the launcher, and Back with the
+keyboard up dismissed only the keyboard; R3 no longer launches. Desktop unit tests cover the Back
+arbitration. See docs/android-port-plan.md "Milestone C".
+
+## 2026-08-21 — Android D-pad is a hat axis, not key events (bug fix)
+
+Found driving Milestone C by hand on the Thor: the D-pad did nothing (only the left stick moved the
+couch selector). Root cause via `getevent -lt /dev/input/event9`: the Thor's "Xbox Wireless Controller"
+reports the D-pad as a hat **axis** (`ABS_HAT0X`/`ABS_HAT0Y`, values -1/0/+1) — there are **no** D-pad
+`EV_KEY` events at all. So the A1 `MainActivity.DispatchKeyEvent` map (which expects `KEYCODE_DPAD_*`)
+never saw it, and PR #163's `DispatchGenericMotionEvent` *consumed* the hat MotionEvent (joystick-source
+move → returns true) while `AndroidGamepadReader.Update` read only the stick axes (X/Y/Z/Rz) — the D-pad
+fell into the gap between the two input paths.
+
+Fix: `AndroidGamepadReader` now reads `Axis.HatX`/`Axis.HatY` and surfaces them as the `Dpad*`
+`GamepadButtons`, so the shared `GamepadNavigationController` turns them into auto-repeating navigation —
+the same path (and repeat/acceleration behaviour) the left stick already uses. Kept in the reader rather
+than translated to discrete key dispatches so held-direction auto-repeat comes for free. No double-fire
+risk: this device emits no D-pad key events, so the `DispatchKeyEvent` `DpadUp/Down/Left/Right` map entries
+(retained for controllers that *do* send keys) never fire alongside it. Verified on the Thor 2026-08-21:
+the D-pad steps the selector in all directions. See docs/android-port-plan.md "Milestone C".
+
+Process note: two of C's bugs (this and R3-launches-game) were device-only and slipped past unit tests,
+the desktop suite, and static reasoning — both hinge on what the physical controller actually emits. C is
+not "done" until driven by hand on the Thor.

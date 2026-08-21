@@ -46,6 +46,12 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         AndroidGamepadReader.Current = gamepadReader;
         global::EmuShelf.App.App.GamepadReaderFactory = () => gamepadReader;
 
+        // Couch text entry raises the system IME (the desktop head launches an on-screen keyboard process
+        // instead). Without it, gamepad search / rename cannot type. Resolves the live activity lazily —
+        // it is set once the Activity resumes, after this builder runs.
+        global::EmuShelf.App.App.OnScreenKeyboardFactory =
+            () => new AndroidOnScreenKeyboardService(() => MainActivity.Current);
+
         return base.CustomizeAppBuilder(builder)
             .WithInterFont()
             // Pin EGL explicitly. The default [Egl, Software] list lets a failed EGL init fall back to

@@ -40,6 +40,27 @@ public class MainActivity : AvaloniaMainActivity
     private const double CouchTargetDipWidth = 1280.0;
 
     /// <summary>
+    /// The live foreground activity, for the head's services that need an <c>Activity</c>/<c>Context</c> and
+    /// the focused native view — currently <see cref="Services.AndroidOnScreenKeyboardService"/>, which raises
+    /// the IME. Set while resumed and cleared on destroy; null between runs. Single-Activity app, so there is
+    /// only ever one.
+    /// </summary>
+    internal static MainActivity? Current { get; private set; }
+
+    protected override void OnResume()
+    {
+        base.OnResume();
+        Current = this;
+    }
+
+    protected override void OnDestroy()
+    {
+        if (ReferenceEquals(Current, this))
+            Current = null;
+        base.OnDestroy();
+    }
+
+    /// <summary>
     /// Overrides the activity's resource density before Avalonia reads it, so a dense handheld panel
     /// presents the couch shell at a comfortable Deck-class dip size instead of an oversized ~833 dip.
     /// Guarded to only ever *lower* density (never enlarge the UI on an already low-dpi display), and to
@@ -81,6 +102,18 @@ public class MainActivity : AvaloniaMainActivity
     /// </summary>
     public override bool DispatchKeyEvent(KeyEvent e)
     {
+        // Back arbitration: if a couch overlay/menu is open, Back closes it (like B); at the root library it
+        // is NOT consumed here, so it falls through to the platform and exits the app. Handled on key-up —
+        // Android's canonical Back edge — so it fires once, and the soft keyboard (when showing) still
+        // dismisses on Back before the event reaches the activity at all.
+        if (e.KeyCode == Keycode.Back)
+        {
+            if (e.Action == KeyEventActions.Up && AndroidGamepadInput.DispatchBack?.Invoke() == true)
+                return true;
+
+            return base.DispatchKeyEvent(e);
+        }
+
         if (e.Action == KeyEventActions.Down &&
             AndroidGamepadInput.Map(e.KeyCode) is { } action &&
             AndroidGamepadInput.Dispatch?.Invoke(action) == true)
