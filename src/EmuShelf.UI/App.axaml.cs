@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using EmuShelf.App.Services;
 using EmuShelf.App.Startup;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Updates;
 using EmuShelf.Infrastructure.Achievements;
@@ -35,6 +36,14 @@ public partial class App : Application
     /// </summary>
     public static Func<ISingleViewApplicationLifetime, AppBootstrapper, PlatformShellDependencies, IPlatformShell>?
         SingleViewShellFactory { get; set; }
+
+    /// <summary>
+    /// Builds the native controller reader the poll loop reads. Desktop leaves this null and the
+    /// composition root uses <see cref="SdlGamepadReader"/>; the Android head sets it to a reader fed by the
+    /// Activity's <c>MotionEvent</c> stream (SDL cannot read Android input — and its native payload is
+    /// excluded from the APK). Set before Avalonia starts.
+    /// </summary>
+    public static Func<IGamepadReader>? GamepadReaderFactory { get; set; }
 
     /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
@@ -423,11 +432,12 @@ public partial class App : Application
             updates: updateCoordinator,
             fileReveal: new FileRevealService());
 
-        // Native controller input (SDL2) drives the same Gamepad-mode routing as Steam Input's
-        // keyboard mapping. It polls only in Gamepad mode and degrades to no-op if SDL2 or a
-        // controller is unavailable, so keyboard/Steam Input remains the fallback everywhere.
+        // Native controller input drives the same Gamepad-mode routing as Steam Input's keyboard
+        // mapping. It polls only in Gamepad mode and degrades to no-op if no controller is available,
+        // so keyboard/Steam Input remains the fallback everywhere. Desktop reads SDL2; the Android head
+        // supplies a MotionEvent-fed reader via GamepadReaderFactory (SDL cannot read Android input).
         _gamepadInput = new GamepadInputService(
-            new SdlGamepadReader(),
+            GamepadReaderFactory?.Invoke() ?? new SdlGamepadReader(),
             viewModel,
             shell.InterfaceMode,
             Bootstrapper.Logger);

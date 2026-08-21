@@ -984,21 +984,31 @@ checklist** (does the emulator hold a tree grant covering the game's folder?), p
 
 ### C — Controller input and text entry
 
-- `IGamepadReader` over Android `InputDevice`/`MotionEvent`. Note the impedance mismatch: the
-  interface is **polling** (`IsAvailable`, `Read()`); Android input is **event-driven** and arrives at
-  the Activity, where Avalonia's own key handling already consumes it.
+- **`IGamepadReader` over Android `MotionEvent` — analog sticks. ✅ done + verified on the Thor
+  (2026-08-21).** The impedance mismatch the plan flagged (polling interface vs event-driven Android input)
+  is bridged by `AndroidGamepadReader`: the Activity's `DispatchGenericMotionEvent` feeds joystick-source
+  moves into it, and the *already-shared* `GamepadInputService` poll loop samples the stored axes ~60×/s and
+  drives left-stick navigation + right-stick 3D-hero rotation through the same
+  `GamepadNavigationController`/`ApplyRightStickRotation` logic desktop uses. The reader is injected via a new
+  `App.GamepadReaderFactory` hook (desktop still uses `SdlGamepadReader`; Android supplies its own). Buttons
+  and the D-pad stay on the existing `DispatchKeyEvent` path (reader reports `Buttons.None`), so nothing
+  double-fires. Axis mapping (left `X`/`Y`, right `Z`/`RZ`) was validated against the Thor's actual Xbox
+  controller. **Verified on the Thor:** a live probe showed the poll loop reading the Android reader
+  (`IsAvailable=True`) and 900+ joystick samples arriving with correct axes on both sticks; the owner
+  confirmed left-stick navigation and right-stick 3D-cover rotation respond. (Bring-up note: a plain
+  `dotnet build` + `adb install` did **not** repackage the signed APK, so the analog-stick code wasn't
+  actually on device until a `-t:Clean` + `-t:Install` — verify APK mtime after building the head.)
 - An Android on-screen keyboard implementation of `IOnScreenKeyboardService`, without which gamepad
-  search and rename do not work.
-- Back-gesture vs B-button arbitration.
-- Map the Thor's controls against the existing navigation model.
-- **Drop the SDL2 native payload from the APK.** `ppy.SDL2-CS` (an Infrastructure dependency behind
-  `SdlGamepadReader`, the desktop pad path) packs `runtimes/linux-x64/native/libSDL2.so` into the
-  Android build — wrong architecture, unused, and it trips build warning **XA0141** (16 KB page size).
-  Once Android input reads `InputDevice`/`MotionEvent` here, SDL is dead weight on this head, so exclude
-  the SDL native runtime from the Android APK (e.g. trim `runtimes/**/libSDL2.so` from
-  `@(AndroidNativeLibrary)`, or `ExcludeAssets` the transitive package as seen by the head — without
-  touching the desktop `EmuShelf.App`, which legitimately ships SDL2). Verify the warning clears and no
-  `libSDL2.so` remains in the APK. (Spotted during A1; see DECISIONS 2026-08-17.)
+  search and rename do not work. **(Still open — the next C item.)**
+- Back-gesture vs B-button arbitration. **(Still open.)**
+- Map the Thor's controls against the existing navigation model. (D-pad + face buttons already mapped in
+  A1; analog sticks now mapped; R3→reset-rotation is not yet on the key map — a small follow-up.)
+- ~~**Drop the SDL2 native payload from the APK.**~~ **✅ Already clean — nothing to drop (verified
+  2026-08-21).** The APK's native libs are `lib/arm64-v8a/…` only; there is **no `libSDL2.so`** and no SDL
+  managed assembly, and **no XA0141** warning fires. The plan assumed `ppy.SDL2-CS`'s `runtimes/linux-x64`
+  native lib ships into the APK, but Android ABI filtering excludes non-Android RIDs automatically, so it
+  never reaches the package. `SdlGamepadReader` stays as harmless managed code that Android simply never
+  constructs (the factory hook above supplies `AndroidGamepadReader` instead).
 
 **Cannot be validated off-device** — and per the project's own notes there is no pad on the dev
 machine at all, so the SDL path has never been hand-verified either. This is why C's probe is folded
@@ -1162,11 +1172,12 @@ which is how the density/populated-view bugs below went unnoticed until the app 
 Thor (2026-08-20); expand it each pass. None is a feature gap in the milestone sense — they are quality
 bugs the feature checklist does not track:
 
-- **Analog sticks are not read on Android.** Only *digital* buttons/D-pad are wired (via
-  `MainActivity.DispatchKeyEvent`); the sticks emit `MotionEvent`s that nothing consumes. Consequence:
-  **the 3D cover/hero cannot be rotated from the gamepad**, and any stick-driven couch interaction is dead.
-  This is the core of **Milestone C** (native `InputDevice`/`MotionEvent` reading) and should be the first
-  stabilization fix — it clears a whole category of "the stick does nothing" reports at once.
+- **Analog sticks are not read on Android.** ✅ **Fixed + verified on the Thor 2026-08-21.**
+  `AndroidGamepadReader` feeds joystick `MotionEvent`s (from `DispatchGenericMotionEvent`) into the shared
+  `GamepadInputService` poll loop, driving left-stick navigation and right-stick 3D-hero rotation through the
+  same logic desktop uses; injected via `App.GamepadReaderFactory` (desktop keeps SDL). Buttons/D-pad stay on
+  `DispatchKeyEvent`, so nothing double-fires. On-device probe confirmed the poll loop reads the reader and
+  correct axes arrive on both sticks; owner confirmed nav + rotation respond. See Milestone C.
 - **3D shelf covers change size while scrolling.** Almost certainly the A2 density override (which shrinks
   the whole UI to fit the Thor's ~833×468 dip) interacting badly with `MediaShelf3DControl`'s geometry
   and/or grid virtualization during a scroll animation. This is the "populated-library visual pass at the
@@ -1189,7 +1200,7 @@ bugs the feature checklist does not track:
 - **(more to catalogue.)** The owner reported "many others" not yet enumerated; the first stabilization
   pass with a staged library is where they get written down.
 
-### Current status and what's next (2026-08-20)
+### Current status and what's next (2026-08-21)
 
 | Milestone | State | What remains |
 |---|---|---|
@@ -1199,7 +1210,7 @@ bugs the feature checklist does not track:
 | A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density — **moved to Milestone S** (it is the "covers resize on scroll" bug, not cosmetic) |
 | **D — storage & permissions** | ✅ done for Thor (2026-08-21) | grant secured via D2 first-run onboarding (`IStoragePermissionService`, verified on Thor); D2 user-chosen data folder verified end-to-end on Thor; `FolderScanner`/availability verified on the real SD library (41 games); the couch import chooser density-collapse found here is fixed. **Deferred (owner call, not Thor blockers):** SAF-backed reader fallback (portability, a device without all-files) and the per-API-level AVD matrix (verification-only). D2 Settings folder-change is the one remaining follow-up |
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
-| C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
+| C — controller input & text entry | 🟡 in progress | analog-stick `MotionEvent` reading **done + verified on Thor** (nav + 3D rotation); SDL-drop **verified moot** (no SDL in APK). Still open: **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; R3→reset-rotation key mapping |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
 | E-android — cloud sync | 🟡 local-save wiring in progress (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) landed and is verified on the Thor; Dolphin (GC/Wii) fixed-root wiring landed with desktop-compatible ids and deterministic tests, with device export/restore still pending**; remaining: folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
 | F — packaging & release | 🟡 in progress | APK CI job **done** and attached to releases; release-signing **wired** (activates once the owner runs the keystore setup — DECISIONS 2026-08-20); remaining: owner runs keystore setup, developer-verification/install docs |
