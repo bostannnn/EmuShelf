@@ -13,12 +13,25 @@ internal sealed class FakeSaveLocationProvider : ISaveLocationProvider
         SystemId = systemId;
         _units = units;
         _unitIdPrefix = units.FirstOrDefault()?.UnitId[..(units[0].UnitId.IndexOf('/') + 1)] ??
-            (systemId == "playstation2" ? "pcsx2/" : systemId + "/");
+            (systemId == "playstation2" ? "playstation2/" : systemId + "/");
     }
 
     public string SystemId { get; }
 
-    public string UnitIdPrefix => _unitIdPrefix;
+    /// <summary>Forces the system-scoped battery prefix instead of deriving it from the first unit.</summary>
+    public string? UnitIdPrefixOverride { get; init; }
+
+    public string UnitIdPrefix => UnitIdPrefixOverride ?? _unitIdPrefix;
+
+    /// <summary>
+    /// Set to reproduce the real providers' two-namespace split, where save states (and legacy
+    /// cheats/patches, and frozen pre-migration battery keys) live under an emulator-scoped prefix
+    /// distinct from the system-scoped <see cref="UnitIdPrefix"/> — e.g. <c>"pcsx2/"</c> for a
+    /// <c>"playstation2"</c> provider. Null leaves it equal to <see cref="UnitIdPrefix"/>.
+    /// </summary>
+    public string? StateNamespacePrefixOverride { get; init; }
+
+    public string StateNamespacePrefix => StateNamespacePrefixOverride ?? UnitIdPrefix;
 
     /// <summary>
     /// Units this provider can materialize on request, keyed by unit id, with the kind

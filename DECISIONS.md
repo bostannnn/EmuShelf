@@ -10057,3 +10057,47 @@ service-locator read among the platform hooks (accepted to avoid threading throu
 ctor; reset in test teardown if a test ever sets it); and verifying a *real* captured ARMSX2
 `PCSX2-Android.ini` round-trips the strict v1 adapter (the Thor disconnected mid-review — synthetic INI is
 tested, real-file check pending device).
+
+## 2026-08-21 — Save-sync cloud key: system-scoped for battery saves (supersedes namespace adoption)
+
+**Supersedes the "namespace adoption" decision in the same day's Android save-sync entry** for battery
+(SRAM / memory-card / EEPROM) saves. Save states are unchanged.
+
+**Decision.** A battery save's cloud key is now `<systemId>/<localId>` (e.g. `playstation/…`,
+`playstation2/…`, `nds/…`) — the console system owns the namespace, not the emulator. Previously it was
+`<emulatorId>/<localId>` (`duckstation/…`, `pcsx2/…`, `retroarch/nds/…`) and cross-emulator sync relied
+on the Android provider *adopting* the desktop emulator's namespace. That adoption is dropped: two
+emulators for the same system now interoperate **by construction**, because they emit the same
+system-scoped key. A future third emulator for an existing system drops in and syncs with no new
+namespace and no migration — which is the whole point.
+
+**Why.** This matches NeoSync / RetroArch first-party sync, which key portable payloads by system+game
+and never convert formats. It also removes the per-emulator "which namespace do I adopt?" wiring step and
+its DECISIONS caveat. Safety is unchanged and now leans entirely on the two invariants it already had:
+config alignment (the setup checklist — PS2 single-file `.ps2`, GameCube GCI-folder/slot-A, DS `.srm`)
+and *the emulator is the final judge* (a save it cannot read, it declines on load; sync never deletes).
+
+**Save states stay emulator-scoped and unchanged.** State cloud keys keep their `<emulatorId>/states/…`
+namespace (e.g. `duckstation/states/…`, `retroarch/nds/states/…`). This is deliberate: two emulators for
+one system can write same-named state files, and the emulator-scoped namespace + the `StateCompatibility`
+gate (arch / version / snes9x arch-portable allowlist) are what keep them apart. Folding states into the
+system namespace would collide them. So `ISaveLocationProvider` now exposes **two** namespaces —
+`UnitIdPrefix` (battery, `= SystemId + "/"`) and `StateNamespacePrefix` (states, the former
+emulator-scoped prefix). `AuxiliarySyncProvider` keys the `states/` sub-namespace off the latter.
+
+**One-time migration (copy-only).** `ICloudSyncTransport` has no delete by design, so the migration
+**copies** each existing battery entry from its old emulator-scoped key to the new system-scoped key and
+leaves the original frozen in the cloud (no provider claims the old battery key any more, so it goes
+inert; it is never deleted). Idempotent, guarded by a persisted flag, runs once before the first sync
+after upgrade (and before a device+cloud export). State/cheats/patches sub-namespaces are excluded from
+the remap (states keep their key). The migrating machine's local baseline manifest is re-keyed to match,
+so its first post-upgrade sync reconciles cleanly instead of conflict-backing-up. This preserves
+cloud-only saves' reachability under the new key without touching local saves. See
+docs/android-save-sync-model.md.
+
+**Mixed-version fleet (downgrade) caveat.** During a rollout where some machines run the old
+(emulator-keyed) build and some the new (system-keyed) one, battery saves silently stop sharing between
+the two versions — neither claims the other's key, so the cloud carries both and they diverge until every
+machine upgrades. Nothing is corrupted or deleted (sync never deletes; the conflict path backs up
+losers), and the migration-before-first-sync ordering makes a cloud-only newer save hard to shadow. This
+is the accepted cost of a one-time re-key over a read-alias; it is transient and self-heals on upgrade.

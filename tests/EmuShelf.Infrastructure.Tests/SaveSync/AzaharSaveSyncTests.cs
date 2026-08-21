@@ -30,9 +30,9 @@ public sealed class AzaharSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(
             [
-                new SaveUnit("azahar/extdata/00000042", "3DS extdata 00000042", SaveUnitKind.Folder),
-                new SaveUnit("azahar/title/00040000/00112200", "3DS 0004000000112200", SaveUnitKind.Folder),
-                new SaveUnit("azahar/title/0004000e/000abc00", "3DS 0004000E000ABC00", SaveUnitKind.Folder),
+                new SaveUnit("3ds/extdata/00000042", "3DS extdata 00000042", SaveUnitKind.Folder),
+                new SaveUnit("3ds/title/00040000/00112200", "3DS 0004000000112200", SaveUnitKind.Folder),
+                new SaveUnit("3ds/title/0004000e/000abc00", "3DS 0004000E000ABC00", SaveUnitKind.Folder),
             ],
             await provider.GetSaveUnitsAsync());
     }
@@ -108,18 +108,18 @@ public sealed class AzaharSaveSyncTests : TempAppDirectoryTestBase
         CreateDirectory(Nintendo3ds(userDirectory, Id0A, Id1A), "title", "00040000", "00112200", "data");
         var provider = new AzaharSaveLocationProvider("/install", userDirectoryOverride: userDirectory);
 
-        Assert.NotNull(provider.ResolveUnit("azahar/title/00040000/00112200"));
-        Assert.NotNull(provider.ResolveUnit("azahar/extdata/00000042"));
-        Assert.True(((ISaveLocationProvider)provider).OwnsUnit("azahar/title/00040000/00112200"));
+        Assert.NotNull(provider.ResolveUnit("3ds/title/00040000/00112200"));
+        Assert.NotNull(provider.ResolveUnit("3ds/extdata/00000042"));
+        Assert.True(((ISaveLocationProvider)provider).OwnsUnit("3ds/title/00040000/00112200"));
         Assert.False(((ISaveLocationProvider)provider).OwnsUnit("azahar/states/whatever"));
-        Assert.Null(provider.ResolveUnit("azahar/title/../../secret"));
-        Assert.Null(provider.ResolveUnit("azahar/title/00040000")); // missing low id
-        Assert.Null(provider.ResolveUnit("pcsx2/Mcd001.ps2"));
+        Assert.Null(provider.ResolveUnit("3ds/title/../../secret"));
+        Assert.Null(provider.ResolveUnit("3ds/title/00040000")); // missing low id
+        Assert.Null(provider.ResolveUnit("playstation2/Mcd001.ps2"));
 
         // A machine whose SD card does not exist yet cannot materialize a remote unit.
         var withoutSdCard = new AzaharSaveLocationProvider(
             "/install", userDirectoryOverride: Path.Combine(BaseDirectory, "empty-user"));
-        Assert.Null(withoutSdCard.ResolveUnit("azahar/title/00040000/00112200"));
+        Assert.Null(withoutSdCard.ResolveUnit("3ds/title/00040000/00112200"));
     }
 
     private static string Nintendo3ds(string userDirectory, string id0, string id1) =>

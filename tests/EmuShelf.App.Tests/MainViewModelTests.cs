@@ -2882,7 +2882,7 @@ public class MainViewModelTests : IDisposable
 
     private static CloudSaveSyncOutcome CompletedSync(SaveSyncAction action) =>
         CloudSaveSyncOutcome.Completed(new SaveSyncReport(
-            [new SaveUnitSyncResult("ppsspp/ULUS10041DATA00", action, "test")]));
+            [new SaveUnitSyncResult("psp/ULUS10041DATA00", action, "test")]));
 
     [AvaloniaFact]
     public async Task LaunchGame_UnavailableGameIsRejectedBeforeLaunchService()

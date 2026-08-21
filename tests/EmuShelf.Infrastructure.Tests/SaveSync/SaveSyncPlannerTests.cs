@@ -4,7 +4,7 @@ namespace EmuShelf.Infrastructure.Tests.SaveSync;
 
 public sealed class SaveSyncPlannerTests
 {
-    private const string UnitId = "pcsx2/Mcd001.ps2";
+    private const string UnitId = "playstation2/Mcd001.ps2";
     private static readonly DateTimeOffset Earlier = new(2026, 7, 24, 10, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset Later = new(2026, 7, 24, 12, 0, 0, TimeSpan.Zero);
 

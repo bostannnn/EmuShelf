@@ -178,9 +178,9 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(
             [
-                new SaveUnit("duckstation/shared/card1", "Shared memory card 1 (used by every game)", SaveUnitKind.File),
-                new SaveUnit("duckstation/per-game/title/Final Fantasy VII_2.mcd", "Final Fantasy VII_2.mcd", SaveUnitKind.File),
-                new SaveUnit("duckstation/per-game/title/SLUS-01041_2.mcd", "SLUS-01041_2.mcd", SaveUnitKind.File),
+                new SaveUnit("playstation/shared/card1", "Shared memory card 1 (used by every game)", SaveUnitKind.File),
+                new SaveUnit("playstation/per-game/title/Final Fantasy VII_2.mcd", "Final Fantasy VII_2.mcd", SaveUnitKind.File),
+                new SaveUnit("playstation/per-game/title/SLUS-01041_2.mcd", "SLUS-01041_2.mcd", SaveUnitKind.File),
             ],
             await provider.GetSaveUnitsAsync());
     }
@@ -206,10 +206,10 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         var units = await provider.GetSaveUnitsAsync();
 
         Assert.Equal(2, units.Count);
-        Assert.Equal(externalCard, provider.ResolveUnit("duckstation/shared/card1")!.Path);
+        Assert.Equal(externalCard, provider.ResolveUnit("playstation/shared/card1")!.Path);
         Assert.Equal(
             Path.Combine(cards, "shared_card_2.mcd"),
-            provider.ResolveUnit("duckstation/shared/card2")!.Path);
+            provider.ResolveUnit("playstation/shared/card2")!.Path);
     }
 
     [Fact]
@@ -219,19 +219,19 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         WriteSettings(userDirectory, "cards", card1Type: "PerGame", card2Type: "None");
         var provider = ProviderFor(userDirectory);
 
-        var location = provider.ResolveUnit("duckstation/per-game/serial/SCUS-94163_1.mcd");
+        var location = provider.ResolveUnit("playstation/per-game/serial/SCUS-94163_1.mcd");
 
         Assert.NotNull(location);
         Assert.Equal(
             Path.Combine(userDirectory, "cards", "SCUS-94163_1.mcd"),
             location.Path);
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/SCUS-94163_2.mcd"));
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/../SCUS-94163_1.mcd"));
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/title/SCUS-94163_1.mcd"));
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/Final Fantasy VII_1.mcd"));
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/SCUS-94163_1.mcd"));
-        Assert.Null(provider.ResolveUnit("duckstation/shared/card1"));
-        Assert.Null(provider.ResolveUnit("pcsx2/SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/serial/SCUS-94163_2.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/serial/../SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/title/SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/serial/Final Fantasy VII_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/SCUS-94163_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/shared/card1"));
+        Assert.Null(provider.ResolveUnit("playstation2/SCUS-94163_1.mcd"));
     }
 
     [Fact]
@@ -247,7 +247,7 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(
             [new SaveUnit(
-                "duckstation/per-game/serial/SCUS-94163_1.mcd",
+                "playstation/per-game/serial/SCUS-94163_1.mcd",
                 "SCUS-94163_1.mcd",
                 SaveUnitKind.File)],
             await provider.GetSaveUnitsAsync());
@@ -276,19 +276,19 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             [
                 new SaveUnit(
-                    "duckstation/per-game/title/Crash Bandicoot (USA)_1.mcd",
+                    "playstation/per-game/title/Crash Bandicoot (USA)_1.mcd",
                     "Crash Bandicoot (USA)_1.mcd",
                     SaveUnitKind.File),
                 new SaveUnit(
-                    "duckstation/per-game/file-title/Tekken 3 (USA)_2.mcd",
+                    "playstation/per-game/file-title/Tekken 3 (USA)_2.mcd",
                     "Tekken 3 (USA)_2.mcd",
                     SaveUnitKind.File),
             ],
             units);
         Assert.Equal(
             Path.Combine(cards, "Tekken 3 (USA)_2.mcd"),
-            provider.ResolveUnit("duckstation/per-game/file-title/Tekken 3 (USA)_2.mcd")!.Path);
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/title/Tekken 3 (USA)_2.mcd"));
+            provider.ResolveUnit("playstation/per-game/file-title/Tekken 3 (USA)_2.mcd")!.Path);
+        Assert.Null(provider.ResolveUnit("playstation/per-game/title/Tekken 3 (USA)_2.mcd"));
     }
 
     [Fact]
@@ -313,7 +313,7 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.False(info.UsesFileTitleCards);
         Assert.Equal(
             [new SaveUnit(
-                "duckstation/per-game/title/Crash Bandicoot_1.mcd",
+                "playstation/per-game/title/Crash Bandicoot_1.mcd",
                 "Crash Bandicoot_1.mcd",
                 SaveUnitKind.File)],
             await provider.GetSaveUnitsAsync());
@@ -336,11 +336,11 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             [
                 new SaveUnit(
-                    "duckstation/shared/card2",
+                    "playstation/shared/card2",
                     "Shared memory card 2 (used by every game)",
                     SaveUnitKind.File),
                 new SaveUnit(
-                    "duckstation/per-game/title/Tekken 3_1.mcd",
+                    "playstation/per-game/title/Tekken 3_1.mcd",
                     "Tekken 3_1.mcd",
                     SaveUnitKind.File),
             ],
@@ -442,7 +442,7 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         var provider = ProviderFor(userDirectory);
         var remote = new InMemoryCloudSyncTransport();
         remote.Seed(
-            "duckstation/per-game/file-title/Silent Hill [Uncensored] (Europe) (En,Fr,De,Es,It)_2.mcd",
+            "playstation/per-game/file-title/Silent Hill [Uncensored] (Europe) (En,Fr,De,Es,It)_2.mcd",
             "a card written by the other machine"u8.ToArray(),
             new DateTimeOffset(2026, 7, 27, 12, 0, 0, TimeSpan.Zero));
         var service = new SaveSyncService(
@@ -453,10 +453,10 @@ public sealed class DuckStationSaveSyncTests : TempAppDirectoryTestBase
         var report = await service.SyncAsync(provider);
 
         Assert.Equal(1, report.Uploaded);
-        Assert.True(remote.Has("duckstation/per-game/title/Crash Bandicoot (USA)_1.mcd"));
+        Assert.True(remote.Has("playstation/per-game/title/Crash Bandicoot (USA)_1.mcd"));
         Assert.Contains(
             report.Results,
-            result => result.UnitId.StartsWith("duckstation/per-game/file-title/", StringComparison.Ordinal) &&
+            result => result.UnitId.StartsWith("playstation/per-game/file-title/", StringComparison.Ordinal) &&
                 result.Action == SaveSyncAction.Skipped &&
                 result.Reason.Contains("no place for this save"));
     }

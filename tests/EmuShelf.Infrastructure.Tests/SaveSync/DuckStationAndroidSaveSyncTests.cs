@@ -18,7 +18,7 @@ public sealed class DuckStationAndroidSaveSyncTests : TempAppDirectoryTestBase
     public async Task Enumerates_PerGameCards_WithDesktopCompatibleUnitIds()
     {
         // The exact names observed on the Thor plus a serial-named card. The title cards must match the
-        // ids the desktop provider emitted for the identical files (duckstation/per-game/title/<name>).
+        // ids the desktop provider emitted for the identical files (playstation/per-game/title/<name>).
         var memcards = CreateMemcards(
             "Metal Gear Solid (USA)_1.mcd",
             "R4 - Ridge Racer Type 4 (USA)_1.mcd",
@@ -29,9 +29,9 @@ public sealed class DuckStationAndroidSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(
             [
-                "duckstation/per-game/serial/SLUS-00594_2.mcd",
-                "duckstation/per-game/title/Metal Gear Solid (USA)_1.mcd",
-                "duckstation/per-game/title/R4 - Ridge Racer Type 4 (USA)_1.mcd",
+                "playstation/per-game/serial/SLUS-00594_2.mcd",
+                "playstation/per-game/title/Metal Gear Solid (USA)_1.mcd",
+                "playstation/per-game/title/R4 - Ridge Racer Type 4 (USA)_1.mcd",
             ],
             ids.OrderBy(id => id, StringComparer.Ordinal));
         Assert.All(await provider.GetSaveUnitsAsync(), unit => Assert.Equal(SaveUnitKind.File, unit.Kind));
@@ -47,7 +47,7 @@ public sealed class DuckStationAndroidSaveSyncTests : TempAppDirectoryTestBase
 
         var ids = (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId).ToArray();
 
-        Assert.Equal(["duckstation/per-game/title/Silent Hill (Europe)_1.mcd"], ids);
+        Assert.Equal(["playstation/per-game/title/Silent Hill (Europe)_1.mcd"], ids);
     }
 
     [Fact]
@@ -56,7 +56,7 @@ public sealed class DuckStationAndroidSaveSyncTests : TempAppDirectoryTestBase
         var memcards = CreateMemcards("Metal Gear Solid (USA)_1.mcd");
         var provider = new DuckStationAndroidSaveLocationProvider(memcards);
 
-        var location = provider.ResolveUnit("duckstation/per-game/title/Metal Gear Solid (USA)_1.mcd");
+        var location = provider.ResolveUnit("playstation/per-game/title/Metal Gear Solid (USA)_1.mcd");
 
         Assert.NotNull(location);
         Assert.Equal(Path.Combine(memcards, "Metal Gear Solid (USA)_1.mcd"), location!.Path);
@@ -71,14 +71,14 @@ public sealed class DuckStationAndroidSaveSyncTests : TempAppDirectoryTestBase
         var memcards = CreateMemcards("Metal Gear Solid (USA)_1.mcd");
         var provider = new DuckStationAndroidSaveLocationProvider(memcards);
 
-        Assert.Null(provider.ResolveUnit("duckstation/per-game/serial/Metal Gear Solid (USA)_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/serial/Metal Gear Solid (USA)_1.mcd"));
     }
 
     [Theory]
-    [InlineData("duckstation/per-game/title/../escape.mcd")]
-    [InlineData("duckstation/per-game/title/sub/dir.mcd")]
-    [InlineData("duckstation/shared/card1")]
-    [InlineData("duckstation/per-game/title/memorycard.mcd")]
+    [InlineData("playstation/per-game/title/../escape.mcd")]
+    [InlineData("playstation/per-game/title/sub/dir.mcd")]
+    [InlineData("playstation/shared/card1")]
+    [InlineData("playstation/per-game/title/memorycard.mcd")]
     [InlineData("retroarch/psx/whatever")]
     public void ResolveUnit_RejectsUnsafeOrForeignIds(string unitId)
     {

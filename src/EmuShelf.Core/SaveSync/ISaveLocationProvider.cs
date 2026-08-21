@@ -6,17 +6,37 @@ public interface ISaveLocationProvider
     /// <summary>The stable system id these save units belong to (e.g. <c>playstation2</c>).</summary>
     string SystemId { get; }
 
-    /// <summary>The unit-id namespace owned by this provider (for example <c>pcsx2/</c>).</summary>
-    string UnitIdPrefix { get; }
+    /// <summary>
+    /// The cloud-key namespace for this system's <em>battery</em> saves. It is the console
+    /// <see cref="SystemId"/>, not the emulator, so every emulator that serves the system emits the same
+    /// key and their saves interoperate by construction (see DECISIONS 2026-08-21). A provider only
+    /// overrides this if its system id is not the desired namespace.
+    /// </summary>
+    string UnitIdPrefix => SystemId + "/";
+
+    /// <summary>
+    /// The cloud-key namespace for this provider's <em>save states</em>, which — unlike battery saves —
+    /// stays <em>emulator</em>-scoped (for example <c>duckstation/</c>, <c>retroarch/nds/</c>). Two
+    /// emulators for one system can write same-named state files, so the emulator-scoped namespace plus
+    /// the state compatibility gate are what keep them apart; folding states into the system namespace
+    /// would collide them. State-supporting providers override this with their former emulator prefix;
+    /// providers without states can ignore it. The auxiliary save-state provider keys its
+    /// <c>states/</c> sub-namespace off this value.
+    /// </summary>
+    string StateNamespacePrefix => UnitIdPrefix;
 
     /// <summary>
     /// Whether this provider owns a unit from the cloud index. Providers with optional namespaces
     /// override this so disabled content remains visible in the cloud without being downloaded.
     /// </summary>
     /// <remarks>
-    /// <c>cheats</c> and <c>patches</c> are still excluded although nothing writes them any more: a
-    /// remote written by an older build holds those payloads, and a save provider that started
-    /// claiming them would try to resolve every one of them to a local save path.
+    /// This default guards the <em>battery</em> namespace (the system-scoped <see cref="UnitIdPrefix"/>).
+    /// Save states, cheats, and patches are all emulator-scoped (under <see cref="StateNamespacePrefix"/>)
+    /// and so never appear under <see cref="UnitIdPrefix"/> at all — the <c>states/cheats/patches</c>
+    /// check here is therefore a belt-and-braces guard against a battery <em>save</em> whose own name
+    /// happens to be exactly one of those words, not the mechanism that keeps states/cheats/patches out
+    /// (that is the prefix check on the line above). States are claimed by the auxiliary provider under
+    /// their own emulator-scoped prefix; cheats/patches are no longer written at all.
     /// </remarks>
     bool OwnsUnit(string unitId)
     {

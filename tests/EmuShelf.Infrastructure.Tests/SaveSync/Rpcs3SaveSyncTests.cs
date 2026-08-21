@@ -25,9 +25,9 @@ public sealed class Rpcs3SaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal("Andoryu", info.Profile.Name);
         Assert.Equal(
             [
-                new SaveUnit("rpcs3/savedata/BCES00001_PROFILE", "BCES00001_PROFILE", SaveUnitKind.Folder),
+                new SaveUnit("playstation3/savedata/BCES00001_PROFILE", "BCES00001_PROFILE", SaveUnitKind.Folder),
                 new SaveUnit(
-                    "rpcs3/savedata/BLES00713-DI1-EN-7508082248580",
+                    "playstation3/savedata/BLES00713-DI1-EN-7508082248580",
                     "BLES00713-DI1-EN-7508082248580",
                     SaveUnitKind.Folder),
             ],
@@ -55,19 +55,19 @@ public sealed class Rpcs3SaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(Path.Combine(hdd0, "savedata", "vmc"), info.VirtualMemoryCardDirectory);
         Assert.Equal(
             [
-                "rpcs3/savedata/BCES00006",
-                "rpcs3/trophy/NPWR00706_00",
-                "rpcs3/vmc/SCES00001_mc1.VM2",
-                "rpcs3/vmc/SLUS00067_mc1.VM1",
+                "playstation3/savedata/BCES00006",
+                "playstation3/trophy/NPWR00706_00",
+                "playstation3/vmc/SCES00001_mc1.VM2",
+                "playstation3/vmc/SLUS00067_mc1.VM1",
             ],
             (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
         Assert.Equal(
             SaveUnitKind.File,
-            provider.ResolveUnit("rpcs3/vmc/SLUS00067_mc1.VM1")!.Kind);
+            provider.ResolveUnit("playstation3/vmc/SLUS00067_mc1.VM1")!.Kind);
         Assert.Equal(
             Path.Combine(hdd0, "home", "00000001", "trophy", "NPWR00706_00"),
-            provider.ResolveUnit("rpcs3/trophy/NPWR00706_00")!.Path);
-        Assert.Null(provider.ResolveUnit("rpcs3/vmc/notes.txt"));
+            provider.ResolveUnit("playstation3/trophy/NPWR00706_00")!.Path);
+        Assert.Null(provider.ResolveUnit("playstation3/vmc/notes.txt"));
     }
 
     [Fact]
@@ -222,7 +222,7 @@ public sealed class Rpcs3SaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal("00000002", info.Profile.Id);
         Assert.Equal("Guest", info.Profile.Name);
         Assert.Equal(
-            [new SaveUnit("rpcs3/savedata/BLES00144-PROF-", "BLES00144-PROF-", SaveUnitKind.Folder)],
+            [new SaveUnit("playstation3/savedata/BLES00144-PROF-", "BLES00144-PROF-", SaveUnitKind.Folder)],
             await bound.GetSaveUnitsAsync());
     }
 
@@ -269,7 +269,7 @@ public sealed class Rpcs3SaveSyncTests : TempAppDirectoryTestBase
                     directoryOverride: Path.Combine(hdd0, "home", "00000001"))
                 .GetSaveDataDirectoryAsync());
         Assert.Equal(
-            [new SaveUnit("rpcs3/savedata/BCES00129", "BCES00129", SaveUnitKind.Folder)],
+            [new SaveUnit("playstation3/savedata/BCES00129", "BCES00129", SaveUnitKind.Folder)],
             await CreateProvider(installation, isWindows: true, directoryOverride: hdd0).GetSaveUnitsAsync());
 
         var unrelated = Path.Combine(BaseDirectory, "not-rpcs3");
@@ -301,22 +301,22 @@ public sealed class Rpcs3SaveSyncTests : TempAppDirectoryTestBase
         var saveData = WriteProfile(Path.Combine(installation, "dev_hdd0"), "00000001");
         var provider = CreateProvider(installation, isWindows: true);
 
-        var location = provider.ResolveUnit("rpcs3/savedata/BCES00484");
+        var location = provider.ResolveUnit("playstation3/savedata/BCES00484");
 
         Assert.NotNull(location);
         Assert.Equal(Path.Combine(saveData, "BCES00484"), location.Path);
         Assert.Equal(saveData, location.RootPath);
         Assert.Equal(SaveUnitKind.Folder, location.Kind);
-        Assert.Null(provider.ResolveUnit("rpcs3/savedata/../trophy"));
-        Assert.Null(provider.ResolveUnit("rpcs3/savedata/sub/dir"));
-        Assert.Null(provider.ResolveUnit("rpcs3/exdata/act.dat"));
-        Assert.Null(provider.ResolveUnit("rpcs3/BCES00484"));
-        Assert.Null(provider.ResolveUnit("ppsspp/BCES00484"));
+        Assert.Null(provider.ResolveUnit("playstation3/savedata/../trophy"));
+        Assert.Null(provider.ResolveUnit("playstation3/savedata/sub/dir"));
+        Assert.Null(provider.ResolveUnit("playstation3/exdata/act.dat"));
+        Assert.Null(provider.ResolveUnit("playstation3/BCES00484"));
+        Assert.Null(provider.ResolveUnit("psp/BCES00484"));
 
         // Each namespace resolves under its own root, never into a sibling of savedata.
-        var trophy = provider.ResolveUnit("rpcs3/trophy/NPWR00706_00");
+        var trophy = provider.ResolveUnit("playstation3/trophy/NPWR00706_00");
         Assert.Equal(Path.Combine(Path.GetDirectoryName(saveData)!, "trophy"), trophy!.RootPath);
-        Assert.Null(provider.ResolveUnit("rpcs3/vmc/NPWR00706_00"));
+        Assert.Null(provider.ResolveUnit("playstation3/vmc/NPWR00706_00"));
     }
 
     [Fact]

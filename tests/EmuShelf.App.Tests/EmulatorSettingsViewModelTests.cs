@@ -1089,8 +1089,8 @@ public class EmulatorSettingsViewModelTests
     {
         var report = new SaveSyncReport(
         [
-            new SaveUnitSyncResult("pcsx2/Mcd001.ps2", SaveSyncAction.Upload, "up"),
-            new SaveUnitSyncResult("pcsx2/Mcd002.ps2", SaveSyncAction.Upload, "up"),
+            new SaveUnitSyncResult("playstation2/Mcd001.ps2", SaveSyncAction.Upload, "up"),
+            new SaveUnitSyncResult("playstation2/Mcd002.ps2", SaveSyncAction.Upload, "up"),
         ]);
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
             syncNow: (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(report))));
@@ -1107,8 +1107,8 @@ public class EmulatorSettingsViewModelTests
         // mismatch) must not read as an empty "nothing to sync" success — the rows say otherwise.
         var report = new SaveSyncReport(
         [
-            new SaveUnitSyncResult("pcsx2/Mcd001.ps2", SaveSyncAction.Skipped, "written by a different build"),
-            new SaveUnitSyncResult("pcsx2/Mcd002.ps2", SaveSyncAction.Skipped, "written by a different build"),
+            new SaveUnitSyncResult("playstation2/Mcd001.ps2", SaveSyncAction.Skipped, "written by a different build"),
+            new SaveUnitSyncResult("playstation2/Mcd002.ps2", SaveSyncAction.Skipped, "written by a different build"),
         ]);
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
             syncNow: (_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(report))));
@@ -1230,7 +1230,7 @@ public class EmulatorSettingsViewModelTests
         Assert.Equal("/picked/pcsx2", Row(viewModel, "playstation2").OverrideDirectory);
         // The change is saved even without reconnecting.
         Assert.Equal(("playstation2", "/picked/pcsx2"), Assert.Single(persisted));
-        Assert.Equal("/pcsx2/memcards", Row(viewModel, "playstation2").DetectedDirectory);
+        Assert.Equal("/playstation2/memcards", Row(viewModel, "playstation2").DetectedDirectory);
     }
 
     [AvaloniaFact]
@@ -1240,13 +1240,13 @@ public class EmulatorSettingsViewModelTests
         var viewModel = CreateViewModel(cloudSaves: CreateCloudContext(
             getDetection: (systemId, _) => Task.FromResult<SaveProviderDetection?>(
                 systemId == "playstation"
-                    ? new SaveProviderDetection("/duckstation/memcards", warning)
+                    ? new SaveProviderDetection("/playstation/memcards", warning)
                     : null)));
         var row = Row(viewModel, "playstation");
 
         await row.RefreshDetectedDirectoryAsync();
 
-        Assert.Equal("/duckstation/memcards", row.DetectedDirectory);
+        Assert.Equal("/playstation/memcards", row.DetectedDirectory);
         Assert.Equal(warning, row.CompatibilityWarning);
         Assert.True(row.HasCompatibilityWarning);
         Assert.False(row.HasDetectionError);
@@ -1443,7 +1443,7 @@ public class EmulatorSettingsViewModelTests
             syncLogPath ?? Path.Combine(Path.GetTempPath(), "emushelf-save-sync-test.log"),
             getPlatforms ?? (() => platforms),
             (systemId, _) => Task.FromResult<string?>(
-                systemId == "psp" ? "/ppsspp/PSP/SAVEDATA" : "/pcsx2/memcards"),
+                systemId == "psp" ? "/psp/PSP/SAVEDATA" : "/playstation2/memcards"),
             _ => Task.CompletedTask,
             syncNow ?? ((_, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),
             force ?? ((_, _, _, _) => Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])))),

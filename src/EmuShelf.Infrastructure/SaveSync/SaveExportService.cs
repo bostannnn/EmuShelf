@@ -69,7 +69,7 @@ public sealed class SaveExportService
                 foreach (var unit in units)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var basePath = BasePath(target.PlatformName, unit.UnitId, target.Provider.UnitIdPrefix);
+                    var basePath = BasePath(target.PlatformName, unit.UnitId, target.Provider);
                     try
                     {
                         await using var content = await target.Endpoint.ReadAsync(unit.UnitId, cancellationToken);
@@ -152,14 +152,19 @@ public sealed class SaveExportService
             var owner = targets.FirstOrDefault(target => target.Provider.OwnsUnit(snapshot.UnitId));
             if (owner is null)
             {
-                // A unit sitting under a known platform's prefix that the platform does not own is an
-                // excluded namespace — cheats/patches an older build uploaded, which are not user save
-                // data (see DECISIONS 2026-07-24). Ignore those silently rather than reporting each as
-                // a skip; a remote can hold thousands. Only a genuinely foreign unit (no platform's
-                // prefix matches) is worth noting.
-                var underKnownPlatform = targets.Any(target =>
-                    snapshot.UnitId.StartsWith(target.Provider.UnitIdPrefix, StringComparison.Ordinal));
-                if (!underKnownPlatform)
+                // A unit under a known platform's namespace that the platform does not own is an excluded
+                // namespace we ignore silently rather than reporting each as a skip (a remote can hold
+                // thousands). Three shapes qualify, all emulator-scoped and so NOT under the system-scoped
+                // battery UnitIdPrefix: (1) cheats/patches an older build uploaded (see DECISIONS
+                // 2026-07-24); (2) save states, which live under StateNamespacePrefix; (3) frozen old
+                // emulator-scoped battery keys left behind by the copy-only namespace migration, which
+                // MapToSystemKey recognizes. Only a genuinely foreign unit is worth noting.
+                var recognized =
+                    targets.Any(target =>
+                        snapshot.UnitId.StartsWith(target.Provider.UnitIdPrefix, StringComparison.Ordinal) ||
+                        snapshot.UnitId.StartsWith(target.Provider.StateNamespacePrefix, StringComparison.Ordinal)) ||
+                    BatterySaveNamespaceMigration.MapToSystemKey(snapshot.UnitId) is not null;
+                if (!recognized)
                     skipped.Add($"{snapshot.UnitId}: no matching platform is configured on this machine.");
                 continue;
             }
@@ -171,7 +176,7 @@ public sealed class SaveExportService
                 continue;
             }
 
-            var basePath = BasePath(owner.PlatformName, snapshot.UnitId, owner.Provider.UnitIdPrefix);
+            var basePath = BasePath(owner.PlatformName, snapshot.UnitId, owner.Provider);
             try
             {
                 await using var content = await cloud.DownloadAsync(snapshot.UnitId, cancellationToken);
@@ -229,11 +234,20 @@ public sealed class SaveExportService
 
     // The archive folder for one platform + the portable tail of the unit id (the part after the
     // provider's namespace prefix), e.g. "PlayStation 2/Mcd001.ps2" or "Game Boy Color/states/x.state".
-    private static string BasePath(string platformName, string unitId, string unitIdPrefix)
+    // A provider owns two namespaces — battery (UnitIdPrefix, system-scoped) and save states
+    // (StateNamespacePrefix, emulator-scoped) — so strip whichever one the unit id is under, otherwise a
+    // state unit would leak its raw emulator prefix into the archive path.
+    private static string BasePath(string platformName, string unitId, ISaveLocationProvider provider)
     {
-        var tail = unitId.StartsWith(unitIdPrefix, StringComparison.Ordinal)
-            ? unitId[unitIdPrefix.Length..]
-            : unitId;
+        string? matched = null;
+        foreach (var prefix in new[] { provider.UnitIdPrefix, provider.StateNamespacePrefix })
+        {
+            if (unitId.StartsWith(prefix, StringComparison.Ordinal) &&
+                (matched is null || prefix.Length > matched.Length))
+                matched = prefix;
+        }
+
+        var tail = matched is not null ? unitId[matched.Length..] : unitId;
         if (string.IsNullOrWhiteSpace(tail))
             tail = "save";
         return $"{SanitizeSegment(platformName)}/{tail.TrimStart('/')}";

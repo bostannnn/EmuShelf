@@ -229,7 +229,12 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => _systemId;
 
-    public string UnitIdPrefix => $"retroarch/{_systemId}/";
+    // Battery saves key by the system ("<systemId>/"), so a RetroArch battery save interoperates with
+    // any other emulator for the same system. Save states keep the former emulator+system-scoped
+    // namespace so cores for different systems never collide.
+    public string UnitIdPrefix => SystemId + "/";
+
+    public string StateNamespacePrefix => $"retroarch/{_systemId}/";
 
     /// <summary>Returns the effective save directory and the core it was resolved for.</summary>
     public Task<RetroArchSaveInfo> GetSaveInfoAsync(CancellationToken cancellationToken = default) =>

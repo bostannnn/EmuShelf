@@ -24,8 +24,11 @@ namespace EmuShelf.Integrations.Emulators.DuckStation;
 /// </summary>
 public sealed class DuckStationAndroidSaveLocationProvider : ISaveLocationProvider
 {
-    private const string PerGamePrefix = "duckstation/per-game/";
     private readonly string _memoryCardsDirectory;
+
+    // Battery cards key by the system (UnitIdPrefix defaults to "playstation/"), byte-for-byte matching
+    // what the desktop DuckStation provider emits so a card syncs 1:1 between the two.
+    private string PerGamePrefix => UnitIdPrefix + "per-game/";
 
     /// <param name="memoryCardsDirectory">
     /// DuckStation Android's memory-card folder — normally
@@ -40,7 +43,11 @@ public sealed class DuckStationAndroidSaveLocationProvider : ISaveLocationProvid
 
     public string SystemId => "playstation";
 
-    public string UnitIdPrefix => "duckstation/";
+    public string UnitIdPrefix => SystemId + "/";
+
+    // Kept in lock-step with the desktop DuckStation provider so that if Android DuckStation ever gains
+    // save-state sync, its states land in the same emulator-scoped namespace rather than the system one.
+    public string StateNamespacePrefix => "duckstation/";
 
     /// <summary>The resolved memory-card folder, whether or not it exists yet.</summary>
     public string MemoryCardsDirectory => _memoryCardsDirectory;

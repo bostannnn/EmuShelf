@@ -241,6 +241,31 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void BatteryNamespaceMigrated_ParticipatesInEquality()
+    {
+        // It is persistent state (the one-time migration guard), not a cache — flipping it must not
+        // read as "nothing changed", or a future equality-gated write would re-run the migration.
+        var before = new CloudSaveSyncSettings { Enabled = true, CloudFolder = "EmuShelf/Saves" };
+        Assert.NotEqual(before, before with { BatteryNamespaceMigrated = true });
+    }
+
+    [Fact]
+    public void BatteryNamespaceMigrated_RoundTripsAndDefaultsToFalse()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+        // An older settings.json without the field must deserialize to false so the migration runs once.
+        Assert.False(service.Load().CloudSaveSync.BatteryNamespaceMigrated);
+
+        service.Save(new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings { Enabled = true, BatteryNamespaceMigrated = true },
+        });
+
+        Assert.True(service.Load().CloudSaveSync.BatteryNamespaceMigrated);
+    }
+
+    [Fact]
     public void PerEmulatorOverride_IsIsolatedFromOtherEmulatorsOnTheSameSystem()
     {
         var configuration = new CloudSaveSyncSettings()

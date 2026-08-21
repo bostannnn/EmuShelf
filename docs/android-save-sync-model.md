@@ -33,45 +33,49 @@ below leans on:
 These are the console's own save data — the "official" progress. They are small, and for most systems
 the *file itself is already emulator-agnostic*, which is what makes cross-emulator sync possible at all.
 
-**Rule: sync the payload; match it by the emulator namespace it already uses; align config where the
+**Rule: sync the payload; key it by the console *system* it belongs to; align config where the
 container format differs. Do not convert.**
 
-The cloud key is the existing per-provider `UnitIdPrefix` + game id (e.g. `duckstation/per-game/<serial>`,
-`pcsx2/Mcd001.ps2`, `retroarch/nds/<game>.srm`). Two categories:
+The cloud key is `<systemId>/<localId>` (e.g. `playstation/per-game/<serial>`, `playstation2/<card>.ps2`,
+`nds/<game>.srm`) — **the system owns the namespace, not the emulator** (superseding decision recorded in
+DECISIONS 2026-08-21). Each provider derives its battery key from `SystemId` (`UnitIdPrefix = SystemId +
+"/"`), so any emulator serving that system emits the same key and a save round-trips 1:1. Two payoffs:
 
-### Same emulator on both platforms — works unchanged
+### Any emulator for a system interoperates by construction
 
-PS1 (DuckStation), GC/Wii (Dolphin), PSP (PPSSPP), 3DS (Azahar), and the nine RetroArch systems all run
-the *same emulator family* on desktop and Android. The Android provider declares the **same
-`UnitIdPrefix`** as the desktop provider, so a save round-trips 1:1 with no special handling. This is
-already true for the DuckStation Android provider (`UnitIdPrefix => "duckstation/"`, identical to
-desktop) and is the template for the rest.
+PS1 (DuckStation), GC/Wii (Dolphin), PSP (PPSSPP), 3DS (Azahar), and the RetroArch systems all key by
+their `SystemId`, so desktop↔Android round-trips need no special handling — and, more importantly, a
+*different* emulator for the same system (a second PS1 core, a future PS2 emulator) syncs with the same
+key by construction. Nothing "adopts" another emulator's namespace and nothing has to be wired per pair.
 
-### Different emulator per platform — namespace adoption + config alignment
+### Different emulator per platform — same key, config alignment only
 
-Two systems change emulator between platforms. The Android provider **adopts the desktop emulator's
-namespace** (rather than inventing its own), and a per-emulator **setup checklist** enforces the
-matching on-disk format. No converter is written.
+Two systems change emulator between platforms. Because the key is the system, no namespace adoption is
+needed; the Android provider just emits the system key like every other. A per-emulator **setup
+checklist** enforces the matching on-disk format. No converter is written.
 
-| System | Desktop | Android | Android provider emits | Config the checklist must enforce |
+| System | Desktop | Android | Cloud key | Config the checklist must enforce |
 |---|---|---|---|---|
-| PS2 | PCSX2 | ARMSX2 | `pcsx2/` unit ids | Single-file `.ps2` memory card, matching filename (the `.ps2` card is "the universal currency" across PCSX2/AetherSX2/NetherSX2/ARMSX2). PCSX2 *folder* cards do **not** sync — the user must use a file card on both. |
-| DS | RetroArch (melonDS core) | WatermelonDS | `retroarch/nds/` unit ids | WatermelonDS's *"use `.srm` not `.sav`"* toggle on, so the on-disk filename matches what the RetroArch provider syncs. |
+| PS2 | PCSX2 | ARMSX2 | `playstation2/` | Single-file `.ps2` memory card, matching filename (the `.ps2` card is "the universal currency" across PCSX2/AetherSX2/NetherSX2/ARMSX2). PCSX2 *folder* cards do **not** sync — the user must use a file card on both. |
+| DS | RetroArch (melonDS core) | WatermelonDS | `nds/` | WatermelonDS's *"use `.srm` not `.sav`"* toggle on, so the on-disk filename matches what the RetroArch provider syncs. |
 
-Namespace adoption is a small semantic stretch (a WatermelonDS provider emitting `retroarch/nds/` ids),
-so it is recorded in DECISIONS to stop a later "cleanup" from renaming it back and orphaning saves.
+The desktop and Android providers for these systems are already the same class (ARMSX2 reuses
+`Pcsx2SaveLocationProvider`, WatermelonDS reuses `RetroArchSaveLocationProvider`), so their `localId`
+schemes match too — the system key is the only thing that had to change.
 
 ### Same emulator, but a container/config that must still be aligned
 
 Even within one emulator, the *card mode* can change the on-disk shape and therefore the unit id:
 
 - **GameCube (Dolphin).** The unit id encodes both the **slot** (`.../a/...` vs `.../b/...`) and the
-  **card device mode**: a *raw* single-file card is `dolphin/gc/raw/<slot>/<region>`, a *GCI folder*
-  is `dolphin/gc/gci/<slot>/<gameId>`. These are different unit-id shapes and different container
+  **card device mode**: a *raw* single-file card is `gamecube/raw/<slot>/<region>`, a *GCI folder*
+  is `gamecube/gci/<slot>/<gameId>`. These are different unit-id shapes and different container
   formats, so a desktop **raw card** never matches an Android **GCI folder** even though both are
   Dolphin. The provider *does* absorb the path-depth difference (desktop `GC/USA/` vs Android
   `GC/USA/Card A/`) — that is already handled — but not raw-vs-GCI. **Checklist item:** GameCube must
-  use **GCI folder mode, slot A** on both platforms (Android's default), not a raw memory card.
+  use **GCI folder mode, slot A** on both platforms (Android's default), not a raw memory card. (Both
+  modes now sit under the same `gamecube/` system key; raw-vs-GCI is disambiguated by the `localId`
+  shape, and the emulator declines a card it cannot read — sync never deletes.)
 
 ### Cross-emulator battery caveats are config, not conversion
 
@@ -96,7 +100,12 @@ on Windows x86 do not load on Android arm64).
 **Rule: keep states in a separate, opt-in namespace, tag each with its provenance, and gate restore on
 compatibility. Auto-restore only when safe; let the user override for the rest; never delete.**
 
-This is *already built* on desktop and shared into the Android head:
+This is *already built* on desktop and shared into the Android head, and is **unchanged by the battery
+system-keying above**: state cloud keys stay **emulator-scoped** (`<emulatorId>/states/…`, e.g.
+`duckstation/states/…`, `retroarch/nds/states/…`), because two emulators for one system can write
+same-named state files and it is the emulator-scoped namespace plus the compatibility gate that keep
+them apart. The provider exposes this as a second namespace (`StateNamespacePrefix`) distinct from the
+system-scoped battery `UnitIdPrefix`; the migration below leaves state keys untouched.
 
 - States live in a separate `states` namespace, **opt-in per platform** (`SyncSaveStates` toggle).
 - Each state carries a compatibility key `st1|<emulatorId>|<arch>|<provenance>:<version>`
@@ -138,7 +147,8 @@ The model above is mostly shared code. The Android head must:
      handed the user's chosen save folder as the existing per-system `DirectoryOverride`.
    - Fixed-location set (DuckStation ✅ landed, Dolphin ✅ wiring landed): package-derived roots from the
      Android composition root, feeding the existing providers' explicit-user-directory seam.
-   - PS2 (ARMSX2) → `pcsx2/` namespace; DS (WatermelonDS) → `retroarch/nds/` namespace (adoption above).
+   - PS2 (ARMSX2) → `playstation2/` system key; DS (WatermelonDS) → `nds/` system key — both fall out of
+     the system-scoped `UnitIdPrefix` via the reused desktop provider class, no per-pair wiring.
 2. **Setup checklist entries** for the config-alignment cases: PS2 single-file `.ps2`, DS `.srm` toggle,
    GameCube GCI-folder/slot-A. Verified, not assumed.
 3. **Save-state roots** per emulator, and report `arm64` (already automatic via host arch).
@@ -160,16 +170,16 @@ Measured directly on the Thor (`adb -s 2fd555f4`) so the wiring is not guessed:
   `PCSX2-Android.ini` — the **byte-identical PCSX2 version-1 INI format** (`[Folders] MemoryCards =
   memcards`, `[MemoryCards] Slot1_Filename = ...ps2`) — and a `memcards/` folder with real single-file
   cards (`Mcdf01_converted.ps2` 34 MB, `mcd002.ps2` 8 MB). So the existing `Pcsx2SaveLocationProvider`
-  reads it verbatim once it knows the filename, emitting `pcsx2/` unit ids → PS2 namespace adoption
-  needs **no new provider class**, just the `PCSX2-Android.ini` candidate. The card *filenames* here
+  reads it verbatim once it knows the filename, emitting `playstation2/` system unit ids → PS2 needs
+  **no new provider class**, just the `PCSX2-Android.ini` candidate. The card *filenames* here
   (`Mcdf01_converted.ps2`) will only sync with a desktop PCSX2 card of the same name — the checklist's
   "matching filename" item, now concrete.
 - **WatermelonDS (DS) and RetroArch share one unified saves root.** WatermelonDS writes
   `<Game>.srm` into `/storage/AE6A-1092/saves/Nintendo DS/`, which is the *same* per-system-sorted
   `saves/` tree RetroArch uses (`saves/PlayStation`, `saves/Game Boy Advance`, …). So the DS `.srm`
-  already coincides with the RetroArch namespace on-device: the Android DS provider is the RetroArch
-  save provider pointed at that shared root. Both `.sav` and `.srm` are present, confirming the toggle
-  requirement — sync must claim the `.srm`.
+  already coincides with the RetroArch save layout on-device: the Android DS provider is the RetroArch
+  save provider pointed at that shared root, so it emits the same `nds/` system key. Both `.sav` and
+  `.srm` are present, confirming the toggle requirement — sync must claim the `.srm`.
 - **These are folder-configurable emulators**, not `Android/data`-locked: ARMSX2's user dir, the DS/RA
   `saves/` tree, PPSSPP, and Azahar all live on the SD under normal paths the app reads with all-files.
   So they route through the existing `DirectoryOverride` seam (a picked/known folder), not a
@@ -185,8 +195,8 @@ Measured directly on the Thor (`adb -s 2fd555f4`) so the wiring is not guessed:
 **Composition-root wiring status (corrected after on-device inspection).** Most of the Android
 save-provider wiring already exists in the shared code, so "slice 3" is smaller than first scoped:
 - Fixed-root (DuckStation, Dolphin): auto-supplied roots, verified reaching real saves. **Done.**
-- Folder-configurable (PS2→`pcsx2/`, DS `nds`→`retroarch/nds/`, PSP, 3DS, the RetroArch systems): the
-  descriptors already resolve to the correct provider and namespace; they only need a **per-system
+- Folder-configurable (PS2→`playstation2/`, DS→`nds/`, PSP, 3DS, the RetroArch systems): the
+  descriptors already resolve to the correct provider and system key; they only need a **per-system
   save-folder override**, which the user cannot set yet because the gamepad Saves UI is rclone-only.
   So the real remaining blocker for these is the **gamepad Saves rebuild (slice 4)**, not more wiring.
 
@@ -197,11 +207,13 @@ Ordered so each slice is independently testable and the safe/shared ones land fi
 1. **Save-state arch-portable relaxation** — ✅ **done (2026-08-21)**. `AreCompatible` skips the arch
    gate for an allowlist seeded with snes9x; hard gate preserved for everything else. Unit-tested, full
    App Release suite green.
-2. **Battery namespace adoption for PS2 + DS** — 🟡 in progress. PS2 provider reuse ✅ landed: the
-   `Pcsx2SaveLocationProvider` now reads ARMSX2's `PCSX2-Android.ini`, emitting `pcsx2/` ids (unit-tested
-   against the real Thor layout). Remaining: DS → RetroArch-provider-on-shared-`saves/` wiring, and the
-   composition-root path that supplies these folders (shared with slice 3), plus the setup-checklist
-   config-alignment entries.
+2. **Battery cloud key → system-scoped** — 🟡 in progress (supersedes "namespace adoption"). Each
+   provider's battery `UnitIdPrefix` derives from `SystemId` (`duckstation/…`→`playstation/…`,
+   `pcsx2/…`→`playstation2/…`, `retroarch/<sys>/…`→`<sys>/…`, `dolphin/gc|wii/…`→`gamecube|wii/…`, etc.);
+   `StateNamespacePrefix` keeps states emulator-scoped and unchanged. A one-time **copy-only migration**
+   re-keys existing cloud battery entries to the system key (states/cheats/patches excluded), guarded by a
+   persisted flag. PS2 provider reuse (ARMSX2 `PCSX2-Android.ini`) and DS→RetroArch-on-shared-`saves/`
+   both fall out of the system key for free. Remaining: the setup-checklist config-alignment entries.
 3. **Folder-configurable save-override plumbing** — ✅ **mostly already present** (2026-08-21). The
    descriptors resolve to the correct provider + namespace already; fixed-root DuckStation/Dolphin roots
    are auto-supplied and verified against real Thor saves. What remains is exposing the per-system

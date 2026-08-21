@@ -195,6 +195,8 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 
     public string UnitIdPrefix => _saves.UnitIdPrefix;
 
+    public string StateNamespacePrefix => _saves.StateNamespacePrefix;
+
     public bool HasStateCompatibility => _compatibility is not null;
 
     /// <summary>
@@ -238,8 +240,8 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 
     public bool OwnsUnit(string unitId)
     {
-        if (TryGetOptionalNamespace(unitId, out _))
-            return _sources.Any(source => IsInSourceNamespace(unitId, source));
+        if (IsStateUnit(unitId))
+            return true;
         return _includeBaseSaves && _saves.OwnsUnit(unitId);
     }
 
@@ -247,7 +249,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
     {
         var selected = _includeBaseSaves
             ? _saves.SelectRemoteUnits(snapshots
-                .Where(snapshot => !TryGetOptionalNamespace(snapshot.UnitId, out _))
+                .Where(snapshot => !IsStateUnit(snapshot.UnitId))
                 .ToArray()).ToList()
             : [];
 
@@ -271,7 +273,7 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
 
     public SaveUnitLocation? ResolveUnit(string unitId)
     {
-        if (!TryGetOptionalNamespace(unitId, out _))
+        if (!IsStateUnit(unitId))
             return _includeBaseSaves ? _saves.ResolveUnit(unitId) : null;
 
         var source = _sources.FirstOrDefault(candidate => IsInSourceNamespace(unitId, candidate));
@@ -365,22 +367,14 @@ internal sealed class AuxiliarySyncProvider : ISaveLocationProvider
         return files;
     }
 
+    // The state sub-namespace hangs off the emulator-scoped StateNamespacePrefix, NOT the system-scoped
+    // battery UnitIdPrefix: two emulators for one system share the battery namespace but must keep their
+    // states apart. See docs/android-save-sync-model.md and DECISIONS 2026-08-21.
     private string Prefix(AuxiliaryFileSource source) =>
-        UnitIdPrefix + source.Namespace.Trim('/') + "/";
+        _saves.StateNamespacePrefix + source.Namespace.Trim('/') + "/";
 
     private bool IsInSourceNamespace(string unitId, AuxiliaryFileSource source) =>
         unitId.StartsWith(Prefix(source), StringComparison.Ordinal);
-
-    private bool TryGetOptionalNamespace(string unitId, out string? value)
-    {
-        value = null;
-        if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))
-            return false;
-        var remainder = unitId[UnitIdPrefix.Length..];
-        var separator = remainder.IndexOf('/');
-        value = separator < 0 ? remainder : remainder[..separator];
-        return value is "states";
-    }
 
     internal static bool IsManualState(string path)
     {

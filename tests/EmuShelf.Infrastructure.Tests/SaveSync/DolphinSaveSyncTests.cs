@@ -81,8 +81,8 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
 
         var units = await provider.GetSaveUnitsAsync();
 
-        Assert.Contains(units, unit => unit.UnitId == "dolphin/gc/raw/a/USA");
-        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal));
+        Assert.Contains(units, unit => unit.UnitId == "gamecube/raw/a/USA");
+        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("gamecube/gci/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -112,8 +112,8 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
 
         var units = await provider.GetSaveUnitsAsync();
 
-        Assert.Contains(units, unit => unit.UnitId == "dolphin/gc/raw/a/USA");
-        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal));
+        Assert.Contains(units, unit => unit.UnitId == "gamecube/raw/a/USA");
+        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("gamecube/gci/", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -134,9 +134,9 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var units = await provider.GetSaveUnitsAsync();
 
         Assert.Equal(
-            ["dolphin/gc/raw/a/EUR/251", "dolphin/gc/raw/a/USA/251"],
+            ["gamecube/raw/a/EUR/251", "gamecube/raw/a/USA/251"],
             units.Select(unit => unit.UnitId));
-        Assert.Equal(eur, provider.ResolveUnit("dolphin/gc/raw/a/EUR/251")!.Path);
+        Assert.Equal(eur, provider.ResolveUnit("gamecube/raw/a/EUR/251")!.Path);
     }
 
     [Fact]
@@ -155,11 +155,11 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var units = await provider.GetSaveUnitsAsync();
 
         Assert.Equal(
-            ["dolphin/gc/raw/a/USA", "dolphin/gc/raw/a/USA/251"],
+            ["gamecube/raw/a/USA", "gamecube/raw/a/USA/251"],
             units.Select(unit => unit.UnitId));
         Assert.Equal(
             Path.Combine(cards, "Shared.EUR.251.raw"),
-            provider.ResolveUnit("dolphin/gc/raw/a/EUR/251")!.Path);
+            provider.ResolveUnit("gamecube/raw/a/EUR/251")!.Path);
     }
 
     [Fact]
@@ -182,10 +182,10 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(2, units.Count);
         Assert.All(units, unit => Assert.Equal(SaveUnitKind.File, unit.Kind));
-        Assert.Contains(units, unit => unit.UnitId == "dolphin/gc/gci/a/GM8E01");
+        Assert.Contains(units, unit => unit.UnitId == "gamecube/gci/a/GM8E01");
         Assert.Contains(
             units,
-            unit => unit.UnitId.StartsWith("dolphin/gc/gci/a/GM8E01/", StringComparison.Ordinal));
+            unit => unit.UnitId.StartsWith("gamecube/gci/a/GM8E01/", StringComparison.Ordinal));
         Assert.Equal(
             [first, second],
             units.Select(unit => provider.ResolveUnit(unit.UnitId)!.Path).Order(StringComparer.Ordinal));
@@ -205,7 +205,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateOverriddenProvider("gamecube", user);
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/gc/gci/a/GZLE01", unit.UnitId);
+        Assert.Equal("gamecube/gci/a/GZLE01", unit.UnitId);
         Assert.Equal(save, provider.ResolveUnit(unit.UnitId)!.Path);
     }
 
@@ -232,7 +232,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
 
         var unit = Assert.Single(await CreateOverriddenProvider("gamecube", user).GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/gc/raw/a/USA/251", unit.UnitId);
+        Assert.Equal("gamecube/raw/a/USA/251", unit.UnitId);
     }
 
     [Fact]
@@ -292,7 +292,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
         Assert.Equal(new SaveUnit(
-            "dolphin/wii/title/00010000/52534d45",
+            "wii/title/00010000/52534d45",
             "52534d45",
             SaveUnitKind.Folder), unit);
         Assert.Equal(save, provider.ResolveUnit(unit.UnitId)!.Path);
@@ -311,7 +311,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
 
         var unit = Assert.Single(await CreateOverriddenProvider("wii", user).GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/wii/title/00010000/52534d45", unit.UnitId);
+        Assert.Equal("wii/title/00010000/52534d45", unit.UnitId);
     }
 
     [Fact]
@@ -341,7 +341,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
             $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {usa}\n");
 
         var location = CreateOverriddenProvider("gamecube", user)
-            .ResolveUnit("dolphin/gc/gci/a/GM8E01");
+            .ResolveUnit("gamecube/gci/a/GM8E01");
 
         Assert.NotNull(location);
         Assert.Equal(Path.Combine(usa, "GM8E01.gci"), location.Path);
@@ -361,7 +361,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
             $"[Core]\nSlotA = 8\nSlotB = 255\nGCIFolderAPath = {sourceFolder}\n");
         var sourceEndpoint = new FileSystemLocalSaveEndpoint(
             CreateOverriddenProvider("gamecube", sourceUser), AppPaths);
-        const string unitId = "dolphin/gc/gci/a/GM8E01";
+        const string unitId = "gamecube/gci/a/GM8E01";
         var snapshot = await sourceEndpoint.SnapshotAsync(unitId);
         await using var payload = await sourceEndpoint.ReadAsync(unitId);
 
@@ -398,7 +398,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var sourceProvider = CreateOverriddenProvider("gamecube", sourceUser);
 
         var originalUnit = Assert.Single(await sourceProvider.GetSaveUnitsAsync());
-        Assert.Equal("dolphin/gc/gci/a/GM8E01", originalUnit.UnitId);
+        Assert.Equal("gamecube/gci/a/GM8E01", originalUnit.UnitId);
 
         // 0x11 produces an internal-name identity that sorts before the existing 0x22 file.
         // This deliberately makes the new file take over the stable base unit.
@@ -474,7 +474,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var user = Path.Combine(BaseDirectory, "user");
         WriteDolphinIni(user, "[Core]\nSlotA = 1\nSlotB = 255\n");
 
-        var location = CreateOverriddenProvider("gamecube", user).ResolveUnit("dolphin/gc/raw/a/JPN");
+        var location = CreateOverriddenProvider("gamecube", user).ResolveUnit("gamecube/raw/a/JPN");
 
         Assert.NotNull(location);
         Assert.Equal(Path.Combine(user, "GC", "MemoryCardA.JAP.raw"), location.Path);
@@ -488,7 +488,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var user = Path.Combine(BaseDirectory, "user");
         WriteDolphinIni(user, "[Core]\nSlotA = 8\nSlotB = 255\n");
 
-        var location = CreateOverriddenProvider("gamecube", user).ResolveUnit("dolphin/gc/gci/a/GALJ01");
+        var location = CreateOverriddenProvider("gamecube", user).ResolveUnit("gamecube/gci/a/GALJ01");
 
         Assert.NotNull(location);
         Assert.Equal(Path.Combine(user, "GC", "JAP", "Card A"), location.RootPath);
@@ -509,7 +509,7 @@ public sealed class DolphinSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateOverriddenProvider("gamecube", user);
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/gc/raw/a/JPN", unit.UnitId);
+        Assert.Equal("gamecube/raw/a/JPN", unit.UnitId);
         Assert.Equal(card, provider.ResolveUnit(unit.UnitId)!.Path);
     }
 

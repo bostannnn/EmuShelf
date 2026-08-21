@@ -45,7 +45,10 @@ public sealed class PpssppSaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => "psp";
 
-    public string UnitIdPrefix => "ppsspp/";
+    // Battery saves key by the system ("psp/"); save states keep the emulator-scoped namespace.
+    public string UnitIdPrefix => SystemId + "/";
+
+    public string StateNamespacePrefix => "ppsspp/";
 
     public Task<string> GetMemoryStickDirectoryAsync(CancellationToken cancellationToken = default) =>
         Task.Run(() => GetMemoryStickDirectory(cancellationToken), cancellationToken);

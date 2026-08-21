@@ -17,12 +17,12 @@ public sealed class DolphinAndroidSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateProvider("gamecube", files);
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/gc/gci/a/GM8E01", unit.UnitId);
+        Assert.Equal("gamecube/gci/a/GM8E01", unit.UnitId);
         Assert.Equal(SaveUnitKind.File, unit.Kind);
         Assert.Equal(save, provider.ResolveUnit(unit.UnitId)!.Path);
         Assert.Equal(
             Path.Combine(card, "GZLE01.gci"),
-            provider.ResolveUnit("dolphin/gc/gci/a/GZLE01")!.Path);
+            provider.ResolveUnit("gamecube/gci/a/GZLE01")!.Path);
     }
 
     [Fact]
@@ -40,7 +40,7 @@ public sealed class DolphinAndroidSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateProvider("gamecube", files);
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/gc/gci/b/GZLP01", unit.UnitId);
+        Assert.Equal("gamecube/gci/b/GZLP01", unit.UnitId);
         Assert.Equal(save, provider.ResolveUnit(unit.UnitId)!.Path);
     }
 
@@ -55,7 +55,7 @@ public sealed class DolphinAndroidSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateProvider("wii", files);
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
-        Assert.Equal("dolphin/wii/title/00010000/524d4345", unit.UnitId);
+        Assert.Equal("wii/title/00010000/524d4345", unit.UnitId);
         Assert.Equal(SaveUnitKind.Folder, unit.Kind);
         Assert.Equal(data, provider.ResolveUnit(unit.UnitId)!.Path);
     }

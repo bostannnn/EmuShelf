@@ -9,7 +9,7 @@ public sealed class SaveSyncServiceTests
     private static readonly DateTimeOffset T0 = new(2026, 7, 24, 12, 0, 0, TimeSpan.Zero);
 
     private static readonly SaveUnit FileCard =
-        new("pcsx2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
+        new("playstation2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
 
     private readonly InMemoryLocalSaveEndpoint _local = new();
     private readonly InMemoryCloudSyncTransport _remote = new();
@@ -133,8 +133,8 @@ public sealed class SaveSyncServiceTests
         // The emulator relaunches and locks one card's file after planning but before the transfer.
         // That IOException in the apply loop must cost only its own unit, not fault the whole pass
         // (which would drop the manifest flush and every other platform's sync too).
-        var locked = new SaveUnit("pcsx2/Mcd001.ps2", "locked card", SaveUnitKind.File);
-        var healthy = new SaveUnit("pcsx2/Mcd002.ps2", "healthy card", SaveUnitKind.File);
+        var locked = new SaveUnit("playstation2/Mcd001.ps2", "locked card", SaveUnitKind.File);
+        var healthy = new SaveUnit("playstation2/Mcd002.ps2", "healthy card", SaveUnitKind.File);
         _local.Seed(locked.UnitId, Bytes("locked"), T0);
         _local.Seed(healthy.UnitId, Bytes("healthy"), T0);
         _local.ReadHook = unitId =>
@@ -160,19 +160,19 @@ public sealed class SaveSyncServiceTests
     {
         // One platform's unreadable emulator config must not fault every other platform's sync in the
         // same multi-provider pass. The broken platform sits out and is reported under its own id.
-        var ppsspp = new SaveUnit("ppsspp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
+        var ppsspp = new SaveUnit("psp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
         var pspLocal = new InMemoryLocalSaveEndpoint();
         pspLocal.Seed(ppsspp.UnitId, Bytes("psp-save"), T0);
 
         var report = await CreateService().SyncAllAsync(
             [
-                new SaveSyncTarget(new UnreadableConfigProvider("gamecube", "dolphin/gc/"), _local),
+                new SaveSyncTarget(new UnreadableConfigProvider("gamecube", "gamecube/"), _local),
                 new SaveSyncTarget(new FakeSaveLocationProvider("psp", ppsspp), pspLocal),
             ]);
 
         Assert.Contains(
             report.Skipped,
-            result => result.UnitId.StartsWith("dolphin/gc/", StringComparison.Ordinal));
+            result => result.UnitId.StartsWith("gamecube/", StringComparison.Ordinal));
         Assert.Equal(1, report.Uploaded);
         Assert.True(_remote.Has(ppsspp.UnitId));
     }
@@ -309,8 +309,8 @@ public sealed class SaveSyncServiceTests
     {
         // The folder-memcard model: each game is its own unit, so a game changed on one machine
         // and a game changed on the other do not collide the way a shared file card would.
-        var gow = new SaveUnit("pcsx2/folder/SLUS-20552", "God of War", SaveUnitKind.Folder);
-        var sotc = new SaveUnit("pcsx2/folder/SLUS-21274", "Shadow of the Colossus", SaveUnitKind.Folder);
+        var gow = new SaveUnit("playstation2/folder/SLUS-20552", "God of War", SaveUnitKind.Folder);
+        var sotc = new SaveUnit("playstation2/folder/SLUS-21274", "Shadow of the Colossus", SaveUnitKind.Folder);
         _local.Seed(gow.UnitId, Bytes("gow-save"), T0);
         _remote.Seed(sotc.UnitId, Bytes("sotc-save"), T0);
 
@@ -327,8 +327,8 @@ public sealed class SaveSyncServiceTests
     {
         // A transport that opens one download session for the whole pass can only scope that session
         // to the payloads this pass needs if the service says so before transferring.
-        var download = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
-        var conflict = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
+        var download = new SaveUnit("playstation2/Mcd002.ps2", "second card", SaveUnitKind.File);
+        var conflict = new SaveUnit("playstation2/Mcd003.ps2", "third card", SaveUnitKind.File);
         _local.Seed(FileCard.UnitId, Bytes("upload-only"), T0);
         _remote.Seed(download.UnitId, Bytes("remote-only"), T0);
         _local.Seed(conflict.UnitId, Bytes("local-edit"), T0.AddMinutes(2));
@@ -347,8 +347,8 @@ public sealed class SaveSyncServiceTests
     {
         // Real failure: the cloud index listed three PSP saves whose payloads were never uploaded,
         // and the first of them aborted every pass on the other machine.
-        var missing = new SaveUnit("pcsx2/Mcd002.ps2", "second card", SaveUnitKind.File);
-        var healthy = new SaveUnit("pcsx2/Mcd003.ps2", "third card", SaveUnitKind.File);
+        var missing = new SaveUnit("playstation2/Mcd002.ps2", "second card", SaveUnitKind.File);
+        var healthy = new SaveUnit("playstation2/Mcd003.ps2", "third card", SaveUnitKind.File);
         _remote.Seed(missing.UnitId, Bytes("promised"), T0);
         _remote.Seed(healthy.UnitId, Bytes("deliverable"), T0);
         _remote.MissingPayloads.Add(missing.UnitId);
@@ -400,7 +400,7 @@ public sealed class SaveSyncServiceTests
     [Fact]
     public async Task SyncAll_ReconcilesSeveralProvidersWithOneRemotePass()
     {
-        var ppsspp = new SaveUnit("ppsspp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
+        var ppsspp = new SaveUnit("psp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
         var pspLocal = new InMemoryLocalSaveEndpoint();
         _local.Seed(FileCard.UnitId, Bytes("ps2-save"), T0);
         pspLocal.Seed(ppsspp.UnitId, Bytes("psp-save"), T0);
@@ -423,8 +423,8 @@ public sealed class SaveSyncServiceTests
     {
         // Regression: the losing remote copy used to be handed to the first target's endpoint
         // regardless of which provider owned the unit. A real PCSX2 endpoint refuses to resolve a
-        // `ppsspp/...` id, so a PSP conflict aborted the whole multi-provider run.
-        var ppsspp = new SaveUnit("ppsspp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
+        // `psp/...` id, so a PSP conflict aborted the whole multi-provider run.
+        var ppsspp = new SaveUnit("psp/ULUS10041DATA00", "PSP save", SaveUnitKind.Folder);
         var pspLocal = new InMemoryLocalSaveEndpoint();
         _local.Seed(FileCard.UnitId, Bytes("ps2-save"), T0);
         // Both sides changed with no baseline; the local copy is newer, so local wins.
@@ -464,8 +464,8 @@ public sealed class SaveSyncServiceTests
     [Fact]
     public async Task SyncAsync_ReportsPerUnitProgress()
     {
-        var first = new SaveUnit("pcsx2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
-        var second = new SaveUnit("pcsx2/Mcd002.ps2", "Memory Card 2", SaveUnitKind.File);
+        var first = new SaveUnit("playstation2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
+        var second = new SaveUnit("playstation2/Mcd002.ps2", "Memory Card 2", SaveUnitKind.File);
         _local.Seed(first.UnitId, Bytes("a"), T0);
         _local.Seed(second.UnitId, Bytes("b"), T0);
         var progress = new CapturingProgress();

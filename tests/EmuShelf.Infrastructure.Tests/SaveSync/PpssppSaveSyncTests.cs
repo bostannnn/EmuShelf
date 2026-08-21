@@ -98,13 +98,13 @@ public sealed class PpssppSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(
             [
-                new SaveUnit("ppsspp/NPJH50676", "NPJH50676", SaveUnitKind.Folder),
-                new SaveUnit("ppsspp/ULUS10041DATA00", "ULUS10041DATA00", SaveUnitKind.Folder),
+                new SaveUnit("psp/NPJH50676", "NPJH50676", SaveUnitKind.Folder),
+                new SaveUnit("psp/ULUS10041DATA00", "ULUS10041DATA00", SaveUnitKind.Folder),
             ],
             await provider.GetSaveUnitsAsync());
-        Assert.Null(provider.ResolveUnit("ppsspp/../PPSSPP_STATE"));
-        Assert.Null(provider.ResolveUnit("ppsspp/."));
-        Assert.Null(provider.ResolveUnit("pcsx2/Mcd001.ps2"));
+        Assert.Null(provider.ResolveUnit("psp/../PPSSPP_STATE"));
+        Assert.Null(provider.ResolveUnit("psp/."));
+        Assert.Null(provider.ResolveUnit("playstation2/Mcd001.ps2"));
     }
 
     [Fact]
